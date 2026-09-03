@@ -205,3 +205,91 @@ describe('tenant keying', () => {
     expect(new Set(urls)).toEqual(new Set(['/notifications']));
   });
 });
+
+/**
+ * FOURTH PASS — the four narrowings are the REGISTER'S, so they must leave
+ * this hook as query params and come back as a filtered `total`. A filter that
+ * quietly became a browser-side `.filter()` would still look right on screen
+ * and would silently lie about how much of the book it had seen.
+ */
+describe('useNotificationsNextData — the register does the narrowing', () => {
+  beforeEach(() => {
+    auth.current = { user: { userId: 'user-1' }, activeRestaurantId: 'rest-A' };
+    api.get.mockReset();
+    api.patch.mockReset();
+    api.delete.mockReset();
+  });
+
+  it('sends type, status and the day’s window to the gateway', async () => {
+    serve(40);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+
+    act(() => {
+      result.current.setFilters({ type: 'report', status: 'unread', day: '2026-09-03' });
+    });
+    await waitFor(() => {
+      const last = api.get.mock.calls.at(-1)?.[1]?.params as Record<string, unknown>;
+      expect(last.type).toBe('report');
+      expect(last.status).toBe('unread');
+      expect(typeof last.dateFrom).toBe('string');
+      expect(typeof last.dateTo).toBe('string');
+    });
+    // local midnight to local end-of-day, so "3 September" means the reader's
+    const params = api.get.mock.calls.at(-1)?.[1]?.params as Record<string, string>;
+    expect(new Date(params.dateFrom).getHours()).toBe(0);
+    expect(new Date(params.dateTo).getHours()).toBe(23);
+  });
+
+  it('omits a cleared filter instead of sending an empty string', async () => {
+    serve(40);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+
+    act(() => {
+      result.current.setFilters({ type: 'report', status: null, day: null });
+    });
+    await waitFor(() => {
+      const last = api.get.mock.calls.at(-1)?.[1]?.params as Record<string, unknown>;
+      expect(last.type).toBe('report');
+      // `status=''` fails the DTO's @IsEnum and turns a cleared filter into a 400
+      expect('status' in last).toBe(false);
+      expect('dateFrom' in last).toBe(false);
+      expect('dateTo' in last).toBe(false);
+    });
+  });
+
+  it('starts the paging again when the book is narrowed', async () => {
+    serve(260);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+
+    act(() => result.current.readFurtherBack());
+    await waitFor(() => expect(result.current.book.pages).toBe(2));
+
+    act(() => result.current.setFilters({ type: 'report', status: null, day: null }));
+    await waitFor(() => expect(result.current.book.pages).toBe(1));
+    // …and page 2 is not asked for under the new filter
+    const pagesAsked = api.get.mock.calls
+      .filter((c) => (c[1] as { params?: Record<string, unknown> })?.params?.type === 'report')
+      .map((c) => (c[1] as { params?: Record<string, unknown> }).params?.page);
+    expect(pagesAsked.every((p) => p === 1)).toBe(true);
+  });
+
+  it('a restaurant switch clears the filters as well as the rows', async () => {
+    serve(40);
+    const { result, rerender } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+    act(() => result.current.setFilters({ type: 'report', status: 'read', day: '2026-09-03' }));
+    await waitFor(() => expect(result.current.filters.type).toBe('report'));
+
+    serve(10, 'rest-B');
+    auth.current = { user: { userId: 'user-1' }, activeRestaurantId: 'rest-B' };
+    rerender();
+    await waitFor(() => expect(result.current.filters).toEqual({
+      type: null,
+      status: null,
+      day: null,
+    }));
+  });
+});

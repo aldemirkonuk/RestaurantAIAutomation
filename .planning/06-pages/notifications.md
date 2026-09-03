@@ -74,7 +74,9 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
 - **Digest stacking preserved** — `lib/notificationStack.ts`, with the folded count
   shown on the surviving line *and* summed in the rail.
 - **Set aside** — 🚧 per-browser only (`localStorage`, keyed by restaurant); the page
-  says so in words and offers *Put them back*.
+  says so in words and offers *Put them back*. **Superseded 2026-09-03** by
+  *Put it down for …*, a snooze with a deadline that also wakes on new
+  activity; still per-browser, still said out loud (fourth pass, below).
 - 🚧 **Executing a one-tap action records the decision only.** The gateway's
   `triggerWorkflow` is a set of TODO stubs (`one-tap-actions.service.ts:404-430`),
   so the card says it does not place the order — see §9.
@@ -110,6 +112,77 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   and `day-strip.html`, with `index.html` as the cover. Example data throughout;
   neither is a working page.
 
+**Fourth pass, 2026-09-03** (founder review — KEEP, with doubt):
+
+- **The day rail.** The last fortnight as a row of cells above the book, each
+  showing that day's lines and how many are still open. Picking a day sends
+  `dateFrom`/`dateTo` to the register, so the count beside it is the
+  **register's own** total for that day, not this screen's. Verified live: a
+  click on 3 September issued
+  `GET /notifications?…&dateFrom=2026-09-03T04:00:00.000Z&dateTo=2026-09-04T03:59:59.999Z`
+  and the rail read "the register holds 6 lines for that day", matching a
+  direct curl of the same window.
+- **The register's own filters, on the page** — `type` and `status` as pills,
+  each a `GetNotificationsQueryDto` field applied server-side
+  (`notifications.service.ts:811-817`). The bar states which controls are the
+  register's and which are this screen's, because a filtered count means two
+  different things either side of that line.
+- **Quick search** over the lines on screen (title · message · register ·
+  type), searching the text that is **drawn**, so a query never has to contain
+  the emoji a producer once stored in a title. Labelled as screen-side: there
+  is no full-text index on this table.
+- **Hide what is ruled off** — a fold, not a filter: the count stays visible
+  and nothing is deleted or told to the server.
+- **Snooze that wakes by itself.** *Put it down for* an hour / after service /
+  tomorrow / next week. It comes back on its deadline **or** the moment the
+  register writes about the same thing again — a newer stamp or one more folded
+  repeat (Linear's rule; `nt-snooze.ts` carries the citation). It replaces
+  *Set aside*, and it is still 🚧 per-browser: `notifications` has no snooze
+  column, and the page says so on the band, on the row and in the footer.
+- **Keyboard: `j` `k` `e` `s`**, plus `Enter` to open and `/` to search.
+  Nothing destructive is bound — archiving and deleting stay on the line, where
+  they have to be aimed at — and no key fires while the reader is typing.
+- **A folded line now says which of its repeats is the newest.** The shared
+  stacker keeps the below-par burst with the highest wine count regardless of
+  date (`lib/notificationStack.ts:59-65`); measured on the production book for
+  restaurant `550e8400…` on 2026-09-03, that made the surviving line "50 wines
+  dropped below par" (11:24) while the newest burst in the same fold was 16:44
+  — **5h 20m** of news inside the fold with no stamp of its own. The line now
+  prints the fold's newest age above its own and says why they differ.
+- **The market-price register** — *Cheaper than lately*: products whose newest
+  sighting is below the mean of their earlier sightings in the last 30 days,
+  read from a gateway endpoint built in this pass. 🚧 The price register is
+  **empty** (measured: `vendor_price_observations` holds zero rows), so the box
+  says "the register holds no sightings at all", which is deliberately not the
+  same sentence as "nothing is cheap". A price drop does **not** write a line in
+  the book; the producer that would is specified in §13.
+- **Three directions drawn** for the founder's fork, with a recommendation and
+  its strongest counter-argument argued on the page:
+  `.planning/sketches/093-notifications-directions-2/` — `index.html`,
+  `day-rail-ledger.html`, `two-rooms.html`, `standing-accounts.html`.
+- **The four registers the founder named now have a home on the page.**
+  *Deliveries* (`order_delivered`, `delivery_scheduled`), *Invoices*
+  (`invoice_received`), *Sales* (`service_closed`), *Goals* (`goal_reached`)
+  and *Market* (`price_change`) are registers of their own in `KIND_BY_TYPE`,
+  each with its own lucide mark, its own rail tally and its own filter pill —
+  rather than falling into *Other*, which is how a new register goes invisible.
+  The `type` values are read off the producers landing in the same wave
+  (`apps/api-gateway/src/notifications/producers/{delivery-recorded,
+  invoice-confirmed,sale-record,goal-reached,market-price}.producer.ts` —
+  `goal_reached`, `order_delivered`, `invoice_received`, `service_closed`,
+  `price_change`), which are a **sibling builder's** work, not this page's, and
+  are therefore cited by file and symbol rather than by line: they were being
+  edited in this shared worktree while this page was written, and two of the
+  line numbers had already moved by the time they were re-checked. Pinned by `nt-format.test.ts`
+  and by `nt-book.test.ts` ("cannot disagree with the register a line lands in").
+- **The filter offers no control that can only return nothing.** Every entry in
+  `TYPE_CHOICES` was checked against a real write site on 2026-09-03 and each is
+  cited in `nt-book.ts`. `ai_suggestion` is deliberately absent: it is a member
+  of `NotificationType` (`notifications.dto.ts:29`) and **nothing writes it** —
+  an enum member is not a producer. A priority filter is absent for the same
+  class of reason: 631 of 663 rows are `critical`. Both absences are pinned by
+  tests, so neither can be quietly re-added.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_notifications`)
 
 Canonical copy: `apps/web/src/pages/notifications/next/MOTIONS.md`. Every motion is a
@@ -123,6 +196,14 @@ the tokens, so what runs is the token. `prefers-reduced-motion` collapses all of
 | `nt-chev` | `settle` | HOUSE · 320ms | the line's chevron turning 90°, on the same token as the expansion it belongs to |
 | `nt-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states on lines and controls; nothing translates, nothing scales |
 | `nt-tally` | `tally` | overdamped spring 120/26 · 840ms | the rail's per-register open counts and "Showing N of …"; an em dash never counts |
+
+**Fourth pass, 2026-09-03 — no new motion.** The day rail, the filter pills, the
+search box, the hide-read fold and the keyboard cursor all use `nt-ink` (the
+`ink` token) for their state changes and nothing else; the sleeping band and the
+market-price register reuse `nt-expand`/`nt-ink`. A rail cell does not animate
+its bar: the bar is a figure, and this page does not animate figures it did not
+measure. Nothing was added to the table because nothing new was needed, which is
+the rationing rule working rather than an omission.
 
 **Changed 2026-09-03:** `pour` and `stamp` left this page with the one-tap desk
 (they are now in [[dashboard]]'s table). The day-book has no wax at all, which is
@@ -169,8 +250,9 @@ component draws both states, so the page cannot quiet by becoming a different pa
 5. A control never over-promises its endpoint. Executing a one-tap action records the
    decision and stamps the executor; `triggerWorkflow` is TODO stubs, so the card says
    so in a line above the die.
-6. Per-browser state is named as such — *Set aside* says the server was not told and
-   another device still shows the line.
+6. Per-browser state is named as such — *Set aside* (from 2026-09-03, *Put it
+   down for …*) says the server was not told and another device still shows the
+   line.
 7. Optimistic writes roll **back** on refusal and say what did not happen; nothing is
    left looking done that is not.
 8. **Mark-all-read names its tenant.** `PATCH /notifications/read/all` carries
@@ -214,16 +296,25 @@ component draws both states, so the page cannot quiet by becoming a different pa
 - **Search, priority filter, batch multi-select** — four filter controls over a list the
   gateway caps at 100. The bands and the register tally partition it already. If the
   book grows, the honest fix is the server-side `type` / `status` / `dateFrom` filters
-  that `GetNotificationsQueryDto` already exposes → §13.
-- **Star** — local-only, invisible to anyone else, and now duplicated by *Set aside*.
-  Dropped rather than shipped as a second per-browser fiction.
+  that `GetNotificationsQueryDto` already exposes → §13. **Reversed 2026-09-03
+  (fourth pass):** those server-side filters were built, and a quick search was
+  added beside them and labelled screen-side. The **priority** filter was NOT
+  built and will not be: 631 of 663 rows are `critical`, so it would sort by a
+  constant (§9.12).
+- **Star** — local-only, invisible to anyone else, and now duplicated by *Set aside*
+  (since 2026-09-03, by snooze). Dropped rather than shipped as a second
+  per-browser fiction.
 - **Copy link** — a link back to this page told the reader nothing; the row's own
   `actionUrl` is the address that matters and is on every expanded line.
 - **`?tab=settings`** — notification preferences have a home on `/settings` (rebuilt in
   the same wave). Two homes for one truth is how they drift → §13.
 - **Snooze → *Set aside*** — the same per-browser mechanism, renamed so it cannot be
   mistaken for a server-side decision, reversible in one click. The server-side move
-  stays open → §13.3.
+  stays open → §13.3. **Revised 2026-09-03:** the name went back to what it is —
+  *Put it down for an hour / after service / tomorrow / next week* — because the
+  behaviour is now a real snooze with a deadline and two wake edges, and calling
+  a snooze something else was costing more in comprehension than it bought in
+  honesty. It is still per-browser and still says so in three places.
 - **The legacy "next steps" block** (`Notifications.tsx:111-134`) — three lines of
   advice generated from the notification's `type`, not read from the row. Dropped under
   the no-fabrication rule; the row's own facts and its own link replace it.
@@ -371,6 +462,161 @@ neither was faked. (4) Three emoji remain in `notifications.service.ts` at
 reader ever sees. Out of the rule's scope; named here so the grep's non-empty
 result is not mistaken for an oversight.
 
+### Fourth pass, 2026-09-03
+
+**The verdict, quoted** (the founder, on the gallery, 2026-09-03):
+
+> **`/notifications` — KEEP (with doubt).**
+> · *"add competitor lens features that leaves us behind."*
+> · *"Notifications is also huge that it will send the real alerts and warnings
+>   + the success we own, eg. when the goal is reached (take time of event, how
+>   early was it, who were at shift — meta descriptions), delivery
+>   notifications, invoice confirmations, sale records and so on."*
+> · *"Add a section (maybe a box) that will endpoint to market price
+>   notifications eg. Prod X is now selling lower than 30 day avg. (buy it now
+>   sth like that)."*
+> · *"I need your help (I said keep new design but not sure), what would you
+>   select I also liked the day strip a lot. But I need your expertise maybe
+>   create 2-3 more sketch to understand behaviour and what would work the
+>   best."*
+
+**What was measured before anything was drawn** (live register, 2026-09-03; the
+counts are exact-count reads, not estimates). These reshaped the answer, so they
+are recorded before the answer:
+
+| Measurement | Number | What it settles |
+|---|---|---|
+| One producer writes the book | 641 of 663 rows are `inventory_low_stock`; 57 distinct titles across 663 rows; `Low-stock digest: 50 wines below par` written 147 times | The page's problem is content, not layout |
+| Severity is a constant | 631 of 663 rows are `critical`; 611 are `unread` | Any design that sorts or splits by priority sorts by a constant |
+| The register is already keyed by day | `group_key` populated on 662 of 663; its 237 distinct values are `low_stock_digest:2026-08-16`, `…:2026-08-17`, one key per calendar day, eight rows apiece, across 50 days | The founder's day-strip instinct is the data's own shape |
+| The whole book draws as three lines | page 1 of 100 rows for restaurant `550e8400…` collapses to **3** after `collapseStackedNotifications` | Four layouts were being compared for a page that renders three rows |
+| The surviving line is stale | the kept burst was 11:24; the newest in its fold was 16:44 | Fixed this pass (§1a) |
+| No row carries a subject | `related_entity_type`, `related_entity_id`, `notification_group`, `actions` are NULL on **663 of 663** | Direction C is unbuildable honestly; §13.21 |
+| The price register is empty | `vendor_price_observations` holds **0 rows** | The market box's honest first screen; §13.22 |
+
+**The three directions, and the recommendation.**
+`.planning/sketches/093-notifications-directions-2/` (screenshots only, example
+data throughout, both grounds verified at 1440 with zero horizontal overflow and
+zero console errors):
+
+- **A · the day rail over the ledger** — the founder's day-strip turned from a
+  layout into a **selector**: one column, one direction of travel, unchanged,
+  with the fortnight as a rail above it. **Built this pass.**
+- **B · two rooms** — Linear Triage's shape in the house idiom: *Needs a
+  decision* with four resolutions, split from *The house is telling you*,
+  grouped by register, with the rule that assigns a room **printed on the page**
+  (the one thing Gmail's Priority Inbox cannot offer, since it splits on "past
+  actions" nobody can restate).
+- **C · standing accounts** — fold by subject, close by settlement: not lines
+  but accounts, each with a state, the rule that keeps writing about it, how
+  loudly that rule fires and how it will close. Sentry's fingerprint and
+  Opsgenie's alias applied to a restaurant's books.
+
+**The recommendation: keep the day-book, take A now, B when the new registers
+exist, C when the producers say what a row is about.** A is the only one of the
+three buildable today without either a fabrication or a bet: the day rail is the
+shape the data already has, and picking a day is a server-side read. B is the
+right answer to the volume the founder's own new registers will create — a goal
+reached, every delivery, every invoice confirmation and every service record are
+*reports*, and they will outnumber decisions by two orders of magnitude — but on
+today's register 641 of 663 rows are low stock and 631 are critical, so room one
+would be the whole page and room two would hold four rows. C attacks what is
+actually wrong (the same sentence written 147 times, and nothing closing except
+by being read) and is blocked on three columns that exist and are NULL on every
+row.
+
+**The strongest counter-argument, and why it loses.** *"A is the status quo with
+a widget on it. The founder said he was **not sure** about keeping; 'keep it,
+plus a date picker' is the answer that takes the least courage and leaves his
+actual complaint where it was. Build B now and let the near-empty right-hand
+room be the visible argument for building the producers."* It nearly wins, and
+it loses on one thing: **an empty room is not an argument, it is a claim.** A
+page with *Needs a decision* full and *The house is telling you* holding four
+rows does not read as "we have not built the producers yet"; it reads as "the
+house has nothing to report" — a statement about the business made by a gap in
+our own instrumentation, which is the one fault this repo has a standing rule
+against (memory: absence-reported-as-health). A rail over one ledger makes no
+such claim: an empty day is visibly an empty day and the register's own total is
+printed beside it.
+
+**What was built in the gateway.** `GET /vendor-intel/below-average`
+(`apps/api-gateway/src/vendor-intel/vendor-intel.controller.ts`, service method
+`VendorComparisonService.belowTrailingAverage`, arithmetic in
+`price-below-average.ts`, 11 jest cases in `price-below-average.spec.ts`).
+Measured first: no endpoint answered "latest versus trailing 30-day average, per
+product, for this tenant" — `GET /vendor-intel/compare` needs a product id the
+caller already has and compares a window against the **prior window**, not the
+latest against a mean (`analytics/engine/vendor-price-consensus.ts:386-402`).
+Five honesty rules are in the pure function and each has its own test: the mean
+excludes the latest sighting (a mean containing the value it is compared against
+damps its own signal); fewer than three earlier sightings is not an average;
+currencies are never converted; an unnormalisable row leaves the comparison
+rather than entering it at its raw price; and `is_outlier` is obeyed rather than
+re-decided. Everything dropped is counted and returned, so a short list can be
+read. Verified live: `200` authenticated, `401` without a token, `windowDays`
+and `minObservations` clamped (`99999` → `365`, `0` → `2`), garbage → the
+default, and `scanned.observations: 0` — which is the true answer.
+
+**Honesty rules applied this pass**
+
+1. **The rail's little figures are screen-side and say so.** They can only count
+   rows already loaded. Selecting a day replaces the estimate with the
+   register's own count. The alternative — fourteen requests to fill the rail —
+   costs more than it tells.
+2. **A cleared filter is omitted, not sent empty.** `status=''` fails the DTO's
+   `@IsEnum(NotificationStatus)` and would turn a cleared control into a 400.
+3. **Narrowing the book restarts the paging**, or *Read further back* would ask
+   for page 3 of a two-page answer.
+4. **Snooze is per browser and never pretends otherwise** — on the band, on the
+   row and in the footer, with the reason (`notifications` has no such column).
+5. **A snooze cannot bury a worsening situation.** It wakes on new activity as
+   well as on its deadline. PagerDuty makes the same argument from the other
+   end: an acknowledgement halts escalation, but "when the acknowledgement
+   timeout is reached, the incident returns to triggered status".
+6. **No key does anything irreversible**, and no key fires while the reader is
+   typing — an inbox that starts archiving because someone searched for
+   "sancerre" is the classic version of this bug.
+7. **The market box has three different empty states and never collapses them**:
+   the sweep could not be read / the register holds no sightings at all /
+   sightings exist and none is below its mean.
+8. **The box states its own rule in full** — window, minimum history, unit, whose
+   prices, and that the latest is not folded into its own average — and states
+   what it cannot do: nothing notifies you when this changes while you are
+   elsewhere.
+
+**Where the behaviour came from** (read before drawing; each claim checkable):
+Linear Inbox (`J`/`K`, `H` to snooze, "Show read", Cmd-F quick search) —
+https://linear.app/docs/inbox · Linear's 2021 snooze changelog, for the
+wake-on-activity rule quoted in `nt-snooze.ts` —
+https://linear.app/changelog/2021-06-17-inbox-snooze-and-easier-issue-merge ·
+Linear Triage's four resolutions and its rota-driven responsibility —
+https://linear.app/docs/triage · PagerDuty's triggered/acknowledged/resolved and
+the acknowledgement timeout — https://support.pagerduty.com/main/docs/incidents ·
+Opsgenie's alias de-duplication ("at most one open alert with the same alias at
+any time") —
+https://support.atlassian.com/opsgenie/docs/what-is-alert-de-duplication/ ·
+Sentry's fingerprint grouping —
+https://docs.sentry.io/product/issues/grouping-and-fingerprints/ · Superhuman's
+Split Inbox —
+https://help.superhuman.com/hc/en-us/articles/38458392810643-Default-Split-Inboxes ·
+HEY's Screener, Imbox, Feed and Paper Trail (the precedent for treating
+deliveries, invoice confirmations and sale records as a paper trail) —
+https://www.hey.com/how-it-works/ · Notion's inbox filters and "Archive read" —
+https://www.notion.com/help/updates-and-notifications · Gmail's Priority Inbox,
+named as the split **not** to copy —
+https://support.google.com/mail/answer/18522 · Datadog's monitor status events,
+where a time axis belongs to one subject rather than to the whole alert list —
+https://docs.datadoghq.com/monitors/status/events/.
+
+**What stays open, and why.** (1) The four registers the founder named are
+producer work and are filed in §13.17–§13.20 with the exact call sites; nothing
+was faked on the page to stand in for them. (2) Snooze cannot go server-side
+without a migration, which this pass was not allowed to write — §13.3, now with
+the exact column and the working precedent. (3) The market-price box reads a
+real endpoint over an empty table; the producer that would write a notification
+from a drop is §13.22 and is outside these paths. (4) Direction C stays a sketch
+until `related_entity_type`/`related_entity_id` are written — §13.21.
+
 ## 2. Entry
 
 - Sidebar with unread badge (`Sidebar.tsx:144,410`).
@@ -389,13 +635,16 @@ result is not mistaken for an oversight.
 - Rendered: `components/notifications/OneTapActionCenter.tsx` (:731);
   digest-stacking via `lib/notificationStack.ts` (:41).
 - Mudavym redesign (flag-gated): `apps/web/src/pages/notifications/next/` —
-  `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`,
-  `useNotificationsNextData.ts`, `nt-format.ts`, `NotificationsNext.test.tsx`
-  (13 render-contract tests, hook mocked), `useNotificationsNextData.test.tsx`
-  (7 hook tests, `apiClient` mocked), `nt-format.test.ts` (12 unit tests for the
-  emoji normaliser and the icon map), `MOTIONS.md`. It shares
-  `lib/notificationStack.ts` with the legacy page and imports nothing from
-  `pages/Notifications.tsx`.
+  `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`, `DayRail.tsx`,
+  `BookFilterBar.tsx`, `MarketPricePanel.tsx`, `useNotificationsNextData.ts`,
+  `useMarketPrice.ts`, `nt-format.ts`, `nt-book.ts`, `nt-snooze.ts`, and five
+  test files — `NotificationsNext.test.tsx` (25 render-contract tests, both
+  hooks mocked), `useNotificationsNextData.test.tsx` (11 hook tests, `apiClient`
+  mocked), `nt-format.test.ts` (12), `nt-book.test.ts` (12, including the
+  measured stale-fold case and the filter-map invariants), `nt-snooze.test.ts`
+  (8) — plus `MOTIONS.md`. **68 tests in the directory.** It shares `lib/notificationStack.ts` with the
+  legacy page (and, in `nt-book.ts`, asks that library rather than
+  re-implementing its keys) and imports nothing from `pages/Notifications.tsx`.
 - Moved out 2026-09-03: the one-tap desk, formerly `notifications/next/HouseBand.tsx`
   and briefly `notifications/next/OneTapDesk.tsx`, is now
   `apps/web/src/pages/dashboard/next/OneTapPanel.tsx` with its own read and its own
@@ -407,8 +656,19 @@ result is not mistaken for an oversight.
   `team/team.controller.broadcast.spec.ts`,
   `communications/weekly-report-honesty.spec.ts` and
   `services/agent-orchestrator/tests/test_email_intel_agent.py`.
+- Gateway, fourth pass: `apps/api-gateway/src/vendor-intel/price-below-average.ts`
+  (the pure arithmetic), the `belowTrailingAverage` method on
+  `vendor-intel/vendor-comparison.service.ts`, the `GET below-average` route on
+  `vendor-intel/vendor-intel.controller.ts`, and
+  `vendor-intel/price-below-average.spec.ts` (11 jest cases: 8 for the
+  arithmetic, 3 for the service's tenant scope and its refusal to render a
+  failed sweep as an empty market).
 - Sketches: `.planning/sketches/089-notifications-directions/` — `index.html`,
-  `three-column-desk.html`, `day-strip.html` (standalone, `file://`, example data).
+  `three-column-desk.html`, `day-strip.html` (standalone, `file://`, example
+  data); and `.planning/sketches/093-notifications-directions-2/` —
+  `index.html` (the measured facts, the three directions, the recommendation and
+  its strongest counter-argument), `day-rail-ledger.html`, `two-rooms.html`,
+  `standing-accounts.html`.
 
 ## 4. Endpoints
 
@@ -424,6 +684,8 @@ the action center's order reads.
 | PATCH | `/notifications/read/all?userId=` | `useMarkAllNotificationsAsRead` → `notifications.ts:156` |
 | DELETE | `/notifications/:id` | `useDeleteNotification` → `notifications.ts:171` |
 | GET | `/procurement/orders/pending` (+ list) | OneTapActionCenter → `services/api/orders.ts:206,217` |
+| GET | `/notifications?userId=&restaurantId=&type=&status=&dateFrom=&dateTo=&page=&limit=` | the rebuild's own read — all four narrowings are `GetNotificationsQueryDto` fields (`notifications/dto/notifications.dto.ts:63-80`) applied as `eq`/`eq`/`gte`/`lte` (`notifications.service.ts:811-821`); `notifications/next/useNotificationsNextData.ts` |
+| GET | `/vendor-intel/below-average?windowDays=&minObservations=&limit=` | **new 2026-09-03**, built for the market-price box — `vendor-intel/vendor-intel.controller.ts`, `VendorComparisonService.belowTrailingAverage`, arithmetic in `vendor-intel/price-below-average.ts`; owner/manager only, read by `notifications/next/useMarketPrice.ts` |
 
 ## 5. Signals
 
@@ -460,8 +722,13 @@ dashboard.md §7.
 | Ground | paper by default; Warm Charcoal under the app's dark theme, or `<NotificationsNext ground="charcoal"/>` (the `.mudavym` class and `data-ground` sit on the same element — PageGate's header explains why) |
 | Poll | 10s while mounted (`useNotificationsNextData.ts` `POLL_MS`), plus the `notification_sent` and `ws:dashboard-invalidate` window events |
 | Page size | `limit=100` (the gateway's `@Max(100)`); *Read further back* adds one more page per press |
-| Per-browser state | `localStorage["mudavym.notifications.setAside.<restaurantId>"]` — the *Set aside* list, tenant-keyed, and the only client-only state on the page |
-| Registers read | `GET /notifications` only, since 2026-09-03. `/one-tap-actions` moved to the dashboard rail with the desk; pinned by `useNotificationsNextData.test.tsx` ("reads the notifications register and nothing else") |
+| Per-browser state | `localStorage["mudavym.notifications.snooze.<restaurantId>"]` — the sleeping list, tenant-keyed, `{ id, until, seenAt, seenFolded }` per record, and the only client-only state on the page. It **replaced** `mudavym.notifications.setAside.<restaurantId>` on 2026-09-03; an old key is simply ignored, so nobody's lines come back marked wrongly |
+| Snooze durations | an hour · after service (8h) · tomorrow (24h) · next week (7d), from `nt-snooze.ts` `DURATIONS`. A record is dropped the moment its deadline passes, so the store cannot grow without bound |
+| Wake edges | the deadline, a newer `timestamp` on the row, one more folded repeat, or the row leaving `unread` — `nt-snooze.ts` `resolveSnoozes`, evaluated on every read rather than on a timer |
+| Keyboard | `j`/`k` move · `e` rule off / reopen · `s` put down for an hour · `Enter` open · `/` search. Nothing destructive is bound; no key fires while an input, textarea, select or contenteditable has focus |
+| Register narrowing | `type` and `status` pills and the day rail all send query params; the search box and the hide-read fold are screen-side and the bar says which is which |
+| Registers read | `GET /notifications` and `GET /vendor-intel/below-average`, since 2026-09-03. `/one-tap-actions` moved to the dashboard rail with the desk; pinned by `useNotificationsNextData.test.tsx` ("reads the notifications register and nothing else" — the market-price read lives in its own hook and its own test) |
+| Market-price poll | 60s (`useMarketPrice.ts` `MARKET_POLL_MS`), window 30 days, minimum 3 earlier sightings |
 
 ## 9. Gaps
 
@@ -561,6 +828,50 @@ were CLOSED here, the rest were not.
    of the rule's scope and excluded by the guard's log-detection, recorded here so
    a raw grep's non-empty result is not read as an oversight.
 
+**Added 2026-09-03 by the fourth pass — each one measured, not inferred.**
+
+11. **The book has one producer.** 641 of 663 rows are `inventory_low_stock`,
+    the other 22 are 21 weekly reports and one drafted reply; 57 distinct titles
+    across 663 rows. Every layout question about this page is currently a
+    question about three rendered lines. **Why not closed here:** the fix is
+    producers (§13.17–§13.20), all of which write from modules this page does
+    not own.
+12. **Priority is a constant.** 631 of 663 rows are `critical`. The column is
+    real and is set by `persistForRestaurant`, but every caller that matters
+    passes `critical`, so it carries no information. Nothing on the rebuilt page
+    sorts, groups or colours by it — a deliberate omission, recorded here so it
+    is not mistaken for an oversight. **Why not closed here:** re-grading a
+    producer's severity is a producer decision.
+13. **`notifications` has no snooze column.** The table is
+    `id, restaurant_id, recipient_id, notification_type, title, message,
+    priority, channels, sent_at, delivered_at, read_at, delivery_status,
+    actions, responded_at, response_action, response_data,
+    related_entity_type, related_entity_id, notification_group, batch_id,
+    created_at, user_id, type, status, action_url, action_label, metadata,
+    archived_at, group_key`
+    (`supabase/migrations/20260805000000_baseline_from_production.sql`). So
+    snooze is per-browser and says so. **Why not closed here:** a migration, and
+    this pass was not allowed to write one → §13.3.
+14. **Four columns exist and are never written.** `related_entity_type`,
+    `related_entity_id`, `notification_group` and `actions` are NULL on **663 of
+    663** rows. The first two are what an account-shaped page (sketch 093 C)
+    would fold on; the fourth is what a two-room split would use to tell a
+    decision from a record without a hard-coded type list. **Why not closed
+    here:** every write site is in a producer module → §13.21.
+15. **`vendor_price_observations` is empty** — zero rows, for this tenant and
+    for the market. The market-price box therefore reads a real endpoint over an
+    empty table and says exactly that. **Why not closed here:** filling it means
+    running the vendor page extractor or recording a quote by hand; both exist
+    (`vendor-intel/vendor-page-extractor.service.ts`,
+    `POST /vendor-intel/observations`) and neither is this page's to trigger →
+    §13.22.
+16. **The shared stacker can surface a stale line.** `pickStackWinner` keeps the
+    below-par burst with the highest wine count regardless of date
+    (`lib/notificationStack.ts:59-65`). The rebuilt page now prints the fold's
+    newest stamp beside the winner's, but the sidebar badge, the header bell and
+    the legacy page still show only the winner's age. **Why not closed here:**
+    `lib/notificationStack.ts` is shared and outside these paths → §13.23.
+
 ## 10. Maturity
 
 **partial.** The inbox itself is real and has more live producers than any other page
@@ -573,7 +884,7 @@ acknowledge (`team/schedule.service.ts:254,484`), procurement
 (`notifications/low-stock-alerts.service.ts:312,354`), the inbound autonomous
 responder (`common/orchestrator/inbound-responder.service.ts:1287`), and the
 scheduled-task crons. Read/unread/archive/delete all hit real JWT-guarded endpoints
-(`notifications/notifications.controller.ts:45` class-level guard, routes :84-276).
+(`notifications/notifications.controller.ts:47` class-level guard, routes :84-276).
 The 10-second poll and the detail-panel resync are implemented as documented.
 
 **Not real:**
@@ -610,12 +921,14 @@ calls `createSystemAction`.
 
 | Method | Path | Auth | Gateway controller | Returns |
 |---|---|---|---|---|
-| GET | `/notifications?userId=&status=` | JWT (class, `notifications.controller.ts:45`) | `:84-101` | Notification rows for the user |
+| GET | `/notifications?userId=&status=` | JWT (class, `notifications.controller.ts:47`) | `:84-101` | Notification rows for the user |
 | PATCH | `/notifications/:id/read`, `/:id/unread`, `/:id/archive` | JWT | `:203`, `:216`, `:229` | Updated row |
 | PATCH | `/notifications/read/all?userId=` | JWT | `:189-201` | Count marked |
 | DELETE | `/notifications/:id` | JWT | `:263-276` | 204 |
 | GET | `/procurement/orders/pending`, `/procurement/orders` | JWT | `procurement.controller.ts` | Orders the action center turns into cards |
 | GET | `/inventory/:rid` (low stock) | JWT | `inventory` module | Low-stock actions |
+| GET | `/notifications/producers/status` | JWT (class) | `notifications.controller.ts:453` | The five producers' own account of themselves: `armed` (env `NOTIFICATION_PRODUCERS_ENABLED`), `served` (does `runPerTenant` enumerate this house), `timeZone`, `armingNote`, and per producer `{cron, intervalMinutes, nextTickAt, lastRun, lastRunUnreadable, willWrite, silentReason}`. `willWrite` is three-state: `false` with a reason (disarmed / not served / the market register is empty), `null` when a source read failed, `true` otherwise. Tenant from the token, never a query. Verified live 2026-09-03: 200 with a session, **401 without one**. `lastRun: null` (never run) and `lastRunUnreadable: "<why>"` (the ledger could not be read) are separate fields on purpose |
+| GET | `/vendor-intel/below-average?windowDays=30` | JWT | `vendor-intel.controller.ts:95` | The market box's read, built in this same pass. **The market-price producer calls the same `VendorComparisonService.belowTrailingAverage`**, so the box and the book cannot disagree about the same bottle. A second `GET /notifications/market-signals/:rid` was specified in the brief and deliberately NOT built |
 
 ### Fed by
 
@@ -627,6 +940,13 @@ calls `createSystemAction`.
 | Order approval, delivery, price | `procurement.service.ts:1062,1368` | Yes |
 | Weekly report ready, delivery ETA, audit, event prep, custom reminders | **Seven** tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts`, anchored on the decorator's `name:` rather than a line: `daily-sms-summary`, `weekly-email-report`, `recurring-order-reminder`, `delivery-eta-notification`, `inventory-audit-reminder`, `event-prep-check`, `custom-reminders-check` (`:193,228,407,522,625,679,734` — an eighth, `payment-due-reminder`, was deleted 2026-09-02 after [ADR 0077](../decisions/0077-there-is-no-payment-due-reminder.md) found it had never sent one email). Separately, `tenant-isolation-check` (`:159`) is the global tenant-isolation RPC, not a tenant-scoped one. **Count them with `grep -nE '^[[:space:]]*@Cron\('`** — a bare `grep @Cron` also hits `:274`, a `@deprecated` note recording that `sendMiddayLowStockReport`'s schedule was *removed* | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91** |
 | Agent-side writes | Historically silent-failing until 44.1d (`v3.0-TECH-DEBT.md:95-131`) | Fixed |
+| **Goal reached** (`type: goal_reached`) | `notifications/producers/goal-reached.producer.ts` — reads `analytics_goals` (status `active`, `direction` `at_least`) and asks `GoalsService.getGoalProgress` for the number rather than re-summing the metric. Metadata carries `crossedAt` (the latest contributing source row, NOT the sweep time), `detectedAt`, `earlyByDays`/`earlinessPhrase` against `deadline`, and `onShift` from `public.shifts` via the new `shift-window.ts` | **Built, NOT armed.** Sweep `*/15 * * * *` under `runPerTenant`; writes nothing until `NOTIFICATION_PRODUCERS_ENABLED=true`. `at_most` ceilings are deliberately not reported — crossing a ceiling is not a success — and the run row says so |
+| **Ceiling held** (`type: goal_reached`, producer `ceiling_held`) | `ceiling-held.producer.ts` — the founder's 2026-09-03 answer to the first pass reporting `at_most` goals as "not a success this producer reports on". A ceiling has no crossing: the success is a period that ran out with the house still under. Fires at **local midnight ending `analytics_goals.deadline`** on the house's own clock, carrying `periodEndedAt`, `headroom`, `headroomFraction` and the same roster/provenance keys the crossing producer uses. A ceiling that closed OVER is counted and named, never reported as a success | **Built, NOT armed.** `*/15 * * * *`, so a period closing at midnight is not reported a day late. Dedupe `goal:<goalId>:<periodEnd>`, so rolling a ceiling to a new month is a new line and re-reading a closed period never is. **Measured on production 2026-09-03: all 4 `analytics_goals` rows are `at_least` (3 active, 1 archived) — there is no ceiling goal in the house yet, so this producer has nothing to report until someone sets one** |
+| **Delivery at the door** (`type: order_delivered`) | `delivery-recorded.producer.ts` — `procurement_receipt_events` where `stage = 'case_count'` (the only stage `recordDoorReceipt` writes, `receiving.service.ts:267`). States the receiver's own `outcome` first and the bottle arithmetic second; `expected_qty_bottles` NULL ⇒ `shortBottles: null`, never 0. A refusal is `priority: high` | **Built, NOT armed.** `*/15 * * * *`. Distinct from the verify/discrepancy rows `procurement.service.ts:1744,2362` already write — this one fires hours earlier, at the door |
+| **Invoice certified** (`type: invoice_received`) | `invoice-confirmed.producer.ts` — `procurement_documents` where `status = 'verified'`, with amount, vendor and the tie-out. Never says approved, accepted or paid: verify "asserts only that the transcription is right" (`documents.controller.ts:305-310`), and a spec pins that vocabulary | **Built, NOT armed.** `*/15 * * * *`. This is §13.19's matching-good case; the two existing `invoice_received` producers still fire only on a discrepancy |
+| **Sale record** (`type: service_closed`) | `sale-record.producer.ts` — one line per settled service day from `pos_checks` (`voided = false`), with checks, revenue, covers and the best seller by revenue. **No POS ⇒ no row**, asked of `GoalsService.getPosRevenueWindow` whose `posConnected` is the one place that decides it (`analytics/goals.service.ts`, `getPosRevenueWindow` over `hasPosHistory` — **no line number on purpose: that file moved twice during the 2026-09-03 session, so grep the function names**). A connected POS with zero checks also writes nothing — a closed Monday and a failed import look identical | **Built, NOT armed.** Checked hourly (`0 * * * *`); a day is summarised once `service-day.ts` says it has settled. **Measured on production `exzueerziesmczwlhomd` 2026-09-03: `pos_checks` holds 173 rows and `restaurants.operating_hours` is now non-NULL on 2 of them** — so both settle rules can fire, and the row names which one decided. (The migration header's "every existing row keeps NULL" was true on 2026-09-02 and is not any more.) |
+| **Market price** (`type: price_change`) | `market-price.producer.ts` — calls `VendorComparisonService.belowTrailingAverage` (the box's own read), narrows to products **this house buys** (distinct `master_wine_id` on this restaurant's order items), and applies a 10% floor (`MARKET_SIGNAL_DROP_PCT`) and a 60% implausibility ceiling. One line per product per week | **Built, NOT armed, and MUTE if it were.** Once a day on the tenant's wall clock (`MARKET_SIGNAL_LOCAL_HOUR`, default 10). Measured on production 2026-09-03: `vendor_price_observations` holds **0 rows**, so nothing can fire regardless of arming — `GET /notifications/producers/status` says exactly that per producer (`willWrite: false`, `silentReason`), and the run row's `withheld_reason` distinguishes "nothing has been observed" from "nothing is cheap" |
+| *(all six)* | `notification-producers.service.ts` holds the two crons; `producer-ledger.service.ts` is the only thing that writes. Every emission claims a row in `notification_producer_claims` (UNIQUE `(restaurant_id, producer, dedupe_key, user_id)`, migration `20260903143000`) BEFORE it writes, so two gateway instances cannot both speak. Each producer opens and closes a `notification_producer_runs` row per tenant per sweep, carrying `withheld_reason` — the producer's own sentence for a legitimate no-op, so a zero is never reported as health | The claim is **per person**, not per event, so quiet hours DEFER a reader instead of losing them the record. The row's `created_at` is then the delivery time, which is why every producer carries `metadata.occurredAt` and says the real time in words |
 
 ### Writes
 
@@ -669,7 +989,7 @@ describe the legacy page):
 
 All three "where the UI misleads" items are addressed on the rebuilt surface: the create
 modal now writes to the gateway; an empty inbox after a failed fetch is impossible
-(the failure has its own state); and the per-browser nature of *Set aside* is printed
+(the failure has its own state); and the per-browser nature of the snooze (until 2026-09-03, *Set aside*) is printed
 next to it and in the footer.
 
 ## 13. Roadmap
@@ -679,9 +999,16 @@ next to it and in the footer.
    legacy page, which is what renders with the flag off.
 2. ~~**Persist custom one-tap actions**~~ — **done 2026-09-02**, `POST /one-tap-actions`
    from `notifications/next`. Was correctly diagnosed as wiring, not new backend.
-3. **Move snoozes server-side** onto the same module (`:246` cancel, `:118` pending).
-   Unchanged: the redesign renames snooze to *Set aside* and prints that it is
-   per-browser, which makes the gap honest, not closed.
+3. **Move snooze server-side.** Updated 2026-09-03: the shape is now known and
+   the client half is built. Add `snoozed_until timestamptz` (and, to make
+   wake-on-activity server-side, `snoozed_at timestamptz` plus the folded count
+   seen at that moment) to `public.notifications`, then have
+   `getNotifications` treat an expired `snoozed_until` as cleared on read — the
+   exact pattern `analytics/recommendation-actions.service.ts:107-116` already
+   uses for `/recommendations`, which is where this page's per-browser version
+   is a downgrade rather than a design. Until then the page keeps the local
+   record and says on the band, the row and the footer that the server was not
+   told (§9.13).
 4. ~~**Make the eight scheduled crons per-restaurant**~~ — **done 2026-08-26**
    (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)).
    All eight now iterate `ScheduledTenantsService.runPerTenant`, with per-tenant
@@ -710,9 +1037,10 @@ none built here.**
 10. **Carry the `{ total, hasMore }` envelope in the shared service**
     (`services/api/notifications.ts:101-107`) so the header bell and sidebar badge stop
     silently reporting the newest 20 as if it were the whole book (§9.3).
-11. **Server-side filters instead of client chrome** — `GetNotificationsQueryDto`
-    already accepts `type`, `status`, `dateFrom`, `dateTo`. When the book outgrows one
-    page, wire those rather than reinstating the legacy search box (§1b).
+11. ~~**Server-side filters instead of client chrome**~~ — **done 2026-09-03**
+    (fourth pass): `type` and `status` as pills, `dateFrom`/`dateTo` as the day
+    rail, all four verified live against :4000. The quick search sits beside
+    them and is labelled screen-side, because this table has no full-text index.
 12. **One home for notification preferences** — the redesign drops the in-page
     `?tab=settings` panel; `/settings` (rebuilt in the same wave) should carry the
     `GET/PATCH /notifications/preferences` section, and the sidebar/bell should link
@@ -740,3 +1068,237 @@ none built here.**
     self-expiring item promising only the window the vendor actually stated, and
     context-aware batching that does not batch what is already on screen. All three
     are DESIGN-FOUNDATION §6 "later"; none is built.
+
+**Added 2026-09-03 by the fourth pass. Items 17–20 are the four registers the
+founder named; each is a PRODUCER, and none of them is page work.**
+
+*Status at the time of writing:* a sibling builder is landing all five producers
+in this same wave, under `apps/api-gateway/src/notifications/producers/` —
+`goal-reached`, `delivery-recorded`, `invoice-confirmed`, `sale-record` and
+`market-price`, writing `goal_reached`, `order_delivered`, `invoice_received`,
+`service_closed` and `price_change` respectively; the last of them calls this
+pass's `VendorComparisonService.belowTrailingAverage` rather than repeating its
+arithmetic, which is the seam working as intended. **This page's half is done
+either way**: each of those five `type` values already maps to a named register
+with its own mark, its own rail tally and its own filter pill, so the first line
+a producer writes lands in the right register instead of in *Other*. The
+specifications below are what this page needed from them, kept because they
+record the reasoning and the two cautions (the shift roster, and the
+one-line-per-service cadence) that a reader of this note will want. Where the
+sibling's implementation differs, the sibling's file is the truth.
+
+17. **A goal reached should write a line** — *being built, see the status note
+    above.* `analytics_goals` and `GoalsService` exist (`analytics/goals.service.ts`, six supported metrics:
+    `wine_revenue`, `bottles_sold`, `purchase_spend`, `checks`, `avg_check`,
+    `wine_attach_rate`), and nothing writes a notification when a goal is met.
+    The shape this page asked for: on the goal-progress pass, when
+    `measure >= target` for the first time, call
+    `persistForRestaurant(restaurantId, { type: 'goal_reached', title: '<Metric>
+    goal reached — N days early', message: '<target> by <deadline>. Crossed at
+    <HH:MM> on <date>.', priority: 'medium', actionUrl: '/reports?goal=<id>',
+    groupKey: 'goal_reached:<goalId>', metadata: { goalId, metricKey, target,
+    reachedAt, daysEarly, hoursEarly, onShift: [...] } }, { dedupeWithinMinutes: 1440 })`.
+    The founder asked for **who was on shift** in the metadata: the roster lives
+    in the `team` module, and note before promising it that production has no
+    `staff` role and six of ten restaurants are owner-only (memory:
+    production-tenant-shape) — an honest first version names whoever the roster
+    actually holds and renders an em dash when it holds nobody, rather than
+    inventing a crew. Add `goal_reached` to `NotificationType` and to
+    `KIND_BY_TYPE` in `nt-format.ts` (register **Goals**, lucide `target`).
+
+    **BUILT 2026-09-03** behind `NOTIFICATION_PRODUCERS_ENABLED` (off by default).
+    The producer, its dedupe key and its schedule are in §11 Fed by; where the
+    build diverges from the specification above, §13.25 says how and why.
+
+18. **Delivery notifications** — *being built, see the status note above.* They
+    already have a producer
+    (`notifications.service.ts:374`, `type: 'order_delivered'`) — it is reached
+    only through the push path. Route the receiving/stock-in completion in
+    `procurement.service.ts` through `persistForRestaurant` with
+    `type: 'order_delivered'`, `groupKey: 'delivery:<orderId>'` and metadata
+    `{ orderId, providerName, invoicedQty, receivedQty, signedBy, signedAt,
+    palletRef }` so the line can state what arrived and who took it.
+    ~~Register **Deliveries** needs adding to `nt-format.ts`~~ — **done
+    2026-09-03** (lucide `truck`).
+
+    **BUILT 2026-09-03** behind `NOTIFICATION_PRODUCERS_ENABLED` (off by default).
+    The producer, its dedupe key and its schedule are in §11 Fed by; where the
+    build diverges from the specification above, §13.25 says how and why.
+
+19. **Invoice confirmations** — *being built, see the status note above.* They
+    have two producers already
+    (`procurement.service.ts:1747` and `:2365`, both `type: 'invoice_received'`)
+    and they fire only on a *discrepancy*. Add the matching-good case — "N of N
+    lines matched, nothing outstanding" — so the register records the successes
+    the founder asked for and not only the failures. Register **Invoices**
+    (lucide `receipt`).
+
+    **BUILT 2026-09-03** behind `NOTIFICATION_PRODUCERS_ENABLED` (off by default).
+    The producer, its dedupe key and its schedule are in §11 Fed by; where the
+    build diverges from the specification above, §13.25 says how and why.
+
+20. **Sale records** — *being built, see the status note above.* `pos_checks`
+    is the source and there was no producer at all when this was written. The shape that does not drown the book: **one line per service close**,
+    not per check —
+    `type: 'service_closed'`, `groupKey: 'service:<YYYY-MM-DD>:<service>'`,
+    metadata `{ checks, bottlesPoured, wineRevenue, attachRate, avgCheck }`.
+    Decide the cadence with the founder before building: per check would be
+    ~100 rows a day and would make the split of sketch 093 B mandatory
+    immediately.
+
+    **BUILT 2026-09-03** behind `NOTIFICATION_PRODUCERS_ENABLED` (off by default).
+    The producer, its dedupe key and its schedule are in §11 Fed by; where the
+    build diverges from the specification above, §13.25 says how and why.
+
+21. **Write a subject on every notification** — `related_entity_type` and
+    `related_entity_id` are NULL on 663 of 663 rows (§9.14). One line at each
+    `persistForRestaurant` call site: the wine id for a low-stock line, the
+    order id for a delivery, the invoice id for an invoice line, the goal id for
+    a goal. This is the single change that unblocks sketch 093 C (standing
+    accounts), subdue-by-settlement (§13.16) and per-line rule history (§13.15)
+    — three "need it: now" ideas behind one column.
+22. **A price drop should write a line, and this is its exact shape.** The read
+    exists as of this pass (`GET /vendor-intel/below-average`); the producer is
+    being built by the sibling and calls that read. The specification this page
+    handed over, kept for the record:
+    a per-tenant scheduled pass under `ScheduledTenantsService.runPerTenant`
+    (ADR 0022) that calls `belowTrailingAverage({ restaurantId, windowDays: 30,
+    minObservations: 3 })` once a day, and for each item whose `fractionBelow`
+    clears a stated threshold writes
+    `persistForRestaurant(restaurantId, { type: 'price_change', title: '<product>
+    is being quoted N% below its 30-day average', message: '<latest> now,
+    against <average> across the N earlier sightings in the window. <vendor> ·
+    <sourceType> · <observedAt>.', priority: 'medium', actionUrl:
+    '/vendor-prices?product=<productKey>', groupKey:
+    'price_below_avg:<productKey>:<YYYY-MM-DD>', metadata: { productKey,
+    currency, latestPrice, averagePrice, observations, fractionBelow, vendorName,
+    sourceType, observedAt } }, { dedupeWithinMinutes: 1440 })`. Three rules the
+    producer must keep or it will become the second `low_stock_digest`: **(a)**
+    one line per product per day, enforced by the `groupKey` and
+    `dedupeWithinMinutes`; **(b)** a threshold the reader can restate — the page
+    already prints the rule, so the producer must print the same one; **(c)** it
+    must not fire again while the same drop is still open, which needs §13.21's
+    subject key to do properly. **Blocked in practice until
+    `vendor_price_observations` has rows at all** (§9.15).
+
+    **BUILT 2026-09-03** behind `NOTIFICATION_PRODUCERS_ENABLED` (off by default).
+    The producer, its dedupe key and its schedule are in §11 Fed by; where the
+    build diverges from the specification above, §13.25 says how and why.
+
+23. **Fix the stale fold at source** — `pickStackWinner`'s `max_count` mode
+    (`lib/notificationStack.ts:59-65`) should keep the newest and carry the
+    highest count as a figure, rather than keeping the oldest-and-biggest row.
+    The rebuilt page works around it by printing both stamps; the sidebar badge,
+    the header bell and the legacy page still cannot (§9.16).
+24. **Then, and only then, sketch 093 B.** Once §13.17–§13.20 are writing, the
+    record registers will outnumber the decisions by two orders of magnitude and
+    the two-room split becomes the right layout rather than an empty promise.
+    The rule that assigns a room should be `actions`-driven (§13.21) rather than
+    a hard-coded type list, so a new producer cannot land silently in the wrong
+    room.
+
+25. **What the six producers still need, and none of it is theirs to take.**
+    The producers landed 2026-09-03 (`apps/api-gateway/src/notifications/producers/`,
+    migration `20260903143000_a_producer_claims_before_it_writes.sql`). Five things
+    were measured and deliberately NOT built, each outside the producers' own paths:
+
+    a. ~~**Two lines in `nt-format.ts`.**~~ **CLOSED the same day, by the page
+       owner.** `KIND_BY_TYPE` (`nt-format.ts:95-125`) now carries all five of
+       the types these six producers write (the ceiling producer reuses
+       `goal_reached`; a distinct `goal_held: 'Goals'` would read better and is
+       the page owner's one-line call), each in a register of its own:
+       `order_delivered: 'Deliveries'`, `invoice_received: 'Invoices'`,
+       `service_closed: 'Sales'`, `goal_reached: 'Goals'`,
+       `price_change: 'Market'`. The producers deliberately did NOT invent new
+       type words for the three that already had one — a type the map does not
+       carry files the row under **Other**, and which register a row belongs to
+       is a page decision, not a producer's.
+
+    b. **`is_outlier` has no writer, anywhere.** Grepped 2026-09-03 across `apps/`,
+       `services/`, `scripts/` and `supabase/migrations/`: the column is
+       `DEFAULT false NOT NULL`
+       (`20260805154027_vendor_price_observations.sql:99`) and nothing ever sets
+       it. So `belowTrailingAverage`'s `.eq("is_outlier", false)`
+       (`vendor-comparison.service.ts:340`) excludes nothing, and the engine's own
+       list of what scraped prices carry — "a decimal lost, a case price read as a
+       bottle price, a '$1,200' that is really $12.00"
+       (`vendor-price-consensus.ts:11-19`) — describes exactly the rows that look
+       most like a bargain. The market producer compensates with a stated
+       implausibility ceiling (60%, `market-signal.ts`), which is a bound and not a
+       dispersion test. **The real fix belongs to `vendor-intel/`:** run the
+       consensus pass (`flagOutliers`, `vendor-price-consensus.ts:180-192`) and
+       persist its verdict, or drop the filter and say the box is unscreened.
+
+    c. **A subject on every row (§13.21) is what the producers want next.** All
+       five write rich `metadata` (`goalId`, `receiptEventId`, `documentId`,
+       `serviceDate`, `productKey`) but leave `related_entity_type` /
+       `related_entity_id` NULL, because `persistForRestaurant` has no parameter
+       for them (`notifications.service.ts:613-637`). One optional field on that
+       payload and one line per producer closes it.
+
+    d. **Nothing sets `analytics_goals.status = 'achieved'`.** The goal producer
+       reports the crossing and does not touch the goal's lifecycle — that is a
+       write into the analytics module, and which of `achieved` / `active` a
+       crossed-but-continuing goal should hold is a product question nobody has
+       answered.
+
+    e. **The threshold and the two schedule hours are stated defaults, not
+       measurements.** `MARKET_SIGNAL_DROP_PCT` = 10% (the box's own floor is 2%,
+       `price-below-average.ts:120` — a box may show a small movement where a
+       notification should not interrupt anyone), `MARKET_SIGNAL_LOCAL_HOUR` = 10
+       on the tenant's clock, and the service day settles 6 hours past local
+       midnight while `restaurants.operating_hours` is NULL on every row
+       (`20260902210000`, its own header). All three are env-overridable and all
+       three travel in the notification's metadata so a reader can check the
+       sentence against the number that produced it — Stripe's shape, where
+       `usage_threshold[gte]` is a field an operator sets rather than a constant
+       hidden in code
+       (<https://docs.stripe.com/billing/subscriptions/usage-based/alerts>).
+       **They are the founder's to move.**
+
+26. ~~**Arming these producers is a founder decision**~~ — **DECIDED 2026-09-03:
+    the founder said arm all of them.** `NOTIFICATION_PRODUCERS_ENABLED=true` on
+    the gateway is the ONE switch and it arms all six for the deployment; there
+    is deliberately no per-producer switch, because six env vars is six ways to
+    have half a house watched and no way to see which half. The status route
+    states this in `armingNote` and, per producer, in `willWrite` +
+    `silentReason`. Off by default and
+    deliberately not wired to `mudavym_design_notifications`: a design flag decides
+    what a page looks like, never whether a house gets woken up. Same shape and
+    same reasoning as `CALENDAR_REMINDERS_ENABLED`
+    (`calendar/reminder-window.ts:283-300`). Note that
+    `ScheduledTenantsService.runPerTenant` serves only opted-in restaurants
+    (ADR 0022, OD-91), so arming alone reaches exactly the
+    `DEFAULT_RESTAURANT_ID` house until a `scheduled_communications` flag row
+    exists — `GET /notifications/producers/status` reports both facts separately
+    and never infers one from the other.
+
+27. **Which producers the house needs next — researched, measured, none built.**
+    The founder's "if more is needed research them" (2026-09-03). Sources were
+    counted on **production `exzueerziesmczwlhomd`, 2026-09-03**, because a
+    producer whose source table is empty is a feature that cannot fire, and that
+    is a fact about the build rather than about the restaurant. The six that
+    exist are marked ✅ for contrast.
+
+    | Producer | Source table it would read | Rows in prod today | Verdict |
+    |---|---|---|---|
+    | ✅ goal reached / ceiling held | `analytics_goals` | **4** (all `at_least`; 3 active, 1 archived) | built; the ceiling half has no candidate row until someone sets an `at_most` goal |
+    | ✅ sale record | `pos_checks` | **173** | built; the only producer with a populated source and a populated clock |
+    | ✅ delivery at the door | `procurement_receipt_events` | **0** | built; silent until a door receipt is taken |
+    | ✅ invoice certified | `procurement_documents` | **0** | built; silent until a document is verified |
+    | ✅ market price | `vendor_price_observations` | **0** | built; silent, and says so per producer on the status route |
+    | **Stock ran out** | `restaurant_inventory` **206**, `inventory_transactions` **215**, `inventory_lots` **138** | **populated** | **the strongest candidate.** Low stock is already produced; *ran out* is not, and it is the one stock fact nobody can act on late. `LowStockAlertsService` has the read; it needs a zero-crossing and the claim ledger, not a new sweep |
+    | **A pour that emptied the last bottle** | `pour_events` **72**, `wine_consumption_log` **107** | **populated** | second strongest, and the same event seen from the other side. Decide which of the two is the subject before building either, or the house gets two lines for one bottle |
+    | **A POS line nobody has mapped** | `pos_unresolved_lines` | **130** | real, and quietly expensive: 130 unmapped lines are 130 sales the ledger cannot attribute. One digest per week, not per line — the volume is exactly the shape §13.24 warns about |
+    | **A menu item that outlived its stock** | `menu_items` **342** × `pos_item_mappings` **254** | **populated** | the join exists and is unread. "You are still selling something you cannot pour" is a sentence only this product can write; it needs `beverage_house_key`, not a new table |
+    | **Vendor cutoff closing** | `providers.lead_time_days` + vendor terms | **terms table is new and empty** | DESIGN-FOUNDATION §6 names it twice — `/calendar`'s "order-by windows as calendar objects" and `/notifications`' "truck-inbound as a self-expiring item". **Blocked**: the cutoff has no home until the vendor-terms tab lands (§6, `/settings` row) |
+    | **Subdue-by-settlement** (§13.16) | `procurement_credits` **0**, `procurement_orders` **2** | **effectively empty** | the competitor lens's "need it: now" idea, and the one nobody else does. It is not a producer that WRITES a line — it is a producer that RETIRES one, so it needs §13.21's subject key first |
+    | **A conversation that went quiet** | `procurement_conversations` | **27** | a vendor thread with no reply in N days is a real fact with a real reader. Overlaps `InboundResponderService`; check before building that it is not already said |
+    | **An insight nobody read** | `analytics_insights` **6**, `recommendation_actions` **1** | thin | **do not build.** Six insights and one action is not enough signal to notify over, and a producer that fires on our own unread output is queue-clearing wearing the clothes of health — the exact thing `/recommendations`' lens says not to copy |
+    | **A shift nobody covered** | `shifts` **0**, `time_off_requests` **0** | **empty** | **do not build yet.** Production has no `staff` role and six of ten restaurants are owner-only (memory: production-tenant-shape); the roster is empty, which is also why every notification this wave writes says "the schedule names nobody on shift at that hour" rather than naming a crew |
+
+    **The through-line.** Four of the six producers built this wave are correct and
+    mute, because their sources are empty; the two candidates worth building next
+    (**stock ran out**, **the last bottle poured**) are the ones whose sources
+    already hold hundreds of rows. Build toward the data that exists, not toward
+    the table that sounds most important.

@@ -7,6 +7,11 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
 import {
+  BelowAverageResult,
+  ObservationRow,
+  priceBelowAverage,
+} from "./price-below-average";
+import {
   ConsensusResult,
   PriceObservation,
   PriceSourceType,
@@ -294,6 +299,63 @@ export class VendorComparisonService {
     }
 
     return { id: (data as any).id, observedAt: (data as any).observed_at };
+  }
+
+  /**
+   * "What is cheaper now than it has lately been" — the whole tenant at once.
+   *
+   * `compare()` answers for ONE product the caller already knows the id of.
+   * This answers the question /notifications asks, which is the other way
+   * round: nobody types a wine in, the house is supposed to notice. So the
+   * window is swept once and the products are ranked.
+   *
+   * TENANT SCOPE matches `loadObservations`: market rows (`restaurant_id IS
+   * NULL`) are public list prices that belong to everyone, and this tenant's
+   * own invoices and quotes are added on top. Another restaurant's rows are
+   * never read.
+   *
+   * `is_outlier` rows are excluded here rather than in the pure function:
+   * outlier-ness is decided by the consensus pass over the whole group, so
+   * re-deciding it per window would contradict the stored verdict.
+   *
+   * A failed query THROWS. "Nothing is below its average" and "the register
+   * could not be read" must not render as the same empty box — that is the
+   * defect this page's rebuild exists to remove.
+   */
+  async belowTrailingAverage(params: {
+    restaurantId: string;
+    windowDays?: number;
+    minObservations?: number;
+    limit?: number;
+  }): Promise<BelowAverageResult & { window: { days: number; from: string } }> {
+    const windowDays = params.windowDays ?? 30;
+    const from = new Date(Date.now() - windowDays * 86_400_000).toISOString();
+
+    const { data, error } = await this.databaseService.supabase
+      .from("vendor_price_observations")
+      .select(
+        "master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
+      )
+      .gte("observed_at", from)
+      .eq("is_outlier", false)
+      .or(`restaurant_id.is.null,restaurant_id.eq.${params.restaurantId}`)
+      .order("observed_at", { ascending: true })
+      .limit(2000);
+
+    if (error) {
+      this.logger.error(
+        `Failed to sweep vendor price observations: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        `Could not read the price register: ${error.message}`,
+      );
+    }
+
+    const result = priceBelowAverage((data ?? []) as ObservationRow[], {
+      minObservations: params.minObservations,
+      limit: params.limit,
+    });
+    return { ...result, window: { days: windowDays, from } };
   }
 
   async compare(params: {

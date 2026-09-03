@@ -27,6 +27,8 @@ import {
   PushUnsubscribeDto,
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { NotificationProducersService } from "./producers/notification-producers.service";
 
 /**
  * OD-20 — guarded at class level 2026-08-25.
@@ -47,7 +49,10 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly producers: NotificationProducersService,
+  ) {}
 
   // =========================================================================
   // NOTIFICATION CRUD ENDPOINTS
@@ -430,6 +435,35 @@ export class NotificationsController {
         success: false,
         error: error.message,
       };
+    }
+  }
+
+  // =========================================================================
+  // THE PRODUCERS — what the house's own signals say about themselves
+  // =========================================================================
+
+  /**
+   * The five producers' own account of themselves: armed or not, served by the
+   * scheduler or not, and the last actual run beside the next scheduled tick.
+   *
+   * A page that said "the house is being watched" while this process had been
+   * down for a day is the exact fault ADR 0020 names, so every one of those four
+   * facts is separately available and none is inferred from another.
+   */
+  @Get("producers/status")
+  async getProducerStatus(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.producers.statusFor(user.restaurantId);
+    } catch (error) {
+      this.logger.error(
+        `Producer status read failed for ${user.restaurantId}: ${error.message}`,
+      );
+      throw new HttpException(
+        error.message || "Failed to read producer status",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   UpdatePreferencesDto,
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { NotificationProducersService } from "./producers/notification-producers.service";
 
 describe("NotificationsController", () => {
   let controller: NotificationsController;
@@ -34,6 +35,14 @@ describe("NotificationsController", () => {
     deleteAllRead: jest.fn(),
   };
 
+  // The producers' own account of themselves — `GET /notifications/producers/
+  // status`. Stubbed here rather than wired: a unit spec for the handlers should
+  // not have to construct the cron graph, and `check_gateway_boots.sh` is what
+  // proves the real provider resolves.
+  const mockProducersService = {
+    statusFor: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [NotificationsController],
@@ -41,6 +50,10 @@ describe("NotificationsController", () => {
         {
           provide: NotificationsService,
           useValue: mockNotificationsService,
+        },
+        {
+          provide: NotificationProducersService,
+          useValue: mockProducersService,
         },
       ],
     })
@@ -453,6 +466,30 @@ describe("NotificationsController", () => {
           userId: mockQuery.userId,
         }),
       );
+    });
+  });
+
+  describe("GET /notifications/producers/status", () => {
+    const USER = { userId: "user-123", restaurantId: "restaurant-456" };
+
+    it("takes the tenant from the token, never from the request", async () => {
+      mockProducersService.statusFor.mockResolvedValue({ armed: false });
+      await controller.getProducerStatus(USER);
+      expect(mockProducersService.statusFor).toHaveBeenCalledWith(
+        "restaurant-456",
+      );
+    });
+
+    it("[REVERT-FAILS] a failed read is a 500 with the reason, never an empty status", async () => {
+      mockProducersService.statusFor.mockRejectedValue(
+        new Error("statement timeout"),
+      );
+      await expect(controller.getProducerStatus(USER)).rejects.toThrow(
+        HttpException,
+      );
+      await expect(controller.getProducerStatus(USER)).rejects.toMatchObject({
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
     });
   });
 });

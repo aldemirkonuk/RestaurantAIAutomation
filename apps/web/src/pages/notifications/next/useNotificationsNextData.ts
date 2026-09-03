@@ -31,6 +31,13 @@ import { apiClient, getErrorMessage } from '@/services/api/client';
 import type { Notification } from '@/services/api/notifications';
 import { collapseStackedNotifications } from '@/lib/notificationStack';
 import { num } from './nt-format';
+import { DayCell, FoldFreshness, dayCells, daySpan, foldFreshness } from './nt-book';
+import {
+  SnoozeRecord,
+  SnoozeVerdict,
+  WakeReason,
+  resolveSnoozes,
+} from './nt-snooze';
 
 /* ───────────────────────────────────────────── the shape of a failure ──── */
 
@@ -80,27 +87,44 @@ interface BookEnvelope {
   hasMore?: unknown;
 }
 
-/* ─────────────────────────────────────────────── set-aside (per browser) ─ */
+/* ──────────────────────────────────────────────── snooze (per browser) ─── */
 
-const SET_ASIDE_PREFIX = 'mudavym.notifications.setAside.';
+/**
+ * Where a sleeping line is remembered.
+ *
+ * `public.notifications` has no snooze column
+ * (`supabase/migrations/20260805000000_baseline_from_production.sql`), so this
+ * is a browser's own note and every surface that reads it says so. The key
+ * carries the restaurant because a line put down in one house must not be
+ * asleep in another.
+ */
+const SNOOZE_PREFIX = 'mudavym.notifications.snooze.';
 
-function readSetAside(restaurantId: string | null): Set<string> {
-  if (!restaurantId) return new Set();
+function readSnoozes(restaurantId: string | null): SnoozeRecord[] {
+  if (!restaurantId) return [];
   try {
-    const raw = window.localStorage.getItem(SET_ASIDE_PREFIX + restaurantId);
+    const raw = window.localStorage.getItem(SNOOZE_PREFIX + restaurantId);
     const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is SnoozeRecord =>
+        !!r &&
+        typeof r.id === 'string' &&
+        typeof r.until === 'number' &&
+        typeof r.seenAt === 'number' &&
+        typeof r.seenFolded === 'number',
+    );
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-function writeSetAside(restaurantId: string | null, ids: Set<string>): void {
+function writeSnoozes(restaurantId: string | null, records: SnoozeRecord[]): void {
   if (!restaurantId) return;
   try {
-    window.localStorage.setItem(SET_ASIDE_PREFIX + restaurantId, JSON.stringify([...ids]));
+    window.localStorage.setItem(SNOOZE_PREFIX + restaurantId, JSON.stringify(records));
   } catch {
-    /* storage blocked — the set-aside does not persist, and the page says so */
+    /* storage blocked — the line does not stay down, and the page says so */
   }
 }
 
@@ -113,6 +137,28 @@ export interface BookStack {
   foldedCount: number;
 }
 
+/**
+ * The four narrowings the REGISTER performs, not the browser.
+ *
+ * `type`, `status`, `dateFrom` and `dateTo` are all fields of
+ * `GetNotificationsQueryDto` (`notifications/dto/notifications.dto.ts:63-80`)
+ * and are applied server-side as `eq`, `eq`, `gte(created_at)` and
+ * `lte(created_at)` (`notifications.service.ts:811-821`). Because they are the
+ * register's own, the `total` that comes back is the FILTERED total — which is
+ * why the page can print "6 lines on 3 September" and mean it, where a
+ * browser-side filter could only ever have said "6 of the ones I happen to
+ * hold".
+ */
+export interface BookFilters {
+  /** A `notifications.type` value, exactly as stored. */
+  type: string | null;
+  status: 'unread' | 'read' | 'archived' | null;
+  /** `YYYY-MM-DD` in the reader's timezone; expanded to a local-day window. */
+  day: string | null;
+}
+
+export const NO_FILTERS: BookFilters = { type: null, status: null, day: null };
+
 export interface NotificationsNextData {
   book: BookVM;
   stack: BookStack;
@@ -120,7 +166,18 @@ export interface NotificationsNextData {
   lastReadAt: Date | null;
   /** True while a poll or a manual refresh is in flight. */
   refreshing: boolean;
-  setAside: Set<string>;
+  /** Ids the reader put to sleep in THIS browser, still asleep. */
+  asleep: Set<string>;
+  /** Every sleeping record, so the page can say when each is due back. */
+  snoozes: SnoozeRecord[];
+  /** Lines that woke since the last read, and what woke them. */
+  woke: Array<{ id: string; reason: WakeReason }>;
+  /** Per folded line: the newest stamp in its fold, and whether it is stale. */
+  folds: Record<string, FoldFreshness>;
+  /** The last 14 days, counted from the rows on screen. */
+  days: DayCell[];
+  filters: BookFilters;
+  setFilters: (next: BookFilters) => void;
   /** The last thing that did not happen, in words. Cleared on the next try. */
   failureNote: string | null;
   refresh: () => void;
@@ -130,8 +187,10 @@ export interface NotificationsNextData {
   archive: (id: string) => void;
   remove: (id: string) => void;
   markAllRead: () => void;
-  putAside: (id: string) => void;
-  restoreAside: () => void;
+  /** Put a line down for `ms`. It wakes on its own — see `nt-snooze.ts`. */
+  snooze: (id: string, ms: number) => void;
+  wake: (id: string) => void;
+  wakeAll: () => void;
 }
 
 export function useNotificationsNextData(): NotificationsNextData {
@@ -147,13 +206,21 @@ export function useNotificationsNextData(): NotificationsNextData {
   const [lastReadAt, setLastReadAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [failureNote, setFailureNote] = useState<string | null>(null);
-  const [setAside, setSetAside] = useState<Set<string>>(() => readSetAside(activeRestaurantId));
+  const [snoozes, setSnoozes] = useState<SnoozeRecord[]>(() => readSnoozes(activeRestaurantId));
+  const [verdict, setVerdict] = useState<SnoozeVerdict>({
+    asleep: new Set(),
+    woke: [],
+    keep: [],
+  });
+  const [filters, setFiltersState] = useState<BookFilters>(NO_FILTERS);
 
   const pagesRef = useRef(1);
   const alive = useRef(true);
   const tenant = useRef<string | null>(activeRestaurantId);
   /** Mirror of the rendered rows, so an optimistic write can be rolled back. */
   const rowsRef = useRef<Notification[] | null>(null);
+  /** Mirror of the fold counts, so `snooze()` can record what it saw. */
+  const foldedRef = useRef<Record<string, number>>({});
 
   // A restaurant switch must never leave the previous tenant's rows on screen.
   useEffect(() => {
@@ -163,13 +230,33 @@ export function useNotificationsNextData(): NotificationsNextData {
     setBook({ register: { state: 'loading' }, total: null, hasMore: null, pages: 1 });
     setLastReadAt(null);
     setFailureNote(null);
-    setSetAside(readSetAside(activeRestaurantId));
+    setSnoozes(readSnoozes(activeRestaurantId));
+    setVerdict({ asleep: new Set(), woke: [], keep: [] });
+    setFiltersState(NO_FILTERS);
   }, [activeRestaurantId]);
 
   const publish = useCallback((vm: BookVM) => {
     rowsRef.current = vm.register.state === 'ready' ? vm.register.rows : null;
     setBook(vm);
   }, []);
+
+  /**
+   * The register's own narrowings, as query params. A null is omitted rather
+   * than sent as an empty string: `status=''` would fail the DTO's
+   * `@IsEnum(NotificationStatus)` and turn a cleared filter into a 400.
+   */
+  const window_ = filters.day ? daySpan(filters.day) : null;
+  const filterParams = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (filters.type) p.type = filters.type;
+    if (filters.status) p.status = filters.status;
+    if (window_) {
+      p.dateFrom = window_.dateFrom;
+      p.dateTo = window_.dateTo;
+    }
+    return p;
+    // `window_` is derived from `filters.day`, which is the real dependency.
+  }, [filters.type, filters.status, filters.day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const read = useCallback(async () => {
     if (!userId || !activeRestaurantId) return; // identity still resolving — stay loading
@@ -179,7 +266,13 @@ export function useNotificationsNextData(): NotificationsNextData {
 
     const [bookRes] = await Promise.allSettled([
       apiClient.get('/notifications', {
-        params: { userId, restaurantId: forTenant, limit: BOOK_PAGE, page: 1 },
+        params: {
+          userId,
+          restaurantId: forTenant,
+          limit: BOOK_PAGE,
+          page: 1,
+          ...filterParams,
+        },
       }),
     ]);
 
@@ -199,7 +292,13 @@ export function useNotificationsNextData(): NotificationsNextData {
     for (let p = 2; p <= wanted; p++) {
       try {
         const res = await apiClient.get('/notifications', {
-          params: { userId, restaurantId: forTenant, limit: BOOK_PAGE, page: p },
+          params: {
+            userId,
+            restaurantId: forTenant,
+            limit: BOOK_PAGE,
+            page: p,
+            ...filterParams,
+          },
         });
         older.push(...rowsOf(res.data));
         deepest = res.data as BookEnvelope | null;
@@ -231,7 +330,7 @@ export function useNotificationsNextData(): NotificationsNextData {
 
     setLastReadAt(new Date());
     setRefreshing(false);
-  }, [userId, activeRestaurantId, publish]);
+  }, [userId, activeRestaurantId, publish, filterParams]);
 
   useEffect(() => {
     alive.current = true;
@@ -332,19 +431,53 @@ export function useNotificationsNextData(): NotificationsNextData {
       });
   }, [userId, activeRestaurantId, read]);
 
-  const putAside = useCallback((id: string) => {
-    setSetAside((s) => {
-      const next = new Set(s).add(id);
-      writeSetAside(tenant.current, next);
+  /**
+   * Put a line down, remembering the two things that will wake it: the
+   * deadline, and the state of the row at the moment it was put down. If the
+   * register writes about it again — a newer stamp, or one more folded repeat
+   * — `resolveSnoozes` brings it straight back (Linear's rule; see
+   * `nt-snooze.ts` for the citation and for why this cannot be server-side
+   * yet).
+   */
+  const snooze = useCallback(
+    (id: string, ms: number) => {
+      const row = (rowsRef.current ?? []).find((r) => r.id === id);
+      const stamped = row ? new Date(row.timestamp ?? row.createdAt).getTime() : 0;
+      const rec: SnoozeRecord = {
+        id,
+        until: Date.now() + ms,
+        seenAt: Number.isFinite(stamped) ? stamped : 0,
+        seenFolded: foldedRef.current[id] ?? 0,
+      };
+      setSnoozes((prev) => {
+        const next = [...prev.filter((r) => r.id !== id), rec];
+        writeSnoozes(tenant.current, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const wake = useCallback((id: string) => {
+    setSnoozes((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      writeSnoozes(tenant.current, next);
       return next;
     });
   }, []);
 
-  const restoreAside = useCallback(() => {
-    setSetAside(() => {
-      writeSetAside(tenant.current, new Set());
-      return new Set();
+  const wakeAll = useCallback(() => {
+    setSnoozes(() => {
+      writeSnoozes(tenant.current, []);
+      return [];
     });
+  }, []);
+
+  const setFilters = useCallback((next: BookFilters) => {
+    // A narrower book is a new book: paging starts again at page one, or
+    // "read further back" would ask for page 3 of a two-page answer.
+    pagesRef.current = 1;
+    setFiltersState(next);
   }, []);
 
   const readFurtherBack = useCallback(() => {
@@ -357,12 +490,59 @@ export function useNotificationsNextData(): NotificationsNextData {
     return collapseStackedNotifications(book.register.rows);
   }, [book.register]);
 
+  foldedRef.current = stack.foldedById;
+
+  const folds = useMemo(
+    () =>
+      book.register.state === 'ready'
+        ? foldFreshness(book.register.rows, stack.items, stack.foldedById)
+        : {},
+    [book.register, stack],
+  );
+
+  const days = useMemo(
+    () => (book.register.state === 'ready' ? dayCells(book.register.rows) : []),
+    [book.register],
+  );
+
+  /**
+   * Wake the lines that have earned it, every time the book is re-read.
+   *
+   * This runs on the READ, not on a timer, so a line whose deadline passed
+   * while the tab was asleep is awake by the time it is drawn — and a line the
+   * register wrote about again comes back in the same pass that learned of it.
+   */
+  useEffect(() => {
+    if (book.register.state !== 'ready') return;
+    const candidates = stack.items.map((n) => {
+      const t = new Date(n.timestamp ?? n.createdAt).getTime();
+      return {
+        id: n.id,
+        stampedAt: Number.isFinite(t) ? t : 0,
+        folded: stack.foldedById[n.id] ?? 0,
+        unread: String(n.status) === 'unread',
+      };
+    });
+    const next = resolveSnoozes(snoozes, candidates);
+    setVerdict(next);
+    if (next.keep.length !== snoozes.length) {
+      writeSnoozes(tenant.current, next.keep);
+      setSnoozes(next.keep);
+    }
+  }, [book.register.state, stack, snoozes]);
+
   return {
     book,
     stack,
     lastReadAt,
     refreshing,
-    setAside,
+    asleep: verdict.asleep,
+    snoozes,
+    woke: verdict.woke,
+    folds,
+    days,
+    filters,
+    setFilters,
     failureNote,
     refresh: () => void read(),
     readFurtherBack,
@@ -371,8 +551,9 @@ export function useNotificationsNextData(): NotificationsNextData {
     archive,
     remove,
     markAllRead,
-    putAside,
-    restoreAside,
+    snooze,
+    wake,
+    wakeAll,
   };
 }
 

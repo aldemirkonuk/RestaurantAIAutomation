@@ -13,10 +13,20 @@
  * rather than printed as a zero.
  */
 
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, ChevronRight, CornerUpLeft, Inbox, Stamp, Trash2 } from 'lucide-react';
+import {
+  AlarmClock,
+  Archive,
+  ChevronRight,
+  CornerUpLeft,
+  Stamp,
+  Sunrise,
+  Trash2,
+} from 'lucide-react';
 import type { Notification } from '@/services/api/notifications';
+import type { FoldFreshness } from './nt-book';
+import { DURATIONS, sleepsFor } from './nt-snooze';
 import {
   EM,
   MONO,
@@ -27,6 +37,7 @@ import {
   iconForType,
   kindOf,
   plainText,
+  stampOf,
   timeAgo,
 } from './nt-format';
 
@@ -34,15 +45,31 @@ export interface BookRowProps {
   row: Notification;
   /** Duplicates the digest stacker folded into this line (0 when none). */
   folded: number;
+  /**
+   * The newest stamp inside the fold, when it is newer than the surviving
+   * line's own. The stacker picks a below-par winner by highest wine count,
+   * not by date (`lib/notificationStack.ts:59-65`), so the headline line can
+   * be hours older than the news it stands for — measured at 5h20m on the
+   * production book on 2026-09-03. The line says both rather than either.
+   */
+  fold?: FoldFreshness;
   open: boolean;
   onToggle: () => void;
   /** Ruled-off rendering: the line stays legible but stops asking. */
   subdued?: boolean;
+  /** Keyboard cursor — j/k move it, and the line shows where it is. */
+  selected?: boolean;
+  rowRef?: Ref<HTMLLIElement>;
   onRuleOff?: () => void;
   onReopen?: () => void;
   onArchive?: () => void;
   onDelete?: () => void;
-  onSetAside?: () => void;
+  /** Put the line down for `ms`; it wakes on its own. Per browser. */
+  onSnooze?: (ms: number) => void;
+  /** Bring a sleeping line back now. */
+  onWake?: () => void;
+  /** Epoch ms this line is due back, when it is asleep. */
+  asleepUntil?: number | null;
 }
 
 function Control({
@@ -78,14 +105,19 @@ function Control({
 export function BookRow({
   row,
   folded,
+  fold,
   open,
   onToggle,
   subdued = false,
+  selected = false,
+  rowRef,
   onRuleOff,
   onReopen,
   onArchive,
   onDelete,
-  onSetAside,
+  onSnooze,
+  onWake,
+  asleepUntil = null,
 }: BookRowProps) {
   const facts = factsFrom(row);
   const wines = belowParFrom(row);
@@ -101,9 +133,16 @@ export function BookRow({
 
   return (
     <li
+      ref={rowRef}
       className="nt-line nt-ink"
       data-subdued={subdued ? 'true' : 'false'}
-      style={{ borderLeft: `2px solid ${urgent && !subdued ? 'var(--seal)' : 'transparent'}` }}
+      data-selected={selected ? 'true' : 'false'}
+      style={{
+        borderLeft: `2px solid ${
+          selected ? 'var(--ink-1)' : urgent && !subdued ? 'var(--seal)' : 'transparent'
+        }`,
+        background: selected ? 'var(--paper-1)' : undefined,
+      }}
     >
       <button
         type="button"
@@ -151,8 +190,17 @@ export function BookRow({
             +{folded} folded
           </span>
         )}
+        {asleepUntil !== null && (
+          <span
+            className="shrink-0 inline-flex items-center gap-1"
+            style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--seal-deep)' }}
+          >
+            <AlarmClock size={10} strokeWidth={1.75} aria-hidden />
+            back in {sleepsFor(asleepUntil)}
+          </span>
+        )}
         <span
-          className="shrink-0"
+          className="shrink-0 text-right"
           style={{
             fontFamily: MONO,
             fontSize: 10.5,
@@ -160,7 +208,23 @@ export function BookRow({
             color: 'var(--ink-4)',
           }}
         >
-          {timeAgo(row.timestamp ?? row.createdAt)}
+          {/*
+            A folded line whose winner is older than its newest member shows
+            the NEWEST first: that is the age of the news, and the winner's own
+            age is drawn beneath it so neither is hidden.
+          */}
+          {fold?.winnerIsStale && fold.newestAt !== null ? (
+            <>
+              <span className="block" style={{ color: 'var(--ink-1)' }}>
+                {timeAgo(new Date(fold.newestAt).toISOString())}
+              </span>
+              <span className="block text-[9px]">
+                this line {timeAgo(row.timestamp ?? row.createdAt)}
+              </span>
+            </>
+          ) : (
+            timeAgo(row.timestamp ?? row.createdAt)
+          )}
         </span>
         <span aria-hidden className="nt-chev shrink-0 leading-none" data-open={open}>
           <ChevronRight size={14} strokeWidth={1.75} />
@@ -173,6 +237,24 @@ export function BookRow({
             <p className="text-[12.5px]" style={{ fontFamily: SANS, color: 'var(--ink-2)' }}>
               {message || 'This line carries no message beyond its title.'}
             </p>
+
+            {folded > 0 && (
+              <p className="mt-1.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+                {folded} earlier {folded === 1 ? 'repeat is' : 'repeats are'} folded into this line.
+                {fold?.newestAt !== null && fold?.newestAt !== undefined ? (
+                  <>
+                    {' '}
+                    The newest of them was written{' '}
+                    <span style={{ fontFamily: MONO, color: 'var(--ink-2)' }}>
+                      {stampOf(new Date(fold.newestAt).toISOString())}
+                    </span>
+                    {fold.winnerIsStale
+                      ? ' — later than the line standing for them, which is the one with the highest count rather than the latest date.'
+                      : '.'}
+                  </>
+                ) : null}
+              </p>
+            )}
 
             {facts.length > 0 && (
               <dl className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
@@ -256,9 +338,9 @@ export function BookRow({
                   Reopen
                 </Control>
               )}
-              {onSetAside && (
-                <Control onClick={onSetAside} icon={Inbox}>
-                  Set aside
+              {onWake && (
+                <Control onClick={onWake} emphasis icon={Sunrise}>
+                  Bring it back now
                 </Control>
               )}
               {onArchive && (
@@ -272,6 +354,49 @@ export function BookRow({
                 </Control>
               )}
             </div>
+
+            {onSnooze && (
+              <div
+                className="mt-2.5 pt-2"
+                style={{ borderTop: '1px solid var(--paper-2)' }}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em]"
+                    style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
+                  >
+                    <AlarmClock size={11} strokeWidth={1.75} aria-hidden />
+                    Put it down for
+                  </span>
+                  {DURATIONS.map((d) => (
+                    <button
+                      key={d.key}
+                      type="button"
+                      onClick={() => onSnooze(d.ms)}
+                      className="nt-ink rounded-full px-2.5 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+                      style={{
+                        fontFamily: SANS,
+                        border: '1px solid var(--paper-2)',
+                        background: 'transparent',
+                        color: 'var(--ink-2)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+                <p
+                  className="mt-1.5 text-[10.5px]"
+                  style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
+                >
+                  It comes back on its own the moment the register writes about this again — a
+                  newer line or one more folded repeat — and in any case when the time is up.
+                  Stored in this browser only: the server was not told, and another device still
+                  shows it.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

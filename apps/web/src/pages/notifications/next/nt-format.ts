@@ -9,13 +9,18 @@
 import {
   Boxes,
   CalendarDays,
+  Coins,
   CreditCard,
   FileText,
   Inbox,
   Lightbulb,
   Mail,
   Package,
+  Receipt,
   Settings,
+  Tag,
+  Target,
+  Truck,
   type LucideIcon,
 } from 'lucide-react';
 import type { Notification } from '@/services/api/notifications';
@@ -91,14 +96,23 @@ const KIND_BY_TYPE: Record<string, string> = {
   inventory_low_stock: 'Stock',
   low_stock: 'Stock',
   order_pending: 'Orders',
-  order_delivered: 'Orders',
-  delivery_scheduled: 'Orders',
   overdue_order: 'Orders',
   order_inquiry: 'Orders',
-  price_change: 'Orders',
+  // The founder asked for deliveries, invoice confirmations, sale records and a
+  // goal reached as registers of their own (2026-09-03). These four `type`
+  // values are what the producers landing in the same wave actually write —
+  // `notifications/producers/{delivery-recorded,invoice-confirmed,sale-record,
+  // goal-reached,market-price}.producer.ts` — so the register they land in is
+  // read off the producer rather than guessed. Without these rows they would
+  // all have fallen to *Other*, which is how a new register goes invisible.
+  order_delivered: 'Deliveries',
+  delivery_scheduled: 'Deliveries',
+  invoice_received: 'Invoices',
+  service_closed: 'Sales',
+  goal_reached: 'Goals',
+  price_change: 'Market',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
-  invoice_received: 'Vendor mail',
   vendor_reply: 'Vendor mail',
   email_classified_operational: 'Vendor mail',
   email_classified_promo: 'Vendor mail',
@@ -138,11 +152,16 @@ export function kindOf(type: string | null | undefined): string {
 const ICON_BY_KIND: Record<string, LucideIcon> = {
   Stock: Boxes,
   Orders: Package,
+  Deliveries: Truck,
+  Invoices: Receipt,
   'Vendor mail': Mail,
   Calendar: CalendarDays,
   Reports: FileText,
   Advice: Lightbulb,
   Payments: CreditCard,
+  Sales: Coins,
+  Goals: Target,
+  Market: Tag,
   System: Settings,
   Other: Inbox,
 };
@@ -206,11 +225,16 @@ export function hasEmoji(s: string | null | undefined): boolean {
 export const KIND_ORDER = [
   'Stock',
   'Orders',
+  'Deliveries',
+  'Invoices',
   'Vendor mail',
   'Calendar',
   'Reports',
   'Advice',
   'Payments',
+  'Sales',
+  'Goals',
+  'Market',
   'System',
   'Other',
 ] as const;

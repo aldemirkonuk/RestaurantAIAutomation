@@ -46,11 +46,13 @@
  * and the legacy client threw the envelope away).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
+  AlarmClock,
   BookOpenText,
   Hand,
+  Keyboard,
   RadioTower,
   RotateCw,
   Stamp,
@@ -60,7 +62,12 @@ import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, ink, settle, springs, tally, useReducedMotion } from '@/lib/mudavym';
 import type { Notification } from '@/services/api/notifications';
 import BookRow from './BookRow';
+import BookFilterBar from './BookFilterBar';
+import DayRail from './DayRail';
+import MarketPricePanel from './MarketPricePanel';
 import { HouseBand } from './HouseBand';
+import { matchesQuery } from './nt-book';
+import { DURATIONS } from './nt-snooze';
 import {
   EM,
   KIND_ORDER,
@@ -143,6 +150,8 @@ const PAGE_CSS = `
 .nt-line { border-bottom: 1px solid var(--paper-2) }
 .nt-line:hover { background: var(--paper-1) }
 .nt-line[data-subdued='true']:hover { background: transparent }
+.nt-line[data-selected='true'] { background: var(--paper-1) }
+.nt-key { font-family: inherit; border: 1px solid var(--paper-2); border-radius: 3px; padding: 0 4px; font-size: 9.5px }
 .nt-chev { display: inline-block; font-size: 14px; color: var(--ink-4); transition: transform ${settle.ms}ms ${settle.easing} }
 .nt-chev[data-open='true'] { transform: rotate(90deg) }
 .nt-rule2 { border-top: 1px solid var(--ink-4); box-shadow: 0 3px 0 -2px var(--ink-4) }
@@ -162,7 +171,13 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
   const location = useLocation();
   const [openId, setOpenId] = useState<string | null>(null);
   const [showRuledOff, setShowRuledOff] = useState(false);
+  const [query, setQuery] = useState('');
+  const [hideRead, setHideRead] = useState(false);
+  /** The keyboard cursor's id — j/k move it, e and s act on it. */
+  const [cursor, setCursor] = useState<string | null>(null);
   const headRef = useRef<HTMLElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement | null>());
 
   useEffect(() => {
     ensureFraunces();
@@ -188,17 +203,30 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     if (wanted) setOpenId(wanted);
   }, [wanted]);
 
+  /**
+   * The book after the two SCREEN-side narrowings — the search and the sleep.
+   * The register-side ones (type, status, day) have already happened by the
+   * time these rows exist, which is why the counts printed beside each control
+   * mean different things and are labelled apart.
+   */
+  const visible = useMemo(
+    () => data.stack.items.filter((n) => matchesQuery(n, query)),
+    [data.stack.items, query],
+  );
+
   const bands = useMemo(() => {
-    const items = data.stack.items;
     const drafts: Notification[] = [];
     const needs: Notification[] = [];
     const ruled: Notification[] = [];
-    for (const n of items) {
+    const sleeping: Notification[] = [];
+    for (const n of visible) {
       const status = String(n.status);
-      if (status === 'unread' && !data.setAside.has(n.id)) {
+      if (status === 'unread' && data.asleep.has(n.id)) {
+        sleeping.push(n);
+      } else if (status === 'unread') {
         if (isHouseActed(n)) drafts.push(n);
         else needs.push(n);
-      } else if (status !== 'unread') {
+      } else {
         ruled.push(n);
       }
     }
@@ -206,12 +234,24 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     needs.sort((a, b) => age(a) - age(b)); // oldest first — the sidebar's promise
     ruled.sort((a, b) => age(b) - age(a));
     drafts.sort((a, b) => age(a) - age(b));
-    return { drafts, needs, ruled };
-  }, [data.stack.items, data.setAside]);
+    sleeping.sort((a, b) => age(a) - age(b));
+    return { drafts, needs, ruled, sleeping };
+  }, [visible, data.asleep]);
+
+  /** The order j and k walk: the bands as drawn, top to bottom. */
+  const walk = useMemo(
+    () => [...bands.needs, ...bands.drafts, ...(showRuledOff && !hideRead ? bands.ruled : [])],
+    [bands, showRuledOff, hideRead],
+  );
+
+  const dueBack = useMemo(
+    () => new Map(data.snoozes.map((r) => [r.id, r.until])),
+    [data.snoozes],
+  );
 
   const registerTally = useMemo(() => {
     const counts = new Map<string, { open: number; all: number }>();
-    for (const n of data.stack.items) {
+    for (const n of visible) {
       const k = kindOf(n.type);
       const cur = counts.get(k) ?? { open: 0, all: 0 };
       cur.all += 1;
@@ -221,12 +261,108 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     return KIND_ORDER.map((k) => ({ kind: k, ...(counts.get(k) ?? { open: 0, all: 0 }) })).filter(
       (r) => r.all > 0,
     );
-  }, [data.stack.items]);
+  }, [visible]);
+
+  /**
+   * j / k / e / s — the four keys an inbox is expected to have.
+   *
+   * The vocabulary is Linear's, because that is the one operators already know
+   * (`J`/`K` to move, https://linear.app/docs/inbox), with `e` for the action
+   * this book actually performs — ruling a line off — and `s` for sleep. Two
+   * house rules apply on top:
+   *
+   *   • a key never does something irreversible. `e` rules off (undone by
+   *     Reopen), `s` puts down for an hour (undone by Bring it back). Delete
+   *     and archive are deliberately NOT bound: a keystroke should not be able
+   *     to destroy a record.
+   *   • a key never fires while the reader is typing. The search box is an
+   *     input, and an inbox that starts archiving because someone searched for
+   *     "sancerre" is the classic version of this bug.
+   */
+  const move = useCallback(
+    (delta: number) => {
+      if (walk.length === 0) return;
+      const at = cursor === null ? -1 : walk.findIndex((n) => n.id === cursor);
+      const next = Math.min(walk.length - 1, Math.max(0, at + delta));
+      const id = walk[at === -1 && delta < 0 ? walk.length - 1 : next]?.id ?? null;
+      setCursor(id);
+      // `scrollIntoView` is not universally implemented (jsdom has no layout,
+      // and neither do some embedded webviews). Keeping the cursor is the
+      // behaviour; scrolling to it is a courtesy that must not throw.
+      const el = id ? rowRefs.current.get(id) : null;
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    },
+    [walk, cursor],
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing =
+        !!el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          el.isContentEditable);
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '/' && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (typing) {
+        if (e.key === 'Escape') (el as HTMLInputElement).blur();
+        return;
+      }
+      const row = cursor ? walk.find((n) => n.id === cursor) : null;
+      switch (e.key) {
+        case 'j':
+          e.preventDefault();
+          move(1);
+          break;
+        case 'k':
+          e.preventDefault();
+          move(-1);
+          break;
+        case 'e':
+          if (!row) return;
+          e.preventDefault();
+          if (String(row.status) === 'unread') data.markRead(row.id);
+          else data.markUnread(row.id);
+          break;
+        case 's':
+          if (!row || String(row.status) !== 'unread') return;
+          e.preventDefault();
+          data.snooze(row.id, DURATIONS[0].ms);
+          break;
+        case 'Enter':
+        case 'o':
+          if (!row) return;
+          e.preventDefault();
+          setOpenId((cur) => (cur === row.id ? null : row.id));
+          break;
+        case 'Escape':
+          setCursor(null);
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [walk, cursor, move, data]);
+
+  // A cursor pointing at a line that has left the page is no cursor at all.
+  useEffect(() => {
+    if (cursor && !walk.some((n) => n.id === cursor)) setCursor(null);
+  }, [walk, cursor]);
 
   const ready = data.book.register.state === 'ready';
   const failure = data.book.register.state === 'unreadable' ? data.book.register.failure : null;
 
-  const onPage = ready ? data.stack.items.length : null;
+  const onPage = ready ? visible.length : null;
   const needCount = ready ? bands.needs.length + bands.drafts.length : null;
 
   let standing: string;
@@ -319,6 +455,43 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
           </p>
         )}
 
+        <DayRail
+          cells={data.days}
+          selected={data.filters.day}
+          onSelect={(day) => data.setFilters({ ...data.filters, day })}
+          selectedTotal={data.book.total}
+          busy={data.refreshing}
+        />
+
+        <BookFilterBar
+          filters={data.filters}
+          onFilters={data.setFilters}
+          query={query}
+          onQuery={setQuery}
+          hideRead={hideRead}
+          onHideRead={setHideRead}
+          matching={ready ? visible.length : null}
+          registerTotal={ready ? data.book.total : null}
+          searchRef={searchRef}
+        />
+
+        {data.woke.length > 0 && (
+          <p
+            role="status"
+            className="mb-3 inline-flex items-start gap-1.5 text-[11.5px]"
+            style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+          >
+            <AlarmClock size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+            {data.woke.length} {data.woke.length === 1 ? 'line has' : 'lines have'} come back:{' '}
+            {data.woke.filter((w) => w.reason === 'activity').length} because the register wrote
+            about {data.woke.filter((w) => w.reason === 'activity').length === 1 ? 'it' : 'them'}{' '}
+            again, {data.woke.filter((w) => w.reason === 'deadline').length} because the time was
+            up, {data.woke.filter((w) => w.reason === 'settled').length} because{' '}
+            {data.woke.filter((w) => w.reason === 'settled').length === 1 ? 'it was' : 'they were'}{' '}
+            dealt with elsewhere.
+          </p>
+        )}
+
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           {/* ── the book ──────────────────────────────────────────────── */}
           <div>
@@ -378,10 +551,13 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                     key={n.id}
                     row={n}
                     folded={data.stack.foldedById[n.id] ?? 0}
+                    fold={data.folds[n.id]}
                     open={openId === n.id}
+                    selected={cursor === n.id}
+                    rowRef={(el) => rowRefs.current.set(n.id, el)}
                     onToggle={() => setOpenId(openId === n.id ? null : n.id)}
                     onRuleOff={() => data.markRead(n.id)}
-                    onSetAside={() => data.putAside(n.id)}
+                    onSnooze={(ms) => data.snooze(n.id, ms)}
                     onArchive={() => data.archive(n.id)}
                     onDelete={() => data.remove(n.id)}
                   />
@@ -398,7 +574,15 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
             {/* ── the double rule: the account is ruled off ─────────────── */}
             <section aria-labelledby="nt-ruled" className="mt-7">
               <div className="nt-rule2" />
-              <div className="mt-2 flex items-baseline justify-between gap-3">
+              {hideRead && (
+                <p className="mt-2 text-[11.5px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+                  {ready ? bands.ruled.length : EM} ruled-off{' '}
+                  {bands.ruled.length === 1 ? 'line is' : 'lines are'} folded away by{' '}
+                  <em>Hide what is ruled off</em>. Nothing was deleted and nothing was told to the
+                  server — turn it back on to read them.
+                </p>
+              )}
+              <div className="mt-2 flex items-baseline justify-between gap-3" hidden={hideRead}>
                 <h2
                   id="nt-ruled"
                   className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
@@ -422,7 +606,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                   {showRuledOff ? 'Close the account' : `Show ${ready ? bands.ruled.length : EM}`}
                 </button>
               </div>
-              <div className="nt-expand" data-open={showRuledOff}>
+              <div className="nt-expand" data-open={showRuledOff && !hideRead}>
                 <div>
                   {ready && bands.ruled.length === 0 ? (
                     <p className="mt-2 text-[12px] italic" style={{ color: 'var(--ink-4)' }}>
@@ -435,7 +619,10 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                           key={n.id}
                           row={n}
                           folded={data.stack.foldedById[n.id] ?? 0}
+                          fold={data.folds[n.id]}
                           open={openId === n.id}
+                          selected={cursor === n.id}
+                          rowRef={(el) => rowRefs.current.set(n.id, el)}
                           onToggle={() => setOpenId(openId === n.id ? null : n.id)}
                           subdued
                           onReopen={() => data.markUnread(n.id)}
@@ -448,20 +635,53 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               </div>
             </section>
 
-            {data.setAside.size > 0 && (
-              <p className="mt-4 text-[11.5px]" style={{ color: 'var(--ink-4)' }}>
-                {data.setAside.size} {data.setAside.size === 1 ? 'line is' : 'lines are'} set aside
-                on this browser only — the server was not told, and another device still shows
-                {data.setAside.size === 1 ? ' it' : ' them'}.{' '}
-                <button
-                  type="button"
-                  onClick={data.restoreAside}
-                  className="underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
-                  style={{ background: 'none', border: 'none', color: 'var(--seal-deep)', cursor: 'pointer' }}
-                >
-                  Put them back
-                </button>
-              </p>
+            {bands.sleeping.length > 0 && (
+              <section aria-labelledby="nt-asleep" className="mt-7">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2
+                    id="nt-asleep"
+                    className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
+                    style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
+                  >
+                    <AlarmClock size={12} strokeWidth={1.75} aria-hidden />
+                    Put down for now
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={data.wakeAll}
+                    className="nt-ink rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+                    style={{
+                      border: '1px solid var(--paper-2)',
+                      background: 'transparent',
+                      color: 'var(--ink-2)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Bring them all back
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+                  Asleep in this browser only — the server was not told, and another device still
+                  shows {bands.sleeping.length === 1 ? 'it' : 'them'}. Each comes back on its own
+                  when its time is up, or the moment the register writes about it again.
+                </p>
+                <ul className="mt-2" style={{ borderTop: '1px solid var(--paper-2)' }}>
+                  {bands.sleeping.map((n) => (
+                    <BookRow
+                      key={n.id}
+                      row={n}
+                      folded={data.stack.foldedById[n.id] ?? 0}
+                      fold={data.folds[n.id]}
+                      open={openId === n.id}
+                      subdued
+                      asleepUntil={dueBack.get(n.id) ?? null}
+                      onToggle={() => setOpenId(openId === n.id ? null : n.id)}
+                      onWake={() => data.wake(n.id)}
+                      onRuleOff={() => data.markRead(n.id)}
+                    />
+                  ))}
+                </ul>
+              </section>
             )}
           </div>
 
@@ -538,6 +758,8 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               )}
             </section>
 
+            <MarketPricePanel />
+
             <section
               aria-labelledby="nt-live"
               className="rounded-xl p-3.5"
@@ -583,6 +805,45 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                 Read it now
               </button>
             </section>
+
+            <section
+              aria-labelledby="nt-keys"
+              className="rounded-xl p-3.5"
+              style={{ border: '1px solid var(--paper-2)', background: 'var(--paper-1)' }}
+            >
+              <h2
+                id="nt-keys"
+                className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
+                style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
+              >
+                <Keyboard size={12} strokeWidth={1.75} aria-hidden />
+                Without the mouse
+              </h2>
+              <dl className="mt-2 space-y-1 text-[11.5px]" style={{ fontFamily: SANS }}>
+                {[
+                  ['j / k', 'move down and up the open lines'],
+                  ['e', 'rule the line off — or reopen it if it is already off'],
+                  ['s', `put it down for ${DURATIONS[0].label}`],
+                  ['Enter', 'open the line and read its facts'],
+                  ['/', 'jump to the search box'],
+                ].map(([k, what]) => (
+                  <div key={k} className="flex items-baseline justify-between gap-3">
+                    <dt style={{ color: 'var(--ink-2)' }}>
+                      <span className="nt-key" style={{ fontFamily: MONO }}>
+                        {k}
+                      </span>
+                    </dt>
+                    <dd className="m-0 flex-1 text-right" style={{ color: 'var(--ink-4)' }}>
+                      {what}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                Nothing destructive is bound to a key: archiving and deleting stay on the line
+                itself, where they have to be aimed at.
+              </p>
+            </section>
           </aside>
         </div>
 
@@ -592,8 +853,9 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         >
           <Wordmark size={14} />
           <p className="max-w-[560px] text-[11px]" style={{ color: 'var(--ink-4)' }}>
-            Set-aside is stored in this browser and nowhere else. This page records what the house
-            noticed; it never places an order or sends a mail on your behalf.
+            A line put down is remembered by this browser and nowhere else — the register has no
+            column for it. This page records what the house noticed; it never places an order or
+            sends a mail on your behalf.
           </p>
         </footer>
       </div>

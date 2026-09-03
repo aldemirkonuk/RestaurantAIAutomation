@@ -26,10 +26,29 @@ import type { Notification } from '@/services/api/notifications';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
-vi.mock('./useNotificationsNextData', () => ({
-  POLL_MS: 10_000,
-  BOOK_PAGE: 100,
-  useNotificationsNextData: () => mockData.current,
+vi.mock('./useNotificationsNextData', async () => {
+  const real = await vi.importActual<typeof import('./useNotificationsNextData')>(
+    './useNotificationsNextData',
+  );
+  return {
+    ...real,
+    POLL_MS: 10_000,
+    BOOK_PAGE: 100,
+    useNotificationsNextData: () => mockData.current,
+  };
+});
+
+/**
+ * The market-price box owns its own read. It is mocked to a settled, EMPTY
+ * register here — which is the measured production truth
+ * (`vendor_price_observations` holds no rows) — so the day-book's own
+ * assertions are never answered by a stray price row, and the box's four
+ * states get their own cases at the end of this file.
+ */
+const mockMarket = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./useMarketPrice', () => ({
+  MARKET_POLL_MS: 60_000,
+  useMarketPrice: () => mockMarket.current,
 }));
 
 import NotificationsNext from './NotificationsNext';
@@ -57,10 +76,26 @@ const spies = {
   archive: vi.fn(),
   remove: vi.fn(),
   markAllRead: vi.fn(),
-  putAside: vi.fn(),
-  restoreAside: vi.fn(),
+  snooze: vi.fn(),
+  wake: vi.fn(),
+  wakeAll: vi.fn(),
+  setFilters: vi.fn(),
   refresh: vi.fn(),
   readFurtherBack: vi.fn(),
+};
+
+const EMPTY_MARKET = {
+  state: 'ready',
+  failure: null,
+  items: [],
+  scannedObservations: 0,
+  scannedProducts: 0,
+  skippedThin: 0,
+  skippedNotBelow: 0,
+  skippedMixedCurrency: 0,
+  windowDays: 30,
+  minObservations: 3,
+  refresh: vi.fn(),
 };
 
 function base(rows: Notification[]) {
@@ -74,7 +109,12 @@ function base(rows: Notification[]) {
     stack: { items: rows, foldedById: {}, foldedCount: 0 },
     lastReadAt: new Date('2026-09-02T18:00:00'),
     refreshing: false,
-    setAside: new Set<string>(),
+    asleep: new Set<string>(),
+    snoozes: [] as Array<{ id: string; until: number; seenAt: number; seenFolded: number }>,
+    woke: [] as Array<{ id: string; reason: string }>,
+    folds: {} as Record<string, { newestAt: number | null; winnerIsStale: boolean }>,
+    days: [] as Array<Record<string, unknown>>,
+    filters: { type: null, status: null, day: null },
     failureNote: null,
     ...spies,
   };
@@ -91,6 +131,7 @@ function draw() {
 beforeEach(() => {
   Object.values(spies).forEach((s) => s.mockClear());
   mockData.current = base([]);
+  mockMarket.current = { ...EMPTY_MARKET };
 });
 
 describe('NotificationsNext — the day-book', () => {
@@ -225,8 +266,11 @@ describe('NotificationsNext — the day-book', () => {
     // and the mark the emoji used to carry is drawn instead — a lucide <svg>
     // inside the register chip on the line AND beside the rail's tally row, so
     // the two can never disagree about which register this is.
+    // Three places name this register now — the line's chip, the rail's
+    // tally, and the register filter's pill — and all three draw the SAME
+    // mark, because the map is keyed by register and not by type.
     const marks = screen.getAllByText('Stock');
-    expect(marks).toHaveLength(2);
+    expect(marks).toHaveLength(3);
     for (const el of marks) {
       expect(el.querySelector('svg.lucide-boxes')).not.toBeNull();
     }
@@ -293,14 +337,24 @@ describe('NotificationsNext — the day-book', () => {
     expect(within(rail).getByText(/of — lines the register holds/)).toBeInTheDocument();
   });
 
-  it('says the set-aside never left this browser', () => {
+  it('says a sleeping line never left this browser, and when it is due back', () => {
     const r = row({});
-    mockData.current = { ...base([r]), setAside: new Set(['n1']) };
+    mockData.current = {
+      ...base([r]),
+      asleep: new Set(['n1']),
+      snoozes: [{ id: 'n1', until: Date.now() + 90 * 60_000, seenAt: 0, seenFolded: 0 }],
+    };
     draw();
-    expect(screen.getByText(/on this browser only/)).toBeInTheDocument();
-    expect(screen.getByText(/another device still shows/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Put them back'));
-    expect(spies.restoreAside).toHaveBeenCalled();
+    const band = screen.getByRole('region', { name: 'Put down for now' });
+    expect(within(band).getByText(/in this browser only/)).toBeInTheDocument();
+    expect(within(band).getByText(/another device still/)).toBeInTheDocument();
+    // the deadline is drawn, not implied
+    expect(within(band).getByText(/back in 1h 30m/)).toBeInTheDocument();
+    // and it is NOT in the band that asks for a hand
+    expect(screen.getByText('Nothing is waiting on you. Every line in the book has been ruled off.'))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByText('Bring them all back'));
+    expect(spies.wakeAll).toHaveBeenCalled();
   });
 
   it('shows a skeleton while the first read is genuinely in flight, and claims nothing', () => {
@@ -322,5 +376,228 @@ describe('NotificationsNext — the day-book', () => {
     draw();
     expect(screen.getByText(/re-read every 10 seconds/)).toBeInTheDocument();
     expect(screen.getByText(/updates in place rather than going stale/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * FOURTH PASS, 2026-09-03 — the founder asked for the competitor-lens
+ * behaviours that leave us behind, and for the market-price box. Each case
+ * below is one of them, and each is written so that removing the behaviour
+ * fails it rather than merely changing a label.
+ */
+describe('NotificationsNext — what the inbox lens asked for', () => {
+  const two = () => [
+    row({ id: 'n1', title: 'Terra Nostra invoice is past its terms' }),
+    row({ id: 'n2', title: 'Chablis 1er Cru Montmains is below par' }),
+  ];
+
+  it('walks the lines with j and k, and shows where the cursor is', () => {
+    mockData.current = base(two());
+    const { container } = draw();
+    expect(container.querySelectorAll('[data-selected="true"]')).toHaveLength(0);
+
+    fireEvent.keyDown(window, { key: 'j' });
+    let selected = container.querySelectorAll('[data-selected="true"]');
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toMatch(/Terra Nostra/);
+
+    fireEvent.keyDown(window, { key: 'j' });
+    selected = container.querySelectorAll('[data-selected="true"]');
+    expect(selected[0].textContent).toMatch(/Chablis/);
+
+    fireEvent.keyDown(window, { key: 'k' });
+    selected = container.querySelectorAll('[data-selected="true"]');
+    expect(selected[0].textContent).toMatch(/Terra Nostra/);
+  });
+
+  it('rules a line off with e and puts it down with s — and binds nothing destructive', () => {
+    mockData.current = base(two());
+    draw();
+    fireEvent.keyDown(window, { key: 'j' });
+
+    fireEvent.keyDown(window, { key: 'e' });
+    expect(spies.markRead).toHaveBeenCalledWith('n1');
+
+    fireEvent.keyDown(window, { key: 's' });
+    expect(spies.snooze).toHaveBeenCalledWith('n1', 60 * 60 * 1000);
+
+    // The two irreversible ones are not reachable from the keyboard at all.
+    fireEvent.keyDown(window, { key: 'd' });
+    fireEvent.keyDown(window, { key: '#' });
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(spies.remove).not.toHaveBeenCalled();
+    expect(spies.archive).not.toHaveBeenCalled();
+  });
+
+  it('does not fire a shortcut while the reader is typing in the search box', () => {
+    mockData.current = base(two());
+    draw();
+    fireEvent.keyDown(window, { key: 'j' });
+
+    const box = screen.getByPlaceholderText('Search what is on screen');
+    fireEvent.keyDown(box, { key: 'e' });
+    fireEvent.keyDown(box, { key: 's' });
+    expect(spies.markRead).not.toHaveBeenCalled();
+    expect(spies.snooze).not.toHaveBeenCalled();
+  });
+
+  it('narrows the lines on screen with the search box and says whose count that is', () => {
+    mockData.current = base(two());
+    draw();
+    fireEvent.change(screen.getByPlaceholderText('Search what is on screen'), {
+      target: { value: 'chablis' },
+    });
+    expect(screen.getByText('Chablis 1er Cru Montmains is below par')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Terra Nostra invoice is past its terms'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/of them match/)).toBeInTheDocument();
+    // and the register's own filters are named as the register's
+    expect(screen.getByText(/Register, status and the day are the register/)).toBeInTheDocument();
+    expect(screen.getByText(/no full-text search behind this table/)).toBeInTheDocument();
+  });
+
+  it('hides what is ruled off without deleting it, and says how many it folded', () => {
+    const handled = row({ id: 'n3', status: 'read', title: 'Delivery arrived' });
+    mockData.current = base([...two(), handled]);
+    draw();
+    fireEvent.click(screen.getByText('Hide what is ruled off'));
+    expect(screen.getByText(/folded away by/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing was deleted and nothing was told to the server/))
+      .toBeInTheDocument();
+  });
+
+  it('sends the day to the REGISTER, not to the browser', () => {
+    mockData.current = {
+      ...base(two()),
+      days: [
+        { key: '2026-09-02', weekday: 'W', day: 2, onScreen: 3, open: 1, isToday: false },
+        { key: '2026-09-03', weekday: 'T', day: 3, onScreen: 2, open: 2, isToday: true },
+      ],
+    };
+    draw();
+    expect(screen.getByText(/count the lines on this screen, not the register/))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/2026-09-02: 3 lines on this screen, 1 still open/));
+    expect(spies.setFilters).toHaveBeenCalledWith({
+      type: null,
+      status: null,
+      day: '2026-09-02',
+    });
+  });
+
+  it('prints the register’s own total for the day it is reading', () => {
+    mockData.current = {
+      ...base(two()),
+      filters: { type: null, status: null, day: '2026-09-03' },
+      book: { register: { state: 'ready', rows: two() }, total: 6, hasMore: false, pages: 1 },
+    };
+    draw();
+    const rail = screen.getByRole('region', { name: 'The last fortnight' });
+    expect(within(rail).getByText(/the register holds/)).toBeInTheDocument();
+    expect(within(rail).getByText('6')).toBeInTheDocument();
+    expect(within(rail).getByText('2026-09-03')).toBeInTheDocument();
+  });
+
+  it('shows a folded line’s NEWEST stamp when the surviving line is older', () => {
+    const winner = row({
+      id: 'n1',
+      title: '50 wines dropped below par',
+      timestamp: new Date(Date.now() - 6 * 3_600_000).toISOString(),
+      createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
+    });
+    mockData.current = {
+      ...base([winner]),
+      stack: { items: [winner], foldedById: { n1: 44 }, foldedCount: 44 },
+      folds: {
+        n1: { newestAt: Date.now() - 40 * 60_000, winnerIsStale: true },
+      },
+    };
+    draw();
+    // the age of the NEWS, and the age of the line standing for it, both drawn
+    expect(screen.getByText('40m ago')).toBeInTheDocument();
+    expect(screen.getByText('this line 6h ago')).toBeInTheDocument();
+    expect(
+      screen.getByText(/the line standing for them, which is the one with the highest count/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('NotificationsNext — the market-price box', () => {
+  it('says the price register is empty rather than saying nothing is cheap', () => {
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByText(/holds no sightings at all/)).toBeInTheDocument();
+    expect(within(box).queryByText(/Nothing is below its recent average/)).not.toBeInTheDocument();
+    // the rule is printed in full, and the box's limits are stated
+    expect(within(box).getByText(/not folded into its own average/)).toBeInTheDocument();
+    expect(within(box).getByText(/never places an order/)).toBeInTheDocument();
+    expect(
+      within(box).getByText(/does not yet write a line in the book/),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing is below average only when something was actually compared', () => {
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      scannedObservations: 41,
+      scannedProducts: 9,
+      skippedThin: 6,
+      skippedNotBelow: 3,
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByText(/Nothing is below its recent average/)).toBeInTheDocument();
+    expect(within(box).getByText(/41 sightings across/)).toBeInTheDocument();
+    expect(within(box).queryByText(/holds no sightings at all/)).not.toBeInTheDocument();
+  });
+
+  it('draws a real drop with both prices, the count behind the average, and the source', () => {
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      scannedObservations: 41,
+      scannedProducts: 9,
+      items: [
+        {
+          productKey: 'wine:1',
+          productName: 'Etna Rosso Contrada Guardiola',
+          currency: 'EUR',
+          latestPrice: 19.4,
+          latestAt: '2026-09-03T09:00:00.000Z',
+          latestVendor: 'Terra Nostra',
+          latestSource: 'quote',
+          averagePrice: 24.25,
+          averageOf: 5,
+          absoluteBelow: 4.85,
+          fractionBelow: 0.2,
+        },
+      ],
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByText('Etna Rosso Contrada Guardiola')).toBeInTheDocument();
+    expect(within(box).getByText('−20.0%')).toBeInTheDocument();
+    expect(within(box).getByText(/€19\.40/)).toBeInTheDocument();
+    expect(within(box).getByText(/€24\.25/)).toBeInTheDocument();
+    expect(within(box).getByText(/5 earlier sightings/)).toBeInTheDocument();
+    expect(within(box).getByText(/Terra Nostra · quote/)).toBeInTheDocument();
+  });
+
+  it('tells a refused price sweep apart from an empty market', () => {
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      state: 'unreadable',
+      failure: { status: 403, message: 'Forbidden', forbidden: true },
+      scannedObservations: null,
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByText(/refused this account/)).toBeInTheDocument();
+    expect(within(box).queryByText(/holds no sightings at all/)).not.toBeInTheDocument();
+    expect(within(box).queryByText(/Nothing is below its recent average/)).not.toBeInTheDocument();
   });
 });

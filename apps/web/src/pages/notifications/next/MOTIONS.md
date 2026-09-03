@@ -50,3 +50,33 @@ no wax at all. That is the correct reading of the rationing rule, not a loss.
   for the ruled-off register opening, and it is wrong: the account is being
   *consulted*, not revealed. `settle` says "this was already here"; `turn`
   would say "here is something new", which is the opposite of ruling off.
+
+## Fourth pass, 2026-09-03 — five surfaces added, no motion added
+
+The day rail, the register/status filter pills, the quick search, the hide-read
+fold, the keyboard cursor and the market-price register all arrived in this pass
+and the table above is unchanged. That is the intended result, not an oversight:
+
+- **The rail's cells and the filter pills use `nt-ink` (the `ink` token, 160ms)**
+  for their selected/hover states, which is the same micro-state every other
+  control on the page already uses. A pill that animated differently from a line
+  would be claiming to be a different kind of object.
+- **A rail cell's bar does not animate.** The bar is a figure — how many lines
+  that day holds — and this page does not animate a figure it did not measure.
+  The bars count only the rows on screen; the rail says so, and an easing curve
+  on a stated estimate would dress it up as a settled number. (The `tally` spring
+  is used for the rail's per-register counts, which come back from a read and
+  therefore do settle.)
+- **The sleeping band and the market-price register reuse `nt-expand` /
+  `nt-ink`.** A line going to sleep is not celebrated and does not slide away: it
+  is redrawn in the band below by the next render, for the same reason a worked
+  line does not travel between bands — the re-read may have changed it.
+- **Nothing marks a line as "just woken".** A woken line is drawn exactly like a
+  line that was never asleep, and the page states the fact once, in a sentence,
+  above the book. A pulse or a highlight would be motion asserting recency about
+  a row whose recency is already printed on it.
+- **The keyboard cursor is a border and a ground, not a movement.** `j`/`k`
+  change which line carries the ink-1 rule; nothing translates. Scrolling the
+  cursor into view uses the browser's own `scrollIntoView`, which honours the
+  reader's `prefers-reduced-motion` setting without this page mediating it, and
+  is skipped entirely where it is not implemented.

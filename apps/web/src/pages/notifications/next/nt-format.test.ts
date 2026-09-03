@@ -123,8 +123,15 @@ describe('the mark drawn in the emoji’s place', () => {
       ['report', 'Reports'],
       ['generated_report', 'Reports'],
       ['order_pending', 'Orders'],
-      ['delivery_scheduled', 'Orders'],
-      ['order_delivered', 'Orders'],
+      // Split out on 2026-09-03 at the founder's request: deliveries, invoice
+      // confirmations, sale records and a goal reached are registers of their
+      // own now, and each `type` below is what the producer in
+      // `notifications/producers/` actually writes.
+      ['delivery_scheduled', 'Deliveries'],
+      ['order_delivered', 'Deliveries'],
+      ['service_closed', 'Sales'],
+      ['goal_reached', 'Goals'],
+      ['price_change', 'Market'],
       ['overdue_order', 'Orders'],
       ['order_inquiry', 'Orders'],
       ['custom_reminder', 'Calendar'],
@@ -132,7 +139,7 @@ describe('the mark drawn in the emoji’s place', () => {
       ['draft_ready', 'Vendor mail'],
       ['unknown_sender', 'Vendor mail'],
       ['vendor_reply', 'Vendor mail'],
-      ['invoice_received', 'Vendor mail'],
+      ['invoice_received', 'Invoices'],
       ['email_classified_operational', 'Vendor mail'],
       ['email_classified_promo', 'Vendor mail'],
       ['system', 'System'],

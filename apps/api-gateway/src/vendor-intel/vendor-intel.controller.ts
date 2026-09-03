@@ -83,6 +83,41 @@ export class VendorIntelController {
   }
 
   /**
+   * The market-price box on /notifications: which products are being quoted
+   * below what they had lately been going for.
+   *
+   * Owner/manager like the rest of this controller — it states this house's
+   * buying position. `windowDays` and `minObservations` are clamped rather
+   * than trusted: a 1-day window with 0 required history would report noise
+   * as news, and the page prints both numbers next to the answer so the
+   * reader can see the rule that produced it.
+   */
+  @Get("below-average")
+  @ApiOperation({
+    summary:
+      "Products whose newest sighting is below the mean of the earlier sightings in the window",
+  })
+  async belowAverage(
+    @CurrentUser() user: { restaurantId: string },
+    @Query("windowDays") windowDays?: string,
+    @Query("minObservations") minObservations?: string,
+    @Query("limit") limit?: string,
+  ) {
+    const clamp = (raw: string | undefined, min: number, max: number, dflt: number) => {
+      const n = raw === undefined ? NaN : Number(raw);
+      if (!Number.isFinite(n)) return dflt;
+      return Math.min(max, Math.max(min, Math.trunc(n)));
+    };
+    const result = await this.comparison.belowTrailingAverage({
+      restaurantId: user.restaurantId,
+      windowDays: clamp(windowDays, 7, 365, 30),
+      minObservations: clamp(minObservations, 2, 50, 3),
+      limit: clamp(limit, 1, 25, 5),
+    });
+    return { success: true, ...result };
+  }
+
+  /**
    * Record a price someone was told — the phone quote, the WhatsApp message.
    *
    * Manager-level rather than owner-only: managers are the people who actually
