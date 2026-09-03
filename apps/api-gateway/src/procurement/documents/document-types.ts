@@ -18,6 +18,25 @@
  *   invoice           what we are billed           (EDI 810)
  *   credit_memo       what they agreed to give back(EDI 812)
  *   statement         a period roll-up used to tie out
+ *
+ * Five more arrived with ADR 0104 D2/S6 (migration
+ * 20260903160000_canonical_document_and_delivery.sql, which WIDENS the CHECK
+ * rather than replacing it — every literal above still writes):
+ *
+ *   receiving_advice  OUR door count. The document that makes "received" a fact
+ *                     rather than an inference (ADR 0103 A6).
+ *   delivery_note     irsaliye / e-İrsaliye / despatch advice. In Türkiye this is
+ *                     the correctable document the whole flow turns on (0103 D2).
+ *   informal_note     the farmer's handwritten slip (0104 S6). A legally normal
+ *                     transaction must not read like a broken intake.
+ *   price_list        a vendor price sheet.
+ *   portal_export     a CSV or PDF pulled from a distributor portal.
+ *
+ * NOTE, so nobody reads this list as a capability: the EXTRACTOR does not yet
+ * emit the five new types. `DocumentExtractorService.coerceDocType` carries its
+ * own list of six and files anything else as `unknown` with a warning — the
+ * database and this vocabulary can now hold them; classification into them is
+ * slice 2's work, not this slice's.
  */
 export const DOC_TYPES = [
   "purchase_order",
@@ -27,6 +46,11 @@ export const DOC_TYPES = [
   "credit_memo",
   "statement",
   "unknown",
+  "receiving_advice",
+  "delivery_note",
+  "informal_note",
+  "price_list",
+  "portal_export",
 ] as const;
 export type DocType = (typeof DOC_TYPES)[number];
 
