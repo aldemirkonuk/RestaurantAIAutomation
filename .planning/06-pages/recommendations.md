@@ -497,7 +497,7 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | POST | `/analytics/exclusions/:rid` | **new** — `{businessDate, reason}`; `excludeDay()` |
 | DELETE | `/analytics/exclusions/:rid/:businessDate` | **new** — `includeDay()`, "Count it again" |
 | GET | `/analytics/goals/:rid?status=active` | **new 2026-09-03** — the goal sheet's "you already hold a goal on this figure" line; lazy, on first sheet open; `analytics.controller.ts:485` |
-| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction}`, **no `createdBy`** (the controller passes the body through unfiltered at `:507`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:497` |
+| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction}`, **no `createdBy`** (the controller passes the body through unfiltered at `:508`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:497` |
 
 **Endpoints researched for "see it in reports", and what each would give.** The founder asked which
 endpoints this page can reach "to give them better insight". The reports sheet's eleven cuttings are
