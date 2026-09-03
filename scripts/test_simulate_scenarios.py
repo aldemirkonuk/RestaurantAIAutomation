@@ -876,7 +876,9 @@ def test_the_only_non_product_write_is_the_run_row():
     # login, upsert_tables, persist_run — and nothing else.
     assert len(writes) == 3
     assert "/rest/v1/sim_scenario_runs" in source
-    assert source.count("/rest/v1/") == 2  # the inventory read and the run row
+    # Three: the read-only inventory snapshot, the read-only prior-runs lookup
+    # (the replay guard, ADR 0093), and the ONE write — the run row itself.
+    assert source.count("/rest/v1/") == 3  # the inventory read and the run row
 
 
 # ---------------------------------------------------------------------------
@@ -908,11 +910,14 @@ class _FakeResponse:
 class _Transport:
     """Records every request and answers each route the run touches."""
 
-    def __init__(self, fail_checks: bool = False) -> None:
+    def __init__(self, fail_checks: bool = False, prior_runs=None) -> None:
+        self.prior_runs = list(prior_runs or [])
         self.requests: list[tuple[str, str, dict, bytes]] = []
         self.fail_checks = fail_checks
 
-    def __call__(self, request, timeout=None):  # noqa: ARG002 — urlopen's shape
+    def __call__(
+        self, request, timeout=None, **_urlopen_kwargs
+    ):  # noqa: ARG002 — urlopen's shape
         url = request.full_url
         body = request.data or b""
         self.requests.append((request.get_method(), url, dict(request.headers), body))
@@ -934,6 +939,8 @@ class _Transport:
         if "/restaurant_inventory" in url:
             return _FakeResponse(json.dumps(self._inventory_rows()).encode())
         if "/sim_scenario_runs" in url:
+            if request.get_method() == "GET":
+                return _FakeResponse(json.dumps(self.prior_runs).encode())
             return _FakeResponse(b'[{"id":"run-1"}]')
         if "/analytics/tables/" in url:
             return _FakeResponse(b'{"ok":true}')
@@ -1124,7 +1131,7 @@ def test_apply_never_posts_the_dropped_check(monkeypatch, capsys):
     row = [
         json.loads(body)
         for _m, url, _h, body in transport.requests
-        if "/sim_scenario_runs" in url
+        if "/sim_scenario_runs" in url and _m == "POST"
     ][0]
     assert row["expected"]["dropped_check_ids"]
     assert row["expected"]["totals"]["posted_checks"] == 0
@@ -1136,7 +1143,7 @@ def test_apply_persists_the_run_with_the_agreed_columns(applied, capsys):
     body = [
         json.loads(body)
         for _m, url, _h, body in transport.requests
-        if "/sim_scenario_runs" in url
+        if "/sim_scenario_runs" in url and _m == "POST"
     ][0]
     assert set(body) == {
         "restaurant_id",
@@ -1192,7 +1199,7 @@ def test_a_rejected_check_is_a_run_failure_not_a_silent_one(monkeypatch, capsys)
     body = [
         json.loads(body)
         for _m, url, _h, body in transport.requests
-        if "/sim_scenario_runs" in url
+        if "/sim_scenario_runs" in url and _m == "POST"
     ][0]
     assert body["params"]["post_failures"]
 
@@ -1305,3 +1312,88 @@ def test_a_fall_back_day_keeps_every_check_inside_hours(menu_items, hours, wine_
     assert expected["outside_hours_count"] == 0
     for check in expectation.checks:
         assert ctx.is_inside_hours(check.opened_at)
+
+
+def test_low_stock_and_depletion_rows_name_the_library_wine(
+    menu_items, hours, wine_list
+):
+    """The low-stock notification carries master_wine_id as `wineId` (ADR 0093 live day)."""
+    ctx = make_ctx(menu_items, hours, wine_list, seed=7)
+    exp, _outcomes = scn.build_expectation(ctx, "sell_through_to_par")
+    data = exp.to_json()
+    assert data["low_stock"], "sell_through_to_par must cross par"
+    for row in data["low_stock"]:
+        assert row["master_wine_id"], row
+        assert row["inventory_id"]
+    for row in data["depletion"]:
+        assert "master_wine_id" in row
+
+
+def _apply_argv(*extra: str) -> list[str]:
+    return [
+        "scenario",
+        "--archetype",
+        "bistro",
+        "--scenario",
+        "random",
+        "--seed",
+        "7",
+        "--date",
+        "2026-09-02",
+        "--restaurant",
+        "11111111-1111-1111-1111-111111111111",
+        "--apply",
+        *extra,
+    ]
+
+
+def _wire(monkeypatch, transport) -> None:
+    monkeypatch.setattr(bridge_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setenv("SIM_OWNER_EMAIL", "owner@example.test")
+    monkeypatch.setenv("SIM_OWNER_PASSWORD", "x")
+    monkeypatch.setenv("SUPABASE_URL", "http://localhost:54321")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    monkeypatch.setenv("POS_HUB_WEBHOOK_SECRET", "hmac-secret")
+
+
+def test_apply_refuses_to_repost_a_day_that_was_already_posted(monkeypatch, capsys):
+    """Same (tenant, scenario, seed, date) = same check ids; the hub upserts (ADR 0093)."""
+    from scripts.simulate import cli as cli_mod
+
+    transport = _Transport(prior_runs=[{"id": "run-0", "expected": {"checks": []}}])
+    _wire(monkeypatch, transport)
+    with pytest.raises(SystemExit) as exc:
+        cli_mod.main(_apply_argv())
+    assert "earlier run" in str(exc.value) and "run-0" in str(exc.value)
+    assert not transport.urls("/pos-hub/webhook/"), "nothing may be posted"
+
+
+def test_replay_refuses_a_plan_that_differs_from_the_earlier_run(monkeypatch):
+    from scripts.simulate import cli as cli_mod
+
+    transport = _Transport(prior_runs=[{"id": "run-0", "expected": {"checks": []}}])
+    _wire(monkeypatch, transport)
+    with pytest.raises(SystemExit) as exc:
+        cli_mod.main(_apply_argv("--replay"))
+    assert "differs" in str(exc.value)
+    assert not transport.urls("/pos-hub/webhook/")
+
+
+def test_replay_of_an_identical_plan_proceeds(monkeypatch, capsys):
+    from scripts.simulate import cli as cli_mod
+
+    first = _Transport()
+    _wire(monkeypatch, first)
+    assert cli_mod.main(_apply_argv()) == 0
+    stored = [
+        json.loads(body)
+        for _m, url, _h, body in first.requests
+        if "/sim_scenario_runs" in url and _m == "POST"
+    ][0]["expected"]
+    capsys.readouterr()
+    second = _Transport(prior_runs=[{"id": "run-0", "expected": stored}])
+    _wire(monkeypatch, second)
+    assert cli_mod.main(_apply_argv("--replay")) == 0
+    assert "replay of run run-0" in capsys.readouterr().out
+    assert len(second.urls("/pos-hub/webhook/")) == len(first.urls("/pos-hub/webhook/"))

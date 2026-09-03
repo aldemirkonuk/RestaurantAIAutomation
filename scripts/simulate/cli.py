@@ -83,7 +83,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         analytics_base=args.analytics_base,
         stock_base=args.stock_base,
         toast_secret=args.toast_secret or os.environ.get("TOAST_WEBHOOK_SECRET", ""),
-        pos_hub_secret=args.pos_hub_secret or os.environ.get("POS_HUB_WEBHOOK_SECRET", ""),
+        pos_hub_secret=args.pos_hub_secret
+        or os.environ.get("POS_HUB_WEBHOOK_SECRET", ""),
         ingress=args.ingress,
         apply=args.apply,
         allow_remote=args.allow_remote,
@@ -225,7 +226,9 @@ def cmd_mappings(args: argparse.Namespace) -> int:
     print(f"  food: {len(rows) - len(wine_rows)}  (explicit is_wine=false locks)")
     print("\nsample:")
     for row in rows[:6]:
-        print(f"  {'WINE' if row['is_wine'] else 'food'}  {row['item_name'][:52]:52s} {row['category']}")
+        print(
+            f"  {'WINE' if row['is_wine'] else 'food'}  {row['item_name'][:52]:52s} {row['category']}"
+        )
     print(
         "\nWithout these the keyword fallback resolves ~35% of wine names "
         "(python3 -m scripts.simulate wines)."
@@ -249,25 +252,33 @@ def cmd_oracle(args: argparse.Namespace) -> int:
         for sig, units in wine_units_poured(checks).items():
             totals[sig] = round(totals.get(sig, 0.0) + units, 3)
     by_wine = {
-        (w.get("signature_hash") or ""): f"{w.get('producer') or ''} {w.get('wine_name')}".strip()
+        (
+            w.get("signature_hash") or ""
+        ): f"{w.get('producer') or ''} {w.get('wine_name')}".strip()
         for w in wine_list.bottles + wine_list.btg
     }
-    print(json.dumps(
-        {
-            "archetype": args.archetype,
-            "days": args.days,
-            "seed": args.seed,
-            "note": "bottle-equivalents; a glass counts as 0.2 bottles",
-            "depletion": sorted(
-                (
-                    {"signature_hash": sig, "wine": by_wine.get(sig, "?"), "bottles": units}
-                    for sig, units in totals.items()
-                ),
-                key=lambda r: -r["bottles"],
-            )[: args.top],
-        },
-        indent=2,
-    ))
+    print(
+        json.dumps(
+            {
+                "archetype": args.archetype,
+                "days": args.days,
+                "seed": args.seed,
+                "note": "bottle-equivalents; a glass counts as 0.2 bottles",
+                "depletion": sorted(
+                    (
+                        {
+                            "signature_hash": sig,
+                            "wine": by_wine.get(sig, "?"),
+                            "bottles": units,
+                        }
+                        for sig, units in totals.items()
+                    ),
+                    key=lambda r: -r["bottles"],
+                )[: args.top],
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -282,7 +293,9 @@ def cmd_oracle(args: argparse.Namespace) -> int:
 # from the venue's own operating hours.
 # ===========================================================================
 
-FIXTURE_HOURS = REPO_ROOT / "datasets" / "sim" / "fixtures" / "operating-hours-cases.json"
+FIXTURE_HOURS = (
+    REPO_ROOT / "datasets" / "sim" / "fixtures" / "operating-hours-cases.json"
+)
 
 
 def _resolve_hours_for_dry_run(archetype: str) -> tuple[dict, str | None, str]:
@@ -333,6 +346,32 @@ def _hhmm(instant, tz_name: str) -> str:
     return instant.astimezone(ZoneInfo(tz_name)).strftime("%H:%M")
 
 
+def _same_plan(earlier: dict, now: dict) -> bool:
+    """Same checks, same lines — the only thing a replay may re-post."""
+
+    def shape(exp: dict) -> list:
+        out = []
+        for c in exp.get("checks") or []:
+            out.append(
+                (
+                    c.get("external_check_id"),
+                    c.get("voided"),
+                    tuple(
+                        (
+                            ln.get("external_item_id"),
+                            ln.get("name"),
+                            ln.get("qty"),
+                            ln.get("expect"),
+                        )
+                        for ln in c.get("lines") or []
+                    ),
+                )
+            )
+        return sorted(out, key=lambda x: str(x[0]))
+
+    return shape(earlier) == shape(now)
+
+
 def cmd_scenario(args: argparse.Namespace) -> int:
     """Replay a named day into the product and record what it must produce.
 
@@ -353,7 +392,7 @@ def cmd_scenario(args: argparse.Namespace) -> int:
         login,
     )
     from scripts.synth.ids import sim_restaurant_id
-    from scripts.synth.seed import sim_inventory_id
+    from scripts.synth.seed import plan_wine_identities
 
     if args.list:
         print("scenarios (python3 -m scripts.simulate scenario --scenario <id>)\n")
@@ -439,8 +478,12 @@ def cmd_scenario(args: argparse.Namespace) -> int:
         if not timezone_name:
             from scripts.synth.recipes import load_recipe
 
-            timezone_name = (load_recipe(args.archetype).restaurant or {}).get("timezone")
-            hours_source = "product_api (timezone from the archetype: the API returned null)"
+            timezone_name = (load_recipe(args.archetype).restaurant or {}).get(
+                "timezone"
+            )
+            hours_source = (
+                "product_api (timezone from the archetype: the API returned null)"
+            )
     else:
         hours, timezone_name, hours_source = _resolve_hours_for_dry_run(args.archetype)
 
@@ -455,7 +498,9 @@ def cmd_scenario(args: argparse.Namespace) -> int:
     else:
         requested = _datetime.now(ZoneInfo(timezone_name)).date()
     try:
-        service_date, date_reason = scn.resolve_service_date(args.scenario, hours, requested)
+        service_date, date_reason = scn.resolve_service_date(
+            args.scenario, hours, requested
+        )
     except OperatingHoursError as exc:
         raise SystemExit(f"operating_hours is not a valid shape: {exc}")
 
@@ -470,16 +515,19 @@ def cmd_scenario(args: argparse.Namespace) -> int:
                 "Without the opening stock, every depletion figure in the expectation "
                 "would be arithmetic over a guess."
             )
-        signature_by_id = {
-            sim_inventory_id(args.archetype, wine["signature_hash"]): wine["signature_hash"]
-            for wine in (wine_list.bottles + wine_list.btg)
-            if wine.get("signature_hash")
-        }
+        # The seed collapses menu lines onto library identities, so several
+        # hashes may share one inventory row (ADR 0093). Invert the same plan.
+        ident = plan_wine_identities(args.archetype, _load_wines(args.archetype))
+        signature_by_id: dict[str, list[str]] = {}
+        for sig, inv_id in ident.inventory_id_by_sig.items():
+            signature_by_id.setdefault(inv_id, []).append(sig)
         try:
             rows = fetch_inventory(supabase_url, service_key, restaurant_id)
         except ScenarioApplyError as exc:
             raise SystemExit(str(exc))
-        inventory = scn.inventory_from_rest_rows(rows, signature_by_inventory_id=signature_by_id)
+        inventory = scn.inventory_from_rest_rows(
+            rows, signature_by_inventory_id=signature_by_id
+        )
         inventory_source = "restaurant_inventory"
         if not inventory:
             raise SystemExit(
@@ -517,7 +565,9 @@ def cmd_scenario(args: argparse.Namespace) -> int:
     params["service_date_reason"] = date_reason
     params["restaurant_id_source"] = "argument" if args.restaurant else "derived"
 
-    _print_scenario_summary(ctx, expected, params, outcomes, WEEKDAYS, verbose=args.verbose)
+    _print_scenario_summary(
+        ctx, expected, params, outcomes, WEEKDAYS, verbose=args.verbose
+    )
 
     if args.out:
         Path(args.out).write_text(json.dumps(expected, indent=2, sort_keys=True))
@@ -528,10 +578,14 @@ def cmd_scenario(args: argparse.Namespace) -> int:
         print("Re-run with --apply (and SIM_OWNER_EMAIL / SIM_OWNER_PASSWORD) to post.")
         return 0
 
-    return _apply_scenario(args, ctx, expectation, expected, params, bearer, restaurant_id)
+    return _apply_scenario(
+        args, ctx, expectation, expected, params, bearer, restaurant_id
+    )
 
 
-def _print_scenario_summary(ctx, expected, params, outcomes, weekdays, *, verbose: bool) -> None:
+def _print_scenario_summary(
+    ctx, expected, params, outcomes, weekdays, *, verbose: bool
+) -> None:
     print(
         f"{expected['archetype_id']}  scenario={expected['scenario']}  "
         f"seed={expected['seed']}\n"
@@ -540,7 +594,8 @@ def _print_scenario_summary(ctx, expected, params, outcomes, weekdays, *, verbos
         f"inventory: {params['inventory_source']}"
     )
     windows = ", ".join(
-        f"{_hhmm(start, ctx.timezone)}-{_hhmm(end, ctx.timezone)}" for start, end in ctx.windows
+        f"{_hhmm(start, ctx.timezone)}-{_hhmm(end, ctx.timezone)}"
+        for start, end in ctx.windows
     )
     print(f"open: {windows or 'CLOSED all day'}\n")
 
@@ -574,7 +629,9 @@ def _print_scenario_summary(ctx, expected, params, outcomes, weekdays, *, verbos
                         f"  -> {line.expect}"
                     )
         if len(outcome.checks) > len(shown):
-            print(f"    showing {len(shown)} of {len(outcome.checks)} checks (--verbose for all)")
+            print(
+                f"    showing {len(shown)} of {len(outcome.checks)} checks (--verbose for all)"
+            )
         print()
 
     depletion = expected["depletion"]
@@ -614,12 +671,19 @@ def _print_scenario_summary(ctx, expected, params, outcomes, weekdays, *, verbos
     )
 
 
-def _apply_scenario(args, ctx, expectation, expected, params, bearer, restaurant_id) -> int:
+def _apply_scenario(
+    args, ctx, expectation, expected, params, bearer, restaurant_id
+) -> int:
     """Post the day, then record the expectation. Order is load-bearing at every step."""
     from datetime import datetime as _datetime
     from datetime import timezone as _timezone
 
-    from scripts.simulate.scenario_apply import ScenarioApplyError, persist_run, upsert_tables
+    from scripts.simulate.scenario_apply import (
+        ScenarioApplyError,
+        fetch_runs,
+        persist_run,
+        upsert_tables,
+    )
 
     # Refuse to write anything teardown cannot take back — the same gate cmd_run
     # borrows from scripts/synth rather than holding a second opinion about it.
@@ -645,7 +709,8 @@ def _apply_scenario(args, ctx, expectation, expected, params, bearer, restaurant
         restaurant_id=restaurant_id,
         restaurant_guid=args.restaurant_guid or f"sim-guid-{args.archetype}",
         analytics_base=args.analytics_base,
-        pos_hub_secret=args.pos_hub_secret or os.environ.get("POS_HUB_WEBHOOK_SECRET", ""),
+        pos_hub_secret=args.pos_hub_secret
+        or os.environ.get("POS_HUB_WEBHOOK_SECRET", ""),
         bearer=bearer,
         # ONE door. The expectation is written against the signed generic
         # webhook; posting the same day to the Toast ingress as well would
@@ -660,11 +725,48 @@ def _apply_scenario(args, ctx, expectation, expected, params, bearer, restaurant
         raise SystemExit(str(exc))
 
     failures: list[str] = []
+    # Stamped BEFORE the first post: the low-stock edge sweep runs every two
+    # minutes and can fire between the first check and the last, so the verifier
+    # must window notifications from here, not from the run row's posted_at.
+    posting_started_at = _datetime.now(_timezone.utc).isoformat()
+
+    # 0. Refuse to overwrite an earlier run of this same day (same check ids)
+    #    unless the caller said --replay AND the plan is byte-identical. See
+    #    scenario_apply.fetch_runs for the measured failure this prevents.
+    prior = fetch_runs(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+        restaurant_id,
+        scenario=args.scenario,
+        seed=args.seed,
+        service_date=expected["service_date"],
+    )
+    if prior:
+        if not getattr(args, "replay", False):
+            raise SystemExit(
+                f"--apply refused: {len(prior)} earlier run(s) of scenario "
+                f"'{args.scenario}' seed {args.seed} on {expected['service_date']} "
+                f"exist for this tenant (latest {prior[0].get('id')}). The check ids "
+                "would be the same, and the hub upserts — a plan that differs "
+                "because stock moved would silently rewrite the earlier run's "
+                "checks. Pass --replay to re-post an identical plan, or change "
+                "the seed/date, or tear down and re-seed the tenant."
+            )
+        same = _same_plan(prior[0].get("expected") or {}, expected)
+        if not same:
+            raise SystemExit(
+                "--replay refused: the plan differs from the earlier run's "
+                f"({prior[0].get('id')}) — the tenant's stock has moved since, so "
+                "this is not a replay but a different day under the same ids."
+            )
+        print(f"replay of run {prior[0].get('id')}: plan identical, re-posting")
 
     # 1. Tables, before any check: the hub resolves `tableRef` at ingest, so a
     #    table that arrives later does not retroactively attach to the check.
     try:
-        seeded = upsert_tables(args.analytics_base, restaurant_id, bearer, expected["tables"])
+        seeded = upsert_tables(
+            args.analytics_base, restaurant_id, bearer, expected["tables"]
+        )
         print(f"\ntables upserted: {seeded}")
     except ScenarioApplyError as exc:
         failures.append(f"tables: {exc}")
@@ -698,7 +800,11 @@ def _apply_scenario(args, ctx, expectation, expected, params, bearer, restaurant
             bridge.send_analytics(payload)
             sent += 1
             if bridge.analytics.failed > before_bad:
-                detail = bridge.analytics.errors[-1] if bridge.analytics.errors else "rejected"
+                detail = (
+                    bridge.analytics.errors[-1]
+                    if bridge.analytics.errors
+                    else "rejected"
+                )
                 failures.append(
                     f"check {planned.external_check_id} ({planned.scenario}): {detail}"
                 )
@@ -714,7 +820,11 @@ def _apply_scenario(args, ctx, expectation, expected, params, bearer, restaurant
     # 4. The run's own row, written last so `posted_at` is a fact rather than an
     #    intention. This is the only write in the harness that does not go
     #    through the product API — see scenario_apply.persist_run.
-    params = {**params, "post_failures": failures}
+    params = {
+        **params,
+        "post_failures": failures,
+        "posting_started_at": posting_started_at,
+    }
     row = {
         "restaurant_id": restaurant_id,
         "archetype_id": args.archetype,
@@ -760,20 +870,31 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--covers-per-night", type=int, default=None)
         sp.add_argument("--seed", type=int, default=20260729)
 
-    r = sub.add_parser("run", help="Generate service and post it through both ingresses")
+    r = sub.add_parser(
+        "run", help="Generate service and post it through both ingresses"
+    )
     common(r)
-    r.add_argument("--restaurant", default=None, help="Our restaurant UUID (required with --apply)")
-    r.add_argument("--restaurant-guid", default=None, help="The POS's own restaurant id")
+    r.add_argument(
+        "--restaurant", default=None, help="Our restaurant UUID (required with --apply)"
+    )
+    r.add_argument(
+        "--restaurant-guid", default=None, help="The POS's own restaurant id"
+    )
     r.add_argument("--analytics-base", default="http://localhost:3001")
     r.add_argument("--stock-base", default="http://localhost:8000")
-    r.add_argument("--toast-secret", default=None, help="Defaults to $TOAST_WEBHOOK_SECRET")
+    r.add_argument(
+        "--toast-secret", default=None, help="Defaults to $TOAST_WEBHOOK_SECRET"
+    )
     r.add_argument(
         "--pos-hub-secret",
         default=None,
         help="HMAC key for X-Pos-Hub-Signature on the analytics/depletion ingress. Defaults to $POS_HUB_WEBHOOK_SECRET",
     )
     r.add_argument("--ingress", choices=("both", "analytics", "stock"), default="both")
-    r.add_argument("--apply", action="store_true", help="Actually post (default: dry run)")
+    r.add_argument(
+        "--apply", action="store_true", help="Actually post (default: dry run)"
+    )
+
     r.add_argument(
         "--allow-remote",
         action="store_true",
@@ -835,21 +956,32 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Our restaurant UUID (required with --apply; a dry run derives it)",
     )
-    s.add_argument("--restaurant-guid", default=None, help="The POS's own restaurant id")
+    s.add_argument(
+        "--restaurant-guid", default=None, help="The POS's own restaurant id"
+    )
     s.add_argument("--analytics-base", default="http://localhost:4000")
     s.add_argument(
         "--pos-hub-secret",
         default=None,
         help="HMAC key for X-Pos-Hub-Signature. Defaults to $POS_HUB_WEBHOOK_SECRET",
     )
-    s.add_argument("--apply", action="store_true", help="Actually post (default: dry run)")
+    s.add_argument(
+        "--apply", action="store_true", help="Actually post (default: dry run)"
+    )
+    s.add_argument(
+        "--replay",
+        action="store_true",
+        help="Re-post a day already posted for this tenant, only if the plan is identical",
+    )
     s.add_argument(
         "--allow-remote",
         action="store_true",
         help="Required to --apply against a non-localhost --analytics-base",
     )
     s.add_argument("--verbose", action="store_true", help="Every check, every line")
-    s.add_argument("--out", default=None, help="Write the expectation JSON to this file")
+    s.add_argument(
+        "--out", default=None, help="Write the expectation JSON to this file"
+    )
     s.set_defaults(func=cmd_scenario)
     return p
 

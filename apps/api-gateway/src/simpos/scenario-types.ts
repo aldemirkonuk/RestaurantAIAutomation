@@ -62,6 +62,8 @@ export interface ExpectedDepletion {
 
 export interface ExpectedLowStock {
   inventory_id: string;
+  /** The library wine — what the low-stock notification's `wineId` names. */
+  master_wine_id?: string | null;
   wine_name?: string | null;
   threshold_min?: number | null;
   expected_stock_live?: number | null;

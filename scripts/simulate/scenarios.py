@@ -45,7 +45,7 @@ import random
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from scripts.simulate.detection import looks_like_wine
 from scripts.simulate.hours import (
@@ -177,37 +177,48 @@ def build_inventory_from_archetype(
     where the numbers came from.
     """
     from scripts.synth.recipes import load_recipe
-    from scripts.synth.seed import compute_opening_stock, sim_inventory_id, sim_wine_id
+    from scripts.synth.seed import compute_opening_stock, plan_wine_identities
 
     profile = load_recipe(archetype_id)
     opening_cfg = profile.opening_stock
     threshold_min = int(opening_cfg.get("threshold_min", 5))
     price_tier = (profile.defaults or {}).get("price_tier")
 
+    # The seed collapses menu lines onto library identities — one wine and one
+    # inventory row per identity (ADR 0093). The same plan is used here, so a
+    # line resolves to the inventory row the seed actually created.
+    items = list(items)
+    ident = plan_wine_identities(
+        archetype_id, [i for i in items if i.get("signature_hash")]
+    )
+    by_owner: dict[str, InventoryRow] = {}
     out: dict[str, InventoryRow] = {}
     for item in items:
         sig = item.get("signature_hash")
         if not sig or sig in out:
             continue
-        out[sig] = InventoryRow(
-            id=sim_inventory_id(archetype_id, sig),
-            signature_hash=sig,
-            wine_name=item.get("wine_name") or "",
-            master_wine_id=sim_wine_id(sig),
-            stock_live=compute_opening_stock(
-                item, opening_cfg, restaurant_price_tier=price_tier
-            ),
-            threshold_min=threshold_min,
-            bottle_size_ml=None,
-            pour_size_ml=COLUMN_DEFAULT_POUR_ML,
-        )
+        owner = ident.canonical_sig_by_sig[sig]
+        if owner not in by_owner:
+            by_owner[owner] = InventoryRow(
+                id=ident.inventory_id_by_sig[sig],
+                signature_hash=owner,
+                wine_name=item.get("wine_name") or "",
+                master_wine_id=ident.wine_id_by_sig[sig],
+                stock_live=compute_opening_stock(
+                    item, opening_cfg, restaurant_price_tier=price_tier
+                ),
+                threshold_min=threshold_min,
+                bottle_size_ml=None,
+                pour_size_ml=COLUMN_DEFAULT_POUR_ML,
+            )
+        out[sig] = by_owner[owner]
     return out
 
 
 def inventory_from_rest_rows(
     rows: Iterable[Mapping[str, Any]],
     *,
-    signature_by_inventory_id: Mapping[str, str] | None = None,
+    signature_by_inventory_id: Mapping[str, str | Sequence[str]] | None = None,
 ) -> dict[str, InventoryRow]:
     """The snapshot an `--apply` run uses: live `restaurant_inventory` rows.
 
@@ -220,18 +231,23 @@ def inventory_from_rest_rows(
     (it is not on the frozen menu). It is dropped rather than invented into the
     snapshot under a made-up hash.
     """
-    lookup = dict(signature_by_inventory_id or {})
+    # One inventory row may serve several menu hashes — the seed collapses
+    # lines onto library identities (ADR 0093). A value is one hash or a list
+    # of hashes; every hash gets the same InventoryRow.
+    lookup: dict[str, list[str]] = {}
+    for row_id, sigs in dict(signature_by_inventory_id or {}).items():
+        lookup[str(row_id)] = [sigs] if isinstance(sigs, str) else list(sigs)
     out: dict[str, InventoryRow] = {}
     for row in rows:
         row_id = str(row.get("id") or "")
-        sig = lookup.get(row_id)
-        if not sig:
+        sigs = lookup.get(row_id)
+        if not sigs:
             continue
         bottle = row.get("bottle_size_ml")
         pour = row.get("pour_size_ml")
-        out[sig] = InventoryRow(
+        shared = InventoryRow(
             id=row_id,
-            signature_hash=sig,
+            signature_hash=sigs[0],
             wine_name=row.get("wine_name") or "",
             master_wine_id=row.get("master_wine_id"),
             stock_live=int(row.get("stock_live") or 0),
@@ -241,6 +257,8 @@ def inventory_from_rest_rows(
             sale_type=row.get("sale_type") or COLUMN_DEFAULT_SALE_TYPE,
             is_active=bool(row.get("is_active", True)),
         )
+        for sig in sigs:
+            out[sig] = shared
     return out
 
 
@@ -606,6 +624,10 @@ class Expectation:
                         "wine_name": inv.wine_name if inv else "",
                         "opening_stock_live": inv.stock_live if inv else 0,
                         "threshold_min": inv.threshold_min if inv else 0,
+                        # The low-stock notification names the LIBRARY wine
+                        # (`wineId` = master_wine_id), not the inventory row;
+                        # the verifier matches on either.
+                        "master_wine_id": inv.master_wine_id if inv else None,
                         "bottle_size_ml": (
                             inv.effective_bottle_ml if inv else RPC_DEFAULT_BOTTLE_ML
                         ),
@@ -633,6 +655,7 @@ class Expectation:
             raw = row["opening_stock_live"] - row["bottles"] - opened_by_pours
             entry = {
                 "inventory_id": row["inventory_id"],
+                "master_wine_id": row.get("master_wine_id"),
                 "wine_name": row["wine_name"],
                 "opening_stock_live": row["opening_stock_live"],
                 "threshold_min": row["threshold_min"],
@@ -687,6 +710,7 @@ class Expectation:
             ):
                 entry = {
                     "inventory_id": row["inventory_id"],
+                    "master_wine_id": row.get("master_wine_id"),
                     "wine_name": row["wine_name"],
                     "threshold_min": row["threshold_min"],
                     "expected_stock_live": row["expected_stock_live"],

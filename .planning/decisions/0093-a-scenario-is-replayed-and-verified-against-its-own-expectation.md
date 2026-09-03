@@ -172,9 +172,35 @@ Concretely, what ships under this ADR:
   the real helper replaced the stub it was built against: `hours_unknown` and
   `hours_invalid` are two distinct `unverifiable`s, never a "within hours".
 
+## The live day, on the record (2026-09-03, PR #280 merged 02:06Z; both migrations applied by the integration by 02:08Z)
+
+Run against a local gateway on `:4010` (the merged `main`), the shared Supabase, and the
+`sim-bistro` tenant seeded by `scripts/synth generate --archetype bistro --apply`.
+Founder's day: `scenario --scenario random --seed 7 --date 2026-09-02` — a Wednesday in
+Chicago, open 12:00–23:00, 21 checks, 52 wine and 82 food lines, the 14:00 glass and the
+14:02 five-bottle table, a wine sold through to par, a void, a duplicate webhook.
+
+| Attempt | Verdict | What it found |
+|---|---|---|
+| Day 1 (run `137f4055`) | **14 pass · 2 fail · 4 unverifiable** | `consumption.mirror` **0 of 51** rows: the hub's `upsert(onConflict: "restaurant_id,notes")` had failed with **42P10** on every POS sale since 2026-08-24 — the idempotency index is *partial* and Postgres will not match it to an unqualified conflict target. `low_stock.notified` missed 3 real rows because the run's `posted_at` is stamped after the last post and the 2-minute cron fired mid-run. |
+| Day 2 (run `b5afaad5`) | 13 · 4 · 3 | Two of the four fails were **my own replay**: a second `--apply` of the same day rewrote two stock-dependent checks under the same ids, and the revenue gap (567.53) was exactly their difference. The engine now refuses to re-post a day unless `--replay` is given and the plan is identical. The third: the notification names the **library** wine (`wineId = master_wine_id`), the verifier matched on `inventory_id`. |
+| Day 3 (run `937a23f0`, clean teardown → seed → one apply) | **17 pass · 0 fail · 3 unverifiable** | Every measurable check passes. The three unverifiables are structural and say why: revenue buckets on the UTC date of `closed_at` while a Chicago day spans two (3233.41 + 2316.15 = the expected total); a trading day is not a closed day; this composition drops no webhook. Notifications: 3 rows, `delivery_status.email.ok = true`, one recipient. Insights: 3 generated, `consumption` now among the available sources (493 candidate types, up from 370 with the mirror empty). |
+
+**Six defects the harness surfaced before or during the run, all fixed with a failing test
+first:** the sim seed could not insert its wines (`master_wine_library.signature_hash` is a
+UNIQUE identity the seed predated — 92 menu lines, 81 identities; now collapsed through a
+Python mirror of `wine_signature_hash` proven byte-identical on all 92 and re-checked
+against the SQL function at apply time); one inventory row per wine per restaurant (same
+collapse); sim personas had no sign-in method the product honours (`users.password_hash`
+bcrypt, cost 10); personas were not bound to the seeded tenant (`users.restaurant_id`,
+without which the tenant guard refuses them); the consumption mirror's 42P10; and the
+verifier's notification window. Two harness faults were mine: the fixture's DST prose and
+the `posted_at` window.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created; number allocated by `scripts/check_adr_numbers_unique.py` across 580 refs and a `git worktree list` sweep |
 | 2026-09-02 | — | Built by three parallel Opus builders + integration; corrections above recorded; live day pending the migrations reaching production on merge |
+| 2026-09-03 | — | PR #280 merged; live day run three times (table above); final verdict 17 · 0 · 3 on run `937a23f0`; six defects fixed in the follow-up PR |
