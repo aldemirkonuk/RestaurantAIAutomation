@@ -944,6 +944,23 @@ def egress(monkeypatch):
     return attempts
 
 
+TOAST_DOMAIN = "toasttab.com"
+
+
+def reached_toast(attempts) -> bool:
+    """True when a recorded egress attempt names Toast's domain itself.
+
+    Anchored on the leading dot rather than written as `"toasttab.com" in a`.
+    A bare substring also matches `toasttab.com.evil.example` and
+    `eviltoasttab.com`, so it would report SUCCESS for egress to an attacker
+    host — in the one assertion whose entire job is to say *where* the process
+    went. CodeQL flags this as `py/incomplete-url-substring-sanitization`, and
+    it is right to: a test that cannot tell the real host from a lookalike is
+    not measuring what it claims.
+    """
+    return any(a == TOAST_DOMAIN or a.endswith("." + TOAST_DOMAIN) for a in attempts)
+
+
 @pytest.fixture
 def toast_env(monkeypatch):
     """Real settings + real dependency, with credentials present.
@@ -952,7 +969,7 @@ def toast_env(monkeypatch):
     reason that has nothing to do with the switch, which would make every
     assertion below vacuous.
     """
-    import api.toast_routes as toast_routes
+    from api import toast_routes
 
     monkeypatch.setenv("ADMIN_API_KEY", ADMIN_KEY)
     monkeypatch.setenv("TOAST_CLIENT_ID", "test-client-id")
@@ -1030,8 +1047,8 @@ async def test_mock_mode_false_reaches_the_real_toast_host(toast_env, egress):
     toast_env("false")
 
     response = await _call_menus()
-    assert any(
-        "toasttab.com" in a for a in egress
+    assert reached_toast(
+        egress
     ), f"TOAST_MOCK_MODE=false did not reach the real host; egress={egress}"
     # The recorder refuses the connection, so the client reports Toast
     # unreachable — which is what proves the live path, not the mock path, ran.
@@ -1044,4 +1061,4 @@ async def test_only_the_literal_false_disarms_the_switch(toast_env, egress):
 
     await _call_menus()
 
-    assert any("toasttab.com" in a for a in egress)
+    assert reached_toast(egress)
