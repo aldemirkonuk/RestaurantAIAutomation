@@ -55,7 +55,7 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 
 ## 1a. Features
 - Browse the master wine catalogue as your restaurant sees it: search, 9 filters, sort cycle, view modes (~500 wines)
-- Stock overlay from inventory; list price vs market price (🚧 market price renders "—" until enrichment data exists)
+- Stock overlay from inventory; list price vs market price (PARTIAL: market price renders "—" until enrichment data exists)
 - Add a catalogue wine into inventory
 - Vendor recommendations for the selected wine
 - Scan a menu photo to add wines; manual add modals
@@ -71,12 +71,51 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 - **Bring into the cellar** — a catalogue-only bottle can be booked into inventory (real write, `POST /inventory/:rid/items`)
 - **Order more** — hold-to-approve sends a real purchase order (`POST /procurement/orders`); it is offered only for a bottle that already has a cellar row and a chosen vendor, because the gateway keys an order line on `inventoryId`. Vendor recommendations for the bottle mark the suggested vendors in the picker
 - Live catalogue updates over WebSocket (the `wine_update` event re-reads the book)
-- 🚧 **Market price renders `—` for every bottle** and says why — `retail_price_avg` is null on all 442 rows and its writer has no deployed worker
-- 🚧 **`/beer` `/whiskey` `/cocktails` are honest empty registers** — the tables exist (`public.beverages`, `public.cocktails`) but **no gateway controller serves them**, so each child states what is missing and lists the columns the register would carry. No rows, no counts, no zeros
-- 🚧 **"Read a menu" detects but does not add** — `scanMenuImage` is real; neither the scanner tab nor the legacy caller writes a detected title anywhere, so the control is named for what it does and says plainly that nothing was written
-- ⛔ **Not carried over: "Reorder" and "save as recurring"** — both reported success and wrote nothing (§10). Replaced by one real order path and by nothing, respectively
-- ⛔ **Not carried over: the Body filter** — `body` was the constant `'medium'` on every row, so the control could only match all or none
-- ⛔ **Not carried over: bulk selection and CSV export** — the export shipped six fabricated attribute columns (Body / Sweetness / Acidity / Alcohol % / Aromas / Flavors) as measured data, and that is the most damaging thing on the legacy page because it leaves the building as a file. It returns when there are real columns to export (§13)
+- **PARTIAL** &middot; **Market price renders `—` for every bottle** and says why — `retail_price_avg` is null on all 442 rows and its writer has no deployed worker
+- **PARTIAL** &middot; **`/beer` `/whiskey` `/cocktails` are honest empty registers** — the tables exist (`public.beverages`, `public.cocktails`) but **no gateway controller serves them**, so each child states what is missing and lists the columns the register would carry. No rows, no counts, no zeros
+- **PARTIAL** &middot; **"Read a menu" detects but does not add** — `scanMenuImage` is real; neither the scanner tab nor the legacy caller writes a detected title anywhere, so the control is named for what it does and says plainly that nothing was written
+- **NOT CARRIED OVER** &middot; **Not carried over: "Reorder" and "save as recurring"** — both reported success and wrote nothing (§10). Replaced by one real order path and by nothing, respectively
+- **NOT CARRIED OVER** &middot; **Not carried over: the Body filter** — `body` was the constant `'medium'` on every row, so the control could only match all or none
+- **NOT CARRIED OVER** &middot; **Not carried over: bulk selection and CSV export** — the export shipped six fabricated attribute columns (Body / Sweetness / Acidity / Alcohol % / Aromas / Flavors) as measured data, and that is the most damaging thing on the legacy page because it leaves the building as a file. It returns when there are real columns to export (§13)
+
+**Second pass, 2026-09-03 — the cellar adapts to the house:**
+
+- **The registers are the house's own, not a constant.** Seven in the vocabulary
+  (Wines, Beer, Whiskey, Spirits, Cocktails, Non-alcoholic, Soft drinks); the
+  parent draws only the ones this restaurant carries, and says in one line how
+  that was decided and where to change it
+- **Inferred, then confirmed at onboarding** (founder's decision) — inference
+  reads this tenant's own `restaurant_inventory` (via `master_wine_library.beverage_kind`),
+  its `menu_items` section headers and names, and its `cocktails` rows, and
+  returns each register with a count, a confidence and a sentence of evidence
+- **`CellarRegistersStep`** — the onboarding confirm surface, exported from this
+  directory for `/get-started` to mount (§13). Shows the proposal with the
+  evidence behind each line, every line editable, and records all seven at once
+- **`CellarRegistersControl`** — the Settings control, exported for the settings
+  register to mount (§13). Seven switches, the evidence beside each, and the
+  manual-on path for a category the books cannot yet see
+- **The ask, never an interrupt** — a register on with nothing behind it shows a
+  persistent, dismissible **inline** notice with a **register-aware** sentence
+  ("Put your beers on the menu. /inventory cannot hold a keg yet"); several at
+  once collapse into **one** notice, never a stack
+- **The symmetric state** — a register switched OFF while this house's books
+  still hold items in it gets its own inline notice, and those items keep showing
+  on the parent under a **"Not on the list"** band rather than disappearing with
+  the register
+- **`/beer` `/whiskey` `/cocktails` are now WIRED** — `GET /beverages/:rid?register=`
+  and `GET /cocktails/:rid` are real, tenant-named, JWT-guarded reads (new gateway
+  module). Spirits and Non-alcoholic open on the parent as `?register=`
+- **PARTIAL** &middot; **Beer, whiskey, spirits, cocktails and non-alcoholic are
+  browsable catalogues, not stock** — `restaurant_inventory` is keyed on
+  `master_wine_id`, so none of them can be counted, ordered or received. Every
+  one of those registers says so and shows no "On hand" column at all
+- **PARTIAL** &middot; **Soft drinks have no source** — no value of
+  `beverages.beverage_type` separates a cola from a kombucha (measured: the
+  distinct values are whiskey, agave_spirit, beer, liqueur, amaro, sake, brandy,
+  gin, spirit_other, rum, non_alcoholic, vodka, cider), so that register states
+  the absence of a query rather than an empty result
+- `beverage_kind` and `classification_status` now reach the browser on every
+  `/wines` row, so the library's own classification is visible and countable
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_cellar`)
 
@@ -87,8 +126,8 @@ this list is the note-side index (ADR 0044 §2).
 |---|---|---|
 | `cl-stand-settle` | The reading stand opens | a bottle is chosen on `/wines` — `settle`, 320ms house curve, CSS `grid-template-rows: 0fr → 1fr` (the row-expand the founder named on board 053) |
 | `cl-leaf-turn` | The page turns | a *different* bottle is chosen while the stand is already open — `turn`, 420ms, opacity + 4px; the stand does not re-open |
-| `cl-ink` | Ink micro-state | register cards, shelf cards, rows, chips, fields, buttons — border to seal ring, one paper step; nothing translates |
-| `cl-tally` | Figures arrive | the seven counts on `/cellar` — `tally`, 840ms overdamped spring off `springs.tally.samples`. **An em dash never tallies** |
+| `cl-ink` | Ink micro-state | register cards, shelf cards, rows, chips, fields, register switches, buttons — border to seal ring, one paper step; nothing translates |
+| `cl-tally` | Figures arrive | every count on `/cellar` — three on the wine register card, two on each catalogue card, four in *In the building tonight* — `tally`, 840ms overdamped spring off `springs.tally.samples`. **An em dash never tallies** |
 | `cl-hold-pour` / `cl-seal-stamp` | The seal lands | inside `HoldToApprove`, sending a real purchase order — `pour` 620ms linear, then `stamp` 360ms. The only ceremony, and the only place the seal appears |
 
 **One disclosed exception to "no framer-motion": the menu scanner.**
@@ -110,7 +149,11 @@ Deliberate non-motions: the register does not stagger in (500 titles arriving
 one by one is the busyness the verdict rejected); switching Register ↔ Shelf and
 moving between registers does not cross-fade; unknowns never animate or shimmer
 (the market column is *permanently* unknown and must never look like it is
-loading); the three unwired registers have no motion at all.
+loading); the soft-drinks register has no motion at all. **Added 2026-09-03:** a
+register card appearing or disappearing as the house changes its answer does not
+animate — that is a fact about the business, not an event on screen, and
+animating it would make a correction look like a transaction; and the
+"add the rows" notice has no entrance motion and never interrupts.
 
 ### Design used, and why (ADR 0044 p4 wave · MAKEOVER-VERDICTS: REJECT + IA decided)
 
@@ -171,6 +214,15 @@ seeing this one.**
    carries `beverage_kind`, this is a live fork against the four-child IA the
    founder chose.
 
+   **UPDATE 2026-09-03: both of that alternative's blockers are gone.** This
+   pass carries `beverage_kind` onto the wire and serves `/beverages` and
+   `/cocktails`, so a kind facet has real counts today (measured: 596 wines,
+   801 spirits, 272 whiskies, 87 beers, 33 cocktails, 20 non-alcoholic, plus 39
+   sake and 4 cider that no register in the seven can hold). Both directions are
+   now drawn for the founder in `.planning/sketches/092-cellar-directions/`; what
+   B still trades away is one row grammar per kind, which is what the four-child
+   IA was chosen to keep. It is a live fork, and it is the founder's.
+
 **Verified against the running app, not only against tests.** The page was
 opened on the local dev server with `localStorage['mudavym.design.cellar']='1'`
 against a real gateway (500 catalogue titles, 48 cellar rows) and both grounds
@@ -215,6 +267,114 @@ is read by the view model but nothing displays it, because
 `WinesService.mapWine` never selects an image column — the field is on the
 client type and has no producer (§9).
 
+### Second pass, 2026-09-03 — the cellar adapts to the house
+
+**What the founder asked.** *"The cellar looks okay, but each restaurant will be
+different — maybe in the beginning when people add their menus we decide if they
+have any whiskeys or beers; maybe it's a non-alcoholic restaurant with only soft
+drinks — so we adapt to that."* Then, on the mechanism: **infer, then confirm at
+onboarding**, with a manual switch afterwards from Settings for a category the
+books cannot yet see, and a prompt when that happens asking the house to add the
+menu or the items so the change becomes visible.
+
+**The fault, named precisely.** The four registers were a module constant
+(`cellar-format.ts`'s `REGISTER_ORDER`), drawn identically for every tenant. To a
+non-alcoholic house that made two false statements at once: it asserted a whiskey
+programme existed, and then — the register being empty — asserted that programme
+was empty. This is the `absence-reported-as-health` shape with the sign flipped,
+**presence reported where there is none**, and no amount of honest copy on the
+child page repairs a parent that should not have drawn the card.
+
+**What was built.**
+
+1. **`restaurant_cellar_registers`** (`supabase/migrations/20260903092000_restaurant_cellar_registers.sql`)
+   — one row per (restaurant, register), the ONE authoritative home for this fact.
+   No copy on `restaurants`, none in a client store, none in a constant.
+   `source ∈ (inferred, confirmed, manual)` with `confirmed_at` NULL exactly while
+   the row is still a proposal, enforced by a CHECK constraint; `evidence` jsonb
+   snapshots what the inference said at the instant a human answered, so "was the
+   machine right, and did the human overrule it?" stays answerable. The actor FK
+   points at `public.users(user_id)`, never `auth.users` — the two are disjoint in
+   this database and a FK to the wrong one 23503s on every write.
+2. **`apps/api-gateway/src/cellar/`** — `GET :rid/registers` and `PUT :rid/registers`,
+   JWT-guarded and tenant-scoped through `assertTenantMatch` on the path parameter
+   (curl-verified: another tenant's id returns 403, no bearer returns 401).
+   `cellar-registers.ts` holds the pure inference; `cellar-registers.service.ts`
+   reads four tenant sources plus the two shared catalogues.
+3. **The inference**, over this tenant's real rows: `restaurant_inventory` joined to
+   `master_wine_library.beverage_kind` (the database's own classifier), `menu_items`
+   section headers and names, and `public.cocktails`. Whole-word matching only —
+   "Alentejo" contains "ale", and a substring match would have put a beer register
+   on every Portuguese wine list in the product.
+4. **`beverage_kind` onto the wire** — `WinesService.mapWine`
+   (`apps/api-gateway/src/wines/wines.service.ts`), with `classification_status`
+   beside it and a spec in the same module. This was §13.1 of this note's own
+   roadmap and the sequencing the menu research put first (four of its five
+   premortem causes depend on this one field).
+5. **`apps/api-gateway/src/beverages/`** — read-only `GET /beverages/:rid` (with a
+   `register` filter that resolves to the measured `beverage_type` vocabulary in
+   one place) and `GET /cocktails/:rid`. Both curl-verified against the live
+   gateway.
+6. **The page**: only the carried registers are drawn, with `decidedLine()` saying
+   how that was decided and where to change it; `CellarRegistersStep` and
+   `CellarRegistersControl` exported for onboarding and Settings;
+   `CatalogueRegister` replaces `UnwiredRegister` now that the reads exist.
+
+**The four states, kept apart.** Flattening any two of them is the whole fault:
+
+| state | what the page does |
+|---|---|
+| confirmed / manual | draws the house's registers and no others |
+| inferred | draws what the books say, and says nobody has confirmed it |
+| unknown (no books at all) | draws **all seven**, muted, and claims none — hiding six from a house nobody has asked is the same lie in reverse |
+| unread (the readout failed) | draws the wine register alone, in words, and says the rest are unread, not absent |
+
+**The notice, and why it never interrupts.** The menu research's premortem M1
+predicted the most likely death of this mechanism: built as a modal on data entry,
+it becomes noise within a month and is clicked through unread — exactly how the
+legacy "Reorder" alert on this page died. The founder's own backtest across four
+scenarios then found **no scenario where `interrupt` was the right default**, and
+found it actively worse at full onboarding where it fires most. So: inline,
+persistent (rendered from state the gateway recomputes on every read, so it cannot
+go stale), dismissible per browser. The `variant: 'inline' | 'interrupt'` prop
+survives as a one-prop escape hatch. Its three amendments are all built:
+register-aware copy, one aggregated notice instead of a stack, and the symmetric
+off-with-items state.
+
+**Two defects found and fixed while measuring live.**
+
+1. **A row was being counted twice.** The first live read reported
+   `inventoryRows: 100` for Wines over a cellar of 50 rows: a bottle classified
+   `wine` whose name also said "Red" was credited by the classifier AND by the
+   name. A figure printed beside a register has to be a count of bottles; two
+   signals about one bottle are not two bottles. Fixed by crediting a row once per
+   register, with a test.
+2. **"Has this house confirmed?" was answering `false` when it could not know.**
+   With `restaurant_cellar_registers` absent from a database,
+   `awaitingConfirmation` returned `false`, which would have suppressed the
+   onboarding step for every house on that database. It is now `boolean | null`,
+   and null is rendered as unknown.
+
+**Two alternative directions, drawn rather than described.**
+`.planning/sketches/092-cellar-directions/` — `cellar-floor.html` (the spatial
+parent: zones on a plan, each stating what it holds, how full it is and when it
+was last walked) and `one-register-with-kind.html` (one flat register for the whole
+cellar with a kind facet). Each carries an "adapting to the house" panel showing
+what a non-alcoholic café and a whisky bar would see. **A is still blocked on
+trust, not code** — `storage_locations` holds 87 rows across 7 tenants, 84 of them
+carrying one of four invented zone names. **B is no longer blocked**: this pass put
+`beverage_kind` on the wire and served the two catalogues, so its facet has real
+counts; what it still trades away is one row grammar per kind, which is what the
+four-child IA was chosen to keep.
+
+**What was substituted or left out, and why.** No `/menu` page (the research says
+hold it until OD-113 is decided, and the parent said not to build one). No
+server-side notice dismissal — that would be a second piece of state about a
+register whose one authoritative row is `restaurant_cellar_registers`; per-browser
+`localStorage` is used instead and the notice says so (§13). No routes for
+`/spirits`, `/non-alcoholic`, `/soft-drinks`: `App.tsx` is outside this page's
+paths, so those three open as `?register=` on the parent (§9).
+
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records
 in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
@@ -228,13 +388,30 @@ in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
 **Mudavym cellar (flag on)** — five routes, one component:
 - Routes: `apps/web/src/App.tsx:297` (`/wines` → `<CellarNext category="wines"/>`), `:302` (`/cellar`, the bare parent), `:303-305` (`/beer` `/whiskey` `/cocktails`), each wrapped in `<PageGate page="cellar" …>` with the legacy page (or a redirect to `/wines`) behind the flag
 - `apps/web/src/pages/cellar/next/CellarNext.tsx` — root, ground, register strip, the parent's opening voice
-- `apps/web/src/pages/cellar/next/Registers.tsx` — the four register cards, the "In the building tonight" strip, and `Tally`
+- `apps/web/src/pages/cellar/next/Registers.tsx` — the register cards this house carries, the "how this was decided" line, the "Not on the list" band, the "In the building tonight" strip, and `Tally`
 - `apps/web/src/pages/cellar/next/WineRegister.tsx` — the register: search, six filters, sortable columns, Register/Shelf views, the reading stand
 - `apps/web/src/pages/cellar/next/BottleLeaf.tsx` — the reading stand: facts, notes + provenance, bring-into-the-cellar, hold-to-order
-- `apps/web/src/pages/cellar/next/UnwiredRegister.tsx` — the honest `/beer` `/whiskey` `/cocktails` state
+- `apps/web/src/pages/cellar/next/CatalogueRegister.tsx` — the beer / whiskey / spirits / cocktails / non-alcoholic / soft-drinks registers, each honest about its scope (replaced `UnwiredRegister.tsx`, deleted 2026-09-03 once the reads existed)
+- `apps/web/src/pages/cellar/next/CellarRegistersStep.tsx` — **exported** for the onboarding surface to mount: the inference shown as a proposal, every line editable, all seven confirmed at once
+- `apps/web/src/pages/cellar/next/CellarRegistersControl.tsx` — **exported** for the Settings cellar register to mount: seven switches with their evidence, and the manual-on path
+- `apps/web/src/pages/cellar/next/NeedsItemsNotice.tsx` — `RegisterNotice`: the inline, register-aware, aggregating ask, and its symmetric off-with-items twin
+- `apps/web/src/pages/cellar/next/RegisterEvidenceLine.tsx` — one register's evidence in one line, shared by all three surfaces so they cannot describe it three ways
 - `apps/web/src/pages/cellar/next/registerShapes.ts` — what each register is, what is missing, and the schema columns it would carry (measured from the migrations, cited in the file header)
 - `apps/web/src/pages/cellar/next/useCellarNextData.ts` — all fetching + view models
-- `apps/web/src/pages/cellar/next/cellar-format.ts`, `cellar-next.css`, `MOTIONS.md`, `CellarNext.test.tsx` (**18 tests**, all 18 green; all 18 fail against the scaffold)
+- `apps/web/src/pages/cellar/next/cellar-format.ts`, `cellar-next.css`, `MOTIONS.md`
+- Tests: `CellarNext.test.tsx` + `CellarRegisters.test.tsx` — **44 tests**, all green
+
+**Gateway files added by the second pass** (outside this page's original paths;
+the p4 second-pass rule permits editing the gateway for gaps this note filed):
+- `apps/api-gateway/src/cellar/cellar-registers.ts` — the vocabulary and the pure inference
+- `apps/api-gateway/src/cellar/cellar-registers.service.ts` — the four tenant reads, the two catalogue reads, and the write
+- `apps/api-gateway/src/cellar/cellar.controller.ts`, `cellar.module.ts`, `dto/cellar-registers.dto.ts`
+- `apps/api-gateway/src/beverages/beverages.service.ts`, `beverages.controller.ts`, `beverages.module.ts`, `dto/beverages.dto.ts`
+- `apps/api-gateway/src/wines/wines.service.ts` — `beverage_kind` + `classification_status` on the wire
+- `apps/api-gateway/src/app.module.ts` — two module registrations
+- `supabase/migrations/20260903092000_restaurant_cellar_registers.sql`
+- Specs: `cellar/cellar-registers.spec.ts`, `cellar/cellar-registers.service.spec.ts`,
+  `beverages/beverages.service.spec.ts`, `wines/wines.service.spec.ts` — **44 tests**, all green
 
 ## 4. Endpoints
 - `GET /wines` (search, `limit: 500`) — `services/api/wines.ts:30` via `useWines` (`useWineLibraryPage.ts:96-99`); ENDPOINTS.md:667
@@ -246,13 +423,34 @@ in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
 
 **Added by the Mudavym cellar** (same `apiClient`, bearer attached):
 - `POST /procurement/orders` — the real order path, replacing the legacy "Reorder" that wrote nothing. Contract verified: `apps/api-gateway/src/procurement/procurement.controller.ts:112` → `procurement.service.ts`, body `CreateOrderDto` at `apps/api-gateway/src/procurement/dto/procurement.dto.ts:34-121`. **Keyed on `inventoryId`, not `wineId`** (`:37`) — this is why a catalogue-only bottle cannot be ordered and the control is disabled with the reason. `restaurantId` and `userId` come from the JWT, and the controller stamps `source: "manual"` itself (`:120-124`)
-- No new read endpoints. `/beer` `/whiskey` `/cocktails` call **nothing**, because nothing serves them — see §9
+**Added by the second pass, 2026-09-03** (all new gateway code, all curl-verified
+against the local gateway on :4000):
+- `GET /cellar/:restaurantId/registers` — which registers this house carries, each with
+  `carried`, `decidedBy`, `confidence`, a sentence of `basis`, `evidence`
+  (`inventoryRows` / `menuRows` / `catalogueRows`, each nullable), `needsEvidence` and
+  `strandedItems`; plus `sources` (five, each `readable`/`reason`/`rows`),
+  `awaitingConfirmation` (`boolean | null`), `needsEvidence[]`, `stranded[]`,
+  `unmappedKinds` and `unmappedCatalogueTypes`.
+  `apps/api-gateway/src/cellar/cellar.controller.ts` → `cellar-registers.service.ts`
+- `PUT /cellar/:restaurantId/registers` — the house's answer.
+  Body `{ registers: [{ id, carried }], source: 'inferred'|'confirmed'|'manual' }`.
+  The actor comes from the JWT and `evidence` is snapshotted server-side from the live
+  inference; the client never reports what it believed the machine said
+- `GET /beverages/:restaurantId?register=&type=&search=&limit=` — the shared beverage
+  reference catalogue. Response carries `scope: 'global-reference'`, `scopeNote`,
+  `matchedTypes`, `servedByThisTable` and `truncated`
+  (`apps/api-gateway/src/beverages/beverages.controller.ts`)
+- `GET /cocktails/:restaurantId?search=&limit=` — this restaurant's cocktails only,
+  with `referenceRows` (unattributed demo-corpus rows) counted apart and
+  `recipesAvailable: false`
+- `GET /wines` now carries `beverageKind` and `classificationStatus` on every row
+  (`apps/api-gateway/src/wines/wines.service.ts`, spec `wines.service.spec.ts`)
 
 ## 5. Signals
 none. No `uxSignals`, no tracking calls (grep of `WineLibrary.tsx` + `wine-library/` — zero hits).
 
 ## 6. Tier cut
-Core. Scenarios: S06 (new dish/menu item — wine catalogue is the ✅ half), S17 (same
+Core. Scenarios: S06 (new dish/menu item — wine catalogue is the working half), S17 (same
 product two identities — this page renders the merged library), S10 (stock-status chips
 feed the stockout story). See TIER-MAP rows S06/S10/S17.
 
@@ -277,6 +475,16 @@ the redesign on, `'0'` forces it off, ahead of the server flag
 The redesign's own client state (search text, six filters, sort key + direction,
 Register/Shelf view, which bottle is open on the stand) lives in `WineRegister.tsx`
 and is **not** persisted — it is a reading position, not a preference.
+
+**Which registers the house carries is NOT client state.** It lives in exactly one
+place, `public.restaurant_cellar_registers`, read and written through
+`/cellar/:rid/registers`. Nothing on `restaurants`, nothing in a store, nothing in a
+constant — the page's `REGISTER_ORDER` is a vocabulary and an order, never an answer.
+
+**Per-browser, and only these:** `localStorage['mudavym.cellar.notice.<kind>.<registers>']`
+— whether a register notice has been dismissed on this browser. Deliberately not a
+column: a server-side dismissal would be a second piece of state about the register,
+and the notice says on its face that dismissal is per-browser.
 
 ## 9. Gaps — enrichment surfaces here, but thin
 - **Market Price column is plumbing without data**: wired to
@@ -306,7 +514,12 @@ and is **not** persisted — it is a reading position, not a preference.
 
 Each one is a file the p4 page agent does not own; none was built.
 
-1. **No endpoint serves `beverages` or `cocktails`.** All **52 `@Controller(...)`
+1. ~~**No endpoint serves `beverages` or `cocktails`.**~~ — **CLOSED 2026-09-03**
+   by this page's second pass: `apps/api-gateway/src/beverages/` serves both
+   read-only, tenant-named and JWT-guarded, with `beverages.service.spec.ts`.
+   `/beer` `/whiskey` `/cocktails` show real rows. The original finding, kept
+   because the measurement in it is still the reason the registers are
+   catalogue-only: All **52 `@Controller(...)`
    declarations across 50 files** in `apps/api-gateway/src/**` were enumerated
    (`grep -rn "^@Controller(" apps/api-gateway/src --include="*.ts"`, re-counted
    2026-09-02 — an earlier draft of this note said 48, which was wrong; the
@@ -318,7 +531,11 @@ Each one is a file the p4 page agent does not own; none was built.
    and `public.cocktail_ingredients` (`20260817090000_cocktails.sql:27,60`), plus the
    beverage views at `20260817080000`. **This is what blocks `/beer` `/whiskey`
    `/cocktails`**; needs a `beverages.controller.ts` and a `cocktails.controller.ts`.
-2. **`WinesService.mapWine` drops `beverage_kind` and `classification_status`.**
+2. ~~**`WinesService.mapWine` drops `beverage_kind` and `classification_status`.**~~
+   — **CLOSED 2026-09-03**: both are carried, with `wines.service.spec.ts` pinning
+   the `undefined` (column not selected) vs `'unknown'` (classifier's verdict)
+   distinction. Verified live: `GET /wines?limit=1` returns
+   `"beverageKind":"wine"`. The original finding:
    `searchWines` does `select("*")` (`wines.service.ts:354`) so both columns arrive on
    the row, but `mapWine` (`:75-131`) never carries them onto the wire. Consequence:
    the browser cannot count, filter or even *report* how many beers the library holds —
@@ -357,7 +574,47 @@ Each one is a file the p4 page agent does not own; none was built.
    only; `/cellar` and the three children are reachable from inside the page and from a
    cold URL, nothing else. The parent surface needs the sidebar slot, with `/wines`
    demoted to a child.
-10. **The scanner has no add path.** `MenuScannerTab.handleValidationApprove`
+10. **Three registers have no route.** `App.tsx` routes `/wines` `/beer` `/whiskey`
+    `/cocktails`; Spirits, Non-alcoholic and Soft drinks open on the parent as
+    `/cellar?register=<id>`, which is deep-linkable but is not a route.
+    `apps/web/src/App.tsx` needs three more `<Route>` lines beside the existing
+    four, using the same `PageGate page="cellar"` shape.
+11. **`CellarRegistersStep` and `CellarRegistersControl` have no mount point.**
+    Both are finished, exported and tested in
+    `apps/web/src/pages/cellar/next/`, and neither is rendered anywhere: the
+    onboarding surface (`apps/web/src/pages/get-started/`) and the Settings page
+    (`apps/web/src/pages/settings/`) are other agents' directories. Until they are
+    mounted, the only way a house can answer is the API. See §13.
+12. **Notice dismissal is per-browser.** `localStorage`, not a column — deliberate
+    (a server-side dismissal would be a second home for state about a register),
+    but it means an operator who dismisses on the office machine sees the notice
+    again on the tablet. A real per-user dismissal needs a column and an ADR.
+13. **The seasonal-menu case still cannot MOVE the items.** A register switched off
+    with items behind it now says so and keeps them visible under "Not on the
+    list", which is the honest half. The other half the backtest names — "hide them
+    or move them" — needs a real bulk action on `restaurant_inventory` / `menu_items`
+    that does not exist, and would be a procurement/inventory decision, not a
+    catalogue one.
+14. **The classifier can miss what the human typed.** `beverage_kind` resolves from
+    `primary_type`, else the menu's own section header. A house that types a section
+    called "Spritzes" and switches on Cocktails may leave `needsEvidence` true
+    indefinitely, because nothing maps that word to that register. The notice would
+    then be permanently correct-looking and permanently useless — the failure mode
+    the backtest names for scenario 4. A synonym table for section headers, or a
+    "this section is my Cocktails" mapping, closes it.
+15. **The write path is not yet verifiable end to end, and this is disclosed
+    rather than papered over.** The local gateway on :4000 points at the shared
+    Supabase project, where `restaurant_cellar_registers` does not exist until
+    the migration merges (migrations auto-apply on merge to `main`). So
+    `PUT /cellar/:rid/registers` was curl-verified to **fail correctly** — HTTP
+    500 carrying *"The house's answer was not recorded: … the
+    restaurant_cellar_registers table is not on this database yet"* — and not
+    yet verified to succeed. The read path degrades exactly as designed in that
+    state: `sources.answers.readable: false`, `rows: null` (not 0), and
+    `awaitingConfirmation: null` (not false). The success path is covered by
+    specs with the client mocked, and by the CHECK constraint in the migration;
+    it needs one live re-verification after the migration lands.
+16. **The scanner has no add path.** `MenuScannerTab.handleValidationApprove`
     (`:160-172`) and the legacy `onWinesDetected` (`WineLibrary.tsx:1813-1822`) both
     only mutate component state. `bulkCreateInventoryItems` accepts a `wineDraft` and
     resolves it server-side (`services/api/inventory.ts:97-103`), which is the shape a
@@ -371,7 +628,7 @@ export ships fabricated wine attributes as fact.
 
 | Evidence | `path:line` |
 |---|---|
-| **"✅ Order created" — no order is created.** `handlePlaceOrder` writes a plain object into a Zustand store and navigates. There is no POST anywhere in the handler. The alert reads *"✅ Order created for {wine} … The AI will contact the selected provider(s) via Plivo. You'll receive notifications as they respond. Redirecting to Orders page…"* — none of which has happened; [[orders]] merely opens with a prefilled modal the user must still submit. | `WineLibrary.tsx:313-382`, alert text `:360-368`; staging `setPendingReorder(orderData)` `:349` |
+| **"Order created" — no order is created.** `handlePlaceOrder` writes a plain object into a Zustand store and navigates. There is no POST anywhere in the handler. The alert reads *"Order created for {wine} … The AI will contact the selected provider(s) via Plivo. You'll receive notifications as they respond. Redirecting to Orders page…"* — none of which has happened; [[orders]] merely opens with a prefilled modal the user must still submit. | `WineLibrary.tsx:313-382`, alert text `:360-368`; staging `setPendingReorder(orderData)` `:349` |
 | Plivo is a real SMS integration in the repo — but it belongs to `communications`, is not called by this flow, and mocks itself when unconfigured. The sentence is asserting a system behaviour that does not occur. | `apps/api-gateway/src/communications/sms.service.ts:23-37` |
 | **"Save as recurring order" is component state.** `savedPreferences` is a bare `useState` map, and the per-wine "recurring" badge reads from it. It is lost on navigation and on reload — and the app *has* a real `recurring-orders` module the control does not touch. | `WineLibrary.tsx:140,320-332,1012`; unused backend `procurement/recurring-orders.controller.ts:36` |
 | **Fabricated attributes are exported as data.** `mapApiWineToUiWine` hardcodes `body:'medium'`, `sweetness:'dry'`, `acidity:'medium'`, `alcohol:0`, `aromas:[]`, `flavors:[]` for **every** wine — and the export builder ships exactly those as columns *Body / Sweetness / Acidity / Alcohol % / Aromas / Flavors*. A 500-row CSV in which every wine is medium-bodied, dry and 0% ABV leaves the product looking like a dataset. | mapper `lib/wine-library.ts:32-37`; export columns `WineLibrary.tsx:459-464` |
@@ -438,10 +695,10 @@ to a real purchase order.
 
 | State | Handled? | Evidence |
 |---|---|---|
-| loading | ✅ | `useWines` flags |
-| empty | ⚠️ mixed — Market renders "—" (honest); Body/Alcohol render fabricated constants (dishonest) | `WineLibrary.tsx:1075-1089` vs `lib/wine-library.ts:32-37` |
-| error | ❌ | no error branch; three flows use `alert()`/`confirm()` rather than the app's toast system (`:301,317,360`) |
-| permission-denied | ❌ | one owner-shaped view; §1 says staff can read but nothing enforces or adapts |
+| loading | yes | `useWines` flags |
+| empty | mixed — Market renders "—" (honest); Body/Alcohol render fabricated constants (dishonest) | `WineLibrary.tsx:1075-1089` vs `lib/wine-library.ts:32-37` |
+| error | no | no error branch; three flows use `alert()`/`confirm()` rather than the app's toast system (`:301,317,360`) |
+| permission-denied | no | one owner-shaped view; §1 says staff can read but nothing enforces or adapts |
 
 **Where the UI misleads**
 
@@ -458,10 +715,18 @@ in `CellarNext.test.tsx`):
 
 | State | Handled? | How |
 |---|---|---|
-| loading | ✅ | "Opening the book…" / "Counting the cellar…"; a skeleton is never shown for a value that is permanently unknown |
-| empty | ✅ | "The book is open and empty — the library holds no titles"; a filtered-to-nothing register says so separately and offers to widen; an *unwired* register never renders empty, it renders its absence |
-| error | ✅ | the book fails → `role="alert"` in words with a retry and **no register at all**; the cellar fails → "on hand" is unknown for every row, said in a `role="status"` line; the vendor book fails → the order control says nothing can be chosen |
-| permission-denied | ✅ | no active branch → "No restaurant is active on this account… The book is unread — not empty" — and **only after `authLoading` clears**, so a resolving session is never called a denied one (found live, see §1b) |
+| loading | yes | "Opening the book…" / "Counting the cellar…"; a skeleton is never shown for a value that is permanently unknown |
+| empty | yes | "The book is open and empty — the library holds no titles"; a filtered-to-nothing register says so separately and offers to widen; an *unwired* register never renders empty, it renders its absence |
+| error | yes | the book fails → `role="alert"` in words with a retry and **no register at all**; the cellar fails → "on hand" is unknown for every row, said in a `role="status"` line; the vendor book fails → the order control says nothing can be chosen |
+| permission-denied | yes | no active branch → "No restaurant is active on this account… The book is unread — not empty" — and **only after `authLoading` clears**, so a resolving session is never called a denied one (found live, see §1b) |
+
+**Added 2026-09-03 — the register readout has its own four states, and they are
+distinct from the four above.** `confirmed`/`manual` (the house said so),
+`inferred` (read from its books, unconfirmed), `unknown` (no books to read: all
+seven drawn, muted, none claimed) and `unread` (the readout failed: the wine
+register alone, in words). `awaitingConfirmation` is `boolean | null`, and null
+means the answers table could not be read — never `false`, which would suppress
+the onboarding step for every house on a database missing the migration.
 
 ## 13. Roadmap
 
@@ -484,18 +749,16 @@ in `CellarNext.test.tsx`):
 
 ### Roadmap for the cellar (added 2026-09-02, ordered)
 
-1. **Carry `beverage_kind` onto the wire** — one field in `WinesService.mapWine`
-   (`apps/api-gateway/src/wines/wines.service.ts:75-131`). Cheapest item on this list
-   and it turns three "unread" registers into three real counts. *Blocker: none.*
-2. **Serve `public.beverages`** — a `beverages.controller.ts` + service with the same
-   search/filter shape as `/wines`. `/beer` and `/whiskey` become real registers with
-   no client change beyond a second read in `useCellarNextData`. *Blocker: none.*
+1. ~~**Carry `beverage_kind` onto the wire**~~ — **DONE 2026-09-03** (§1b second
+   pass). Verified live: `GET /wines?limit=1` returns `"beverageKind":"wine"`.
+2. ~~**Serve `public.beverages`**~~ — **DONE 2026-09-03**:
+   `apps/api-gateway/src/beverages/`, with `GET /cocktails/:rid` beside it.
 3. **Decide the inventory identity axis for non-wine stock** (§9.6). Until this is
    settled a beer can be *listed* but never counted, ordered or received, so registers 2
    and 3 would be read-only catalogues. *Blocker: founder decision — this is an ADR.*
-4. **Serve `public.cocktails`**, and run the cocktail-section extraction pass that fills
-   `cocktail_ingredients`. Listing 55 cocktail names without recipes is worth less than
-   the other two registers. *Blocker: the extraction pass.*
+4. **Run the cocktail-section extraction pass** that fills `cocktail_ingredients`
+   (the read itself is DONE). Listing cocktail names without recipes is worth less
+   than the other two registers. *Blocker: the extraction pass.*
 5. **Give the cellar its sidebar slot** (§9.9) — `/cellar` as the nav entry, `/wines`
    demoted to a child. *Blocker: none; outside the page agent's paths.*
 6. **Fix `CreateOrderRequest`** (§9.3) so every caller uses `inventoryId`, then delete
@@ -509,3 +772,34 @@ in `CellarNext.test.tsx`):
    fabricated attribute columns never come back.
 10. **The cellar floor** (§1b alternative 1) as the parent surface, once
     `storage_locations` holds trustworthy rows. *Blocker: cleaning up the 84 invented `storage_locations` rows (§1b alt. 1).*
+
+### Roadmap for the adaptation (added 2026-09-03, ordered)
+
+1. **Mount `CellarRegistersStep` in onboarding.** `apps/web/src/pages/get-started/`
+   — the component is finished, exported and tested in
+   `apps/web/src/pages/cellar/next/CellarRegistersStep.tsx`; it takes
+   `{ readout, loading, error, onConfirm, saving, saveError }` and nothing else.
+   Data comes from `useCellarRegisters()` in `useCellarNextData.ts`. Show it when
+   `awaitingConfirmation === true`; show nothing when it is `null` (unknown), and
+   never re-ask a house whose answers merely could not be read.
+   *Blocker: none; outside this page's paths.*
+2. **Mount `CellarRegistersControl` in the Settings cellar register.**
+   `apps/web/src/pages/settings/` — same shape, plus `onChange(registers, 'manual')`
+   wired to `saveRegisters.mutateAsync`. This is the "change it in Settings" the
+   cellar's own one-liner promises, and until it exists that sentence points at a
+   control that is not on screen. *Blocker: none; outside this page's paths.*
+3. **Three routes for the three routeless registers** (§9.10). *Blocker: none.*
+4. **Decide the inventory identity axis for non-wine stock** (OD-113, §9.6). This is
+   now the single largest constraint on the cellar: five of the seven registers are
+   browsable catalogues with no "On hand" column because `restaurant_inventory` is
+   keyed on `master_wine_id`. Until it is settled, a house can declare it carries
+   beer and can never count a keg. *Blocker: founder decision — this is an ADR.*
+5. **A synonym map from menu section headers to registers** (§9.14), so a house that
+   writes "Spritzes" is not told forever that its cocktails register is empty.
+6. **Per-user notice dismissal** (§9.12), if the per-browser one proves too weak.
+   Needs a column and an ADR; do not add a second store for it.
+7. **Move or hide the stranded items** (§9.13) — the half of the seasonal case that
+   needs a real bulk action rather than a sentence.
+8. **`/menu` as a real surface** — held per the menu research's recommendation until
+   OD-113 is decided, and when built it must READ `restaurant_cellar_registers`,
+   never write a competing answer.

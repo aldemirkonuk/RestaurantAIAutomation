@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 092A — The Cellar Floor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mudavym tokens, copied inline from apps/web/src/styles/mudavym.css (ADR 0042).
+   Sketches render from file:// with no build, so the tokens are duplicated here
+   rather than imported. Do not re-derive values; copy them. */
+:root {
+  --seal: #1A5E6B;
+  --seal-deep: #14515C;
+  --seal-tint: rgba(26, 94, 107, 0.10);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #FAF7F1;
+  --paper-1: #F3EFE6;
+  --paper-2: #EAE4D8;
+  --ink-1: #211C16;
+  --ink-2: #4F473C;
+  --ink-3: #7C7365;
+  --ink-4: #665D50;
+  color-scheme: light;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.sk-banner {
+  background: var(--ink-1);
+  color: var(--paper-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 7px 20px;
+}
+.wrap { max-width: 1400px; margin: 0 auto; padding: 22px 24px 56px; }
+.serif { font-family: var(--serif); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--ink-3); }
+h1.sk-h1 {
+  font-family: var(--serif);
+  font-size: 40px; line-height: 1.04; letter-spacing: -0.022em;
+  font-weight: 600; margin: 12px 0 0;
+}
+h2.sk-sec {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin: 30px 0 10px;
+}
+.sk-crumb { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.sk-standing { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 10px 0 0; max-width: 74ch; }
+.sk-note { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 9px 0 0; }
+.sk-said { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--paper-2); height: 3px; margin: 16px 0 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--paper-2); border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; color: var(--ink-2); background: var(--paper-1);
+}
+.chip[data-seal="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+.panel { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 14px 16px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1);
+  color: var(--ink-1); font: inherit; font-size: 12px; padding: 6px 11px; cursor: pointer;
+}
+.btn[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+table.reg { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.reg th {
+  text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; padding: 8px 10px;
+  border-bottom: 1px solid var(--ink-1);
+}
+table.reg td { padding: 8px 10px; border-bottom: 1px solid var(--paper-2); vertical-align: top; }
+table.reg tbody tr:nth-child(even) td { background: var(--paper-1); }
+</style>
+</head>
+<body>
+<div class="sk-banner">SKETCH &middot; 092 direction A &middot; the cellar floor &middot; example data, not a tenant</div>
+<div class="wrap">
+
+  <header style="display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;justify-content:space-between">
+    <div>
+      <p class="sk-crumb">What the house keeps &middot; Kadıköy Meyhane</p>
+      <h1 class="sk-h1">The Cellar Floor<span style="color:var(--seal)">.</span></h1>
+    </div>
+    <nav style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn" data-on="true">Floor</button>
+      <button class="btn">Wines</button>
+      <button class="btn">Beer</button>
+      <button class="btn">Spirits</button>
+      <button class="btn">Non-alcoholic</button>
+    </nav>
+  </header>
+
+  <p class="sk-standing">
+    Six zones, 1,184 bottles, four of them below their own par tonight. The floor
+    is the parent surface: every register is reachable by walking to where its
+    bottles physically are, and a zone states what it holds before you open it.
+  </p>
+  <p class="sk-note">
+    These five registers are the ones this house carries. Whiskey, cocktails and
+    soft drinks are not drawn, because Kadıköy Meyhane confirmed at onboarding
+    that it does not pour them. Change that in Settings.
+  </p>
+  <hr class="rule" />
+
+  <h2 class="sk-sec">The room</h2>
+  <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,.85fr);gap:22px;align-items:start">
+
+    <!-- ── the plan ─────────────────────────────────────────────────── -->
+    <div class="panel" style="padding:18px;background:var(--paper-0)">
+      <svg viewBox="0 0 760 470" width="100%" role="img" aria-label="Plan of the cellar with six zones">
+        <defs>
+          <pattern id="hatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="0" x2="0" y2="7" stroke-width="3"/ style="stroke:var(--paper-2)">
+          </pattern>
+        </defs>
+
+        <!-- outer wall -->
+        <rect x="8" y="8" width="744" height="454" stroke-width="2" rx="4"/ style="fill:var(--paper-1);stroke:var(--ink-1)">
+
+        <!-- stair well -->
+        <rect x="8" y="352" width="118" height="110" fill="url(#hatch)" stroke-dasharray="4 3"/ style="stroke:var(--ink-3)">
+        <text x="67" y="404" text-anchor="middle" font-size="10" style="font-family:var(--mono);fill:var(--ink-3)">STAIR</text>
+        <text x="67" y="418" text-anchor="middle" font-size="10" style="font-family:var(--mono);fill:var(--ink-3)">to floor</text>
+
+        <!-- Zone A — reds, long north rack -->
+        <rect x="30" y="30" width="330" height="140" stroke-width="1.5" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="30" y="30" width="6" height="140"/ style="fill:var(--seal)">
+        <text x="48" y="56" font-size="19" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">A &middot; North rack</text>
+        <text x="48" y="76" font-size="12" style="fill:var(--ink-2)">Reds, laid down. 14 &deg;C, 71% RH.</text>
+        <text x="48" y="106" font-size="26" style="font-family:var(--mono);fill:var(--ink-1)">486</text>
+        <text x="106" y="106" font-size="12" style="fill:var(--ink-3)">bottles &middot; 91 titles</text>
+        <text x="48" y="128" font-size="11.5" style="fill:var(--ink-3)">Oldest: 2004 Kavaklıdere Ancyra &middot; last counted 2 days ago</text>
+        <rect x="48" y="140" width="240" height="7" rx="3"/ style="fill:var(--paper-2)">
+        <rect x="48" y="140" width="207" height="7" rx="3"/ style="fill:var(--seal)">
+        <text x="296" y="147" font-size="10.5" style="font-family:var(--mono);fill:var(--ink-3)">86% full</text>
+
+        <!-- Zone B — whites & orange -->
+        <rect x="386" y="30" width="200" height="140" stroke-width="1.5" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="386" y="30" width="6" height="140"/ style="fill:var(--seal)">
+        <text x="404" y="56" font-size="19" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">B &middot; Cold wall</text>
+        <text x="404" y="76" font-size="12" style="fill:var(--ink-2)">Whites, orange, sparkling. 8 &deg;C.</text>
+        <text x="404" y="106" font-size="26" style="font-family:var(--mono);fill:var(--ink-1)">263</text>
+        <text x="452" y="106" font-size="12" style="fill:var(--ink-3)">bottles &middot; 58 titles</text>
+        <text x="404" y="128" font-size="11.5" style="fill:var(--ink-3)">3 titles at or under par</text>
+        <rect x="404" y="140" width="150" height="7" rx="3"/ style="fill:var(--paper-2)">
+        <rect x="404" y="140" width="97" height="7" rx="3"/ style="fill:var(--seal)">
+        <text x="562" y="147" font-size="10.5" style="font-family:var(--mono);fill:var(--ink-3)">65%</text>
+
+        <!-- Zone C — kegs / beer -->
+        <rect x="612" y="30" width="118" height="140" stroke-width="1.5" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="612" y="30" width="6" height="140"/ style="fill:var(--seal)">
+        <text x="628" y="56" font-size="17" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">C &middot; Keg</text>
+        <text x="628" y="74" font-size="11.5" style="fill:var(--ink-2)">Beer, cellar temp.</text>
+        <text x="628" y="102" font-size="24" style="font-family:var(--mono);fill:var(--ink-1)">9</text>
+        <text x="652" y="102" font-size="11.5" style="fill:var(--ink-3)">kegs</text>
+        <text x="628" y="122" font-size="11.5" style="fill:var(--ink-3)">4 lines live</text>
+        <text x="628" y="140" font-size="11" style="fill:var(--ink-3)">Efes, Bomonti,</text>
+        <text x="628" y="154" font-size="11" style="fill:var(--ink-3)">Gara Guzu, Feral</text>
+
+        <!-- Zone D — back bar spirits -->
+        <rect x="150" y="196" width="290" height="120" stroke-width="1.5" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="150" y="196" width="6" height="120"/ style="fill:var(--seal)">
+        <text x="168" y="222" font-size="19" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">D &middot; Back bar</text>
+        <text x="168" y="242" font-size="12" style="fill:var(--ink-2)">Rakı, gin, amaro. Open bottles.</text>
+        <text x="168" y="272" font-size="26" style="font-family:var(--mono);fill:var(--ink-1)">318</text>
+        <text x="226" y="272" font-size="12" style="fill:var(--ink-3)">bottles &middot; 74 titles</text>
+        <text x="168" y="294" font-size="11.5" style="fill:var(--ink-3)">1 title at or under par: Yeni Rakı 70cl</text>
+
+        <!-- Zone E — non-alcoholic -->
+        <rect x="466" y="196" width="264" height="120" stroke-width="1.5" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="466" y="196" width="6" height="120"/ style="fill:var(--seal)">
+        <text x="484" y="222" font-size="19" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">E &middot; Cold room</text>
+        <text x="484" y="242" font-size="12" style="fill:var(--ink-2)">Ayran, şalgam, water, kombucha.</text>
+        <text x="484" y="272" font-size="26" style="font-family:var(--mono);fill:var(--ink-1)">108</text>
+        <text x="536" y="272" font-size="12" style="fill:var(--ink-3)">units &middot; 21 titles</text>
+        <text x="484" y="294" font-size="11.5" style="fill:var(--ink-3)">Counted this morning by Deniz A.</text>
+
+        <!-- Zone F — quarantine / receiving -->
+        <rect x="150" y="342" width="290" height="104" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-3)">
+        <text x="168" y="368" font-size="18" font-weight="600" style="font-family:var(--serif);fill:var(--ink-2)">F &middot; Door / unshelved</text>
+        <text x="168" y="388" font-size="12" style="fill:var(--ink-2)">Received, not yet put away.</text>
+        <text x="168" y="416" font-size="22" style="font-family:var(--mono);fill:var(--ink-1)">36</text>
+        <text x="212" y="416" font-size="12" style="fill:var(--ink-3)">bottles across 2 deliveries</text>
+        <text x="168" y="436" font-size="11.5" style="fill:var(--seal-deep)">Oldest waiting since Monday 18:40</text>
+
+        <!-- Zone G — service lift -->
+        <rect x="466" y="342" width="264" height="104" stroke-width="1.5" rx="3"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="466" y="342" width="6" height="104"/ style="fill:var(--seal)">
+        <text x="484" y="368" font-size="18" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">G &middot; Service pass</text>
+        <text x="484" y="388" font-size="12" style="fill:var(--ink-2)">Tonight&rsquo;s by-the-glass, pulled at 16:00.</text>
+        <text x="484" y="416" font-size="22" style="font-family:var(--mono);fill:var(--ink-1)">40</text>
+        <text x="512" y="416" font-size="12" style="fill:var(--ink-3)">bottles &middot; 12 titles on the list</text>
+        <text x="484" y="436" font-size="11.5" style="fill:var(--ink-3)">Poured 61 glasses yesterday</text>
+      </svg>
+    </div>
+
+    <!-- ── the right-hand column ────────────────────────────────────── -->
+    <div>
+      <div class="panel">
+        <p class="sk-crumb" style="margin-bottom:6px">In the building tonight</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><p class="sk-note" style="margin:0">Bottles on hand</p><p class="num" style="font-size:26px;margin:2px 0 0">1,184</p></div>
+          <div><p class="sk-note" style="margin:0">Titles carried</p><p class="num" style="font-size:26px;margin:2px 0 0">256</p></div>
+          <div><p class="sk-note" style="margin:0">Under their own par</p><p class="num" style="font-size:26px;margin:2px 0 0;color:var(--seal-deep)">4</p></div>
+          <div><p class="sk-note" style="margin:0">Unshelved at the door</p><p class="num" style="font-size:26px;margin:2px 0 0">36</p></div>
+        </div>
+        <p class="sk-note">Every figure counted from a real lot in a real zone. A zone with no count says when it was last walked, never a zero.</p>
+      </div>
+
+      <h2 class="sk-sec">Walk the floor</h2>
+      <div class="panel" style="padding:0;overflow:hidden">
+        <table class="reg">
+          <thead><tr><th>Zone</th><th>Holds</th><th style="text-align:right">Bottles</th><th style="text-align:right">Walked</th></tr></thead>
+          <tbody>
+            <tr><td><strong>A</strong> North rack</td><td>Reds</td><td class="num" style="text-align:right">486</td><td class="num" style="text-align:right">2d ago</td></tr>
+            <tr><td><strong>B</strong> Cold wall</td><td>Whites, orange, sparkling</td><td class="num" style="text-align:right">263</td><td class="num" style="text-align:right">2d ago</td></tr>
+            <tr><td><strong>C</strong> Keg</td><td>Beer</td><td class="num" style="text-align:right">9 kegs</td><td class="num" style="text-align:right">today</td></tr>
+            <tr><td><strong>D</strong> Back bar</td><td>Rakı, gin, amaro</td><td class="num" style="text-align:right">318</td><td class="num" style="text-align:right">6d ago</td></tr>
+            <tr><td><strong>E</strong> Cold room</td><td>Non-alcoholic</td><td class="num" style="text-align:right">108</td><td class="num" style="text-align:right">today</td></tr>
+            <tr><td><strong>F</strong> Door</td><td>Received, unshelved</td><td class="num" style="text-align:right">36</td><td class="num" style="text-align:right">live</td></tr>
+            <tr><td><strong>G</strong> Service pass</td><td>Tonight&rsquo;s glass list</td><td class="num" style="text-align:right">40</td><td class="num" style="text-align:right">16:00</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="sk-sec">Wants walking</h2>
+      <div class="panel">
+        <p class="sk-said"><strong>Back bar (D) was last walked six days ago.</strong> Its 318 bottles are the oldest count on the floor, and it is the zone that pours fastest.</p>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" data-on="true">Count zone D</button>
+          <button class="btn">Put away the 36 at the door</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sk-sec">Adapting to the house</h2>
+  <p class="sk-said" style="max-width:82ch">
+    A floor is drawn from what the house actually keeps, so it adapts without a
+    single conditional in the layout: a zone exists because bottles are in it.
+    Two other houses, same surface:
+  </p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px">
+
+    <div class="panel">
+      <p class="sk-crumb">Kahve Durağı &middot; non-alcoholic house</p>
+      <p class="serif" style="font-size:20px;font-weight:600;margin:6px 0 8px">Two zones, and no wine rack at all.</p>
+      <svg viewBox="0 0 420 190" width="100%" role="img" aria-label="Plan for a non-alcoholic house">
+        <rect x="6" y="6" width="408" height="178" stroke-width="2" rx="4"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="26" y="26" width="180" height="138" stroke-width="1.5" rx="3"/ style="fill:var(--paper-1);stroke:var(--ink-1)">
+        <rect x="26" y="26" width="5" height="138"/ style="fill:var(--seal)">
+        <text x="42" y="50" font-size="16" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">A &middot; Cold room</text>
+        <text x="42" y="68" font-size="11.5" style="fill:var(--ink-2)">Soft drinks, juice, ayran</text>
+        <text x="42" y="96" font-size="22" style="font-family:var(--mono);fill:var(--ink-1)">642</text>
+        <text x="88" y="96" font-size="11.5" style="fill:var(--ink-3)">units &middot; 34 titles</text>
+        <text x="42" y="118" font-size="11" style="fill:var(--ink-3)">Coca-Cola 33cl &middot; 96 &middot; par 72</text>
+        <text x="42" y="134" font-size="11" style="fill:var(--ink-3)">Şalgam 25cl &middot; 48 &middot; par 36</text>
+        <text x="42" y="150" font-size="11" style="fill:var(--seal-deep)">Limonata 1L &middot; 11 &middot; par 24</text>
+        <rect x="226" y="26" width="168" height="138" stroke-width="1.5" rx="3"/ style="fill:var(--paper-1);stroke:var(--ink-1)">
+        <rect x="226" y="26" width="5" height="138"/ style="fill:var(--seal)">
+        <text x="242" y="50" font-size="16" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">B &middot; Dry store</text>
+        <text x="242" y="68" font-size="11.5" style="fill:var(--ink-2)">Coffee, tea, syrups</text>
+        <text x="242" y="96" font-size="22" style="font-family:var(--mono);fill:var(--ink-1)">61</text>
+        <text x="268" y="96" font-size="11.5" style="fill:var(--ink-3)">kg &middot; 18 titles</text>
+        <text x="242" y="118" font-size="11" style="fill:var(--ink-3)">Espresso blend &middot; 24kg</text>
+        <text x="242" y="134" font-size="11" style="fill:var(--ink-3)">Earl Grey &middot; 6kg</text>
+        <text x="242" y="150" font-size="11" style="fill:var(--ink-3)">Rize çay &middot; 31kg</text>
+      </svg>
+      <p class="sk-note">
+        Registers on: <span class="chip" data-seal="true">Non-alcoholic</span>
+        <span class="chip" data-seal="true">Soft drinks</span>.
+        The other five are off, so no wine rack, no keg line and no back bar is
+        drawn. Decided at onboarding from 96 menu lines and 642 counted units.
+      </p>
+    </div>
+
+    <div class="panel">
+      <p class="sk-crumb">The Malt Room &middot; whisky bar</p>
+      <p class="serif" style="font-size:20px;font-weight:600;margin:6px 0 8px">One long wall, and a safe.</p>
+      <svg viewBox="0 0 420 190" width="100%" role="img" aria-label="Plan for a whisky bar">
+        <rect x="6" y="6" width="408" height="178" stroke-width="2" rx="4"/ style="fill:var(--paper-0);stroke:var(--ink-1)">
+        <rect x="26" y="26" width="256" height="138" stroke-width="1.5" rx="3"/ style="fill:var(--paper-1);stroke:var(--ink-1)">
+        <rect x="26" y="26" width="5" height="138"/ style="fill:var(--seal)">
+        <text x="42" y="50" font-size="16" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">A &middot; The wall</text>
+        <text x="42" y="68" font-size="11.5" style="fill:var(--ink-2)">Open bottles, by region</text>
+        <text x="42" y="96" font-size="22" style="font-family:var(--mono);fill:var(--ink-1)">411</text>
+        <text x="88" y="96" font-size="11.5" style="fill:var(--ink-3)">bottles &middot; 388 expressions</text>
+        <text x="42" y="118" font-size="11" style="fill:var(--ink-3)">Islay 74 &middot; Speyside 121 &middot; Highland 96</text>
+        <text x="42" y="134" font-size="11" style="fill:var(--ink-3)">Japan 41 &middot; Bourbon 52 &middot; Rye 27</text>
+        <text x="42" y="150" font-size="11" style="fill:var(--seal-deep)">3 expressions on their last pour</text>
+        <rect x="302" y="26" width="92" height="138" stroke-width="1.5" rx="3"/ style="fill:var(--paper-1);stroke:var(--ink-1)">
+        <rect x="302" y="26" width="5" height="138"/ style="fill:var(--seal)">
+        <text x="316" y="50" font-size="16" font-weight="600" style="font-family:var(--serif);fill:var(--ink-1)">B &middot; Safe</text>
+        <text x="316" y="68" font-size="11.5" style="fill:var(--ink-2)">Sealed, rare</text>
+        <text x="316" y="96" font-size="22" style="font-family:var(--mono);fill:var(--ink-1)">29</text>
+        <text x="342" y="96" font-size="11.5" style="fill:var(--ink-3)">bottles</text>
+        <text x="316" y="118" font-size="11" style="fill:var(--ink-3)">Port Ellen 1979</text>
+        <text x="316" y="134" font-size="11" style="fill:var(--ink-3)">Karuizawa 1984</text>
+        <text x="316" y="150" font-size="11" style="fill:var(--ink-3)">Brora 30yr</text>
+      </svg>
+      <p class="sk-note">
+        Registers on: <span class="chip" data-seal="true">Whiskey</span>
+        <span class="chip" data-seal="true">Spirits</span>
+        <span class="chip" data-seal="true">Cocktails</span>.
+        Wines is off, so the floor has no rack and the parent never mentions a
+        vintage. Whiskey and Spirits are both on: one is inside the other, and
+        the house means both.
+      </p>
+    </div>
+  </div>
+
+  <h2 class="sk-sec">What this direction costs</h2>
+  <div class="panel">
+    <p class="sk-said">
+      The floor is only as honest as <span class="num">storage_locations</span>,
+      and that table is the one the seeded-defaults incident corrupted: 87 rows
+      across 7 tenants, 84 of them carrying one of four invented zone names,
+      first written 2026-05-20 (measured on production 2026-09-02 and written
+      into <span class="num">scripts/check_no_seeded_defaults.py</span>&rsquo;s own
+      header). Drawn today, this plan would be a picture of fabricated rooms.
+      It becomes the best parent surface Mudavym could have the moment locations
+      are trustworthy, and not one day before.
+    </p>
+  </div>
+</div>
+</body>
+</html>

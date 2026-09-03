@@ -33,16 +33,26 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useWines } from '../../../hooks/queries/useWineQueries';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { queryKeys } from '../../../lib/query-keys';
+import { apiClient } from '../../../services/api/client';
 import type { Wine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
-import { knowledgeOf, num, refPrice, text, type Knowledge } from './cellar-format';
+import {
+  knowledgeOf,
+  num,
+  refPrice,
+  text,
+  type Confidence,
+  type DecidedBy,
+  type Knowledge,
+  type RegisterId,
+} from './cellar-format';
 
 /** The read limit the catalogue query asks for; shown to the reader when hit. */
 export const BOOK_READ_LIMIT = 500;
@@ -60,6 +70,21 @@ type WireWine = Wine & {
     knowledge?: string;
     observedAt?: string;
   };
+  /**
+   * The database's own classification of the row — wine / beer / spirit / sake
+   * / cider / cocktail / non_alcoholic / unknown
+   * (`20260817060000_beverage_kind_classification.sql:44-48`).
+   *
+   * It was computed by trigger from August and DROPPED by
+   * `WinesService.mapWine` before it reached the browser, which is why the beer
+   * and whiskey registers could not show a number at all. Carried onto the wire
+   * in this pass (`apps/api-gateway/src/wines/wines.service.ts`, with a spec in
+   * the same module). `undefined` means the query never selected the column —
+   * a different sentence from `'unknown'`, which is the classifier's own
+   * verdict.
+   */
+  beverageKind?: string;
+  classificationStatus?: string;
 };
 
 /** What the cellar actually holds for one bottle. Null when it holds none. */
@@ -94,6 +119,12 @@ export interface BottleVM {
   knowledge: Knowledge | null;
   observedAt: string | null;
   cellar: CellarRow | null;
+  /**
+   * What the library says this row IS. Null when the wire did not carry it —
+   * never defaulted to 'wine', because a library that classified a row as beer
+   * and a mapper that forgot to say so must not read the same.
+   */
+  beverageKind: string | null;
 }
 
 function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
@@ -117,6 +148,7 @@ function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
     knowledge: knowledgeOf(w.provenance?.knowledge),
     observedAt: text(w.provenance?.observedAt),
     cellar: inv.get(w.id) ?? null,
+    beverageKind: text(w.beverageKind),
   };
 }
 
@@ -132,9 +164,214 @@ export interface BuildingVM {
   offBook: number | null;
 }
 
+/* ── which registers this house carries ────────────────────────────────── */
+
+/**
+ * The readout from `GET /cellar/:rid/registers`, mirrored from the gateway's
+ * own types (`apps/api-gateway/src/cellar/cellar-registers.service.ts`).
+ *
+ * Every field that can be unknown IS nullable here, and none of them defaults.
+ * `carried: null` is a house nobody has asked and whose books hold nothing;
+ * `inventoryRows: null` is a cellar that could not be read. Both are rendered
+ * as words, never as a zero.
+ */
+export interface RegisterEvidenceVM {
+  inventoryRows: number | null;
+  menuRows: number | null;
+  catalogueRows: number | null;
+  nameOnly: boolean;
+}
+
+export interface RegisterReadoutVM {
+  id: RegisterId;
+  carried: boolean | null;
+  decidedBy: DecidedBy;
+  confidence: Confidence;
+  basis: string;
+  evidence: RegisterEvidenceVM;
+  /** On, with nothing in this house's books behind it. Drives the ask. */
+  needsEvidence: boolean;
+  /**
+   * OFF, with this house's own rows still behind it — the seasonal-menu case.
+   * Null when both books were unreadable; never 0 in that case.
+   */
+  strandedItems: number | null;
+}
+
+export interface SourceStatusVM {
+  readable: boolean;
+  reason: string | null;
+  rows: number | null;
+}
+
+export interface CellarRegistersVM {
+  restaurantId: string;
+  registers: RegisterReadoutVM[];
+  carried: RegisterId[];
+  decidedBy: DecidedBy | 'mixed';
+  /** Null when the answers table could not be read — genuinely unknown. */
+  awaitingConfirmation: boolean | null;
+  needsEvidence: RegisterId[];
+  /** Registers that are off with this house's items still behind them. */
+  stranded: RegisterId[];
+  sources: {
+    answers: SourceStatusVM;
+    inventory: SourceStatusVM;
+    menu: SourceStatusVM;
+    cocktails: SourceStatusVM;
+    catalogue: SourceStatusVM;
+  };
+  unmappedKinds: Record<string, number>;
+  unmappedCatalogueTypes: Record<string, number>;
+}
+
+/** One row of `public.beverages`, as the new gateway list returns it. */
+export interface BeverageVM {
+  id: string;
+  beverage_type: string | null;
+  name: string;
+  display_name: string | null;
+  producer: string | null;
+  brand: string | null;
+  country: string | null;
+  region: string | null;
+  abv_pct: number | null;
+  volume_ml: number | null;
+  package_format: string | null;
+  price_reference: number | null;
+}
+
+export interface BeverageListVM {
+  rows: BeverageVM[];
+  count: number;
+  truncated: boolean;
+  limit: number;
+  register: RegisterId | null;
+  matchedTypes: string[];
+  servedByThisTable: boolean;
+  scope: 'tenant' | 'global-reference';
+  scopeNote: string;
+}
+
+export interface CocktailVM {
+  id: string;
+  name: string;
+  display_name: string | null;
+  menu_section: string | null;
+  method: string | null;
+  glass: string | null;
+  garnish: string | null;
+  price: number | null;
+  description: string | null;
+}
+
+export interface CocktailListVM {
+  rows: CocktailVM[];
+  count: number;
+  truncated: boolean;
+  referenceRows: number | null;
+  recipesAvailable: false;
+  scopeNote: string;
+}
+
+/** The read limit for a catalogue register. The response says if it was hit. */
+export const CATALOGUE_READ_LIMIT = 300;
+
+export function useCellarRegisters() {
+  const { activeRestaurantId } = useAuth();
+  const queryClient = useQueryClient();
+  const key = ['cellar', 'registers', activeRestaurantId] as const;
+
+  const q = useQuery({
+    queryKey: key,
+    enabled: Boolean(activeRestaurantId),
+    queryFn: async (): Promise<CellarRegistersVM> => {
+      const r = await apiClient.get(`/cellar/${activeRestaurantId}/registers`);
+      return r.data as CellarRegistersVM;
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: async (input: {
+      registers: { id: RegisterId; carried: boolean }[];
+      source: 'inferred' | 'confirmed' | 'manual';
+    }): Promise<CellarRegistersVM> => {
+      const r = await apiClient.put(
+        `/cellar/${activeRestaurantId}/registers`,
+        input,
+      );
+      return r.data as CellarRegistersVM;
+    },
+    // The server's own readout after the write is the new truth — the page does
+    // NOT optimistically patch what it sent. A write that half-landed must show
+    // what actually landed, not what was asked for.
+    onSuccess: (data) => queryClient.setQueryData(key, data),
+  });
+
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+    save,
+    refetch: () => void q.refetch(),
+  };
+}
+
+/** One catalogue register's rows, read only when that register is open. */
+export function useBeverageRegister(register: RegisterId | null) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'beverages', activeRestaurantId, register],
+    enabled: Boolean(activeRestaurantId) && register !== null,
+    queryFn: async (): Promise<BeverageListVM> => {
+      const r = await apiClient.get(`/beverages/${activeRestaurantId}`, {
+        params: { register, limit: CATALOGUE_READ_LIMIT },
+      });
+      return r.data as BeverageListVM;
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+  };
+}
+
+export function useCocktailRegister(enabled: boolean) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'cocktails', activeRestaurantId],
+    enabled: Boolean(activeRestaurantId) && enabled,
+    queryFn: async (): Promise<CocktailListVM> => {
+      const r = await apiClient.get(`/cocktails/${activeRestaurantId}`, {
+        params: { limit: CATALOGUE_READ_LIMIT },
+      });
+      return r.data as CocktailListVM;
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+  };
+}
+
 export function useCellarNextData() {
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
+  const registers = useCellarRegisters();
 
   const winesQ = useWines({ limit: BOOK_READ_LIMIT });
   const inventoryQ = useInventory();
@@ -195,6 +432,23 @@ export function useCellarNextData() {
 
   const bookTruncated = (winesQ.data?.length ?? 0) >= BOOK_READ_LIMIT;
 
+  /**
+   * `beverage_kind` → titles, over the catalogue read this page already makes.
+   * Null while the book is unread — never an empty map, which would print 0
+   * beers over a read that never happened.
+   */
+  const libraryByKind: Map<string, number> | null = useMemo(() => {
+    if (bottles === null) return null;
+    const m = new Map<string, number>();
+    for (const b of bottles) {
+      // A row whose kind never arrived is counted as unclassified rather than
+      // silently as a wine. `null` here means the wire did not carry the field.
+      const k = b.beverageKind ?? '(not carried on the wire)';
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [bottles]);
+
   const errorOf = (e: unknown) => (e instanceof Error ? e.message : 'no reason given');
 
   return {
@@ -214,6 +468,23 @@ export function useCellarNextData() {
     providers: (providersQ.data ?? null) as Provider[] | null,
     bookTruncated,
 
+    /**
+     * Which registers this house carries. Null while unread — and the parent
+     * surface renders that as "still asking", never as "carries nothing".
+     */
+    registers: registers.data,
+    registersLoading: registers.loading,
+    registersError: registers.error,
+    saveRegisters: registers.save,
+
+    /**
+     * What the wine library itself holds, per `beverage_kind`. This is the
+     * field the gateway used to drop; it is here so a register can say how big
+     * the LIBRARY is even where the house holds none of the kind. It is a
+     * catalogue figure and every surface that prints it labels it as one.
+     */
+    libraryByKind,
+
     booking: winesQ.isLoading,
     bookError: winesQ.isError ? errorOf(winesQ.error) : null,
     cellarKnown: cellarByWine !== null,
@@ -224,6 +495,7 @@ export function useCellarNextData() {
       void winesQ.refetch();
       void inventoryQ.refetch();
       void providersQ.refetch();
+      registers.refetch();
     },
   };
 }

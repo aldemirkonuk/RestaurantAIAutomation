@@ -1,108 +1,117 @@
 /**
- * What each register is, and — for the three that are not wired — exactly what
- * is missing and what shape the register would take.
+ * What serves each register, stated exactly.
  *
- * MEASURED, not assumed, on 2026-09-02 in this worktree:
+ * REWRITTEN 2026-09-03 (second pass). The first version of this file existed to
+ * say "nothing serves beer, whiskey or cocktails" — which was true when it was
+ * written and is no longer. Three things changed on the gateway in this pass:
  *
- *  - `apps/api-gateway/src/**` declares **52 `@Controller(...)` routes across
- *    50 files** (`grep -rn "^@Controller(" apps/api-gateway/src --include="*.ts"`,
- *    re-counted 2026-09-02; an earlier draft said 48). None of them is
- *    `beverages`, `cocktails` or `spirits` — that grep filtered for those three
- *    names returns zero — and the only catalogue controller is
- *    `@Controller("wines")` (apps/api-gateway/src/wines/wines.controller.ts:30).
- *  - The tables DO exist: `public.beverages`
- *    (supabase/migrations/20260817070000_beverages_table.sql:217) and
- *    `public.cocktails` + `public.cocktail_ingredients`
- *    (20260817090000_cocktails.sql:27,60), with the beverage views at
- *    20260817080000 and the classifier at 20260817060000.
- *  - `master_wine_library.beverage_kind` classifies every catalogue row as one
- *    of wine / beer / spirit / sake / cider / cocktail / non_alcoholic /
- *    unknown (20260817060000_beverage_kind_classification.sql:44-48) — but
- *    `WinesService.mapWine` does not carry it onto the wire, so the browser
- *    cannot even COUNT the beer rows, let alone list them. That is why these
- *    three registers show no number at all rather than a zero.
- *  - `cocktail_ingredients` is created empty and stays empty by design
- *    ("recipes are not in the extracted data", 20260817090000_cocktails.sql:20-25).
+ *  1. `WinesService.mapWine` now carries `beverage_kind` and
+ *     `classification_status` onto the wire (`wines.service.ts`), so the browser
+ *     can finally COUNT what the library already classified.
+ *  2. `apps/api-gateway/src/beverages/` serves `public.beverages` and
+ *     `public.cocktails` read-only, tenant-named and JWT-guarded.
+ *  3. `apps/api-gateway/src/cellar/` decides which registers a house carries.
  *
- * The field lists below are column names read out of those migrations. They
- * describe a SCHEMA, not a tenant: no row, no count, no measurement.
+ * So the honest sentences here are now about SCOPE and about the two registers
+ * that still have no source, not about missing controllers:
+ *
+ *  - `public.beverages` has **no `restaurant_id`**
+ *    (`20260817070000_beverages_table.sql:217`). Its rows are a shared reference
+ *    catalogue, and every surface that shows them says so. They are not stock.
+ *  - `restaurant_inventory` is keyed on `master_wine_id →
+ *    master_wine_library`, so a keg or a bottle of rye **cannot be stocked,
+ *    counted, ordered or received** until the inventory identity axis is
+ *    decided (page note §9.6, OD-113). Beer and spirits are therefore
+ *    browsable catalogues with no cellar column, and each says so.
+ *  - `cocktail_ingredients` was created empty and is still empty by design
+ *    (`20260817090000_cocktails.sql:20-25`) — the register can list names and
+ *    never a recipe.
+ *  - **Soft drinks have no source at all.** No value of `beverages.beverage_type`
+ *    separates a cola from a kombucha (measured 2026-09-03: the distinct values
+ *    are whiskey, agave_spirit, beer, liqueur, amaro, sake, brandy, gin,
+ *    spirit_other, rum, non_alcoholic, vodka, cider). A soft-drinks register
+ *    shows the ask, not a number.
  */
 
 import type { RegisterId } from './cellar-format';
 
-export interface ShapeField {
-  id: string;
-  label: string;
-  description: string;
-}
-
-export interface RegisterState {
-  /** True only when an endpoint actually serves this register today. */
+export interface RegisterSource {
+  /** True when an endpoint returns rows for this register today. */
   wired: boolean;
+  /** Which read serves it. Named exactly, so the claim is checkable. */
+  served: string;
   /** The register's own sentence on the parent surface. */
   oneLine: string;
-  /** Where the rows would come from, named exactly. */
-  table: string;
-  /** What is missing, named exactly, so the gap is actionable. */
+  /** What the rows are NOT — the scope sentence. Empty when there is none. */
+  scopeNote: string;
+  /** True when this house can hold stock of the kind at all. */
+  stockable: boolean;
+  /** What is still missing, named exactly. Empty when nothing is. */
   missing: string;
-  /** The columns that already exist, so the shape is visible without rows. */
-  fields: ShapeField[];
 }
 
-const BEVERAGE_FIELDS: ShapeField[] = [
-  { id: 'name', label: 'Name · display name', description: 'text, with the derived descriptive name' },
-  { id: 'brand', label: 'Producer · brand', description: 'text' },
-  { id: 'beverage_type', label: 'Type', description: "text, defaulting to 'other'" },
-  { id: 'origin', label: 'Country · region', description: 'text' },
-  { id: 'abv_pct', label: 'ABV', description: 'numeric percent' },
-  { id: 'volume_ml', label: 'Volume · package format', description: 'integer ml, text format' },
-  { id: 'price_reference', label: 'Reference price', description: 'numeric — a market hint, never this house’s price' },
-  { id: 'codes', label: 'Barcode · SKU · UPC · EAN', description: 'text' },
-  { id: 'identity_key', label: 'Identity key · status', description: 'deterministic merge key, trigger-maintained' },
-  { id: 'sensory', label: 'Body · acidity · sweetness', description: 'text, real columns — populated only where extraction found them' },
-];
+const CATALOGUE_ONLY =
+  'These are the shared reference catalogue, not this house’s stock: `restaurant_inventory` is keyed on the wine library, so nothing of this kind can be counted into the cellar until the inventory identity axis is decided.';
 
-const COCKTAIL_FIELDS: ShapeField[] = [
-  { id: 'name', label: 'Name · display name', description: 'text' },
-  { id: 'menu_section', label: 'Menu section', description: 'text — the house’s own section header' },
-  { id: 'method', label: 'Method', description: 'text — shaken, stirred, built' },
-  { id: 'glass', label: 'Glass', description: 'text' },
-  { id: 'garnish', label: 'Garnish', description: 'text' },
-  { id: 'price', label: 'Price', description: 'numeric' },
-  { id: 'description', label: 'Description', description: 'text' },
-  { id: 'ingredients', label: 'Ingredients', description: 'cocktail_ingredients — created empty and still empty; recipes were never extracted' },
-];
-
-export const REGISTER_STATE: Record<RegisterId, RegisterState> = {
+export const REGISTER_SOURCE: Record<RegisterId, RegisterSource> = {
   wines: {
     wired: true,
+    served: 'GET /wines, with GET /inventory laid over it',
     oneLine: 'The master library as this house sees it, with the cellar laid over it.',
-    table: 'public.master_wine_library, via GET /wines',
+    scopeNote: '',
+    stockable: true,
     missing: '',
-    fields: [],
   },
   beer: {
-    wired: false,
-    oneLine: 'The table exists and is empty of a way in: no endpoint serves beer.',
-    table: 'public.beverages (beverage_type = beer)',
-    missing:
-      'No gateway controller serves this table. The wine catalogue’s own classifier already tags every row as wine / beer / spirit / cocktail, but the gateway drops that field before it reaches the browser — so this register cannot even report how many beers the library holds.',
-    fields: BEVERAGE_FIELDS,
+    wired: true,
+    served: 'GET /beverages/:rid?register=beer (beverage_type = beer)',
+    oneLine: 'The beer catalogue. Browsable now; not yet countable as stock.',
+    scopeNote: CATALOGUE_ONLY,
+    stockable: false,
+    missing: '',
   },
   whiskey: {
-    wired: false,
-    oneLine: 'The table exists and is empty of a way in: no endpoint serves spirits.',
-    table: 'public.beverages (beverage_type = spirit)',
-    missing:
-      'No gateway controller serves this table. Whiskey shares the beverages register with every other spirit; the classifier that separates them lives in the database and stops there.',
-    fields: BEVERAGE_FIELDS,
+    wired: true,
+    served: 'GET /beverages/:rid?register=whiskey (beverage_type = whiskey)',
+    oneLine: 'Whiskey, separated from the rest of the spirits by its own type.',
+    scopeNote: CATALOGUE_ONLY,
+    stockable: false,
+    missing: '',
+  },
+  spirits: {
+    wired: true,
+    served:
+      'GET /beverages/:rid?register=spirits (whiskey, agave_spirit, brandy, vodka, gin, rum, liqueur, amaro, spirit_other)',
+    oneLine: 'Every spirit, whiskey included. The wider register whiskey sits inside.',
+    scopeNote: CATALOGUE_ONLY,
+    stockable: false,
+    missing: '',
   },
   cocktails: {
-    wired: false,
+    wired: true,
+    served: 'GET /cocktails/:rid (this restaurant’s rows only)',
     oneLine: 'Recipes, not catalogue rows — and the recipe half was never extracted.',
-    table: 'public.cocktails + public.cocktail_ingredients',
+    scopeNote:
+      'Only cocktails this restaurant owns. Rows with no restaurant are unattributed reference data from the demo corpus and are counted apart, never listed as this house’s.',
+    stockable: false,
     missing:
-      'No gateway controller serves these tables, and the ingredients table was created empty on purpose: the cocktail sections of the scanned menus need their own extraction pass before a single recipe exists to show.',
-    fields: COCKTAIL_FIELDS,
+      '`cocktail_ingredients` was created empty on purpose — the cocktail sections of the scanned menus need their own extraction pass before a single recipe exists. This register can list names and nothing else.',
+  },
+  non_alcoholic: {
+    wired: true,
+    served: 'GET /beverages/:rid?register=non_alcoholic (beverage_type = non_alcoholic)',
+    oneLine: 'What the house pours to someone who is not drinking.',
+    scopeNote: CATALOGUE_ONLY,
+    stockable: false,
+    missing: '',
+  },
+  soft_drinks: {
+    wired: false,
+    served: 'nothing',
+    oneLine: 'On the menu, never in a catalogue: no column separates a cola from a kombucha.',
+    scopeNote: '',
+    stockable: false,
+    missing:
+      'No value of `beverages.beverage_type` distinguishes a soft drink from any other non-alcoholic drink, so this register has no rows to show — not zero rows, none to ask for. It counts what the menu names and nothing else.',
   },
 };

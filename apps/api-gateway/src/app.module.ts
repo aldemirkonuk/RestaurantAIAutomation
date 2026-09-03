@@ -29,10 +29,14 @@ import { SettingsModule } from "./settings/settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { WinesModule } from "./wines/wines.module";
 import { StorageLocationsModule } from "./storage-locations/storage-locations.module";
+import { CellarModule } from "./cellar/cellar.module";
+import { BeveragesModule } from "./beverages/beverages.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { UserPreferencesModule } from "./user-preferences/user-preferences.module";
 import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-templates.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
+import { McpConnectionsModule } from "./mcp-connections/mcp-connections.module";
+import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
 import { TeamModule } from "./team/team.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
@@ -102,12 +106,16 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     ProvidersModule,
     WinesModule,
     StorageLocationsModule, // Storage locations and wine-to-location mappings
+    CellarModule, // Which cellar registers a house carries (inferred → confirmed)
+    BeveragesModule, // Read-only lists over public.beverages / public.cocktails
     CalendarModule, // Calendar with recurrence support
     CommunicationsModule, // Gmail, SMS, and scheduled communications
     ConversationsModule, // Procurement conversation history, threads, summaries
     SettingsModule, // Restaurant settings and feature flags
     IntegrationsModule, // Third-party OAuth grants (Drive, Excel) + scope disclosure
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
+    McpConnectionsModule, // Model-context (MCP) servers declared per user + restaurant
+    PaymentMethodsModule, // Payment instruments on file; create refuses with no provider
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints

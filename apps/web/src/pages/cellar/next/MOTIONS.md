@@ -9,8 +9,8 @@ is not in this table.
 |---|---|---|---|
 | `cl-stand-settle` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms | the reading stand opening above the register when a bottle is chosen, and closing when it is dismissed — CSS `grid-template-rows: 0fr → 1fr` on `.cl-stand`. This is the row-expand "settle" the founder singled out by name on board 053. |
 | `cl-leaf-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the stand's *contents* when a different bottle is chosen while it is already open — opacity 0.2→1 plus a 4px rise, run through `animate()`. The page turns; the stand does not re-open. Deliberately slower than `settle`, per the token's own note. |
-| `cl-ink` | `ink` | HOUSE · 160ms | every micro-state: register-card, shelf-card, row, chip, field and button hover/focus. Border warms to `--seal-ring`, ground lifts one paper step. Nothing translates, nothing scales, nothing moves more than 0px. |
-| `cl-tally` | `tally` | sampled overdamped spring (stiffness 120 / damping 26, `linear(…)`) · 840ms | the seven figures on the parent surface — three per open register card, four in "In the building tonight" — on first arrival. Driven off `springs.tally.samples`, so the curve on screen IS the token. **An em dash never tallies**: `Tally` renders `null` instantly and returns before the rAF loop starts. |
+| `cl-ink` | `ink` | HOUSE · 160ms | every micro-state: register-card, shelf-card, row, chip, field, register switch, and button hover/focus. Border warms to `--seal-ring`, ground lifts one paper step. Nothing translates, nothing scales, nothing moves more than 0px. |
+| `cl-tally` | `tally` | sampled overdamped spring (stiffness 120 / damping 26, `linear(…)`) · 840ms | every figure on the parent surface — three on the wine register card, two on each catalogue register card, four in "In the building tonight" — on first arrival. Driven off `springs.tally.samples`, so the curve on screen IS the token. **An em dash never tallies**: `Tally` renders `null` instantly and returns before the rAF loop starts. |
 | `cl-hold-pour` / `cl-seal-stamp` | `pour`, `stamp` (inside `HoldToApprove`) | `linear` · 620ms, then the stamp spring (500/26, ~11% overshoot) · 360ms | the only ceremony on the page: holding to send a real purchase order to a vendor. The seal appears here and nowhere else. An early release retreats on `tuck` and says what did not happen. |
 
 ## The one disclosed exception — framer-motion
@@ -37,9 +37,21 @@ tuned here, and is not claimed as house motion.
   and stays. A skeleton would say "in flight"; a dash says "unknown"; on this
   page the market-price column is *permanently* unknown, so it must never look
   like it is loading.
-- **The unwired registers have no motion at all.** Beer, whiskey and cocktails
-  are a static statement of what is missing. Motion there would suggest work in
-  progress on screen when the work is in the gateway.
+- **A register that appears or disappears does not animate.** Since 2026-09-03
+  the parent draws only the registers this house carries, so the set changes
+  when the house changes its answer in Settings. That change is a fact about the
+  business, not an event on screen: the card is there on the next paint or it is
+  not. Animating it would make a correction look like a transaction.
+- **The "add the menu or the items" ask never interrupts.** It is a persistent
+  inline notice with no entrance motion and no modal — deliberately, per the
+  menu research's premortem M1 (an interrupting warning becomes noise inside a
+  month and gets clicked through unread, which is precisely how the legacy
+  "Reorder" alert on this page died). `NeedsItemsNotice` carries a
+  `variant: 'inline' | 'interrupt'` prop so the founder can raise its weight
+  without it ever becoming a dialog.
+- **The soft-drinks register has no motion at all.** It is a static statement
+  that no column in the schema separates a cola from a kombucha. Motion there
+  would suggest work in progress on screen when there is none.
 - **Reduced motion**: `.cl-stand`, `.cl-ink`, `.cl-register` and `.cl-bottle`
   drop their transitions in CSS; `cl-leaf-turn` collapses to its end state
   through `animate()`'s reduced-motion branch; `Tally` sets the final figure

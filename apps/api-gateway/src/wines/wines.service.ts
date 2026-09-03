@@ -49,6 +49,19 @@ interface WineRow {
   // silently drop what it received.
   library_tier?: number | null;
   review_status?: string | null;
+  // 20260817060000_beverage_kind_classification.sql:44-48. The database's own
+  // answer to "what IS this row" — wine / beer / spirit / sake / cider /
+  // cocktail / non_alcoholic / unknown — computed by trigger from a real
+  // primary_type, else the menu's own section header, else `unknown`.
+  //
+  // It was arriving on every `select("*")` and being dropped here, which is why
+  // the browser could not COUNT the beers in a library that had already
+  // classified them. Optional for the same reason the provenance block is:
+  // undefined means "this query did not ask for the column", which is a
+  // different sentence from "the classifier said unknown" — and this pair is
+  // precisely the distinction classification_status exists to preserve.
+  beverage_kind?: string | null;
+  classification_status?: string | null;
   field_confidences?: Record<string, number> | null;
   data_enrichment?: { knowledge?: string | null; [k: string]: unknown } | null;
   enrichment_observed_at?: string | null;
@@ -102,6 +115,12 @@ export class WinesService {
       bottleSizeOz,
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
+      // Carried, not dropped. `unknown` is a real classifier verdict and is
+      // passed through as itself; `undefined` means the column was not
+      // selected. A consumer that cannot tell those apart will render "no
+      // beer" over a query that never asked.
+      beverageKind: row.beverage_kind ?? undefined,
+      classificationStatus: row.classification_status ?? undefined,
       // N4: present only when the query selected these columns (row.* is
       // undefined, not null, for a column that was never asked for) — so a
       // narrow list projection doesn't advertise provenance it doesn't have,

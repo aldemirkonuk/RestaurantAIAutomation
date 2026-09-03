@@ -22,36 +22,84 @@
  * speaks the titles and the notes), the double rule ruling the account off, and
  * the seal appearing exactly once — on the hold that sends a real order.
  *
+ * SECOND PASS, 2026-09-03 — the founder's review: *"each restaurant will be
+ * different … maybe it's a non-alcoholic restaurant with only soft drinks — so
+ * we adapt to that."* The four registers were a global constant, which told a
+ * non-alcoholic house it had an empty whiskey programme: presence asserted
+ * where there was none, then reported as emptiness.
+ *
+ * **The registers are now the house's own.** The founder's chosen shape is
+ * *infer, then confirm at onboarding*, with a manual switch afterwards for a
+ * category the books cannot yet see. One authoritative row per (restaurant,
+ * register) in `restaurant_cellar_registers`, served by
+ * `apps/api-gateway/src/cellar/` — no second copy anywhere.
+ *
  * HONESTY. Market price is the em dash because `retail_price_avg` is null on
  * every row; `body`/`sweetness`/`acidity`/`alcohol`/`aromas`/`flavors` are gone
  * entirely (they were constants sold as measurements); a bottle with no
  * inventory row says "not in the building" rather than showing an invented
  * stock of 0 against an invented par of 6; "Reorder" and "save as recurring" —
  * which reported success and wrote nothing — are replaced by one real order
- * path and by nothing at all, respectively. Beer, whiskey and cocktails have
- * tables and no endpoint, so their registers say so and show the shape.
+ * path and by nothing at all, respectively. Beer, whiskey, spirits, cocktails
+ * and non-alcoholic are now SERVED (`/beverages`, `/cocktails`) but are
+ * catalogue-only, and every one of them says so: `restaurant_inventory` is
+ * keyed on the wine library, so none of them can be stock yet. Soft drinks have
+ * no source at all and say that instead of showing an empty table.
  */
 
 import { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
+import CatalogueRegister from './CatalogueRegister';
 import Registers from './Registers';
-import UnwiredRegister from './UnwiredRegister';
 import WineRegister from './WineRegister';
 import { useCellarNextData } from './useCellarNextData';
-import { REGISTER_ORDER, REGISTER_PATH, REGISTER_TITLE, SANS, ensureFraunces } from './cellar-format';
+import {
+  REGISTER_ORDER,
+  REGISTER_TITLE,
+  SANS,
+  ensureFraunces,
+  registerHref,
+  type RegisterId,
+} from './cellar-format';
 import './cellar-next.css';
 
 export interface CellarNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
   ground?: 'charcoal';
-  /** Which register of the cellar to open; undefined = the parent overview. */
+  /**
+   * Which register of the cellar to open; undefined = the parent overview.
+   *
+   * Only four of the seven have a route in `App.tsx`, which this page may not
+   * edit. The other three open on the parent as `?register=<id>` — deep-linkable
+   * and needing no route. Three real routes are filed in the page note §9.
+   */
   category?: 'wines' | 'beer' | 'whiskey' | 'cocktails';
 }
 
 export default function CellarNext({ ground, category }: CellarNextProps) {
   const data = useCellarNextData();
   const { pathname } = useLocation();
+  const [params] = useSearchParams();
+
+  // A register asked for by query on the parent. Validated against the
+  // vocabulary rather than trusted: an unknown value opens the overview.
+  const queried = params.get('register');
+  const fromQuery: RegisterId | null =
+    queried !== null && (REGISTER_ORDER as string[]).includes(queried)
+      ? (queried as RegisterId)
+      : null;
+  const open: RegisterId | null = category ?? fromQuery;
+
+  // Only the registers this house carries appear in the spine. While the
+  // readout is unread the spine holds the wine register alone — the one this
+  // page can serve without an answer — rather than the full seven, which would
+  // assert a set nobody has established.
+  const spine: RegisterId[] = data.registers
+    ? data.registers.decidedBy === 'unknown'
+      ? REGISTER_ORDER
+      : REGISTER_ORDER.filter((id) => data.registers?.carried.includes(id))
+    : ['wines'];
 
   useEffect(() => {
     ensureFraunces();
@@ -70,17 +118,20 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
             <Wordmark size={13} />
           </Link>
           <nav aria-label="Cellar registers" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
-            {REGISTER_ORDER.map((id) => (
-              <Link
-                key={id}
-                to={REGISTER_PATH[id]}
-                className="cl-btn cl-ink cl-focus"
-                data-on={pathname === REGISTER_PATH[id]}
-                style={{ textDecoration: 'none' }}
-              >
-                {REGISTER_TITLE[id]}
-              </Link>
-            ))}
+            {spine.map((id) => {
+              const href = registerHref(id);
+              return (
+                <Link
+                  key={id}
+                  to={href}
+                  className="cl-btn cl-ink cl-focus"
+                  data-on={open === id || pathname === href}
+                  style={{ textDecoration: 'none' }}
+                >
+                  {REGISTER_TITLE[id]}
+                </Link>
+              );
+            })}
           </nav>
         </header>
 
@@ -100,23 +151,26 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
                 for. The book is unread — not empty. Choose a branch, or ask an owner for access.
               </p>
             </div>
-          ) : category === undefined ? (
+          ) : open === null ? (
             <>
               <p className="cl-crumb">What the house keeps</p>
               <h1 className="cl-h1" data-size="parent">
                 The Cellar<span style={{ color: 'var(--seal)' }}>.</span>
               </h1>
               <p className="cl-standing" style={{ fontSize: 15.5 }}>
-                Four registers. One of them is written in; three have their pages ruled and nothing
-                on them yet.
+                {data.registersLoading
+                  ? 'Working out what this house keeps…'
+                  : data.registers && data.registers.decidedBy !== 'unknown'
+                    ? `${data.registers.carried.length} ${data.registers.carried.length === 1 ? 'register' : 'registers'}, because that is what this house pours. The others are not drawn.`
+                    : 'The registers this house carries have not been established, so all seven are shown and none is claimed.'}
               </p>
               <hr className="cl-rule" style={{ margin: '16px 0 0' }} />
               <Registers data={data} />
             </>
-          ) : category === 'wines' ? (
+          ) : open === 'wines' ? (
             <WineRegister data={data} />
           ) : (
-            <UnwiredRegister id={category} />
+            <CatalogueRegister id={open} data={data} />
           )}
         </div>
 

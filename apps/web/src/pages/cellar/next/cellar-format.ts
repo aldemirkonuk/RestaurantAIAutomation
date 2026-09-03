@@ -123,21 +123,149 @@ export function knowledgeNote(k: Knowledge | null): string {
   return 'This bottle carries no provenance mark, so the standing of its notes is unstated.';
 }
 
-/** The four registers of the cellar, in the founder's own order. */
-export type RegisterId = 'wines' | 'beer' | 'whiskey' | 'cocktails';
+/* ── the registers ─────────────────────────────────────────────────────── */
 
-export const REGISTER_ORDER: RegisterId[] = ['wines', 'beer', 'whiskey', 'cocktails'];
+/**
+ * THE SEVEN REGISTERS (founder, 2026-09-03). The four the page shipped with
+ * were a global constant drawn identically for every tenant, which told a
+ * non-alcoholic house it had an empty whiskey programme. The set is now the
+ * house's own: `GET /cellar/:rid/registers` decides which of these seven are
+ * on, and this array is only the vocabulary and its order.
+ *
+ * `whiskey` ⊂ `spirits` and `soft_drinks` ⊂ `non_alcoholic` on purpose — a
+ * whiskey bar is a different house from a cocktail bar that stocks bourbon.
+ */
+export type RegisterId =
+  | 'wines'
+  | 'beer'
+  | 'whiskey'
+  | 'cocktails'
+  | 'spirits'
+  | 'non_alcoholic'
+  | 'soft_drinks';
+
+export const REGISTER_ORDER: RegisterId[] = [
+  'wines',
+  'beer',
+  'whiskey',
+  'spirits',
+  'cocktails',
+  'non_alcoholic',
+  'soft_drinks',
+];
 
 export const REGISTER_TITLE: Record<RegisterId, string> = {
   wines: 'Wines',
   beer: 'Beer',
   whiskey: 'Whiskey',
   cocktails: 'Cocktails',
+  spirits: 'Spirits',
+  non_alcoholic: 'Non-alcoholic',
+  soft_drinks: 'Soft drinks',
 };
 
-export const REGISTER_PATH: Record<RegisterId, string> = {
+/**
+ * The four registers that have a route of their own in `App.tsx`. The other
+ * three open on the parent as `?register=<id>`, which is deep-linkable and
+ * needs no route — `App.tsx` is outside this page's paths and adding three
+ * routes there is filed in the page note §9 rather than done here.
+ */
+export const REGISTER_ROUTE: Partial<Record<RegisterId, string>> = {
   wines: '/wines',
   beer: '/beer',
   whiskey: '/whiskey',
   cocktails: '/cocktails',
 };
+
+/** Where a register opens: its own route, or the parent with a query. */
+export function registerHref(id: RegisterId): string {
+  return REGISTER_ROUTE[id] ?? `/cellar?register=${id}`;
+}
+
+/* ── how a register's answer was reached ───────────────────────────────── */
+
+/** Mirrors the gateway's `DecidedBy` (cellar/cellar-registers.ts). */
+export type DecidedBy = 'inferred' | 'confirmed' | 'manual' | 'unknown';
+export type Confidence = 'certain' | 'likely' | 'none' | 'unknown';
+
+/**
+ * The one-line answer to "how was this decided, and where do I change it?" —
+ * the sentence the founder asked for. Four sentences, because the four states
+ * are genuinely different and flattening them is what produced a cellar that
+ * lied to a non-alcoholic house.
+ */
+export function decidedLine(decidedBy: DecidedBy | 'mixed'): string {
+  switch (decidedBy) {
+    case 'confirmed':
+      return 'These registers are the ones the house confirmed. Change them in Settings.';
+    case 'manual':
+      return 'These registers were switched on by hand. Change them in Settings.';
+    case 'mixed':
+      return 'Some of these registers the house confirmed; the rest were read from its own books. Change them in Settings.';
+    case 'inferred':
+      return 'These registers were read from this house’s own cellar and menu, and nobody has confirmed them yet. Change them in Settings.';
+    default:
+      return 'Nothing has been counted or put on a menu yet, so which registers this house carries is unknown — not empty. Set them in Settings.';
+  }
+}
+
+/** The sentence for one register, with its own evidence. */
+export function confidenceLabel(c: Confidence): string {
+  if (c === 'certain') return 'certain';
+  if (c === 'likely') return 'likely';
+  if (c === 'none') return 'nothing found';
+  return 'unknown';
+}
+
+/**
+ * The ask when a register is on and this house's books hold nothing of the
+ * kind — **register by register**, not one blanket sentence.
+ *
+ * AMENDED 2026-09-03 after the founder's backtest of this notice
+ * (`backtest-register-prompt-2026-09-03.md` §6.1). One sentence for all seven
+ * registers produces the very fate the inline shape was chosen to avoid, just
+ * entered through futility instead of interruption: telling a house to "add
+ * the items to /inventory" for beer is telling it to do something the software
+ * cannot yet accept, because `restaurant_inventory` is keyed on the wine
+ * library. Asked once for the impossible, an operator stops reading the notice.
+ *
+ * So each sentence names what is actually actionable TODAY for that register,
+ * and where it is not, it says why rather than asking anyway.
+ */
+export function addRowsPrompt(id: RegisterId): string {
+  switch (id) {
+    case 'wines':
+      return 'Add your wines to /inventory, or put them on the menu, so the cellar can count them.';
+    case 'beer':
+      return 'Put your beers on the menu. /inventory cannot hold a keg yet — it is keyed on the wine library — so the menu is what the house can see today.';
+    case 'whiskey':
+      return 'Put your whiskies on the menu. /inventory cannot hold a bottle of rye yet — it is keyed on the wine library.';
+    case 'spirits':
+      return 'Put your spirits on the menu. /inventory cannot hold them yet — it is keyed on the wine library.';
+    case 'cocktails':
+      return 'Add the cocktail list to the menu. Recipes cannot be recorded at all yet: cocktail_ingredients was created empty and the extraction pass has not run.';
+    case 'non_alcoholic':
+      return 'Put what you pour to a non-drinker on the menu. /inventory cannot hold it yet — it is keyed on the wine library.';
+    default:
+      return 'Put your soft drinks on the menu. No catalogue column separates a cola from a kombucha, so the menu is the only place the house can see them.';
+  }
+}
+
+/**
+ * The ask when a register is OFF and this house's books still hold items of
+ * the kind — the seasonal-menu case (backtest §6.3, scenario 4). Ending a
+ * season on schedule is a correct, deliberate act, so this is never a warning
+ * and never a confirm dialog: it says what is still there and offers the two
+ * real choices.
+ */
+export function strandedPrompt(id: RegisterId, n: number): string {
+  const what =
+    id === 'cocktails'
+      ? n === 1 ? 'cocktail' : 'cocktails'
+      : id === 'wines'
+        ? n === 1 ? 'wine' : 'wines'
+        : id === 'whiskey'
+          ? n === 1 ? 'whisky' : 'whiskies'
+          : `${REGISTER_TITLE[id].toLowerCase()} ${n === 1 ? 'line' : 'lines'}`;
+  return `${n.toLocaleString('en-US')} ${what} ${n === 1 ? 'is' : 'are'} still in this house’s books.`;
+}
