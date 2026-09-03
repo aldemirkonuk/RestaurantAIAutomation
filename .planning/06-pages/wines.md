@@ -775,14 +775,26 @@ the onboarding step for every house on a database missing the migration.
 
 ### Roadmap for the adaptation (added 2026-09-03, ordered)
 
-1. **Mount `CellarRegistersStep` in onboarding.** `apps/web/src/pages/get-started/`
-   — the component is finished, exported and tested in
+1. ~~**Mount `CellarRegistersStep` in onboarding.**~~ — **DONE 2026-09-03.**
+   Mounted in `/get-started` behind `useMudavymDesign('cellar')`
+   (`apps/web/src/pages/GetStarted.tsx:175`), lazy-loaded (`:37-39`), rendered
+   immediately after the menu-import review completes (`:259-273`) and as the
+   last Activate step when a menu already exists (`:433-441`). The wrapper
+   `apps/web/src/components/onboarding/CellarRegistersOnboarding.tsx` supplies
+   `useCellarRegisters()` and enforces this note's own contract: it asks only
+   when `awaitingConfirmation === true`, renders nothing and continues the flow
+   when the readout is already answered or could not be read (`:47-52`), and is
+   skippable ("Confirm later — you can change this under Settings → Cellar").
+   With the flag off `/get-started` renders unchanged. Covered by
+   `apps/web/src/pages/__tests__/GetStarted.cellarRegisters.test.tsx` (8 tests).
+   The original entry read: the component is finished, exported and tested in
    `apps/web/src/pages/cellar/next/CellarRegistersStep.tsx`; it takes
    `{ readout, loading, error, onConfirm, saving, saveError }` and nothing else.
    Data comes from `useCellarRegisters()` in `useCellarNextData.ts`. Show it when
    `awaitingConfirmation === true`; show nothing when it is `null` (unknown), and
-   never re-ask a house whose answers merely could not be read.
-   *Blocker: none; outside this page's paths.*
+   never re-ask a house whose answers merely could not be read. *Blocker: none;
+   outside this page's paths.* — all three of those conditions are now enforced
+   at the mount and asserted by the test.
 2. **Mount `CellarRegistersControl` in the Settings cellar register.**
    `apps/web/src/pages/settings/` — same shape, plus `onChange(registers, 'manual')`
    wired to `saveRegisters.mutateAsync`. This is the "change it in Settings" the
