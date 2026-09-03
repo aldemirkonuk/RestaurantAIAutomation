@@ -76,7 +76,7 @@ pillow==10.2.0  # Image manipulation
 # The comment sits BELOW the pin because Trivy fingerprints an alert by the
 # line's text: editing that line re-reported all fifteen pre-existing pillow
 # advisories as "new alerts introduced by this pull request" and failed the PR
-# Audit Gate. They are pre-existing either way. See ADR 0102.
+# Audit Gate. They are pre-existing either way. See ADR 0106.
 pytesseract==0.3.10  # Alternative OCR backend
 pytz==2024.1  # Timezone support for manager preferences
 

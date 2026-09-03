@@ -1,4 +1,4 @@
-# 0102 — Resolve every Dependabot PR by measurement, and never by the PR's own diff
+# 0106 — Resolve every Dependabot PR by measurement, and never by the PR's own diff
 
 - **Status:** Proposed
 - **Date:** 2026-09-03
@@ -6,13 +6,21 @@
 - **Keywords:** dependabot, dependencies, pillow, surya-ocr, class-validator, framer-motion, zustand, pnpm, e2e-prod, supply-chain
 - **Links:** [[0100-security-alerts-triaged-and-closed]], [[0087-phantom-dependency-pinned-real-one-unpinned]], [[0089-absence-reported-as-health]], PR for `chore/dependabot-backlog-resolved`
 
-> **Number:** assigned **0102**, not 0101. `0101-the-audit-asks-for-the-build-the-merge-implies.md`
-> is already claimed on a ref *and* in an unpushed peer worktree
-> (`.claude/worktrees/heuristic-mclaren-649637`). Both sweeps were run before
-> writing — `git for-each-ref` over every local and remote ref, and a
-> `git worktree list` walk that reads each worktree's `.planning/decisions/`
-> directly. This is the fourth consecutive ADR to hit the collision; the
-> worktree sweep is the half that catches it.
+> **Number:** assigned **0106**, after two renumbers. 0101 was taken on a ref
+> (`heuristic-mclaren-649637`). This ADR was then written as **0102** and
+> *pushed* — and `check_adr_numbers_unique.py` passed on it, twice, against 622
+> refs. The `git worktree list` sweep run immediately before the final push found
+> `0102-a-card-on-file-is-the-providers-record-not-ours.md` sitting **unpushed**
+> in a peer worktree (`wt-p4`), and 0103/0104/0105 unpushed in another
+> (`wt-adr-9d440f0f`). None of the four is visible to any ref query.
+>
+> Two things follow. **A green `check_adr_numbers_unique.py` is not evidence the
+> number is free** — it is evidence no *pushed* branch has it, which is all it
+> claims; the worktree sweep is the half that finds the rest. And **being pushed
+> first is not a reason to keep a contested number**: holding 0102 would have
+> forced a collision onto a peer who cannot see this branch's claim until they
+> push, while moving cost one rename and five claim rows. Fifth consecutive ADR
+> to hit this.
 
 ## Context
 
