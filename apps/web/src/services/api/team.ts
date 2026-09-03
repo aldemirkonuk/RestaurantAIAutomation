@@ -154,53 +154,29 @@ export async function createSchedule(weekStart: string, rid?: string): Promise<S
   return data
 }
 /**
- * The client half of ADR 0088 T3/T7 — the "very next change" the gateway PR
- * (#256) named and nobody filed.
+ * TODO(cross-branch, gateway-first): `fix/team-gateway` (ADR 0088) makes the
+ * three destructive/fan-out verbs below REFUSE an unqualified request —
+ * copy-week 409s without `replaceTarget: true` when the target week is not
+ * empty, publish 409s without `resetReceipts: true` when receipts exist, and
+ * broadcast 400s unless it carries either `memberIds` or `audience:
+ * "everyone"`. Those three fields are NOT sent here on purpose: the gateway
+ * runs `forbidNonWhitelisted: true` (`apps/api-gateway/src/main.ts:54`), so
+ * sending a field the deployed DTO does not know 400s every one of these calls
+ * TODAY. The two changes therefore have a merge ORDER, not just a dependency:
+ * the gateway PR must land first, and the very next change here adds
+ * `replaceTarget` / `resetReceipts` / `audience` to these three bodies.
  *
- * The gateway makes the three destructive/fan-out verbs REFUSE an unqualified
- * request: copy-week 409s without `replaceTarget: true` when the target week is
- * not empty, publish 409s without `resetReceipts: true` when receipts exist,
- * and broadcast 400s unless the body names exactly one of `memberIds` or
- * `audience: "everyone"`. #256 shipped that half alone, so between its merge
- * and this change "Copy last week", "Re-publish" and the legacy desk's crew
- * broadcast answered 409/409/400 in production.
- *
- * The flags are OPTIONAL here and the caller passes them only after the user
- * has said yes: `ManagerShiftDesk.tsx`'s ConfirmSheet names what is destroyed
- * ("Replace the week" / "Re-publish and clear receipts") before either flag is
- * sent, and a FIRST publish sends none — the gateway clears nothing and reports
- * `receiptsCleared: 0`. A caller that omits them still gets the 409, which is
- * the point: the confirmation is client-side and therefore not a control; the
- * refusal is. Both halves are needed; neither is sufficient.
- *
- * Field names must match the gateway DTOs exactly — it runs
- * `forbidNonWhitelisted: true` (`apps/api-gateway/src/main.ts:54`), so an
- * unknown key 400s the whole call. `replaceTarget` / `resetReceipts` /
- * `audience` are declared at `apps/api-gateway/src/team/dto/team.dto.ts:105`,
- * `:114` and `:186`.
+ * Until then the confirmations that ADR 0089 added on the page
+ * (`ManagerShiftDesk.tsx` ConfirmSheet / MessageComposer) are the ONLY thing
+ * standing between a single click and a deleted week — client-side, and
+ * therefore not a control. Both halves are needed; neither is sufficient.
  */
-export async function copyWeek(
-  fromWeekStart: string,
-  toWeekStart: string,
-  rid?: string,
-  opts?: { replaceTarget?: boolean },
-) {
-  const { data } = await apiClient.post(`${base(rid)}/schedules/copy-week`, {
-    fromWeekStart,
-    toWeekStart,
-    ...(opts?.replaceTarget ? { replaceTarget: true } : {}),
-  })
+export async function copyWeek(fromWeekStart: string, toWeekStart: string, rid?: string) {
+  const { data } = await apiClient.post(`${base(rid)}/schedules/copy-week`, { fromWeekStart, toWeekStart })
   return data
 }
-export async function publishSchedule(
-  scheduleId: string,
-  rid?: string,
-  opts?: { resetReceipts?: boolean },
-) {
-  const { data } = await apiClient.post(
-    `${base(rid)}/schedules/${scheduleId}/publish`,
-    opts?.resetReceipts ? { resetReceipts: true } : {},
-  )
+export async function publishSchedule(scheduleId: string, rid?: string) {
+  const { data } = await apiClient.post(`${base(rid)}/schedules/${scheduleId}/publish`)
   return data
 }
 export async function acknowledgeSchedule(scheduleId: string, rid?: string) {
@@ -292,15 +268,7 @@ export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string
 }
 
 // ── Broadcast ───────────────────────────────────────────────────────────
-/**
- * A broadcast must say who it is for (ADR 0088 T3). An omitted `memberIds` used
- * to mean "everyone"; it is now a 400, so a restaurant-wide send has to name
- * itself with `audience: "everyone"`.
- */
-export async function broadcast(
-  body: { message: string; title?: string; memberIds?: string[]; audience?: 'everyone' },
-  rid?: string,
-) {
+export async function broadcast(body: { message: string; title?: string; memberIds?: string[] }, rid?: string) {
   const { data } = await apiClient.post(`${base(rid)}/broadcast`, body)
   return data
 }

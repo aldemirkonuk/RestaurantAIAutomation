@@ -243,31 +243,20 @@ export function ManagerShiftDesk() {
   // ── Mutations ──────────────────────────────────────────────────────────
   const invalidateWeek = () => qc.invalidateQueries({ queryKey: ['team', 'week'] })
 
-  /**
-   * `resetReceipts` is passed ONLY from the re-publish ConfirmSheet, which
-   * names the receipts it destroys. A first publish sends nothing: the gateway
-   * clears nothing and answers `receiptsCleared: 0` (ADR 0088 T7).
-   */
   const doPublish = useMutation({
-    mutationFn: async (opts?: { resetReceipts?: boolean }) => {
+    mutationFn: async () => {
       let scheduleId = week?.schedule?.id
       if (!scheduleId) {
         const created = await createSchedule(weekStart)
         scheduleId = created.id
       }
-      return publishSchedule(scheduleId, undefined, opts)
+      return publishSchedule(scheduleId)
     },
     onSuccess: () => { toast.success('Schedule published & team notified'); invalidateWeek() },
     onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not publish schedule'),
   })
-  /**
-   * `replaceTarget` is passed because the ConfirmSheet below has already told
-   * the manager the whole target week is deleted first, and they said yes. The
-   * gateway still 409s on any caller that has not (ADR 0088 T7).
-   */
   const doCopy = useMutation({
-    mutationFn: () =>
-      copyWeek(addDays(weekStart, -7), weekStart, undefined, { replaceTarget: true }),
+    mutationFn: () => copyWeek(addDays(weekStart, -7), weekStart),
     onSuccess: (r: any) => { toast.success(`Copied ${r?.copied ?? 0} shifts from last week`); invalidateWeek() },
     onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not copy last week'),
   })
@@ -404,12 +393,7 @@ export function ManagerShiftDesk() {
    */
   const doBroadcast = useMutation({
     mutationFn: ({ message, memberIds }: { message: string; memberIds?: string[] }) =>
-      broadcast({
-        message,
-        title: '📣 Message from your manager',
-        // Exactly one of the two, never both and never neither (ADR 0088 T3).
-        ...(memberIds?.length ? { memberIds } : { audience: 'everyone' as const }),
-      }),
+      broadcast({ message, title: '📣 Message from your manager', memberIds }),
     onSuccess: (r: any) => {
       const parts = [`inbox`]
       if (r?.notified) parts.push(`${r.notified} push`)
@@ -582,7 +566,7 @@ export function ManagerShiftDesk() {
           title="Export this week's schedule"
         />
         <ActionBtn onClick={printWeek}><Printer className="w-3.5 h-3.5" /> Print sheet</ActionBtn>
-        <ActionBtn onClick={() => (published ? setPendingConfirm('republish') : doPublish.mutate(undefined))} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
+        <ActionBtn onClick={() => (published ? setPendingConfirm('republish') : doPublish.mutate())} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
 
       <ShiftImportModal
@@ -897,10 +881,9 @@ export function ManagerShiftDesk() {
           onSend={(message) =>
             doBroadcast.mutate({
               message,
-              // A crew broadcast sends no memberIds and is tagged
-              // `audience: 'everyone'` downstream so the gateway uses its own
-              // live roster; a one-person message always names its recipient,
-              // which is the whole bug this replaces.
+              // A crew broadcast deliberately sends NO memberIds so the gateway
+              // uses its own live roster; a one-person message always names its
+              // recipient, which is the whole bug this replaces.
               memberIds: composer.scope === 'one' ? [composer.memberId] : undefined,
             })
           }
@@ -925,7 +908,7 @@ export function ManagerShiftDesk() {
           confirmLabel="Re-publish and clear receipts"
           pending={doPublish.isPending}
           onCancel={() => setPendingConfirm(null)}
-          onConfirm={() => { setPendingConfirm(null); doPublish.mutate({ resetReceipts: true }) }}
+          onConfirm={() => { setPendingConfirm(null); doPublish.mutate() }}
         />
       )}
 
