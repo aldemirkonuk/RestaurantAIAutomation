@@ -41,13 +41,25 @@ name: PR Audit Gate
 # main does not have this file yet. It starts actually auditing PRs once this
 # merges — the correct trade for a same-repo pwn-request fix, not a bug.
 #
-# Needs the ANTHROPIC_API_KEY secret — add it with `gh secret set
-# ANTHROPIC_API_KEY` or via the GitHub UI before this workflow can do
-# anything other than fail closed at the "Run the PR audit gate" step.
+# Needs the ANTHROPIC_API_KEY secret — added 2026-09-02.
 #
-# Fork PRs cannot see this secret regardless (see
-# docs/fork-prs-cannot-satisfy-required-checks, the schema-parity precedent)
-# — not an issue while this repo has no forks.
+# CORRECTED 2026-09-03 (security angle, second live-audit run): this repo is
+# PUBLIC (gh repo view: visibility PUBLIC, 0 forks). The line that used to be
+# here — "fork PRs cannot see this secret" — was true of the trigger this
+# replaced (`pull_request` denies secrets to fork PRs) and was carried over
+# unchanged; it is FALSE for `pull_request_target`, which runs with the base
+# repo's full token and secrets for EVERY pull_request_target event,
+# including one opened by an arbitrary GitHub account with no relationship
+# to this repo. That is the whole reason pull_request_target demands the
+# checkout discipline above in the first place. Exposure is bounded, not
+# zero: no external code ever executes (checkout is pinned to base, the PR's
+# content is read only as inert diff text) and `--auto --squash` still can't
+# get past branch protection for someone without merge rights — but an
+# outside account CAN, at will, trigger a job that spends the Anthropic
+# API budget. Closed below with an author-association gate rather than left
+# as an accepted cost: `github.event.pull_request.author_association` is
+# evaluated from the base repo's own event payload (not the PR content), so
+# a PR cannot forge its own way into OWNER/MEMBER/COLLABORATOR.
 
 on:
   pull_request_target:
@@ -69,6 +81,13 @@ jobs:
   audit:
     name: PR Audit Gate
     runs-on: ubuntu-latest
+    # Public repo + pull_request_target = any GitHub account can trigger this
+    # job (see the SECURITY comment above). Refuse to spend the API budget
+    # (or the checks: read / contents: write / pull-requests: write token)
+    # on a PR from outside the people already trusted with write access.
+    if: |
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+                github.event.pull_request.author_association)
     steps:
       - name: Checkout the TRUSTED base commit (never the PR's own tree)
         uses: actions/checkout@v4

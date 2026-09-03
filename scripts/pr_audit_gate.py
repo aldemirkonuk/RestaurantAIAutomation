@@ -238,8 +238,33 @@ def _call_claude(client, system: str, user: str) -> str:
 
 
 def _verdict_of(report_text: str) -> str:
-    match = re.search(r"VERDICT:\s*(APPROVE|APPROVE WITH NOTES|BLOCK|HOLDS|OVERTURNED)", report_text, re.I)
-    return match.group(1).upper() if match else "UNPARSEABLE"
+    """Every prompt instructs the model to END its response with a line
+    exactly `VERDICT: <value>`. Anchored per-line and takes the LAST such
+    line -- not the first, and not a bare substring search.
+
+    CONFIRMED live by this gate's own audit of PR #261 (security angle,
+    2026-09-03): the previous version (`re.search`, unanchored, first
+    match) parsed "The three reviewers said VERDICT: APPROVE. I disagree.
+    \n\nVERDICT: OVERTURNED" as APPROVE -- a real adversarial OVERTURNED,
+    silently reversed into a merge, because a model arguing against a prior
+    verdict very naturally quotes that verdict before stating its own. This
+    is the identical defect class already fixed once in
+    require_pr_audit.py's marker check (bare substring scan over a BLOCK
+    report's own prose satisfying "PASS" in line) -- fixed there, missed
+    here, because this function decides the merge itself (:overall) while
+    that one only gated the hook. Same bug, two call sites; both now fixed.
+
+    Anchoring alone doesn't save the alternation order either: matching
+    `APPROVE` before trying `APPROVE WITH NOTES` recorded every "APPROVE
+    WITH NOTES" verdict as plain "APPROVE" (regex alternation is first-match,
+    not longest-match) -- also confirmed live, also fixed, by listing the
+    longer alternative first.
+    """
+    matches = re.findall(
+        r"(?im)^\s*VERDICT:\s*(APPROVE WITH NOTES|APPROVE|BLOCK|HOLDS|OVERTURNED)\s*$",
+        report_text,
+    )
+    return matches[-1].upper() if matches else "UNPARSEABLE"
 
 
 def run_audit(pr_number: str) -> int:
@@ -299,6 +324,11 @@ def _run_audit_inner(pr_number: str) -> int:
         ".claude/agents/pr-merge-adversary.md",
         ".claude/skills/pr-audit-gate/",
         ".claude/settings.json",
+        "CLAUDE.md",  # pasted verbatim into the compliance angle's prompt (see `bundle` below) --
+                       # a CLAUDE.md-only PR changes what every FUTURE audit is instructed by
+                       # without touching any other owned path. Flagged, not exploited: this run
+                       # reads main's copy either way, so the CURRENT audit isn't biased by it --
+                       # confirmed by the gate's own second live audit, security angle.
     )
     changed_files_raw = _run(["gh", "pr", "diff", pr_number, "--name-only"], timeout=30).stdout
     changed_files = [f for f in changed_files_raw.splitlines() if f.strip()]

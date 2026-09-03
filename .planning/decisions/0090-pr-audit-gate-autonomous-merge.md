@@ -149,10 +149,18 @@ limitation, not a verified guarantee.
   `gh pr merge --auto`, but nothing stops a merge that bypasses this workflow
   entirely — only the Claude-side hook is a hard constraint, and only inside a
   Claude Code session.
-- Fork-PR precedent (ADR 0072 / `docs/fork-prs-cannot-satisfy-required-checks`,
-  merged as of this ADR): a fork PR cannot see repo secrets, so `ANTHROPIC_API_KEY`
-  is unavailable to it. Not an issue while this repo has no forks; would need the
-  same treatment as the schema-parity checks if that changes.
+- **Correction, second live audit (2026-09-03):** the line above originally
+  claimed fork PRs can't see this secret, true of `pull_request` (ADR 0072's
+  precedent) and carried over unchanged when this workflow moved to
+  `pull_request_target` for the self-audit fix — which is exactly backwards
+  for that trigger. This repo is confirmed **public, 0 forks**
+  (`gh repo view`), so `pull_request_target` runs with the full base-repo
+  token and secrets for a PR from **any** GitHub account, not only forks.
+  Exposure stays bounded (checkout is pinned to base, no external code
+  executes, branch protection still blocks an outside merge), but an
+  unrelated account could trigger API spend at will — closed with an
+  `author_association` gate (OWNER/MEMBER/COLLABORATOR only) in the
+  workflow, evaluated from the trusted event payload, not the PR's content.
 - Four ADR-number collisions (0012, 0013, 0028, 0049) exist across the ~628 refs
   the numbering guard swept — pre-existing, not caused by this decision, flagged
   separately rather than fixed here (out of this operation's scope).
@@ -215,6 +223,49 @@ and multi-angle shape even where it is inconvenient, not evidence the shape
 worked as designed (a BLOCK on the PR that introduces it is not the intended
 happy path).
 
+## Correction — 2026-09-03, found by the gate's own SECOND real audit
+
+Re-running the (now fixed) gate against the fix from the correction above
+found two more real defects in the fix itself, not new ground:
+
+1. **The verdict-bypass class from correction #4 above was fixed in the
+   wrong function.** `require_pr_audit.py`'s hook-side check got the strict
+   marker line; `pr_audit_gate.py`'s own `_verdict_of()` — the function that
+   actually decides `overall` and therefore whether `gh pr merge --auto`
+   runs — still used the identical unanchored `re.search` (first match,
+   case-insensitive substring) it was supposed to have replaced everywhere.
+   Concretely: the adversary's prompt includes the three angle reports, each
+   ending `VERDICT: APPROVE`; a model arguing against that verdict very
+   naturally quotes it before delivering its own ("The three reviewers said
+   VERDICT: APPROVE. I disagree... VERDICT: OVERTURNED") — and the old parser
+   returned the quoted APPROVE, silently reversing a real OVERTURNED into a
+   merge. A second bug rode along: alternation order (`APPROVE` tried before
+   `APPROVE WITH NOTES`) matched the shorter alternative as a strict prefix,
+   so every APPROVE WITH NOTES verdict was recorded as plain APPROVE. Fixed:
+   `_verdict_of()` now requires the verdict on its own line (`(?m)^...$`)
+   and takes the LAST match, matching what every prompt actually instructs
+   ("end your response with a line exactly...") and the longer alternative
+   listed first.
+2. **The corrected "fork PRs can't see this secret" claim was never
+   corrected for the trigger that made it wrong.** `pull_request_target`
+   (the fix in the first correction) runs with the base repo's full token
+   and secrets for every triggering event — not only forks, and this repo
+   is confirmed public with 0 forks, so in practice **any GitHub account**
+   could trigger a job holding `contents: write` + the live key. No code
+   execution path exists for that account to exploit (checkout stays pinned
+   to base), so this was not re-opening the self-audit hole — but it is a
+   real, live cost/attention-griefing surface the ADR's own words denied.
+   Closed with an `author_association` gate (OWNER/MEMBER/COLLABORATOR),
+   evaluated from the trusted event payload rather than PR content.
+
+Both were found by three fresh Opus subagents run through the actual
+Claude-Code-side skill (not the CI path — `pull_request_target` cannot audit
+the PR that introduces it, by design, see the workflow file) against PR #261
+directly, per ADR 0090's own procedure. The security angle traced (1) with a
+concrete constructed input and confirmed it against the live parser before
+reporting it; this session verified the same construction independently
+before fixing it, rather than fixing on the subagent's word alone.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -223,3 +274,4 @@ happy path).
 | 2026-09-02 | — | Created; status left `Proposed` pending the founder's explicit lock per this log's own convention |
 | 2026-09-02 | Aldemir (chat) | Asked "sonnet ultrathink or opus high" — corrected model from "Sonnet max" to **Opus / high** per ADR 0050's own override rule, before merge. Files/branding renamed off "sonnet" to match (`pr-merge-{auditor,adversary}.md`, `pr-audit-gate.yml`, `pr_audit_gate.py`, `require_pr_audit.py`) |
 | 2026-09-03 | `PR Audit Gate` (Opus, run 33695630472) | BLOCK — security + correctness, both confirmed real; 4 fixes landed same day, see Correction above |
+| 2026-09-03 | pr-audit-gate skill, security angle (Opus subagent) | BLOCK — the verdict-parser fix from the first correction was incomplete (wrong function) and the fork-secret claim was wrong for the new trigger; both confirmed independently and fixed, see second Correction above |
