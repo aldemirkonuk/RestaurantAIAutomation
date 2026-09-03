@@ -285,10 +285,13 @@ export class BillingService {
   ): Promise<void> {
     const { error } = await this.databaseService.supabase
       .from("billing_webhook_events")
+      // Explicit keys, not a conditional spread: check_order_capture_contract.py
+      // reads column names from the literal, and supabase-js drops an undefined
+      // value from the payload, so "only when known" keeps the same semantics.
       .update({
         handled,
         outcome,
-        ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+        restaurant_id: restaurantId ?? undefined,
       })
       .eq("provider", "stripe")
       .eq("event_id", eventId);

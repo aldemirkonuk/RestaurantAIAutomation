@@ -196,9 +196,11 @@ export class McpConnectionsService {
         name,
         url: dto.url.trim(),
         scopes: dto.scopes ?? [],
-        ...(sealed
-          ? { secret_encrypted: sealed, secret_set_at: new Date().toISOString() }
-          : {}),
+        // Explicit keys, not a conditional spread: the capture-contract guard
+        // reads column names from the literal; undefined is dropped by
+        // supabase-js, so an unsealed row still carries no secret columns.
+        secret_encrypted: sealed ?? undefined,
+        secret_set_at: sealed ? new Date().toISOString() : undefined,
       })
       .select(MCP_ROW_COLUMNS)
       .single();
