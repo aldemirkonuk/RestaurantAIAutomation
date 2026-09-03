@@ -35,6 +35,8 @@ interface Recorder {
   selects: string[];
   updates: Record<string, unknown>[];
   inserts: Record<string, unknown>[];
+  /** Every `.eq(column, value)` in order. The tenant filter is in here. */
+  filters: Array<[string, unknown]>;
 }
 
 /**
@@ -57,7 +59,10 @@ function builder(next: () => Result, rec: Recorder) {
       return self;
     },
     delete: () => self,
-    eq: () => self,
+    eq: (column: string, value: unknown) => {
+      rec.filters.push([column, value]);
+      return self;
+    },
     is: () => self,
     order: () => self,
     single: () => Promise.resolve(next()),
@@ -76,7 +81,7 @@ function makeService(
 ): { service: McpConnectionsService; rec: Recorder; runtime: McpRuntimeService } {
   const queue = Array.isArray(results) ? [...results] : [results];
   const next = () => (queue.length > 1 ? (queue.shift() as Result) : queue[0]);
-  const rec: Recorder = { selects: [], updates: [], inserts: [] };
+  const rec: Recorder = { selects: [], updates: [], inserts: [], filters: [] };
   const db = { supabase: { from: () => builder(next, rec) } };
 
   const config = {
@@ -522,5 +527,93 @@ describe("McpConnectionsService.runtimeState", () => {
       configured: true,
       reason: null,
     });
+  });
+});
+
+
+/**
+ * TENANCY, PINNED AT THE QUERY.
+ *
+ * The controller test proves the restaurant id comes from the token; nothing
+ * proved it then reaches the DATABASE. The audit demonstrated the gap by
+ * deleting `.eq("restaurant_id", restaurantId)` from `list()` and watching all
+ * 37 tests stay green — a dropped tenant filter would have shipped behind a
+ * clean suite, which is the fault class this repo keeps a memory file about.
+ *
+ * The fake builder records every `.eq(column, value)` now, so each method is
+ * asserted to scope by BOTH ids. Each of these fails if its filter is removed.
+ */
+describe("every read and write is scoped to the user AND the restaurant", () => {
+  const both = (rec: { filters: Array<[string, unknown]> }) => ({
+    user: rec.filters.find(([c]) => c === "user_id")?.[1],
+    restaurant: rec.filters.find(([c]) => c === "restaurant_id")?.[1],
+  });
+
+  it("list()", async () => {
+    const { service, rec } = makeService({ data: [ROW], error: null });
+    await service.list("u-mine", "r-mine");
+    expect(both(rec)).toEqual({ user: "u-mine", restaurant: "r-mine" });
+  });
+
+  it("create()", async () => {
+    const { service, rec } = makeService({ data: ROW, error: null });
+    await service.create("u-mine", "r-mine", {
+      name: "n",
+      url: "https://x.example",
+    });
+    // The insert carries the scope; nothing in the DTO can widen it.
+    expect(rec.inserts[0]).toMatchObject({
+      user_id: "u-mine",
+      restaurant_id: "r-mine",
+    });
+  });
+
+  it("revoke()", async () => {
+    const { service, rec } = makeService({
+      data: { ...ROW, revoked_at: "2026-09-03T10:00:00.000Z" },
+      error: null,
+    });
+    await service.revoke("u-mine", "r-mine", ROW.id);
+    expect(both(rec)).toEqual({ user: "u-mine", restaurant: "r-mine" });
+    expect(rec.filters).toContainEqual(["id", ROW.id]);
+  });
+
+  it("setSecret()", async () => {
+    const { service, rec } = makeService({ data: ROW, error: null });
+    await service.setSecret("u-mine", "r-mine", ROW.id, null);
+    expect(both(rec)).toEqual({ user: "u-mine", restaurant: "r-mine" });
+  });
+
+  it("probe() — on the row it reads AND on the row it writes back", async () => {
+    const { service, rec } = makeService(
+      [
+        {
+          data: { id: ROW.id, url: ROW.url, revoked_at: null, secret_encrypted: null },
+          error: null,
+        },
+        { data: { ...ROW, probe_status: "ok" }, error: null },
+      ],
+      { probe: OK_PROBE },
+    );
+    await service.probe("u-mine", "r-mine", ROW.id);
+
+    // Two statements, two scopes: reading someone else's row and then stamping
+    // a probe onto it are separate holes, so both are asserted.
+    const users = rec.filters.filter(([c]) => c === "user_id").map(([, v]) => v);
+    const houses = rec.filters
+      .filter(([c]) => c === "restaurant_id")
+      .map(([, v]) => v);
+    expect(users).toEqual(["u-mine", "u-mine"]);
+    expect(houses).toEqual(["r-mine", "r-mine"]);
+  });
+
+  it("never filters by a restaurant the caller supplied instead of the token's", async () => {
+    // A belt-and-braces shape check: the only restaurant id that reaches the
+    // query is the argument the controller passed down from `req.user`.
+    const { service, rec } = makeService({ data: [ROW], error: null });
+    await service.list("u-mine", "r-from-token");
+    const houses = rec.filters.filter(([c]) => c === "restaurant_id");
+    expect(houses).toHaveLength(1);
+    expect(houses[0][1]).toBe("r-from-token");
   });
 });

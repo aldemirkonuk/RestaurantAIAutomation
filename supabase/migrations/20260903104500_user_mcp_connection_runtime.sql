@@ -22,6 +22,19 @@
 -- form: a failed probe would refresh "last call", and a server that has been
 -- dead for a month would read as busy. Two columns, two sentences on the page.
 --
+-- WHAT THE `DO` BLOCK AT THE BOTTOM PROVES, AND WHAT IT ONLY ASSERTS
+-- ------------------------------------------------------------------
+-- Unconditionally: the ten columns exist, every one of them is nullable, RLS is
+-- still on after the ALTER, the client roles still cannot reach
+-- `secret_encrypted`, and the CHECK constraint EXISTS.
+--
+-- Conditionally: that the CHECK actually FIRES. Proving that needs a real row,
+-- which needs a `users` and a `restaurants` row to hang it on; on a database
+-- that has neither the block RAISE NOTICEs a skip and the fire-proof does not
+-- run. Say "proves the CHECK fires when a seed row exists" and nothing more —
+-- a doc that drops the condition is reporting an untested path as a tested one,
+-- which is this repo's own fault class one level up.
+--
 -- `probe_status` IS NULLABLE, AND NULL IS NOT 'ok'
 -- -----------------------------------------------
 -- NULL means "never probed" and renders as an em dash. There is no default and

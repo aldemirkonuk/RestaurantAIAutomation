@@ -23,7 +23,7 @@ was not:
 
 > "A row is a DECLARED server: a name, an endpoint, and the scopes the house has
 > granted it. It is NOT evidence that anything has ever called that server."
-> — `supabase/migrations/20260903094500_user_mcp_connections.sql:20-23`
+> — `supabase/migrations/20260903094500_user_mcp_connections.sql:16-17`
 
 That honesty was filed as a gap the same day. `profile.md:539` (G9) reads:
 *"nothing calls a model-context server … Closing it means an MCP client in the
@@ -162,15 +162,43 @@ A response cannot carry the ciphertext because the value is never read. The row
 reports `hasSecret`/`secretSetAt`, derived from a **date**. Revoking destroys the
 credential rather than orphaning it.
 
-**7. The gateway will not fetch a private address.**
+**7. The gateway will not fetch a private address, and the address is PARSED
+rather than string-matched.**
 The probe makes the *server* fetch a URL a *user* typed, so the endpoint is
-resolved and every resulting address vetted before the call:
-loopback, link-local (`169.254.0.0/16`, where cloud instance metadata lives),
-RFC1918, CGNAT, unique-local and IPv4-mapped forms are refused, naming what was
-refused and why. `MCP_ALLOW_PRIVATE_ENDPOINTS=true` unlocks them for a developer
-running a server on `localhost`. Redirects are **not followed** (`redirect:
-"manual"`), so a bearer credential cannot be carried to a host the check never
-saw.
+resolved and every resulting address vetted before the call. The first
+implementation of this rule was **bypassable and shipped that way**: it detected
+the IPv4-mapped form with `ip.includes(".")`, and Node's `URL` canonicalises
+`http://[::ffff:127.0.0.1]/` to hostname `[::ffff:7f00:1]` before that code runs,
+so the branch was dead and a full MCP handshake against a loopback server
+completed in the default posture. The audit reproduced it live.
+
+The correction is not another string test. An address is a 128-bit number, so
+`parseIPv6` expands `::`, decodes an embedded dotted quad, and yields 16 bytes;
+every rule is a test on those bytes, and anything that will not parse is
+**refused** — failing closed, because "we could not tell what this address is"
+must never mean "call it". The embedded-IPv4 families are enumerated and decoded
+rather than judged on their v6 prefix: IPv4-mapped (`::ffff:0:0/96`),
+IPv4-compatible (`::/96`), NAT64 (`64:ff9b::/96`), 6to4 (`2002::/16`) and Teredo
+(`2001::/32`). Native v6 loopback, unspecified, link-local (`fe80::/10`),
+unique-local (`fc00::/7`), site-local, multicast and documentation ranges are
+refused, alongside the IPv4 table. A URL carrying its own credentials is refused
+too, rather than having them silently stripped.
+`MCP_ALLOW_PRIVATE_ENDPOINTS=true` unlocks the private ranges for a developer
+running a server on `localhost`, and every refusal names that variable.
+
+**7a. The vetted address is PINNED into the socket.**
+`checkEndpoint` returns the address it approved and `mcp-runtime.service.ts`
+hands it to `http.request`'s `lookup` hook, so the connection goes to the address
+that was checked and there is no second resolution for a hostile resolver to
+answer differently. This is why the transport is `node:http`/`node:https` rather
+than `fetch`: `fetch` offers no way to say which address a name must resolve to,
+which made the first build a TOCTOU (filed then as G16, closed now). The hostname
+still goes in the `Host` header and in TLS SNI, so certificate validation is
+untouched — connecting to the IP directly would have broken it. `agent: false`,
+because a pooled socket is keyed by host and port and not by the address it was
+opened to. Redirects cannot be followed at all: `http.request` does not follow
+them, so a 3xx arrives as a status to classify rather than as a request already
+sent somewhere unvetted.
 
 **8. Bounded: one deadline, one byte ceiling, one tool cap.**
 `MCP_PROBE_TIMEOUT_MS` (8s) covers the whole three-request lifecycle rather than
@@ -205,11 +233,18 @@ about a THIRD-PARTY server and still no evidence that the Mudavym server exists.
 
 **Costs and risks, stated**
 
-- **DNS rebinding is not closed.** The guard resolves the name, then `fetch`
-  resolves it again, and a hostile resolver can answer differently the second
-  time. Closing it needs the socket pinned to the address that passed. Filed as
-  **G13**; what *is* closed is the reachable class — someone typing a metadata or
-  RFC1918 URL into the form.
+- ~~**DNS rebinding is not closed.**~~ **CLOSED in the same day's audit fix.**
+  The first build resolved the name and then let `fetch` resolve it again, which
+  was a TOCTOU filed as G16. The transport is now `node:http` with a `lookup`
+  hook returning the single vetted address, so the socket connects to what was
+  checked. Kept struck rather than deleted: the residual was disclosed here
+  before it was closed, and that is the order it should happen in.
+- **The SSRF rule was wrong once, and the cost was a shipped bypass.** Recorded
+  rather than smoothed over: this ADR's §7 claimed a protection its code did not
+  provide for four hours, because the rule was written as a string test and had
+  no direct test of its own. `mcp-endpoint.guard.spec.ts` now exists (33 tests),
+  and seven of them go red against the shipped version — the check that the
+  first build should have had.
 - **A probe is manual.** The register is current as of the last check and says so
   with a date; nothing keeps it fresh. Filed as **G14** (option C).
 - **Two more environment variables** (`MCP_CONNECTION_SECRET_KEY`,
@@ -250,4 +285,27 @@ about a THIRD-PARTY server and still no evidence that the Mudavym server exists.
   44 worktrees on 2026-09-03 found `wt-deps` holding **0106**, not 0102 — so the
   collision this names had already moved by the time it was read, which is the
   paragraph's own point one level up.)*
+- 2026-09-03 — **audited, FAILED on one blocker, and fixed.** The audit
+  (`p4-audit-build-d.md`) reproduced an SSRF bypass through the compiled
+  `probe()`: `http://[::ffff:127.0.0.1]:38124/mcp` completed a full MCP handshake
+  against a loopback stub in the default posture. §7 above is rewritten to what
+  the code now does, and the same three URLs are now refused before any call —
+  re-verified end to end against the same stub, whose log shows only the one
+  session made with the dev flag deliberately on. Two coverage defects the audit
+  named are closed with it: the endpoint guard has its own spec, and the
+  database-level tenant scope is pinned by tests that go red when the
+  `restaurant_id` filter is removed (the audit's own experiment).
+- **The ADR-number claim above is no longer vacuous, and here is what the guard
+  actually says.** When the review trail was written the ADR files were
+  untracked, so `check_adr_numbers_unique.py` — which reads `git ls-files` —
+  could not see any of them and its green run proved nothing. They are committed
+  now. Re-run on 2026-09-03: `OK -- introduced by this ref: 0107
+  (a-declared-server-is-not-a-reachable-one), 0108
+  (a-register-is-the-houses-own-books-first), 0109
+  (a-reminder-is-the-houses-job-not-the-browsers), 0110
+  (a-card-on-file-is-the-providers-record-not-ours) / Checked against 621 refs.
+  No number wears two slugs.` and `--audit`: `no ADR number collisions across 621
+  refs. Next free number: 0111`. All four wave builds are visible to the guard,
+  each holds a distinct number, and the 0102 double-claim is gone — the payment
+  build took 0110.
 - Not yet reviewed by the founder. `OPEN-DECISIONS.md` deliberately untouched.

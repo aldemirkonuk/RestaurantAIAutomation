@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { checkEndpoint } from "./mcp-endpoint.guard";
+import { request as httpRequest, type IncomingMessage } from "http";
+import { request as httpsRequest } from "https";
+import { isIP } from "net";
+import { checkEndpoint, type EndpointCheck } from "./mcp-endpoint.guard";
 import type {
   McpProbeLimits,
   McpProbeOutcome,
@@ -125,7 +128,7 @@ export class McpRuntimeService {
     } as const;
 
     const endpoint = await checkEndpoint(url, limits.allowPrivateEndpoints);
-    if (!endpoint.ok) {
+    if (!endpoint.ok || !endpoint.pinned || !endpoint.url) {
       return {
         ...base,
         status: "refused",
@@ -137,7 +140,7 @@ export class McpRuntimeService {
 
     /* 1. initialize ------------------------------------------------------ */
 
-    const init = await this.request(url, deadline, limits, {
+    const init = await this.request(endpoint, deadline, limits, {
       secret,
       sessionId: null,
       protocolVersion: null,
@@ -183,7 +186,7 @@ export class McpRuntimeService {
 
     /* 2. notifications/initialized --------------------------------------- */
 
-    const ack = await this.notify(url, deadline, limits, {
+    const ack = await this.notify(endpoint, deadline, limits, {
       secret,
       sessionId: init.sessionId,
       protocolVersion: negotiated,
@@ -215,7 +218,7 @@ export class McpRuntimeService {
       };
     }
 
-    const listed = await this.request(url, deadline, limits, {
+    const listed = await this.request(endpoint, deadline, limits, {
       secret,
       sessionId: init.sessionId,
       protocolVersion: negotiated,
@@ -290,9 +293,32 @@ export class McpRuntimeService {
     return h;
   }
 
-  private async post(
-    url: string,
+  /**
+   * One POST, over a socket that connects to the address the guard VETTED.
+   *
+   * WHY `node:http` AND NOT `fetch`
+   * -------------------------------
+   * `fetch` gives no way to say which address a hostname must resolve to, so a
+   * vetted-then-fetched name is a TOCTOU: the guard resolves it, undici resolves
+   * it again, and a hostile resolver answers `127.0.0.1` the second time. That
+   * was filed as G16 and is closed here — `http.request` takes a `lookup` hook,
+   * and this one returns the single address `checkEndpoint` approved, so there
+   * is no second resolution to poison. The hostname is still what goes in the
+   * `Host` header and in TLS SNI, so certificate validation is untouched;
+   * connecting to the IP directly would have broken it.
+   *
+   * `agent: false` because a pooled socket is keyed by host and port, not by the
+   * address it was opened to — reusing one across a different pin would hand
+   * back exactly the connection this method exists to control.
+   *
+   * Redirects are not followed, and never can be: `http.request` does not follow
+   * them at all, so a 3xx arrives here as a status to classify rather than as a
+   * request already sent somewhere unvetted.
+   */
+  private post(
+    target: EndpointCheck,
     deadline: number,
+    limits: McpProbeLimits,
     opts: {
       secret: string | null;
       sessionId: string | null;
@@ -300,54 +326,121 @@ export class McpRuntimeService {
       body: unknown;
     },
   ): Promise<
-    | { ok: true; response: Response; controller: AbortController }
+    | { ok: true; answer: HttpAnswer }
     | { ok: false; status: "unreachable" | "protocol_error"; detail: string }
   > {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
-      return {
-        ok: false,
-        status: "unreachable",
+      return Promise.resolve({
+        ok: false as const,
+        status: "unreachable" as const,
         detail: "the probe ran out of time before this request could be made.",
-      };
+      });
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), remaining);
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: this.headers(opts),
-        body: JSON.stringify(opts.body),
-        signal: controller.signal,
-        // A redirect can move the request — and its Authorization header — to a
-        // host the endpoint check never vetted. Refused, and named.
-        redirect: "manual",
+    const url = target.url;
+    const pinned = target.pinned;
+    if (!url || !pinned) {
+      // Unreachable by construction — `probe()` refuses before it gets here —
+      // and stated rather than assumed, because a null pin would silently mean
+      // "resolve it yourself", which is the whole thing this method prevents.
+      return Promise.resolve({
+        ok: false as const,
+        status: "protocol_error" as const,
+        detail: "the endpoint was not vetted, so no request was made.",
       });
-      return { ok: true, response, controller };
-    } catch (err) {
-      const e = err as Error & { cause?: { code?: string }; code?: string };
-      if (e.name === "AbortError" || e.name === "TimeoutError") {
-        return {
+    }
+
+    const payload = Buffer.from(JSON.stringify(opts.body), "utf8");
+    const secure = url.protocol === "https:";
+    const send = secure ? httpsRequest : httpRequest;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (
+        v:
+          | { ok: true; answer: HttpAnswer }
+          | { ok: false; status: "unreachable" | "protocol_error"; detail: string },
+      ) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(v);
+      };
+
+      const req = send(
+        {
+          protocol: url.protocol,
+          hostname: url.hostname.replace(/^\[|\]$/g, ""),
+          port: url.port || (secure ? 443 : 80),
+          path: `${url.pathname}${url.search}`,
+          method: "POST",
+          headers: {
+            ...this.headers(opts),
+            "content-length": String(payload.byteLength),
+          },
+          lookup: pinnedLookup(pinned),
+          agent: false,
+        },
+        (res: IncomingMessage) => {
+          const chunks: Buffer[] = [];
+          let total = 0;
+          let overflow = false;
+
+          res.on("data", (c: Buffer) => {
+            if (overflow) return;
+            total += c.byteLength;
+            if (total > limits.maxBytes) {
+              // Stop reading AND stop the socket: the ceiling is there so a
+              // hostile or broken server cannot make this process hold its
+              // output in memory.
+              overflow = true;
+              res.destroy();
+              return;
+            }
+            chunks.push(c);
+          });
+
+          const finish = () =>
+            done({
+              ok: true,
+              answer: makeAnswer(res, Buffer.concat(chunks).toString("utf8"), overflow),
+            });
+          res.on("end", finish);
+          res.on("close", finish);
+          res.on("error", finish);
+        },
+      );
+
+      const timer = setTimeout(() => {
+        req.destroy(
+          Object.assign(new Error("probe deadline"), { code: PROBE_DEADLINE }),
+        );
+      }, remaining);
+
+      req.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === PROBE_DEADLINE) {
+          done({
+            ok: false,
+            status: "unreachable",
+            detail: `nothing answered within the ${remaining}ms left of the probe's time budget.`,
+          });
+          return;
+        }
+        done({
           ok: false,
           status: "unreachable",
-          detail: `nothing answered within the ${remaining}ms left of the probe's time budget.`,
-        };
-      }
-      const code = e.cause?.code ?? e.code;
-      return {
-        ok: false,
-        status: "unreachable",
-        detail: `the request did not complete (${code ?? e.message}).`,
-      };
-    } finally {
-      clearTimeout(timer);
-    }
+          detail: `the request did not complete (${err.code ?? err.message}).`,
+        });
+      });
+
+      req.end(payload);
+    });
   }
 
   /** A notification: no id, no result, 2xx and nothing else. */
   private async notify(
-    url: string,
+    target: EndpointCheck,
     deadline: number,
     limits: McpProbeLimits,
     opts: {
@@ -360,12 +453,11 @@ export class McpRuntimeService {
     | { kind: "accepted" }
     | { kind: "failed"; status: "unreachable" | "refused" | "protocol_error"; detail: string }
   > {
-    const sent = await this.post(url, deadline, opts);
+    const sent = await this.post(target, deadline, limits, opts);
     if (!sent.ok) return { kind: "failed", status: sent.status, detail: sent.detail };
 
-    const { response } = sent;
-    // Drain under the cap so the socket can be reused and nothing is left open.
-    await readCapped(response, limits.maxBytes).catch(() => undefined);
+    // The body is already read, under the cap, by `post`.
+    const response = sent.answer;
 
     if (response.status >= 300 && response.status < 400) {
       return {
@@ -396,7 +488,7 @@ export class McpRuntimeService {
    * transport-level helper below is `post` for the same reason.
    */
   private async request(
-    url: string,
+    target: EndpointCheck,
     deadline: number,
     limits: McpProbeLimits,
     opts: {
@@ -414,14 +506,13 @@ export class McpRuntimeService {
         detail: string;
       }
   > {
-    const sent = await this.post(url, deadline, opts);
+    const sent = await this.post(target, deadline, limits, opts);
     if (!sent.ok) return { kind: "failed", status: sent.status, detail: sent.detail };
 
-    const { response } = sent;
+    const response = sent.answer;
     const sessionId = response.headers.get("mcp-session-id");
 
     if (response.status >= 300 && response.status < 400) {
-      await readCapped(response, limits.maxBytes).catch(() => undefined);
       return {
         kind: "failed",
         status: "protocol_error",
@@ -429,16 +520,7 @@ export class McpRuntimeService {
       };
     }
 
-    let body: { text: string; overflow: boolean };
-    try {
-      body = await readCapped(response, limits.maxBytes);
-    } catch (err) {
-      return {
-        kind: "failed",
-        status: "unreachable",
-        detail: `the answer stopped mid-body (${(err as Error).message}).`,
-      };
-    }
+    const body = { text: response.text, overflow: response.overflow };
 
     if (body.overflow) {
       return {
@@ -510,39 +592,66 @@ function describeStatus(status: number): string {
   return ".";
 }
 
-/**
- * Read a body with a hard byte ceiling.
- *
- * `response.text()` would buffer whatever the server sends, which is the whole
- * point of having a cap. This reads chunk by chunk, stops the moment the count
- * is exceeded, and cancels the stream so nothing keeps arriving.
- */
-export async function readCapped(
-  response: Response,
-  maxBytes: number,
-): Promise<{ text: string; overflow: boolean }> {
-  const body = response.body;
-  if (!body) return { text: "", overflow: false };
+/** Marks the abort this module caused, so it is not read as a network fault. */
+const PROBE_DEADLINE = "MCP_PROBE_DEADLINE";
 
-  const reader = body.getReader();
-  const chunks: Buffer[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined);
-        return { text: "", overflow: true };
-      }
-      chunks.push(Buffer.from(value));
-    }
-  } finally {
-    reader.releaseLock?.();
-  }
-  return { text: Buffer.concat(chunks).toString("utf8"), overflow: false };
+/** The parts of an HTTP answer this module reads. Body already capped. */
+interface HttpAnswer {
+  status: number;
+  ok: boolean;
+  headers: { get(name: string): string | null };
+  text: string;
+  overflow: boolean;
+}
+
+function makeAnswer(
+  res: IncomingMessage,
+  text: string,
+  overflow: boolean,
+): HttpAnswer {
+  const status = res.statusCode ?? 0;
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    headers: {
+      get: (name: string) => {
+        const v = res.headers[name.toLowerCase()];
+        if (v === undefined) return null;
+        return Array.isArray(v) ? v.join(", ") : v;
+      },
+    },
+    text,
+    overflow,
+  };
+}
+
+/**
+ * A `lookup` that answers with ONE address: the one the endpoint guard vetted.
+ *
+ * This is the pin. Node calls it instead of the resolver, so the name cannot be
+ * re-resolved to a different address between the check and the connection —
+ * the DNS-rebinding hole this module shipped with (G16) and this closes.
+ */
+export function pinnedLookup(address: string) {
+  const family = isIP(address) === 6 ? 6 : 4;
+  return (
+    _hostname: string,
+    options: unknown,
+    callback?: (err: Error | null, ...rest: unknown[]) => void,
+  ): void => {
+    // Node's `lookup` may be called as (host, cb) or (host, options, cb).
+    const cb =
+      typeof options === "function"
+        ? (options as (err: Error | null, ...rest: unknown[]) => void)
+        : callback;
+    if (!cb) return;
+    const all =
+      typeof options === "object" &&
+      options !== null &&
+      (options as { all?: boolean }).all === true;
+    if (all) cb(null, [{ address, family }]);
+    else cb(null, address, family);
+  };
 }
 
 /**

@@ -117,11 +117,27 @@ behind it exists:
   for model-context dispatch. The sentence under a tool list comes from **the server**
   (`GET /mcp-connections/runtime` → `invocation: {enabled: false, reason}`), so the page
   states a rule rather than making a promise of its own
-- **The gateway will not fetch a private address.** A probe makes the *server* fetch a URL
-  a *user* typed, so `mcp-runtime/mcp-endpoint.guard.ts` resolves the host and refuses
-  loopback, link-local (`169.254.0.0/16`, where cloud instance metadata lives), RFC1918,
-  CGNAT, unique-local and IPv4-mapped forms unless `MCP_ALLOW_PRIVATE_ENDPOINTS=true`; and
-  redirects are not followed, so a bearer cannot be carried to a host the check never saw.
+- **The gateway will not fetch a private address, and the address is PARSED rather than
+  string-matched.** A probe makes the *server* fetch a URL a *user* typed, so
+  `mcp-runtime/mcp-endpoint.guard.ts` resolves the host and vets every address it resolves
+  to. It expands IPv6 to sixteen bytes (`parseIPv6`) and judges the bytes, because the first
+  build tested for a mapped address with `ip.includes(".")` and **shipped a working
+  bypass** — `URL` canonicalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, so the branch was
+  dead code. Refused now: loopback, unspecified, link-local (`169.254.0.0/16` and
+  `fe80::/10`), RFC1918, CGNAT, unique-local (`fc00::/7`), site-local, multicast,
+  documentation and reserved space, plus every IPv6 family that carries an IPv4 address in
+  its bytes — IPv4-mapped, IPv4-compatible, NAT64, 6to4 and Teredo, each decoded and
+  re-checked rather than judged on its prefix. An address that will not parse is refused, not
+  allowed. A URL carrying its own credentials is refused. `MCP_ALLOW_PRIVATE_ENDPOINTS=true`
+  unlocks the private ranges for a developer, and every refusal names the variable
+- **The vetted address is pinned into the socket, so DNS cannot be rebound.** `checkEndpoint`
+  returns the address it approved and the transport hands it to `http.request`'s `lookup`
+  hook: the connection goes to the address that was checked, and there is no second
+  resolution for a hostile resolver to answer differently. This is why the transport is
+  `node:http`/`node:https` and not `fetch` — `fetch` offers no way to say which address a
+  name must resolve to. The hostname still goes in `Host` and in TLS SNI, so certificate
+  validation is untouched. Redirects cannot be followed at all, so a bearer cannot be
+  carried to a host the check never saw.
   Bounded besides: one 8s deadline across all three requests, a 256 KiB body ceiling
   enforced by reading the stream chunk-by-chunk rather than buffering it, and a tool cap
   that stores what the server **said** (`probe_tool_count`) beside what was kept, so a
@@ -678,10 +694,14 @@ undecided fork undecided**: invocation.
   (`null` clears), `GET /runtime`. `ROW_COLUMNS` is a named constant that omits
   `secret_encrypted`, so the credential is never *fetched* rather than filtered later.
 - `supabase/migrations/20260903104500_user_mcp_connection_runtime.sql` — ten nullable
-  columns, a CHECK on `probe_status`, comments, and a `DO` block that asserts all ten are
-  nullable, that the lockdown from `20260903094500` survived the `ALTER`, and that
-  **proves the CHECK fires** by attempting `probe_status = 'healthy'` and requiring the
-  rejection (announcing a skip, rather than passing silently, where no parent row exists).
+  columns, a CHECK on `probe_status`, comments, and a `DO` block that **unconditionally**
+  asserts all ten columns exist and are nullable, that the lockdown from `20260903094500`
+  survived the `ALTER`, that the client roles still cannot reach `secret_encrypted`, and
+  that the constraint exists — and that **proves the CHECK fires *when a seed row exists***,
+  by attempting `probe_status = 'healthy'` and requiring the rejection. On a database with no
+  `users`/`restaurants` row to hang a test row on it announces a skip instead. The
+  conditional half is stated because dropping it would report an untested path as a tested
+  one, which is this page's own subject one level up.
 
 **Honesty rules applied to the new work.**
 
@@ -793,21 +813,43 @@ undecided fork undecided**: invocation.
   `probe_stattus` turns the guard red on all five sites, so **every one of the sixteen
   column names, including the ten this pass added by `ALTER TABLE`, is now checked against
   `supabase/migrations/`** where before none of them was.
-- **DNS rebinding is not closed.** The endpoint guard resolves the name, then `fetch`
-  resolves it again, and a hostile resolver can answer differently the second time. Closing
-  it needs the socket pinned to the address that passed. Filed as **G13** rather than left
-  for a reader to find. What *is* closed is the reachable class — someone typing a metadata
-  or RFC1918 URL into the form.
+- **The SSRF guard was BYPASSABLE when this section was first written, and the audit proved
+  it.** `mcp-endpoint.guard.ts` detected the IPv4-mapped form with `ip.includes(".")`, and
+  Node's `URL` canonicalises `http://[::ffff:127.0.0.1]/` to hostname `[::ffff:7f00:1]`
+  before that code runs — no `.` left in the string, the branch dead, and a full MCP
+  handshake completed against a loopback stub through the compiled `probe()` in the
+  **default** posture with no dev flag. Fixed by parsing rather than string-matching (see
+  §1a), and re-verified end to end against the same stub: `[::ffff:127.0.0.1]:38124` and
+  `[::ffff:7f00:1]:38124` are both `refused` before any call, the dotted control
+  `127.0.0.1:38124` is refused, and the stub's log shows exactly one session — the one made
+  with `MCP_ALLOW_PRIVATE_ENDPOINTS=true` deliberately on. Recorded rather than smoothed
+  over: the claim in this note was false for four hours, and the reason it was false is that
+  the rule had no direct test of its own.
+- ~~**DNS rebinding is not closed.**~~ **CLOSED with the same fix (G16).** The transport
+  moved from `fetch` to `node:http`/`node:https` with a `lookup` hook that returns only the
+  address `checkEndpoint` approved, so there is no second resolution to poison. All 79
+  pre-existing gateway tests — the SSE path, the size cap, the deadline and the redirect
+  refusal among them — passed unchanged across that transport swap, which is the evidence
+  the rewrite preserved behaviour rather than merely compiling.
+- **The two coverage defects the audit named are closed, and both are proven by breaking
+  them.** (1) `mcp-endpoint.guard.spec.ts` did not exist — 33 tests now, one per FORM rather
+  than per scenario, with `dns/promises` mocked so "every address a name resolves to must
+  pass" is exercised instead of asserted; restoring the shipped `includes(".")` test turns
+  **7 of them red**. (2) The database-level tenant scope was pinned by nothing: the audit
+  deleted `.eq("restaurant_id", …)` from `list()` and watched every test stay green. The
+  fake query builder records its filters now and six tests assert both ids on every read and
+  write; repeating the audit's deletion turns the suite red (**2 failed, 116 passed**).
 - **No screenshot.** Both grounds are still argued from the tokens rather than seen:
   `grep -rnE "#[0-9A-Fa-f]{6}"` over `McpRegister.tsx` is empty, so every ground, ink and
   seal is a variable the `.dark .mudavym` block re-defines. Emoji sweep over the register,
   both gateway modules and the migration: **empty**.
-- **Three tests in this file's own suite fail, and none of them is this build's.** The
-  payment register is being rebuilt concurrently by another builder on the same branch
-  (`PaymentRegister.tsx`, +299 lines in the working tree, plus new `StripeCardPanel.tsx` /
-  `stripe-js.ts`); its three pre-existing tests assert copy that component no longer
-  contains, and it has an open `tsc` error of its own. All ten model-context tests pass. Said
-  here rather than reported as a green suite.
+- **The web figure is 47, and only 15 of them are this build's.** `ProfileNext.test.tsx`
+  passes 47/47, but the file is shared with the concurrently-rebuilt payment register:
+  `vitest run … -t "model-context"` is **15 passed, 32 skipped**, and those 32 are build A's.
+  An earlier draft of this line said "all ten model-context tests pass" — wrong in number
+  (it was written before the last five were added and never re-counted), corrected here
+  rather than quietly. Three of A's tests were failing while this was being written and are
+  green now.
 
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).
@@ -979,7 +1021,7 @@ what happened rather than a list of what is left.**
 | G14 | `apps/api-gateway/src/app.module.ts` | **Two lines, outside this page's paths.** `import { BillingModule } from "./billing/billing.module";` beside the `PaymentMethodsModule` import, and `BillingModule, // Stripe: SetupIntents, reconcile, signed webhook (ADR 0110)` beside the `PaymentMethodsModule` entry. Verified by applying them temporarily on 2026-09-03: `scripts/check_gateway_boots.sh` → **PASS**, and curl against the local gateway with a minted session returned `GET /billing/provider` **200** (**401** with no token, so the guard is on), `POST /billing/setup-intent` **503**, `POST /billing/sync` **503**, `POST /billing/webhook` **200** both with no signature and with a bogus one (a refusal is 200 on purpose — see §4), and `PATCH /payment-methods/:id/default` **503**. Reverted afterwards, because `app.module.ts` is shared with three concurrent builders on this branch |
 | G11 | `apps/api-gateway/src/auth/**` | **No session register, no second factor, no passkeys, no personal API tokens.** Measured 2026-09-03. The Security register renders four `Not built` rows carrying these measurements. The session one is the cheapest and the most valuable: a `user_sessions` row per issued refresh token (device, address, last-seen, revoked_at) would turn one honest row into the list every account page in the field shows, and would make "sign out everywhere" possible |
 | G12 | `scripts/check_no_seeded_defaults.py` (`SERVER_SCAN_ROOTS`) | **The two new gateway modules are outside the S5 arm.** `SERVER_SCAN_ROOTS` lists only `apps/api-gateway/src/team` and `apps/api-gateway/src/restaurants`, so `mcp-connections/` and `payment-methods/` get no automated check that a row-shaped literal is not asserting a measurement nobody supplied. Reviewed by hand and clean — the only literals in either module are the provider's refusal sentence and the `'stripe'` provider id — but hand-checking is not a ratchet. `scripts/` is outside this page's paths, so this is filed rather than fixed. One line each in `SERVER_SCAN_ROOTS` closes it |
-| G16 | `apps/api-gateway/src/mcp-runtime/mcp-endpoint.guard.ts` | **DNS rebinding is not closed.** The guard resolves the endpoint's host and refuses loopback / link-local / RFC1918 / CGNAT / unique-local / IPv4-mapped-private addresses, then `fetch` resolves the name a second time — and a hostile resolver can answer differently. Closing it means pinning the connection to the address that passed (a custom `lookup` hook or agent). Filed rather than hidden: what IS closed is the reachable class, someone typing a metadata or RFC1918 URL into the form. Stated in ADR 0107 §Consequences too, so the residual travels with the decision |
+| ~~G16~~ | `apps/api-gateway/src/mcp-runtime/mcp-endpoint.guard.ts` + `mcp-runtime.service.ts` | **CLOSED 2026-09-03, same day, under audit.** Filed as the residual of a resolve-then-refuse guard; the audit then found a worse fault in the same file — the IPv4-mapped branch was dead code because `URL` canonicalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, and a loopback handshake completed in the default posture. Both are fixed together: the address is now PARSED to sixteen bytes and judged on the bytes (fail-closed on anything unparseable), and the vetted address is **pinned** into the socket via `http.request`'s `lookup` hook — which is why the transport is `node:http` rather than `fetch`, since `fetch` cannot say which address a name must resolve to. Certificate validation is untouched: the hostname still supplies `Host` and SNI. Pinned by `mcp-endpoint.guard.spec.ts` (33 tests; 7 go red against the shipped version) |
 | G17 | `apps/api-gateway/src/mcp-runtime/` + the per-tenant scheduler (ADR 0022) | **A probe is manual.** The register is current as of the last check and prints that date; nothing keeps it fresh. A scheduled probe under `ScheduledTenantsService.runPerTenant` would — and would also turn a page-level "check this" into standing outbound traffic from our infrastructure to addresses tenants typed in, which wants quiet hours, back-off and its own decision. Deferred deliberately, not forgotten |
 | G18 | nothing may CALL a model-context tool | **Tool invocation, and it is a DECISION not a gap.** Tools are listed on the row and there is no `tools/call`, no route reaching one, no column recording one, and a structural test asserting the runtime service has no `call`/`callTool`/`invoke` method. A tool call can send an email to a vendor or place an order — the subject of ADR 0013's commitment guardrail, which has never been extended to model-context dispatch. `GET /mcp-connections/runtime` returns that sentence and the page prints it. **The fork for the founder:** does ADR 0013 extend to a third-party tool call, and what is the human step (the seal, a draft, a per-tool grant)? The table needs no new column either way |
 | G7 | `apps/api-gateway/src/auth/auth.controller.ts:487-491` | there is no **authenticated** way to fetch the identity-provider registry. `POST /auth/sign-in-methods` is `@Public()` and rate-limited by IP (10 / 600s), which a shared restaurant network would exhaust. An authenticated `GET /auth/me/sign-in-methods` returning `declared`/`methods`/`unavailable` would let the Sign-in rail use the server's own labels and reasons instead of page prose |
@@ -1157,9 +1199,16 @@ credentials, which restaurants you belong to, and the exit.
 > for the founder rather than a build: does ADR 0013's commitment guardrail extend to a
 > third-party tool call, and what is the human step?). Recorded in ADR 0107.
 >
+> **Audited the same day and FAILED on one blocker — an SSRF bypass via IPv4-mapped IPv6
+> literals, reproduced live through the compiled `probe()` against a loopback stub in the
+> default posture. Fixed: the address is parsed to sixteen bytes rather than string-matched,
+> and the vetted address is pinned into the socket, which closes **G16** as well. Two
+> coverage defects closed with it (a spec for the guard itself; tenant scope pinned at the
+> query), both proven by re-breaking them.**
+>
 > Order it is worth doing, from here: **G18** is a question, not work — asking it is the
 > cheapest thing on this list and it unblocks the most. Then **G11's session half**, then
-> **G3**, then **G16** (a `lookup` hook), then **G17**, then G10 / G7 / G6.
+> **G3**, then **G17** (a scheduled probe), then G10 / G7 / G6.
 
 1. **Stop the silent read failures** (`Profile.tsx:110-118`, `:143-146`) — surface
    the error, and do not let a cached restaurant name become a write. Highest value:
