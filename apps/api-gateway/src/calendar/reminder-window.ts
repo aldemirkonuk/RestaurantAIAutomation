@@ -21,6 +21,24 @@
  * 22:00–08:00 window means 22:00 wherever the process happens to run. That is
  * wrong for a house in Istanbul and it is why this reads the tenant's zone
  * instead. The divergence is deliberate and recorded (calendar.md §9).
+ *
+ * THE INTERVAL IS HALF-OPEN, AND THAT IS A SECOND DIVERGENCE
+ * ---------------------------------------------------------
+ * `isWithinQuietHours` treats the window as `[start, end)` — quiet AT `start`,
+ * awake AT `end` — and reads `start === end` as never-quiet. The orchestrator's
+ * `_is_quiet_hours` uses a CLOSED interval (`start <= now <= end`,
+ * `notification_agent.py:1498-1508`) and so is quiet at both ends, which makes
+ * `start === end` quiet for that one instant.
+ *
+ * It matters here in a way it does not there, because this job is a cron on a
+ * 15-minute step: a window ending at a round `08:00` lands exactly on a tick, so
+ * the closed reading would defer that tick's reminders by a further quarter of an
+ * hour for no reason a reader could see. Half-open also makes the two states
+ * exhaustive — every instant is quiet or awake, never both — which is what lets
+ * `deferred === 0` be a safe precondition for stamping `reminder_sent`.
+ *
+ * Named rather than left implicit: the two runtimes disagree at the boundary,
+ * and calendar.md §9 item 2 records it beside the timezone divergence.
  */
 
 /** Minutes past local midnight, in a named zone. */

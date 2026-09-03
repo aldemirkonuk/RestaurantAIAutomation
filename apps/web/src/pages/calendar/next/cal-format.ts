@@ -210,3 +210,20 @@ export function stamp(iso: string | null | undefined): string {
     minute: '2-digit',
   });
 }
+
+/**
+ * The İznik seal, as a concrete hex.
+ *
+ * Every colour this page RENDERS comes from a token — `var(--seal)` and its
+ * neighbours in `apps/web/src/styles/mudavym.css`. This one cannot: it is the
+ * default swatch for a new event type, and that value is POSTed to
+ * `/calendar/event-types` and stored on the row, so it has to be a literal the
+ * gateway can keep. A stored record must not depend on which ground the person
+ * creating it happened to be looking at, so it is pinned to the light-ground
+ * value rather than read from `getComputedStyle` (the charcoal ground resolves
+ * `--seal` to `#5FB0BC`, mudavym.css:50).
+ *
+ * Copied deliberately from `apps/web/src/styles/mudavym.css:29`. It lives here so
+ * the page has exactly one source for it instead of a raw hex in a component.
+ */
+export const SEAL_HEX = '#1A5E6B';

@@ -24,6 +24,7 @@ vi.mock('./useCalendarNextData', async (importOriginal) => {
 });
 
 import CalendarNext from './CalendarNext';
+import { SEAL_HEX } from './cal-format';
 import type { CalEvent } from './useCalendarNextData';
 
 /* ── fixtures ─────────────────────────────────────────────────────────────── */
@@ -115,7 +116,7 @@ function mkData(over: Record<string, unknown> = {}) {
     refetch: vi.fn(),
     eventTypes: [
       { id: 'default-delivery', name: 'Delivery', color: '#3b82f6', isDefault: true },
-      { id: 'ct-1', name: 'Cellar audit', color: '#1A5E6B', isDefault: false },
+      { id: 'ct-1', name: 'Cellar audit', color: SEAL_HEX, isDefault: false },
     ],
     typesKnown: true,
     providersById: new Map([['pv-1', { id: 'pv-1', name: 'Bodega Álvaro' }]]),
@@ -238,7 +239,7 @@ describe('CalendarNext — the KEEP', () => {
     fireEvent.change(within(sheet).getByLabelText('New type name'), { target: { value: 'Stocktake' } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Add' }));
     expect((data.createType as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith(
-      { name: 'Stocktake', color: '#1A5E6B' },
+      { name: 'Stocktake', color: SEAL_HEX },
       expect.anything(),
     );
   });

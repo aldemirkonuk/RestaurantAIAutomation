@@ -35,7 +35,7 @@ import { HoldToApprove } from '../../../components/mudavym';
 // survives here, so saving an entry clears any copy the legacy page queued for
 // it in this browser. Nothing in `pages/calendar/next/**` enqueues any more.
 import { cancelRemindersForEvent } from '../../../lib/reminder-scheduler';
-import { EM, clock, longDay } from './cal-format';
+import { EM, SEAL_HEX, clock, longDay } from './cal-format';
 import ReminderRegister from './ReminderRegister';
 import type { CalEvent, CalendarData, CalendarPayload, EventStatus } from './useCalendarNextData';
 
@@ -120,7 +120,9 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
     editing ? (editing.reminderDaysBefore ?? 1) : 1,
   );
   const [newTypeName, setNewTypeName] = useState('');
-  const [newTypeColor, setNewTypeColor] = useState('#1A5E6B');
+  // Not a raw hex: the one named copy of `--seal`, and the note on SEAL_HEX
+  // says why a stored swatch cannot be `var(--seal)`.
+  const [newTypeColor, setNewTypeColor] = useState(SEAL_HEX);
 
   useEffect(() => {
     closeRef.current?.focus();

@@ -422,15 +422,26 @@ one-file change nobody on this page's paths may make:
    job evaluates the same three columns on the *restaurant's* clock
    (`calendar/reminder-window.ts`). The gateway's reading is the correct one for a
    house in Istanbul; the two should be reconciled, and the orchestrator is
-   outside this page's paths. **Why not yet:** it is a Python change in a service
-   this build does not own.
+   outside this page's paths.
+   **They also disagree at the boundary, which was undisclosed until now:** the
+   gateway treats the window as half-open `[start, end)` — quiet at `start`, awake
+   at `end`, and `start === end` never quiet
+   (`calendar/reminder-window.ts` `isWithinQuietHours`); the orchestrator uses a
+   closed interval, `start <= now <= end` (`notification_agent.py:1498-1508`), so
+   it is quiet at both ends and `start === end` is quiet for that instant. The
+   gateway's reading is deliberate for a 15-minute cron — a window ending at a
+   round `08:00` lands exactly on a tick, and the closed reading would hold that
+   tick's reminders a further quarter-hour — and it is what makes "quiet" and
+   "awake" exhaustive, which `deferred === 0` relies on before stamping
+   `reminder_sent`. **Why not yet:** reconciling them is a Python change in a
+   service this build does not own.
 3. 🟡 **`notification_preferences` has no per-user timezone**, so "the reader's
    quiet hours" are necessarily read on the restaurant's clock, not the reader's.
    For a single-site house those are the same; for a manager travelling they are
    not. Stated on the row (the window is shown with the zone beside it) rather
    than silently assumed.
 4. 🟡 **`generation_horizon_days: 90` is a gateway-written measurement.**
-   `calendar.service.ts:484` writes a literal horizon onto every
+   `calendar.service.ts:496` writes a literal horizon onto every
    `calendar_recurrence_rules` row that no caller supplied. Measured by running
    `scripts/check_no_seeded_defaults.py` with `apps/api-gateway/src/calendar`
    added to `SERVER_SCAN_ROOTS`: 1 violation, exactly this line. Pre-existing and
@@ -588,8 +599,10 @@ enough memory attached that the next conversation starts where the last one ende
     no client can safely round-trip an `audit` or `active` row.
 11. **Add `providerId` / `orderId` / `recurrence` to `UpdateCalendarEventDto`** (§9.3) so the
     vendor link and the repeat rule stop being write-once.
-12. **Add `apps/web/src/pages/calendar/next` to `SCAN_ROOTS`** in
-    `scripts/check_no_seeded_defaults.py:187` (§9.9).
+12. ~~**Add `apps/web/src/pages/calendar/next` to `SCAN_ROOTS`**~~ — **done**;
+    `Path("apps/web/src/pages/calendar/next")` is present at
+    `scripts/check_no_seeded_defaults.py:202`, so the ADR 0051 guard reads this
+    directory rather than being green over it (§9.6).
 13. **Give `getEventTypes` a way to say "unreachable"** rather than returning the built-ins
     over an error (§9.5) — the page already renders the honest branch if the shape appears.
 14. **Add `reminder_minutes_before` to `calendar_events`** so "15 minutes before" is
