@@ -564,7 +564,8 @@ deleted rather than kept and disabled.
   so the place a fabricated value would enter is testable without a database),
   `billing.service.ts`, `billing.controller.ts`. Specs: `stripe-signature.spec.ts`
   (12), `stripe.client.spec.ts` (14), `payment-method-mirror.service.spec.ts` (8),
-  `billing.service.spec.ts` (13) — **47 new gateway tests**, all green.
+  `billing.service.spec.ts` (18, five of them added after an audit found the
+  apply-failure retry path uncovered) — **52 new gateway tests**, all green.
 - `apps/api-gateway/src/billing/billing-config.module.ts` — the primitives live
   in their own module so `PaymentMethodsModule` and `BillingModule` can both use
   them **without a cycle**. A cycle there takes down the whole Nest injector at
@@ -634,14 +635,25 @@ the page):
 Stripe test key, `VITE_STRIPE_PUBLISHABLE_KEY` is baked into the bundle at
 dev-server start, and this session may not restart the dev server — so the
 furthest a browser got is the panel with its hold disabled and the missing
-variable named, which is what the screenshots show. Everything up to that line
+variable named. Everything up to that line
 IS verified: the gateway's refusal by curl (503 with the reason), the whole
 signature/idempotency path by 13 service tests against real HMACs, the
 provider→row mapping by 8, the transport guard by 14, and both register states
 rendered in both grounds with the one `GET /payment-methods` response stubbed at
 the route (the `payment_methods` table is not in the dev database — its
 migration is on this branch, unmerged — so the live page correctly renders the
-error state and that hides the other three).
+error state and that hides the other three). **Those captures are session
+scratch, not repository artifacts**: they live under the builder's scratchpad
+(`payA-nokey-light.png`, `payA-live-light.png`, `payA-live-dark.png`,
+`payA-light.png`) and no image file was added to `.planning/` by this build, so
+nothing in the repo can be re-read to check that sentence — it is a claim about
+work done, not a citation.
+
+The **apply-failure retry path** — the one thing an audit found untested on
+2026-09-03 — is now covered by five cases in `billing.service.spec.ts`
+(`BillingService — an apply that FAILS is retryable, not lost`) and
+mutation-proven: swallowing the rethrow fails 4 of them, settling the receipt
+`handled: true` fails 4, and skipping the settle entirely fails 2.
 
 **What is deliberately still not built.** Any charge. There is no
 `payment_intents` call, no invoice, no subscription and no price, and the client

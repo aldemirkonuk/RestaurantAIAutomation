@@ -46,31 +46,64 @@ type Phase = 'opening' | 'ready' | 'working' | 'failed' | 'done';
  * `getComputedStyle` on the mudavym root returns the resolved token, so the
  * charcoal ground and the paper ground both produce a correct Stripe theme
  * without this file knowing either one's hex.
+ *
+ * WHY THERE IS NO FALLBACK COLOUR
+ * -------------------------------
+ * The first version fell back to hand-picked hex when a read came back empty —
+ * `#FFFFFF` for `--paper-1`, `#1A1A1A` for `--ink-1`, and a `--seal-ring`
+ * fallback with the alpha channel dropped. Every one of those was a colour the
+ * product does not have: `--paper-1` is `#F3EFE6` on paper and `#1D1813` on
+ * charcoal (`styles/mudavym.css:35,73`) and never white. Worse, a fixed hex is
+ * necessarily wrong on one of the two grounds, so the "safety net" could only
+ * ever be caught looking like a bug.
+ *
+ * So an unresolved token is now OMITTED. Stripe's own default renders instead
+ * of a Mudavym-ish colour that is not Mudavym's — the same rule the rest of the
+ * page follows for an unknown value: say nothing rather than invent something
+ * plausible. The reads only come back empty before `mudavym.css` is loaded,
+ * which cannot happen once the panel is mounted inside `.mudavym`.
  */
 function houseAppearance(root: HTMLElement | null): Record<string, unknown> {
-  const read = (token: string, fallback: string) => {
-    if (!root || typeof window === 'undefined' || !window.getComputedStyle) return fallback;
+  /** The resolved token, or null. Never a substitute. */
+  const read = (token: string): string | null => {
+    if (!root || typeof window === 'undefined' || !window.getComputedStyle) return null;
     const value = window.getComputedStyle(root).getPropertyValue(token).trim();
-    return value.length > 0 ? value : fallback;
+    return value.length > 0 ? value : null;
   };
+
+  /** Drop every key whose token did not resolve. */
+  const only = (pairs: Record<string, string | null>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(pairs).filter(([, v]) => v !== null),
+    ) as Record<string, string>;
+
+  const seal = read('--seal');
+  const paper1 = read('--paper-1');
+  const paper2 = read('--paper-2');
+  const sealRing = read('--seal-ring');
+  const ink1 = read('--ink-1');
+  const ink3 = read('--ink-3');
+
   return {
     theme: 'stripe',
-    variables: {
-      colorPrimary: read('--seal', '#1A5E6B'),
-      colorBackground: read('--paper-1', '#FFFFFF'),
-      colorText: read('--ink-1', '#1A1A1A'),
-      colorTextSecondary: read('--ink-3', '#6B6B6B'),
-      colorDanger: read('--ink-1', '#1A1A1A'),
+    variables: only({
+      colorPrimary: seal,
+      colorBackground: paper1,
+      colorText: ink1,
+      colorTextSecondary: ink3,
+      // The house has no red. A decline reads in ink, like every other
+      // settled error on this page (ADR 0042: the seal is the one chromatic
+      // mark, and an error is not the seal).
+      colorDanger: ink1,
       fontFamily: SANS,
       borderRadius: '8px',
       spacingUnit: '4px',
-    },
+    }),
     rules: {
-      '.Input': { border: `1px solid ${read('--paper-2', '#E5E2DC')}`, boxShadow: 'none' },
-      '.Input:focus': {
-        border: `1px solid ${read('--seal-ring', '#1A5E6B')}`,
-        boxShadow: 'none',
-      },
+      ...(paper2 ? { '.Input': { border: `1px solid ${paper2}`, boxShadow: 'none' } } : {}),
+      ...(sealRing
+        ? { '.Input:focus': { border: `1px solid ${sealRing}`, boxShadow: 'none' } }
+        : {}),
       '.Label': { fontWeight: '600', fontSize: '11.5px' },
     },
   };

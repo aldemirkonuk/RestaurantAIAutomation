@@ -16,7 +16,10 @@
  *     holding only the events we liked reports absence as health.
  */
 
-import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  InternalServerErrorException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { BillingService } from "./billing.service";
 import { BillingCustomerService } from "./billing-customer.service";
 import { PaymentMethodMirrorService } from "./payment-method-mirror.service";
@@ -43,6 +46,12 @@ interface Harness {
   inserted: string[];
   mirror: { upserted: unknown[]; removed: string[] };
   stripeCalls: string[];
+  /**
+   * MUTABLE, so one harness can fail a delivery and then succeed on the
+   * redelivery. That sequence is the whole retry contract; a fixture that can
+   * only be born broken cannot express it.
+   */
+  fail: { mode: "mirror" | "stripe" | null; message: string };
 }
 
 function makeService(
@@ -52,6 +61,9 @@ function makeService(
     existingEvent?: { handled: boolean } | null;
     customerId?: string | null;
     restaurantForCustomer?: string | null;
+    /** Which half of `apply()` throws: the provider fetch, or the write. */
+    failApply?: "mirror" | "stripe" | null;
+    failMessage?: string;
   } = {},
 ): Harness {
   const events: Record<string, { handled: boolean; outcome: string }> = {};
@@ -59,6 +71,10 @@ function makeService(
   const mirror = { upserted: [] as unknown[], removed: [] as string[] };
   const stripeCalls: string[] = [];
   const existing = opts.existingEvent ?? null;
+  const fail: Harness["fail"] = {
+    mode: opts.failApply ?? null,
+    message: opts.failMessage ?? "statement timeout",
+  };
 
   const db = {
     supabase: {
@@ -165,6 +181,7 @@ function makeService(
     },
     retrievePaymentMethod: (id: string) => {
       stripeCalls.push(`retrieve:${id}`);
+      if (fail.mode === "stripe") return Promise.reject(new Error(fail.message));
       return Promise.resolve({
         id,
         type: "card",
@@ -195,10 +212,12 @@ function makeService(
       return Promise.resolve({ kept: methods.length, removed: 0 });
     },
     upsertOne: (_r: string, pm: unknown) => {
+      if (fail.mode === "mirror") return Promise.reject(new Error(fail.message));
       mirror.upserted.push(pm);
       return Promise.resolve();
     },
     removeByRef: (ref: string) => {
+      if (fail.mode === "mirror") return Promise.reject(new Error(fail.message));
       mirror.removed.push(ref);
       return Promise.resolve(1);
     },
@@ -206,6 +225,7 @@ function makeService(
 
   return {
     service: new BillingService(db, config, stripe, customers, mirrorService),
+    fail,
     events,
     inserted,
     mirror,
@@ -348,6 +368,110 @@ describe("BillingService — the webhook applies exactly once", () => {
     expect(out.duplicate).toBeUndefined();
     expect(out.handled).toBe(true);
     expect(h.mirror.removed).toEqual(["pm_9"]);
+  });
+});
+
+describe("BillingService — an apply that FAILS is retryable, not lost", () => {
+  /**
+   * The half the file's own docstring calls out and the suite did not cover.
+   *
+   * When `apply()` throws, the receipt is settled `handled: false` and the
+   * request rethrows a 500 — that 500 is the ONLY thing that makes Stripe
+   * redeliver. Two regressions are invisible without these tests: swallowing
+   * the error (Stripe sees 200, never retries, the event is gone) and settling
+   * `handled: true` on the way out (the redelivery is then refused as a
+   * duplicate by the very key that exists to protect us). Either one silently
+   * loses the event that says a card was removed.
+   */
+
+  const DETACH = {
+    id: "evt_fail",
+    type: "payment_method.detached",
+    livemode: false,
+    data: { object: { id: "pm_9" } },
+  };
+
+  it("rethrows a 500 so the provider redelivers, instead of swallowing the failure", async () => {
+    const h = makeService({ failApply: "mirror", failMessage: "statement timeout" });
+    const { raw, header } = signed(DETACH);
+
+    await expect(h.service.handleWebhook(raw, header)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    await expect(h.service.handleWebhook(raw, header)).rejects.toThrow(
+      /could not be applied: statement timeout/,
+    );
+  });
+
+  it("leaves the receipt UNHANDLED, carrying the failure's own words", async () => {
+    const h = makeService({ failApply: "mirror", failMessage: "statement timeout" });
+    const { raw, header } = signed(DETACH);
+
+    await expect(h.service.handleWebhook(raw, header)).rejects.toThrow();
+
+    // Settled, not absent: an unrecorded failure is indistinguishable from a
+    // delivery that never arrived.
+    expect(h.events["evt_fail"]).toEqual({
+      handled: false,
+      outcome: "failed: statement timeout",
+    });
+    expect(h.mirror.removed).toEqual([]);
+  });
+
+  it("settles the same way when the PROVIDER fetch fails, before any write", async () => {
+    const h = makeService({ failApply: "stripe", failMessage: "Stripe refused the request" });
+    const { raw, header } = signed({
+      id: "evt_fetch",
+      type: "setup_intent.succeeded",
+      livemode: false,
+      data: { object: { customer: "cus_1", payment_method: "pm_9" } },
+    });
+
+    await expect(h.service.handleWebhook(raw, header)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    expect(h.stripeCalls).toContain("retrieve:pm_9");
+    expect(h.mirror.upserted).toEqual([]);
+    expect(h.events["evt_fetch"].handled).toBe(false);
+    expect(h.events["evt_fetch"].outcome).toMatch(/^failed: Stripe refused the request/);
+  });
+
+  it("APPLIES the redelivery of an event whose first attempt failed", async () => {
+    // The sequence, on one harness and its real recorded state: fail, then the
+    // provider retries, then it works. If the failure path had settled
+    // `handled: true`, this second call would come back `duplicate` and the
+    // detach would never be recorded.
+    const h = makeService({ failApply: "mirror" });
+    const { raw, header } = signed(DETACH);
+
+    await expect(h.service.handleWebhook(raw, header)).rejects.toThrow();
+    expect(h.events["evt_fail"].handled).toBe(false);
+
+    h.fail.mode = null; // the transient cause clears
+    const out = await h.service.handleWebhook(raw, header);
+
+    expect(out).toMatchObject({ received: true, handled: true });
+    expect(out.duplicate).toBeUndefined();
+    expect(h.mirror.removed).toEqual(["pm_9"]);
+    expect(h.events["evt_fail"].handled).toBe(true);
+  });
+
+  it("refuses a THIRD delivery once the retry succeeded — idempotent on real state", async () => {
+    // Idempotency proven against the harness's own recorded receipt rather
+    // than against a hand-planted `existingEvent`, so it exercises claim →
+    // settle → claim rather than only the second half.
+    const h = makeService();
+    const { raw, header } = signed(DETACH);
+
+    const first = await h.service.handleWebhook(raw, header);
+    expect(first.handled).toBe(true);
+
+    const second = await h.service.handleWebhook(raw, header);
+    expect(second).toMatchObject({ received: true, handled: false, duplicate: true });
+
+    // The effect happened exactly once.
+    expect(h.mirror.removed).toEqual(["pm_9"]);
+    expect(h.inserted).toEqual(["evt_fail"]);
   });
 });
 
