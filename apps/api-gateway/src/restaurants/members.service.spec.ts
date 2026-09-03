@@ -93,3 +93,62 @@ describe("MembersService.updateMemberRole — the change files itself", () => {
     expect(receipt.notified).toBe(false);
   });
 });
+
+/**
+ * The roster read itself. `getMembers` ordered `user_restaurant_access` by
+ * `granted_at` -- a column that table does not have (it is on `user_roles`) --
+ * and swallowed the resulting 42703 into `[]`, so the Team page rendered an
+ * empty roster for every tenant and looked healthy doing it.
+ *
+ * Measured against the live gateway before the fix:
+ *   GET /api/v1/restaurants/550e8400-…/members -> 200 []
+ *   PostgREST direct                            -> 3 rows
+ */
+describe("MembersService.getMembers — a failed read is not an empty roster", () => {
+  function seedRoster(): StubDb {
+    return makeStubDb({
+      user_restaurant_access: [
+        { id: "a2", user_id: SECOND_OWNER, restaurant_id: RID, role: "owner", is_active: true, created_at: "2026-02-01T00:00:00Z" },
+        { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true, created_at: "2026-01-01T00:00:00Z" },
+        { id: "a3", user_id: SAM, restaurant_id: RID, role: "staff", is_active: true, created_at: "2026-03-01T00:00:00Z" },
+      ],
+      users: [
+        { user_id: OWNER, restaurant_id: RID, role: "owner", email: "ada@example.test" },
+        { user_id: SECOND_OWNER, restaurant_id: RID, role: "owner", email: "bo@example.test" },
+        { user_id: SAM, restaurant_id: RID, role: "staff", email: "sam@example.test" },
+      ],
+    });
+  }
+
+  it("returns the whole roster, oldest membership first", async () => {
+    const members = await service(seedRoster()).getMembers(OWNER, RID);
+
+    expect(members.map((m: any) => m.id)).toEqual(["a1", "a2", "a3"]);
+    expect(members[0].users?.email).toBe("ada@example.test");
+  });
+
+  it("throws rather than reporting a dead read as a restaurant with no members", async () => {
+    const db = seedRoster();
+    db.errors["user_restaurant_access:select"] = { message: "read failed" };
+
+    await expect(service(db).getMembers(OWNER, RID)).rejects.toThrow();
+  });
+
+  it("throws rather than handing back a roster of anonymous members", async () => {
+    const db = seedRoster();
+    db.errors["users:select"] = { message: "read failed" };
+
+    // Live before the fix: the identity select named `avatar_url` and
+    // `auth_provider`, neither of which `public.users` has, so PostgREST
+    // answered 42703 and every member came back as `users: null`.
+    await expect(service(db).getMembers(OWNER, RID)).rejects.toThrow();
+  });
+
+  it("throws rather than reporting a dead invite read as no pending invites", async () => {
+    const db = seedRoster();
+    db.tables.organization_invites = [];
+    db.errors["organization_invites:select"] = { message: "read failed" };
+
+    await expect(service(db).getInvites(OWNER, RID)).rejects.toThrow();
+  });
+});

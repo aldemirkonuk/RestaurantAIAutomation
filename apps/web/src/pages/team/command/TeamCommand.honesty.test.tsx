@@ -272,6 +272,27 @@ describe('P2 · a message addressed to one person reaches one person', () => {
     expect(dialog).toHaveTextContent(/2/);
     expect(t.broadcast).not.toHaveBeenCalled();
   });
+
+  it('a crew broadcast asks for the fan-out by name rather than by omission', async () => {
+    render(<ManagerShiftDesk />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: /Broadcast crew/i }));
+    await screen.findByRole('dialog', { name: /message/i });
+    fireEvent.change(screen.getByRole('textbox', { name: /message/i }), {
+      target: { value: 'Doors at 5 tonight.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send to 2/i }));
+
+    await waitFor(() => expect(t.broadcast).toHaveBeenCalled());
+    // ADR 0088 T3: the gateway 400s a body naming neither memberIds nor an
+    // audience. An omitted memberIds used to MEAN "everyone" silently, which
+    // is how a one-person control reached the whole restaurant.
+    const body = (t.broadcast.mock.calls as unknown as unknown[][])[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({ message: 'Doors at 5 tonight.', audience: 'everyone' });
+    expect(body).not.toHaveProperty('memberIds');
+  });
 });
 
 // ── P7 — one click must not delete a week ──────────────────────────────────
@@ -288,6 +309,21 @@ describe('P7 · destructive actions ask first', () => {
     expect(dialog).toHaveTextContent(/cannot be undone/i);
     fireEvent.click(screen.getByRole('button', { name: /replace the week/i }));
     await waitFor(() => expect(t.copyWeek).toHaveBeenCalled());
+    // The consent has to reach the gateway, not just the sheet: without
+    // `replaceTarget` the server 409s a non-empty target week (ADR 0088 T7),
+    // so a confirmed copy would fail on exactly the weeks it is for.
+    expect(t.copyWeek).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      replaceTarget: true,
+    });
+  });
+
+  it('a first publish does not ask to clear receipts it does not have', async () => {
+    render(<ManagerShiftDesk />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: /Publish week/i }));
+    await waitFor(() => expect(t.publishSchedule).toHaveBeenCalled());
+    expect(t.publishSchedule).toHaveBeenCalledWith(expect.any(String), {
+      resetReceipts: undefined,
+    });
   });
 
   it('re-publish says it clears who has seen the schedule before doing it', async () => {
@@ -305,6 +341,13 @@ describe('P7 · destructive actions ask first', () => {
     expect(t.publishSchedule).not.toHaveBeenCalled();
     const dialog = await screen.findByRole('dialog', { name: /re-publish/i });
     expect(dialog).toHaveTextContent(/seen/i);
+    fireEvent.click(screen.getByRole('button', { name: /re-publish and clear receipts/i }));
+    await waitFor(() => expect(t.publishSchedule).toHaveBeenCalled());
+    // Same shape as copy: the gateway 409s a re-publish that would erase read
+    // receipts without `resetReceipts` (ADR 0088 T7).
+    expect(t.publishSchedule).toHaveBeenCalledWith(expect.any(String), {
+      resetReceipts: true,
+    });
   });
 });
 

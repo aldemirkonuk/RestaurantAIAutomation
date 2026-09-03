@@ -124,8 +124,16 @@ export class ReportListResponseDto {
   @ApiProperty({ type: [ReportResponseDto] })
   reports: ReportResponseDto[];
 
-  @ApiProperty()
-  total: number;
+  /**
+   * The EXACT count over the whole filtered set, or `null` when the count
+   * could not be read. It is nullable rather than falling back to
+   * `reports.length`: since ADR 0086 bounded the query, that fallback would
+   * silently return the PAGE SIZE as the total — a window rendered as a total,
+   * which is the fault ADR 0051 clause 2 and ADR 0086 both exist to forbid.
+   * A caller that cannot be told the total must say `—`, not print 100.
+   */
+  @ApiProperty({ type: Number, nullable: true })
+  total: number | null;
 }
 
 /** "File to…" — re-file a report under a different type (Sorting Office). */
