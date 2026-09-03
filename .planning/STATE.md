@@ -78,11 +78,20 @@
    Details: [ADR 0019](decisions/0019-p2-build-scope.md) §B-parity.
    The old note that `/inventory-legacy` hosted `InvoiceScannerModal` was **stale**
    — that component was deleted in `e5402d67` and 44.1e is already closed.
-2. **Gmail push verification** is built but staged open. Set
-   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values
-   come from the Pub/Sub subscription — nobody can invent them), then
-   `GMAIL_PUBSUB_REQUIRE_AUTH=true`. Until then the gateway logs an error per
-   unverified push and counts them.
+2. 🔴 **Gmail push verification now FAILS CLOSED** (ADR 0094, 2026-09-02) — it
+   was staged *open* until then, admitting every push while unconfigured
+   despite four places in the repo claiming it failed closed. **Set
+   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway**
+   (values come from the Pub/Sub push subscription — nobody can invent them).
+   Until both are set every push is refused and inbound vendor email does not
+   arrive; the gateway logs a refusal per push and counts them
+   (`GmailPushAuthService.refusedWhileUnconfigured`). `GMAIL_PUBSUB_REQUIRE_AUTH`
+   is deleted — it no longer exists and setting it does nothing.
+   **Most likely a no-op in production:** OD-78 records an unsigned push probed
+   twice on 2026-08-26 returning **401**, which under the old code means either
+   the pair was set (verification already live) or the retired flag was already
+   refusing everything. Either way this change does not break a working inbox.
+   A non-zero `refusedWhileUnconfigured` is how to tell, without Railway access.
 
 ## P3 position
 
