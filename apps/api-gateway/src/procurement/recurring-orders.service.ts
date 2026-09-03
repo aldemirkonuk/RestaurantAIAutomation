@@ -290,19 +290,41 @@ export function describeScheduleSubject(row: {
  * off. A typo that silently arms a mailer is unrecoverable; a typo that
  * silences it is not.
  *
- * DEFINED LOCALLY rather than imported from
- * `communications/recurring-order-reminder.ts`, because that module lives on an
- * unmerged branch (PR #227) and this branch must build against `main`. When
- * #227 lands, the two should collapse onto one exported constant — the
- * duplicate is recorded here rather than left to be discovered.
+ * ONE CONSTANT, ONE PARSER. This was defined locally when it landed, because
+ * `communications/recurring-order-reminder.ts` was still on PR #227's unmerged
+ * branch and this one had to build against `main`; the duplicate was recorded
+ * with the trigger for removing it — "when #227 lands, the two should collapse
+ * onto one exported constant".
+ *
+ * The trigger has since fired. Exact order, from GitHub's own merge timestamps
+ * rather than commit-author dates: #234 merged 2026-09-02T10:47:03Z, and #227
+ * (`e3acc79a`) merged 2026-09-02T11:00:23Z — THIRTEEN MINUTES LATER. So the
+ * paragraph above was accurate both when it was written and when it merged;
+ * the duplicate was correct on arrival and went stale a quarter of an hour
+ * afterwards. It is collapsed here because the trigger it named has fired, not
+ * because it was ever wrong.
+ *
+ * The re-export is kept so this module still names its own gate, and so the
+ * existing importers do not have to reach across a bounded context to find out
+ * whether a mailer is armed. `recurring-order-reminder.ts` imports nothing, so
+ * there is no cycle and no DI edge — it is deliberately pure for exactly this.
+ *
+ * Two crons reading one flag through two hand-rolled parsers is one typo away
+ * from arming one and not the other, and the failure would be silent in the
+ * direction that sends email.
  */
-export const RECURRING_REMINDER_FLAG = "RECURRING_ORDER_REMINDERS_ENABLED";
+export {
+  RECURRING_REMINDER_FLAG,
+} from "../communications/recurring-order-reminder";
+import {
+  RECURRING_REMINDER_FLAG,
+  recurringRemindersEnabled,
+} from "../communications/recurring-order-reminder";
 
 export function recurringRemindersArmed(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const raw = (env[RECURRING_REMINDER_FLAG] ?? "").trim().toLowerCase();
-  return raw === "true" || raw === "1";
+  return recurringRemindersEnabled(env[RECURRING_REMINDER_FLAG]);
 }
 
 /** What one calendar write attempt actually did. Never inferred from silence. */

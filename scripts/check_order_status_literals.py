@@ -137,6 +137,11 @@ MIN_STATUS_SITES = 20
 # the `.from()` line's own indent (see `chain_span`).
 MAX_CHAIN_LINES = 40
 
+# How far past `[...].includes(` the receiver is looked for. Prettier puts a
+# broken argument on the very next line; 3 covers that with slack and stops the
+# search well before the next statement can be mistaken for the receiver.
+INCLUDES_LOOKAHEAD = 3
+
 # ---------------------------------------------------------------------------
 # ALLOWLIST -- shrink-only, and every entry is a MEASURED false positive.
 #
@@ -274,6 +279,26 @@ NOT_IN_RE = re.compile(
 MEMBER_RE = re.compile(
     r"""(?:(\w+)\s*[.?])?\bstatus\s*[!=]==\s*["']([^"']*)["']"""
 )
+# `["a", "b"].includes(o.status)` — a set membership test written as an inline
+# array rather than as a comparison.
+#
+# This form was INVISIBLE to the guard when it landed, and it hid a live
+# instance of the very defect the guard exists for: `getCashflow`'s committed
+# outflow filtered on `["pending", "awaiting_approval", "ordered",
+# "in_transit"]`, so `committedOpenOrders` and `openOrderCount` were a
+# structural zero that ADR 0058's sweep walked straight past. A guard that
+# reads one spelling of a membership test and not the other is the same fault
+# as the bug it looks for, one level up.
+#
+# The receiver may sit on a later line, because prettier breaks the call:
+#
+#     ["pending", "in_transit"].includes(
+#       o.status,
+#     )
+#
+# so the receiver is matched over a small joined window rather than one line.
+INCLUDES_ARRAY_RE = re.compile(r"""\[([^\[\]]*?)\]\s*\.includes\s*\(""")
+INCLUDES_RECEIVER_RE = re.compile(r"""^\s*(?:(\w+)\s*[.?])?\bstatus\b\s*[,)]""")
 QUOTED_RE = re.compile(r"""["']([^"']+)["']""")
 
 FROM_TABLE_RE = re.compile(r"""\.from\s*\(\s*["']([a-z_][a-z0-9_]*)["']""")
@@ -338,6 +363,23 @@ def scan_file(rel: str, text: str) -> tuple[list[Site], int]:
             sites.append(
                 Site(rel, i + 1, m.group(2), m.group(1) or "", "member", is_attr)
             )
+        for m in INCLUDES_ARRAY_RE.finditer(line):
+            # The array is on THIS line; the receiver may be here or on one of
+            # the next few, because the formatter breaks the call. Only a
+            # `.status` receiver makes this a status site — `["a","b"].includes(
+            # x.kind)` is somebody else's business.
+            tail = line[m.end() :]
+            rm = INCLUDES_RECEIVER_RE.match(tail)
+            k = i
+            while rm is None and k + 1 < len(lines) and k - i < INCLUDES_LOOKAHEAD:
+                k += 1
+                rm = INCLUDES_RECEIVER_RE.match(lines[k])
+            if rm is None:
+                continue
+            for q in QUOTED_RE.finditer(m.group(1)):
+                sites.append(
+                    Site(rel, i + 1, q.group(1), rm.group(1) or "", "member", is_attr)
+                )
     return sites, chains
 
 
@@ -431,6 +473,25 @@ const client = supabase.from("procurement_orders");
 await client.select("*").in("status", ORDER_SPEND_STATUSES);
 const arrived = orders.filter((o) => hasStatus(o.status, ORDER_SPEND_STATUSES));
 '''
+# The exact shape that hid `getCashflow`'s structural zero from this guard for
+# its whole first life: a membership test written as an inline array with the
+# receiver on the NEXT line, which no comparison pattern matches.
+INCLUDES_FIXTURE = '''
+const client = supabase.from("procurement_orders");
+const open = orders.filter((o) =>
+  ["pending", "awaiting_approval", "ordered", "in_transit"].includes(
+    o.status,
+  ),
+);
+'''
+# ...and the two ways that arm could become noise instead of a guard: an array
+# membership test on something that is not a status, and one whose values are
+# real members.
+INCLUDES_CLEAN_FIXTURE = '''
+const client = supabase.from("procurement_orders");
+const open = orders.filter((o) => ["draft", "sent"].includes(o.kind));
+const live = orders.filter((o) => ["PENDING", "IN_TRANSIT"].includes(o.status));
+'''
 
 
 def self_test(members: set[str]) -> int:
@@ -441,6 +502,8 @@ def self_test(members: set[str]) -> int:
         for label, body, want in (
             ("known-bad", BAD_FIXTURE, 2),
             ("known-good", GOOD_FIXTURE, 0),
+            ("array .includes(), receiver on the next line", INCLUDES_FIXTURE, 2),
+            ("array .includes() that is clean", INCLUDES_CLEAN_FIXTURE, 0),
         ):
             p = pathlib.Path(td) / f"{label}.ts"
             p.write_text(body, encoding="utf-8")
