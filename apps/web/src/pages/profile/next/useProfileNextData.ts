@@ -31,22 +31,43 @@
  * user id) so a branch switch cannot serve the previous tenant's restaurant
  * record, and `GET /auth/me` re-resolves its JWT-scoped `restaurantId`.
  *
- * WHAT IS NOT HERE
- * ----------------
- * No MCP read and no payment read, because neither backend exists — measured
- * 2026-09-02: zero matches for `mcp` and zero for `stripe` across
- * `apps/api-gateway/src`, `apps/web/src` and `supabase/migrations`, and no
- * billing/subscription/invoice table in any migration. The plan a restaurant
- * is on lives in `restaurants.subscription_tier`
- * (supabase/migrations/20260805000000_baseline_from_production.sql:3582,
- * default `pilot`) and is read by exactly one consumer, the model-spend
- * ceiling (common/model-client/model-client.service.ts:565-577). No endpoint
- * the browser can call returns it — `GET /organizations/locations/:id` selects
- * `id, name, city, email, phone` and nothing else
- * (organizations.service.ts:137-152). So the plan is UNKNOWN to this page, and
- * it renders as an em dash. The shipping page renders `Plan: Free` from a
- * hardcoded `useState('Free')` (Profile.tsx:90, rendered :723) — a label that matches neither
- * the column's default nor any measurement.
+ * SECOND PASS, 2026-09-03 — THREE DASHES BECAME READS
+ * ---------------------------------------------------
+ * The first pass reported three things honestly as absent. The founder's answer
+ * was to build them, so this hook now reads three registers that did not exist:
+ *
+ *   MCP      `GET/POST/DELETE /mcp-connections` — a new gateway module and the
+ *            `user_mcp_connections` table (migration 20260903094500). Real list,
+ *            real add, real revoke. `lastUsedAt` stays null because nothing in
+ *            this product dispatches to a model-context server yet, and the page
+ *            says that rather than letting an empty column read as "idle".
+ *   PAYMENT  `GET /payment-methods` — a new gateway module and the
+ *            `payment_methods` table (migration 20260903094600). The response
+ *            carries the PROVIDER's state beside the rows, which is the field
+ *            that stops an empty register from lying: "no cards on file" and
+ *            "no provider is connected, so no card can exist" are the same empty
+ *            array otherwise. The create path refuses server-side while no
+ *            credential is configured, and the page's submit is disabled with
+ *            the same sentence.
+ *   PLAN     `GET /organizations/locations/:id` now selects and returns
+ *            `subscription_tier` (organizations.service.ts). The page's most
+ *            visible em dash is a figure.
+ *
+ * The same endpoint also gained the role check it was missing: `getLocation`
+ * calls `assertManagerOrOwner` now, so the read posture matches the write
+ * posture and the page's copy can state a server rule instead of describing a
+ * gap between them.
+ *
+ * THE SESSION IS READ FROM THE TOKEN THIS BROWSER HOLDS
+ * ----------------------------------------------------
+ * There is no session table in this product: `POST /auth/logout` blacklists the
+ * token presented with it (auth/services/token-blacklist.service.ts) and nothing
+ * records a device, an address or a last-seen. So the only session this page can
+ * name is the one it is running in, and it names it from real evidence — the
+ * `iat`/`exp` claims of the JWT in localStorage and this browser's own
+ * user-agent. Every other device is UNKNOWN, and the Security register says so
+ * in one line instead of drawing an empty devices list that would read as
+ * "you are signed in nowhere else".
  */
 
 import { useCallback, useMemo } from 'react';
@@ -61,7 +82,7 @@ import {
   type IntegrationConnection,
   type IntegrationId,
 } from '../../../services/api/integrations';
-import { apiMessage } from './pf-format';
+import { apiMessage, describeDevice } from './pf-format';
 
 /** What a read is: not asked, in flight, answered, or refused. */
 export type ReadState = 'idle' | 'loading' | 'ok' | 'error';
@@ -71,6 +92,58 @@ export interface LocationRecord {
   city: string;
   billingEmail: string;
   billingPhone: string;
+  /** `restaurants.subscription_tier`. Null when the column is empty. */
+  subscriptionTier: string | null;
+}
+
+/** One declared model-context server, as `/mcp-connections` returns it. */
+export interface McpServerVM {
+  id: string;
+  name: string;
+  url: string;
+  scopes: string[];
+  createdAt: string;
+  /** Null until something calls it. Nothing in this product does yet. */
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  status: 'active' | 'revoked';
+}
+
+/** One instrument on file. Today there are none, and the provider says why. */
+export interface PaymentMethodVM {
+  id: string;
+  kind: 'card' | 'bank_account' | 'apple_pay' | 'invoice';
+  brand: string | null;
+  last4: string | null;
+  exp: string | null;
+  isDefault: boolean;
+  provider: string;
+  createdAt: string;
+}
+
+/**
+ * The provider behind the payment register. `connected: false` with a reason is
+ * the difference between an empty register and an impossible one.
+ */
+export interface PaymentProviderVM {
+  id: string;
+  connected: boolean;
+  reason: string | null;
+}
+
+/**
+ * The one session this page can name: the browser it is running in.
+ *
+ * Every field is either evidence or null. `device` is null when the user-agent
+ * matched nothing we recognise; `signedInAt`/`expiresAt` are null when the token
+ * is absent or its payload will not decode. Nulls render as em dashes.
+ */
+export interface SessionVM {
+  device: string | null;
+  signedInAt: string | null;
+  expiresAt: string | null;
+  /** False when there was no decodable token to read at all. */
+  readable: boolean;
 }
 
 /** One row of the Connections register, whatever rail it sits on. */
@@ -106,6 +179,42 @@ function readState(q: UseQueryResult<unknown>, enabled: boolean): ReadState {
   return 'loading';
 }
 
+/**
+ * The current session, from the token this browser is holding.
+ *
+ * Reads the JWT's `iat`/`exp` claims — signed values the gateway put there, not
+ * anything this page decided — and this browser's user-agent. Nothing here is a
+ * network call and nothing is stored; every failure path returns nulls, which
+ * the page renders as dashes rather than as a plausible-looking device row.
+ */
+function readCurrentSession(): SessionVM {
+  const device =
+    typeof navigator === 'undefined' ? null : describeDevice(navigator.userAgent);
+  let token: string | null = null;
+  try {
+    token = typeof localStorage === 'undefined' ? null : localStorage.getItem('accessToken');
+  } catch {
+    token = null; // storage disabled — unknown, not "signed out"
+  }
+  if (!token) return { device, signedInAt: null, expiresAt: null, readable: false };
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1])) as {
+      iat?: number;
+      exp?: number;
+    };
+    const at = (s?: number) =>
+      typeof s === 'number' && Number.isFinite(s) ? new Date(s * 1000).toISOString() : null;
+    return {
+      device,
+      signedInAt: at(payload.iat),
+      expiresAt: at(payload.exp),
+      readable: true,
+    };
+  } catch {
+    return { device, signedInAt: null, expiresAt: null, readable: false };
+  }
+}
+
 export function useProfileNextData() {
   const {
     user,
@@ -114,8 +223,16 @@ export function useProfileNextData() {
     availableRestaurants,
     setActiveRestaurantId,
     refreshBranches,
+    logout,
   } = useAuth();
   const { theme, setTheme } = useTheme();
+
+  /**
+   * Recomputed on every render rather than memoised: `exp` is a countdown and a
+   * stale "expires in" is a worse answer than a recomputed one. It costs a
+   * base64 decode.
+   */
+  const session = readCurrentSession();
 
   const uid = user?.userId ?? '';
   const rid = activeRestaurantId ?? '';
@@ -133,14 +250,18 @@ export function useProfileNextData() {
 
   /* ── read 2: the restaurant record ───────────────────────────────────
    *
-   * Gated on `isManagerOrOwner` HERE, by this page's own choice — not because
-   * the endpoint is. `getLocation` checks organisation membership and stops
-   * (organizations.service.ts:123-153); `assertManagerOrOwner` is called only
-   * from `updateLocation` (:186). So the WRITE is genuinely manager/owner —
-   * every field this page sends is in `touchesOps` (:178-187) — while the READ
-   * is open to any member of the organisation. The page says so where it
-   * declines to show the section, rather than implying the server is hiding
-   * it. Filed as G8 in 06-pages/profile.md §9; the fix is in the gateway.
+   * Gated on `isManagerOrOwner`, and now the SERVER agrees. Until 2026-09-03
+   * `getLocation` checked organisation membership and stopped while
+   * `updateLocation` called `assertManagerOrOwner`, so the write posture was
+   * manager/owner and the read posture was any member — and this page had to
+   * say, awkwardly, that the withholding was its own choice (gap G8). The check
+   * now runs on both sides (organizations.service.ts, `getLocation` →
+   * `assertManagerOrOwner(..., "read the restaurant record")`), so skipping the
+   * fetch for staff mirrors a rule the endpoint enforces rather than inventing
+   * one, and the copy says the server refuses.
+   *
+   * The same read now returns `subscription_tier`, which is why the Payment
+   * register can name the plan.
    */
 
   const locationEnabled = isManagerOrOwner && !!rid;
@@ -153,6 +274,7 @@ export function useProfileNextData() {
         city: string | null;
         email: string | null;
         phone: string | null;
+        subscriptionTier?: string | null;
       }>(`/organizations/locations/${rid}`);
       // No `?? activeBranch.name` anywhere in this function, deliberately.
       return {
@@ -160,6 +282,9 @@ export function useProfileNextData() {
         city: data?.city ?? '',
         billingEmail: data?.email ?? '',
         billingPhone: data?.phone ?? '',
+        // `?? null` and never `?? 'free'`: a gateway that has not been
+        // redeployed yet omits the field, and an omitted plan is unknown.
+        subscriptionTier: data?.subscriptionTier ?? null,
       };
     },
     enabled: locationEnabled,
@@ -234,6 +359,53 @@ export function useProfileNextData() {
       };
     });
   }, [catalogQ.data, connectionsQ.data, connectionsUnreadable]);
+
+  /* ── read 5: model-context servers ──────────────────────────────────
+   *
+   * New this pass. The endpoint THROWS on a query error rather than returning
+   * `[]` (mcp-connections.service.ts), so — unlike the workspace rail — this
+   * register never has to infer a failure from an empty answer: an empty list
+   * here genuinely means no server is declared, and a failed read is an error
+   * state with the gateway's own words in it.
+   */
+
+  const mcpQ = useQuery({
+    queryKey: ['profile-next-mcp', rid, uid],
+    queryFn: async (): Promise<McpServerVM[]> => {
+      const { data } = await apiClient.get<McpServerVM[]>('/mcp-connections');
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!uid && !!rid,
+    staleTime: 30_000,
+  });
+
+  /* ── read 6: payment methods, and the provider behind them ──────────── */
+
+  const paymentsQ = useQuery({
+    queryKey: ['profile-next-payments', rid, uid],
+    queryFn: async (): Promise<{
+      provider: PaymentProviderVM;
+      methods: PaymentMethodVM[];
+    }> => {
+      const { data } = await apiClient.get<{
+        provider: PaymentProviderVM;
+        methods: PaymentMethodVM[];
+      }>('/payment-methods');
+      return {
+        provider: data?.provider ?? {
+          id: 'stripe',
+          connected: false,
+          // Reached only if the gateway answered without the field — which is
+          // itself an unknown, so it must not read as a confident "connected".
+          reason:
+            'The payment provider did not report its state, so this page cannot say whether one is connected.',
+        },
+        methods: Array.isArray(data?.methods) ? data.methods : [],
+      };
+    },
+    enabled: !!uid && !!rid,
+    staleTime: 30_000,
+  });
 
   /* ── sign-in methods, from the record we already fetched ────────────── */
 
@@ -333,6 +505,44 @@ export function useProfileNextData() {
     [rid, locationQ],
   );
 
+  /* ── writes: the model-context register ─────────────────────────────── */
+
+  const addMcpServer = useCallback(
+    async (input: { name: string; url: string; scopes: string[] }) => {
+      await apiClient.post('/mcp-connections', {
+        name: input.name.trim(),
+        url: input.url.trim(),
+        scopes: input.scopes,
+      });
+      await mcpQ.refetch();
+    },
+    [mcpQ],
+  );
+
+  const revokeMcpServer = useCallback(
+    async (id: string) => {
+      await apiClient.delete(`/mcp-connections/${id}`);
+      await mcpQ.refetch();
+    },
+    [mcpQ],
+  );
+
+  /* ── writes: the payment register ────────────────────────────────────
+   *
+   * Present, and never reachable from the page while no provider is connected:
+   * the form's submit is disabled and this would refuse anyway
+   * (payment-methods.service.ts, 503 with the reason). It exists so that
+   * connecting a provider is a credential and a hosted flow, not a rewrite.
+   */
+
+  const removePaymentMethod = useCallback(
+    async (id: string) => {
+      await apiClient.delete(`/payment-methods/${id}`);
+      await paymentsQ.refetch();
+    },
+    [paymentsQ],
+  );
+
   const leaveRestaurant = useCallback(async () => {
     if (!rid) throw new Error('No active restaurant');
     await apiClient.post('/auth/me/leave-restaurant', { restaurantId: rid });
@@ -372,6 +582,28 @@ export function useProfileNextData() {
     location: locationQ.data ?? null,
     refetchLocation: () => void locationQ.refetch(),
 
+    /* read 5 — model context */
+    mcpState: readState(mcpQ, !!uid && !!rid),
+    mcpError: mcpQ.isError ? apiMessage(mcpQ.error) : null,
+    mcpServers: mcpQ.data ?? [],
+    refetchMcp: () => void mcpQ.refetch(),
+
+    /* read 6 — payment */
+    paymentsState: readState(paymentsQ, !!uid && !!rid),
+    paymentsError: paymentsQ.isError ? apiMessage(paymentsQ.error) : null,
+    paymentMethods: paymentsQ.data?.methods ?? [],
+    /**
+     * Null while the register has not answered. NOT a default of
+     * `{connected: false}`: "we have not asked yet" and "there is no provider"
+     * are different sentences and the page prints different ones.
+     */
+    paymentProvider: paymentsQ.data?.provider ?? null,
+    refetchPayments: () => void paymentsQ.refetch(),
+
+    /* the one session this page can name */
+    session,
+    signOut: logout,
+
     /* reads 3+4 */
     workspaceState: readState(catalogQ, !!uid),
     workspaceError: catalogQ.isError ? apiMessage(catalogQ.error) : null,
@@ -391,6 +623,9 @@ export function useProfileNextData() {
     disconnectWorkspace,
     saveRestaurant,
     saveBillingContact,
+    addMcpServer,
+    revokeMcpServer,
+    removePaymentMethod,
     leaveRestaurant,
     deleteAccount,
   };

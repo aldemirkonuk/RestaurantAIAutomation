@@ -9,25 +9,53 @@
  *   Linked accounts — "to be cooler than this, not just like that"; Payments —
  *   "we should be able to add the payment here", Stripe or comparable.
  *
+ * SECOND PASS, 2026-09-03 (founder: "make sure it is almost identical to the
+ * ones startups with $100B+ valuations have … add MCP servers as well, payment
+ * types as well, we're going to need those")
+ * -----------------------------------------------------------------------------
+ * Pass one was a permissions ledger in four registers, and it was honest about
+ * three absences: MCP had no backend, payments had no provider, and the plan was
+ * on the restaurant record with no endpoint to fetch it. The founder read those
+ * dashes and asked for the things. So this pass BUILT them:
+ *
+ *   Register IV  Model context — a real list model over a new gateway module
+ *                (`apps/api-gateway/src/mcp-connections/`) and a new table
+ *                (`user_mcp_connections`). List, add, revoke, all authenticated
+ *                and tenant-scoped. "Last call" is an em dash because nothing
+ *                calls these servers yet, and the register says so in one line.
+ *   Register V   Payment — a real list model over a new gateway module
+ *                (`apps/api-gateway/src/payment-methods/`) and a new table. The
+ *                Add form opens with every real field, and its submit is
+ *                DISABLED with one line: Stripe is not connected, so this saves
+ *                nothing until it is. The gateway agrees — the create path
+ *                refuses with the same reason.
+ *   Register II  Security — the register the field opens on (Stripe, Linear,
+ *                Vercel all do). One session row built from evidence this
+ *                browser holds, and three protections (other devices, two-factor
+ *                and passkeys, API tokens) rendered `Not built` with the
+ *                measurement behind each claim. No fake toggles.
+ *
+ * And the plan is a figure: `GET /organizations/locations/:id` now returns
+ * `subscription_tier` — and gained the manager/owner check its write already
+ * had, so the page's permission copy states a server rule instead of describing
+ * the gap between two postures.
+ *
  * THE STRUCTURE THAT ENFORCES IT
  * ------------------------------
  * The shipping page is eight boxes down a scroll-spy rail, each a different
  * shape, and the two sections with no backend are drawn exactly like the six
- * with one. This page is a ledger in four registers — who you are, what is
- * connected to you, the house, and the account ruled off — and the founder's
- * three additions all land inside ONE of them, on ONE row shape, next to the
- * connections that already work. One component draws every row, so what
- * separates a live Google link from an MCP server with no backend is its state
- * chip and whether its control is a live link or a `disabled` one carrying its
- * reason in words — never the amount of design spent on it. The page therefore
- * cannot flatter an empty section by drawing it richer than its evidence, and
- * there is no Connect on it that can appear to succeed.
+ * with one. This page is a ledger in seven numbered registers, and ONE component
+ * draws every row in all of them. What separates a live Google link from a
+ * passkey with no backend is its state chip and whether its control is live or
+ * `disabled` carrying its reason in words — never the amount of design spent on
+ * it. The page therefore cannot flatter an empty section by drawing it richer
+ * than its evidence, and there is no control on it that can appear to succeed.
  *
  * Honesty, page-wide (ADR 0020): the two reads the shipping page swallows are
  * first-class states here (see useProfileNextData's header); an unknown is an
- * em dash, never a zero and never a blank that a Save could write back; and
- * the plan — which exists in the database and is exposed by no endpoint — is a
- * dash rather than the hardcoded "Free" the shipping page prints.
+ * em dash, never a zero and never a blank that a Save could write back; and an
+ * empty register always says WHICH kind of empty it is — nothing recorded, or
+ * nothing readable.
  *
  * Ceremony is rationed. The hold-to-approve seal appears exactly once, on the
  * one irreversible act on the page: deleting the account.
@@ -35,12 +63,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DoorOpen } from 'lucide-react';
 import { HoldToApprove, Wordmark } from '../../../components/mudavym';
 import { animate, settle } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, countWord, ensureFraunces, roleLabel } from './pf-format';
 import { Btn, Card, Note, PF_CSS, Register, StatusLine } from './pf-ui';
 import { IdentityRegister } from './IdentityRegister';
+import { SecurityRegister } from './SecurityRegister';
 import { ConnectionsRegister } from './ConnectionsRegister';
+import { McpRegister } from './McpRegister';
+import { PaymentRegister } from './PaymentRegister';
 import { HouseRegister } from './HouseRegister';
 import { useProfileNextData, type ProfileNextData } from './useProfileNextData';
 
@@ -50,9 +82,17 @@ export interface ProfileNextProps {
 }
 
 /**
- * The opening sentence. It says only what has actually been read: a clause is
- * omitted when its count is unknown, and both counts unknown produces a
- * sentence about the read, not about the account.
+ * The opening sentence — a tally of every register that answered.
+ *
+ * The rule that makes it honest is that a clause is OMITTED when its register
+ * did not answer, rather than counted as zero. Four registers can contribute and
+ * a sentence with two clauses is a sentence about two reads; none of them
+ * contributing produces a sentence about the read itself, not about the account.
+ *
+ * The payment clause is the one that changed this pass. It used to be a constant
+ * — "nothing yet that can bill you" — because no payment backend existed at all.
+ * There is a register now, so the clause is a reading of it, and it appears only
+ * when that read succeeded.
  */
 function standingLine(data: ProfileNextData): string {
   const parts: string[] = [];
@@ -66,12 +106,31 @@ function standingLine(data: ProfileNextData): string {
       n === 0 ? 'no workspace connected' : n === 1 ? 'one workspace connected' : `${countWord(n)} workspaces connected`,
     );
   }
+  if (data.mcpState === 'ok') {
+    const n = data.mcpServers.filter((s) => s.status === 'active').length;
+    parts.push(
+      n === 0
+        ? 'no model-context server declared'
+        : n === 1
+          ? 'one model-context server declared'
+          : `${countWord(n)} model-context servers declared`,
+    );
+  }
+  if (data.paymentsState === 'ok') {
+    const n = data.paymentMethods.length;
+    parts.push(
+      n === 0
+        ? 'nothing on file that can bill you'
+        : n === 1
+          ? 'one payment method on file'
+          : `${countWord(n)} payment methods on file`,
+    );
+  }
   if (parts.length === 0) {
     return data.meState === 'error'
       ? 'Your account record could not be read, so nothing on this page is claimed about it.'
       : 'Reading your account…';
   }
-  parts.push('nothing yet that can bill you');
   const sentence = parts.join(', ');
   return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
 }
@@ -196,12 +255,16 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
         </header>
 
         <IdentityRegister data={data} />
+        <SecurityRegister data={data} />
         <ConnectionsRegister data={data} onGoToSecurity={goToSecurity} />
+        <McpRegister data={data} />
+        <PaymentRegister data={data} />
         <HouseRegister data={data} />
 
-        {/* ── Register IV — the account, ruled off ────────────────────── */}
+        {/* ── Register VII — the account, ruled off ───────────────────── */}
         <Register
-          eyebrow="Register IV"
+          eyebrow="Register VII"
+          icon={<DoorOpen size={13} aria-hidden />}
           title="Ruled off"
           ruledOff
           lead={

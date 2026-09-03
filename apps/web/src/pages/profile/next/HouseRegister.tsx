@@ -12,15 +12,21 @@
  * sees the register and one sentence saying who may edit it — hiding it would
  * report absence as health.
  *
- * That sentence is careful about WHOSE choice the hiding is. The write really
- * is manager/owner (`organizations.service.ts:178-187` → `:186`), but the read
- * is not: `getLocation` (`:123-153`) checks organisation membership only. So
- * not fetching the record for staff is this page's decision, and the copy says
- * that instead of crediting the server with a check it does not make. Gap G8.
+ * That sentence used to be careful about WHOSE choice the hiding was, because
+ * the two postures disagreed: `updateLocation` called `assertManagerOrOwner`
+ * and `getLocation` checked organisation membership and stopped, so the page
+ * had to say the withholding was its own (gap G8). On 2026-09-03 the check was
+ * added to the read as well (`organizations.service.ts`, `getLocation` →
+ * `assertManagerOrOwner(..., "read the restaurant record")`, with
+ * `get-location-is-role-gated.spec.ts` pinning it), so the copy below states a
+ * server rule. Two things follow: a staff member who calls the endpoint past
+ * this UI is now refused rather than handed the billing contact, and this page
+ * no longer has to describe a gap in order to stay honest.
  */
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Building2 } from 'lucide-react';
 import { EM, SANS, isForbidden, roleLabel } from './pf-format';
 import { Btn, Card, ConnectionRow, Field, Note, Register, RetryLink, StatusLine } from './pf-ui';
 import type { ProfileNextData } from './useProfileNextData';
@@ -72,7 +78,8 @@ export function HouseRegister({ data }: { data: ProfileNextData }) {
 
   return (
     <Register
-      eyebrow="Register III"
+      eyebrow="Register VI"
+      icon={<Building2 size={13} aria-hidden />}
       title="The house"
       lead={<Note>The location you are working in, and every location you belong to.</Note>}
     >
@@ -118,7 +125,7 @@ export function HouseRegister({ data }: { data: ProfileNextData }) {
           title="Restaurant record"
           subtitle="The name and city everywhere else in the product reads."
           state="unknown"
-          reason={`Managers and owners edit this, and the server does refuse the change for anyone else. Your role here is ${roleLabel(data.role)}, so this page does not fetch the record — that part is this page's choice, not a server rule: the read is open to any member of the organisation.`}
+          reason={`Managers and owners read and edit this record, and the server refuses both for anyone else — the read check was added on 2026-09-03, so the endpoint enforces the same rule this page does. Your role here is ${roleLabel(data.role)}.`}
         />
       )}
 

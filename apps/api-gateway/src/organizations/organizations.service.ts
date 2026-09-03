@@ -16,12 +16,37 @@ export interface RestaurantBranch {
   city: string | null;
   chain_id: string | null;
   chain_name: string | null;
+  /**
+   * When this branch's row was last written.
+   *
+   * `restaurants.updated_at` exists (baseline_from_production.sql:3566-3583)
+   * AND is genuinely maintained — `update_restaurants_updated_at BEFORE UPDATE`
+   * (baseline:12300) stamps it on every write, so this is a real last-changed
+   * date and not a disguised creation date. It was simply never selected, so
+   * `/settings`' Locations register had to render an em dash over a date the
+   * database was holding (p4 audit BLOCKER 3). Nullable because the column is
+   * nullable and because a branch reached through the URA or legacy fallback
+   * may arrive from a cached session that predates this field.
+   */
+  updated_at: string | null;
 }
 
 export interface RestaurantChain {
   id: string;
   name: string;
   cuisine_type: string | null;
+  /**
+   * When this chain's row was last written.
+   *
+   * `restaurant_chains.updated_at` is `NOT NULL DEFAULT now()`
+   * (baseline_from_production.sql:5053-5060) but the table carries **no**
+   * `BEFORE UPDATE` trigger — grep the baseline: `update_updated_at_column` is
+   * attached to `restaurants` (:12300) and `user_preferences` (:12342) and not
+   * to this table. So returning the column alone would have made a rename
+   * invisible and reported a creation date as a change date. `renameChain`
+   * therefore stamps it explicitly; see the note there (p4 audit BLOCKER 2).
+   */
+  updated_at: string | null;
 }
 
 @Injectable()
@@ -90,10 +115,16 @@ export class OrganizationsService {
   /**
    * Manager or owner at this restaurant (via user_restaurant_access).
    * Falls back to users.role when URA row is missing (legacy).
+   *
+   * `action` only shapes the refusal message. It exists because this helper now
+   * guards a READ as well as a write (`getLocation`), and "Only managers and
+   * owners can edit restaurant details" would have been a false explanation for
+   * a refused GET.
    */
   private async assertManagerOrOwner(
     userId: string,
     restaurantId: string,
+    action = "edit restaurant details",
   ): Promise<void> {
     const { data: access } = await this.databaseService.supabase
       .from("user_restaurant_access")
@@ -115,11 +146,50 @@ export class OrganizationsService {
 
     if (role !== "owner" && role !== "manager") {
       throw new ForbiddenException(
-        "Only managers and owners can edit restaurant details",
+        `Only managers and owners can ${action}`,
       );
     }
   }
 
+  /**
+   * The same check, for modules outside this one.
+   *
+   * `payment-methods` needs it (billing belongs to the house's managers, not to
+   * whoever is signed in) and duplicating the two-step URA-then-legacy lookup
+   * there would have produced a second, untested copy of the rule that decides
+   * who may spend money. One implementation, one spec.
+   */
+  async assertCanManageRestaurant(
+    userId: string,
+    restaurantId: string,
+    action: string,
+  ): Promise<void> {
+    return this.assertManagerOrOwner(userId, restaurantId, action);
+  }
+
+  /**
+   * The restaurant record behind `/profile` and `/settings`.
+   *
+   * THE READ IS GATED, AND IT WAS NOT (2026-09-03)
+   * ----------------------------------------------
+   * Until now this method checked organisation membership and stopped, while
+   * `updateLocation` called `assertManagerOrOwner` for the same columns. Both
+   * clients gate the fetch on the client side only, so any member of the
+   * organisation calling `GET /organizations/locations/:id` directly — past the
+   * UI — could read the restaurant's billing email and phone. The write posture
+   * and the read posture disagreed, and the profile page had to describe the
+   * gap in prose instead of stating a rule. It now states one: the same role
+   * check runs on both sides, so "managers and owners" is true of the endpoint,
+   * not only of the button.
+   *
+   * `subscription_tier` is added here for the same reason. The column exists
+   * (`restaurants.subscription_tier`, baseline_from_production.sql:3582,
+   * default 'pilot') and was read by exactly one consumer, the model-spend
+   * ceiling, so the browser had no way to name the plan and `/profile` rendered
+   * an em dash. Returning it is the whole fix; it is deliberately returned raw
+   * (never defaulted to 'free' or 'pilot' in this layer) so an absent value
+   * stays absent all the way to the page.
+   */
   async getLocation(
     userId: string,
     restaurantId: string,
@@ -129,6 +199,7 @@ export class OrganizationsService {
     city: string | null;
     email: string | null;
     phone: string | null;
+    subscriptionTier: string | null;
   }> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0)
@@ -136,12 +207,21 @@ export class OrganizationsService {
 
     const { data: rest } = await this.databaseService.supabase
       .from("restaurants")
-      .select("id, name, city, email, phone")
+      .select("id, name, city, email, phone, subscription_tier")
       .eq("id", restaurantId)
       .in("organization_id", orgIds)
       .maybeSingle();
     if (!rest)
       throw new NotFoundException("Restaurant not found or access denied");
+
+    // Membership proves the restaurant is visible; it does not prove the caller
+    // may read its billing contact. Ordered after the lookup so a restaurant
+    // outside the org stays a 404 rather than leaking its existence via a 403.
+    await this.assertManagerOrOwner(
+      userId,
+      restaurantId,
+      "read the restaurant record",
+    );
 
     return {
       id: rest.id,
@@ -149,6 +229,7 @@ export class OrganizationsService {
       city: rest.city ?? null,
       email: rest.email ?? null,
       phone: rest.phone ?? null,
+      subscriptionTier: rest.subscription_tier ?? null,
     };
   }
 
@@ -233,9 +314,14 @@ export class OrganizationsService {
     if (!existing)
       throw new NotFoundException("Chain not found or access denied");
 
+    // `updated_at` is stamped by hand because `restaurant_chains` has no
+    // `BEFORE UPDATE` trigger (see `RestaurantChain.updated_at`). Without this
+    // line the column would keep the row's creation time for ever, and
+    // `/settings` would print that as "last changed" — a fabricated answer of
+    // exactly the kind ADR 0020 forbids.
     const { error } = await this.databaseService.supabase
       .from("restaurant_chains")
-      .update({ name: name.trim() })
+      .update({ name: name.trim(), updated_at: new Date().toISOString() })
       .eq("id", chainId)
       .in("organization_id", orgIds);
     if (error) throw new InternalServerErrorException("Failed to rename chain");
@@ -280,13 +366,14 @@ export class OrganizationsService {
       city: r.city ?? null,
       chain_id: r.chain_id ?? null,
       chain_name: r.restaurant_chains?.name ?? null,
+      updated_at: r.updated_at ?? null,
     });
 
     if (orgIds.length > 0) {
       const { data: restaurants, error: restErr } =
         await this.databaseService.supabase
           .from("restaurants")
-          .select("id, name, city, chain_id, restaurant_chains(name)")
+          .select("id, name, city, chain_id, updated_at, restaurant_chains(name)")
           .in("organization_id", orgIds);
 
       if (restErr) {
@@ -302,7 +389,7 @@ export class OrganizationsService {
     const { data: uraRows, error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .select(
-        "restaurant_id, restaurants(id, name, city, chain_id, restaurant_chains(name))",
+        "restaurant_id, restaurants(id, name, city, chain_id, updated_at, restaurant_chains(name))",
       )
       .eq("user_id", userId)
       .eq("is_active", true);
@@ -328,7 +415,7 @@ export class OrganizationsService {
       if (user?.restaurant_id) {
         const { data: r } = await this.databaseService.supabase
           .from("restaurants")
-          .select("id, name, city, chain_id, restaurant_chains(name)")
+          .select("id, name, city, chain_id, updated_at, restaurant_chains(name)")
           .eq("id", user.restaurant_id)
           .maybeSingle();
         if (r) byId.set(r.id, mapRow(r));
@@ -344,7 +431,7 @@ export class OrganizationsService {
 
     const { data: chains, error } = await this.databaseService.supabase
       .from("restaurant_chains")
-      .select("id, name, cuisine_type")
+      .select("id, name, cuisine_type, updated_at")
       .in("organization_id", orgIds)
       .order("name");
 
@@ -359,6 +446,7 @@ export class OrganizationsService {
       id: c.id,
       name: c.name,
       cuisine_type: c.cuisine_type ?? null,
+      updated_at: c.updated_at ?? null,
     }));
   }
 
@@ -397,7 +485,7 @@ export class OrganizationsService {
         cuisine_type: dto.cuisine_type ?? null,
         description: dto.description ?? null,
       })
-      .select("id, name, cuisine_type")
+      .select("id, name, cuisine_type, updated_at")
       .single();
 
     if (error || !chain)
@@ -419,6 +507,7 @@ export class OrganizationsService {
       id: chain.id,
       name: chain.name,
       cuisine_type: chain.cuisine_type ?? null,
+      updated_at: chain.updated_at ?? null,
     };
   }
 

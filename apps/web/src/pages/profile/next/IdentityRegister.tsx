@@ -1,5 +1,11 @@
 /**
- * Register I — who you are, how you get in, how the app looks to you.
+ * Register I — who you are, and how the room is lit.
+ *
+ * The password form moved out on 2026-09-03: the second pass gave security its
+ * own register (`SecurityRegister.tsx`, Register II) so that the credential
+ * could sit next to the session, the second factor and the API tokens, the way
+ * every account page the founder named arranges them. This register is now
+ * identity and preference only.
  *
  * The honesty work here is the phone field. It comes from `GET /auth/me`, the
  * read the shipping page swallows (Profile.tsx:110-118). When that read has
@@ -13,6 +19,7 @@
  */
 
 import { useState } from 'react';
+import { UserRound } from 'lucide-react';
 import { EM, MONO, SANS, roleLabel } from './pf-format';
 import { Btn, Card, Field, Note, Register, StatusLine } from './pf-ui';
 import type { ProfileNextData } from './useProfileNextData';
@@ -24,12 +31,6 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
   const [phoneDraft, setPhoneDraft] = useState<string | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountMsg, setAccountMsg] = useState<{ tone: 'error' | 'done'; text: string } | null>(null);
-
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [savingPassword, setSavingPassword] = useState(false);
-  const [passwordMsg, setPasswordMsg] = useState<{ tone: 'error' | 'done'; text: string } | null>(null);
 
   const recordRead = data.meState === 'ok';
   const name = nameDraft ?? data.user?.name ?? '';
@@ -59,35 +60,12 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
     }
   };
 
-  const changePassword = async () => {
-    if (next.length < 8) {
-      setPasswordMsg({ tone: 'error', text: 'A new password needs at least eight characters.' });
-      return;
-    }
-    if (next !== confirm) {
-      setPasswordMsg({ tone: 'error', text: 'The two new passwords do not match.' });
-      return;
-    }
-    setPasswordMsg(null);
-    setSavingPassword(true);
-    try {
-      await data.changePassword(current, next);
-      setCurrent('');
-      setNext('');
-      setConfirm('');
-      setPasswordMsg({ tone: 'done', text: 'Password updated. Your session is unaffected.' });
-    } catch (e) {
-      setPasswordMsg({ tone: 'error', text: `Not changed — ${String((e as Error).message)}` });
-    } finally {
-      setSavingPassword(false);
-    }
-  };
-
   return (
     <Register
       eyebrow="Register I"
+      icon={<UserRound size={13} aria-hidden />}
       title="Who you are"
-      lead={<Note>Your name, your address, your credential, and how the room is lit.</Note>}
+      lead={<Note>Your name, your address, your role, and how the room is lit.</Note>}
     >
       <Card title="Account">
         <Field id="pf-name" label="Display name" value={name} onChange={setNameDraft} />
@@ -155,54 +133,6 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
           {savingAccount ? 'Saving…' : 'Save changes'}
         </Btn>
         {accountMsg && <StatusLine tone={accountMsg.tone}>{accountMsg.text}</StatusLine>}
-      </Card>
-
-      <Card
-        id="pf-security"
-        title="Security"
-        lead={
-          data.hasPassword === null
-            ? 'Whether this account has a password is unknown — the record has not answered.'
-            : data.hasPassword
-              ? 'Change the password you sign in with.'
-              : 'You signed in through a linked account. Set a password to also use email sign-in.'
-        }
-      >
-        {data.hasPassword !== false && (
-          <Field
-            id="pf-current-password"
-            label="Current password"
-            type="password"
-            autoComplete="current-password"
-            value={current}
-            onChange={setCurrent}
-            hint={
-              data.hasPassword === null ? (
-                <Note>Fill this in if the account has one; the server will say if it is wrong.</Note>
-              ) : undefined
-            }
-          />
-        )}
-        <Field
-          id="pf-new-password"
-          label="New password"
-          type="password"
-          autoComplete="new-password"
-          value={next}
-          onChange={setNext}
-        />
-        <Field
-          id="pf-confirm-password"
-          label="Confirm new password"
-          type="password"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={setConfirm}
-        />
-        <Btn onClick={() => void changePassword()} disabled={savingPassword || !next}>
-          {savingPassword ? 'Saving…' : data.hasPassword === false ? 'Set password' : 'Update password'}
-        </Btn>
-        {passwordMsg && <StatusLine tone={passwordMsg.tone}>{passwordMsg.text}</StatusLine>}
       </Card>
 
       <Card title="Preferences" lead="Kept in this browser.">

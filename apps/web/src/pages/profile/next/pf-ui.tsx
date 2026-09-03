@@ -89,18 +89,35 @@ export function Register({
   eyebrow,
   title,
   lead,
+  icon,
   ruledOff = false,
   children,
 }: {
   eyebrow: string;
   title: string;
   lead?: ReactNode;
+  /**
+   * A lucide glyph beside the eyebrow. Ink, never the seal: an icon is a
+   * finding aid down a long ledger, not a status, and a coloured one would
+   * start competing with the state chips for meaning.
+   */
+  icon?: ReactNode;
   ruledOff?: boolean;
   children: ReactNode;
 }) {
   return (
     <section style={{ marginTop: 28 }}>
-      <Eyebrow>{eyebrow}</Eyebrow>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          color: 'var(--seal-deep)',
+        }}
+      >
+        {icon}
+        <Eyebrow>{eyebrow}</Eyebrow>
+      </span>
       <h2
         style={{
           margin: '2px 0 0',
@@ -121,6 +138,53 @@ export function Register({
       {lead && <div style={{ marginTop: 10 }}>{lead}</div>}
       <div style={{ marginTop: 12 }}>{children}</div>
     </section>
+  );
+}
+
+/**
+ * A named group of rows inside a register — the ledger's sub-heading.
+ *
+ * Lives here rather than in one register because four of the six use it now, and
+ * a rail that looked different depending on which register drew it would undo
+ * the page's whole argument: what separates two rows is their evidence, never
+ * their styling.
+ */
+export function Rail({
+  title,
+  lead,
+  icon,
+  children,
+}: {
+  title: string;
+  lead: string;
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 18 }}>
+      <h3
+        style={{
+          margin: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontFamily: SANS,
+          fontSize: 12.5,
+          fontWeight: 700,
+          letterSpacing: '0.01em',
+          color: 'var(--ink-1)',
+        }}
+      >
+        <span aria-hidden style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>
+          {icon}
+        </span>
+        {title}
+      </h3>
+      <p style={{ margin: '2px 0 10px', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+        {lead}
+      </p>
+      {children}
+    </div>
   );
 }
 
@@ -437,6 +501,68 @@ export function Field({
           fontSize: 13,
         }}
       />
+      {hint && <div style={{ marginTop: 4 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/** A labelled `<select>`. Same shell as `Field`, so a form reads as one thing. */
+export function Choice({
+  id,
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  hint?: ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label
+        htmlFor={id}
+        style={{
+          display: 'block',
+          marginBottom: 4,
+          fontFamily: SANS,
+          fontSize: 11.5,
+          fontWeight: 600,
+          color: 'var(--ink-2)',
+        }}
+      >
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="pf-focus"
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          padding: '8px 10px',
+          borderRadius: 8,
+          border: '1px solid var(--paper-2)',
+          background: disabled ? 'var(--paper-2)' : 'var(--paper-1)',
+          color: disabled ? 'var(--ink-3)' : 'var(--ink-1)',
+          fontFamily: SANS,
+          fontSize: 13,
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
       {hint && <div style={{ marginTop: 4 }}>{hint}</div>}
     </div>
   );

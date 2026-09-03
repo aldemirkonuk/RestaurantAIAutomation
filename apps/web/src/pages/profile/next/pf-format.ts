@@ -73,3 +73,81 @@ const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
 export function countWord(n: number): string {
   return WORDS[n] ?? String(n);
 }
+
+/** "12 August 2026, 14:05", or the dash. Used for a session's own timestamps. */
+export function fmtMoment(iso: string | null | undefined): string {
+  if (!iso) return EM;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return EM;
+  return new Date(t).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * What this browser is, from its own user-agent string.
+ *
+ * Deliberately a matcher, not a parser: it names a browser and a platform ONLY
+ * when it recognises one, and returns `null` otherwise — which the page renders
+ * as an em dash. A user-agent is a claim the browser makes about itself, and
+ * guessing "Windows" from an unmatched string would be inventing a device.
+ */
+export function describeDevice(ua: string | null | undefined): string | null {
+  if (!ua) return null;
+  const browser =
+    /\bEdg\//.test(ua) ? 'Edge'
+    : /\bOPR\//.test(ua) ? 'Opera'
+    : /\bFirefox\//.test(ua) ? 'Firefox'
+    : /\bChrome\//.test(ua) ? 'Chrome'
+    : /\bSafari\//.test(ua) && /\bVersion\//.test(ua) ? 'Safari'
+    : null;
+  const platform =
+    /\biPhone\b/.test(ua) ? 'iPhone'
+    : /\biPad\b/.test(ua) ? 'iPad'
+    : /\bAndroid\b/.test(ua) ? 'Android'
+    : /\bMac OS X\b/.test(ua) ? 'macOS'
+    : /\bWindows NT\b/.test(ua) ? 'Windows'
+    : /\bLinux\b/.test(ua) ? 'Linux'
+    : null;
+  if (browser && platform) return `${browser} on ${platform}`;
+  return browser ?? platform;
+}
+
+/**
+ * The plan as the product says it. The column is free text with a default of
+ * `pilot` (baseline_from_production.sql:3582), so this titlecases what it is
+ * given and never substitutes a friendlier word — an unrecognised tier is shown
+ * as it is stored, and an absent one is the dash.
+ */
+export function planLabel(tier: string | null | undefined): string {
+  if (!tier || !tier.trim()) return EM;
+  const t = tier.trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/**
+ * A comma- or space-separated scope list, as typed, reduced to the slugs the
+ * gateway's DTO will accept. Invalid entries are dropped HERE and counted by the
+ * caller, so the operator is told what was discarded instead of discovering it
+ * as a 400.
+ */
+export function parseScopes(input: string): { scopes: string[]; rejected: string[] } {
+  const parts = input
+    .split(/[,\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const scopes: string[] = [];
+  const rejected: string[] = [];
+  for (const p of parts) {
+    if (/^[a-z0-9][a-z0-9._:-]*$/.test(p) && p.length <= 64) {
+      if (!scopes.includes(p)) scopes.push(p);
+    } else {
+      rejected.push(p);
+    }
+  }
+  return { scopes, rejected };
+}
