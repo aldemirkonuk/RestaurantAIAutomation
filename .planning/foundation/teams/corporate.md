@@ -153,7 +153,7 @@ corpus today, and fixing one does not fix the others.
   - Largest planning docs: `claude_full_architectural.md` (186KB),
     `UX_PATHS_CATALOG.md` (158KB), `INVOICE_DOC_UX_RESEARCH.md` (83KB) — the grep-target
     set named in [`CLAUDE.md`](../../../CLAUDE.md) §2.
-  - Open fork: **OD-01** ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):80).
+  - Open fork: **OD-01** ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):81).
 - **Primary metric.** **Duplicate + orphan document count.** Baseline: 38 duplicated
   basenames, 3 of them ambiguous. Unlike most metrics here it has a real, reachable zero.
 - **Premortem.** *OD-01 is treated as a one-time cleanup, gets done once, and six months of
@@ -172,7 +172,7 @@ corpus today, and fixing one does not fix the others.
   (OD-08) plus a *continuous* enforcement duty on every doc written thereafter.
 - **Evidence.** **PARTIAL — adopted, not installed.**
   - Adoption is **LOCKED**: [ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md).
-    Mechanics are **open**: OD-08 ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):144).
+    Mechanics are **open**: OD-08 ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):145).
   - **No `.obsidian` directory exists anywhere in the repo.** Obsidian is a decision, not
     yet a tool.
   - **10 files** in all of `.planning/` contain a `[[wiki-link]]` — and 3 of those 10 are
