@@ -112,10 +112,125 @@ function base(over: Record<string, unknown> = {}) {
     prefs: remote({ preferences: {}, updatedAt: null }),
     notif: remote(null, 'idle'),
     integrations: remote({ catalog: [], connections: [] }),
+    vendorTerms: remote(vendorTermsRegister()),
+    thresholds: remote(thresholdsRegister()),
+    ledger: remote(ledgerRegister()),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
     setMemberRole: vi.fn(), removeMember: vi.fn(), revokeInvite: vi.fn(), disconnectIntegration: vi.fn(),
+    saveVendorTerms, saveThreshold,
+    ...over,
+  };
+}
+
+/* ── The fourth pass's three registers ───────────────────────────────────── */
+
+const saveVendorTerms = vi.fn(() => Promise.resolve(true));
+const saveThreshold = vi.fn(() => Promise.resolve(true));
+
+/**
+ * A vendor-terms readout shaped exactly as the gateway returns one.
+ *
+ * Every cell carries a source, because that is the contract the register
+ * renders against — a cell with a value and no source must not be
+ * constructible, in a fixture any more than in production.
+ */
+function vendorTermsRegister(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1',
+    vendors: [
+      {
+        providerId: 'p1',
+        providerName: 'Anadolu Şarapçılık',
+        ordersInWindow: 214,
+        lastOrderedAt: THREE_DAYS_AGO,
+        deliveryWeekdays: {
+          value: [1, 3, 5], source: 'inferred', n: 214, confidence: 'high',
+          basis: '214 signed arrivals',
+        },
+        orderCutoff: {
+          value: { time: '14:00', offsetDays: 1 }, source: 'stated',
+          statedBy: { userId: 'u9', name: 'Selin Kara' }, statedAt: THREE_DAYS_AGO,
+          contradiction: null,
+        },
+        minimumOrder: {
+          value: 2500, source: 'inferred', n: 96, confidence: 'high',
+          basis: '96 delivered orders with a cost — the smallest they have ACCEPTED',
+        },
+        // The default trap: 7 days on the vendor row proves nothing.
+        leadTimeDays: {
+          value: null, source: 'unknown',
+          reason: 'the vendor record reads 7 days, which is exactly the column default (providers.lead_time_days)',
+        },
+        paymentTerms: {
+          value: null, source: 'unknown',
+          reason: 'no table records when a vendor invoice was raised or settled',
+        },
+        notes: null,
+        statedBy: { userId: 'u9', name: 'Selin Kara' },
+        statedAt: THREE_DAYS_AGO,
+      },
+    ],
+    currency: { code: 'TRY', isColumnDefault: false },
+    zone: { zone: 'Europe/Istanbul', isColumnDefault: false },
+    windowDays: 365,
+    sources: {
+      providers: { readable: true, reason: null, rows: 1 },
+      statedTerms: { readable: true, reason: null, rows: 1 },
+      orders: { readable: true, reason: null, rows: 214 },
+    },
+    ...over,
+  };
+}
+
+function thresholdsRegister(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1',
+    thresholds: [
+      {
+        rule: 'manager_ceiling', enabled: true, amountLimit: 15000, percentLimit: null,
+        requiredRole: 'owner',
+        setBy: { userId: 'u9', name: 'Deniz Aksoy' }, updatedAt: THREE_DAYS_AGO,
+      },
+    ],
+    policyEmpty: false,
+    readable: true,
+    reason: null,
+    retrospective: {
+      counts: [
+        { rule: 'manager_ceiling', tested: 118, wouldHaveFired: 23 },
+        { rule: 'new_vendor', tested: 118, wouldHaveFired: 4 },
+        { rule: 'price_jump', tested: 0, wouldHaveFired: 0 },
+      ],
+      ordersRead: 118, windowDays: 365, readable: true, reason: null,
+      caveat: 'Counted over the last 365 days only.',
+    },
+    enforcement: {
+      enforcedBy: [],
+      wouldBeEnforcedAt: 'apps/api-gateway/src/procurement/procurement.service.ts:1438 approveOrder',
+      note: 'Nothing reads these thresholds yet.',
+    },
+    ...over,
+  };
+}
+
+function ledgerRegister(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1',
+    entries: [
+      {
+        id: 'a1', occurredAt: THREE_DAYS_AGO, action: 'feature_flag_changed',
+        register: 'features', entityType: 'restaurant_feature_flag', entityId: 'r1',
+        subject: 'enable_ai_autonomous_send',
+        actor: { userId: 'u9', name: 'Deniz Aksoy', email: 'd@example.com' },
+        fields: { enable_ai_autonomous_send: { from: false, to: true } },
+      },
+    ],
+    readable: true,
+    reason: null,
+    oldestAt: THREE_DAYS_AGO,
+    recordingSince: '2026-09-03',
     ...over,
   };
 }
@@ -151,14 +266,22 @@ describe('SettingsNext — the editorial spine', () => {
   it('opens on a contents page naming every register and where each is kept', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(11);
-    // The legacy ten, under their legacy names, plus the eleventh.
-    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar']) {
+    expect(within(nav).getAllByRole('button')).toHaveLength(14);
+    // The legacy ten under their legacy names, plus cellar, plus the three the
+    // fourth pass added. Every one of these is still a live `?tab=` id.
+    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here']) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
-    expect(screen.getByText(/seven kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
-    // The standing honesty statement: nothing on this page records an author.
-    expect(screen.getByText(/no table on this page carries an author column/i)).toBeInTheDocument();
+    // The contents column now reads in GROUPS, so the headings must be there —
+    // a flat fourteen-row list is the thing this pass was asked to fix.
+    for (const heading of ['The house', 'How it buys', 'What it does on its own', 'Yours', 'The record']) {
+      expect(within(nav).getByText(heading)).toBeInTheDocument();
+    }
+    expect(screen.getByText(/ten kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    // The standing honesty statement, now that three registers DO record an
+    // author: it names which three, and admits the other eight still do not.
+    expect(screen.getByText(/Three of these registers now record/i)).toBeInTheDocument();
+    expect(screen.getByText(/other eight write through services this pass did not touch/i)).toBeInTheDocument();
   });
 
   it('honours a ?tab= deep link, and writes the tab back when a register is opened', () => {
@@ -424,5 +547,197 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(screen.getByText(/shared with every other setting kept on your account/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/POS connector/i), { target: { value: 'toast' } });
     expect(savePrefs).toHaveBeenCalledWith('pos', { posConfig: { activeProvider: 'toast' } });
+  });
+});
+
+/**
+ * THE FOURTH PASS — the three registers the founder asked to be built for real.
+ *
+ * Every test below pins the OPPOSITE of the plausible wrong behaviour, because
+ * each of these registers has a shape that would look right while lying:
+ *
+ *  - a lead time of "7 days" read straight off `providers.lead_time_days`,
+ *    which is that column's DEFAULT and therefore proves nothing;
+ *  - an inferred cutoff printed as a time rather than as the bracket the
+ *    evidence actually supports;
+ *  - an inferred "minimum" printed as a minimum rather than as the upper bound
+ *    it is;
+ *  - a threshold register that lets an owner believe a ceiling is holding when
+ *    nothing in the gateway reads it;
+ *  - an audit trail whose empty list reads as "nobody changed anything" rather
+ *    than "recording started on this date".
+ */
+describe('SettingsNext — vendor terms', () => {
+  it('renders a value indistinguishable from its column default as UNKNOWN, with the reason', () => {
+    mount('/settings?tab=vendor-terms');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Vendor terms');
+    // Not "7 days". The cell is an em dash and the reason names the column.
+    expect(screen.queryByText('7 days')).not.toBeInTheDocument();
+    const cells = screen.getAllByText('—');
+    expect(cells.length).toBeGreaterThan(0);
+    expect(
+      screen.getByTitle(/exactly the column default \(providers\.lead_time_days\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a stated cutoff with the day it closes on, and names who said so', () => {
+    mount('/settings?tab=vendor-terms');
+    expect(screen.getByText('14:00, the day before')).toBeInTheDocument();
+    expect(screen.getByTitle(/stated/i)).toBeInTheDocument();
+  });
+
+  it('states an inferred minimum as an upper bound, never as the minimum', () => {
+    mount('/settings?tab=vendor-terms');
+    // The leading ≤ is the whole claim: every order in the books is one the
+    // vendor accepted, so the smallest proves the floor is at most that.
+    expect(screen.getByText(/≤/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/every order in the books is one the vendor\s+accepted/i),
+    ).toBeInTheDocument();
+  });
+
+  it('carries the receipt count and the confidence on every inferred cell', () => {
+    mount('/settings?tab=vendor-terms');
+    expect(screen.getByText('inferred · 214 · high')).toBeInTheDocument();
+    expect(screen.getByText('inferred · 96 · high')).toBeInTheDocument();
+  });
+
+  it('says the stated-terms book could not be READ rather than showing nothing stated', () => {
+    mock.current = base({
+      vendorTerms: remote(
+        vendorTermsRegister({
+          sources: {
+            providers: { readable: true, reason: null, rows: 1 },
+            statedTerms: { readable: false, reason: 'the table is not present on this database', rows: null },
+            orders: { readable: true, reason: null, rows: 214 },
+          },
+        }),
+      ),
+    });
+    mount('/settings?tab=vendor-terms');
+    expect(
+      screen.getByText(/book of stated terms could not be read/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not\s+a house that has stated nothing/i)).toBeInTheDocument();
+  });
+
+  it('sends ONLY the field the person touched — an untouched field is absent, not null', async () => {
+    mount('/settings?tab=vendor-terms');
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }));
+    fireEvent.change(screen.getByLabelText(/Closes at/i), { target: { value: '11:30' } });
+    fireEvent.click(screen.getByRole('button', { name: /Record what they said/i }));
+    expect(saveVendorTerms).toHaveBeenCalledTimes(1);
+    const [providerId, body] = saveVendorTerms.mock.calls[0] as unknown as [string, Record<string, unknown>];
+    expect(providerId).toBe('p1');
+    expect(body).toEqual({ orderCutoffTime: '11:30' });
+    // The gateway reads an explicit null as "withdraw the statement", so an
+    // untouched field must never appear in the payload at all.
+    expect(Object.keys(body)).not.toContain('deliveryWeekdays');
+    expect(Object.keys(body)).not.toContain('paymentTerms');
+  });
+
+  it('does not seed the editor from an inference — a guess must not become the house’s word', () => {
+    mount('/settings?tab=vendor-terms');
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }));
+    // Delivery weekdays are INFERRED for this vendor, so no day is pressed and
+    // the button that would record them stays inert until somebody chooses.
+    const monday = screen.getByRole('button', { name: 'Monday' });
+    expect(monday).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: /Record what they said/i })).toBeDisabled();
+  });
+});
+
+describe('SettingsNext — approval thresholds', () => {
+  it('says on its face that nothing enforces these yet, and names where enforcement must land', () => {
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText(/Nothing stops an order yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText('apps/api-gateway/src/procurement/procurement.service.ts:1438 approveOrder'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows how often each rule WOULD have fired, with its denominator', () => {
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText('23 of 118')).toBeInTheDocument();
+    expect(screen.getByText('4 of 118')).toBeInTheDocument();
+  });
+
+  it('names who set a rule and when', () => {
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText(/set by Deniz Aksoy · 3 days ago/i)).toBeInTheDocument();
+  });
+
+  it('distinguishes a house that set no rule from one that chose "anyone, any amount"', () => {
+    mock.current = base({
+      thresholds: remote(thresholdsRegister({ thresholds: [], policyEmpty: true })),
+    });
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText(/has set no rule at all/i)).toBeInTheDocument();
+    expect(screen.getByText(/different from having\s+chosen/i)).toBeInTheDocument();
+  });
+
+  it('refuses to set a rule with no number, rather than writing one that cannot fire', () => {
+    mock.current = base({
+      thresholds: remote(thresholdsRegister({ thresholds: [], policyEmpty: true })),
+    });
+    mount('/settings?tab=thresholds');
+    // Both the amount rule and the percent rule say it, and both are refused.
+    expect(screen.getAllByText(/A rule with no number cannot fire/i)).toHaveLength(2);
+    const setButtons = screen.getAllByRole('button', { name: /Set it/i });
+    expect(setButtons).toHaveLength(3);
+    // Two of the three need a number and are refused without one; the
+    // first-order rule needs none and stays settable.
+    expect(setButtons.filter((b) => (b as HTMLButtonElement).disabled)).toHaveLength(2);
+  });
+
+  it('records a changed ceiling through the writer', () => {
+    mount('/settings?tab=thresholds');
+    const amount = screen.getByDisplayValue('15000');
+    fireEvent.change(amount, { target: { value: '20000' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /Change it/i })[0]);
+    expect(saveThreshold).toHaveBeenCalledWith('manager_ceiling', {
+      enabled: true,
+      amountLimit: 20000,
+      percentLimit: null,
+      requiredRole: 'owner',
+    });
+  });
+});
+
+describe('SettingsNext — the settings record', () => {
+  it('ends a line at a person, and shows what the value was before', () => {
+    mount('/settings?tab=ledger');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('What changed here');
+    expect(screen.getByText('Feature: enable_ai_autonomous_send')).toBeInTheDocument();
+    expect(screen.getByText('Deniz Aksoy')).toBeInTheDocument();
+    expect(screen.getByText('off')).toBeInTheDocument();
+    expect(screen.getByText('on')).toBeInTheDocument();
+  });
+
+  it('says when recording began, so an empty list is not read as a quiet house', () => {
+    mock.current = base({
+      ledger: remote(ledgerRegister({ entries: [], oldestAt: null })),
+    });
+    mount('/settings?tab=ledger');
+    expect(screen.getByText(/2026-09-03/)).toBeInTheDocument();
+    expect(screen.getByText(/left no row anywhere and cannot be recovered/i)).toBeInTheDocument();
+    expect(screen.getByText(/it is empty, not unreadable/i)).toBeInTheDocument();
+  });
+
+  it('says an unreadable log could not be READ, not that nothing changed', () => {
+    mock.current = base({
+      ledger: remote(ledgerRegister({ entries: [], readable: false, reason: 'connection reset' })),
+    });
+    mount('/settings?tab=ledger');
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not be read — connection reset/i);
+    expect(screen.getByText(/not a house where nothing has changed/i)).toBeInTheDocument();
+  });
+
+  it('names the registers whose changes it does NOT cover, so their silence means nothing', () => {
+    mount('/settings?tab=ledger');
+    expect(screen.getByText(/Eight registers write through services this pass did not touch/i)).toBeInTheDocument();
+    for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 });

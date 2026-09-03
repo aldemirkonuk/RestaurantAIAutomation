@@ -42,7 +42,9 @@ iCal subscribe URL.
 
 ## 1a. Features
 Ten sections on the legacy page, each deep-linkable via `?tab=`; the rebuilt page
-keeps all ten under their legacy names and order and appends an eleventh:
+keeps all ten under their legacy names and appends four more (`cellar`
+2026-09-03, then `vendor-terms`, `thresholds` and `ledger` on the fourth pass of
+the same day):
 - **Team**: members and invites — change roles, remove members, revoke invites, invite dialog; labor & goals settings
 - **Services**: service permissions / access grants (email, web, privacy)
 - **Email**: sender identity settings
@@ -63,6 +65,37 @@ keeps all ten under their legacy names and order and appends an eleventh:
   in this directory would give the product two answers to one question, and this
   page cannot read the books the inference reads
 
+- **Vendor terms** *(rebuilt page only, `?tab=vendor-terms`, added 2026-09-03)*:
+  per vendor — order cutoff (time **and** how many days before delivery),
+  delivery weekdays, minimum order, lead time, payment terms — each field
+  carrying its own PROVENANCE: *stated by the house* (with the name of whoever
+  wrote it down and when), *on the vendor record* (with the column named),
+  *inferred* (with the receipt count and a confidence), or an em dash with the
+  reason. **Live**, over `GET /vendor-terms` and `PUT /vendor-terms/:providerId`
+  (`apps/api-gateway/src/vendor-terms/`), written into
+  `restaurant_vendor_terms` (migration `20260903140000`). Two of the five terms
+  are stated as BOUNDS rather than values, because that is all this house's own
+  orders can support: the cutoff is a bracket (*after 13:40, before 15:10*) and
+  the minimum is an upper bound (*they have accepted as little as X*)
+- **Approval thresholds** *(rebuilt page only, `?tab=thresholds`, added
+  2026-09-03)*: three rules — a manager's ceiling by amount, the first order to a
+  vendor, and a price above what the house last paid — each with who set it and
+  when, and each showing **how often it would have fired** over this
+  restaurant's own orders in the last 365 days. **Recorded, NOT enforced**, and
+  the register's first sentence says so and names the file and line where
+  enforcement has to land. `GET/PUT /settings/approval-thresholds`
+  (`apps/api-gateway/src/settings/approval-thresholds.service.ts`), table
+  `restaurant_approval_thresholds`
+- **What changed here** *(rebuilt page only, `?tab=ledger`, added 2026-09-03)*:
+  every settings change on this restaurant, who made it, and the before-and-after
+  per field. Read-only — there is no write route and no delete route, because a
+  log the person who made the change can edit is not a log. `GET /settings-audit`
+  (`apps/api-gateway/src/settings-audit/`) over the existing
+  `public.system_audit_log`; **no new table and no migration**. Covers the three
+  registers whose writes go through the modules this pass owns (Features, Vendor
+  terms, Approval thresholds) plus the two team-access actions that already
+  filed; the footer names the other eight so their silence cannot be misread
+
 **Mudavym redesign — what the rebuilt page adds** (flag `mudavym_design_settings`,
 OFF by default; with it off `Settings.tsx` renders byte-for-byte):
 
@@ -73,10 +106,22 @@ OFF by default; with it off `Settings.tsx` renders byte-for-byte):
   `PROVENANCE_UNKNOWN` (`st-format.ts`) rather than retyped, the row-specific
   ones local and each naming the layer it blames. This is the "there should be
   more" the founder asked for: substance per setting, not more switches.
-- **Eleven registers, one open at a time** — the legacy ten under their legacy
-  names in their legacy order, so no bookmark moves, plus `cellar`. All still
-  deep-linked by `?tab=`; the URL is now written on selection and never on
-  scroll.
+- **Fourteen registers, one open at a time** — every legacy `?tab=` id kept, so
+  no bookmark moves. The URL is written on selection and never on scroll.
+- **The side tab bar reads in five groups** (fourth pass): *The house* ·
+  *How it buys* · *What it does on its own* · *Yours* · *The record*, each with
+  a one-line signpost, one line per register, and a seal rule down the open one.
+  Grouped by what a person came to DO rather than by where the value is kept —
+  the standard both references converged on (Linear's redesigned settings group
+  into Account / Features / Administration / Your teams,
+  <https://linear.app/changelog/2024-12-18-personalized-sidebar>; Stripe's 2023
+  Dashboard navigation added grouped sections plus pinned and recent shortcuts,
+  <https://support.stripe.com/questions/dashboard-update-may-2024>). Nothing is
+  hidden behind a "More": a settings section that is collapsed is a settings
+  section that goes unread. The per-item storage line moved to the group heading
+  and to the open register's own subtitle, which is what made fourteen rows read
+  as cleanly as eleven did. Membership and order are declared once, on each
+  `SectionSpec`'s `group`/`order`, and `GROUPS` is derived from them.
 - **Features**: only registry-ACTIVE flags get controls, with the 17
   `mudavym_design_*` keys rendered as their own labelled *Mudavym redesign*
   group (opt-in per restaurant, off by default). `enable_ai_autonomous_send` is
@@ -125,6 +170,15 @@ regenerating the iCal token are dry two-click confirms — revoking must stay th
 cheap direction); nothing animates on a successful save (a motion fired on click
 is a confirmation the server has not given); no tally; no stagger in the
 contents list; no scroll motion, because one register is open at a time.
+
+**The fourth pass added THREE registers and ZERO motions** — the table above is
+unchanged. Nothing marks a recorded term (a stated term and an inferred one are
+different *kinds* of thing, not one of them arriving); the threshold banner does
+not animate (a standing fact about the system is not an event, and animating it
+would make it easy to dismiss); the settings record does not stream (a snapshot
+that slid in would imply a live feed); and the sticky contents column has no
+transition of its own, `position: sticky` being layout rather than motion. Full
+reasoning in `MOTIONS.md`.
 
 ### Design used, and why (ADR 0044 p4 wave · MAKEOVER-VERDICTS: KEEP Editorial + "more")
 
@@ -181,10 +235,16 @@ browser pane renders out-of-project files as non-screenshottable static
 snapshots, and the shared dev server and checkout are not this agent's to drive —
 so both grounds are argued from token-only colour usage (grep: zero raw hex for
 any ground, ink or seal) plus a test asserting the root carries `.mudavym` and
-`data-ground="charcoal"`, not from eye. **Size, stated plainly:** the page runs
-**2,880 lines across sixteen files** excluding its test — 2,121 of code and 547
-of comment, `wc -l` and a comment-classifying count agreeing to the line —
-against the ~900-line guidance in the build brief. The second pass
+`data-ground="charcoal"`, not from eye. **Size, stated plainly:** at the end of the second pass the page ran **2,880
+lines across sixteen files** excluding its test. **After the fourth pass it runs
+4,538 lines across nineteen files** — 3,788 of code and 750 of comment, `wc -l`
+and a comment-classifying count agreeing to the line — plus a 743-line test,
+against the ~900-line guidance in the build brief. The three registers account for
+the whole 1,658-line growth: 1,236 in their own three files
+(`VendorTermsSection.tsx` 622, `ThresholdsSection.tsx` 369,
+`LedgerSection.tsx` 245) and 422 across the three shared ones they extend
+(`st-format.ts`, `useSettingsNextData.ts`, `SettingsNext.tsx`). The largest file
+on the page is still the shared data hook at 643. The second pass
 did the split the audit asked for (the 532-line `OtherSections.tsx` bundling six
 unrelated registers is gone; every register is now its own file, the largest
 being the data hook at 466 lines and `SectionKit.tsx` at 356) and shared the
@@ -257,6 +317,252 @@ so a granted date and an issued date stop being printed as "changed". Citation
   baseline migration and the code, not measured against a running database, and
   §9.9 is filed as a **suspected** defect for exactly that reason.
 
+### Fourth pass, 2026-09-03
+
+**What the founder asked for, verbatim:** *"Keep tab bar (side), look clean. The
+more Vendor terms, thresholds, audit trail -> this looks super detailed and I
+like it a lot, the more insights functionality the better, we could actually put
+these type of detailed 'more's into other pages like /teams design and
+configuration."* So: build the three registers sketch 091 drew, for real; keep
+the side tab bar and make it read clean; and carry the shape to `/team` (written
+up, not built — `06-pages/team.md` §13.7).
+
+**What was built.** Three registers, one gateway module each in spirit, one
+migration, no new page.
+
+| register | route | table | endpoint |
+|---|---|---|---|
+| Vendor terms | `?tab=vendor-terms` | `restaurant_vendor_terms` (new) | `GET /vendor-terms`, `PUT /vendor-terms/:providerId` |
+| Approval thresholds | `?tab=thresholds` | `restaurant_approval_thresholds` (new) | `GET/PUT /settings/approval-thresholds` |
+| What changed here | `?tab=ledger` | `public.system_audit_log` (**existing**) | `GET /settings-audit` |
+
+Neither new module is registered in `app.module.ts`: `SettingsModule` imports
+`VendorTermsModule` and `SettingsAuditModule`, following
+`McpConnectionsModule`'s import of `McpRuntimeModule`
+(`mcp-connections/mcp-connections.module.ts:23`), so their controllers mount
+under the entry `AppModule` already has for settings and **no shared file
+changed**. `check_gateway_boots.sh` PASS.
+
+**The finding this pass exists for: a column default is an answer nobody gave.**
+Three columns in this product assert facts about the world by default:
+
+| column | default | citation | what it asserts about every row |
+|---|---|---|---|
+| `providers.lead_time_days` | `7` | `baseline:4864` | every vendor delivers in a week |
+| `providers.payment_terms` | `'Net 30'` | `baseline:4897` | every vendor is on Net 30 |
+| `restaurants.timezone` | `'America/Los_Angeles'` | `baseline:3575` | every house is in California |
+
+None of them can distinguish "the house was told this" from "nobody has ever
+been asked", and the second reading is far more likely. `payment_terms` is
+already printed into outbound vendor mail
+(`communications/email-templates/payment-due.template.ts:108`). This is
+[[absence-reported-as-health]] living inside a `DEFAULT` clause — the absence of
+an answer, stored as an answer, by the schema itself.
+
+The register's rule: **a value indistinguishable from its column default, with
+no per-tenant override and no stated row, renders as UNKNOWN with the reason
+naming the default** (`vendor-terms.service.ts` — `leadTimeCell`,
+`paymentCell`). The per-tenant overrides `restaurant_providers.custom_lead_time_days`
+and `custom_minimum_order` (`baseline:5154-5155`) carry no defaults, so any value
+on them is always somebody's answer and is preferred. The timezone is used and
+FLAGGED rather than refused, because refusing to compute a weekday helps nobody:
+the register prints "read in America/Los_Angeles, which is also that column's
+default value" above the table. **The defaults themselves were NOT dropped** —
+that is a production ALTER with live readers, filed as §13.26.
+
+**The second finding: the delivery-days checkbox writes into the geography
+column.** `AddProviderModal.tsx:820` collects delivery weekdays;
+`pages/Providers.tsx:458` sends them as `statesOrRegionsServed`;
+`services/api/providers.ts:162-163` maps that to `regionsCovered`; the gateway
+writes `providers.regions_covered` (`providers.service.ts:199`). Its sibling
+field `deliverySchedule` (`Providers.tsx:458`) is declared on the web DTO
+(`services/api/providers.ts:88`) and never reaches `buildProviderPayload`'s
+output at all (`:140-177`) — dropped on the floor. So today, ticking "Monday,
+Wednesday, Friday" has exactly one persisted effect: three weekday names join the
+list of regions the vendor covers. Filed as §13.25; this register gives the
+field a home that says what it is.
+
+**Inference is a claim about evidence, never a value.**
+`vendor-terms/term-inference.ts` is pure and separately tested (21 tests), and
+each of the five fields returns what the ledger can actually support:
+
+- **delivery weekdays** — the days receipts landed on; the rule is stated in the
+  file (rank by count, take until 80% coverage, drop any day with fewer than two
+  receipts) so it can be argued with rather than trusted. Says whether the sample
+  is signed arrivals or only promised dates.
+- **lead time** — median AND p90 in whole local days. A p90 more than three days
+  past the median drops confidence to `low`, because that is two behaviours
+  averaged, not a lead time. A row dated as arriving before it was placed is
+  **dropped, not clamped to zero** — clamping pulls the median down with a number
+  that describes nothing.
+- **order cutoff** — a BRACKET and never a time. A house's own placement times
+  say nothing about a vendor's cutoff on their own; what carries information is
+  pairing a placement time with the turnaround it got, so the latest placement
+  that still achieved the vendor's best turnaround is a FLOOR and the earliest
+  that did not is a CEILING. When nothing has ever missed, the answer is "a floor
+  with no ceiling" at `low` confidence. Choco stores a cutoff **per delivery
+  day** (<https://help.choco.com/en/articles/6572290-view-and-edit-the-information-of-your-supplier>
+  lists "Order Cut Off Times for each delivery day"), which these rows cannot
+  split at all — said plainly rather than modelled away.
+- **minimum order** — an UPPER BOUND, always. Every row in the ledger is an order
+  the vendor accepted; a refusal leaves no row, so the smallest accepted order
+  proves the floor is at most that. Rendered with a leading `≤`.
+- **payment terms** — NOT INFERABLE. `procurement_orders` (`baseline:4514-4567`)
+  records no payment date, invoice due date or settlement, so there is no
+  interval to measure. Returns the reason rather than a shrug.
+
+Nothing inferred is ever written back: the row exists only where a person said
+something, exactly as `restaurant_cellar_registers` (20260903092000) settled.
+Where a stated term and the evidence disagree, the house's word wins and the row
+carries a **contradiction** line — "the last 214 deliveries landed on Wednesday" —
+which no other surface in this product would ever tell them.
+
+**The competitor lens, and what was taken from it.** Choco models minimum order
+value, delivery cost, delivery days and a cutoff time per customer, with the
+cutoff strict or flexible
+(<https://help.choco.com/en/articles/6853427-manage-your-order-preferences>).
+MarketMan sets delivery days plus a cut-off day and time per supplier
+(<https://www.marketman.com/platform/restaurant-purchasing-software-and-order-management>).
+BlueCart lets suppliers set and enforce cutoffs and minimums
+(<https://www.bluecart.com/for-restaurants>). US Foods MOXē shows the cutoff in
+the My Orders tile on the ordering day and waives minimums on daily delivery
+(<https://www.usfoods.com/how-we-help-you/easy-ordering/moxe-help-center/ordering-on-moxe>).
+Sysco eliminated minimum delivery requirements outright in 2020
+(<https://www.restaurantbusinessonline.com/financing/sysco-eliminating-minimum-delivery-requirements>).
+**Two things follow.** First, every one of them stores these as terms the
+SUPPLIER states, because they are the supplier's software; Mudavym is the
+restaurant's, so a term here is either something the house was told or something
+its own books imply — which is why provenance is the axis nobody else has.
+Second, minimums are being waived across the industry, so a `minimum_order`
+column read as gospel is increasingly wrong, and the upper-bound framing is the
+honest one either way.
+
+For approval thresholds: Restaurant365 calls the amount rule a "Workflow
+threshold", routes anything above it to an approval hierarchy assigned to a
+person or a "Workflow Group", and blocks the ordinary approve permission on a
+transaction subject to a rule
+(<https://docs.restaurant365.com/docs/approvals-in-workflows>). Ottimate lists
+five dimensions — "the number of people needed, certain amount thresholds,
+vendor-based approvals, role-based approvals, and account-based approvals"
+(<https://ottimate.com/feature/workflows-and-approvals/>). This build takes the
+amount and the role and leaves the other three unbuilt rather than half-built
+(no queue for a second approver — `procurement_orders` has ONE `approved_by`
+column; no per-vendor row; no chart of accounts to hang an account rule on), and
+adds two the field mostly does not: the first order to a vendor, and a price
+jump against what the house last paid.
+
+**The threshold register's honesty problem, and how it was solved.** Measured:
+`ProcurementService.approveOrder` (`procurement.service.ts:1438-1460`) writes
+`status`, `approved_at` and `approved_by` and reads neither a role nor an amount;
+`POST /procurement/orders/:id/approve` (`procurement.controller.ts:283`) carries
+`JwtAuthGuard` and nothing else (class-level, `:108`); `/orders`' `HoldToApprove`
+(`pages/orders/next/LedgerRow.tsx:227`) renders for every pending row. So the
+ceremony exists and the policy behind it does not, and a settings page that let
+an owner believe a ceiling was holding would be worse than no page at all. The
+register's FIRST sentence is therefore the enforcement statement, rendered from
+`enforcement.enforcedBy` being empty rather than from a hard-coded string — the
+day something reads these rows, that array is what changes — and it names
+`procurement.service.ts:1438` as the site. What makes the register worth setting
+anyway is the **retrospective**: each rule shows how many of the last 365 days'
+orders would have needed a second signature, because a ceiling of 15,000 means
+something completely different in a house that places four orders a month.
+
+**The audit trail, and what it did not need.** `public.system_audit_log` has
+existed since the baseline (`:5553-5568`); `recordAccessChange`
+(`team/access-audit.ts:81`) has been filing role changes and removals into it
+since ADR 0088; `ReportsService.refile` (`reports/reports.service.ts:215`) files
+into it too; the /logs timeline already reads it
+(`logs/logs-timeline.service.ts:293`). Settings simply never called it. So this
+register is **no new table and no migration** — one writer
+(`settings-audit/settings-audit.service.ts`), one read route, and three call
+sites. `SettingsService.updateFeatureFlags` now `select`s the row **before** the
+upsert so the audit row can carry `{from, to}` per key rather than only "somebody
+set this to true"; the read is best-effort, because refusing to change a setting
+because the *previous* value could not be read would make a database hiccup look
+like a permissions failure.
+
+Three rules the writer holds, each with a test:
+1. **`actor_id` is `public.users.user_id`, taken from the JWT and nowhere else.**
+   `auth.users` and `public.users` are disjoint here, `system_audit_log.actor_id`
+   carries no FK (`baseline:13618` declares only `restaurant_id`), and **CI
+   cannot catch a wrong id** — a fresh test database has no rows to violate. A
+   request with no user is REFUSED rather than filed anonymously.
+2. **Never throws, always reports.** The setting has already changed by the time
+   the recorder runs; the receipt travels back to the client as
+   `audited`/`auditReason` so a failed record is visible rather than inferred
+   from a short list.
+3. **Only what moved.** An empty diff files nothing. A row per SAVE rather than
+   per CHANGE would fill the register with people opening a form and pressing the
+   button.
+
+The reader understands BOTH change shapes — its own nested
+`{register, subject, fields}` and the flat `{field: {from,to}}` that
+`recordAccessChange` has been writing since ADR 0088 — because rewriting the
+older writer would rewrite rows already in production.
+
+**Measured against a real Postgres, not read off a file.** The migration was
+applied to the local Supabase container (`supabase_db_…`, port 54322, 198 public
+tables, the full baseline schema) and every assertion in it passed, twice
+(idempotent re-run). It also **caught a real error**: the obvious way to write
+the weekday CHECK —
+`NOT EXISTS (SELECT 1 FROM unnest(delivery_weekdays) ...)` — is illegal
+(`ERROR: cannot use subquery in check constraint`) and would have failed on
+merge; it is now the containment operator `<@`, and the comment says why.
+Measured behaviours: a weekday of `9` is refused; the EMPTY array is accepted and
+stored as `{}` (the house stating "no fixed days"); a second row for the same
+pair collides on `uq_restaurant_vendor_terms_pair`; the `updated_at` trigger
+moves the column by the full interval on UPDATE; a `manager_ceiling` with no
+amount is refused by `…_rule_carries_its_number`; a rule outside the closed set
+is refused by `…_rule_check`; `anon` and `authenticated` have no SELECT and RLS
+is on. *(The two tables were left in place on that container rather than dropped:
+the migration is in this worktree, so additive is the direction that keeps the
+database and the migration set consistent.)*
+
+**What is deliberately NOT built, and why.**
+- **Enforcement of the thresholds.** `procurement/` is outside the paths this
+  pass was cleared to edit. The exact patch — file, function, the shape of the
+  refusal, and the `/orders` read site — is §13.23, and the register says so on
+  its face rather than implying a gate.
+- **A per-vendor threshold override.** Ottimate's vendor dimension; it needs a
+  row per (restaurant, vendor, rule) and a reader that does not exist. Rendered
+  as a no-switch row naming the CHECK constraint that closes the rule set.
+- **A second approver in the chain.** `procurement_orders` has one `approved_by`
+  column; a chain needs a queue and a current-approver, which is a schema
+  decision.
+- **Dropping the three column defaults.** §13.26 — a production ALTER with live
+  readers, including outbound vendor mail.
+- **Filing the other eight registers into the trail.** Their writes go through
+  services this pass did not own; the register names all eight and the exact
+  service each writes through, so their silence cannot be read as "nothing
+  changed there".
+- **A cutoff per delivery day**, which is how Choco models it. The stated row
+  holds ONE cutoff plus an offset; splitting it per weekday needs a child table,
+  and the register says the bracket cannot separate a Friday cutoff from a
+  weekday one.
+
+**Verification.** Web: `tsc --noEmit` clean; `vitest run src/pages/settings/next`
+**39/39** (17 new, each pinning the opposite of the plausible wrong behaviour —
+a defaulted 7 rendered as a term, a bracket printed as a time, an upper bound
+printed as a minimum, an unenforced ceiling shown as a gate, an empty trail read
+as a quiet house). Gateway: `tsc --noEmit -p tsconfig.spec.json` clean in every
+module this pass owns; `jest src/vendor-terms src/settings-audit src/settings`
+**68/68**; `check_gateway_boots.sh` PASS. `check_no_seeded_defaults.py` PASS (154
+web files, 15 gateway files). Emoji grep over both new gateway modules, the page
+directory and the migration: empty. Live curl against the local gateway with a
+minted session: `GET /vendor-terms` 200, `GET /settings-audit?limit=5` 200,
+`GET /settings/approval-thresholds` 200 — and, because the migration is not
+applied on the database that gateway points at, all three answered by NAMING the
+missing table rather than by rendering emptiness, which is the honesty rule
+demonstrating itself. Screenshots at 1440 wide, paper and charcoal, both grounds
+reading: `scratchpad/shots-settings-p4d/vt-vendor.png`, `vt-thresholds.png`,
+`vt-ledger.png`, `vt-thresholds-charcoal.png`.
+
+**One thing the screenshots cannot show.** The dev tenant has **zero** providers
+and zero orders (`GET /providers?restaurantId=550e8400-…` returns `[]`), so the
+vendor table renders its empty state rather than a populated register. The
+populated shape is sketch 091's `vendor-terms.html`, which is what this was built
+to, and the render contract is pinned by tests against a populated fixture.
+
 ### What this page can do now, and what "more" means here
 
 Written for the founder's *"tell me more, let me know"*. Every register, what it
@@ -275,6 +581,9 @@ changes, where the value is kept, and who may change it.
 | 09 | POS | Nothing to the till. It bookmarks whose connector documentation you are reading | `user_preferences.preferences.posConfig` | Anyone signed in | the preference record's date, shared |
 | 10 | Calendar | Regenerating **silently breaks every existing subscription**, with no undo | `restaurants.calendar_ical_token` | Owner or manager | never — the token has no date of its own |
 | 11 | Cellar | Declares which of the seven drinks registers the house carries, which decides which registers `/cellar` draws at all. Switching one on with nothing in the books behind it is allowed and asks you to confirm | `restaurant_cellar_registers`, one row per (restaurant, register) — and **only** where a person said something; an inference is computed at read time and never stored | Owner or manager (JWT on `/cellar`) | **changed** · — the readout carries no date per answer (§13.19) |
+| 12 | Vendor terms | Records what a vendor told this house: their cutoff, delivery days, minimum, lead time and payment terms. Nothing reads them yet outside this register — the calendar and orders contract is §13.24 | `restaurant_vendor_terms`, one row per (restaurant, provider), and **only** where a person said something. Every column independently nullable: five terms are five statements | Anyone signed in with a restaurant. Deliberately not owner-only — a cutoff is operational knowledge, and every write carries its author into the log (record it, do not restrict it, as ADR 0088 decided for access) | **stated** — real, with the person's name |
+| 13 | Approval thresholds | **Nothing, yet.** It records the house's written policy; no code consults it before an order is sealed. What it *does* do is tell you how many of your own last 365 days' orders each rule would have caught | `restaurant_approval_thresholds`, one row per (restaurant, rule) so each carries its own author and date. No rows are seeded: a house with none has set no policy, which is not "unlimited" | Anyone signed in with a restaurant, same reasoning as above | **set by · when** — real, per rule |
+| 14 | What changed here | Nothing — it is read-only, and there is no write or delete route at all. A log the person who made the change can edit is not a log | `public.system_audit_log`, which already existed. No new table, no migration | Read: anyone signed in with a restaurant. Write: only the three services that file into it | every row IS a date, and a name |
 
 **What "more" turned out to mean, twice.** First pass: *more substance per
 setting*, not more switches — the third line under every row. Second pass: *the
@@ -282,10 +591,15 @@ third line has to be true*, which meant fixing the gateway rather than writing a
 better sentence. Both are the same idea — a settings page earns trust by being
 checkable — and the second is the expensive half.
 
-**What a settings audit trail would take.** Nothing on this page records **who**
-changed a setting. It is not a small gap: the Features register alone can grant an
-AI the right to email a vendor with nobody reading it, and today that grant is
-anonymous. What exists and what does not:
+**~~What a settings audit trail would take.~~ BUILT 2026-09-03 (fourth pass).**
+The recipe below was written by the second pass and followed to the letter by the
+fourth: `settings-audit/settings-audit.service.ts` is the caller, `GET
+/settings-audit` is the read, and `?tab=ledger` is the register. Three of the
+eleven writes file today (Features, Vendor terms, Approval thresholds); the other
+eight are named on the register and in §13.27. **The recipe is kept verbatim
+below**, because it is also the instruction for those eight — and because the one
+paragraph in it about `actor_id` is the whole security of the feature. What
+follows was true when written and is now a description of what shipped:
 
 - **The table already exists and is already used.** `system_audit_log`
   (`baseline:5553-5568`) carries `actor_type`, `actor_id`, `action`,
@@ -373,6 +687,20 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):527 (`settings`), :516
 | GET | `/pos-hub/providers`, `/pos-hub/status/:rid` | PosSettingsSection → `services/api/posHub.ts:52,59` |
 | GET/PATCH | `/notifications/preferences` | NotificationsSection → `services/api/notifications.ts:194,207` |
 
+**Added 2026-09-03 by the fourth pass** — rebuilt page only, all three through
+`apiClient`, all three tenant-scoped from the signed token (no restaurant id is
+accepted from the caller):
+
+| Method | Path | Gateway | Call site |
+|---|---|---|---|
+| GET | `/vendor-terms` | `vendor-terms/vendor-terms.controller.ts:44` | `useSettingsNextData.ts` — `vendorTerms` remote, keyed `?tab=vendor-terms` |
+| PUT | `/vendor-terms/:providerId` | `vendor-terms/vendor-terms.controller.ts:71` | `useSettingsNextData.ts` — `saveVendorTerms` |
+| GET | `/settings/approval-thresholds` | `settings/settings.controller.ts` | `useSettingsNextData.ts` — `thresholds` remote |
+| PUT | `/settings/approval-thresholds` | `settings/settings.controller.ts` | `useSettingsNextData.ts` — `saveThreshold` |
+| GET | `/settings-audit?limit=&register=` | `settings-audit/settings-audit.controller.ts:48` | `useSettingsNextData.ts` — `ledger` remote |
+
+There is deliberately **no** write or delete route on `/settings-audit`.
+
 Most member/chain calls are raw `fetch` with a manually attached Bearer token
 (`Settings.tsx:769-880`) rather than `apiClient`.
 
@@ -419,7 +747,19 @@ Layout chrome per dashboard.md §7.
   rebuilt Features register returns you to the legacy page.
 - `?tab=cellar` exists **only** on the rebuilt page. On the legacy page an
   unrecognised `?tab=` falls back to `team`, so the link degrades rather than
-  breaking, and nothing outside this page links to it yet.
+  breaking, and nothing outside this page links to it yet. The same is true of
+  `?tab=vendor-terms`, `?tab=thresholds` and `?tab=ledger` (added 2026-09-03).
+- **New config this page now owns** (fourth pass): `restaurant_vendor_terms` and
+  `restaurant_approval_thresholds`, both created by migration
+  `20260903140000_the_terms_a_house_was_given.sql` with RLS on, a service-role
+  policy, `anon`/`authenticated` revoked, and in-file assertions that fail the
+  migration rather than reporting success. Neither table is seeded: a house with
+  no rows has stated nothing and set no policy, which is different from having
+  chosen a value.
+- **The contents column's grouping is data, not layout.** Each `SectionSpec`
+  carries `group` and `order` (`st-format.ts`); `GROUPS` and `READING_ORDER` are
+  derived from them, so the numbers in the tab bar and the "Register N of 14"
+  line cannot drift apart, and a new register is placed by editing one row.
 
 ## 9. Gaps
 
@@ -468,12 +808,19 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
    at all**, which is a real and distinct fact rather than a citation trim
    (§13.17 covers what to do about it). The rendered copy never claimed
    otherwise; the comment that exists to make the claim checkable did.
-3. **No setting on this page records WHO changed it.**
-   `restaurant_feature_flags` carries `created_at` and no `updated_at` or
-   `updated_by` (`supabase/migrations/20260805000000_baseline_from_production.sql:5097-5105`),
-   and the service selects only the flag columns (`settings.service.ts:41-46`).
-   The rebuilt page says this in its opening paragraph rather than leaving the
-   provenance line blank.
+3. ~~**No setting on this page records WHO changed it.**~~ **PARTLY CLOSED
+   2026-09-03 (fourth pass).** `restaurant_feature_flags` still carries
+   `created_at` and no `updated_at`/`updated_by`
+   (`supabase/migrations/20260805000000_baseline_from_production.sql:5097-5105`) —
+   and that no longer matters, because the author is recorded in
+   `system_audit_log` instead, which is a better answer than a column: it records
+   **every** change rather than only the last one. `SettingsService.updateFeatureFlags`
+   now reads the row before the upsert and files `{from, to}` per key with the
+   JWT's `public.users.user_id` as the actor. Vendor terms and approval
+   thresholds file the same way. **Still open for the other eight registers** —
+   they write through services this pass did not own (§13.27), and the ledger
+   register names all eight so their silence cannot be misread as "nothing
+   changed there".
 4. **`posConfig.activeProvider` is read only by the settings UI itself**
    (`components/settings/PosSettingsSection.tsx:59,76,85`). It connects nothing
    and routes nothing — the rebuilt page labels it a documentation bookmark.
@@ -540,6 +887,52 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
     store, read by `ManagerPreferencesRepository.is_quiet_hours`
     (`core/database.py:1410-1428`) — which has **no callers**. Worth knowing before
     anyone "fixes" quiet hours by wiring the dead one (§13.17).
+12. **Three column defaults assert facts nobody stated** (measured 2026-09-03):
+    `providers.lead_time_days DEFAULT 7` (`baseline:4864`),
+    `providers.payment_terms DEFAULT 'Net 30'` (`baseline:4897`), and
+    `restaurants.timezone DEFAULT 'America/Los_Angeles'` (`baseline:3575`). Each
+    makes every row carry an answer to a question nobody was asked, and none can
+    be told apart from a real answer. `payment_terms` already reaches vendors:
+    `communications/email-templates/payment-due.template.ts:108` prints it into
+    outbound mail. The vendor-terms register refuses to read any of the three as
+    a term (`vendor-terms.service.ts` — `leadTimeCell`, `paymentCell`); dropping
+    the defaults is §13.26 and is a production ALTER with live readers
+    (`providers.service.ts:1374,1382`).
+13. **The delivery-days checkbox writes into the geography column.**
+    `AddProviderModal.tsx:820` collects weekdays; `pages/Providers.tsx:458` sends
+    them as `statesOrRegionsServed`; `services/api/providers.ts:162-163` maps that
+    to `regionsCovered`; the gateway writes `providers.regions_covered`
+    (`providers.service.ts:199`). The sibling field `deliverySchedule`
+    (`Providers.tsx:458`) is declared on the web DTO (`services/api/providers.ts:88`)
+    and never reaches `buildProviderPayload`'s output (`:140-177`) — dropped
+    entirely. So ticking three weekdays adds three weekday names to the list of
+    regions a vendor covers, and does nothing else (§13.25).
+14. **Nothing enforces an approval threshold, and nothing ever has.**
+    `ProcurementService.approveOrder` (`procurement.service.ts:1438-1460`) writes
+    `status`, `approved_at` and `approved_by` without reading a role or an amount;
+    `POST /procurement/orders/:id/approve` (`procurement.controller.ts:283`)
+    carries `JwtAuthGuard` alone. Anyone who can reach the endpoint can seal any
+    amount. The register records the policy and says this on its face (§13.23).
+15. **The eleven registers file into the trail at three of eleven.** Email
+    sign-off, Notifications, Locations & chains, Map, Services, POS, Calendar and
+    Cellar all write through services outside this pass's paths and file no audit
+    row (§13.27). The ledger register lists all eight with the service each writes
+    through, so an empty trail for one of them means nothing rather than nothing
+    having happened.
+16. **Two of the five vendor terms can only ever be BOUNDS, not values.** A
+    cutoff can be bracketed but never stated from this house's own orders (the
+    latest placement that made the best turnaround is a floor; the earliest that
+    did not is a ceiling), and a minimum can only ever be an upper bound because
+    every row in `procurement_orders` is an order the vendor ACCEPTED and a
+    refusal writes nothing anywhere. Not a defect to fix — a limit of the
+    evidence, stated in the register rather than papered over. Closing either
+    needs the vendor to tell the house, which is what the stated row is for.
+17. **Payment terms cannot be inferred at all.** `procurement_orders`
+    (`baseline:4514-4567`) records no payment date, no invoice due date and no
+    settlement, so there is no interval to difference. The orchestrator's
+    extractor already pulls `payment_terms` out of vendor replies
+    (`common/orchestrator/commercial-terms.ts:33`) but writes it nowhere this
+    register can read (§13.28).
 
 ## 10. Maturity
 
@@ -758,7 +1151,12 @@ cleared to edit, so each is filed rather than built):
     `createChain`, `getBranchesForUser` on all three paths), with `renameChain`
     stamping the column because `restaurant_chains` has no `BEFORE UPDATE`
     trigger. Spec: `organizations/last-changed-dates-reach-the-client.spec.ts`.
-16. **Wire the settings audit trail.** `system_audit_log` and the
+16. ~~**Wire the settings audit trail.**~~ **Done 2026-09-03 (fourth pass)** for
+    three of eleven registers — Features, Vendor terms and Approval thresholds —
+    through `apps/api-gateway/src/settings-audit/`, read at `?tab=ledger`. No new
+    table and no migration. The remaining eight are §13.27. The original entry is
+    kept below because it is still the instruction for those eight:
+    `system_audit_log` and the
     `recordAccessChange` shape already exist and are already used by two access
     changes; `SettingsService.updateFeatureFlags`,
     `UserPreferencesService.updatePreferences` and
@@ -796,13 +1194,140 @@ cleared to edit, so each is filed rather than built):
     now"): each flag should say what it changes *in numbers* — "3 rules fire on
     this", "42 items use this unit". The page says the consequence in prose today
     because no endpoint counts the dependents; that count is the work.
-21. **A Vendor-terms register** (DESIGN-FOUNDATION §6, "need it: now" — vendor
-    terms "have no home at all"): order cutoffs, delivery days, minimums and pack
-    sizes, each field carrying *stated · inferred from N orders · em dash*. Drawn
-    as `.planning/sketches/091-settings-directions/vendor-terms.html`. It unblocks
-    the calendar idea (cutoffs as closing times) and the notification idea. Needs
-    a table and an endpoint; nothing of it exists today.
-22. **Approval thresholds** (DESIGN-FOUNDATION §6, *later*): who may seal what,
-    above what amount, for which vendor. Blocked on tenancy — production has one
-    real tenant and no `staff` role — and recorded as blocked rather than
-    attempted. Sketched alongside the vendor terms so the shape is on paper.
+21. ~~**A Vendor-terms register.**~~ **Done 2026-09-03 (fourth pass)** —
+    `?tab=vendor-terms`, `restaurant_vendor_terms`,
+    `apps/api-gateway/src/vendor-terms/`. **Pack size was NOT built**: nothing in
+    the schema holds one, and inferring it from `procurement_orders.unit_type`
+    (a varchar with `bottles` as its default) would repeat the exact
+    defaulted-column fault this register exists to catch. Filed as §13.29.
+22. ~~**Approval thresholds.**~~ **Done 2026-09-03 (fourth pass)** —
+    `?tab=thresholds`, `restaurant_approval_thresholds`,
+    `GET/PUT /settings/approval-thresholds`. The tenancy objection the second pass
+    recorded ("production has one real tenant and no `staff` role") turned out to
+    be an argument against *testing* it, not against *building* it: the rules are
+    owner-vs-manager, both of which exist, and the retrospective makes the setting
+    useful on day one even with nobody to escalate to. **Enforcement is NOT
+    built** — §13.23.
+
+**Added 2026-09-03 by the fourth pass** (each is outside the paths this pass was
+cleared to edit, so each is filed rather than built):
+
+23. **Enforce the approval thresholds — the exact patch.** This is the single
+    highest-value item on this list: today anyone who can reach
+    `POST /procurement/orders/:id/approve` can seal any amount (§9.14).
+
+    **Gateway.** `apps/api-gateway/src/procurement/procurement.service.ts`,
+    inside `approveOrder(restaurantId, orderId, userId)` at `:1438`, BEFORE the
+    `.update(...)` at `:1443`:
+    1. Read the order first — it is not read today at all:
+       `select("total_cost, provider_id, inventory_id, final_price").eq("restaurant_id", restaurantId).eq("id", orderId).maybeSingle()`.
+       A `null` here is already a 404 case the method silently turns into a
+       PostgREST error, so this is a fix either way.
+    2. `const policy = await this.thresholds.read(restaurantId)` —
+       `ApprovalThresholdsService` is exported from `SettingsModule`
+       (`settings/settings.module.ts`), so `ProcurementModule` needs
+       `imports: [SettingsModule]` and the service in its constructor.
+    3. Build the `OrderUnderTest`: `total` from `total_cost`;
+       `isFirstOrderToVendor` from a `count` of prior orders to that
+       `provider_id` **excluding this one**, or `null` if that count errors —
+       `null` must NOT be read as `false`, which `decideApproval` already
+       guarantees; `pricePremiumPct` from the previous `final_price` for the same
+       `inventory_id`, or `null` when there is none.
+    4. `const decision = decideApproval(policy.thresholds, order)` — the pure
+       function is already exported from
+       `apps/api-gateway/src/settings/approval-thresholds.ts` and is already
+       tested (13 tests). **Do not write a second copy**: two implementations of
+       "does this need an owner" is how a policy page and a policy diverge.
+    5. If `decision.requiredRole === "owner"` and the caller's JWT role is not
+       `owner`, throw a `ForbiddenException` whose message is
+       `decision.reasons.join("; ")` — the person waiting must be told which rule
+       fired and what the number was, or they learn to split orders in two.
+       `decision.untestable` non-empty should NOT block: a rule that could not be
+       tested is not a rule that fired.
+    6. File the refusal: `system_audit_log`, action `order_approval_refused`,
+       so a policy that is quietly blocking work is visible.
+    **Spec** in the same module asserting: over-ceiling + manager role → 403;
+    over-ceiling + owner → approved; unknown first-order-ness → approved, not
+    refused; no policy at all → approved (a house that set nothing has not set
+    "nobody may approve").
+
+    **Web read site**, outside this page's paths:
+    `apps/web/src/pages/orders/next/LedgerRow.tsx:227` renders `HoldToApprove`
+    for every pending row. It should read the policy once in
+    `useOrdersNextData.ts` (`GET /settings/approval-thresholds`, keyed by
+    `activeRestaurantId`) and, when `decideApproval` says the row needs a role the
+    signed-in person does not have, render the ceremony **disabled** with one line
+    naming the rule and the amount — never hidden, because a control that
+    disappears teaches nothing. Until that lands the button is correct as it
+    stands: the gateway is the gate, and the UI must not pretend to be one.
+24. **The vendor-terms contract for `/calendar` and `/orders`.** Both were named
+    in the brief as future readers; neither is built. `GET /vendor-terms` already
+    returns everything they need — the payload is
+    `{ restaurantId, vendors[], currency: {code, isColumnDefault},
+    zone: {zone, isColumnDefault}, windowDays, sources }`, and each vendor is
+    `{ providerId, providerName, ordersInWindow, lastOrderedAt,
+    deliveryWeekdays, orderCutoff, minimumOrder, leadTimeDays, paymentTerms,
+    notes, statedBy, statedAt }` with every term a
+    `TermCell` = `{ value, source: 'stated'|'vendor_record'|'inferred'|'unknown',
+    statedBy?, statedAt?, column?, n?, confidence?, basis?, reason?,
+    contradiction? }`.
+
+    **The contract, and it is a hard one: a reader may act ONLY on
+    `source === 'stated'` or `'vendor_record'`.** An inferred cutoff is a
+    bracket and an inferred minimum is an upper bound; drawing either as a
+    deadline on a calendar, or refusing an order against either, would convert a
+    bound into a fact at the exact moment somebody relies on it. An inferred term
+    may be SHOWN — "we think they close around 14:00, nobody has confirmed" —
+    and must carry its `n` and `confidence` when it is.
+    - **`/calendar`**: a vendor with a stated `orderCutoff` and stated
+      `deliveryWeekdays` yields a recurring per-day object — *"Anadolu closes in
+      3h 10m for Wednesday"* — computed as the next delivery weekday minus
+      `offsetDays`, at `time`, **in `zone.zone`**, and suppressed entirely when
+      `zone.isColumnDefault` is true, because a cutoff drawn in the wrong
+      timezone is worse than no cutoff.
+    - **`/orders`**: a draft to a vendor whose stated `deliveryWeekdays` do not
+      contain the promised delivery day should say so before it is sent; a draft
+      below a stated `minimumOrder` should say so. Both are warnings, never
+      blocks — the vendor's terms are the vendor's, and the house may have been
+      told something newer on the phone.
+    - **`/notifications`**: a low-stock alert can say *"order by 14:00 or it is
+      Friday"* only when the cutoff is stated.
+25. **Give the delivery-days checkbox a real home** (§9.13). Either point
+    `AddProviderModal`/`EditProviderModal` at `PUT /vendor-terms/:providerId`, or
+    delete the control. Today it silently pollutes `providers.regions_covered`,
+    which is also what the map and the territory filters read.
+26. **Drop the three column defaults, or make them nullable** (§9.12):
+    `providers.lead_time_days`, `providers.payment_terms`,
+    `restaurants.timezone`. A migration plus a sweep of the live readers
+    (`providers.service.ts:1374,1382`;
+    `communications/email-templates/payment-due.template.ts:108`;
+    everything that formats a date for a restaurant). Until then every vendor in
+    the database claims a seven-day lead time on Net 30 and every house is in
+    California unless somebody said otherwise.
+27. **File the other eight registers into the settings trail.** Email sign-off
+    (`restaurant-templates.service.ts`), Notifications
+    (`notifications.service.ts`), Locations & chains (`organizations.service.ts`),
+    Map / Services / POS (`user-preferences.service.ts`), Calendar subscription
+    (the ical-token route), Cellar registers (`cellar-registers.service.ts`).
+    Each needs the same two lines Features got: read the row before the write,
+    then call `SettingsAuditService.record` with the JWT's
+    `public.users.user_id`. `SettingsAuditService` is already exported from
+    `SettingsAuditModule`; each owning module imports it.
+28. **Carry `payment_terms` from a vendor reply into the stated row.** The
+    orchestrator already extracts it (`common/orchestrator/commercial-terms.ts:33`,
+    prompt at `inbound-responder.service.ts:688`) with `source_quotes` attached,
+    and writes it nowhere the vendor-terms register can read. A one-tap "the
+    vendor said Net 45 — record it?" is the shape, and the audit row would then
+    name the person who accepted it rather than the AI that read it.
+29. **Pack size.** Named in the second pass's §13.21 and not built: nothing in
+    the schema holds one, and `procurement_orders.unit_type` is a varchar
+    defaulting to `bottles`, so inferring from it would repeat the
+    defaulted-column fault of §9.12. It needs a column on
+    `restaurant_vendor_terms` and, more usefully, a per-item one — which is an
+    inventory decision, not a settings one.
+30. **A cutoff per delivery day.** Choco stores one
+    (<https://help.choco.com/en/articles/6572290-view-and-edit-the-information-of-your-supplier>);
+    this build stores one cutoff plus an offset. A child table keyed
+    (restaurant, provider, weekday) would hold it, and the inference cannot split
+    it either way — a Friday cutoff of 11:00 and a weekday one of 15:00 land in
+    the same bracket today, which the register says.

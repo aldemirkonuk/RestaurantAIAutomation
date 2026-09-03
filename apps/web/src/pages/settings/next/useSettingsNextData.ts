@@ -39,7 +39,7 @@ import {
   type NotificationPreferences,
 } from '@/services/api/notifications';
 import type { UserPreferences } from '@/hooks/useUserPreferences';
-import { errText, httpStatus, type SectionId } from './st-format';
+import { errText, httpStatus, type SectionId, type TermSource } from './st-format';
 
 /* ── Remote ──────────────────────────────────────────────────────────────── */
 
@@ -214,7 +214,132 @@ export interface IntegrationsRegister {
   connections: IntegrationConnection[];
 }
 
+
+/* ── The fourth pass's three registers ───────────────────────────────────── */
+
+/**
+ * One term, with where it came from.
+ *
+ * Mirrors `apps/api-gateway/src/vendor-terms/vendor-terms.service.ts`'s
+ * `TermCell`. Every optional field belongs to exactly one `source`, and the
+ * component branches on `source` rather than on which fields happen to be
+ * present — a cell with a `value` and no source would otherwise render as a
+ * fact with no provenance, which is the one thing this register exists to make
+ * impossible.
+ */
+export interface TermCell<T> {
+  value: T | null;
+  source: TermSource;
+  statedBy?: { userId: string | null; name: string | null } | null;
+  statedAt?: string | null;
+  column?: string;
+  n?: number;
+  confidence?: 'high' | 'medium' | 'low';
+  basis?: string;
+  reason?: string;
+  contradiction?: string | null;
+}
+
+export interface CutoffValue {
+  time: string | null;
+  offsetDays: number | null;
+  notBefore?: string | null;
+  notAfter?: string | null;
+}
+
+export interface VendorTermsRow {
+  providerId: string;
+  providerName: string;
+  ordersInWindow: number;
+  lastOrderedAt: string | null;
+  deliveryWeekdays: TermCell<number[]>;
+  orderCutoff: TermCell<CutoffValue>;
+  minimumOrder: TermCell<number>;
+  leadTimeDays: TermCell<number>;
+  paymentTerms: TermCell<string>;
+  notes: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  statedAt: string | null;
+}
+
+export interface SourceStatus {
+  readable: boolean;
+  reason: string | null;
+  /** Null when unreadable — never 0. */
+  rows: number | null;
+}
+
+export interface VendorTermsRegister {
+  restaurantId: string;
+  vendors: VendorTermsRow[];
+  currency: { code: string; isColumnDefault: boolean };
+  zone: { zone: string; isColumnDefault: boolean };
+  windowDays: number;
+  sources: { providers: SourceStatus; statedTerms: SourceStatus; orders: SourceStatus };
+}
+
+export type ApprovalRule = 'manager_ceiling' | 'new_vendor' | 'price_jump';
+
+export interface ThresholdRow {
+  rule: ApprovalRule;
+  enabled: boolean;
+  amountLimit: number | null;
+  percentLimit: number | null;
+  requiredRole: 'owner' | 'manager';
+  setBy: { userId: string | null; name: string | null } | null;
+  updatedAt: string | null;
+}
+
+export interface ThresholdsRegister {
+  restaurantId: string;
+  thresholds: ThresholdRow[];
+  policyEmpty: boolean;
+  readable: boolean;
+  reason: string | null;
+  retrospective: {
+    counts: Array<{ rule: ApprovalRule; tested: number; wouldHaveFired: number }>;
+    ordersRead: number;
+    windowDays: number;
+    readable: boolean;
+    reason: string | null;
+    caveat: string;
+  };
+  enforcement: { enforcedBy: string[]; wouldBeEnforcedAt: string; note: string };
+}
+
+export interface LedgerEntry {
+  id: string;
+  occurredAt: string | null;
+  action: string;
+  register: string | null;
+  entityType: string;
+  entityId: string | null;
+  subject: string | null;
+  actor: { userId: string | null; name: string | null; email: string | null };
+  fields: Record<string, { from: unknown; to: unknown }>;
+}
+
+export interface LedgerRegister {
+  restaurantId: string;
+  entries: LedgerEntry[];
+  readable: boolean;
+  reason: string | null;
+  oldestAt: string | null;
+  recordingSince: string;
+}
+
+export interface SetVendorTermsBody {
+  deliveryWeekdays?: number[] | null;
+  orderCutoffTime?: string | null;
+  orderCutoffOffsetDays?: number | null;
+  minimumOrderAmount?: number | null;
+  leadTimeDays?: number | null;
+  paymentTerms?: string | null;
+  notes?: string | null;
+}
+
 /* ── Writes ──────────────────────────────────────────────────────────────── */
+
 
 export interface Writer {
   /** Key of the write in flight, or null. */
@@ -339,6 +464,24 @@ export function useSettingsNextData(active: SectionId) {
     return { catalog, connections };
   });
 
+  // The three registers the fourth pass added. Each is tenant-keyed and lazy,
+  // like every other one — opening /settings still costs the one fetch the open
+  // register needs.
+  const vendorTerms = useRemote<VendorTermsRegister>(tenantKey('vendor-terms'), async () => {
+    const { data } = await apiClient.get<VendorTermsRegister>('/vendor-terms');
+    return data;
+  });
+
+  const thresholds = useRemote<ThresholdsRegister>(tenantKey('thresholds'), async () => {
+    const { data } = await apiClient.get<ThresholdsRegister>('/settings/approval-thresholds');
+    return data;
+  });
+
+  const ledger = useRemote<LedgerRegister>(tenantKey('ledger'), async () => {
+    const { data } = await apiClient.get<LedgerRegister>('/settings-audit?limit=100');
+    return data;
+  });
+
   const writer = useWriter();
 
   const saveFlag = useCallback(
@@ -442,6 +585,38 @@ export function useSettingsNextData(active: SectionId) {
     [writer, integrations],
   );
 
+  const saveVendorTerms = useCallback(
+    (providerId: string, body: SetVendorTermsBody) =>
+      writer.run(`terms:${providerId}`, async () => {
+        const { data } = await apiClient.put<{ readout: VendorTermsRegister }>(
+          `/vendor-terms/${providerId}`,
+          body,
+        );
+        // The server's answer replaces the register — never the value we hoped
+        // for. The write recomputes every inference, so an optimistic patch
+        // would show a stated term beside a stale contradiction.
+        if (data?.readout) vendorTerms.set(data.readout);
+        else vendorTerms.reload();
+        // A term that moved is a row in the trail; the trail must not lag it.
+        ledger.reload();
+      }),
+    [writer, vendorTerms, ledger],
+  );
+
+  const saveThreshold = useCallback(
+    (rule: ApprovalRule, body: Omit<ThresholdRow, 'setBy' | 'updatedAt' | 'rule'>) =>
+      writer.run(`threshold:${rule}`, async () => {
+        const { data } = await apiClient.put<{ readout: ThresholdsRegister }>(
+          '/settings/approval-thresholds',
+          { rule, ...body },
+        );
+        if (data?.readout) thresholds.set(data.readout);
+        else thresholds.reload();
+        ledger.reload();
+      }),
+    [writer, thresholds, ledger],
+  );
+
   const locations: RestaurantBranch[] = useMemo(
     () => availableRestaurants ?? [],
     [availableRestaurants],
@@ -457,9 +632,11 @@ export function useSettingsNextData(active: SectionId) {
     locations,
     refreshBranches,
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
+    vendorTerms, thresholds, ledger,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
+    saveVendorTerms, saveThreshold,
   };
 }
 

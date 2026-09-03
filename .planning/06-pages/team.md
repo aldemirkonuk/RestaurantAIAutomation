@@ -21,11 +21,11 @@ links: ["[[PAGE-CONTRACT]]"]
 
 ## Surface — buttons → where they go
 
-- **Invite member / Add staff** (manager) → (modal — InviteTeamDialog)
+- **Invite member / Add staff** (manager) → (modal — InviteTeamDialog; **house shape: `Popover modal`**, anchored under its button, ADR 0112)
 - **Publish week / Re-publish** (manager) → API `POST /restaurants/:rid/team/schedules/:scheduleId/publish`
 - **Copy last week** (manager) → API `POST /restaurants/:rid/team/schedules/copy-week`
 - **Broadcast crew** (manager) → API `POST /restaurants/:rid/team/broadcast`
-- **Import sheet** (manager) → (modal — ShiftImportModal)
+- **Import sheet** (manager) → (modal — ShiftImportModal; **still legacy, deliberately**: it opens only from the legacy desk `pages/team/command/ManagerShiftDesk.tsx:594`, so a house branch could never render, and its apply path is simulated at `ShiftImportModal.tsx:100-101` — ADR 0112)
 - **Print week** (manager) → (new browser window — printable schedule sheet)
 - **Got it** (staff, acknowledge schedule) → API `POST /restaurants/:rid/team/schedules/:scheduleId/acknowledge`
 - **Claim** (staff, cover offer) → API `POST /restaurants/:rid/team/shifts/:shiftId/assign`
@@ -102,6 +102,17 @@ parseable clock times — otherwise the control is disabled with the reason,
 per the honesty rules. The renewal request rides the existing broadcast
 channel to exactly that member. Publish-blocking is stated in words on the
 page (the publish control itself stays with the desk until parity).
+
+### Modal shape, 2026-09-03 (ADR 0112)
+
+**`InviteTeamDialog` is the wave's one named exception.** It is anchored under its
+button like a popover but it is a *form that commits*, not a picker, so it takes
+`Popover modal` — the anchored position operators already know, with the focus
+trap, scroll lock and dim its Radix dialog had. Copy and behaviour are the legacy
+dialog's word for word; only the surface changes, and only while a rebuilt page is
+on screen (the Radix branch still renders byte-for-byte otherwise). A **second**
+anchored surface needing `modal` is the recorded signal to collapse the policy to
+two shapes.
 
 ## 2. Entry
 
@@ -353,3 +364,123 @@ sales-ingest based, which is the permitted kind. Keep them apart.
    already in the schema (`schedule_receipts`).
 4. Link a broadcast notification back to the specific schedule rather than `/team`
    (`team.controller.ts:355`) — publish already does this (`schedule.service.ts:259`).
+
+---
+
+**Added 2026-09-03 — the founder's fourth-pass note on `/settings`**, verbatim:
+*"The more Vendor terms, thresholds, audit trail -> this looks super detailed and
+I like it a lot, the more insights functionality the better, we could actually
+put these type of detailed 'more's into other pages like /teams design and
+configuration."*
+
+Nothing below is built. This is the proposal and its cost, written by the
+`/settings` session so `/team`'s own session inherits the measurement rather than
+re-deriving it.
+
+5. **A team-configuration register set, in the `/settings` idiom.**
+
+   **What transferred, and why it is the shape.** Three ideas carried the
+   `/settings` rebuild, and all three are about the same thing — a configuration
+   page earns trust by being checkable:
+
+   1. **Every setting is a RECORD.** It states the consequence of changing it,
+      *where the value is kept*, and *when it was last written* — or an em dash
+      naming the file that was checked. Enforced by the component, not by
+      discipline: `Row` in `settings/next/SectionKit.tsx` cannot be used without a
+      provenance line.
+   2. **Every value carries its SOURCE.** *Stated by the house* (with the name of
+      whoever wrote it down) · *on the record* (with the column named) ·
+      *inferred from N receipts* (with a confidence) · *unknown* (with the
+      reason). And the rule that made it worth building: **a value
+      indistinguishable from its column default is UNKNOWN, not a term.**
+   3. **The record ends at a name.** `system_audit_log` already existed and
+      already had two team writers; the settings register is one caller and one
+      read route, with no new table.
+
+   **What `/team`'s configuration actually is today, measured.**
+
+   | store | what it holds | provenance available today |
+   |---|---|---|
+   | `team_settings` (`baseline:5653-5658`) | `labor_tracking_enabled`, `wage_visible`, `labor_target_pct`, `updated_at` | a date, no author. **0 rows in production** (§9) |
+   | `coverage_templates` | the staffing rules the engine runs on | **0 rows in production** — the engine is idle, and the redesign already says so |
+   | `team_certifications` (`baseline:5609-5620`) | credentials per member | no role and no applies-to column (§13.2a) |
+   | `user_restaurant_access` | who may do what | `created_at`, `valid_from`, no update column — a role change moves nothing on the row |
+   | `team_members.hourly_wage` | pay | 11 rows still carry ADR 0088's invented `$32.00`/`$28.00` literals |
+
+   **The defaulted-column fault is already here, and it is the same one.**
+   `team_settings.labor_target_pct` is `numeric(5,2) DEFAULT 28 NOT NULL`
+   (`baseline:5656`) — exactly the shape of `providers.lead_time_days DEFAULT 7`
+   and `providers.payment_terms DEFAULT 'Net 30'` that the vendor-terms register
+   exists to catch (`06-pages/settings.md` §9.12). The first house to toggle
+   `wage_visible` acquires a 28% labour target it never chose, and nothing on the
+   page can tell that apart from a target somebody set. ADR 0088 fixed the
+   *code-side* default (no row → `null` + `configured: false`); the column is
+   still `NOT NULL DEFAULT 28`. A `/team` configuration register must read it the
+   way `leadTimeCell` reads seven days: **unknown, with the default named**, and
+   it should say so on a page where a manager is about to be measured against it.
+
+   **The registers proposed, and what each would infer.**
+
+   - **Labour policy** — the three `team_settings` switches plus the target.
+     *Insight:* the same retrospective the approval-threshold register carries.
+     A target of 28% means nothing until the page can say *"your last twelve
+     weeks ran at 31.4%, and 28% would have been missed in nine of them"* —
+     computable from `server_sales` and `shifts` once real wages exist, and
+     honestly refusable until they do (`hourly_wage` is currently three invented
+     literals, §9). Provenance: `updated_at` is real; `updated_by` does not exist.
+   - **Coverage rules** — `coverage_templates` (role · day · service · min-staff).
+     *This is the vendor-terms shape almost exactly.* A stated rule is what the
+     house says it wants; an INFERRED one is what the house has actually done —
+     the median number of people on the line on a Saturday dinner across the last
+     N published weeks, with the week count and a confidence. Today the engine is
+     idle because the table is empty; a register that showed the inference beside
+     an empty rule would give the first rule a number to start from instead of a
+     blank form. Same hard rule as vendor terms: **the inference is computed at
+     read time and never written back**, so a habit cannot harden into a policy
+     by sitting in a table.
+   - **Credentials** — `team_certifications`. *This is the `payment_terms` case:*
+     **not inferable, and the register must say so with the missing column
+     named.** Without a role or applies-to column there is no honest sentence
+     about which shifts an expired card blocks (§13.2a), and the redesign already
+     refuses to write one. A register makes the gap visible where somebody can
+     decide to close it.
+   - **Who may do what** — one row per capability, measured from the guards
+     rather than described in prose. This is the Features-register
+     "blast radius" idea (`06-pages/settings.md` §13.20) pointed at people, and
+     `/team` has a live example to open with: `team.service.ts:397` calls
+     `assertAccess` with **no required role**, so the client-side split ADR 0089
+     added is defence in depth and not access control (§13.2c). A register that
+     printed "certifications · read · **any member** · not enforced server-side"
+     would have made that visible without an audit.
+   - **What changed here** — and this one is nearly free. `recordAccessChange`
+     (`apps/api-gateway/src/team/access-audit.ts:73`) ALREADY files
+     `member_role_changed` and `team_member_removed` into `system_audit_log`, and
+     `SettingsAuditService.list` (added 2026-09-03) already reads both back — it
+     understands the flat `{field: {from,to}}` shape that writer uses as well as
+     its own nested one. So `/team` gets a trail by rendering
+     `GET /settings-audit` and nothing else; only `team_settings` and the
+     coverage rules would need new `record()` calls.
+
+   **What it would take, concretely.**
+
+   | piece | cost | notes |
+   |---|---|---|
+   | The audit trail on `/team` | ~half a day, **0 migrations** | `GET /settings-audit` exists and already returns the two team actions. `SettingsAuditService` is exported from `SettingsAuditModule`; `TeamModule` imports it and `TeamService.updateSettings` files a diff |
+   | Provenance lines on the existing panels | ~1 day, 0 migrations | port `Row`/`Provenance`/`Dead` out of `settings/next/SectionKit.tsx` into a shared place. **Do this once**, not twice — a second copy is how two pages start disagreeing about what "kept" means |
+   | Reading `labor_target_pct` honestly | ~2 hours, 0 migrations | treat `28` with no row as unknown, exactly as `leadTimeCell` treats `7` |
+   | Making the column nullable | 1 migration, low risk | the table has **0 rows** in production, so this is the cheapest it will ever be (§9) |
+   | The coverage-rule inference | ~2 days | needs `shifts` and `schedules` to have data; both are empty in production, so it is untestable against reality today and would ship as code with a green test and no evidence — the same warning §9 already carries for this whole domain |
+   | The labour retrospective | blocked | needs real `hourly_wage` values. ADR 0088 deliberately stopped inventing them; the 11 existing rows still carry the literals |
+
+   **The honest counter-argument, and it is strong.** Every scheduling table on
+   this page is EMPTY in production (§9: `coverage_templates` 0, `schedules` 0,
+   `shifts` 0, `team_certifications` 0, `server_sales` 0, `team_settings` 0). The
+   `/settings` registers were worth building because their data exists — feature
+   flags, providers and orders are all live — and an inference over an empty
+   table is a component with a green test and no evidence, which is precisely the
+   thing this project keeps having to unwind. **So the split is: build the three
+   that cost nothing and need no data — the audit trail, the provenance lines,
+   and reading `labor_target_pct` as unknown — and hold the two inferences until
+   a real house has published a real week.** The first three are all honesty
+   work, they are what the founder actually praised, and none of them can be
+   wrong about a house that has no data.

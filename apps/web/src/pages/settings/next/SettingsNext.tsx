@@ -55,8 +55,8 @@ import { Wordmark } from '@/components/mudavym';
 import { animate, ink, turn } from '@/lib/mudavym';
 import { ensureFraunces } from './fonts';
 import {
-  KEPT_LABEL, KEPT_NOTE, MONO, SANS, SECTIONS, SERIF,
-  isSectionId, keptTally, sectionSpec, type SectionId,
+  GROUPS, KEPT_NOTE, MONO, SANS, SECTIONS, SERIF,
+  isSectionId, keptTally, readingIndex, sectionSpec, word, type SectionId,
 } from './st-format';
 import { useSettingsNextData } from './useSettingsNextData';
 import { TeamSection } from './TeamSection';
@@ -70,6 +70,9 @@ import FeaturesSection from './FeaturesSection';
 import { PosSection } from './PosSection';
 import { CalendarSection } from './CalendarSection';
 import { CellarSection } from './CellarSection';
+import { VendorTermsSection } from './VendorTermsSection';
+import { ThresholdsSection } from './ThresholdsSection';
+import { LedgerSection } from './LedgerSection';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -82,6 +85,11 @@ const CSS = `
   .st-ink, .st-ink *, .st-disc, .st-chev { transition: none !important }
 }
 `;
+
+/** "Fourteen" — a count word at the head of a sentence. */
+function capitalise(v: string): string {
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
 
 export interface SettingsNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
@@ -127,7 +135,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
 
   const data = useSettingsNextData(active);
   const spec = useMemo(() => sectionSpec(active), [active]);
-  const index = useMemo(() => SECTIONS.findIndex((s) => s.id === active) + 1, [active]);
+  const index = useMemo(() => readingIndex(active), [active]);
 
   // Staff never reach restaurant settings — client-side, exactly as before, and
   // the gateway refuses independently (each register's 403 branch says so).
@@ -166,12 +174,17 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             Settings<span style={{ color: 'var(--seal)' }}>.</span>
           </h1>
           <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 15, color: 'var(--ink-2)', margin: '6px 0 0' }}>
-            {SECTIONS.length === 11 ? 'Eleven' : SECTIONS.length} registers — {keptTally()}.
+            {capitalise(word(SECTIONS.length))} registers — {keptTally()}.
           </p>
-          <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-3)', margin: '8px 0 0', maxWidth: 640 }}>
-            Nothing here records <em>who</em> changed a setting — no table on this page carries an author column. Where
-            a change is dated the date is shown, with the word for what it is a date of; where nothing dates it, the
-            line is an em dash that names the file it was checked against.
+          <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-3)', margin: '8px 0 0', maxWidth: 660 }}>
+            Three of these registers now record <em>who</em> changed a setting and what it was before — Features,
+            Vendor terms and Approval thresholds, read back under{' '}
+            <button type="button" className="st-focus" onClick={() => open('ledger')}
+              style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
+              What changed here
+            </button>. The other eight write through services this pass did not touch, so their changes are still
+            anonymous; where one is dated the date is shown with the word for what it is a date of, and where nothing
+            dates it the line is an em dash naming the file it was checked against.
           </p>
         </header>
 
@@ -179,40 +192,82 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
 
         <div style={{ display: 'grid', gap: 26, gridTemplateColumns: 'minmax(0, 1fr)' }} className="st-layout">
           {/* ── Contents ─────────────────────────────────────────────── */}
-          <nav aria-label="Settings registers" style={{ alignSelf: 'start' }}>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-              {SECTIONS.map((s, i) => {
-                const on = s.id === active;
-                return (
-                  <li key={s.id} style={{ flex: '1 1 auto', minWidth: 150 }}>
-                    <button
-                      type="button"
-                      onClick={() => open(s.id)}
-                      aria-current={on ? 'true' : undefined}
-                      className="st-tab st-ink st-focus"
-                      style={{
-                        width: '100%', textAlign: 'left', display: 'flex', gap: 9, alignItems: 'baseline',
-                        padding: '7px 9px', borderRadius: 8, border: 0, cursor: 'pointer',
-                        background: on ? 'var(--seal-tint)' : 'transparent',
-                        color: on ? 'var(--ink-1)' : 'var(--ink-2)',
-                      }}
-                    >
-                      <span style={{ fontFamily: MONO, fontSize: 10, color: on ? 'var(--seal-deep)' : 'var(--ink-3)' }}>
-                        {String(i + 1).padStart(2, '0')}
-                      </span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: on ? 600 : 500, display: 'block' }}>
-                          {s.label}
-                        </span>
-                        <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
-                          {KEPT_LABEL[s.kind]}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+          {/*
+            THE TAB BAR, MADE TO READ CLEAN (fourth pass).
+
+            Pass two's numbered contents column stays — the founder asked to keep
+            the side tab bar — but fourteen numbered rows in one flat list is a
+            list you scan rather than read, and each row carried a second line
+            naming its storage, which doubled its height for a fact that is
+            printed again under the open register's own heading.
+
+            So: five groups with a heading and one line of signpost each, one
+            line per register, and a seal rule down the active row. That is the
+            settings-navigation standard both references converged on — Linear's
+            redesigned settings group into Account / Features / Administration /
+            Your teams (linear.app/changelog/2024-12-18-personalized-sidebar) and
+            Stripe's 2023 Dashboard navigation added grouped sections with
+            pinned and recent shortcuts — and the grouping here is by what a
+            person came to DO, not by where the value is kept, which is the
+            internal fact. Nothing is hidden behind a "More": every register is
+            one click from every other, because a settings page whose sections
+            are collapsed is a settings page whose sections go unread.
+          */}
+          <nav aria-label="Settings registers" className="st-nav" style={{ alignSelf: 'start' }}>
+            {GROUPS.map((group) => (
+              <div key={group.id} style={{ marginBottom: 14 }}>
+                <p
+                  id={`st-group-${group.id}`}
+                  style={{
+                    fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: '0.14em',
+                    textTransform: 'uppercase', color: 'var(--ink-3)', margin: '0 0 1px', padding: '0 9px',
+                  }}
+                >
+                  {group.title}
+                </p>
+                <p
+                  style={{
+                    fontFamily: SANS, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3)',
+                    margin: '0 0 5px', padding: '0 9px', maxWidth: 210,
+                  }}
+                >
+                  {group.hint}
+                </p>
+                <ul
+                  aria-labelledby={`st-group-${group.id}`}
+                  style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 2 }}
+                >
+                  {group.members.map((id) => {
+                    const spec = sectionSpec(id);
+                    const on = id === active;
+                    return (
+                      <li key={id} style={{ flex: '1 1 auto', minWidth: 150 }}>
+                        <button
+                          type="button"
+                          onClick={() => open(id)}
+                          aria-current={on ? 'true' : undefined}
+                          className="st-tab st-ink st-focus"
+                          style={{
+                            width: '100%', textAlign: 'left', display: 'flex', gap: 9, alignItems: 'baseline',
+                            padding: '5px 9px', borderRadius: 8, border: 0, cursor: 'pointer',
+                            borderLeft: `2px solid ${on ? 'var(--seal)' : 'transparent'}`,
+                            background: on ? 'var(--seal-tint)' : 'transparent',
+                            color: on ? 'var(--ink-1)' : 'var(--ink-2)',
+                          }}
+                        >
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: on ? 'var(--seal-deep)' : 'var(--ink-3)' }}>
+                            {String(readingIndex(id)).padStart(2, '0')}
+                          </span>
+                          <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: on ? 600 : 500, flex: 1, minWidth: 0 }}>
+                            {spec.label}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </nav>
 
           {/* ── The open register ────────────────────────────────────── */}
@@ -241,6 +296,9 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             {active === 'pos' && <PosSection data={data} />}
             {active === 'calendar' && <CalendarSection data={data} />}
             {active === 'cellar' && <CellarSection />}
+            {active === 'vendor-terms' && <VendorTermsSection data={data} />}
+            {active === 'thresholds' && <ThresholdsSection data={data} />}
+            {active === 'ledger' && <LedgerSection data={data} />}
           </main>
         </div>
 
@@ -249,10 +307,21 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
           <Wordmark size={13} />
           <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3)', margin: 0 }}>
             A setting shown without a switch is one the product stores and never reads. It is listed, not hidden.
+            A term shown as inferred was worked out from this house&rsquo;s own orders and is never written down as a fact.
           </p>
         </footer>
       </div>
-      <style>{`@media (min-width: 900px) { .st-layout { grid-template-columns: 232px minmax(0, 1fr) !important } .st-layout > nav ul { flex-direction: column } }`}</style>
+      {/*
+        The side bar is sticky on desktop and scrolls on its own if it ever
+        outgrows the viewport — a contents column that scrolls away is a
+        contents column you stop using. It stays a plain wrapping list on
+        narrow screens, where a fixed rail would eat the page.
+      */}
+      <style>{`@media (min-width: 900px) {
+        .st-layout { grid-template-columns: 236px minmax(0, 1fr) !important }
+        .st-layout > .st-nav { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto }
+        .st-layout > .st-nav ul { flex-direction: column }
+      }`}</style>
     </div>
   );
 }

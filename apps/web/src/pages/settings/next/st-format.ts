@@ -75,15 +75,23 @@ export const PROVENANCE_UNKNOWN = {
 /**
  * The first ten are the legacy `?tab=` set, in the legacy order, so every
  * bookmark and every link in the product still lands where it did
- * (`pages/Settings.tsx:66`). `cellar` is added at the end rather than inserted,
- * for the same reason.
+ * (`pages/Settings.tsx:66`). `cellar` was added at the end rather than
+ * inserted, for the same reason, and the fourth pass's three follow it.
+ *
+ * THIS ARRAY IS THE ID SET, NOT THE READING ORDER (changed 2026-09-03). The
+ * contents column reads in `GROUPS` order below; ids never move, so no `?tab=`
+ * link ever breaks, but a fourteen-item flat list with no headings does not
+ * read cleanly and the founder asked for a clean tab bar.
  */
 export const SECTION_IDS = [
   'team', 'services', 'email', 'notifications', 'locations',
   'measurement', 'map', 'features', 'pos', 'calendar', 'cellar',
+  'vendor-terms', 'thresholds', 'ledger',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
+
+export type GroupId = 'house' | 'buying' | 'autonomy' | 'yours' | 'record';
 
 export interface SectionSpec {
   id: SectionId;
@@ -95,32 +103,122 @@ export interface SectionSpec {
   description: string;
   /** Where this register's settings are kept. */
   kind: Kept;
+  /** Which heading it reads under in the contents column. */
+  group: GroupId;
+  /** Position within that group. */
+  order: number;
 }
 
 export const SECTIONS: SectionSpec[] = [
-  { id: 'team', label: 'Team', title: 'Team', kind: 'restaurant',
+  { id: 'team', label: 'Team', title: 'Team', kind: 'restaurant', group: 'house', order: 1,
     description: 'Who can reach this restaurant, and what each of them may change.' },
-  { id: 'services', label: 'Services', title: 'Services & permissions', kind: 'account',
+  { id: 'services', label: 'Services', title: 'Services & permissions', kind: 'account', group: 'yours', order: 1,
     description: 'What the product is allowed to do with your data, and which apps you have connected.' },
-  { id: 'email', label: 'Email', title: 'Email sign-off', kind: 'restaurant',
+  { id: 'email', label: 'Email', title: 'Email sign-off', kind: 'restaurant', group: 'house', order: 3,
     description: 'The name every vendor email is signed with.' },
-  { id: 'notifications', label: 'Notifications', title: 'Notifications', kind: 'account',
+  { id: 'notifications', label: 'Notifications', title: 'Notifications', kind: 'account', group: 'autonomy', order: 2,
     description: 'Which alerts leave the building, and through which door.' },
-  { id: 'locations', label: 'Locations', title: 'Locations & chains', kind: 'restaurant',
+  { id: 'locations', label: 'Locations', title: 'Locations & chains', kind: 'restaurant', group: 'house', order: 2,
     description: 'The branches on this account and how they group.' },
-  { id: 'measurement', label: 'Measurement', title: 'Measurement & recipes', kind: 'browser',
+  { id: 'measurement', label: 'Measurement', title: 'Measurement & recipes', kind: 'browser', group: 'yours', order: 3,
     description: 'Units, the default glass pour, and whether recipes are tracked.' },
-  { id: 'map', label: 'Map', title: 'Map', kind: 'account',
+  { id: 'map', label: 'Map', title: 'Map', kind: 'account', group: 'yours', order: 2,
     description: 'How wide Find distributors frames you when it opens.' },
-  { id: 'features', label: 'Features', title: 'Features', kind: 'restaurant',
+  { id: 'features', label: 'Features', title: 'Features', kind: 'restaurant', group: 'autonomy', order: 1,
     description: 'The switches that change what the system does on its own.' },
-  { id: 'pos', label: 'POS', title: 'Point of sale', kind: 'restaurant',
+  { id: 'pos', label: 'POS', title: 'Point of sale', kind: 'restaurant', group: 'buying', order: 3,
     description: 'The till connection and what it has actually sent.' },
-  { id: 'calendar', label: 'Calendar', title: 'Calendar subscription', kind: 'restaurant',
+  { id: 'calendar', label: 'Calendar', title: 'Calendar subscription', kind: 'restaurant', group: 'house', order: 4,
     description: 'The feed another calendar can read.' },
-  { id: 'cellar', label: 'Cellar', title: 'Cellar registers', kind: 'restaurant',
+  { id: 'cellar', label: 'Cellar', title: 'Cellar registers', kind: 'restaurant', group: 'buying', order: 4,
     description: 'Which drinks registers this house actually carries.' },
+  { id: 'vendor-terms', label: 'Vendor terms', title: 'Vendor terms', kind: 'restaurant', group: 'buying', order: 1,
+    description: 'When each vendor closes for the day, which days they deliver, and what they will not go below.' },
+  { id: 'thresholds', label: 'Approval thresholds', title: 'Approval thresholds', kind: 'restaurant', group: 'buying', order: 2,
+    description: 'Who may seal an order, above what amount, and in which circumstances a second signature is wanted.' },
+  { id: 'ledger', label: 'What changed here', title: 'What changed here', kind: 'restaurant', group: 'record', order: 1,
+    description: 'Every setting change on this restaurant, who made it, and what it was before.' },
 ];
+
+/**
+ * The contents column, grouped by what a person came here to do.
+ *
+ * Fourteen numbered rows in one flat list is a list you scan rather than read.
+ * Linear's settings redesign groups its own into "Account · Features ·
+ * Administration · Your teams" — personal settings, workspace-level feature
+ * configuration, admin-only workspace governance, and per-team settings
+ * (https://linear.app/changelog/2024-12-18-personalized-sidebar), and the
+ * standard advice that follows is to cluster by USER INTENT rather than by
+ * internal structure. Stripe's 2023 Dashboard navigation went the same way,
+ * adding grouped sections plus pinned and recently-visited shortcuts
+ * (https://support.stripe.com/questions/dashboard-update-may-2024).
+ *
+ * So the grouping here is by intent, NOT by where the value is kept — which is
+ * the internal fact, and is still printed under every open register's heading
+ * by `KEPT_NOTE`. The one place storage does surface in the contents column is
+ * the "Yours" group's own subtitle, because "this is not shared with the house"
+ * is something a person needs before they open the register, not after.
+ */
+export interface SectionGroup {
+  id: GroupId;
+  title: string;
+  /** One line under the group heading. Kept short — it is a signpost. */
+  hint: string;
+  members: SectionId[];
+}
+
+/**
+ * The five headings, and nothing else.
+ *
+ * A heading is a label, not a row: which registers live under it is derived
+ * from each `SectionSpec`'s own `group` and `order` below, so there is exactly
+ * one place a register's position is declared and the two cannot drift.
+ */
+const GROUP_HEADINGS: Array<{ id: GroupId; title: string; hint: string }> = [
+  {
+    id: 'house',
+    title: 'The house',
+    hint: 'Who works here, where here is, and how it signs its name.',
+  },
+  {
+    id: 'buying',
+    title: 'How it buys',
+    hint: 'The terms it trades on and who may commit to them.',
+  },
+  {
+    id: 'autonomy',
+    title: 'What it does on its own',
+    hint: 'The switches that let the system act without being asked.',
+  },
+  {
+    id: 'yours',
+    title: 'Yours',
+    hint: 'Kept on your account or in this browser. Nobody else here sees these.',
+  },
+  {
+    id: 'record',
+    title: 'The record',
+    hint: 'What was changed, by whom.',
+  },
+];
+
+export const GROUPS: SectionGroup[] = GROUP_HEADINGS.map((g) => ({
+  ...g,
+  members: SECTIONS.filter((s) => s.group === g.id)
+    .sort((a, b) => a.order - b.order)
+    .map((s) => s.id),
+}));
+
+/**
+ * Reading order, flattened. Derived from `GROUPS` so the numbers in the
+ * contents column and the "Register N of M" line cannot drift apart.
+ */
+export const READING_ORDER: SectionId[] = GROUPS.flatMap((g) => g.members);
+
+/** 1-based position in the contents column. */
+export function readingIndex(id: SectionId): number {
+  return READING_ORDER.indexOf(id) + 1;
+}
 
 export function isSectionId(v: string | null): v is SectionId {
   return v !== null && (SECTION_IDS as readonly string[]).includes(v);
@@ -131,12 +229,90 @@ export function sectionSpec(id: SectionId): SectionSpec {
   return SECTIONS.find((s) => s.id === id) as SectionSpec;
 }
 
-/** "Seven kept for this restaurant, three on your account, one in this browser." */
+const NUMBER_WORDS = [
+  'none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+  'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
+];
+
+/** A count in words, or the digits when the count outruns the vocabulary. */
+export function word(v: number): string {
+  return NUMBER_WORDS[v] ?? String(v);
+}
+
+/** "Ten kept for this restaurant, three on your account, one in this browser." */
 export function keptTally(): string {
   const n = (k: Kept) => SECTIONS.filter((s) => s.kind === k).length;
-  const word = (v: number) =>
-    ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven'][v] ?? String(v);
   return `${word(n('restaurant'))} kept for this restaurant, ${word(n('account'))} on your account, ${word(n('browser'))} in this browser only`;
+}
+
+/* ── The vendor-terms vocabulary ─────────────────────────────────────────── */
+
+/**
+ * Where one term came from. The gateway's four sources
+ * (`vendor-terms/vendor-terms.service.ts`) collapse into three words on the
+ * page, because "stated by a person" and "already on the vendor record" are
+ * both the house's own answer — they differ only in which form somebody typed
+ * it into, and the row says which.
+ */
+export type TermSource = 'stated' | 'vendor_record' | 'inferred' | 'unknown';
+
+export const SOURCE_LABEL: Record<TermSource, string> = {
+  stated: 'stated by the house',
+  vendor_record: 'on the vendor record',
+  inferred: 'inferred',
+  unknown: 'unknown',
+};
+
+export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+export const WEEKDAY_NAMES = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+];
+
+/** "Monday, Wednesday and Friday" — or the sentence for an empty statement. */
+export function fmtWeekdays(days: number[] | null | undefined): string {
+  if (!days) return EM;
+  if (days.length === 0) return 'no fixed days';
+  if (days.length === 7) return 'every day';
+  const names = [...days].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[d] ?? String(d));
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Money, in the house's own currency.
+ *
+ * `restaurants.currency` is `DEFAULT 'USD'`, so a house that never set one is
+ * indistinguishable from a house in dollars. The caller passes `isDefault` and
+ * the register prints the caveat once, at the top, rather than beside every
+ * figure — which would be true and unreadable.
+ */
+export function fmtMoney(value: number | null | undefined, currency: string): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return EM;
+  try {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: value % 1 === 0 ? 0 : 2,
+    }).format(value);
+  } catch {
+    // An unknown ISO code from the column. The number is still true.
+    return `${value.toLocaleString('en-GB')} ${currency}`;
+  }
+}
+
+/** "closes 14:00, the day before" / "closes 11:00 on the day". */
+export function fmtCutoff(time: string | null, offsetDays: number | null): string {
+  if (!time) return EM;
+  if (offsetDays === null || offsetDays === undefined) return time;
+  if (offsetDays === 0) return `${time}, same day`;
+  if (offsetDays === 1) return `${time}, the day before`;
+  return `${time}, ${offsetDays} days before`;
+}
+
+/** "23 of 118" — a share that always shows its denominator. */
+export function fmtShare(part: number, whole: number): string {
+  if (!Number.isFinite(whole) || whole <= 0) return EM;
+  return `${part} of ${whole}`;
 }
 
 /* ── Errors ──────────────────────────────────────────────────────────────── */

@@ -1,6 +1,7 @@
 # SettingsNext — motions, canonical
 
-Six motions, all from `src/lib/mudavym/motion.ts`. A settings page is a place to
+Six motions, all from `src/lib/mudavym/motion.ts`. Unchanged by the fourth
+pass: the three registers it added introduced no seventh. A settings page is a place to
 read carefully and change something deliberately, so the budget is spent on two
 things only: the reveal of a register, and the ceremony that grants autonomy.
 Nothing on this page moves that is not in this table.
@@ -27,8 +28,10 @@ Nothing on this page moves that is not in this table.
 - **No tally.** There is one figure of record here (checks received) and it
   arrives once. A counter rolling up would imply a live feed that does not exist.
 - **No stagger in the contents list.** A table of contents is a reference, not
-  an arrival. The eleventh entry (Cellar, added 2026-09-03) arrives with the
-  other ten and is not introduced.
+  an arrival. The fourteen entries — including the three added on 2026-09-03,
+  Vendor terms, Approval thresholds and What changed here — arrive together and
+  none is introduced. The group headings do not animate either: a heading that
+  appeared would suggest the grouping was computed for this visit.
 - **Nothing marks a restored control.** Quiet hours came back on 2026-09-03 after
   a day rendered as a dead record. A flourish on it would be the page
   congratulating itself for a correction the reader never saw.
@@ -38,3 +41,23 @@ Nothing on this page moves that is not in this table.
   states; the `@media (prefers-reduced-motion: reduce)` block in `SettingsNext`
   disables every CSS transition and the disclosure grid; and `HoldToApprove`
   swaps its timed hold for the same two-step confirm the keyboard path uses.
+
+## Fourth pass, 2026-09-03 — what the three new registers deliberately do NOT move
+
+- **No motion on a recorded term.** Writing down a vendor's cutoff replaces the
+  cell and its provenance line with the server's answer, and nothing marks it.
+  The whole claim of the register is that a stated term and an inferred one are
+  different KINDS of thing, not that one of them just arrived.
+- **No motion on the threshold banner.** "Nothing stops an order yet" is a
+  standing fact about the system, not an alert that fires. Animating it would
+  make a permanent condition read as an event and, worse, make it easy to
+  dismiss.
+- **The settings record does not stream.** Rows arrive in one read and sit
+  still. A ledger whose entries slid in would imply a live feed; the read is a
+  snapshot, and the register says how far back it reaches instead.
+- **The vendor table does not animate its rows on sort.** Vendors are ordered by
+  how much the house actually buys from them, computed on the server, and the
+  order does not change while you look at it.
+- The sticky contents column has no transition of its own — `position: sticky`
+  is layout, not motion, and it is disabled below 900px where a rail would eat
+  the page.
