@@ -1006,21 +1006,34 @@ export class PosHubService {
       //
       // `notes` is the idempotency key verbatim. It used to be `pos:${key}`
       // while the key already began with "pos:", rendering "pos:pos:…".
-      const { error } = await db.from("wine_consumption_log").upsert(
-        {
-          restaurant_id: restaurantId,
-          inventory_id: item.inventory_id,
-          wine_name: item.name,
-          consumption_type: unit,
-          quantity: qty,
-          volume_ml: volumeMl,
-          unit_price: unitPrice,
-          total_revenue: unitPrice != null ? unitPrice * qty : null,
-          source: "pos",
-          notes: idempotencyKey,
-        },
-        { onConflict: "restaurant_id,notes", ignoreDuplicates: true },
-      );
+      //
+      // Measured on the first ADR 0093 live day (2026-09-03): this was an
+      // `upsert(..., { onConflict: "restaurant_id,notes" })`, and EVERY call
+      // failed with 42P10 "there is no unique or exclusion constraint matching
+      // the ON CONFLICT specification" — the index above is PARTIAL
+      // (`where notes is not null and source = 'pos'`), and Postgres only
+      // matches a partial index to a conflict target that repeats its
+      // predicate, which PostgREST cannot express. So the mirror had written
+      // zero rows for every POS sale since 2026-08-24 while the error was
+      // logged and nothing else noticed. The honest shape is a plain INSERT
+      // with the partial unique index as the backstop: a replay raises 23505,
+      // which is the idempotent no-op the upsert was meant to be.
+      const { error } = await db.from("wine_consumption_log").insert({
+        restaurant_id: restaurantId,
+        inventory_id: item.inventory_id,
+        wine_name: item.name,
+        consumption_type: unit,
+        quantity: qty,
+        volume_ml: volumeMl,
+        unit_price: unitPrice,
+        total_revenue: unitPrice != null ? unitPrice * qty : null,
+        source: "pos",
+        notes: idempotencyKey,
+      });
+      if (error?.code === "23505") {
+        // Already mirrored under this key — a webhook replay. Nothing to add.
+        return;
+      }
 
       // This result used to be discarded, which made the comment above a claim
       // the code did not honour. supabase-js RESOLVES with `{ data, error }` on
@@ -1035,7 +1048,7 @@ export class PosHubService {
       // progress all quietly under-count over a ledger that looks complete.
       if (error) {
         this.logger.error(
-          `wine_consumption_log upsert FAILED for ${item.name} ` +
+          `wine_consumption_log insert FAILED for ${item.name} ` +
             `(r=${restaurantId}, key=${idempotencyKey}): ${error.message} ` +
             `[${error.code ?? "no-code"}] — the demand series is now short one ` +
             `event and nothing else records that.`,

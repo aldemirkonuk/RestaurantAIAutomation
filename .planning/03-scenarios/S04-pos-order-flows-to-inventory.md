@@ -102,8 +102,12 @@ changes after repeated depletion patterns are proposed, never auto-applied.
 > `GET /simpos/:id/scenarios/runs/:runId/verify` compares it: `stock.bottle_transactions`,
 > `stock.pours`, `stock.projection` (projection = lots) and `consumption.mirror` are the
 > "correct ledger delta"; `stock.dedupe` + `webhook.duplicate` are "a replay is a no-op".
-> The first live verdict is pending the migrations reaching production on merge — the gate
-> now *runs*; it has not yet *passed* on the record.
+> **PASSED on the record 2026-09-03** (ADR 0093, run `937a23f0`): 19 bottle lines → one
+> `sale` transaction each, 32 glass lines → one pour event each, projection = lots on all
+> 36 wines, the duplicate webhook moved stock once, the void returned its bottle, and every
+> depleting sale reached `wine_consumption_log` once — after the harness found that the
+> mirror had written **zero** rows for every POS sale since 2026-08-24 (42P10 against a
+> partial unique index) and the hub was fixed the same day.
 **SimPOS is the harness for exactly this** (`apps/api-gateway/src/simpos/` — non-production
 only since PR #32). A SimPOS check-close signs the canonical payload with a real HMAC and
 POSTs `generic_webhook` into the hub (`simpos.service.ts:485-509`), so the golden path runs

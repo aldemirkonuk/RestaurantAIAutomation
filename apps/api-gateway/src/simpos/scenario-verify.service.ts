@@ -47,6 +47,16 @@ import {
  *     rolling `sinceDays` aggregate), the comparison is stated as a FLOOR and
  *     `detail` says so.
  */
+/** The instant the engine began posting, if it recorded one (ADR 0093). */
+function postingStartedAt(run: { params?: unknown }): string | null {
+  const p = run?.params;
+  if (p && typeof p === "object" && !Array.isArray(p)) {
+    const v = (p as Record<string, unknown>).posting_started_at;
+    if (typeof v === "string" && v) return v;
+  }
+  return null;
+}
+
 @Injectable()
 export class ScenarioVerifyService {
   private readonly logger = new Logger(ScenarioVerifyService.name);
@@ -209,7 +219,11 @@ export class ScenarioVerifyService {
     await this.lowStockAlerts.triggerEdgeSweep();
     const sweptAt = new Date().toISOString();
 
-    const since = run.posted_at ?? run.created_at ?? new Date(0).toISOString();
+    const since =
+      postingStartedAt(run) ??
+      run.posted_at ??
+      run.created_at ??
+      new Date(0).toISOString();
     const { data, error } = await this.dbService
       .getClient()
       .from("notifications")
@@ -453,7 +467,11 @@ export class ScenarioVerifyService {
           .in("inventory_id", chunk),
     );
 
-    const postedAt = run.posted_at;
+    // The engine stamps `params.posting_started_at` before its first post; the
+    // row's `posted_at` is written after the last. A cron sweep that fires in
+    // between (measured 2026-09-03: 2-minute edge sweep, 3 rows at 02:36:24,
+    // posted_at 02:36:28) belongs to this run, so the window opens at the start.
+    const postedAt = postingStartedAt(run) ?? run.posted_at;
     const notifications = postedAt
       ? await this.readRows<any>("notifications", reads, (c) =>
           c
@@ -1267,9 +1285,31 @@ export class ScenarioVerifyService {
       };
       const missing: string[] = [];
       for (const w of expectedLowStock) {
-        const hit = notifications.rows.filter((n: any) =>
-          wineIdsIn(n).includes(w.inventory_id),
-        );
+        // The low-stock service stamps `wineId` from `wine_id ?? master_wine_id
+        // ?? inventoryId` (low-stock-alerts.service.ts), so a notification names
+        // the LIBRARY wine, not the inventory row. Measured on the first live
+        // day: AMARONE's notification carried its master_wine_id and this
+        // matcher, keyed on inventory_id alone, reported "0 of 1 notified" over
+        // three rows that named it. Accept whichever id the row carries.
+        const wanted = [w.master_wine_id, w.inventory_id]
+          .filter(Boolean)
+          .map(String);
+        const wantedName = String(w.wine_name ?? "")
+          .trim()
+          .toLowerCase();
+        const hit = notifications.rows.filter((n: any) => {
+          if (wineIdsIn(n).some((id) => wanted.includes(id))) return true;
+          // An expectation written before the library id was carried can
+          // still be matched by the name the notification itself shows.
+          const names: string[] = Array.isArray(n?.metadata?.wines)
+            ? n.metadata.wines.map((x: any) =>
+                String(x?.wineName ?? "")
+                  .trim()
+                  .toLowerCase(),
+              )
+            : [];
+          return wantedName !== "" && names.includes(wantedName);
+        });
         if (hit.length === 0) {
           missing.push(`${w.wine_name ?? w.inventory_id}`);
         } else {
@@ -1777,7 +1817,9 @@ export class ScenarioVerifyService {
       if (run.operating_hours == null) throw new Error("hours_unknown");
       parseOperatingHours(run.operating_hours);
     } catch (e: any) {
-      const why = Array.isArray(e?.errors) ? e.errors.join("; ") : (e?.message ?? String(e));
+      const why = Array.isArray(e?.errors)
+        ? e.errors.join("; ")
+        : (e?.message ?? String(e));
       push(
         "hours.closed_day",
         "unverifiable",

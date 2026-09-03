@@ -162,6 +162,32 @@ class FakeRest:
                 "params": dict(params or {}),
             }
         )
+        # ADR 0093 (2026-09-03): the apply path resolves library identities
+        # before the RPC and binds the personas after it.
+        if method == "POST" and path == "/rest/v1/rpc/wine_signature_hash":
+            from scripts.synth.identity import wine_signature_hash
+
+            b = json_body or {}
+            return wine_signature_hash(
+                b.get("p_producer"),
+                b.get("p_name"),
+                b.get("p_vintage"),
+                b.get("p_country"),
+                b.get("p_region"),
+                b.get("p_grape_variety"),
+            )
+        if method == "GET" and path == "/rest/v1/master_wine_library":
+            return []
+        if method == "PATCH" and path == "/rest/v1/users":
+            self.bound_restaurant = (json_body or {}).get("restaurant_id")
+            return None
+        if method == "GET" and path == "/rest/v1/users":
+            ids = (params or {}).get("user_id", "in.()")[len("in.(") : -1].split(",")
+            return [
+                {"user_id": u, "restaurant_id": getattr(self, "bound_restaurant", None)}
+                for u in ids
+                if u
+            ]
         if method == "PATCH" and path == "/rest/v1/restaurants":
             self.patched_hours = (json_body or {}).get("operating_hours")
             return [{"id": (params or {}).get("id", "").removeprefix("eq.")}]

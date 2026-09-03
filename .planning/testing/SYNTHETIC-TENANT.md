@@ -117,6 +117,27 @@ Generator write-set equals teardown tables **and** handlers (D-11/D-12). See `sc
 
 FK-safe order includes `restaurant_menus` (never shorthand `menus`) and sim-filtered `master_wine_library*`.
 
+#### ADR 0093 live-day corrections (2026-09-03) — what the first real run taught the seed
+
+- **The library identity collapses menu lines.** `master_wine_library.signature_hash` is
+  `wine_signature_hash(producer, name, vintage, country, region, grape)`, trigger-set and
+  UNIQUE; `restaurant_inventory` is UNIQUE per (restaurant, wine). The bistro snapshot's 92
+  crawl hashes are 81 identities, and 28 hashes carry case-variant lines. Rule, shared by
+  `seed.py` and the scenario engine through `plan_wine_identities()`: the first line under a
+  hash decides its identity; the first hash carrying an identity owns the wine row and the
+  one inventory row. `scripts/synth/identity.py` mirrors the SQL (pinned by
+  `datasets/sim/fixtures/wine-identity-vectors.json`, 0 mismatches on 92 + 7), the seed
+  re-checks the SQL function at apply and REFUSES on drift, and reuses library rows that
+  already exist (teardown never touches those — it deletes `sim.wine.*` ids only).
+- **Personas need a product sign-in and a tenant.** The gateway's `/auth/login`
+  bcrypt-compares `users.password_hash` (Supabase Auth passwords are not consulted), and its
+  tenant guard compares the JWT's `restaurantId` (from `users.restaurant_id`) with every
+  path. The mirror now carries a cost-10 hash, and the seed binds the three personas to the
+  tenant it just seeded (`_bind_personas_to_restaurant`, read back and asserted).
+- **Load order of env files matters on this machine**: `.env.sim` must win over
+  `apps/api-gateway/.env` for `SIM_*`, and webhooks must be signed with the ROOT `.env`
+  `POS_HUB_WEBHOOK_SECRET` (the gateway's ConfigModule lists the root file first).
+
 #### ADR 0093 additions (2026-09-02) — the scenario harness writes ten more tables
 
 The harness ([[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]]) writes rows the sim seed never wrote. All ten are in `SYNTH_WRITE_SET`, `TEARDOWN_TABLES`, `TEARDOWN_HANDLERS` and `DELETE_ORDER`, with one assertion each in `scripts/test_simulate.py` and `services/agent-orchestrator/tests/test_synth_write_set_gate.py`.

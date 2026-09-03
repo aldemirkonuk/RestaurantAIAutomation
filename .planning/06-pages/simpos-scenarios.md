@@ -105,9 +105,12 @@ gateway with `POS_HUB_WEBHOOK_SECRET` and the sim owner persona's credentials.
   report `unverifiable` rather than borrowing evidence.
 
 ## 10. Maturity — **partial**, and *absent in production*
-Built and unit-tested on 2026-09-02; the first live day against a seeded sim tenant is
-the acceptance run recorded in ADR 0093's review trail — until it is on the record, every
-"pass" this page can show is a mocked one.
+Built and unit-tested on 2026-09-02; **the live day ran on 2026-09-03** against a local
+gateway on the merged `main` and the shared Supabase: run `937a23f0` on `sim-bistro`
+verified **17 pass · 0 fail · 3 unverifiable** after the two levers (ADR 0093, "The live
+day, on the record"). The three unverifiables are the structural ones §9 names. The page
+rendered that verdict for the sim owner persona; "partial" stays because the run itself is
+still started from the CLI, not from this page.
 
 ## 11. Data flow
 Producer → `POST /pos-hub/webhook/generic_webhook/:id` (signed) and `sim_scenario_runs`
@@ -123,7 +126,7 @@ founder can read without code, showing the inputs that produced each verdict. De
 fold into the order log when the harness graduates to a CI job.
 
 ## 13. Roadmap
-1. Run the live day and record the first verdict table in ADR 0093's review trail.
+1. ~~Run the live day and record the first verdict table in ADR 0093's review trail.~~ Done 2026-09-03 (17 · 0 · 3).
 2. Make the run itself startable from the page (today the engine is a CLI, by design —
    the product's own doors are used for every write except the run row).
 3. A missed-webhook detector, so `webhook.dropped` can become a real check (S09).

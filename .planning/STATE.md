@@ -129,8 +129,11 @@ the product learns its operating hours (`restaurants.operating_hours` + Settings
 (pass / fail / unverifiable). Found by reading before any run: sim tenants were phantom
 stock (seed wrote `stock_live`, no lots), a POS void reused the sale's idempotency key and
 never returned stock, and the low-stock email outcome was unrecorded — all three fixed with
-pre-fix failure proofs. **The first live day is pending the two migrations reaching
-production on merge**; until it is on the record, no harness "pass" is a measured one.
+pre-fix failure proofs. **PR #280 merged 2026-09-03; the live day ran three times the same night** and the
+clean run (`937a23f0`) verifies **17 pass · 0 fail · 3 unverifiable** — after fixing six
+more defects the harness surfaced (the POS consumption mirror had written zero rows since
+2026-08-24; the sim seed could not insert its wines; personas could not sign in or reach
+their tenant; two harness faults). Details in ADR 0093, "The live day, on the record".
 
 **Page layer:** 48 route notes in `06-pages/`, each carrying Surface + §1a
 Features + the §10–13 dossier + `archetype:` — both the graph and the

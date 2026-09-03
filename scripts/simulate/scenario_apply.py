@@ -40,6 +40,25 @@ class ScenarioApplyError(RuntimeError):
     """A call the run depends on failed. Never downgraded to an empty result."""
 
 
+def _ssl_context():
+    """A verifying TLS context that also works on a python.org build with no CA bundle.
+
+    Measured 2026-09-03: this machine's Python raised CERTIFICATE_VERIFY_FAILED on
+    every https call to Supabase. `certifi` ships the Mozilla bundle and is what
+    httpx (the synth toolkit's client) already uses; when it is importable we use
+    the same bundle, otherwise the platform default. Verification is never
+    disabled.
+    """
+    import ssl
+
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
 def _request(
     url: str,
     *,
@@ -54,7 +73,9 @@ def _request(
     for key, value in (headers or {}).items():
         request.add_header(key, value)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(
+            request, timeout=timeout, context=_ssl_context()
+        ) as response:
             raw = response.read().decode("utf-8", "replace")
             if not 200 <= response.status < 300:
                 raise ScenarioApplyError(
@@ -209,6 +230,45 @@ def fetch_inventory(
             f"restaurant_inventory returned {type(data).__name__}, expected a list"
         )
     return data
+
+
+def fetch_runs(
+    supabase_url: str,
+    service_key: str,
+    restaurant_id: str,
+    *,
+    scenario: str,
+    seed: int,
+    service_date: str,
+    timeout: float = 30.0,
+) -> list[dict[str, Any]]:
+    """Earlier runs of the SAME (restaurant, scenario, seed, date), newest first.
+
+    Read-only, service role. Check ids are deterministic in those four values,
+    so a second run of the same day re-posts the same `external_check_id`s —
+    which the hub UPSERTS. If the tenant's stock moved since the first run, a
+    stock-dependent scenario plans different lines under the same ids and the
+    replay overwrites the earlier run's checks with different content (measured
+    2026-09-03: two checks rewritten, revenue off by exactly their difference).
+    The CLI refuses that unless `--replay` is given AND the expectation matches.
+    """
+    url = f"{supabase_url.rstrip('/')}/rest/v1/sim_scenario_runs"
+    params = {
+        "restaurant_id": f"eq.{restaurant_id}",
+        "scenario": f"eq.{scenario}",
+        "seed": f"eq.{seed}",
+        "service_date": f"eq.{service_date}",
+        "select": "id,posted_at,expected",
+        "order": "created_at.desc",
+    }
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    data = _request(
+        f"{url}?{urllib.parse.urlencode(params)}",
+        method="GET",
+        headers=headers,
+        timeout=timeout,
+    )
+    return list(data or []) if isinstance(data, list) else []
 
 
 def persist_run(

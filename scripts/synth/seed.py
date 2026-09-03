@@ -7,10 +7,11 @@ Default path is dry-run (``apply=False``). Cloud mutations require ``apply=True`
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Mapping  # Any used by execute_atomic_seed conn
+from typing import Any, Mapping, Sequence  # Any used by execute_atomic_seed conn
 
 from scripts.synth.auth_personas import PERSONA_ROLES, ensure_personas
 from scripts.synth.ids import SIM_NS, sim_org_id, sim_restaurant_id, sim_slug
@@ -18,6 +19,7 @@ from scripts.synth.oracle import SEED_VERSION, build_facts, build_run_row
 from scripts.synth.recipes import apply_overrides, load_recipe
 from scripts.synth.snapshots import MENUS_DIR, load_snapshot
 from scripts.synth.write_set import SYNTH_WRITE_SET
+from scripts.synth.identity import wine_signature_for_item
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -108,6 +110,67 @@ def _placeholder_roster() -> list[dict[str, Any]]:
     return out
 
 
+@dataclass(frozen=True)
+class WineIdentityPlan:
+    """How a menu snapshot's lines map onto library rows and inventory rows.
+
+    The crawl `signature_hash` groups lines by name + producer + vintage, and
+    later lines under one hash can carry case-variant region/grape text. The
+    library's UNIQUE identity is `wine_signature_hash(producer, name, vintage,
+    country, region, grape)`, and `restaurant_inventory` is UNIQUE per
+    (restaurant, wine). So (ADR 0093, measured 2026-09-03 on the bistro menu —
+    92 hashes, 81 identities, 28 hashes with variant lines):
+
+    * the FIRST line under a hash decides that hash's identity;
+    * the FIRST hash carrying an identity owns the wine row AND the one
+      inventory row; every other hash with that identity reuses both.
+
+    The seed and the scenario engine both build their view of the tenant from
+    this one function, so a menu line resolves to the same inventory row on the
+    way in (seed) and on the way out (webhook, expectation, mapping).
+    """
+
+    identity_by_sig: dict[str, str]
+    canonical_sig_by_sig: dict[str, str]
+    wine_id_by_sig: dict[str, str]
+    inventory_id_by_sig: dict[str, str]
+
+    @property
+    def identities(self) -> int:
+        return len(set(self.canonical_sig_by_sig.values()))
+
+    @property
+    def collapsed(self) -> int:
+        return len(self.canonical_sig_by_sig) - self.identities
+
+    def owns(self, sig: str) -> bool:
+        return self.canonical_sig_by_sig.get(sig) == sig
+
+
+def plan_wine_identities(
+    archetype_id: str, items: Sequence[Mapping[str, Any]]
+) -> WineIdentityPlan:
+    identity_by_sig: dict[str, str] = {}
+    owner_by_identity: dict[str, str] = {}
+    canonical: dict[str, str] = {}
+    for item in items:
+        sig = item["signature_hash"]
+        if sig in identity_by_sig:
+            continue
+        identity = wine_signature_for_item(item)
+        identity_by_sig[sig] = identity
+        owner = owner_by_identity.setdefault(identity, sig)
+        canonical[sig] = owner
+    return WineIdentityPlan(
+        identity_by_sig=identity_by_sig,
+        canonical_sig_by_sig=canonical,
+        wine_id_by_sig={s: sim_wine_id(o) for s, o in canonical.items()},
+        inventory_id_by_sig={
+            s: sim_inventory_id(archetype_id, o) for s, o in canonical.items()
+        },
+    )
+
+
 def build_seed_plan(
     archetype_id: str,
     overrides: dict[str, Any] | None = None,
@@ -138,33 +201,59 @@ def build_seed_plan(
     inventory: list[dict[str, Any]] = []
     opening_map: dict[str, dict[str, Any]] = {}
     seen_wine_sigs: set[str] = set()
+    # The library's identity is wine_signature_hash(producer, name, vintage,
+    # country, region, grape) and it is UNIQUE. Two menu lines with different
+    # crawl hashes but the same six fields are ONE library row, so the first
+    # line to carry an identity owns the wine; later lines reuse its id. Without
+    # this the seed_sim_restaurant transaction collided on the index and rolled
+    # back (bistro: 92 line hashes, 81 identities — measured 2026-09-03).
+    ident_plan = plan_wine_identities(archetype_id, items)
+    identity_by_sig = ident_plan.identity_by_sig
+    identity_collapsed = 0
 
     for idx, item in enumerate(items):
         sig = item["signature_hash"]
-        wine_id = sim_wine_id(sig)
+        first_seen = sig not in seen_wine_sigs
+        identity = identity_by_sig[sig]
+        wine_id = ident_plan.wine_id_by_sig[sig]
+        inventory_id = ident_plan.inventory_id_by_sig[sig]
         stock_live = compute_opening_stock(
             item, opening_cfg, restaurant_price_tier=price_tier
         )
-        if sig not in seen_wine_sigs:
+        if first_seen:
             seen_wine_sigs.add(sig)
-            wines.append(
-                {
-                    "id": wine_id,
-                    # Live schema requires wine_id (varchar(20)) in addition to uuid id
-                    "wine_id": f"sim{sig.replace('-', '')[:17]}",
-                    "name": item.get("wine_name"),
-                    "producer": item.get("producer"),
-                    "vintage": item.get("vintage"),
-                    "region": item.get("region"),
-                    "country": item.get("country"),
-                    "grape_variety": item.get("grape_variety"),
-                    # Live schema: primary_type + source (not wine_type / enrichment_source)
-                    "primary_type": item.get("primary_type") or "unknown",
-                    "signature_hash": sig,
-                    "source": "sim",
-                    "data_enrichment": {"source": "sim", "archetype_id": archetype_id},
-                }
-            )
+            if ident_plan.owns(sig):
+                # This hash owns the identity: one provisional wine, one inventory row.
+                wines.append(
+                    {
+                        "id": wine_id,
+                        # Live schema requires wine_id (varchar(20)) in addition to uuid id
+                        "wine_id": f"sim{sig.replace('-', '')[:17]}",
+                        "name": item.get("wine_name"),
+                        "producer": item.get("producer"),
+                        "vintage": item.get("vintage"),
+                        "region": item.get("region"),
+                        "country": item.get("country"),
+                        "grape_variety": item.get("grape_variety"),
+                        # Live schema: primary_type + source (not wine_type / enrichment_source)
+                        "primary_type": item.get("primary_type") or "unknown",
+                        # The trigger recomputes this from the six identity fields;
+                        # the crawl hash is kept only so the row says where it came from.
+                        "signature_hash": sig,
+                        "source": "sim",
+                        "data_enrichment": {
+                            "source": "sim",
+                            "archetype_id": archetype_id,
+                            "library_identity": identity,
+                        },
+                    }
+                )
+            else:
+                # Same six fields as an earlier line: the library would collapse
+                # them into one row, so the plan does too.
+                identity_collapsed += 1
+            # One submission and one inventory row per distinct menu line,
+            # both pointing at the wine that owns the identity.
             submissions.append(
                 {
                     "id": sim_submission_id(archetype_id, sig),
@@ -181,24 +270,27 @@ def build_seed_plan(
                     },
                 }
             )
-            inventory.append(
-                {
-                    "id": sim_inventory_id(archetype_id, sig),
-                    "restaurant_id": restaurant_id,
-                    "master_wine_id": wine_id,
-                    "wine_name": item.get("wine_name"),
+            if ident_plan.owns(sig):
+                # restaurant_inventory is UNIQUE per (restaurant, wine): the
+                # owning hash carries the one row; collapsed hashes pour from it.
+                inventory.append(
+                    {
+                        "id": inventory_id,
+                        "restaurant_id": restaurant_id,
+                        "master_wine_id": wine_id,
+                        "wine_name": item.get("wine_name"),
+                        "stock_live": stock_live,
+                        "threshold_min": threshold_min,
+                        "custom_price": item.get("bottle_price"),
+                        "is_active": True,
+                    }
+                )
+                opening_map[sig] = {
                     "stock_live": stock_live,
                     "threshold_min": threshold_min,
-                    "custom_price": item.get("bottle_price"),
-                    "is_active": True,
+                    "wine_name": item.get("wine_name"),
+                    "master_wine_id": wine_id,
                 }
-            )
-            opening_map[sig] = {
-                "stock_live": stock_live,
-                "threshold_min": threshold_min,
-                "wine_name": item.get("wine_name"),
-                "master_wine_id": wine_id,
-            }
         # Menu rows stay 1:1 with snapshot lines; disambiguate duplicate hashes by index
         menu_items.append(
             {
@@ -207,7 +299,9 @@ def build_seed_plan(
                 "restaurant_id": restaurant_id,
                 "name": item.get("wine_name"),
                 "producer": item.get("producer"),
-                "vintage": None if item.get("vintage") is None else str(item.get("vintage")),
+                "vintage": (
+                    None if item.get("vintage") is None else str(item.get("vintage"))
+                ),
                 "region": item.get("region"),
                 "country": item.get("country"),
                 "grape_variety": item.get("grape_variety"),
@@ -324,7 +418,9 @@ def build_seed_plan(
     # Sanity: planned tables ⊆ write-set
     unknown = set(tables) - set(SYNTH_WRITE_SET)
     if unknown:
-        raise RuntimeError(f"seed plan tables not in SYNTH_WRITE_SET: {sorted(unknown)}")
+        raise RuntimeError(
+            f"seed plan tables not in SYNTH_WRITE_SET: {sorted(unknown)}"
+        )
 
     payload = {
         "organization": org_row,
@@ -352,6 +448,11 @@ def build_seed_plan(
         "snapshot_path": snap_path,
         "snapshot_sha256": snap_sha,
         "sku_count": len(items),
+        "library_identities": ident_plan.identities,
+        "identity_collapsed": identity_collapsed,
+        "identity_by_sig": identity_by_sig,
+        "inventory_id_by_sig": ident_plan.inventory_id_by_sig,
+        "wine_id_by_sig": ident_plan.wine_id_by_sig,
         "tables": tables,
         # What --apply will send to `apply_stock_movement`, keyed by the
         # idempotency key that makes a re-run a no-op.
@@ -659,14 +760,18 @@ def _call_seed_rpc_http(payload: Mapping[str, Any]) -> dict[str, Any]:
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required for RPC apply")
+        raise RuntimeError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required for RPC apply"
+        )
     url = f"{supabase_url.rstrip('/')}/rest/v1/rpc/seed_sim_restaurant"
     headers = {
         "apikey": service_key,
         "Authorization": f"Bearer {service_key}",
         "Content-Type": "application/json",
     }
-    resp = httpx.post(url, json={"payload": dict(payload)}, headers=headers, timeout=120.0)
+    resp = httpx.post(
+        url, json={"payload": dict(payload)}, headers=headers, timeout=120.0
+    )
     if resp.status_code >= 400:
         raise RuntimeError(
             f"seed_sim_restaurant RPC failed status={resp.status_code} body={resp.text[:500]}"
@@ -807,9 +912,7 @@ def _materialise_opening_stock(plan: Mapping[str, Any], rest_caller) -> dict[str
             "stock; refusing to guess whether the lots already exist"
         )
     existing_keys = {
-        str(r.get("idempotency_key"))
-        for r in existing_rows
-        if r.get("idempotency_key")
+        str(r.get("idempotency_key")) for r in existing_rows if r.get("idempotency_key")
     }
 
     materialised = 0
@@ -894,6 +997,159 @@ def _call_seed_via_database_url(payload: Mapping[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
+def _resolve_library_identities(plan: dict[str, Any], rest_caller) -> dict[str, Any]:
+    """Before the seed RPC: prove the identity mirror, and reuse library rows that exist.
+
+    Two things the RPC cannot do for itself (ADR 0093, seed collision found
+    2026-09-03):
+
+    1. **Parity.** Every planned wine's identity is recomputed by the SQL
+       function `wine_signature_hash` and compared with the Python mirror in
+       `scripts/synth/identity.py`. Any difference raises — a seed that collapsed
+       on a stale rule would collide inside the transaction exactly as before,
+       and a mirror that drifted silently is worse than none.
+    2. **Reuse.** `master_wine_library.signature_hash` is UNIQUE, and the library
+       already holds 4,094 real wines. A sim wine whose identity exists is not
+       inserted; every reference to its provisional id (inventory, submissions,
+       menu items, opening-stock plan, ground-truth facts) is repointed at the
+       existing row. Teardown deletes only `sim.wine.*` ids, so the real row is
+       never touched.
+    """
+    payload = plan["payload"]
+    wines = list(payload.get("master_wine_library") or [])
+    identity_by_sig: dict[str, str] = dict(plan.get("identity_by_sig") or {})
+    if not wines:
+        return {
+            "library_reused": 0,
+            "library_inserted": 0,
+            "identity_parity_checked": 0,
+            "library_remap": {},
+        }
+
+    # (1) parity, one RPC per planned wine
+    drift: list[str] = []
+    for w in wines:
+        sql_hash = rest_caller(
+            "POST",
+            "/rest/v1/rpc/wine_signature_hash",
+            json_body={
+                "p_producer": w.get("producer"),
+                "p_name": w.get("name"),
+                "p_vintage": w.get("vintage"),
+                "p_country": w.get("country"),
+                "p_region": w.get("region"),
+                "p_grape_variety": w.get("grape_variety"),
+            },
+        )
+        expected = identity_by_sig.get(w.get("signature_hash"))
+        if not isinstance(sql_hash, str) or sql_hash != expected:
+            drift.append(
+                f"{w.get('producer')} / {w.get('name')}: sql={sql_hash!r} mirror={expected!r}"
+            )
+    if drift:
+        raise RuntimeError(
+            "seed refused: scripts/synth/identity.py no longer matches "
+            f"wine_signature_hash() for {len(drift)} wine(s) — fix the mirror first. "
+            + "; ".join(drift[:3])
+        )
+
+    # (2) reuse existing library rows, chunked so the filter stays a sane URL
+    identities = sorted({identity_by_sig[w["signature_hash"]] for w in wines})
+    existing_by_identity: dict[str, str] = {}
+    for i in range(0, len(identities), 50):
+        chunk = identities[i : i + 50]
+        rows = rest_caller(
+            "GET",
+            "/rest/v1/master_wine_library",
+            params={
+                "select": "id,signature_hash",
+                "signature_hash": f"in.({','.join(chunk)})",
+            },
+        )
+        for r in rows or []:
+            existing_by_identity[str(r["signature_hash"])] = str(r["id"])
+    remap: dict[str, str] = {}
+    kept: list[dict[str, Any]] = []
+    for w in wines:
+        existing = existing_by_identity.get(identity_by_sig[w["signature_hash"]])
+        if existing and existing != w["id"]:
+            remap[w["id"]] = existing
+        else:
+            kept.append(w)
+    payload["master_wine_library"] = kept
+
+    def _walk(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _walk(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_walk(v) for v in obj]
+        if isinstance(obj, str) and obj in remap:
+            return remap[obj]
+        return obj
+
+    if remap:
+        for key in (
+            "restaurant_inventory",
+            "master_wine_library_submissions",
+            "menu_items",
+            "oracle_facts",
+        ):
+            if key in payload:
+                payload[key] = _walk(payload[key])
+        for key in ("opening_stock_plan", "opening_map"):
+            if key in plan:
+                plan[key] = _walk(plan[key])
+    return {
+        "library_reused": len(remap),
+        "library_inserted": len(kept),
+        "identity_parity_checked": len(wines),
+        "library_remap": remap,
+    }
+
+
+def _bind_personas_to_restaurant(
+    plan: Mapping[str, Any], rest_caller
+) -> dict[str, Any]:
+    """Point each persona's `users.restaurant_id` at the tenant just seeded.
+
+    The gateway signs `restaurantId` into the session from `users.restaurant_id`
+    and its tenant guard compares that claim with the `:restaurantId` in every
+    path — a persona whose mirror row carries NULL is refused with "Tenant
+    isolation violation" on the very tenant it was seeded into (measured
+    2026-09-03, ADR 0093 live day). The three personas are shared across sim
+    tenants, so the last tenant seeded is the one they act in.
+    """
+    payload = plan["payload"]
+    restaurant_id = str(plan["restaurant_id"])
+    user_ids = [
+        str(u["user_id"]) for u in (payload.get("users") or []) if u.get("user_id")
+    ]
+    if not user_ids:
+        return {"personas_bound": 0}
+    rest_caller(
+        "PATCH",
+        "/rest/v1/users",
+        params={"user_id": f"in.({','.join(user_ids)})"},
+        json_body={"restaurant_id": restaurant_id},
+    )
+    rows = rest_caller(
+        "GET",
+        "/rest/v1/users",
+        params={
+            "select": "user_id,restaurant_id",
+            "user_id": f"in.({','.join(user_ids)})",
+        },
+    )
+    bound = [r for r in (rows or []) if str(r.get("restaurant_id")) == restaurant_id]
+    if len(bound) != len(user_ids):
+        raise RuntimeError(
+            f"persona binding: expected {len(user_ids)} users bound to {restaurant_id}, "
+            f"read back {len(bound)} — the seed must not report success over personas "
+            "the gateway would refuse"
+        )
+    return {"personas_bound": len(bound)}
+
+
 def apply_seed(
     archetype_id: str,
     *,
@@ -944,6 +1200,20 @@ def apply_seed(
     plan = build_seed_plan(archetype_id, overrides=overrides, roster=roster)
     plan["dry_run"] = False
     plan["apply"] = True
+    # An injected `rpc_caller` means a test harness. Reaching for the real
+    # network for the REST half would make a unit test silently talk to the only
+    # Supabase project there is — production. Refuse loudly instead.
+    if rpc_caller is not None and rest_caller is None:
+        raise RuntimeError(
+            "apply_seed: rpc_caller was injected but rest_caller was not. The "
+            "apply path resolves library identities, PATCHes operating_hours and "
+            "materialises opening stock over REST (ADR 0093); inject a rest_caller "
+            "so the test does not reach the network."
+        )
+    caller = rest_caller if rest_caller is not None else _service_rest_caller
+    # ADR 0093: prove the identity mirror and reuse existing library rows BEFORE
+    # the atomic seed, so the transaction cannot collide on the UNIQUE index.
+    plan.update(_resolve_library_identities(plan, caller))
     payload = build_rpc_payload(plan)
 
     if rpc_caller is not None:
@@ -961,19 +1231,8 @@ def apply_seed(
     # ADR 0093. Both steps run only AFTER the seed RPC succeeded, and both
     # raise on failure: a seed that reported success over a tenant with no
     # hours, or with phantom stock, is the exact fault this is fixing.
-    #
-    # An injected `rpc_caller` means a test harness. Reaching for the real
-    # network for the REST half would make a unit test silently talk to the only
-    # Supabase project there is — production. Refuse loudly instead.
-    if rpc_caller is not None and rest_caller is None:
-        raise RuntimeError(
-            "apply_seed: rpc_caller was injected but rest_caller was not. The "
-            "apply path also PATCHes operating_hours and materialises opening "
-            "stock over REST (ADR 0093); inject a rest_caller so the test does "
-            "not reach the network."
-        )
-    caller = rest_caller if rest_caller is not None else _service_rest_caller
     plan.update(_write_operating_hours(plan, caller))
+    plan.update(_bind_personas_to_restaurant(plan, caller))
     plan.update(_materialise_opening_stock(plan, caller))
     return plan
 
@@ -985,5 +1244,6 @@ __all__ = [
     "compute_opening_stock",
     "execute_atomic_seed",
     "opening_stock_idempotency_key",
+    "plan_wine_identities",
     "sim_wine_id",
 ]
