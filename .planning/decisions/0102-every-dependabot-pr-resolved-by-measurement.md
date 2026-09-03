@@ -253,6 +253,30 @@ neither app uses the removed default export. 0100 established this statically;
 this change adds the runtime half it was missing (web build + web tests +
 mobile typecheck).
 
+### The fix's own comment failed the PR gate, and that is worth recording
+
+The first push carried the pillow explanation as a comment block *above*
+`pillow==10.2.0`, and edited that line's trailing comment. Trivy then reported
+**"15 new alerts including 10 high severity security vulnerabilities"** and the
+PR Audit Gate went red on it.
+
+All fifteen were the *pre-existing* pillow advisories at
+`requirements.txt` — the pin that this change deliberately does not move. They
+were classified as **new** purely because the line's text changed: Trivy
+fingerprints a manifest alert by the line, so editing `# Image manipulation`
+re-reported every advisory attached to it as introduced by this PR. The other
+alerts on lines that merely *shifted* (`pytest` at 161 → 164, unchanged text)
+were not re-reported, which is what isolates text rather than position as the
+key.
+
+The pin line is now kept byte-identical to `main` and the explanation sits
+**below** it. Nothing is suppressed — those fifteen advisories remain open
+against `requirements.txt` on `main`, visible in the security tab, and the
+comment says why they cannot be closed there. What changed is that a
+documentation comment no longer masquerades as fifteen newly-introduced
+vulnerabilities. A gate that fires on the act of explaining a known risk trains
+people to stop explaining.
+
 ### Advisory re-check on the target versions
 
 Zero open advisories against **every** target version — `pillow@12.3.0`,

@@ -65,12 +65,18 @@ opencv-python==4.9.0.80  # Image processing
 # disabled itself. requirements only said torch>=2.4.1, so a fresh venv resolved
 # torch 2.13 and broke label detection with nothing but a warning in the log.
 ultralytics==8.3.253
-# pillow stays on 10.2.0 HERE ONLY. Dependabot #89 asked for 12.3.0 in both files;
-# measured, this file cannot take it: surya-ocr (line below) declares
-# pillow>=10.2.0,<11.0.0 at every published version, so pip backtracks to
-# surya-ocr 0.6.0 and then reports ResolutionImpossible. requirements.prod.txt —
-# the file the Dockerfile installs — carries 12.3.0 and has no surya-ocr.
-pillow==10.2.0  # Image manipulation (capped by surya-ocr's pillow<11)
+pillow==10.2.0  # Image manipulation
+# ^ pillow stays on 10.2.0 HERE ONLY, and the line above is kept byte-identical
+# on purpose. Dependabot #89 asked for 12.3.0 in both requirements files;
+# measured, this file cannot take it — surya-ocr declares
+# pillow>=10.2.0,<11.0.0 at EVERY published version, so pip backtracks to
+# surya-ocr 0.6.0 and then reports ResolutionImpossible, and CI installs this
+# file. requirements.prod.txt — the one the Dockerfile installs — carries
+# 12.3.0 and has no surya-ocr, so the container that ships is patched.
+# The comment sits BELOW the pin because Trivy fingerprints an alert by the
+# line's text: editing that line re-reported all fifteen pre-existing pillow
+# advisories as "new alerts introduced by this pull request" and failed the PR
+# Audit Gate. They are pre-existing either way. See ADR 0102.
 pytesseract==0.3.10  # Alternative OCR backend
 pytz==2024.1  # Timezone support for manager preferences
 
