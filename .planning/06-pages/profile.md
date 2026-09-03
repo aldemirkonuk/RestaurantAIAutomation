@@ -82,23 +82,95 @@ behind it exists:
   a new gateway module (`apps/api-gateway/src/mcp-connections/`) and a new table
   (`user_mcp_connections`, migration `20260903094500`): name, endpoint, scopes granted,
   declared date, last call, status, and a working **Add** and **Revoke**, JWT-guarded and
-  scoped to the user AND the restaurant on the token. **"Last call" is `—` on every row
-  and says why in one line** — nothing in this product dispatches to a model-context
-  server yet, so `last_used_at` is nullable rather than defaulted, and the register states
-  that a row is a declaration, not traffic. Revoked rows are kept, marked revoked
-- **Payment register — REAL table and routes as of 2026-09-03, provider still absent.** A
-  list model over a new gateway module (`apps/api-gateway/src/payment-methods/`) and a new
-  table (`payment_methods`, migration `20260903094600`): cards / bank (ACH) / Apple Pay /
-  invoice terms, with `brand`, `last4`, `exp`, `is_default`, `provider`, `provider_ref`.
-  **"Add a card" opens the real form and its submit is `disabled` with one line** —
-  *"Stripe is not connected — this saves nothing until it is"* — and the gateway agrees:
-  `POST /payment-methods` returns 503 with the same reason while no credential is
-  configured. The empty register says WHICH kind of empty it is, from the server's own
-  `provider.connected` field: not "you have not added a card" but "no provider is
-  connected, so no card can exist". Its chip is **`Provider not connected`**, a state of
-  its own — reusing `Not built` there would have said the same word about a register with
-  a table, a module and three working routes as about a feature with zero code behind it,
-  and the two have completely different fixes (an env var versus a build)
+  scoped to the user AND the restaurant on the token. Revoked rows are kept, marked revoked
+- **Model context — the register CALLS, third pass the same day (was: every "Last call" an
+  em dash).** `POST /mcp-connections/:id/probe` runs the Model Context Protocol lifecycle
+  over the Streamable HTTP transport (`initialize` → `notifications/initialized` →
+  `tools/list`, spec revision `2025-06-18`) from a new module
+  (`apps/api-gateway/src/mcp-runtime/`, migration `20260903104500`), and the row records
+  what answered: **status, the server's own name and version, the protocol it negotiated
+  to, and the names of the tools it lists**. Both response shapes the spec makes mandatory
+  are handled (`application/json` and `text/event-stream`), the server's `Mcp-Session-Id`
+  is echoed on every later request, `MCP-Protocol-Version` carries the version the SERVER
+  negotiated to rather than the one we asked for, and `tools/list` is **not sent at all**
+  to a server whose handshake declared no `tools` capability — "it never offered a tool
+  list" and "it offered an empty one" are different sentences on the row
+- **Two timestamps, because a call and an answer are two facts.** *Last call*
+  (`last_probe_at`) is stamped on every probe; *Last answered* (`last_used_at`) only on a
+  handshake that completed, keeping the meaning `20260903094500` gave that column. A failed
+  check leaves the previous answer where it was, so a server dead for a month cannot read
+  as busy. A server nobody has checked carries an **em-dash chip** — not `Connected`, not
+  `Not connected` — because a declaration is not a measurement
+- **A per-connection credential: encrypted, refused, or absent — never plaintext.** Optional
+  on the Add form and settable per row; AES-256-GCM under `MCP_CONNECTION_SECRET_KEY`
+  (`mcp-runtime/mcp-secret.service.ts`). With no key **the gateway refuses the whole write
+  with a 503 naming the variable** and the field renders disabled carrying the same
+  sentence, so a NULL never means "stored, unencrypted". A key that is not exactly 32 bytes
+  is refused rather than stretched. No route returns the value:
+  `McpConnectionsService.ROW_COLUMNS` does not name `secret_encrypted`, so it is never
+  fetched rather than filtered afterwards, and the row reports only `hasSecret` and the
+  **date** it was set. Revoking destroys the credential rather than orphaning it
+- **Tool INVOCATION is not built, and the row says it is a decision, not a gap.** No
+  `tools/call`, no route that reaches one, no column for one, and a structural test
+  asserting the runtime service has no `call`/`callTool`/`invoke` method. Calling a tool
+  can send an email or place an order, which is ADR 0013's commitment guardrail — undecided
+  for model-context dispatch. The sentence under a tool list comes from **the server**
+  (`GET /mcp-connections/runtime` → `invocation: {enabled: false, reason}`), so the page
+  states a rule rather than making a promise of its own
+- **The gateway will not fetch a private address.** A probe makes the *server* fetch a URL
+  a *user* typed, so `mcp-runtime/mcp-endpoint.guard.ts` resolves the host and refuses
+  loopback, link-local (`169.254.0.0/16`, where cloud instance metadata lives), RFC1918,
+  CGNAT, unique-local and IPv4-mapped forms unless `MCP_ALLOW_PRIVATE_ENDPOINTS=true`; and
+  redirects are not followed, so a bearer cannot be carried to a host the check never saw.
+  Bounded besides: one 8s deadline across all three requests, a 256 KiB body ceiling
+  enforced by reading the stream chunk-by-chunk rather than buffering it, and a tool cap
+  that stores what the server **said** (`probe_tool_count`) beside what was kept, so a
+  truncation cannot read as the whole catalogue
+- **Payment register — the PROVIDER is built now (ADR 0110, third pass 2026-09-03).**
+  Was: a table, a module, three routes and an Add form whose four fields
+  (`brand`, `last4`, `exp`, kind) were typed BY HAND, with the submit disabled
+  because `STRIPE_SECRET_KEY` was unset. That form is deleted, not disabled —
+  it described a create path that would have turned one env var into an
+  operator-typed instrument. What replaced it:
+  - **A card is collected by Stripe's own iframes** against a SetupIntent
+    (`POST /billing/setup-intent` → `StripeCardPanel` → `confirmSetup`). The
+    number is typed on `js.stripe.com` and never reaches this page, this bundle
+    or the gateway, which is the whole reason the product stays in PCI SAQ-A.
+    Stripe.js is loaded from Stripe's host, not from npm: the official package
+    injects the same script tag, and the app ships no CSP to allow it through
+    (measured — no `<meta http-equiv>` in `index.html`, no CSP header in either
+    `vercel.json`, no `helmet` in the gateway)
+  - **Hold-to-approve is the commitment.** *Hold to put this card on file* is
+    the second and only other place on `/profile` the seal is pressed — the page
+    note's earlier claim that it appears "exactly once" is superseded, and §1b
+    says why two is still a ration
+  - **A row says how stale it is.** `synced_at` records when we last agreed with
+    the provider; every other column is a cached copy of Stripe's answer, so a
+    row that has never been confirmed says so instead of implying a present
+    tense. **Reconcile now** (`POST /billing/sync`) re-reads the provider's list
+    and DROPS instruments it no longer holds
+  - **Charging is structurally impossible.** `StripeClient` throws before it can
+    build a request to `payment_intents`, `charges`, `subscriptions`, `invoices`,
+    `refunds`, `transfers`, `payouts` or `checkout/sessions`. Pricing is OD-23
+    and open; the guard is the version of that promise that outlives the ADR
+  - **A new row, "The provider", is the honesty seam made visible.** It names
+    each of the three secrets and the process each lives in
+    (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` on the gateway;
+    `VITE_STRIPE_PUBLISHABLE_KEY` in the web bundle, which the gateway cannot
+    see and so the page reports itself), the key's mode from its own prefix, the
+    pinned API version, and **when a signed delivery last arrived**. A webhook
+    secret that is set and has never had a delivery reads *"configured, never
+    delivered"* — not as health. That is the single most expensive
+    absence-as-health inversion this register can have: without deliveries a
+    card removed at Stripe goes on showing here forever
+  - **An instrument our vocabulary does not span is filed as `other`** with
+    Stripe's own word printed beside it, never as a `card` it is not. `kind`
+    gained the value and the migration proves the widened CHECK still rejects an
+    unlisted one
+  - Its chip is still **`Provider not connected`** when no key is set, a state
+    of its own — reusing `Not built` would say the same word about a register
+    with a table, a module, a provider client and six working routes as about a
+    feature with zero code behind it
 - **Plan is a figure, not a dash (was `—`).** `GET /organizations/locations/:id` now
   selects and returns `subscription_tier`. The shipping page prints `Plan: Free` from a
   hardcoded `useState('Free')` (`Profile.tsx:90`, rendered `:723`); this page prints what
@@ -128,18 +200,21 @@ from `apps/web/src/lib/mudavym/motion.ts`.
 | id | token | curve · ms | fires |
 |---|---|---|---|
 | `pf-open` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the opening block — wordmark, role/location line, the name in Fraunces, the standing sentence — once on mount; opacity + 6px rise via `animate()` |
-| `pf-expand` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | a connection row's panel: "What you granted" / "What it would ask for" (Workspace), "Scopes and dates" (a model-context server), "Show the working" (the session row). CSS `grid-template-rows: 0fr → 1fr` (053's row-expand, the founder's named favourite) |
+| `pf-expand` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | a connection row's panel: "What you granted" / "What it would ask for" (Workspace), "Scopes, tools and dates" (a model-context server — opened for you when a check comes back, so the answer is where you are already looking), "Show the working" (the session row). CSS `grid-template-rows: 0fr → 1fr` (053's row-expand, the founder's named favourite) |
 | `pf-ink` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | hover/focus on rows, buttons and membership entries — border and ground only; nothing translates or scales |
-| `pf-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to delete this account** inside `HoldToApprove`; an early release retreats on `tuck` (spring 380/32, ~300ms) and says what did not happen |
-| `pf-stamp` | `stamp` | sampled spring 500/26 (~11% overshoot) · 360ms | the seal landing when that hold completes — the only overshoot on the page, and the only place the seal is pressed |
+| `pf-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to delete this account** (Register VII) and, from 2026-09-03, under **Hold to put this card on file** (Register V), both inside `HoldToApprove`; an early release retreats on `tuck` (spring 380/32, ~300ms) and says what did not happen |
+| `pf-stamp` | `stamp` | sampled spring 500/26 (~11% overshoot) · 360ms | the seal landing when either hold completes — the only overshoot on the page, and the only **two** places the seal is pressed. Confirming a SetupIntent is the moment an instrument becomes chargeable, which is the one other act here that changes what the product may do TO the house rather than what it knows ABOUT it |
 
 Deliberate non-motions: no stagger or arrival (an account page is a reference, not an
 event); no tally (the plan became a figure on 2026-09-03 and still does not animate — it
 is a label read once, not a total that moved); no skeleton sheen (loading is stated in
 words, so a moving bar would make "in flight" and "failed" look alike again); chips do not
 transition; the two forms that open ("Add a server", "Add a card") swap in with no
-transition — a form whose submit is disabled must not arrive with a flourish that would be
-the only part of it that worked; a revoked model-context server is not animated away,
+transition — a panel that cannot store anything must not arrive with a flourish that would
+be the only part of it that worked; Stripe's own card fields are iframes and are not
+animated by this page at all, only given a palette read off the live `.mudavym` root;
+"Reconcile now" gets a label change and no spinner, because a spinner would make waiting
+look like progress while the outcome is words; a revoked model-context server is not animated away,
 because that is the visual form of the thing the soft revoke exists to prevent; the
 reversible exit ("Leave restaurant") arms with a label change and no motion at all.
 `prefers-reduced-motion` collapses `pf-open` to its end state via `animate()`, disables
@@ -319,7 +394,7 @@ same page. What separates them is the state chip and whether the control is live
 
 **Two alternatives considered and not built** (the founder decides after seeing this one):
 
-1. **Connect the MCP server, not just declare it.** The obvious next move is a handshake:
+1. ~~**Connect the MCP server, not just declare it.**~~ **BUILT the same day — see “Third pass … the model-context register calls” below, and ADR 0107. The paragraph is kept unstruck below because its reasoning is what the third pass had to answer: the first reason turned out to be wrong (the handshake is a published spec, not a fork) and the second was right and is why the credential arrived with the code path rather than before it.** The obvious next move is a handshake:
    call the endpoint on save, list the tools it actually exposes, and store a credential.
    Not built, and the table deliberately has no token column. Two reasons: the handshake is
    an undecided fork (which transports, whose credential, what happens when a server the
@@ -385,7 +460,7 @@ same page. What separates them is the state chip and whether the control is live
   is the one route unaffected by the missing table: it refuses before it reads or writes.
   The `whitelist: true` pipe means a PAN or CVC cannot even reach the service. And the guard
   is on: no bearer, no register.
-- **The Nest boot guard could not be run whole.** `scripts/check_gateway_boots.sh` fails on
+- ~~**The Nest boot guard could not be run whole.**~~ **SUPERSEDED 2026-09-03 (third pass): the unrelated `AnalyticsModule` defect was fixed by another session and `scripts/check_gateway_boots.sh` now returns PASS on this worktree. The substitution below was correct when written and is no longer needed.** `scripts/check_gateway_boots.sh` fails on
   this worktree for an unrelated in-flight change — `AnalyticsModule` cannot resolve
   `DayExclusionsService`. **Substituted, not skipped:**
   `mcp-connections.controller.spec.ts` compiles both new module graphs on their own
@@ -419,6 +494,321 @@ same page. What separates them is the state chip and whether the control is live
   about — a claim about state outside your own paths has to be re-measured at the moment
   you write it down, not carried forward from when you first saw it.
 
+
+### Third pass, 2026-09-03 — Stripe as the live payment provider (Register V only)
+
+**What the founder asked.** *"Stripe as the live payment provider … with
+`STRIPE_SECRET_KEY` set: create a SetupIntent, confirm on the client via
+Stripe.js, store `provider_ref` (never a PAN), list/detach; without the key
+everything renders and submit is disabled with the reason. Webhook endpoint with
+signature verification and idempotency. No charges — the build stops at 'a card
+on file'."*
+
+**The first thing this pass found was that its own predecessor's gap note was
+wrong.** G10 read *"Everything except the credential is built."* Measured on
+this branch before writing any code:
+
+| G10's claim | measured 2026-09-03 |
+|---|---|
+| a provider client exists | **no** — `grep -ril stripe apps/api-gateway/src` matched three files, all in `payment-methods/`, all prose or the literal `'stripe'`; zero HTTP calls to any provider |
+| a webhook exists | **no** — the only signed webhooks in the repo were Toast and pos-hub (`pos-hub.controller.ts:72-115`) |
+| the `pm_...` reference was obtainable | **no** — nothing minted a SetupIntent, so `CreatePaymentMethodDto.providerRef` was a required field no caller in this product could fill |
+| `stripe` / `@stripe/stripe-js` installed | **no** — absent from both `package.json` files |
+
+So setting `STRIPE_SECRET_KEY` on the pre-existing tree would not have switched
+the register on. It would have enabled an Add form whose four hand-typed fields
+(`brand`, `last4`, `exp`, kind) became the register's content — a row that
+renders as `Visa ••••4242` and can never be charged. **The honest refusal was
+one environment variable from a fabricated record.** That is why the form is
+deleted rather than kept and disabled.
+
+**What was built** (ADR `0110-a-card-on-file-is-the-providers-record-not-ours.md`):
+
+| | Was (second pass) | Is (third pass) |
+|---|---|---|
+| **Collecting a card** | four fields typed by hand, submit disabled | Stripe Elements against a SetupIntent, on Stripe's origin. `StripeCardPanel.tsx`, `stripe-js.ts` |
+| **The commitment** | a disabled `Save payment method` button | `HoldToApprove` — *Hold to put this card on file*. The second and only other seal on the page |
+| **Provider state** | one boolean + one sentence | each of three secrets named with the process it lives in, the key's mode from its own prefix, the pinned API version, and **when a signed delivery last arrived** |
+| **Freshness** | nothing | `synced_at` per row, plus **Reconcile now** which also DROPS what the provider no longer holds |
+| **Removal** | deleted our row | detaches at the provider FIRST, then deletes — otherwise the next reconcile faithfully restores it and the delete silently undoes itself |
+| **Default instrument** | not offered | `PATCH /payment-methods/:id/default`, written at the provider before the local flag |
+| **Stripe's own account of change** | nothing | `POST /billing/webhook`, HMAC over the exact request bytes, idempotent on the event id |
+
+**What was built in the gateway** (all with specs; `pnpm --filter
+@wineops/api-gateway exec tsc --noEmit -p tsconfig.spec.json` clean):
+
+- `apps/api-gateway/src/billing/**` — **new module.** `stripe-signature.ts` (a
+  pure verifier: exact bytes, constant-time compare, five-minute replay window,
+  fails closed with no secret), `stripe.client.ts` (four calls over the `axios`
+  already installed, `Stripe-Version` pinned, `Idempotency-Key` on every POST,
+  and a `FORBIDDEN_PATHS` guard that throws before building a request to any
+  money-moving resource), `stripe-config.service.ts` (the provider state,
+  including the delivery evidence), `billing-customer.service.ts`,
+  `payment-method-mirror.service.ts` (the provider→row mapping, pure and static
+  so the place a fabricated value would enter is testable without a database),
+  `billing.service.ts`, `billing.controller.ts`. Specs: `stripe-signature.spec.ts`
+  (12), `stripe.client.spec.ts` (14), `payment-method-mirror.service.spec.ts` (8),
+  `billing.service.spec.ts` (13) — **47 new gateway tests**, all green.
+- `apps/api-gateway/src/billing/billing-config.module.ts` — the primitives live
+  in their own module so `PaymentMethodsModule` and `BillingModule` can both use
+  them **without a cycle**. A cycle there takes down the whole Nest injector at
+  boot, which is the failure `check_gateway_boots.sh` exists to catch.
+- `apps/api-gateway/src/payment-methods/**` — `remove` detaches at the provider
+  first; `setDefault` is new and writes at the provider first; `list` now returns
+  the richer provider state and three new row fields; `providerState` delegates
+  to the one `StripeConfigService` the billing routes use, so there is a single
+  implementation of "is the provider connected". Spec rewritten (13, up from 9), and two of
+  its assertions are about ORDER rather than about calls, because the ordering is
+  the whole correctness argument.
+- `supabase/migrations/20260903110000_billing_stripe_provider.sql` —
+  `billing_customers` (unique per restaurant **per key mode**, so a test customer
+  is never reused under a live key), `billing_webhook_events` (the provider's
+  event id as the PRIMARY KEY, `outcome` NOT NULL so an ignored event is recorded
+  as ignored with its reason), and three columns on `payment_methods`
+  (`provider_type`, `synced_at`, `livemode`) plus a widened `kind` CHECK. Its
+  `DO` block proves the widened CHECK still rejects an unlisted value, that the
+  PAN guard from `20260903094600` is still armed after the `ALTER`, that
+  `synced_at` is NULLABLE (a `NOT NULL DEFAULT now()` would make every row claim
+  a confirmation that never happened), and that a duplicate event id is actually
+  rejected.
+
+**The idempotency half that is usually got wrong.** A claim row is written before
+the event is applied, so a redelivery cannot double-apply. But a delivery that
+was claimed and then failed halfway must still be retryable, or a transient
+database error permanently swallows the event that tells us a card was removed.
+So the claim records `handled`, and a redelivery of an event whose row says
+`handled = false` is **processed**; only a completed event is ignored. Both
+halves are asserted (`billing.service.spec.ts`).
+
+**Honesty rules applied to the new work.**
+
+- **A secret that is set is not a seam that works.** The provider row prints when
+  a signed delivery last arrived, and never is never — in words, on the row.
+- **A cached copy says when it was cached.** Every column except `provider_ref`
+  is Stripe's answer at a moment; the row prints that moment rather than
+  asserting a present tense.
+- **A vocabulary mismatch is not resolved by guessing.** An instrument whose
+  Stripe type our four kinds do not span is `other` with the provider's own word
+  shown, never a `card` it is not.
+- **An ignored webhook is recorded as ignored.** `billing_webhook_events.outcome`
+  is NOT NULL; a delivery log holding only the events we acted on would report
+  absence as health.
+- **The refusal is by NAME.** "Stripe is not connected" became
+  "`STRIPE_SECRET_KEY` is not set on the gateway" / "`VITE_STRIPE_PUBLISHABLE_KEY`
+  is not set in this web bundle", because three secrets in two processes can be
+  missing and one sentence told the operator nothing about which.
+
+**The two directions considered and not built** (the founder decides after seeing
+the page):
+
+1. **Stripe's hosted Billing Portal instead of Elements.** One redirect, almost
+   no code, and Stripe maintains it. Not built because it is a second visual
+   language dropped into the middle of a page whose whole argument is one row
+   shape, and because the portal's furniture is priced — it shows plans and
+   invoices this product has neither of (OD-23).
+2. **A `payment_events` audit trail per instrument** (added / made default /
+   detached, with who and when), rendered as a small ledger under each row. Not
+   built because the provider is already the system of record for an instrument's
+   life and a second, unverifiable copy is exactly what the original migration
+   refused when it declined a `revoked_at`. It becomes worth building the day a
+   charge exists to attribute.
+
+**What was NOT verified, stated plainly (§0.5).** The Elements mount and
+`confirmSetup` were never exercised in a live browser. Both require a real
+Stripe test key, `VITE_STRIPE_PUBLISHABLE_KEY` is baked into the bundle at
+dev-server start, and this session may not restart the dev server — so the
+furthest a browser got is the panel with its hold disabled and the missing
+variable named, which is what the screenshots show. Everything up to that line
+IS verified: the gateway's refusal by curl (503 with the reason), the whole
+signature/idempotency path by 13 service tests against real HMACs, the
+provider→row mapping by 8, the transport guard by 14, and both register states
+rendered in both grounds with the one `GET /payment-methods` response stubbed at
+the route (the `payment_methods` table is not in the dev database — its
+migration is on this branch, unmerged — so the live page correctly renders the
+error state and that hides the other three).
+
+**What is deliberately still not built.** Any charge. There is no
+`payment_intents` call, no invoice, no subscription and no price, and the client
+throws rather than letting one be added by accident. Pricing is OD-23 and
+founder-deferred; a product that can take money before it has a price is the
+surface `DESIGN-FOUNDATION` §6 tells us to refuse.
+
+### Third pass, 2026-09-03 — the model-context register calls
+
+**What the founder asked.** *"first small fixes, and then everything left including the
+four large builds — make them elegant and pretty looking."* Build **D** of four: the MCP
+runtime.
+
+**What the second pass left, in its own words.** Its "Two alternatives considered and not
+built" listed, first: *"Connect the MCP server, not just declare it … call the endpoint on
+save, list the tools it actually exposes, and store a credential. Not built, and the table
+deliberately has no token column."* Its two reasons were the handshake being an undecided
+fork and a secret with no code path. The first turned out not to be a fork at all — the
+Model Context Protocol publishes the transport, revision `2025-06-18` — and the second is
+answered by building the code path first. So this pass built it, and **left the actually
+undecided fork undecided**: invocation.
+
+**What was built.**
+
+| | Was (second pass) | Is (third pass) |
+|---|---|---|
+| **Last call** | `—` on every row, permanently, with a sentence explaining why | `last_probe_at`, stamped by a real handshake — beside a **second** column `last_used_at` ("Last answered"), moved only when the server answers |
+| **Status** | the GRANT's state only (`active` / `revoked`) | that, plus a five-member `probe_status` (`ok` / `unreachable` / `refused` / `protocol_error` / `unconfigured`), **nullable with no default**, and the server's own words in `probe_detail` |
+| **Tools** | not a concept | `tools/list` names on the row, capped, with `probe_tool_count` recording what the server *said* |
+| **Credential** | "the table deliberately has no token column" | `secret_encrypted`, AES-256-GCM under `MCP_CONNECTION_SECRET_KEY`, never selected by any read path, destroyed on revoke |
+| **Invocation** | not discussed | **explicitly refused**, in the gateway's own sentence, with a structural test that no invocation method exists |
+
+**What was built in the gateway** (all with specs):
+
+- `apps/api-gateway/src/mcp-runtime/` — **new module**, no database dependency, imported by
+  `McpConnectionsModule` rather than registered in `AppModule` (nothing else speaks MCP,
+  and a wire client registered globally for one consumer is how a capability becomes
+  ambient before anyone decides it should be). **`app.module.ts` is unchanged.**
+  - `mcp-runtime.service.ts` — the lifecycle, both response encodings, the session-id echo,
+    the negotiated-version header, the whole-probe deadline, the chunk-by-chunk byte
+    ceiling, and `redirect: "manual"`. Every failure is a *classified outcome*; `probe()`
+    does not throw.
+  - `mcp-endpoint.guard.ts` — resolve-then-vet, so the server will not fetch loopback,
+    link-local, RFC1918, CGNAT, unique-local or IPv4-mapped-private addresses.
+  - `mcp-secret.service.ts` — AES-256-GCM in the same `v1.iv.tag.ciphertext` envelope as
+    `common/crypto/token-crypto.service.ts`, under its **own** variable with no fallback.
+- `apps/api-gateway/src/mcp-connections/` — `POST /:id/probe` (200 even for a failed
+  handshake: the probe succeeded in finding out the server is down, and a 5xx would make a
+  broken third-party server indistinguishable from a broken Mudavym), `PUT /:id/secret`
+  (`null` clears), `GET /runtime`. `ROW_COLUMNS` is a named constant that omits
+  `secret_encrypted`, so the credential is never *fetched* rather than filtered later.
+- `supabase/migrations/20260903104500_user_mcp_connection_runtime.sql` — ten nullable
+  columns, a CHECK on `probe_status`, comments, and a `DO` block that asserts all ten are
+  nullable, that the lockdown from `20260903094500` survived the `ALTER`, and that
+  **proves the CHECK fires** by attempting `probe_status = 'healthy'` and requiring the
+  rejection (announcing a skip, rather than passing silently, where no parent row exists).
+
+**Honesty rules applied to the new work.**
+
+- **A declaration is still not a measurement.** A server nobody has checked shows an
+  **em-dash chip** and the sentence *"This server has never been checked, so nothing is
+  claimed about it either way."* The register gained a way to be certain and did not use it
+  to become confident.
+- **Four sentences, three chips, and the shortfall is stated in the code.** `unconfigured`
+  (a stored credential this deployment cannot decrypt) shares the `Unavailable` chip with a
+  server that answered badly, because the chip vocabulary is shared with the payment
+  register and inventing a sixth word there would make every other register's chip mean
+  slightly less. The distinction survives in the `reason` line under every title, and
+  `chipFor` says so in a comment rather than leaving a reader to notice.
+- **A stored secret that cannot be opened does NOT become an anonymous call.** The probe
+  returns `unconfigured` and calls nothing, because a call that succeeded without the
+  credential would be read as the credential working.
+- **A truncation cannot read as the catalogue.** `probe_tool_count` is what the server
+  reported; the array is what was kept; the row prints "N of M shown" when they differ.
+- **`inputSchema` is dropped** — the largest field a tool carries, useful only to a caller
+  that can invoke. Keeping it would be storing an argument spec for a call that cannot be
+  made.
+
+**Two alternatives considered and not built** (the founder decides after seeing this one):
+
+1. **Probe on a schedule.** A cron under `ScheduledTenantsService.runPerTenant` would keep
+   every row current instead of "as of the last check". Not built: it turns a page-level
+   "check this" into standing outbound traffic from our infrastructure to addresses tenants
+   typed in, which is a different security posture and wants quiet hours and back-off. Filed
+   as **G14**. The manual probe is the honest smaller thing, and it is the one a person asks
+   for at the moment they care.
+2. **Call a tool, behind hold-to-approve.** The seal exists, the ceremony exists, and this
+   is the demo everyone wants. Not built, and this is the pass's one real refusal: a tool
+   call can send an email to a vendor or place an order, which is what ADR 0013's commitment
+   guardrail governs — and that guardrail has never been extended to model-context
+   dispatch. Building the ceremony first would put the most reassuring part of the feature
+   in front of the undecided part. **The fork for the founder:** does ADR 0013 extend to a
+   third-party tool call, and what is the human step? The table needs no new column either
+   way.
+
+**Substituted or left out, and why:**
+
+- **No official `@modelcontextprotocol/sdk`.** It follows redirects and has no notion of a
+  refused address range — half of what the endpoint guard exists for — and it is built for a
+  long-lived session this product does not have. ~200 lines of `fetch` against a spec we can
+  cite line for line instead. If a persistent client ever lands, the SDK is right for it.
+- **No `GET` stream, no session `DELETE`, no 2024-11-05 HTTP+SSE fallback.** A probe is one
+  round trip that answers one question; each of those belongs to a long-lived client.
+- **No new motion.** "Check the server" makes a call that can take eight seconds — exactly
+  where a spinner usually goes. It gets a label change and nothing else; see `MOTIONS.md`.
+
+**What could not be verified, stated plainly (§0.5).**
+
+- **The runtime was driven against a real server, and it was ours.** A throwaway MCP server
+  on `127.0.0.1:7801` (`node:http`, JSON for `initialize`, **SSE** for `tools/list`) was
+  driven by the **compiled** `dist/mcp-runtime/mcp-runtime.service.js` out of process. It
+  returned `status: "ok"`, `serverName: "Stub POS bridge"`, `serverVersion: "0.9.2"`,
+  `protocolVersion: "2025-06-18"` and three tool names; a closed port returned
+  `unreachable | the request did not complete (ECONNREFUSED)`; and
+  `http://169.254.169.254/latest/meta-data/` was **refused before any call**. The stub's own
+  log shows the lifecycle exactly as the spec fixes it — `initialize` with no session and no
+  version header, then `notifications/initialized` and `tools/list` both carrying
+  `session=stub-session-7f3a proto=2025-06-18` and the bearer. Nothing in this verification
+  touched a public MCP server.
+- **The probe route itself could NOT be curled end to end, and the reason is the database.**
+  `20260903094500` and `20260903104500` have not been applied anywhere — they apply on merge
+  — so every route that reads the table answers with its honest failure. Measured against
+  the live gateway on `:4000` with a minted dev-bypass session:
+
+  | Request | Status | Body |
+  |---|---|---|
+  | `GET /mcp-connections/runtime`, no bearer | **401** | `Unauthorized` |
+  | `GET /mcp-connections/runtime` | **200** | `secretStorage.configured: false`, reason names `MCP_CONNECTION_SECRET_KEY`; `invocation.enabled: false` with the ADR 0013 sentence |
+  | `GET /mcp-connections` | **500** | `The model-context register could not be read: Could not find the table 'public.user_mcp_connections' in the schema cache` |
+  | `POST /mcp-connections/:id/probe`, no bearer | **401** | `Unauthorized` |
+  | `POST /mcp-connections/not-a-uuid/probe` | **400** | `Validation failed (uuid is expected)` |
+  | `POST /mcp-connections/:id/probe` | **500** | `The model-context server could not be read: Could not find the table …` |
+  | `PUT /mcp-connections/:id/secret` `{"secret":"tok"}` | **503** | `MCP_CONNECTION_SECRET_KEY is not set, so a model-context server secret cannot be stored or read.` |
+  | `POST /mcp-connections` with a `secret`, no key | **503** | the same sentence |
+  | `POST /mcp-connections`, `url: ftp://…` | **400** | `["url must be a URL address"]` |
+  | `POST /mcp-connections`, body carries `secret_encrypted` | **400** | `["property secret_encrypted should not exist"]` |
+
+  Four things are proven there rather than asserted. `GET /runtime` answers **200 without
+  touching the database at all**, which is the whole point of reading the deployment's state
+  separately from the register: an absent key is a sentence beside one disabled field, not a
+  failure of the register. Both 503s land **before** any database call, which is why they are
+  unaffected by the missing table — the refusal is the first thing that happens. The
+  `whitelist: true` pipe means a caller cannot post a pre-encrypted envelope. And the guard
+  is on.
+- **The Nest boot guard now PASSES whole.** The second pass recorded that
+  `scripts/check_gateway_boots.sh` failed on this worktree for an unrelated in-flight
+  `AnalyticsModule` defect and substituted a module test. That defect has since been fixed by
+  another session: re-run at the end of this pass, the guard prints *"PASS — the gateway
+  dependency graph resolves; the app can boot."* The substitution is no longer needed and the
+  claim is struck rather than carried forward.
+- **Two required CI guards were failing on this build's paths, and the fix was to be
+  READABLE rather than to raise a ceiling.** `check_queried_tables_exist.py` extracts every
+  `.rpc(` in the tree as a Postgres function call; the runtime's private JSON-RPC helper was
+  named `rpc`, so `this.rpc(url, …)` spent two slots of that guard's ratcheted
+  unresolvable-site budget on a false positive and pushed it from its ceiling of 26 to 28.
+  Renamed to `request` (and its transport helper `send` → `post`), with a comment at the
+  definition saying why, so nothing renames it back: **26 of 26, PASS**.
+  `check_read_columns_exist.py` could not resolve `McpConnectionsService.ROW_COLUMNS` — it
+  resolves a same-file `const NAME = "…" + "…";` and not a class static — so all five reads
+  counted UNREADABLE, the guard's word for *a read nobody is checking*. Moved to a
+  module-level `const MCP_ROW_COLUMNS`, with the class static kept as an alias so the spec
+  can still assert what it omits, and a new test pinning the two together: **PASS**.
+  Neither guard was weakened and `scripts/` was not touched. The second fix is a net gain
+  rather than a formality — proven by breaking it on purpose: misspelling one column to
+  `probe_stattus` turns the guard red on all five sites, so **every one of the sixteen
+  column names, including the ten this pass added by `ALTER TABLE`, is now checked against
+  `supabase/migrations/`** where before none of them was.
+- **DNS rebinding is not closed.** The endpoint guard resolves the name, then `fetch`
+  resolves it again, and a hostile resolver can answer differently the second time. Closing
+  it needs the socket pinned to the address that passed. Filed as **G13** rather than left
+  for a reader to find. What *is* closed is the reachable class — someone typing a metadata
+  or RFC1918 URL into the form.
+- **No screenshot.** Both grounds are still argued from the tokens rather than seen:
+  `grep -rnE "#[0-9A-Fa-f]{6}"` over `McpRegister.tsx` is empty, so every ground, ink and
+  seal is a variable the `.dark .mudavym` block re-defines. Emoji sweep over the register,
+  both gateway modules and the migration: **empty**.
+- **Three tests in this file's own suite fail, and none of them is this build's.** The
+  payment register is being rebuilt concurrently by another builder on the same branch
+  (`PaymentRegister.tsx`, +299 lines in the working tree, plus new `StripeCardPanel.tsx` /
+  `stripe-js.ts`); its three pre-existing tests assert copy that component no longer
+  contains, and it has an open `tsc` error of its own. All ten model-context tests pass. Said
+  here rather than reported as a green suite.
+
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).
 
@@ -428,19 +818,31 @@ In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header
 - API module: `services/api/profile.ts`; `components/auth/GoogleLinkButton.tsx`
 - **Mudavym rebuild** (`apps/web/src/pages/profile/next/`, flag `mudavym_design_profile`):
   `ProfileNext.tsx` (shell, opening voice, Register VII / the exit) ·
-  `useProfileNextData.ts` (six reads and twelve writes, tenant-keyed) ·
+  `useProfileNextData.ts` (six reads and fifteen writes, tenant-keyed) ·
   `IdentityRegister.tsx` (I) · `SecurityRegister.tsx` (II) ·
   `ConnectionsRegister.tsx` (III — sign-in + workspace) · `McpRegister.tsx` (IV) ·
-  `PaymentRegister.tsx` (V) · `HouseRegister.tsx` (VI) ·
+  `PaymentRegister.tsx` (V) · `StripeCardPanel.tsx` (V — Stripe Elements, the
+  hold, the four states) · `stripe-js.ts` (V — the loader for
+  `https://js.stripe.com/v3` and the sliver of its API this page types by hand) ·
+  `HouseRegister.tsx` (VI) ·
   `GoogleLink.tsx` (the one real token acquisition) ·
   `pf-ui.tsx` (the row shape, chip, rail, card, field, select) · `pf-format.ts` ·
-  `ProfileNext.test.tsx` (29 tests) · `MOTIONS.md`
+  `ProfileNext.test.tsx` · `MOTIONS.md`
+  (test count deliberately not quoted: three builders are adding tests to this one
+  file on this branch, so any figure written here rots within the hour — it read 47
+  green at the close of the payment build)
 - **Gateway, built for this page (2026-09-03):**
   `apps/api-gateway/src/mcp-connections/` (module, controller, service, dto, 2 spec files)
   · `apps/api-gateway/src/payment-methods/` (module, controller, service, dto, 1 spec file)
   · `apps/api-gateway/src/organizations/get-location-is-role-gated.spec.ts`
+  · **`apps/api-gateway/src/billing/`** (third pass, ADR 0110 — `billing.module.ts`,
+  `billing-config.module.ts`, `billing.controller.ts`, `billing.service.ts`,
+  `billing-customer.service.ts`, `payment-method-mirror.service.ts`,
+  `stripe.client.ts`, `stripe-config.service.ts`, `stripe-signature.ts`,
+  `dto/billing.dto.ts`, 4 spec files)
 - **Migrations:** `supabase/migrations/20260903094500_user_mcp_connections.sql` ·
-  `supabase/migrations/20260903094600_payment_methods.sql`
+  `supabase/migrations/20260903094600_payment_methods.sql` ·
+  `supabase/migrations/20260903110000_billing_stripe_provider.sql`
 
 ## 4. Endpoints
 | Method | Path | Where called | Atlas |
@@ -475,9 +877,34 @@ restaurant id taken from the signed token rather than from a parameter:
 | POST | `/mcp-connections` | `addMcpServer` | `JwtAuthGuard`; 409 on the partial unique index over `(user, restaurant, lower(name))` where `revoked_at is null` |
 | DELETE | `/mcp-connections/:id` | `revokeMcpServer` | `JwtAuthGuard`; soft revoke, 404 when nothing live matched |
 | GET | `/payment-methods` | `useProfileNextData.ts` → `PaymentRegister` | `JwtAuthGuard`; returns `{provider, methods}` — the provider's state is what stops an empty register from lying |
-| POST | `/payment-methods` | not called by the page (its submit is disabled) | `JwtAuthGuard` + `assertCanManageRestaurant`; **503 with the reason** while `STRIPE_SECRET_KEY` is unset |
-| DELETE | `/payment-methods/:id` | `removePaymentMethod` | `JwtAuthGuard` + `assertCanManageRestaurant` |
+| POST | `/payment-methods` | not called by the page (a card is created by confirming a SetupIntent, not by posting a form) | `JwtAuthGuard` + `assertCanManageRestaurant`; **503 with the reason** while `STRIPE_SECRET_KEY` is unset |
+| DELETE | `/payment-methods/:id` | `removePaymentMethod` | `JwtAuthGuard` + `assertCanManageRestaurant`; **detaches at the provider first** |
 | POST | `/auth/logout` | `AuthContext.logout`, via the Security register's "Sign out of this browser" | JWT; blacklists the presented token only |
+
+**Added by the third pass (2026-09-03, ADR 0110)** — the `billing/` module, plus
+one new route on `payment-methods/`. `check_gateway_boots.sh` PASS with the
+module registered; the two lines `app.module.ts` needs are named in §9 G14
+because that file is outside this page's paths.
+
+| Method | Path | Where called | Guard / posture |
+|---|---|---|---|
+| GET | `/billing/provider` | not called by the page (the same state rides on `GET /payment-methods`); exists for a deployment check | `JwtAuthGuard`. `webhookLastReceivedAt: null` means no delivery has EVER been authenticated here — not health |
+| POST | `/billing/setup-intent` | `createSetupIntent` → `StripeCardPanel` | `JwtAuthGuard` + `assertCanManageRestaurant`; **503 with the reason** while `STRIPE_SECRET_KEY` is unset |
+| POST | `/billing/sync` | `syncPayments` — after a confirmation, and behind **Reconcile now** | `JwtAuthGuard` + `assertCanManageRestaurant`; DROPS instruments the provider no longer holds |
+| POST | `/billing/webhook` | Stripe | **`@Public()`** — authenticated by HMAC over the exact request bytes, not by a JWT. Fails closed with no `STRIPE_WEBHOOK_SECRET`. Always answers **200**, even on a refusal, so a permanently-wrong secret cannot become a retry storm; the body says `received: false` and names the failing check. Idempotent on the event id |
+| PATCH | `/payment-methods/:id/default` | `setDefaultPaymentMethod` — "Charge this first" | `JwtAuthGuard` + `assertCanManageRestaurant`; written at the provider **before** the local flag |
+
+**Added by the third pass (2026-09-03)** — the model-context runtime. Same module, same
+guard, same tenancy: both scopes come from the signed token and neither is a parameter.
+
+| Method | Path | Where called | Guard / posture |
+|---|---|---|---|
+| GET | `/mcp-connections/runtime` | `useProfileNextData.ts` (`mcpRuntimeQ`) → `McpRegister` | `JwtAuthGuard`; declared on a literal path **before** the `:id` routes so a connection cannot be addressed as `runtime`. Answers **without touching the database**, so an absent `MCP_CONNECTION_SECRET_KEY` is one sentence beside one disabled field rather than a failure of the register |
+| POST | `/mcp-connections/:id/probe` | `probeMcpServer` → the row's "Check the server" | `JwtAuthGuard`; **200 even when the handshake failed** — the probe succeeded in finding out the server is down, and a 5xx would make a broken third-party server indistinguishable from a broken Mudavym. 404 when the id is not yours here; 409 on a revoked row |
+| PUT | `/mcp-connections/:id/secret` | `setMcpSecret` → the row's Credential field | `JwtAuthGuard`; `{"secret": null}` clears. **503 naming `MCP_CONNECTION_SECRET_KEY`, before any database call**, when no key is configured |
+
+`POST /mcp-connections` gained an optional `secret`, refused the same way. **There is no
+route that calls a tool**, by decision — see §1b and ADR 0107.
 
 `GET /organizations/locations/:id` **changed posture** in the same pass: it now calls
 `assertManagerOrOwner` (a read that was open to any org member) and returns
@@ -509,6 +936,18 @@ Core, every role. No `S..` touches it directly (OD-48).
   rendering a button that cannot work.
 - Role gating in-page: `isManagerOrOwner` gates the Restaurant/Payment/Memberships sections and the locations fetch (`Profile.tsx:127,158`). The rebuild keeps the gate on the *fetch and the controls* but renders the section either way (permission-denied is a state, not an absence).
 - Theme via `ThemeContext`.
+- **Stripe (third pass, ADR 0110) — three variables in two processes.**
+  `STRIPE_SECRET_KEY` (gateway) mints the SetupIntent and reads instruments
+  back; `STRIPE_WEBHOOK_SECRET` (gateway) authenticates deliveries and, when
+  unset, causes every delivery to be refused; `VITE_STRIPE_PUBLISHABLE_KEY` (web
+  bundle, baked at build time) lets Stripe's card fields render. The gateway
+  cannot see the third — it is in the bundle, not the process — so the page
+  reports that one itself rather than letting the server guess.
+  `STRIPE_API_VERSION` is optional and defaults to the pinned `2024-06-20`.
+  Register V names each one, says which process it lives in, and states what it
+  unlocks. **None is set on this deployment**, measured 2026-09-03 by curl
+  against the local gateway: `GET /api/v1/billing/provider` → 200 with
+  `secretKeyPresent: false, webhookSecretPresent: false`.
 - **Mudavym redesign gate:** feature flag `mudavym_design_profile`
   (`apps/api-gateway/src/settings/feature-flag-registry.ts:172-177`, `defaultValue: false`),
   read through `useMudavymDesign('profile')` and `<PageGate page="profile" …>`
@@ -534,10 +973,15 @@ what happened rather than a list of what is left.**
 | ~~G5~~ | `apps/api-gateway/src/payment-methods/` + `supabase/migrations/20260903094600_payment_methods.sql` | **CLOSED as far as honesty allows, 2026-09-03.** Module, table, migration and three routes built; the register lists and the Add form opens with every real field. The provider is **still absent**, and that is deliberate rather than unfinished — pricing is founder-deferred (OD-23; `common/model-client/spend-tiers.ts:1-22` says its own figures are placeholders and must not be cited as pricing), and connecting a payment provider before there is a price is a surface that can take money for nothing. Both the form's submit and `POST /payment-methods` refuse with the same sentence. **What remains is G10**: one credential and one hosted callback |
 | G6 | `apps/web/src/lib/identityProviders.ts:101-107` | Microsoft is declared but not renderable, so the Sign-in rail's Connect is disabled with that reason. A Microsoft sign-in button (the gateway route `POST /auth/oauth/microsoft` already exists) would switch it on |
 | ~~G8~~ | `apps/api-gateway/src/organizations/organizations.service.ts` (`getLocation`) | **CLOSED 2026-09-03 — the profound fix, not a copy change.** The read now calls `assertManagerOrOwner(userId, restaurantId, "read the restaurant record")`, so a staff member calling the endpoint directly, past the UI, is refused instead of handed the restaurant's billing email and phone. Ordered **after** the restaurant lookup so a restaurant outside the org stays a 404 and the new check cannot leak existence through a 403. `assertManagerOrOwner` gained an `action` parameter so a refused GET does not carry the write's message. Both the profile page's and the audit's concern are closed; the copy now states a server rule. Callers checked before the change: only `Profile.tsx:137` and `profile/next`, both already manager/owner-gated client-side, so nothing regressed. Spec: `organizations/get-location-is-role-gated.spec.ts` |
-| G9 | nothing calls a model-context server | **MCP dispatch.** `user_mcp_connections` records declarations; no agent, cron or route in this product calls one, so `last_used_at` is null on every row and stays null. The page says so in one line rather than letting the column read as "idle". Closing it means an MCP client in the gateway (or the orchestrator) that stamps `last_used_at` on each call — and, before that, a decision on the handshake: which transports, whose credential, what happens when a trusted server starts exposing a new tool. The table deliberately has **no token column** until that decision exists |
-| G10 | `apps/api-gateway/src/payment-methods/payment-methods.service.ts` (`assertProviderConnected`) | **No payment provider credential.** Everything except the credential is built. Setting `STRIPE_SECRET_KEY` plus a hosted-checkout callback that posts the provider's `pm_...` reference to `POST /payment-methods` switches the register on; the page's disabled submit then becomes a redirect into the hosted flow. Blocked on OD-23 (pricing), not on code |
+| ~~G9~~ | `apps/api-gateway/src/mcp-runtime/` + `supabase/migrations/20260903104500_user_mcp_connection_runtime.sql` | **CLOSED 2026-09-03 (third pass), ADR 0107.** Something calls now. `POST /mcp-connections/:id/probe` runs the Model Context Protocol lifecycle over Streamable HTTP (`initialize` → `notifications/initialized` → `tools/list`, revision `2025-06-18`) and writes `last_probe_at`, `last_used_at`, `probe_status`, `probe_detail`, the tool list and the server's own name/version onto the row. The handshake question the first filing called an undecided fork was not one — the spec publishes the transport. The credential the table "deliberately" lacked is `secret_encrypted`, AES-256-GCM under `MCP_CONNECTION_SECRET_KEY`, never selected by a read path. **What remains open is narrower and is genuinely a decision, not a build: tool INVOCATION** — see G18 |
+| ~~G10~~ | `apps/api-gateway/src/billing/**` + `supabase/migrations/20260903110000_billing_stripe_provider.sql` | **CLOSED 2026-09-03 (ADR 0110) — and its own wording was wrong before it was closed.** G10 read "everything except the credential is built". Measured before building: no Stripe client, no webhook, no SetupIntent, neither package installed — so `provider_ref` was a required field no caller could fill and setting `STRIPE_SECRET_KEY` would have enabled a form whose four hand-typed fields became the register's content. The honest refusal was one env var from a fabricated record. Now built: SetupIntent, Elements on Stripe's origin, `provider_ref` stored and never a PAN, list, detach-at-the-provider, default-at-the-provider, reconcile, and a signed idempotent webhook. **The remainder is a deployment step, and it is named: G13** |
+| G13 | deployment, not code | **Three variables and one dashboard entry.** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` on the gateway, `VITE_STRIPE_PUBLISHABLE_KEY` in the web build, and the webhook endpoint registered at Stripe pointing at `POST /api/v1/billing/webhook`. Until the last of those, `webhookLastReceivedAt` stays null and Register V says *"configured, never delivered"* rather than implying the seam works — which is the point: the page can tell an unregistered endpoint from a working one, and nobody has to notice a stale card to find out. **Charging remains out of scope regardless** (OD-23) and the client throws before it can call `payment_intents` |
+| G14 | `apps/api-gateway/src/app.module.ts` | **Two lines, outside this page's paths.** `import { BillingModule } from "./billing/billing.module";` beside the `PaymentMethodsModule` import, and `BillingModule, // Stripe: SetupIntents, reconcile, signed webhook (ADR 0110)` beside the `PaymentMethodsModule` entry. Verified by applying them temporarily on 2026-09-03: `scripts/check_gateway_boots.sh` → **PASS**, and curl against the local gateway with a minted session returned `GET /billing/provider` **200** (**401** with no token, so the guard is on), `POST /billing/setup-intent` **503**, `POST /billing/sync` **503**, `POST /billing/webhook` **200** both with no signature and with a bogus one (a refusal is 200 on purpose — see §4), and `PATCH /payment-methods/:id/default` **503**. Reverted afterwards, because `app.module.ts` is shared with three concurrent builders on this branch |
 | G11 | `apps/api-gateway/src/auth/**` | **No session register, no second factor, no passkeys, no personal API tokens.** Measured 2026-09-03. The Security register renders four `Not built` rows carrying these measurements. The session one is the cheapest and the most valuable: a `user_sessions` row per issued refresh token (device, address, last-seen, revoked_at) would turn one honest row into the list every account page in the field shows, and would make "sign out everywhere" possible |
 | G12 | `scripts/check_no_seeded_defaults.py` (`SERVER_SCAN_ROOTS`) | **The two new gateway modules are outside the S5 arm.** `SERVER_SCAN_ROOTS` lists only `apps/api-gateway/src/team` and `apps/api-gateway/src/restaurants`, so `mcp-connections/` and `payment-methods/` get no automated check that a row-shaped literal is not asserting a measurement nobody supplied. Reviewed by hand and clean — the only literals in either module are the provider's refusal sentence and the `'stripe'` provider id — but hand-checking is not a ratchet. `scripts/` is outside this page's paths, so this is filed rather than fixed. One line each in `SERVER_SCAN_ROOTS` closes it |
+| G16 | `apps/api-gateway/src/mcp-runtime/mcp-endpoint.guard.ts` | **DNS rebinding is not closed.** The guard resolves the endpoint's host and refuses loopback / link-local / RFC1918 / CGNAT / unique-local / IPv4-mapped-private addresses, then `fetch` resolves the name a second time — and a hostile resolver can answer differently. Closing it means pinning the connection to the address that passed (a custom `lookup` hook or agent). Filed rather than hidden: what IS closed is the reachable class, someone typing a metadata or RFC1918 URL into the form. Stated in ADR 0107 §Consequences too, so the residual travels with the decision |
+| G17 | `apps/api-gateway/src/mcp-runtime/` + the per-tenant scheduler (ADR 0022) | **A probe is manual.** The register is current as of the last check and prints that date; nothing keeps it fresh. A scheduled probe under `ScheduledTenantsService.runPerTenant` would — and would also turn a page-level "check this" into standing outbound traffic from our infrastructure to addresses tenants typed in, which wants quiet hours, back-off and its own decision. Deferred deliberately, not forgotten |
+| G18 | nothing may CALL a model-context tool | **Tool invocation, and it is a DECISION not a gap.** Tools are listed on the row and there is no `tools/call`, no route reaching one, no column recording one, and a structural test asserting the runtime service has no `call`/`callTool`/`invoke` method. A tool call can send an email to a vendor or place an order — the subject of ADR 0013's commitment guardrail, which has never been extended to model-context dispatch. `GET /mcp-connections/runtime` returns that sentence and the page prints it. **The fork for the founder:** does ADR 0013 extend to a third-party tool call, and what is the human step (the seal, a draft, a per-tool grant)? The table needs no new column either way |
 | G7 | `apps/api-gateway/src/auth/auth.controller.ts:487-491` | there is no **authenticated** way to fetch the identity-provider registry. `POST /auth/sign-in-methods` is `@Public()` and rate-limited by IP (10 / 600s), which a shared restaurant network would exhaust. An authenticated `GET /auth/me/sign-in-methods` returning `declared`/`methods`/`unavailable` would let the Sign-in rail use the server's own labels and reasons instead of page prose |
 
 ## 10. Maturity
@@ -581,7 +1025,7 @@ anything destructive.
 |---|---|
 | Two loaders swallow every error | `profileApi.getMe()` fails into an empty `catch` with the comment "Graceful: page still usable with auth context data" (`Profile.tsx:110-118`) — so phone, `hasPassword` and linked providers silently show stale or blank values. The restaurant loader falls back to cached branch data on failure (`:143-146`), meaning the Restaurant form can display one name while the server holds another, and a save then overwrites |
 | Upgrade section is unbuilt | `Profile.tsx:831-851` — a disabled "Coming soon" button. Honest, and correctly not counted as hollow. The rebuild replaced it with a Plan row that names the actual `subscription_tier`, and deliberately offers no upgrade control: plan changes belong to the restaurant, not to a personal profile (DESIGN-FOUNDATION §6) |
-| No payment provider | `payment_methods` and its routes exist; `STRIPE_SECRET_KEY` does not. The register lists, the form opens, and both the submit and `POST /payment-methods` refuse with the same sentence. Blocked on OD-23 (pricing), not on code — G10 |
+| No payment provider **credential** | The whole provider path exists as of 2026-09-03 (ADR 0110): SetupIntent, Elements on Stripe's origin, detach, default, reconcile, signed idempotent webhook. What does not exist on this deployment is `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `VITE_STRIPE_PUBLISHABLE_KEY` — each named on the page with the process it lives in. Charging is a separate decision (OD-23) and the client throws before it can call `payment_intents` — G13 |
 | Nothing calls a model-context server | `user_mcp_connections` records declarations and nothing dispatches to one, so `last_used_at` is null on every row. Said on the page in one line rather than left to a quiet column — G9 |
 | No session register, second factor, passkeys or API tokens | Measured 2026-09-03 across `apps/api-gateway/src`, `apps/web/src`, `supabase/migrations`: zero matches for `2fa`/`totp`/`mfa`/`passkey`/`webauthn`, no session table, no user-issued token. Four `Not built` rows in Register II — G11 |
 | Churn is untracked | §5 stands: account delete and leave-restaurant are the two highest-signal events on the page and emit nothing (`lib/uxSignals.ts:15`, dark) |
@@ -680,12 +1124,42 @@ credentials, which restaurants you belong to, and the exit.
 > build newly exposed: **G9** (nothing calls a declared MCP server), **G10** (no provider
 > credential), **G11** (no session register / second factor / passkeys / API tokens).
 >
+> **Status 2026-09-03 (third pass — Register V only).** **G10 is closed** by ADR 0110, and
+> the first thing the pass established is that G10's own wording was false: nothing in the
+> repo spoke to Stripe, so "one credential away" would in fact have been "one credential
+> away from an operator-typed instrument". Built: `apps/api-gateway/src/billing/**` (Stripe
+> client with a `FORBIDDEN_PATHS` guard so no charge can be expressed, pure HMAC verifier,
+> customer mapping, provider→row mirror, SetupIntent / sync / webhook routes), the migration
+> `20260903110000_billing_stripe_provider.sql`, and Register V rebuilt around Stripe
+> Elements with hold-to-approve as the commitment. Two new gaps filed for what the build
+> exposed: **G13** (three environment variables and one Stripe-dashboard endpoint
+> registration — a deployment step, not code) and **G14** (two lines in `app.module.ts`,
+> outside this page's paths, verified by applying them temporarily and reverting).
+>
 > Remaining, in the order it is worth doing — **G11's session half** (a `user_sessions` row
 > per issued refresh token: it is the cheapest of the four and it turns one honest row into
 > the list every account page in the field shows, plus a real "sign out everywhere"),
 > **G3** (stop `listConnections` swallowing its query error — the one place left where this
-> page must *infer* a failed read), **G10** (one credential, blocked on OD-23), **G9** (an
+> page must *infer* a failed read), **G14** (two lines the parent adds to `app.module.ts`,
+> which is what makes the billing routes exist at all), **G13** (three variables and the
+> Stripe-dashboard endpoint; charging still blocked on OD-23), **G9** (an
 > MCP client, blocked on a handshake decision), then **G7** / **G6**. All specified in §9.
+
+> **Status 2026-09-03 (third pass, build D of four — the MCP runtime).** **G9 closes**:
+> `POST /mcp-connections/:id/probe` performs the Model Context Protocol handshake over
+> Streamable HTTP and the row records status, both timestamps, the server's name/version
+> and its tool names; the credential the table deliberately lacked is now
+> `secret_encrypted` under `MCP_CONNECTION_SECRET_KEY`, refused rather than stored in the
+> clear when no key exists. **Three filed for what the build newly exposed or deliberately
+> withheld:** **G16** (DNS rebinding — the endpoint guard resolves, then `fetch` resolves
+> again), **G17** (a probe is manual; a scheduled one wants the per-tenant scheduler's
+> quiet hours and back-off), and **G18** (tool invocation — refused, and it is a DECISION
+> for the founder rather than a build: does ADR 0013's commitment guardrail extend to a
+> third-party tool call, and what is the human step?). Recorded in ADR 0107.
+>
+> Order it is worth doing, from here: **G18** is a question, not work — asking it is the
+> cheapest thing on this list and it unblocks the most. Then **G11's session half**, then
+> **G3**, then **G16** (a `lookup` hook), then **G17**, then G10 / G7 / G6.
 
 1. **Stop the silent read failures** (`Profile.tsx:110-118`, `:143-146`) — surface
    the error, and do not let a cached restaurant name become a write. Highest value:

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
+import { BillingConfigModule } from "../billing/billing-config.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
 import { PaymentMethodsController } from "./payment-methods.controller";
 import { PaymentMethodsService } from "./payment-methods.service";
@@ -12,9 +13,24 @@ import { PaymentMethodsService } from "./payment-methods.service";
  * read "nothing exists". The table, the routes and the list are real; the create
  * path refuses while no provider credential is configured, which is the honest
  * half of the same build. See `payment-methods.service.ts`'s header.
+ *
+ * Extended the same day by ADR 0110: removal now detaches at the provider
+ * before dropping the row, `PATCH /payment-methods/:id/default` writes the
+ * default at the provider before flipping the local flag, and the provider
+ * state on the list comes from the one `StripeConfigService` the billing routes
+ * also use — so there is a single implementation of "is the provider
+ * connected", and it reports which secrets are set rather than one boolean.
  */
 @Module({
-  imports: [DatabaseModule, AuthModule, OrganizationsModule],
+  imports: [
+    DatabaseModule,
+    AuthModule,
+    OrganizationsModule,
+    // The provider primitives live in their own module so this one and
+    // `BillingModule` can both use them without a cycle — see
+    // `billing/billing-config.module.ts`.
+    BillingConfigModule,
+  ],
   controllers: [PaymentMethodsController],
   providers: [PaymentMethodsService],
   exports: [PaymentMethodsService],

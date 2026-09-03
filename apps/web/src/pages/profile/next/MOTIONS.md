@@ -7,7 +7,7 @@ or staggers.
 
 **The seal is pressed twice now, and that is a change.** Until 2026-09-03 the
 hold appeared exactly once, over deleting the account, and this file said so.
-The Stripe build (ADR 0102) added the second: confirming a SetupIntent is the
+The Stripe build (ADR 0110) added the second: confirming a SetupIntent is the
 moment an instrument becomes chargeable, which is the only other act on
 `/profile` that changes what the product may do TO the house rather than what it
 knows ABOUT it. Two seals on seven registers is still a ration — every other

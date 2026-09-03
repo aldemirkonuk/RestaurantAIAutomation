@@ -36,11 +36,25 @@
  * The first pass reported three things honestly as absent. The founder's answer
  * was to build them, so this hook now reads three registers that did not exist:
  *
- *   MCP      `GET/POST/DELETE /mcp-connections` — a new gateway module and the
- *            `user_mcp_connections` table (migration 20260903094500). Real list,
- *            real add, real revoke. `lastUsedAt` stays null because nothing in
- *            this product dispatches to a model-context server yet, and the page
- *            says that rather than letting an empty column read as "idle".
+ *   MCP      `GET/POST/PUT/DELETE /mcp-connections` — a new gateway module and
+ *            the `user_mcp_connections` table (migration 20260903094500). Real
+ *            list, real add, real revoke.
+ *
+ *            THIRD PASS, the same day: the register now CALLS. `POST
+ *            /mcp-connections/:id/probe` performs the Model Context Protocol
+ *            handshake over Streamable HTTP (`apps/api-gateway/src/mcp-runtime/`,
+ *            migration 20260903104500) and the row records what answered — so
+ *            `lastUsedAt` is a real timestamp when a server answers, and stays
+ *            null when it does not. Two fields, not one: `lastProbeAt` is when
+ *            we called and `lastUsedAt` is when it answered, because a month of
+ *            failed calls must not read as a month of traffic.
+ *
+ *            `GET /mcp-connections/runtime` is read alongside the list and
+ *            carries the DEPLOYMENT's state: whether a secret can be stored at
+ *            all (`MCP_CONNECTION_SECRET_KEY`) and whether a tool may be called
+ *            (never — ADR 0013's commitment guardrail comes first). Both
+ *            sentences are the server's, so the page states a rule rather than
+ *            describing one.
  *   PAYMENT  `GET /payment-methods` — a new gateway module and the
  *            `payment_methods` table (migration 20260903094600). The response
  *            carries the PROVIDER's state beside the rows, which is the field
@@ -49,6 +63,20 @@
  *            array otherwise. The create path refuses server-side while no
  *            credential is configured, and the page's submit is disabled with
  *            the same sentence.
+ *
+ * THIRD PASS, 2026-09-03 — THE PROVIDER PATH (ADR 0110)
+ * -----------------------------------------------------
+ * The second pass filed the remainder as "one credential away". It was not:
+ * nothing in the repo spoke to Stripe, so `provider_ref` was a required field no
+ * caller could fill and setting `STRIPE_SECRET_KEY` would have enabled a form
+ * whose four hand-typed fields became the register's content. So this hook
+ * gained three writes over a new `billing/` module — `createSetupIntent` (the
+ * client secret Stripe.js needs, minted server-side), `syncPayments` (reconcile
+ * against the provider, which also DROPS what it no longer holds) and
+ * `setDefaultPaymentMethod` (written at the provider before the local flag) —
+ * and `stripePublishableKey`, read from `import.meta.env` here rather than asked
+ * of the gateway, because that variable is baked into this bundle and the
+ * gateway has no view of the bundle that is running.
  *   PLAN     `GET /organizations/locations/:id` now selects and returns
  *            `subscription_tier` (organizations.service.ts). The page's most
  *            visible em dash is a figure.
@@ -83,6 +111,7 @@ import {
   type IntegrationId,
 } from '../../../services/api/integrations';
 import { apiMessage, describeDevice } from './pf-format';
+import { stripePublishableKey } from './stripe-js';
 
 /** What a read is: not asked, in flight, answered, or refused. */
 export type ReadState = 'idle' | 'loading' | 'ok' | 'error';
@@ -96,6 +125,19 @@ export interface LocationRecord {
   subscriptionTier: string | null;
 }
 
+/** What the last probe of a server found. Every field is evidence or null. */
+export interface McpProbeVM {
+  status: 'ok' | 'unreachable' | 'refused' | 'protocol_error' | 'unconfigured';
+  detail: string | null;
+  serverName: string | null;
+  serverVersion: string | null;
+  protocolVersion: string | null;
+  /** Null when tools were never read; `[]` when the server offers none. */
+  tools: { name: string; title: string | null; description: string | null }[] | null;
+  /** What the server reported, which may exceed `tools.length` when capped. */
+  toolCount: number | null;
+}
+
 /** One declared model-context server, as `/mcp-connections` returns it. */
 export interface McpServerVM {
   id: string;
@@ -103,22 +145,56 @@ export interface McpServerVM {
   url: string;
   scopes: string[];
   createdAt: string;
-  /** Null until something calls it. Nothing in this product does yet. */
+  /** When it last ANSWERED. Null until a probe completes; never moved by a
+   *  probe that failed. */
   lastUsedAt: string | null;
+  /** When it was last CALLED, answered or not. Null until probed. */
+  lastProbeAt: string | null;
   revokedAt: string | null;
+  /** The GRANT's state — not the server's health, which is `probe`. */
   status: 'active' | 'revoked';
+  /** Whether a credential is stored. The value is never on the wire. */
+  hasSecret: boolean;
+  secretSetAt: string | null;
+  /** Null when never probed. Never a benign default. */
+  probe: McpProbeVM | null;
+}
+
+/**
+ * What this DEPLOYMENT can do with a model-context server, as opposed to what
+ * this house has declared. Read from `GET /mcp-connections/runtime`.
+ */
+export interface McpRuntimeVM {
+  secretStorage: { configured: boolean; reason: string | null };
+  invocation: { enabled: boolean; reason: string };
+  probeTimeoutMs: number;
 }
 
 /** One instrument on file. Today there are none, and the provider says why. */
 export interface PaymentMethodVM {
   id: string;
-  kind: 'card' | 'bank_account' | 'apple_pay' | 'invoice';
+  kind: 'card' | 'bank_account' | 'apple_pay' | 'invoice' | 'other';
   brand: string | null;
   last4: string | null;
   exp: string | null;
   isDefault: boolean;
   provider: string;
   createdAt: string;
+  /**
+   * Stripe's own type string, verbatim. Our register offers four kinds and the
+   * provider has roughly thirty, so an unmapped instrument is `kind: 'other'`
+   * and the row prints this instead of pretending it is a card.
+   */
+  providerType: string | null;
+  /**
+   * When the row was last confirmed against the provider. Everything above
+   * except the id is a CACHED COPY of the provider's answer, so the row says
+   * when it last agreed with Stripe rather than asserting a present tense.
+   * Null means never confirmed.
+   */
+  syncedAt: string | null;
+  /** Whether the provider reported it under a live key. Null when unknown. */
+  livemode: boolean | null;
 }
 
 /**
@@ -129,6 +205,21 @@ export interface PaymentProviderVM {
   id: string;
   connected: boolean;
   reason: string | null;
+  /** 'test' | 'live' from the secret key's own prefix. Null when no key. */
+  mode: 'test' | 'live' | 'unknown' | null;
+  secretKeyPresent: boolean;
+  webhookSecretPresent: boolean;
+  apiVersion: string;
+  /**
+   * When a signed delivery last arrived. NULL IS NOT HEALTH — a webhook secret
+   * being set is not a webhook working, and if the endpoint was never
+   * registered at Stripe everything looks fine until a card is removed there
+   * and this register goes on showing it.
+   */
+  webhookLastReceivedAt: string | null;
+  webhookLastEventType: string | null;
+  /** Null exactly when a delivery is on record. Otherwise it says why not. */
+  webhookReason: string | null;
 }
 
 /**
@@ -394,6 +485,28 @@ export function useProfileNextData() {
     staleTime: 30_000,
   });
 
+  /* ── read 5a: what this DEPLOYMENT can do about them ──────────────────
+   *
+   * Separate from the list on purpose. An absent `MCP_CONNECTION_SECRET_KEY`
+   * is a sentence beside one disabled field, not a failure of the whole
+   * register — so it must not be able to take the list down with it, and the
+   * list must not have to carry deployment configuration on every row.
+   *
+   * There is NO client-side default. A failed read leaves this null and the
+   * register says the deployment did not report its state; inventing
+   * `{configured: false}` here would print a confident sentence about a
+   * question that was never answered.
+   */
+  const mcpRuntimeQ = useQuery({
+    queryKey: ['profile-next-mcp-runtime', rid, uid],
+    queryFn: async (): Promise<McpRuntimeVM> => {
+      const { data } = await apiClient.get<McpRuntimeVM>('/mcp-connections/runtime');
+      return data;
+    },
+    enabled: !!uid && !!rid,
+    staleTime: 300_000,
+  });
+
   /* ── read 6: payment methods, and the provider behind them ──────────── */
 
   const paymentsQ = useQuery({
@@ -414,6 +527,14 @@ export function useProfileNextData() {
           // itself an unknown, so it must not read as a confident "connected".
           reason:
             'The payment provider did not report its state, so this page cannot say whether one is connected.',
+          mode: null,
+          secretKeyPresent: false,
+          webhookSecretPresent: false,
+          apiVersion: '—',
+          webhookLastReceivedAt: null,
+          webhookLastEventType: null,
+          webhookReason:
+            'The deployment did not report its webhook state either, so nothing is claimed about deliveries.',
         },
         methods: Array.isArray(data?.methods) ? data.methods : [],
       };
@@ -523,11 +644,20 @@ export function useProfileNextData() {
   /* ── writes: the model-context register ─────────────────────────────── */
 
   const addMcpServer = useCallback(
-    async (input: { name: string; url: string; scopes: string[] }) => {
+    async (input: {
+      name: string;
+      url: string;
+      scopes: string[];
+      secret?: string;
+    }) => {
+      const secret = input.secret?.trim();
       await apiClient.post('/mcp-connections', {
         name: input.name.trim(),
         url: input.url.trim(),
         scopes: input.scopes,
+        // Omitted rather than sent empty: the gateway refuses an empty secret,
+        // and "no credential" is a different request from "a blank one".
+        ...(secret ? { secret } : {}),
       });
       await mcpQ.refetch();
     },
@@ -537,6 +667,31 @@ export function useProfileNextData() {
   const revokeMcpServer = useCallback(
     async (id: string) => {
       await apiClient.delete(`/mcp-connections/${id}`);
+      await mcpQ.refetch();
+    },
+    [mcpQ],
+  );
+
+  /**
+   * Call one declared server and record what answered.
+   *
+   * The route returns 200 for a handshake that FAILED — the probe succeeded in
+   * finding out the server is unreachable — so this resolves, the row comes back
+   * carrying the failure, and the register prints it. Only a refusal by the
+   * gateway itself (revoked, not yours, write failed) rejects.
+   */
+  const probeMcpServer = useCallback(
+    async (id: string) => {
+      await apiClient.post(`/mcp-connections/${id}/probe`);
+      await mcpQ.refetch();
+    },
+    [mcpQ],
+  );
+
+  /** Set or clear one server's credential. `null` clears. */
+  const setMcpSecret = useCallback(
+    async (id: string, secret: string | null) => {
+      await apiClient.put(`/mcp-connections/${id}/secret`, { secret });
       await mcpQ.refetch();
     },
     [mcpQ],
@@ -553,6 +708,70 @@ export function useProfileNextData() {
   const removePaymentMethod = useCallback(
     async (id: string) => {
       await apiClient.delete(`/payment-methods/${id}`);
+      await paymentsQ.refetch();
+    },
+    [paymentsQ],
+  );
+
+  /**
+   * Permission to STORE an instrument, not a payment.
+   *
+   * The client secret it returns authorises Stripe.js to attach ONE instrument
+   * to ONE customer; it cannot charge, list or read, which is why it is safe in
+   * a browser and why the card fields can live on Stripe's origin instead of in
+   * this DOM. `POST /billing/setup-intent` refuses with 503 and the provider's
+   * own sentence while `STRIPE_SECRET_KEY` is unset, so the panel's failure
+   * text is the server's, never page prose.
+   */
+  const createSetupIntent = useCallback(async (): Promise<{
+    clientSecret: string;
+    setupIntentId: string;
+    livemode: boolean;
+  }> => {
+    const { data } = await apiClient.post<{
+      clientSecret: string;
+      setupIntentId: string;
+      livemode: boolean;
+    }>('/billing/setup-intent', {});
+    if (!data?.clientSecret) {
+      throw new Error(
+        'The provider answered without a client secret, so the card form cannot open. Nothing was stored.',
+      );
+    }
+    return data;
+  }, []);
+
+  /**
+   * Reconcile the register against the provider's list.
+   *
+   * Called right after a confirmation so the row appears without waiting for a
+   * webhook, and callable on its own. It DROPS instruments the provider no
+   * longer has — a sync that only inserted would leave the register showing a
+   * card that cannot be charged.
+   */
+  const syncPayments = useCallback(async (): Promise<{
+    syncedAt: string;
+    kept: number;
+    removed: number;
+    note: string | null;
+  }> => {
+    const { data } = await apiClient.post<{
+      syncedAt: string;
+      kept: number;
+      removed: number;
+      note: string | null;
+    }>('/billing/sync', {});
+    await paymentsQ.refetch();
+    return data;
+  }, [paymentsQ]);
+
+  /**
+   * Which instrument the house is charged first. Written at the provider before
+   * the local flag, so the page and the charge cannot disagree.
+   */
+  const setDefaultPaymentMethod = useCallback(
+    async (id: string) => {
+      await apiClient.patch(`/payment-methods/${id}/default`, {});
       await paymentsQ.refetch();
     },
     [paymentsQ],
@@ -601,7 +820,16 @@ export function useProfileNextData() {
     mcpState: readState(mcpQ, !!uid && !!rid),
     mcpError: mcpQ.isError ? apiMessage(mcpQ.error) : null,
     mcpServers: mcpQ.data ?? [],
-    refetchMcp: () => void mcpQ.refetch(),
+    /**
+     * Null while the deployment has not answered. NOT a default of
+     * `{configured: false}`: "we have not asked" and "there is no key" are
+     * different sentences and the register prints different ones.
+     */
+    mcpRuntime: mcpRuntimeQ.data ?? null,
+    refetchMcp: () => {
+      void mcpQ.refetch();
+      void mcpRuntimeQ.refetch();
+    },
 
     /* read 6 — payment */
     paymentsState: readState(paymentsQ, !!uid && !!rid),
@@ -614,6 +842,14 @@ export function useProfileNextData() {
      */
     paymentProvider: paymentsQ.data?.provider ?? null,
     refetchPayments: () => void paymentsQ.refetch(),
+    /**
+     * The BROWSER's half of the Stripe credential, read here rather than asked
+     * of the gateway. `VITE_STRIPE_PUBLISHABLE_KEY` is baked into this bundle
+     * at build time and the gateway has no view of the bundle that is running,
+     * so a server-reported value would be a guess. Null renders as a named
+     * missing variable, not as a generic "not configured".
+     */
+    stripePublishableKey: stripePublishableKey(),
 
     /* the one session this page can name */
     session,
@@ -640,7 +876,12 @@ export function useProfileNextData() {
     saveBillingContact,
     addMcpServer,
     revokeMcpServer,
+    probeMcpServer,
+    setMcpSecret,
     removePaymentMethod,
+    createSetupIntent,
+    syncPayments,
+    setDefaultPaymentMethod,
     leaveRestaurant,
     deleteAccount,
   };

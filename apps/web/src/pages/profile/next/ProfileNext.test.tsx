@@ -39,7 +39,22 @@ const deleteAccount = vi.fn(() => Promise.resolve());
 const saveRestaurant = vi.fn(() => Promise.resolve());
 const addMcpServer = vi.fn(() => Promise.resolve());
 const revokeMcpServer = vi.fn(() => Promise.resolve());
+const probeMcpServer = vi.fn(() => Promise.resolve());
+const setMcpSecret = vi.fn(() => Promise.resolve());
 const removePaymentMethod = vi.fn(() => Promise.resolve());
+const setDefaultPaymentMethod = vi.fn(() => Promise.resolve());
+const syncPayments = vi.fn(
+  (): Promise<{ syncedAt: string; kept: number; removed: number; note: string | null }> =>
+    Promise.resolve({
+      syncedAt: '2026-09-03T12:00:00.000Z',
+      kept: 1,
+      removed: 0,
+      note: null,
+    }),
+);
+const createSetupIntent = vi.fn(() =>
+  Promise.resolve({ clientSecret: 'seti_1_secret', setupIntentId: 'seti_1', livemode: false }),
+);
 const refetchMe = vi.fn();
 const refetchLocation = vi.fn();
 const refetchMcp = vi.fn();
@@ -53,8 +68,46 @@ const MCP_ROW = {
   scopes: ['inventory:read', 'orders:read'],
   createdAt: '2026-09-01T09:00:00.000Z',
   lastUsedAt: null,
+  lastProbeAt: null,
   revokedAt: null,
   status: 'active' as const,
+  hasSecret: false,
+  secretSetAt: null,
+  /** Never probed. The register must claim nothing about it. */
+  probe: null as null | Record<string, unknown>,
+};
+
+/** What a successful handshake leaves on the row. */
+const MCP_PROBED = {
+  ...MCP_ROW,
+  lastProbeAt: '2026-09-03T11:00:00.000Z',
+  lastUsedAt: '2026-09-03T11:00:01.000Z',
+  probe: {
+    status: 'ok',
+    detail: 'Connected. 2 tools listed.',
+    serverName: 'Toast bridge',
+    serverVersion: '3.1.0',
+    protocolVersion: '2025-06-18',
+    tools: [
+      { name: 'stock_on_hand', title: 'Stock on hand', description: null },
+      { name: 'open_orders', title: null, description: null },
+    ],
+    toolCount: 2,
+  },
+};
+
+const MCP_RUNTIME = {
+  secretStorage: {
+    configured: false,
+    reason:
+      'MCP_CONNECTION_SECRET_KEY is not set, so a model-context server secret cannot be stored or read.',
+  },
+  invocation: {
+    enabled: false,
+    reason:
+      'Tools can be listed but not called. Calling one could commit this restaurant to money, which is the subject of the commitment guardrail (ADR 0013); that decision comes before the code, so no invocation path exists in this gateway.',
+  },
+  probeTimeoutMs: 8000,
 };
 
 function base(over: Record<string, unknown> = {}) {
@@ -124,6 +177,7 @@ function base(over: Record<string, unknown> = {}) {
     mcpState: 'ok',
     mcpError: null,
     mcpServers: [MCP_ROW],
+    mcpRuntime: MCP_RUNTIME,
     refetchMcp,
 
     paymentsState: 'ok',
@@ -133,9 +187,18 @@ function base(over: Record<string, unknown> = {}) {
       id: 'stripe',
       connected: false,
       reason:
-        'Stripe is not connected — no provider credential is configured in this deployment, so no payment method can be taken or charged.',
+        'Stripe is not connected — STRIPE_SECRET_KEY is not set on this deployment, so no payment method can be taken and none could exist to list.',
+      mode: null,
+      secretKeyPresent: false,
+      webhookSecretPresent: false,
+      apiVersion: '2024-06-20',
+      webhookLastReceivedAt: null,
+      webhookLastEventType: null,
+      webhookReason:
+        'STRIPE_WEBHOOK_SECRET is not set, so every delivery is refused and this register only changes when someone is looking at it.',
     },
     refetchPayments,
+    stripePublishableKey: null,
 
     session: {
       device: 'Chrome on macOS',
@@ -154,7 +217,12 @@ function base(over: Record<string, unknown> = {}) {
     saveBillingContact: vi.fn(() => Promise.resolve()),
     addMcpServer,
     revokeMcpServer,
+    probeMcpServer,
+    setMcpSecret,
     removePaymentMethod,
+    setDefaultPaymentMethod,
+    syncPayments,
+    createSetupIntent,
     leaveRestaurant: vi.fn(() => Promise.resolve()),
     deleteAccount,
     ...over,
@@ -295,13 +363,157 @@ describe('ProfileNext — security', () => {
 });
 
 describe('ProfileNext — the model-context register (built this pass)', () => {
-  it('lists a declared server with its scopes, and its last call as a dash', () => {
+  it('claims NOTHING about a server nobody has checked', () => {
+    // The chip is an em dash, not `Connected`. A declaration is not a
+    // measurement, and the whole runtime pass exists to keep those apart.
+    draw();
+    const row = rowFor('House POS bridge');
+    expect(within(row).getByText('—')).toBeInTheDocument();
+    expect(within(row).getByText(/has never been checked/)).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    expect(within(row).getByText('inventory:read')).toBeInTheDocument();
+    expect(within(row).getByText(/it has never been called/)).toBeInTheDocument();
+    expect(within(row).getByText(/it has never answered/)).toBeInTheDocument();
+    // Tools are what a handshake returns, so an unchecked server has a dash
+    // rather than an empty list that would read as "it offers none".
+    expect(within(row).getByText(/the server has not been asked/)).toBeInTheDocument();
+  });
+
+  it('calls the server when asked, through the real write', async () => {
+    draw();
+    fireEvent.click(
+      within(rowFor('House POS bridge')).getByRole('button', { name: 'Check the server' }),
+    );
+    await waitFor(() => expect(probeMcpServer).toHaveBeenCalledWith('m1'));
+  });
+
+  it('shows what answered: the name, the version, and the tool names', () => {
+    mockData.current = base({ mcpServers: [MCP_PROBED] });
     draw();
     const row = rowFor('House POS bridge');
     expect(within(row).getByText('Connected')).toBeInTheDocument();
-    fireEvent.click(within(row).getByRole('button', { name: 'Scopes and dates' }));
-    expect(within(row).getByText('inventory:read')).toBeInTheDocument();
-    expect(within(row).getByText(/— nothing has called it/)).toBeInTheDocument();
+    expect(within(row).getByText('Connected. 2 tools listed.')).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    expect(within(row).getByText(/Toast bridge 3\.1\.0/)).toBeInTheDocument();
+    expect(within(row).getByText('stock_on_hand')).toBeInTheDocument();
+    expect(within(row).getByText('open_orders')).toBeInTheDocument();
+  });
+
+  it('says a listed tool cannot be CALLED, in the gateway’s own words', () => {
+    mockData.current = base({ mcpServers: [MCP_PROBED] });
+    draw();
+    const row = rowFor('House POS bridge');
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    expect(within(row).getByText(/commitment guardrail \(ADR 0013\)/)).toBeInTheDocument();
+    // And there is no control that would call one.
+    expect(within(row).queryByRole('button', { name: /stock_on_hand/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /Run|Call|Invoke/ })).not.toBeInTheDocument();
+  });
+
+  it('does not move “last answered” when the server did not answer', () => {
+    // The two-timestamp rule, on screen: a failed check is a call that
+    // happened and an answer that did not.
+    mockData.current = base({
+      mcpServers: [
+        {
+          ...MCP_ROW,
+          lastProbeAt: '2026-09-03T11:00:00.000Z',
+          lastUsedAt: null,
+          probe: {
+            status: 'unreachable',
+            detail: 'nothing answered within the 8000ms left of the probe’s time budget.',
+            serverName: null,
+            serverVersion: null,
+            protocolVersion: null,
+            tools: null,
+            toolCount: null,
+          },
+        },
+      ],
+    });
+    draw();
+    const row = rowFor('House POS bridge');
+    expect(within(row).getByText('Unavailable')).toBeInTheDocument();
+    expect(within(row).getByText(/nothing answered within/)).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    // The call happened; the answer did not. Two columns, two sentences.
+    expect(within(row).queryByText(/it has never been called/)).not.toBeInTheDocument();
+    expect(within(row).getByText(/it has never answered/)).toBeInTheDocument();
+  });
+
+  it('says a stored credential could not be read, rather than calling anonymously', () => {
+    mockData.current = base({
+      mcpServers: [
+        {
+          ...MCP_ROW,
+          hasSecret: true,
+          secretSetAt: '2026-09-02T09:00:00.000Z',
+          lastProbeAt: '2026-09-03T11:00:00.000Z',
+          probe: {
+            status: 'unconfigured',
+            detail:
+              'MCP_CONNECTION_SECRET_KEY is not set, so a model-context server secret cannot be stored or read.',
+            serverName: null,
+            serverVersion: null,
+            protocolVersion: null,
+            tools: null,
+            toolCount: null,
+          },
+        },
+      ],
+    });
+    draw();
+    const row = rowFor('House POS bridge');
+    // Rendered as the row's reason, beside the credential field's own hint.
+    expect(
+      within(row).getAllByText(/MCP_CONNECTION_SECRET_KEY is not set/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('disables the credential field, with the deployment’s reason, when no key is configured', () => {
+    draw();
+    const row = rowFor('House POS bridge');
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    expect(within(row).getByLabelText('Credential')).toBeDisabled();
+    expect(
+      within(row).getAllByText(/MCP_CONNECTION_SECRET_KEY is not set/).length,
+    ).toBeGreaterThan(0);
+    expect(setMcpSecret).not.toHaveBeenCalled();
+  });
+
+  it('stores a credential when the deployment says it can', async () => {
+    mockData.current = base({
+      mcpRuntime: {
+        ...MCP_RUNTIME,
+        secretStorage: { configured: true, reason: null },
+      },
+    });
+    draw();
+    const row = rowFor('House POS bridge');
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    fireEvent.change(within(row).getByLabelText('Credential'), {
+      target: { value: 'the-house-token' },
+    });
+    fireEvent.click(within(row).getByRole('button', { name: 'Store credential' }));
+    await waitFor(() =>
+      expect(setMcpSecret).toHaveBeenCalledWith('m1', 'the-house-token'),
+    );
+  });
+
+  it('disables the credential field when the deployment did not report its state', () => {
+    // Not `{configured: false}` by default: "we never asked" and "there is no
+    // key" are different sentences, and only one of them names a variable.
+    mockData.current = base({ mcpRuntime: null });
+    draw();
+    const row = rowFor('House POS bridge');
+    fireEvent.click(within(row).getByRole('button', { name: 'Scopes, tools and dates' }));
+    expect(within(row).getByLabelText('Credential')).toBeDisabled();
+    expect(
+      within(row).getAllByText(/did not report whether it can store a credential/).length,
+    ).toBeGreaterThan(0);
   });
 
   it('adds a server through the real write, with the scopes it parsed', async () => {
@@ -321,6 +533,8 @@ describe('ProfileNext — the model-context register (built this pass)', () => {
       name: 'Supplier catalogue',
       url: 'https://catalogue.example.com',
       scopes: ['catalogue:read', 'prices:read'],
+      // No key configured in this fixture, so no credential is offered at all.
+      secret: undefined,
     });
   });
 
@@ -367,38 +581,89 @@ describe('ProfileNext — the model-context register (built this pass)', () => {
   });
 });
 
-describe('ProfileNext — the payment register (built this pass)', () => {
-  it('opens the Add form and disables the submit with the provider’s own reason', () => {
+/**
+ * Register V — the provider path (third pass, ADR 0110).
+ *
+ * The tests that would be easiest to write vacuously are written the hard way:
+ * the unconfigured case asserts the NAME of the missing variable and that no
+ * typeable field exists, and the connected-with-a-webhook-secret case asserts
+ * the sentence that separates "configured" from "working". Both pass trivially
+ * against a page that merely renders nothing.
+ */
+const CONNECTED_PROVIDER = {
+  id: 'stripe',
+  connected: true,
+  reason: null,
+  mode: 'test' as const,
+  secretKeyPresent: true,
+  webhookSecretPresent: true,
+  apiVersion: '2024-06-20',
+  webhookLastReceivedAt: null,
+  webhookLastEventType: null,
+  webhookReason:
+    'STRIPE_WEBHOOK_SECRET is set, but no signed delivery has ever arrived at this deployment. Until one does, a card removed at Stripe would go on showing here.',
+};
+
+const CARD_ROW = {
+  id: 'pm-row-1',
+  kind: 'card' as const,
+  brand: 'visa',
+  last4: '4242',
+  exp: '04/2029',
+  isDefault: true,
+  provider: 'stripe',
+  createdAt: '2026-09-01T09:00:00.000Z',
+  providerType: 'card',
+  syncedAt: '2026-09-03T11:00:00.000Z',
+  livemode: false,
+};
+
+describe('ProfileNext — the payment register (the provider path)', () => {
+  it('opens the panel with NO typeable field, and names the secret that is missing', () => {
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
-    expect(screen.getByLabelText('Kind')).toBeInTheDocument();
-    expect(screen.getByLabelText('Last four digits')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save payment method' })).toBeDisabled();
+
+    // The four hand-typed fields of the second pass are GONE, not disabled.
+    // They described a create path the provider build replaced, and leaving
+    // them would put the register one env var from an operator-typed row.
+    expect(screen.queryByLabelText('Kind')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Last four digits')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Brand or bank')).not.toBeInTheDocument();
+
     expect(
-      screen.getByText('Stripe is not connected — this saves nothing until it is.'),
+      screen.getByRole('button', { name: 'Hold to put this card on file' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/STRIPE_SECRET_KEY is not set on the gateway/),
     ).toBeInTheDocument();
+    expect(createSetupIntent).not.toHaveBeenCalled();
   });
 
-  it('offers the four kinds a Stripe-backed account would have', () => {
+  it('names the BROWSER’s missing key when the gateway is ready and the bundle is not', () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      stripePublishableKey: null,
+    });
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
-    const kinds = screen.getByLabelText('Kind') as HTMLSelectElement;
-    const labels = Array.from(kinds.options).map((o) => o.textContent);
-    expect(labels).toEqual([
-      'Card',
-      'Bank account (ACH direct debit)',
-      'Apple Pay',
-      'Invoice terms (net 30)',
-    ]);
+
+    expect(
+      screen.getByText(/VITE_STRIPE_PUBLISHABLE_KEY is not set in this web bundle/),
+    ).toBeInTheDocument();
+    // and it must NOT blame the gateway, which is configured
+    expect(
+      screen.queryByText(/STRIPE_SECRET_KEY is not set on the gateway/),
+    ).not.toBeInTheDocument();
+    expect(createSetupIntent).not.toHaveBeenCalled();
   });
 
   it('says the register is empty because no provider is connected, not because nobody added a card', () => {
     draw();
     expect(
-      screen.getByText(/no payment provider is connected to this deployment/),
+      screen.getByText(/no payment provider credential is configured on this deployment/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Stripe is not connected — no provider credential is configured/),
+      screen.getByText(/STRIPE_SECRET_KEY is not set on this deployment/),
     ).toBeInTheDocument();
   });
 
@@ -414,9 +679,7 @@ describe('ProfileNext — the payment register (built this pass)', () => {
   });
 
   it('offers to add one, without the "Provider not connected" chip, once a provider is connected', () => {
-    mockData.current = base({
-      paymentProvider: { id: 'stripe', connected: true, reason: null },
-    });
+    mockData.current = base({ paymentProvider: CONNECTED_PROVIDER });
     draw();
     const empty = rowFor('No payment method on file');
     expect(within(empty).getByText('Not connected')).toBeInTheDocument();
@@ -432,9 +695,139 @@ describe('ProfileNext — the payment register (built this pass)', () => {
     });
     draw();
     expect(screen.getByText(/payment register could not be read \(boom\)/)).toBeInTheDocument();
-    expect(screen.queryByText(/no payment provider is connected to this deployment/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/no payment provider credential is configured on this deployment/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/The provider did not report its state \(boom\)/)).toBeInTheDocument();
+  });
+});
+
+describe('ProfileNext — the provider row is the honesty seam', () => {
+  it('says a webhook secret that has never had a delivery is NOT working', () => {
+    mockData.current = base({ paymentProvider: CONNECTED_PROVIDER });
+    draw();
+    const row = rowFor('Stripe');
+    expect(within(row).getByText('Connected')).toBeInTheDocument();
+    expect(
+      within(row).getByText(/no signed delivery has ever arrived at this deployment/),
+    ).toBeInTheDocument();
+    // the subtitle prints the missing delivery as a dash, not as a date
+    expect(within(row).getByText(/last delivery/)).toBeInTheDocument();
   });
 
+  it('drops the warning once a delivery is on record, and names the event', () => {
+    mockData.current = base({
+      paymentProvider: {
+        ...CONNECTED_PROVIDER,
+        webhookLastReceivedAt: '2026-09-03T10:30:00.000Z',
+        webhookLastEventType: 'payment_method.attached',
+        webhookReason: null,
+      },
+    });
+    draw();
+    const row = rowFor('Stripe');
+    expect(
+      within(row).queryByText(/no signed delivery has ever arrived/),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Show the three secrets' }));
+    expect(
+      within(row).getByText(/payment_method\.attached/),
+    ).toBeInTheDocument();
+  });
+
+  it('names all three secrets, in the process each one lives in', () => {
+    mockData.current = base({ paymentProvider: CONNECTED_PROVIDER });
+    draw();
+    const row = rowFor('Stripe');
+    fireEvent.click(within(row).getByRole('button', { name: 'Show the three secrets' }));
+
+    expect(within(row).getByText('STRIPE_SECRET_KEY')).toBeInTheDocument();
+    expect(within(row).getByText('STRIPE_WEBHOOK_SECRET')).toBeInTheDocument();
+    expect(within(row).getByText('VITE_STRIPE_PUBLISHABLE_KEY')).toBeInTheDocument();
+    // the browser key is absent in the fixture and must be reported as such
+    expect(within(row).getByText(/NOT set \(web bundle, at build time\)/)).toBeInTheDocument();
+  });
+
+  it('reconciles against the provider on demand, and reports what it dropped', async () => {
+    syncPayments.mockResolvedValueOnce({
+      syncedAt: '2026-09-03T12:00:00.000Z',
+      kept: 0,
+      removed: 1,
+      note: '1 instrument(s) were on file here and no longer exist at the provider; they have been dropped.',
+    });
+    mockData.current = base({ paymentProvider: CONNECTED_PROVIDER });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: /Reconcile now/ }));
+    await waitFor(() => expect(syncPayments).toHaveBeenCalled());
+    expect(
+      await screen.findByText(/no longer exist at the provider/),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no reconcile at all while no provider is connected', () => {
+    draw();
+    expect(screen.queryByRole('button', { name: /Reconcile now/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('ProfileNext — a stored instrument says how stale it is', () => {
+  it('prints when the row was last confirmed against the provider', () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      paymentMethods: [CARD_ROW],
+    });
+    draw();
+    const row = rowFor(/Card · visa/);
+    expect(within(row).getByText(/Confirmed against the provider on/)).toBeInTheDocument();
+    expect(within(row).getByText(/•••• 4242/)).toBeInTheDocument();
+  });
+
+  it('says a row has NEVER been confirmed rather than implying it is current', () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      paymentMethods: [{ ...CARD_ROW, syncedAt: null }],
+    });
+    draw();
+    const row = rowFor(/Card · visa/);
+    expect(
+      within(row).getByText(/Never confirmed against the provider since it was written/),
+    ).toBeInTheDocument();
+  });
+
+  it('files an instrument our four kinds do not span as itself, not as a card', () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      paymentMethods: [
+        { ...CARD_ROW, kind: 'other' as const, brand: null, providerType: 'cashapp' },
+      ],
+    });
+    draw();
+    expect(screen.getByText(/Instrument · cashapp/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Card · cashapp/)).not.toBeInTheDocument();
+  });
+
+  it('lets a manager choose which instrument is charged first, once a provider is connected', async () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      paymentMethods: [{ ...CARD_ROW, isDefault: false }],
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Charge this first' }));
+    await waitFor(() => expect(setDefaultPaymentMethod).toHaveBeenCalledWith('pm-row-1'));
+    expect(
+      await screen.findByText(/The provider now charges this instrument first/),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no "charge this first" while no provider is connected — there is nothing to charge', () => {
+    mockData.current = base({ paymentMethods: [{ ...CARD_ROW, isDefault: false }] });
+    draw();
+    expect(screen.queryByRole('button', { name: 'Charge this first' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+});
+
+describe('ProfileNext — the plan is a figure', () => {
   it('names the plan now that the endpoint returns it', () => {
     draw();
     const plan = rowFor('Plan');

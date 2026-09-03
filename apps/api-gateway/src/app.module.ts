@@ -38,6 +38,7 @@ import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-tem
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { McpConnectionsModule } from "./mcp-connections/mcp-connections.module";
 import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
+import { BillingModule } from "./billing/billing.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
 import { TeamModule } from "./team/team.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
@@ -117,6 +118,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     McpConnectionsModule, // Model-context (MCP) servers declared per user + restaurant
     PaymentMethodsModule, // Payment instruments on file; create refuses with no provider
+    BillingModule, // Stripe: SetupIntents, reconcile, signed webhook (ADR 0110)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints

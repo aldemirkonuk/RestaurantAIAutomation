@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UnauthorizedException,
@@ -97,9 +98,43 @@ export class PaymentMethodsController {
     return this.service.create(restaurantId, dto);
   }
 
+  @Patch(":id/default")
+  @ApiOperation({
+    summary: "Make this the instrument the house is charged first",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "The default is written at the PROVIDER before the local flag is flipped — \"charged first\" is a fact about the Stripe customer, not about our column.",
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      "No provider credential is configured, so there is nothing to charge and nothing to prefer.",
+  })
+  async setDefault(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ): Promise<PaymentMethodResponse> {
+    const { userId, restaurantId } = this.scope(req);
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "change which payment method is charged first",
+    );
+    return this.service.setDefault(restaurantId, id);
+  }
+
   @Delete(":id")
-  @ApiOperation({ summary: "Remove a payment method from this restaurant" })
-  @ApiResponse({ status: 200, description: "The removed id" })
+  @ApiOperation({
+    summary:
+      "Detach a payment method at the provider, then remove it from this restaurant",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "The removed id. The detach happens FIRST: dropping our row alone would leave a live instrument on the customer that the next reconcile would faithfully restore.",
+  })
   async remove(
     @Req() req: Request & { user: AuthenticatedUser },
     @Param("id", new ParseUUIDPipe()) id: string,

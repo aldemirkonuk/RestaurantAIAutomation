@@ -240,9 +240,14 @@ about a THIRD-PARTY server and still no evidence that the Mudavym server exists.
   still not sufficient: with four builders in one checkout, the only safe check is
   the one run **after** the file is written. Renamed to 0107, which `next_free()`
   and a fresh sweep both confirm is free. Two further notes for the parent:
-  **0102 is claimed twice** — by
+  **0102 was claimed twice when this was written** — by
   `0102-a-card-on-file-is-the-providers-record-not-ours.md` on this branch and by
-  `0102-every-dependabot-pr-resolved-by-measurement.md` in an unpushed peer
-  worktree — and two more builds on this branch may still be filing, so renumber
-  deterministically at commit rather than trusting any number written here.
+  a `0102-*` in an unpushed peer worktree — and two more builds on this branch may
+  still be filing, so renumber deterministically at commit rather than trusting
+  any number written here. *(Resolved after this paragraph was written: the
+  payment build renamed itself to
+  [[0110-a-card-on-file-is-the-providers-record-not-ours]], and a re-sweep of all
+  44 worktrees on 2026-09-03 found `wt-deps` holding **0106**, not 0102 — so the
+  collision this names had already moved by the time it was read, which is the
+  paragraph's own point one level up.)*
 - Not yet reviewed by the founder. `OPEN-DECISIONS.md` deliberately untouched.
