@@ -203,6 +203,21 @@ function makeClient(rowsByTable: Rows) {
   return client;
 }
 
+/**
+ * The generator now also reads the day-exclusion store and the manager's
+ * dismissals. Neither belongs to this file's subject (schema drift in the
+ * bundle queries), so both are stubbed at their honest "readable, empty"
+ * values — a stub that reported `readable: false` would make every assertion
+ * below pass for the wrong reason.
+ */
+function makeGenerator(client: any) {
+  return new InsightGeneratorService(
+    { getClient: () => client } as any,
+    { load: async () => ({ dates: new Set<string>(), readable: true, problem: null }) } as any,
+    { listSuppressions: async () => ({ keys: new Set<string>(), readable: true, problem: null }) } as any,
+  );
+}
+
 const RESTAURANT = "11111111-1111-1111-1111-111111111111";
 const day = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
 
@@ -328,9 +343,7 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
           status: o.status,
         })),
       });
-      const svc = new InsightGeneratorService({
-        getClient: () => client,
-      } as any);
+      const svc = makeGenerator(client);
       const out = await svc.generate(RESTAURANT, { persist: false });
       expect(client.schemaErrors).toEqual([]);
       expect(out.availability).toContain("orders");
@@ -362,9 +375,7 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
           },
         ],
       });
-      const svc = new InsightGeneratorService({
-        getClient: () => client,
-      } as any);
+      const svc = makeGenerator(client);
 
       const bundle = await (svc as any).loadBundle(RESTAURANT);
 

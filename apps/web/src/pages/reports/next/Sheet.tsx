@@ -4,6 +4,17 @@
  *   "Used to like today's drag-to-rearrange canvas — where we can just swipe
  *    and change everything to its place."   (MAKEOVER-VERDICTS: /reports, MERGE)
  *
+ *   "…are we still able to drag and drop, or now it's fixed locations? If it's
+ *    drag and drop and we can still adjust it, then it's perfect."
+ *                                            (the second-pass review, 2026-09-03)
+ *
+ * Both, and unchanged by the new controls: **move by dragging anywhere on a
+ * cutting, resize by pulling its bottom-right corner** — `isDraggable` and
+ * `isResizable` are the same flag, on together while arranging and off together
+ * while reading, and both `onDragStop` and `onResizeStop` write the new slot
+ * into the draft. The "Show instead" and "Draw as" selects sit inside
+ * `draggableCancel`, so choosing from them never starts a drag.
+ *
  * Same engine as the page it merges from — `react-grid-layout`, already a
  * dependency and already the canvas under `components/reports/DashboardCanvas`
  * — so this is a re-clothing of a proven interaction, not a second one. No new
@@ -27,36 +38,33 @@ import {
 import 'react-grid-layout/css/styles.css';
 import { tuck } from '@/lib/mudavym';
 import {
-  BLOCK_META,
   SHEET_COLS,
   SHEET_MARGIN,
   SHEET_ROW_HEIGHT,
-  type ReportBlockId,
+  type AnalysisId,
   type Slot,
 } from './rp-sheet';
 
 const Grid = WidthProvider(Responsive);
 
-/** Pointer targets that must never begin a drag. */
+/** Pointer targets that must never begin a drag — the two new selects included. */
 const DRAG_CANCEL =
-  '.react-resizable-handle,button,a,input,textarea,select,label,[role="button"],.rp-no-drag';
+  '.react-resizable-handle,button,a,input,textarea,select,option,label,[role="button"],.rp-no-drag';
 
 export interface SheetCutting {
-  id: ReportBlockId;
+  id: AnalysisId;
   slot: Slot;
+  /** The whole cutting, already rendered — the sheet only lays paper out. */
   body: ReactNode;
-  /** Rendered at the right of the cutting's head while reading (e.g. a window picker). */
-  aside?: ReactNode;
 }
 
 export interface SheetProps {
   cuttings: SheetCutting[];
   arranging: boolean;
-  onMove: (slots: Partial<Record<ReportBlockId, Slot>>) => void;
-  onHide: (id: ReportBlockId) => void;
+  onMove: (slots: Partial<Record<AnalysisId, Slot>>) => void;
 }
 
-export function Sheet({ cuttings, arranging, onMove, onHide }: SheetProps) {
+export function Sheet({ cuttings, arranging, onMove }: SheetProps) {
   const layouts = useMemo((): ResponsiveLayouts => {
     const lg: LayoutItem[] = cuttings.map((c) => ({
       i: c.id,
@@ -71,8 +79,8 @@ export function Sheet({ cuttings, arranging, onMove, onHide }: SheetProps) {
   const handleChange = useCallback(
     (next: readonly LayoutItem[]) => {
       if (!arranging) return;
-      const slots: Partial<Record<ReportBlockId, Slot>> = {};
-      for (const l of next) slots[l.i as ReportBlockId] = { x: l.x, y: l.y, w: l.w, h: l.h };
+      const slots: Partial<Record<AnalysisId, Slot>> = {};
+      for (const l of next) slots[l.i as AnalysisId] = { x: l.x, y: l.y, w: l.w, h: l.h };
       onMove(slots);
     },
     [arranging, onMove],
@@ -101,25 +109,7 @@ export function Sheet({ cuttings, arranging, onMove, onHide }: SheetProps) {
       >
         {cuttings.map((c) => (
           <div key={c.id} className="rp-grid-item">
-            <section className="rp-cut" aria-label={BLOCK_META[c.id].title}>
-              {/* Not a <header>: the section's heading is the h2 below it, and a
-                  nested banner landmark per cutting would drown the page's own. */}
-              <div className="rp-cut__head">
-                <h2 className="rp-cut__title">{BLOCK_META[c.id].title}</h2>
-                {arranging ? (
-                  <button
-                    type="button"
-                    className="rp-mini rp-ink rp-focus"
-                    onClick={() => onHide(c.id)}
-                  >
-                    Take off
-                  </button>
-                ) : (
-                  (c.aside ?? null)
-                )}
-              </div>
-              <div className="rp-cut__body">{c.body}</div>
-            </section>
+            {c.body}
           </div>
         ))}
       </Grid>

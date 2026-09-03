@@ -12,6 +12,11 @@ paper's feint ruling, and it only exists while you are arranging.** Reading is
 plain paper; pressing "Arrange the sheet" draws the ruling on `settle`, and
 that is the promise that a cutting will land square when you let go of it.
 
+The second pass added two controls per cutting — "Show instead" and "Draw as" —
+and **no motion at all**. They appear with the ruling and leave with it; a
+select that animated open would be chrome celebrating itself, and swapping a
+register is a change of subject, not an arrival.
+
 | id | token | curve · ms | fires |
 |---|---|---|---|
 | `rp-open` | `settle` | `cubic-bezier(.16,1,.3,1)` · 420ms | the opening — wordmark, date, "What the books say." and the engine's loudest sentence — once on mount; opacity + 6px rise (`ReportsNext.tsx`, WAAPI via `animate()`) |
@@ -20,10 +25,18 @@ that is the promise that a cutting will land square when you let go of it.
 | `rp-ink` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | hover/focus micro-states on cuttings, chips, buttons and links — border, ground and colour only; nothing translates or scales |
 | `rp-working` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | "Show the working" — the server's own `basis` sentences revealing on `grid-template-rows: 0fr → 1fr`. Deliberately the slow token: this is the "show the working" page-turn, not a disclosure toggle |
 | `rp-ask` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the ⌘K palette panel arriving; opacity + 6px from above (WAAPI via `animate()`) |
-| `rp-sheen` | — (not a `motion.ts` token) | `cubic-bezier(.45,0,.55,1)` · 1.9s loop | skeleton bars while a register is genuinely in flight. Same treatment and timing as the dashboard's `skel-sheen`; kept identical on purpose so "in flight" looks the same everywhere. **Never** shown for an unknown — that is the static em dash |
+| `rp-sheen` | — (not a `motion.ts` token) | `cubic-bezier(.45,0,.55,1)` · 1.9s loop | skeleton bars while a register is genuinely in flight — including the moment after a cutting is swapped to another analysis and its first read is on the wire. Same treatment and timing as the dashboard's `skel-sheen`; kept identical on purpose so "in flight" looks the same everywhere. **Never** shown for an unknown — that is the static em dash |
 
 ## Deliberate non-motions
 
+- **Nothing animates when the drawing changes.** Switching a register from an
+  area to a heat map replaces the drawing outright. A cross-fade would suggest
+  the two pictures are the same measurement in transit; they are two readings of
+  one register, and the reader asked for the second one.
+- **Nothing animates when the subject changes.** A cutting swapped from the wine
+  quadrants to the room simply becomes the room, and shows skeletons while its
+  register is read. A slide or a flip would dramatise a choice the reader has
+  already made.
 - **Figures of record do not count up.** No `tally` on this page. A figure of
   record is read, not watched — and half the figures in "Figures of record" are
   em dashes, so a ticker would be animating an absence.
@@ -31,6 +44,8 @@ that is the promise that a cutting will land square when you let go of it.
   `isAnimationActive={false}`. A line that draws itself makes a *projection*
   look like something happening, which is exactly the confusion the dashed
   forecast run exists to prevent.
+- **The heat map does not ramp in.** Its cells are painted at their final
+  opacity; a wave across the calendar would read as time passing.
 - **The seal never takes wax here.** It appears once, pressed **dry**
   (`<Seal pressed color="var(--paper-2)" />`) beside "Ruled off." after the
   arrangement is saved. Arranging your own sheet is a routine, private act;

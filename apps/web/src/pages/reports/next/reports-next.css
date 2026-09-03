@@ -110,7 +110,67 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px 6px;
+  padding: 10px 12px 4px;
+}
+
+/* The window under the title — every cutting states the period it speaks
+   about, ALWAYS, because only one of the eleven registers takes a window from
+   the reader and the other ten are fixed by the server. */
+.rp-cut__window {
+  margin: 2px 0 0;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+/* The two questions a cutting is asked while the sheet is being arranged:
+   what it shows, and how it is drawn. Never present while reading. */
+.rp-cut__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  border-bottom: 1px dashed var(--paper-2);
+}
+.rp-field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rp-field .rp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* A global rule in the app's own stylesheet paints EVERY select
+   `background: white !important; color: #1F2937 !important` (and a charcoal
+   pair under `.dark`), which lands a raw white control on the paper ground and
+   ignores the house tokens entirely. Measured in the browser, 2026-09-03. The
+   two `!important`s below are the local answer — with both declarations
+   important, the more specific selector wins — and the global is filed in the
+   page note §9 as a foundation smell to fix once, outside this page's paths.
+   Contrast is not lost by the override: ink-1 on paper-0 measures well past
+   AA on both grounds. */
+.rp-select {
+  font-family: inherit;
+  font-size: 11.5px;
+  max-width: 190px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--paper-2);
+  cursor: pointer;
+}
+.rp-page .rp-select {
+  background: var(--paper-0) !important;
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+}
+.rp-arrange {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
 }
 .rp-cut__body {
   flex: 1 1 auto;
@@ -139,6 +199,147 @@
 .rp-plot > .recharts-responsive-container {
   position: absolute;
   inset: 0;
+}
+
+/* ── the hover detail on a plot ────────────────────────────────────────────
+   One tooltip shape for every drawing: what you are hovering, then the value
+   with its unit spelled out. A number with no unit is a number the reader has
+   to guess at. */
+.rp-tip {
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  box-shadow: 0 10px 24px -18px rgba(0, 0, 0, 0.6);
+}
+.rp-tip__head {
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.rp-tip__row {
+  font-size: 11.5px;
+  color: var(--ink-1);
+}
+.rp-tip__row b {
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── "one figure": the analysis reduced to its headline number ─────────── */
+.rp-big {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  flex: 1 1 auto;
+  min-height: 84px;
+}
+.rp-big__value {
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+}
+.rp-big__value[data-unknown='true'] {
+  color: var(--ink-3);
+}
+
+/* ── the heat map: a real table, so a header is a header ────────────────
+   The ramp is ONE hue — the seal at an opacity proportional to the largest
+   cell. A cell with no recorded row is blank paper with a hairline, because
+   "nobody rang anything up" and "the quietest service of the quarter" must not
+   look like each other. */
+.rp-heat-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.rp-heat {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+}
+.rp-heat__col,
+.rp-heat__row {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-align: right;
+  padding: 0 3px;
+}
+.rp-heat__col {
+  text-align: center;
+}
+.rp-heat__corner {
+  text-align: left;
+}
+.rp-heat__cell {
+  width: 17px;
+  height: 15px;
+  padding: 0;
+  border-radius: 3px;
+  background: var(--paper-2);
+}
+.rp-heat__cell[data-blank='true'] {
+  background: transparent;
+  border: 1px dashed var(--paper-2);
+}
+.rp-heat__cell span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--seal);
+}
+
+/* ── the plain register, as rows ───────────────────────────────────────── */
+.rp-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.rp-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-family: var(--rp-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--paper-1);
+  padding: 2px 6px 3px 0;
+  border-bottom: 1px solid var(--paper-2);
+}
+.rp-table td {
+  padding: 3px 6px 3px 0;
+  border-bottom: 1px solid var(--paper-2);
+  color: var(--ink-1);
+}
+.rp-table th[data-numeric='true'],
+.rp-table td[data-numeric='true'] {
+  text-align: right;
+  padding-right: 0;
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.rp-table td[data-unknown='true'] {
+  color: var(--ink-3);
 }
 
 /* The double rule — "the account is ruled off" (059 / 057 Ledger). */

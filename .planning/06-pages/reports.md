@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 2
 maturity: partial
 status: documented
-updated: 2026-09-02
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[team]]", "[[promotions]]", "[[recommendations]]", "[[recommendations-catalog]]"]
 ---
 
@@ -47,28 +47,123 @@ persistence.
   catalogue-only and says so** (`ReportGenerator.tsx:1-16`)
 
 **Mudavym redesign (flag `mudavym_design_reports`, default OFF):**
-- **The sheet** — eight cuttings on a twelve-column ruling; drag to move, pull a
-  corner to resize, "Take off" to remove one, "Put back <name>" to return it.
-  One toggle ("Arrange the sheet") enters it; "Rule it off" saves.
-- **Per-user arrangement** persisted under a new `reportsSheet` preference key
-  (`PATCH /users/:id/preferences`), separate from the legacy `dashboardBlocks`
+- **The sheet** — cuttings on a twelve-column ruling; **drag anywhere on a
+  cutting to move it, pull its bottom-right corner to resize**, "Take off" to
+  remove one, "Add a cutting" to put any catalogued analysis on. One toggle
+  ("Arrange the sheet") enters arranging; "Rule it off" saves; "Put it all
+  back" restores the house sheet.
+- **A catalogue of eleven analyses**, each an endpoint the gateway actually
+  serves (§4). Eight lie on the default sheet; `seats`, `service` and `restock`
+  are one click away.
+- **Per cutting: "Show instead"** — change which analysis occupies that square
+  of paper, keeping its position and size. An analysis already on the sheet is
+  offered but disabled (a duplicate is not a comparison).
+- **Per cutting: "Draw as"** — line · bars · area · heat map · scatter · table ·
+  one figure, **offered only where the drawing is true of that register's data**
+  (the week's shape has no heat map; figures of record has no bars), with one
+  line under the controls saying what is not offered and why.
+- **Per-user arrangement, subject AND drawing** persisted together under the
+  `reportsSheet` preference key (`PATCH /users/:id/preferences`, v2 blob),
+  separate from the legacy `dashboardBlocks`; a v1 blob upgrades in place
 - **The reading** — the analytics engine's sentences verbatim, filtered by the
   categories this restaurant actually has
-- **Five graphs, each with a named producer**: sales through the till (area,
-  `pos-revenue`), spend pacing (bars, `cashflow`), the week's shape (bars,
-  `seasonality`), what's coming (measured + dashed projection, `forecast`),
-  margin against movement (scatter on the engine's medians, `menu-engineering`)
+- **Deep plots**: both axes labelled with their unit, the window printed under
+  every cutting's title, hover detail naming the row and spelling the unit out,
+  the server's `basis` behind "Show the working", and the engine's own medians
+  drawn as reference rules where the endpoint publishes them (the
+  menu-engineering crosshair; the forecast seam)
+- **A weekday × week heat map** on the one register with a date on every row
+  (`pos-revenue`), drawn as a real table so an unrecorded day is blank paper
+  rather than the coldest colour on the ramp
 - **Figures of record** — the capital-efficiency register (`financial`), tabular
   mono, em dash wherever the engine returned `null`
-- **"Show the working"** on every cutting — the SERVER's own `basis` sentence
 - **"Ask the book" (⌘K)** — searches the engine's sentences; states in one line
-  that free-text answers do not exist
+  that free-text answers do not exist. Reads the insight feed whether or not
+  "The reading" is on the sheet.
 - **The writing desk — DARK on purpose**: the report-generator control renders
   disabled with the reason (no writer exists behind `POST /reports/generate`;
   OD-81), and links to `/documents-reports`
 - **Not carried over** (deliberate, see §1b): the global 7/30/90 selector, the
   KPI spotlight modal, add-block / preset / reset, the export menu, the
   monthly-reconciliation and data-tables blocks
+
+### What this page can do now
+
+Plain list, for the question "what are the capabilities of the new model".
+Everything below is built and tested on `feat/mudavym-design-p4`; the last block
+is what it still cannot do, and why.
+
+**The eleven analyses you can put on a sheet** (each is one gateway endpoint):
+
+| Cutting | What it answers | Window | Drawings offered |
+|---|---|---|---|
+| The reading | What the engine has noticed, in its own sentences | the stored insight feed, hourly | table · bars |
+| Through the till | What guests actually paid, day by day | 7 / 30 / 90 days, your choice | area · line · bars · **heat map** · table · one figure |
+| Spend pacing | Whether buying runs hot or cold against last month | 180 days, two 30-day windows | bars · table · one figure |
+| The week's shape | Which nights carry the week | last 90 days of consumption | bars · line · area · table |
+| What's coming | What the model expects the next fortnight to take | 120 days of history, 14 ahead | line · area · bars · table · one figure |
+| Margin against movement | Which wines earn their place | the list, against 90 days of movement | scatter · bars · table |
+| Figures of record | What the cellar is worth, how hard the capital works | 365 days of COGS | table · one figure |
+| The room | Which tables earn, which seats sit idle | last 90 days of checks | bars · scatter · table |
+| Who served it | What each server's checks look like | last 90 days of checks | bars · table |
+| What to buy back | What is about to run out, and how likely | 90 days of demand | table · bars |
+| The writing desk | Nothing — no report writer exists (OD-81) | — | none, and it says so |
+
+**What you can do to a sheet**
+
+- **Move** any cutting by dragging it anywhere on the ruling, while arranging.
+- **Resize** any cutting by pulling its bottom-right corner, while arranging.
+- **Change what a cutting shows** ("Show instead") to any of the eleven; the
+  square of paper keeps its position and size.
+- **Change how it is drawn** ("Draw as") to any drawing that is true of that
+  register's data. A drawing that would misrepresent it is not offered, and one
+  line says why.
+- **Take a cutting off**, and **add any catalogued one back** — including the
+  three that are not on the house sheet.
+- **Put it all back**: one button restores the house arrangement.
+- **Rule it off**: positions, sizes, subjects and drawings are saved together,
+  per user, across devices and restaurants.
+- **Change the till's window** (7 / 30 / 90) from inside the till cutting. That
+  is the only period control on the page, because it is the only register whose
+  endpoint takes one.
+
+**What every drawing tells you**
+
+- Both axes are labelled, with the unit.
+- The window is printed under the cutting's title, always.
+- Hovering names the row and spells the unit out in words.
+- "Show the working" prints the SERVER's own `basis` sentence — never one this
+  page wrote.
+- A projection is always dashed, whichever drawing you pick.
+- A reference rule is drawn only where the engine published one (the
+  menu-engineering medians; the forecast seam). Where it publishes none, the
+  cutting says so instead of inventing a line.
+- An unknown is an em dash. An absent feed is a sentence. A register that
+  refused names itself, and only offers "Read it again" when retrying could help.
+
+**Keyboard**
+
+- ⌘K / Ctrl-K opens "Ask the book"; Escape closes it.
+- Every chip, filter, window button, "Show instead", "Draw as", "Take off",
+  "Add a cutting" and "Show the working" is a real control with a visible focus
+  ring, reachable by Tab.
+
+**What it still cannot do, and why**
+
+- **Move or resize a cutting from the keyboard.** `react-grid-layout` exposes no
+  keyboard affordance and the shipping canvas has the same limitation. Everything
+  else is reachable, and the default sheet is usable without ever arranging.
+- **Draw a weekday × hour heat map.** No analytics endpoint returns hour-of-day
+  grain today — `pos_checks.opened_at` would have to be bucketed by hour in the
+  gateway first (§13.13). Weekday × week is offered because `pos-revenue` really
+  does return a date per row.
+- **Discard an arrangement mid-edit.** "Rule it off" saves and "Put it all back"
+  resets to the house sheet; there is no cancel. Adding a fourth button was not
+  worth it until the founder says it is.
+- **Write a report.** `POST /reports/generate` still files a `pending` row that
+  nothing fills (OD-81). The button is off, with the reason.
+- **Show two cuttings of the same register.** Deliberate: a duplicate is not a
+  comparison, and the two would issue the same request twice.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_reports`)
 
@@ -88,10 +183,18 @@ this list is the note-side index (ADR 0044 §2).
 Deliberate non-motions: no `tally` (a figure of record is read, not watched, and
 half of them are em dashes); no chart entrance animation (`isAnimationActive=
 {false}` everywhere — a line that draws itself makes a *projection* look like
-something happening); no cutting stagger; the seal appears once, pressed **dry**,
+something happening); no cutting stagger; **nothing animates when a cutting
+changes its drawing or its subject** (a cross-fade would suggest two pictures
+are the same measurement in transit); the seal appears once, pressed **dry**,
 at "Ruled off." — wax is for committing to another party, not to your own layout.
 
 ### Design used, and why (ADR 0044 p4 wave · MAKEOVER-VERDICTS:177-181 — MERGE)
+
+> **This is the FIRST pass, 2026-09-02, kept as written.** Where a count or a
+> claim below has since changed — eight cuttings became a catalogue of eleven,
+> five plots became seven drawings offered per register, and three gateway
+> honesty gaps were closed at the source — the `### Second pass, 2026-09-03`
+> subsection below is authoritative and says exactly what moved.
 
 > *"Used to like today's drag-to-rearrange canvas — where we can just swipe and
 > change everything to its place."* The new version is *"more modern."* Wants:
@@ -147,12 +250,18 @@ flight = skeleton; refused = a sentence naming *which* register and a retry only
 when retrying can help (a 401/403 gets no button); empty = a real empty; unknown
 = an em dash. Beyond that, three cases where a chart is the *wrong* rendering of
 a true answer, each replaced by a sentence: a weekday profile of seven zeros, a
-pair of spend bars both at zero, and a forecast with no fitted model (the
-endpoint returns `totalForecastDemand: 0` there — a zero standing in for an
-absent model, which is not printed). Ties are not rankings: when the engine's
-`bestDay` equals its `worstDay` both read `—`, because an arbitrary tie-break
-would invent a pattern out of a flat week. The palette states in words that
-free-text answers do not exist.
+pair of spend bars both at zero, and a forecast with no fitted model. Ties are
+not rankings: a shared extreme reads `—`, because an arbitrary tie-break would
+invent a pattern out of a flat week. The palette states in words that free-text
+answers do not exist.
+
+> **Retired 2026-09-03.** This paragraph used to add that the page detects
+> `totalForecastDemand: 0` and `bestDay === worstDay` *itself*, because the
+> endpoints reported an absence as a figure. Both are now fixed in the gateway
+> (§9.3, §9.4): the server sends `null` with `modelFitted: false`, and `null`
+> with `tie: true`. The page reads the server's verdict and prints the server's
+> reason; the client-side detection is kept only as a fallback for an older
+> gateway, and is labelled as such in `rp-catalogue.tsx`.
 
 **Two alternative directions considered and not built** — the founder decides
 after seeing the page:
@@ -182,6 +291,106 @@ this sheet — held back to keep the default arrangement readable, and listed in
 §13 as the next two cuttings rather than dropped. (d) No `HoldToApprove`
 anywhere: nothing on this page commits anything to another party.
 
+### Second pass, 2026-09-03
+
+**What the founder asked**, verbatim where it matters: *"we still need to have
+those functionality and flexibility, especially different type of graphs — some
+people might need lines, some bar charts, some heat maps… while we're editing
+the /reports page for our personalized customized versions, we should ask them
+either to change the type of graph or to change the graph or the data analysis
+itself. Meaning, if it was showing the wine analysis, then maybe people don't
+want it — they're going to select from that aspect. We're going to have a lot of
+deep detailed graphs there… are we still able to drag and drop, or now it's
+fixed locations? If it's drag and drop and we can still adjust it, then it's
+perfect… fix every 'honest about' part error or obstacle to bulletproof profound
+solutions."*
+
+**The structural change: a cutting is a QUESTION, not a chart.** Pass one gave
+each register its own component, so each register owned its own drawing and
+neither could be exchanged. Every analysis now reduces to one shape
+(`rp-view.ts` — `AnalysisView`: a categorical series, a scatter, a matrix, a
+table, figures, notes, basis) and one renderer draws it (`Cutting.tsx`). That is
+what makes both switches possible, and it is what makes them *safe*: the
+honesty rules live in the renderer, so they cannot be forgotten by the
+eleventh analysis the way they could by the eighth component.
+
+**What was built**
+
+1. **"Draw as" per cutting** — line · bars · area · heat map · scatter · table ·
+   one figure, from the `graphs` list on each catalogue entry
+   (`rp-catalogue.tsx`). Recharts throughout, except the heat map (below).
+   A type the data cannot carry is **not offered**, and `graphNote` says why in
+   one line under the control. Persisted with the layout.
+2. **"Show instead" per cutting** — the whole catalogue, built from endpoints
+   verified in `analytics.controller.ts` (§4). Swapping keeps the slot and
+   resets the drawing to the new analysis's own default, because the old one may
+   not be true of the new data. Three analyses that had no cutting before are in
+   it: the room (`table-performance`), who served it (`waiters`), what to buy
+   back (`inventory-science`). Taking one off and adding it back are the same
+   mechanism.
+3. **Deep plots** — axis labels with units on both axes, the window under every
+   title, a tooltip that names the row and spells the unit out, the server's
+   `basis` behind "Show the working", and reference rules **only** where the
+   endpoint publishes one.
+4. **Drag and resize survive, and are now tested for it** — `isDraggable` and
+   `isResizable` are one flag, `onDragStop` and `onResizeStop` both write the
+   slot, and the two new selects sit inside `draggableCancel` so choosing from
+   them never starts a drag (`Sheet.tsx`).
+5. **The fetch follows the DRAFT, not the saved sheet.** Found by driving the
+   real page: swapping a cutting showed a skeleton until the sheet was ruled
+   off, because the query list still followed the saved arrangement. You cannot
+   choose an analysis you cannot see, so `useReportsNextData` takes the ids
+   currently on screen (`useReportsNextData.ts`, `showing`).
+
+**The heat map is deliberately not recharts.** Recharts 2.x has no heat-map
+primitive; the two ways of faking one (fat-square scatter, stacked bars) both
+lose the row and column headers that make a calendar readable, and neither can
+tell "nobody rang anything up" from "the quietest service of the quarter". It is
+a real `<table>`: headers are headers, every cell carries its date and figure,
+the ramp is one hue (the seal at proportional opacity), and an **unrecorded day
+is blank paper with a hairline**, not the coldest colour. Verified against the
+live gateway: 20 filled cells and 15 blank over the 30-day window.
+
+**What was fixed in the gateway** (module `apps/api-gateway/src/analytics/**`,
+each with a spec in `absent-not-zero.spec.ts`, each verified with curl against
+the local gateway on :4000, restaurant `550e8400-…0000`):
+
+| Was | Is | Where |
+|---|---|---|
+| `financial.cogs` and `financial.revenue` summed `[]` to `$0` — and both loaders degrade a FAILED query to `[]`, so "the read failed" and "bought nothing all year" rendered identically | `null` when no row came back, with a `basis` naming both possibilities; the real total, and a count of the rows summed, when rows exist. `inventoryTurnover` / `daysInventoryOutstanding` and the three ratios now also withhold on a null numerator or denominator | `analytics.service.ts:428-441` (`cogs`, `revenue`), `:444-466` (the ratios), `:531-542` (`basis`) |
+| `forecast.totalForecastDemand` was `0` when nothing fitted — and worse, `toDailySeries` zero-fills, so a restaurant with no consumption handed Holt-Winters 120 zeros, HW "fitted" them, and a 14-day projection of nothing was published as a prediction | `totalForecastDemand: null`, `modelFitted: false`, `model: null`, `forecast: []`, and a `basis.model` saying every day of the history reads zero | `analytics.service.ts:895-937` |
+| `seasonality.bestDay` / `worstDay` came from `reduce((a,b) => b.mean > a.mean)`, which resolves an exact tie to whichever weekday came first — so a flat week named **Sunday as both the busiest and the quietest night** | both `null` with `tie: true` when an extreme is shared, plus a `basis.extremes` sentence. Only the *ambiguous* end is withheld when the other is separable — nulling a true answer to be safe is its own dishonesty | `engine/comparisons.ts:208-238` (`separableExtremes`, new), `advanced-analytics.service.ts:389-393,424-452` |
+
+Curl proof, live: `financial.cogs = null` with *"no delivered order was returned
+for this window, which is either no purchasing or a read that failed, and $0
+would claim the first"*; `forecast.modelFitted = false`, `model = null`,
+`totalForecastDemand = null`; `seasonality.tie = true` with all seven weekday
+means at 0 — the exact payload that used to answer "Sunday" twice.
+
+**Two alternative directions considered and not built** (this pass):
+
+1. **A per-type chart gallery**, the Lightspeed shape DESIGN-FOUNDATION §6 warns
+   against ("a chart-type picker — a spreadsheet in disguise"). Rejected in that
+   form and built in the other: the picker here is not "draw anything any way",
+   it is "this register can honestly be read these ways", and the list shrinks
+   to what is true. That distinction is the whole reason it is safe to ship.
+2. **Named house layouts** ("Before service", "Buying week") — §6's "a house
+   layout, not an empty one". It is a good idea and it now costs almost nothing,
+   because a layout is `{id, slot, graph}[]` and the codec is versioned. Held
+   because the founder asked for *personalisation* this pass, and a preset menu
+   arriving in the same release as two per-cutting switches would bury them.
+   Filed as §13.14.
+
+**Substituted or left out, and why.** (a) `Cuttings.tsx` was deleted, not
+extended — its eight bespoke bodies became eleven `view` builders in
+`rp-catalogue.tsx`, which is the only way "Show instead" can be uniform. (b) The
+`basket` (pairings) and `vendor-scorecard` endpoints were left out of the
+catalogue: both are real, but their payload shapes were not read closely enough
+this pass to write an honest decoder, and a decoder that guesses at a field name
+renders an em dash that means "we did not look". §13.15. (c) A weekday × **hour**
+heat map is not built because no endpoint has hour grain (§9.5). (d) No
+`HoldToApprove` anywhere: nothing on this page commits anything to another party.
+
 ## 2. Entry
 
 In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
@@ -194,19 +403,35 @@ In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
 - Organisms: `components/reports/organisms/{TopBar, HeadlineInsightsBar, EngineInsightsPanel, SeatingDensityPanel, DataTablesSection, AICommandPalette, MonthlyReconciliation}.tsx`; canvas: `components/reports/{DashboardCanvas, EditToolbar, dashboardMeta, dashboardTypes}.tsx`; molecules incl. `KPISpotlightView` (Reports.tsx:23-52).
 - Dead sibling: `pages/Reports.v1.backup.tsx` ships in the bundle (`v3.0-TECH-DEBT.md:257`).
 - **Mudavym redesign** (`mudavym_design_reports`, default OFF):
-  `apps/web/src/pages/reports/next/` — `ReportsNext.tsx` (shell, opening,
-  four actions), `Sheet.tsx` (the react-grid-layout canvas), `Cuttings.tsx`
-  (the eight register bodies), `rp-plot.tsx` (recharts kit + the four honest
-  states + "show the working"), `AskTheBook.tsx` (⌘K palette + ranker),
-  `useReportsNextData.ts` (seven tenant-keyed queries + the sheet codec),
-  `rp-sheet.ts` (block vocabulary + default arrangement), `rp-format.ts`,
-  `reports-next.css`, `MOTIONS.md`, `ReportsNext.test.tsx` (14 tests).
-  Route already gated at `App.tsx:306`.
+  `apps/web/src/pages/reports/next/` — `ReportsNext.tsx` (shell, opening, four
+  actions, the arrange bar), `Sheet.tsx` (the react-grid-layout canvas: move +
+  resize), `Cutting.tsx` (one renderer for every analysis, plus the two
+  switches), `rp-spec.ts` (the contract a catalogue entry signs),
+  `rp-registers-trade.tsx` + `rp-registers-house.tsx` (**the eleven analyses**:
+  path, window, truthful drawings, decoder and view builder each),
+  `rp-catalogue.tsx` (assembles them; the only file that names all eleven),
+  `rp-view.ts` (the one shape every analysis reduces to), `rp-plot.tsx`
+  (recharts kit, the heat-map table, the four honest states, "show the
+  working"), `ReadingList.tsx` (the insight feed's own stateful list),
+  `AskTheBook.tsx` (⌘K palette + ranker),
+  `useReportsNextData.ts` (`useQueries` over whatever is on the sheet + the v2
+  sheet codec), `rp-sheet.ts` (ids, drawings, slots, the house arrangement),
+  `rp-format.ts`, `reports-next.css`, `MOTIONS.md`, `ReportsNext.test.tsx`
+  (31 tests). `Cuttings.tsx` was **deleted** in the second pass — its eight
+  bespoke bodies are now `view` builders in the two register files. Route
+  already gated at `App.tsx:306`.
+  **Size, honestly:** 17 files, ~3,600 lines of source excluding the CSS, the
+  tests and `MOTIONS.md`. That is well past the p4 brief's "~900 lines across
+  its files" — pass one already shipped 2,213 and this pass roughly doubled what
+  the page does (eleven analyses against eight cuttings, seven drawings against
+  one apiece). The response was to split rather than to cut: no source file is
+  over 700 lines, and the two largest are declarative register definitions, not
+  logic. Recorded here rather than left for a reader to discover.
 
 ## 4. Endpoints
 
 The widest analytics consumer among the 17 core-ops pages. Atlas rows:
-[ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics`, 39 — atlas's **⚠ all unguarded**
+[ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics`, 39 — atlas's **all-unguarded warning**
 is stale; guarded at class level since 2026-08-24 (#31),
 `apps/api-gateway/src/analytics/analytics.controller.ts:51`),
 :618 (`user-preferences`), :249 (`inventory`), :389 (`procurement`), :663 (`wines`).
@@ -235,7 +460,17 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | GET | `/analytics/forecast/:rid?horizon=14` | What's coming | `analytics.controller.ts:206` |
 | GET | `/analytics/menu-engineering/:rid` | Margin against movement | `analytics.controller.ts:611` |
 | GET | `/analytics/financial/:rid` | Figures of record | `analytics.controller.ts:123` |
-| GET/PATCH | `/users/:userId/preferences` | the sheet arrangement, key `reportsSheet` | `hooks/useUserPreferences.ts:73,83` |
+| GET | `/analytics/table-performance/:rid?sinceDays=90` | The room (added 2026-09-03) | `analytics.controller.ts:422` |
+| GET | `/analytics/waiters/:rid?sinceDays=90` | Who served it (added 2026-09-03) | `analytics.controller.ts:440` |
+| GET | `/analytics/inventory-science/:rid` | What to buy back (added 2026-09-03) | `analytics.controller.ts:153` |
+| GET/PATCH | `/users/:userId/preferences` | the sheet: slots, subjects and drawings, key `reportsSheet` | `hooks/useUserPreferences.ts:73,83` |
+
+**Only what is on the sheet is fetched.** `useQueries` builds its query list from
+the cuttings currently on screen (the arrangement draft included), so taking a
+cutting off stops its request and putting one on starts it. The one exception is
+`insights`, which is read whether or not "The reading" is on the sheet, because
+the ⌘K palette searches it — stated in `useReportsNextData.ts` rather than
+hidden in the palette.
 
 All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
 (`EngineInsightsPanel.tsx:27,147`), not `apiClient`.
@@ -271,11 +506,17 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
   (`"1"|"true"|"on"` forces the redesign, `"0"|"false"|"off"` forces legacy).
   Precedence and defaults: `lib/mudavym/useMudavymDesign.ts:1-23`.
 - **Redesign arrangement** persists per USER (not per restaurant) under the new
-  preference key `reportsSheet` — `{ v: 1, blocks: [{ i, x, y, w, h, hidden }] }`.
-  A new key on purpose: writing to the legacy page's `dashboardBlocks` would
-  rewrite a layout in a block vocabulary the legacy canvas cannot read. The
-  decoder drops unknown ids and falls back to the default slot for missing
-  ones, so a later release adding a cutting never orphans a saved sheet.
+  preference key `reportsSheet` — **v2**: `{ v: 2, blocks: [{ i, x, y, w, h, g,
+  on }] }`, where `g` is the drawing and `on` says whether the cutting is on the
+  sheet at all. A new key on purpose: writing to the legacy page's
+  `dashboardBlocks` would rewrite a layout in a block vocabulary the legacy
+  canvas cannot read. The decoder drops unknown ids, falls back to the default
+  slot for a missing one, and falls back to an analysis's first truthful drawing
+  when the stored one is no longer offered — so adding a cutting, or withdrawing
+  a drawing that turned out to be a lie, never orphans a saved sheet. **A v1
+  blob upgrades in place** (same ids; `hidden: true` becomes off the sheet), and
+  every id is written on or off so "I took that one off" is a stored fact rather
+  than an absence a later release could read as "never seen".
 
 ## 9. Gaps
 
@@ -287,7 +528,7 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 - Analytics truth-suite work is carried-forward unbuilt scope
   (`v3.0-TECH-DEBT.md:322-324`, was Phase 41).
 
-**Found by the Mudavym rebuild, 2026-09-02 — all OUTSIDE this page's paths:**
+**Found by the Mudavym rebuild, 2026-09-02 — status after the second pass:**
 
 1. **`scripts/check_no_seeded_defaults.py` does not scan the rebuilt page.**
    `SCAN_ROOTS` (:187-198) lists nine rebuilt surfaces and not
@@ -295,31 +536,62 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
    looked. Rules S1–S3 were run against the directory by hand and it is clean
    (0 row sets, 0 placeholders, 0 write loops) — but a hand check is not a
    guard. **Add `Path("apps/web/src/pages/reports/next")` to `SCAN_ROOTS`.**
-2. **`financial.cogs` and `financial.revenue` are unconditional sums**
-   (`analytics.service.ts`, `getFinancialSummary`): `E.stats.sum([])` is `0`, and
-   `loadDeliveredOrders` degrades a failed query to `[]`, so "no delivered
-   orders" and "the query failed" both render as `$0`. Every *cost-derived*
-   figure beside them is correctly `null` (that work was done); these two were
-   not. The redesign prints the server's number and its basis string rather than
-   inventing a null the server did not send — but the fix belongs in the
-   gateway. Same shape as `absence reported as health`.
-3. **`forecast.totalForecastDemand` is `0` when no model fits**
-   (`analytics.service.ts`, `result ? sum : 0`) — a zero standing in for an
-   absent model. The redesign detects it via `forecast.length === 0` and says
-   the absence instead; the endpoint should return `null`.
-4. **`seasonality.bestDay` / `worstDay` break ties arbitrarily**, so a flat
-   week reports the same day as busiest and quietest. The redesign suppresses
-   both to `—` when they are equal; the endpoint should return `null` when no
-   day is separable.
+   **Still open**: `scripts/` is outside this page's paths.
+2. ~~`financial.cogs` / `financial.revenue` are unconditional sums~~ —
+   **FIXED 2026-09-03**, `analytics.service.ts:428-441`. Both return `null` when
+   the loader came back empty, with a `basis` naming both possibilities; the
+   ratios that divide by them withhold too. Spec: `absent-not-zero.spec.ts`.
+   Verified with curl against the local gateway.
+3. ~~`forecast.totalForecastDemand` is `0` when no model fits~~ —
+   **FIXED 2026-09-03**, `analytics.service.ts:895-937`, and the fix went
+   further than the finding: `toDailySeries` zero-fills, so Holt-Winters always
+   "fitted" and the endpoint published a 14-day projection of nothing as a
+   prediction. It now publishes nothing at all when the history holds no
+   observation (`modelFitted: false`, `model: null`, `forecast: []`).
+4. ~~`seasonality.bestDay` / `worstDay` break ties arbitrarily~~ —
+   **FIXED 2026-09-03**, `engine/comparisons.ts:208-238` +
+   `advanced-analytics.service.ts:389-393,424-452`. `separableExtremes` returns
+   an extreme only where exactly one weekday holds it, and reports `tie`.
+   `recommendations.service.ts:243` already gated its staffing advice on
+   `bestDay !== worstDay`, so the fix strictly widens a guard that was already
+   there.
 
-**Known limitation inside this page's own build:** dragging and resizing a
-cutting is pointer-only — `react-grid-layout` exposes no keyboard affordance,
-and the shipping canvas has the same limitation. Everything else on the sheet is
-keyboard-reachable (every chip, filter, window picker, "Take off", "Put back",
-"Show the working" and the ⌘K palette are real buttons/inputs with visible focus
-rings), and the default arrangement is usable without ever entering Arrange. A
-keyboard path — move/resize the focused cutting with the arrow keys while
-arranging — is the honest fix and is not built.
+**Found by the second pass, 2026-09-03 — OUTSIDE this page's paths:**
+
+5. **No analytics endpoint returns hour-of-day grain**, so a weekday × **hour**
+   heat map — the shape the founder named first — cannot be drawn honestly.
+   `pos_checks.opened_at` carries the timestamp and `table-analytics.service.ts`
+   already loads it (`loadChecks`, :98-117); an endpoint bucketing non-voided
+   checks by `(weekday, hour)` would make it real, and the page's `matrix`
+   renderer already exists. Weekday × week is built because `pos-revenue` really
+   does return a date per row. **Not built**: a new endpoint is outside the three
+   fixes this pass was scoped to.
+6. **A global rule in the app's stylesheet paints every `<select>`
+   `background: white !important; color: #1F2937 !important`** (and a charcoal
+   pair under `.dark`), overriding the house tokens on any form control on any
+   Mudavym page. Measured in the browser on 2026-09-03. This page beats it
+   locally with a more specific `!important` pair (`reports-next.css`,
+   `.rp-page .rp-select`), which is a patch, not a fix — the global belongs in
+   the foundation's own audit.
+
+**Known limitations inside this page's own build:**
+
+- **Dragging and resizing a cutting is pointer-only.** `react-grid-layout`
+  exposes no keyboard affordance, and the shipping canvas has the same
+  limitation. Everything else on the sheet is keyboard-reachable (every chip,
+  filter, window picker, "Show instead", "Draw as", "Take off", "Add a cutting",
+  "Show the working" and the ⌘K palette are real controls with visible focus
+  rings), and the default arrangement is usable without ever entering Arrange. A
+  keyboard path — move/resize the focused cutting with the arrow keys while
+  arranging — is the honest fix and is not built.
+- **There is no cancel while arranging.** "Rule it off" saves; "Put it all back"
+  resets to the house sheet. A reader who swaps a cutting to see what it holds
+  and then wants their old sheet must swap it back by hand.
+- **`basket` (pairings) and `vendor-scorecard` are real endpoints with no
+  catalogue entry.** Their payload shapes were not read closely enough this pass
+  to write a decoder that could not silently guess a field name — and a guessed
+  field renders an em dash that means "we did not look", which is the one dash
+  this page must never print. §13.15.
 
 ## 10. Maturity
 
@@ -343,16 +615,24 @@ exists** (OD-81). What changed is that no surface claims otherwise.
 
 ### What the rebuild adds (flag `mudavym_design_reports`, default OFF)
 
-Seven live registers behind the sheet, all authenticated and tenant-keyed, five
-of them graphs that had no equivalent on this page: till revenue, spend pacing,
-weekday shape, demand forecast, and the margin×velocity quadrants. Every
-register renders four distinct states, and every cutting can print the server's
-own `basis` sentence. 14 render-contract tests hold the honesty rules.
+**Ten live registers** in the catalogue, all authenticated and tenant-keyed,
+plus the writing desk that is honest about having none. Seven drawings, offered
+per register only where they are true of its data. Every register renders four
+distinct states, every cutting prints its window and can print the server's own
+`basis` sentence, and both the subject and the drawing of every cutting are the
+reader's choice and persist with the layout. 31 render-contract tests hold the
+honesty rules and the two switches.
 
-**Why not "complete":** the report writer is still absent (§13.2), and two real
-endpoints — goals and seating density — have no cutting yet (§13.6). The
-shipping page keeps its monthly reconciliation and data-tables sections, which
-the redesign deliberately does not carry (§1b).
+**And three gateway shapes that were reporting absence as fact** — `financial`
+COGS/revenue, the forecast total, the seasonality tie-break — are fixed at the
+source rather than papered over here (§9.2-9.4), each with a spec and each
+verified live with curl.
+
+**Why not "complete":** the report writer is still absent (§13.2); goals has no
+cutting yet (§13.6); two real endpoints are catalogued nowhere (§9); no endpoint
+has hour grain, so the weekday × hour heat map the founder named first cannot be
+drawn (§9.5). The shipping page keeps its monthly reconciliation and data-tables
+sections, which the redesign deliberately does not carry (§1b).
 
 ## 11. Data flow
 
@@ -382,7 +662,7 @@ All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
 | POS-dependent depth | Toast/SimPOS ingestion → `pos_checks` (memory: pos-bridge-state — bridge proven, 1.4%→67.4% of insights) | Yes where a POS is connected; 429/573 insight types need `checks` (TIER-MAP:91-93) |
 | Layout | This page's own preference writes | Yes |
 | Command-palette answers | `/analytics/insights/:rid` — the engine's own sentences, selected not composed (`insightSearch.ts`). ~~"fabricated in the browser"~~ was true before `58113e26`; corrected 2026-09-02 | Yes |
-| Redesign: till revenue · pacing · weekday shape · forecast · quadrants · capital efficiency | `pos-revenue` · `cashflow` · `seasonality` · `forecast` · `menu-engineering` · `financial` (see §4) | Yes — with the four honesty caveats in §9 |
+| Redesign: till revenue · pacing · weekday shape · forecast · quadrants · capital efficiency · the room · servers · reorder list | `pos-revenue` · `cashflow` · `seasonality` · `forecast` · `menu-engineering` · `financial` · `table-performance` · `waiters` · `inventory-science` (see §4) | Yes — and three of the four honesty caveats in §9 were fixed at the source on 2026-09-03 |
 | Generated reports | **none** — and the generator here does not even attempt one. ~~the only `generated_reports` writer is `/communications`~~ → as of 2026-08-26 (OD-81) `/communications` no longer calls it either: the "Generate Now" handler was deleted for claiming success it did not have. `POST /reports/generate` remains the table's only writer in the repo, with **no caller in the product**. Scoping for a real generator: [[OD-81-REPORT-GENERATOR-SCOPING]] | No |
 
 ### Writes
@@ -393,7 +673,7 @@ All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
 | `POST /analytics/recommendations/:rid/action` | Manager disposition (hide/pin) persists server-side and suppresses the insight for everyone (`EngineInsightsPanel.tsx:163-170,281,309`) |
 | `POST /analytics/goals/:rid` | Goal appears in the goals block and in insight generation |
 | Command palette / report generator | **none** — the palette only reads; the generator is not wired (§10) |
-| Redesign: `PATCH /users/:id/preferences` key `reportsSheet` | the reader's sheet arrangement persists across devices; deep-merged server-side, so it cannot disturb `dashboardBlocks` or any other key |
+| Redesign: `PATCH /users/:id/preferences` key `reportsSheet` (v2) | the reader's sheet — slots, subjects AND drawings — persists across devices; deep-merged server-side, so it cannot disturb `dashboardBlocks` or any other key |
 
 ## 12. Design intent
 
@@ -415,11 +695,15 @@ about it, with a visible line back to the data.
    passed and the component says generation is unavailable (§10).
 3. Export filename/title still say WineOps (`Reports.tsx:530-531`, §7) — **still
    true** on the shipping page. The redesign ships no exporter at all.
-4. **New, and outside this page**: `financial.cogs` / `financial.revenue` render
-   `$0` for "no rows *or* no answer" (§9.2), and `forecast.totalForecastDemand`
-   returns `0` when no model fits (§9.3). The redesign renders the server's
-   number with its basis, and refuses to print the forecast total at all when no
-   model fitted — but the endpoints should return `null`.
+4. ~~`financial.cogs` / `financial.revenue` render `$0` for "no rows *or* no
+   answer"; `forecast.totalForecastDemand` returns `0` when no model fits;
+   `seasonality` names one day as both busiest and quietest~~ — **all three
+   fixed in the gateway on 2026-09-03** (§9.2-9.4). The page no longer has to
+   detect any of them: it renders `null` as an em dash, and prints the server's
+   own reason under "Show the working".
+5. **Still true, and outside this page**: every `<select>` in the app is painted
+   white by a global `!important` rule (§9.6). On this page the two arrange
+   controls override it locally; everywhere else the house tokens lose.
 
 ## 13. Roadmap
 
@@ -437,12 +721,14 @@ about it, with a visible line back to the data.
    redesign** (per-register `Refused`, with 401/403 separated from 5xx). Still
    open on the shipping page.
 5. Delete `pages/Reports.v1.backup.tsx` (`v3.0-TECH-DEBT.md:257`).
-6. **Two more cuttings, both on endpoints that already exist**: goals
-   (`GET/POST /analytics/goals/:rid`, `analytics.controller.ts:481,493`) and
-   seating density (`GET /analytics/table-performance/:rid`, `:422`). Held back
-   from the first sheet only to keep the default arrangement readable; adding
-   one is a `rp-sheet.ts` entry plus a body in `Cuttings.tsx`, and the stored
-   sheet is versioned so existing arrangements survive it.
+6. **Goals still has no cutting** (`GET/POST /analytics/goals/:rid`,
+   `analytics.controller.ts:481,493`). Seating density
+   (`table-performance`, :422) **was built** on 2026-09-03 as "The room", along
+   with `waiters` and `inventory-science`. Adding goals is now one entry in
+   `rp-catalogue.tsx` — a path, a decoder, a view builder and the drawings that
+   are true of it — plus its id in `rp-sheet.ts`; the stored sheet is versioned,
+   so existing arrangements survive it. Goals is the harder one because it also
+   WRITES (`POST`), and every other cutting on this sheet is read-only.
 7. Analytics truth suite — carried-forward unbuilt scope
    (`v3.0-TECH-DEBT.md:322-324`).
 8. Rebrand export artifacts (§7) — shipping page only.
@@ -451,13 +737,27 @@ about it, with a visible line back to the data.
 
 9. **`scripts/check_no_seeded_defaults.py`**: add
    `Path("apps/web/src/pages/reports/next")` to `SCAN_ROOTS` (:187). The guard
-   currently passes on this page without scanning it.
-10. **`apps/api-gateway/src/analytics/analytics.service.ts`**: return `null`
-    rather than `0` for `financial.cogs` / `financial.revenue` when the loader
-    degraded to `[]`, and for `forecast.totalForecastDemand` when no model fit.
-11. **`apps/api-gateway/src/analytics/advanced-analytics.service.ts`**: return
-    `null` for `seasonality.bestDay` / `worstDay` when no weekday is separable,
-    instead of breaking the tie arbitrarily.
+   currently passes on this page without scanning it. **Still open.**
+10. ~~`analytics.service.ts`: return `null` rather than `0` for
+    `financial.cogs` / `financial.revenue` and `forecast.totalForecastDemand`~~
+    — **done 2026-09-03** (§9.2-9.3).
+11. ~~`advanced-analytics.service.ts`: return `null` for `seasonality.bestDay` /
+    `worstDay` when no weekday is separable~~ — **done 2026-09-03** (§9.4).
+13. **An hour-grain sales endpoint**, for the weekday × hour heat map the
+    founder named first (§9.5). Shape: `GET /analytics/pos-hours/:rid?days=`
+    returning non-voided `pos_checks` bucketed by `(weekday, hour)` with a count
+    and a total per bucket, and a `basis` naming the window. The page's `matrix`
+    renderer and its blank-means-unrecorded rule already exist; this is the only
+    missing half.
+14. **Named house layouts** — DESIGN-FOUNDATION §6's "a house layout, not an
+    empty one" ("Before service", "Buying week"). Now cheap: a layout is
+    `{ id, slot, graph }[]` and the codec is versioned. Held this pass so two
+    per-cutting switches could land without a preset menu burying them.
+15. **Catalogue `basket` and `vendor-scorecard`** (`analytics.controller.ts:457`,
+    `:621`) once their payload shapes have been read line by line (§9).
+16. **Foundation**: the global `select { background: white !important }` rule
+    (§9.6) overrides the house tokens on every Mudavym page. This page patches
+    it locally; the rule itself should be scoped or dropped.
 12. **Nav**: none needed — `/reports` is already in the sidebar
     (`components/layout/Sidebar.tsx:99`) and the route already gated
     (`App.tsx:306`).

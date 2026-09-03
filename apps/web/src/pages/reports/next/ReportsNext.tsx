@@ -8,33 +8,40 @@
  *    focus on the insights plus the reports part." Be more creative here.
  *                          — MAKEOVER-VERDICTS.md:177-181, `/reports`
  *
- * THE STRUCTURE THAT ENFORCES IT — the grid is the paper's ruling.
- * ---------------------------------------------------------------
+ * Second pass, after the founder read the first one (2026-09-03):
+ *
+ *   "…we still need to have those functionality and flexibility, especially
+ *    different type of graphs — some people might need lines, some bar charts,
+ *    some heat maps… we should ask them either to change the type of graph or
+ *    to change the graph or the data analysis itself… are we still able to drag
+ *    and drop, or now it's fixed locations? If it's drag and drop and we can
+ *    still adjust it, then it's perfect."
+ *
+ * THE STRUCTURE THAT ENFORCES IT — the grid is the paper's ruling, and a
+ * cutting is a QUESTION, not a chart.
+ * ---------------------------------------------------------------------------
  * A report in this house is a sheet of paper with cuttings laid on it. While
- * you read, the sheet is plain: eight cuttings sit flush, no handles, no
- * chrome. Press "Arrange the sheet" and the twelve-column feint ruling fades
- * up (`settle`), every cutting takes a dashed edge and a grab cursor, and one
- * lifted under the finger rises on `tuck`. "Rule it off" writes the
- * arrangement to the reader's own preferences and presses the die dry. That
- * single toggle IS the founder's swipe-everything-into-place — and it replaces
- * the legacy page's edit mode, add-block, preset and reset toolbar (four
- * actions down to one), the KPI spotlight modal, the eight-format export menu
- * and the global 7/30/90 selector.
+ * you read, the sheet is plain: the cuttings sit flush, no handles, no chrome,
+ * each with its window printed under its title. Press "Arrange the sheet" and
+ * the twelve-column feint ruling fades up (`settle`), every cutting takes a
+ * dashed edge and a grab cursor, one lifted under the finger rises on `tuck` —
+ * and each cutting grows two questions: **Show instead** (which of the eleven
+ * catalogued analyses occupies this square) and **Draw as** (which of the
+ * drawings that are TRUE of that analysis it takes). "Rule it off" writes the
+ * whole arrangement — positions, sizes, subjects and drawings — to the reader's
+ * own preferences and presses the die dry.
  *
- * The global selector is gone on purpose rather than for tidiness: only ONE of
- * these registers takes a window (`pos-revenue?days=`). The others are
- * computed over windows the server fixes — 90 days of consumption, 180 of
- * purchasing, 365 of COGS. A control that appeared to move all of them would
- * be lying about six of the seven, so the window picker lives inside the one
- * cutting it governs, and every other cutting states its own window under
- * "show the working" — in the SERVER'S basis string, not ours.
+ * Drag and resize are untouched by all of it (`Sheet.tsx`): move by dragging
+ * anywhere on a cutting, resize from the bottom-right corner, both live only
+ * while arranging, both persisted.
  *
- * MORE GRAPHS, ALL WITH PRODUCERS. Five plots where the legacy default sheet
- * had vendor-spend charts only: sales through the till (area), spend pacing
- * (bars), the week's shape (bars), what's coming (measured + dashed
- * projection), and margin against movement (scatter on the engine's own
- * medians). A chart with no producer is an honest sentence here, never an
- * empty axis — an empty plot frame claims the restaurant did nothing.
+ * The global 7/30/90 selector is still gone on purpose rather than for
+ * tidiness: only ONE catalogued register takes a window (`pos-revenue?days=`).
+ * The others are computed over windows the server fixes — 90 days of
+ * consumption, 180 of purchasing, 365 of COGS, 120 of forecast history. A
+ * control that appeared to move all of them would be lying about ten of the
+ * eleven, so the window picker lives inside the one cutting it governs, and
+ * every other cutting prints its own window under its title.
  *
  * Both grounds ship: paper by default, Warm Charcoal under `.dark .mudavym` or
  * an explicit `ground="charcoal"` (ADR 0042). The root carries `.mudavym`
@@ -46,27 +53,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
-import {
-  AheadCutting,
-  LedgerCutting,
-  PacingCutting,
-  QuadrantsCutting,
-  ReadingCutting,
-  TillCutting,
-  TillWindowPicker,
-  WeekCutting,
-  WritingCutting,
-} from './Cuttings';
+import Cutting from './Cutting';
+import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { ensureFraunces, failureLine } from './rp-format';
 import {
-  BLOCK_META,
-  DEFAULT_SHEET,
-  REPORT_BLOCK_IDS,
-  type ReportBlockId,
+  ANALYSIS_IDS,
+  DEFAULT_SLOTS,
+  type AnalysisId,
+  type GraphType,
+  type SheetState,
   type Slot,
 } from './rp-sheet';
 import Sheet, { type SheetCutting } from './Sheet';
-import { useReportsNextData, type SheetState } from './useReportsNextData';
+import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import './reports-next.css';
 
 export interface ReportsNextProps {
@@ -94,9 +93,13 @@ function Action({
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
-  const data = useReportsNextData(tillDays, setTillDays);
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
+  // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
+  // another analysis reads it immediately, rather than shimmering until the
+  // sheet is ruled off. You cannot choose an analysis you cannot see.
+  const showing = useMemo(() => (draft ? draft.cuttings.map((c) => c.id) : null), [draft]);
+  const data = useReportsNextData(tillDays, setTillDays, showing);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
@@ -132,9 +135,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   }, []);
 
   const view = draft ?? data.sheet;
+  const onSheet = useMemo(() => new Set(view.cuttings.map((c) => c.id)), [view]);
 
   const startArranging = useCallback(() => {
-    setDraft({ slots: { ...data.sheet.slots }, hidden: [...data.sheet.hidden] });
+    setDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
     setArranging(true);
   }, [data.sheet]);
 
@@ -146,23 +150,67 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     window.setTimeout(() => setRuledOff(false), 2400);
   }, [draft, data]);
 
-  const putBack = useCallback(() => {
-    setDraft({ slots: { ...DEFAULT_SHEET }, hidden: [] });
-  }, []);
+  const putBack = useCallback(() => setDraft(defaultSheet()), []);
 
-  const onMove = useCallback((slots: Partial<Record<ReportBlockId, Slot>>) => {
-    setDraft((d) => (d ? { ...d, slots: { ...d.slots, ...slots } } : d));
-  }, []);
+  const edit = useCallback(
+    (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
+    [],
+  );
 
-  const onHide = useCallback((id: ReportBlockId) => {
-    setDraft((d) => (d && !d.hidden.includes(id) ? { ...d, hidden: [...d.hidden, id] } : d));
-  }, []);
+  const onMove = useCallback(
+    (slots: Partial<Record<AnalysisId, Slot>>) =>
+      edit((d) => ({
+        cuttings: d.cuttings.map((c) => (slots[c.id] ? { ...c, slot: slots[c.id] as Slot } : c)),
+      })),
+    [edit],
+  );
 
-  const putOn = useCallback((id: ReportBlockId) => {
-    setDraft((d) => (d ? { ...d, hidden: d.hidden.filter((h) => h !== id) } : d));
-  }, []);
+  const onRemove = useCallback(
+    (id: AnalysisId) => edit((d) => ({ cuttings: d.cuttings.filter((c) => c.id !== id) })),
+    [edit],
+  );
 
-  /** The opening sentence is the engine's loudest one, verbatim, or the truth. */
+  /** A cutting put back on lands at the foot of the sheet, full-width-ish, so
+   *  it never appears under something the reader is already looking at. */
+  const onAdd = useCallback(
+    (id: AnalysisId) =>
+      edit((d) => {
+        if (d.cuttings.some((c) => c.id === id)) return d;
+        const foot = d.cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
+        return {
+          cuttings: [
+            ...d.cuttings,
+            { id, slot: { ...DEFAULT_SLOTS[id], x: 0, y: foot }, graph: defaultGraph(id) },
+          ],
+        };
+      }),
+    [edit],
+  );
+
+  /** Change of subject, same square of paper: the slot is kept, the drawing
+   *  resets to the new analysis's own default because the old one may not be
+   *  true of the new data. */
+  const onSwap = useCallback(
+    (from: AnalysisId, to: AnalysisId) =>
+      edit((d) =>
+        from === to || d.cuttings.some((c) => c.id === to)
+          ? d
+          : {
+              cuttings: d.cuttings.map((c) =>
+                c.id === from ? { id: to, slot: c.slot, graph: defaultGraph(to) } : c,
+              ),
+            },
+      ),
+    [edit],
+  );
+
+  const onGraph = useCallback(
+    (id: AnalysisId, graph: GraphType) =>
+      edit((d) => ({ cuttings: d.cuttings.map((c) => (c.id === id ? { ...c, graph } : c)) })),
+    [edit],
+  );
+
+  /** The engine's loudest sentence, verbatim, or the truth about its absence. */
   const opening = useMemo(() => {
     if (data.reading.failure) return failureLine('insight register', data.reading.failure);
     if (data.reading.loading || !data.reading.data) return 'Reading the registers…';
@@ -170,26 +218,33 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     return top ? top.sentence : 'The engine has nothing to say about this restaurant yet.';
   }, [data.reading]);
 
-  const bodies: Record<ReportBlockId, React.ReactNode> = {
-    reading: <ReadingCutting reg={data.reading} />,
-    till: <TillCutting reg={data.till} />,
-    pacing: <PacingCutting reg={data.pacing} />,
-    week: <WeekCutting reg={data.week} />,
-    ahead: <AheadCutting reg={data.ahead} />,
-    quadrants: <QuadrantsCutting reg={data.quadrants} />,
-    ledger: <LedgerCutting reg={data.ledger} />,
-    writing: <WritingCutting />,
-  };
-
-  const cuttings: SheetCutting[] = REPORT_BLOCK_IDS.filter((id) => !view.hidden.includes(id)).map(
-    (id) => ({
-      id,
-      slot: view.slots[id],
-      body: bodies[id],
-      aside:
-        id === 'till' ? <TillWindowPicker days={tillDays} onChange={setTillDays} /> : undefined,
-    }),
+  const swapOptions = useMemo(
+    () => ANALYSIS_IDS.map((id) => ({ id, taken: onSheet.has(id) })),
+    [onSheet],
   );
+
+  const ctx = useMemo(() => ({ days: tillDays }), [tillDays]);
+
+  const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
+    id: c.id,
+    slot: c.slot,
+    body: (
+      <Cutting
+        id={c.id}
+        graph={c.graph}
+        register={data.registers[c.id]}
+        ctx={ctx}
+        arranging={arranging}
+        swapOptions={swapOptions}
+        onGraph={(g) => onGraph(c.id, g)}
+        onSwap={(to) => onSwap(c.id, to)}
+        onRemove={() => onRemove(c.id)}
+        onDays={setTillDays}
+      />
+    ),
+  }));
+
+  const offSheet = ANALYSIS_IDS.filter((id) => !onSheet.has(id));
 
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -240,19 +295,28 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         <hr className="rp-rule" style={{ marginBottom: 16 }} />
 
         {arranging && (
-          <p className="rp-row" style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--ink-2)', gap: 8 }}>
-            <span>Drag a cutting anywhere on the ruling; pull its corner to resize.</span>
-            {view.hidden.map((id) => (
-              <button
-                key={id}
-                type="button"
-                className="rp-mini rp-ink rp-focus"
-                onClick={() => putOn(id)}
-              >
-                Put back {BLOCK_META[id].title}
-              </button>
-            ))}
-          </p>
+          <div className="rp-arrange">
+            <p className="rp-note" style={{ margin: 0 }}>
+              Drag a cutting anywhere on the ruling; pull its corner to resize. Each one can change
+              what it shows and how it is drawn — a drawing is only offered where it is true of that
+              register.
+            </p>
+            {offSheet.length > 0 && (
+              <p className="rp-row" style={{ margin: 0 }}>
+                <span className="rp-eyebrow">Add a cutting</span>
+                {offSheet.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className="rp-mini rp-ink rp-focus"
+                    onClick={() => onAdd(id)}
+                  >
+                    {CATALOGUE[id].title}
+                  </button>
+                ))}
+              </p>
+            )}
+          </div>
         )}
 
         {data.restaurantId === null ? (
@@ -260,8 +324,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             No restaurant is active yet, so none of these registers is addressed to anyone. Pick a
             restaurant and the sheet fills in.
           </p>
+        ) : view.cuttings.length === 0 ? (
+          <p role="status" className="rp-note">
+            Every cutting has been taken off this sheet. Nothing is being read — press “Arrange the
+            sheet” and add one back.
+          </p>
         ) : (
-          <Sheet cuttings={cuttings} arranging={arranging} onMove={onMove} onHide={onHide} />
+          <Sheet cuttings={cuttings} arranging={arranging} onMove={onMove} />
         )}
 
         <footer className="rp-foot">

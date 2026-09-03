@@ -9,6 +9,7 @@ import { GoalsService } from "./goals.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { DatabaseService } from "../database/database.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
@@ -287,6 +288,10 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
         { provide: ConsultantsService, useValue: {} },
         { provide: InsightGeneratorService, useValue: {} },
         { provide: InsightSchedulerService, useValue: {} },
+        // The controller now also exposes the day-exclusion store (the
+        // engine's "do not count this day" hook). Nothing in this file calls
+        // it; it is provided so the module compiles.
+        { provide: DayExclusionsService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

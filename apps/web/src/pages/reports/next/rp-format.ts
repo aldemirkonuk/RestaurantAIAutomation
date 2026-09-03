@@ -70,6 +70,50 @@ export function shortDay(dateStr: string): string {
   return parseDateStr(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/* ───────────────────────────────── the engine's categories, in words ───── */
+
+/** The engine's own category names, in the reader's words. */
+const CATEGORY_LABEL: Record<string, string> = {
+  sales: 'Sales',
+  purchasing: 'Buying',
+  inventory: 'Stock',
+  efficiency: 'Efficiency',
+  tables: 'Tables',
+  staff: 'Team',
+  basket: 'Pairings',
+  risk: 'Watch out',
+  forecast: 'Coming up',
+  goals: 'Goals',
+};
+
+export function categoryLabel(c: string): string {
+  return CATEGORY_LABEL[c] ?? c;
+}
+
+/* ─────────────────────────────────── the calendar, for the heat map ────── */
+
+/** Monday first: a restaurant's week starts when the buying week starts. */
+export const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/** 0 = Monday … 6 = Sunday, from a YYYY-MM-DD read as a LOCAL date. */
+export function weekdayIndex(dateStr: string): number {
+  return (parseDateStr(dateStr).getDay() + 6) % 7;
+}
+
+/** The YYYY-MM-DD of the Monday that opens this date's week. */
+export function weekStart(dateStr: string): string {
+  const d = parseDateStr(dateStr);
+  d.setDate(d.getDate() - weekdayIndex(dateStr));
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** "Aug 3" for a week column header. */
+export function weekLabel(mondayStr: string): string {
+  return shortDay(mondayStr);
+}
+
 /* ───────────────────────────────────────── the shape of a failure ──────── */
 
 /**
