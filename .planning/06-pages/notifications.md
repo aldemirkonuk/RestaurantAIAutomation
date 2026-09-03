@@ -267,8 +267,8 @@ Fixed in three layers, because no single one is sufficient:
 
 | file:line | was | now |
 |---|---|---|
-| `apps/api-gateway/src/notifications/low-stock-alerts.service.ts:300-306` | siren/warning + `N wines dropped below par` | `3 wines dropped below par — 1 critical` (the count the picture could never carry) |
-| `apps/api-gateway/src/notifications/low-stock-alerts.service.ts:355` | warning + `Low-stock digest: …` | `Low-stock digest: 17 wines below par` |
+| `apps/api-gateway/src/notifications/low-stock-alerts.service.ts:304-309` | siren/warning + `N wines dropped below par` | `3 wines dropped below par — 1 critical` (the count the picture could never carry) |
+| `apps/api-gateway/src/notifications/low-stock-alerts.service.ts:358` | warning + `Low-stock digest: …` | `Low-stock digest: 17 wines below par` |
 | `apps/api-gateway/src/notifications/notifications.service.ts:274-279` | siren/warning severity prefix on the low-stock push + inbox row | `Critical: <wine>` / `Low stock: <wine>` |
 | `apps/api-gateway/src/notifications/notifications.service.ts:239,252-253` | wine glass + tick + eye on the order-approval push and its buttons | plain |
 | `apps/api-gateway/src/notifications/notifications.service.ts:290-291` | cart + chart on the low-stock push buttons | plain |
@@ -316,6 +316,15 @@ which a naive `\p{Extended_Pictographic}` sweep would have deleted out of a wine
 name. `iconForType()` then draws the register's mark from `type`. A title that was
 *only* a picture comes back empty and falls to "Untitled entry" rather than being
 invented.
+
+Each of those claims is pinned separately in
+`apps/web/src/pages/notifications/next/nt-format.test.ts` (12 tests): a title that
+is only a picture → empty; an emoji mid-string → the words on both sides survive; a
+bare `U+FE0F` → removed; `™`/`®`/`©` in a wine name → untouched; and `hasEmoji()`
+called three times on the same string → still `true` (the shared `/g` regex's
+`lastIndex` is reset, which is how this kind of guard usually rots). Proven
+non-vacuous: with `plainText` narrowed back to a leading-only strip, four of them
+fail.
 
 **3 · One-tap actions — the founder chose the dashboard rail.** They now live in
 `apps/web/src/pages/dashboard/next/OneTapPanel.tsx`, mounted directly under
@@ -383,13 +392,15 @@ result is not mistaken for an oversight.
   `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`,
   `useNotificationsNextData.ts`, `nt-format.ts`, `NotificationsNext.test.tsx`
   (13 render-contract tests, hook mocked), `useNotificationsNextData.test.tsx`
-  (7 hook tests, `apiClient` mocked), `MOTIONS.md`. It shares
+  (7 hook tests, `apiClient` mocked), `nt-format.test.ts` (12 unit tests for the
+  emoji normaliser and the icon map), `MOTIONS.md`. It shares
   `lib/notificationStack.ts` with the legacy page and imports nothing from
   `pages/Notifications.tsx`.
 - Moved out 2026-09-03: the one-tap desk, formerly `notifications/next/HouseBand.tsx`
   and briefly `notifications/next/OneTapDesk.tsx`, is now
   `apps/web/src/pages/dashboard/next/OneTapPanel.tsx` with its own read and its own
-  test (`OneTapPanel.test.tsx`, 10 tests). See [[dashboard]] §1a/§1b.
+  test (`OneTapPanel.test.tsx`, 12 tests, including the tenant-switch discard).
+  See [[dashboard]] §1a/§1b.
 - Producer-side, second pass: `apps/api-gateway/src/notifications/notification-text-is-plain.spec.ts`
   (the emoji guard, both runtimes), plus title assertions added to
   `notifications/low-stock-alerts.service.spec.ts`, `team/schedule.service.spec.ts`,
@@ -542,7 +553,7 @@ in this cluster. Two named capabilities are absent or fake.
 gateway — team broadcast (`team/team.controller.ts:350`), schedule publish and
 acknowledge (`team/schedule.service.ts:254,484`), procurement
 (`procurement/procurement.service.ts:1062,1368`), the low-stock engine
-(`notifications/low-stock-alerts.service.ts:305,347`), the inbound autonomous
+(`notifications/low-stock-alerts.service.ts:312,354`), the inbound autonomous
 responder (`common/orchestrator/inbound-responder.service.ts:1287`), and the
 scheduled-task crons. Read/unread/archive/delete all hit real JWT-guarded endpoints
 (`notifications/notifications.controller.ts:45` class-level guard, routes :84-276).
@@ -673,7 +684,7 @@ none built here.**
    `scripts/check_no_seeded_defaults.py` (§9.5). One line; verified PASS already.
 8. **Let a producer raise a one-tap action** — call
    `OneTapActionsService.createSystemAction` from the low-stock sweep
-   (`notifications/low-stock-alerts.service.ts:305,347`) and/or procurement
+   (`notifications/low-stock-alerts.service.ts:312,354`) and/or procurement
    (`procurement/procurement.service.ts:1062,1368`). Until then the `--calm` band's
    house half is structurally correct and permanently empty (§9.1).
 9. **Implement `triggerWorkflow`** (`one-tap-actions.service.ts:404-430`) or rename the

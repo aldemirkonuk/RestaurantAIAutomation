@@ -85,6 +85,13 @@ while the flag is off — `apps/web/src/pages/dashboard/next/`):
     read (the failure quoted), refused read (403 told apart from a 500, no pointless
     retry). The pending count is an em dash, never a zero, while the register is
     unread.
+  - **A tenant switch never leaves the previous house's actions on screen.** The
+    reset effect blanks the register the moment `restaurantId` changes
+    (`OneTapPanel.tsx:135-139`), and a response that arrives after the switch is
+    discarded rather than rendered (`:148,151`). Both halves are pinned by
+    `OneTapPanel.test.tsx` ("discards a response that lands after the restaurant was
+    switched" and "shows nothing from the previous house while the new one is still
+    loading"); with either guard removed, both fail.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_dashboard`)
 
@@ -146,7 +153,7 @@ from `/admin`, `/get-started`, `/invite/:code`, `/onboarding`, `/register`. Also
   `DashboardNext.tsx`, `SalesCalendar.tsx`, `DayDetail.tsx`, `KpiRow.tsx`,
   `WaitingOnYou.tsx`, `RailPanels.tsx`, `CountUp.tsx`, `useDashboardNextData.ts`,
   `format.ts`, `fonts.ts`, `dashboard-next.css`, `MOTIONS.md`, and — added
-  2026-09-03 — `OneTapPanel.tsx` with `OneTapPanel.test.tsx` (10 tests,
+  2026-09-03 — `OneTapPanel.tsx` with `OneTapPanel.test.tsx` (12 tests,
   `apiClient` mocked). The panel is mounted at `DashboardNext.tsx:141`, directly
   under `<WaitingOnYou/>`.
 
@@ -325,7 +332,7 @@ the two or three actions worth doing before service, each of which actually happ
 
 7. **Let a producer raise a one-tap action** — call
    `OneTapActionsService.createSystemAction` from the low-stock sweep
-   (`notifications/low-stock-alerts.service.ts:305,347`) and/or procurement
+   (`notifications/low-stock-alerts.service.ts:312,354`) and/or procurement
    (`procurement/procurement.service.ts:1744,2362`). Until then the rail panel's
    house half is correct and empty (§9). This is the single highest-value item for
    the panel: without it the "autonomy you can see" half of the page is a shape.

@@ -12,11 +12,13 @@
  *    STRUCTURALLY, and the house one carries the dashed calm edge;
  *  - an unreadable register says so in words and is never drawn as an empty
  *    desk — the "absence reported as health" rule;
- *  - the die reaches the real execute endpoint, and only after the hold.
+ *  - the die reaches the real execute endpoint, and only after the hold;
+ *  - a response that arrives AFTER the restaurant was switched is discarded —
+ *    the rail must never show the previous house's actions.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -65,6 +67,17 @@ function draw(restaurantId: string | null = 'rest-A') {
       <OneTapPanel restaurantId={restaurantId} />
     </MemoryRouter>,
   );
+}
+
+/** A promise whose settlement this test controls, so a read can be left mid-flight. */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -182,6 +195,80 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     draw();
     const panel = screen.getByLabelText('One-tap actions');
     expect(within(panel).getByText('—')).toBeInTheDocument();
+  });
+
+  it('discards a response that lands after the restaurant was switched', async () => {
+    // rest-A's read is left in flight; rest-B's read answers first and then
+    // rest-A's arrives late. `tenant.current !== forTenant` at OneTapPanel.tsx:148
+    // is the only thing standing between that and the previous house's actions
+    // on screen.
+    const a = deferred<{ data: unknown }>();
+    const b = deferred<{ data: unknown }>();
+    api.get.mockImplementation((_url: string, cfg: { params: { restaurantId: string } }) =>
+      cfg.params.restaurantId === 'rest-A' ? a.promise : b.promise,
+    );
+
+    const { rerender } = draw('rest-A');
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith('/one-tap-actions', {
+        params: { restaurantId: 'rest-A' },
+      }),
+    );
+
+    // Switch houses while rest-A is still in flight.
+    rerender(
+      <MemoryRouter>
+        <OneTapPanel restaurantId="rest-B" />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith('/one-tap-actions', {
+        params: { restaurantId: 'rest-B' },
+      }),
+    );
+
+    // rest-B answers with its own single action…
+    await act(async () => {
+      b.resolve({ data: { actions: [{ ...personRaised, restaurantId: 'rest-B' }] } });
+    });
+    expect(
+      await screen.findByText('Call the cellar about Thursday'),
+    ).toBeInTheDocument();
+
+    // …and then the stale rest-A response finally lands. It must change nothing.
+    await act(async () => {
+      a.resolve({ data: { actions: [{ ...houseRaised, restaurantId: 'rest-A' }] } });
+    });
+
+    expect(screen.queryByText('Reorder the Rioja')).not.toBeInTheDocument();
+    expect(screen.getByText('Call the cellar about Thursday')).toBeInTheDocument();
+    const panel = screen.getByLabelText('One-tap actions');
+    expect(within(panel).queryByText('Raised by the house · not done')).not.toBeInTheDocument();
+  });
+
+  it('shows nothing from the previous house while the new one is still loading', async () => {
+    // The other half of the same guard: the reset effect (OneTapPanel.tsx:135-139)
+    // must blank the register on a switch rather than leaving rest-A's rows up
+    // until rest-B answers.
+    serve([houseRaised]);
+    const { rerender } = draw('rest-A');
+    expect(await screen.findByText('Reorder the Rioja')).toBeInTheDocument();
+
+    const held = deferred<{ data: unknown }>();
+    api.get.mockReturnValue(held.promise);
+    rerender(
+      <MemoryRouter>
+        <OneTapPanel restaurantId="rest-B" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Reorder the Rioja')).not.toBeInTheDocument();
+    // and the count is an em dash, not a stale 1
+    const panel = screen.getByLabelText('One-tap actions');
+    expect(within(panel).getByText('—')).toBeInTheDocument();
+    await act(async () => {
+      held.resolve({ data: { actions: [] } });
+    });
   });
 
   it('says a real empty desk in words', async () => {
