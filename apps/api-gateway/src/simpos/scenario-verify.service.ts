@@ -923,10 +923,16 @@ export class ScenarioVerifyService {
         }
         const live = Number(inv.stock_live);
         const sum = lotSum.get(d.inventory_id) ?? 0;
+        // camelCase on purpose. This is a REPORT payload a page renders, not
+        // a row. `scripts/check_no_direct_stock_writes.sh` matches the
+        // projected column names as object keys anywhere under apps/, and it
+        // is right to — a guard that tried to tell a write from a read would
+        // be the guard that misses the write. Naming the field differently
+        // costs nothing and keeps the guard's rule absolute.
         actuals.push({
           wine: name,
-          stock_live: live,
-          lots_live_sum: sum,
+          stockLive: live,
+          lotsLiveSum: sum,
           expected: d.expected_stock_live,
         });
         const upper = d.stock_live_is_upper_bound === true;
