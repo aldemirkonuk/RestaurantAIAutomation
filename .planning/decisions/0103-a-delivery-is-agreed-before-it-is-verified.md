@@ -1,6 +1,6 @@
 # 0103 — A delivery is agreed before it is verified
 
-- **Status:** Locked on the forks the founder answered in session (2026-09-02/03: door documents, the meaning of _agreed_, the payment clocks, the no-order path, the human gate); **Proposed** on D9 (the never-looked-at case), which the founder asked to be decided and explained. Design only — nothing here is built.
+- **Status:** Locked on the forks the founder answered in session (2026-09-02/03: door documents, the meaning of _agreed_, the payment clocks, the no-order path, the human gate); **Proposed** on D9 (the never-looked-at case), which the founder asked to be decided and explained; **one clock basis is OPEN** (A8 below: whether a delivery at the restaurant's premises has a 7-day e-İrsaliye window at all is a question for a Turkish YMM, not for this research). Design only — nothing here is built.
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** invoice, delivery, irsaliye, e-İrsaliye, irsaliyeli fatura, e-Fatura, receiving, reconciliation, agreed invoice, three-way match, credit memo, short ship, substitution, vintage, unordered, no-PO, AB 2991, BPC 25509, VUK 231, TTK 21, human gate, notifications, vendor terms
@@ -170,8 +170,84 @@ absence of an order as the presence of one.
   depends on the goods' value or the vendor's licence class in a way D4 cannot key), or
   when the first month of `LAPSED` counts shows the escalation ladder is not being read.
 
+## Amendments after the premortem, scale and adversary passes (2026-09-03)
+
+Three Sonnet passes were run against this ADR and 0104 before any build, as the founder
+asked for the irsaliye process (annexes: `annex-0103-0104-premortem.md`,
+`annex-0103-0104-scale.md`, `annex-0103-0104-adversary.md`). Each finding below names
+what it changes; none reopens a founder-locked answer.
+
+- **A1 — Stock at the door, cost at verification (reconciles D1 with the shipped door
+  design).** `recordDoorReceipt` (`procurement/receiving.service.ts`) deliberately books
+  live stock at the door so staff can pour it — an ADR 0011-class decision, not an
+  oversight — and D1 as written ("inventory moves at `VERIFIED`, and only there")
+  contradicted it. Resolved: **on-hand moves at `DELIVERED` from the door count, with the
+  ledger rows marked `cost_state = provisional`; COGS, vendor spend and price history post
+  at `VERIFIED`.** A delivery stuck in `RECONCILING` is pourable and absent from cost
+  reports — that is the test that must exist before build.
+- **A2 — Cardinality is many-to-many, and the join is named.** N deliveries per PO (split
+  shipments), N documents per delivery, and **N deliveries per document** — produce, dairy
+  and imported-goods distributors send consolidated weekly invoices, and one truck can
+  carry goods invoiced by two legal entities (adversary §1, sourced). So `deliveries` ↔
+  `documents` is a `document_deliveries` join, never a document FK to one delivery.
+  Clocks attach to the thing they are about: door correction to the delivery;
+  the e-İrsaliye response and the invoice objection to the **document**; payment to the
+  invoice; a consolidated invoice's issue date is its own basis. Stock idempotency is keyed
+  to the delivery id — today's `order-delivered:${orderId}` key
+  (`procurement.service.ts:1608`) silently drops the second truck of a split shipment, a
+  live bug shape filed in `v3.0-TECH-DEBT.md`.
+- **A3 — Payment is a fact on the invoice, not a state on the pipeline.** Under AB 2991
+  the wholesaler debits on day 30 whether or not the dispute is settled, so `PAID` cannot
+  sit at the end of a linear chain that requires `VERIFIED`. Resolved: `paid_at` and
+  `paid_by ∈ {eft_wholesaler_initiated, restaurant, credit_applied, …}` live on the
+  invoice document and can occur in any delivery state; **"paid while disputed"** is a
+  named condition with its own notification (D8 gains it), distinct from "paid because
+  agreed". `INVOICE_FILED → PAID` in D1 is read as "the invoice is filed; its payment fact
+  is recorded", not as a gate.
+- **A4 — `LAPSED` is terminal for the deeming, not for documents.** A vendor's late credit
+  memo or corrected invoice attaches to a lapsed delivery as a new document and moves it to
+  **`LAPSED_AMENDED`**, with the amendment audited (who, when, which document); the record
+  of what the law deemed on the lapse date is never overwritten.
+- **A5 — Two more retirements, named.** `syncOrderState`
+  (`common/orchestrator/inbound-responder.service.ts:1088`) drops a contradicting vendor
+  reply into free-text negotiation metadata — the exact mechanism `delivery_proposals`
+  replaces; every contradiction becomes a proposal row with a reason class, and the
+  silent-drop branch is retired. `markDelivered` (`procurement.service.ts:1521`) and
+  `recordDoorReceipt` carry different booking and idempotency semantics; both consolidate
+  into the delivery model. The retire list is therefore: `retroactive-order`, the
+  contradiction drop, and the two divergent receiving paths.
+- **A6 — Zero door evidence is stated, never assumed.** When nobody counts at the door — the
+  modal case in every tool surveyed (adversary §2) — the delivery's `received` column is
+  **`not counted`**, never silently equal to shipped or billed; `RECONCILING → AGREED`
+  still needs both sides on the record, and `VERIFIED` still needs a person to assert
+  receipt, with the screen saying "no door count". This is what keeps the flow from
+  degrading into the invoice-centric three-way match this ADR rejected. Because the
+  differentiator is load-bearing on the door, the door view moves to slice 2 in ADR 0104
+  D12.
+- **A7 — The differentiator, restated against the Turkish market.** Paraşüt, Logo/eLogo,
+  Uyumsoft and ERC Soft already ship kabul / kısmi kabul / red on an incoming e-İrsaliye
+  as a mobile button (adversary §3, URLs in the annex); the earlier research scanned nine
+  US tools and no Turkish one. What none of them does is tie that response to inventory,
+  COGS, vintage/substitution and a US-side equivalent on one screen. The claim this ADR
+  makes is the narrower one: **one receiving record across TR and US that drives the
+  books**, not "we invented bilateral agreement".
+- **A8 — Clock basis is a field, and one Turkish row is OPEN.** Every `vendor_terms` clock
+  carries `basis ∈ {dispatch_date, delivery_date, document_issue_date, unknown}`. The
+  research it rests on flags that a delivery _at the restaurant's premises_ may require
+  the invoice at delivery, with no 7-day window at all — the modal restaurant case — and
+  calls it a question for a Turkish YMM. Those rows are seeded `unknown` (which blocks,
+  D4) until a YMM answers; the founder may already have that answer from their accountant.
+- **A9 — Vintage is structured (D6 needs a machine signal).** Vintage, and lot/batch where
+  applicable, are RESOLVED-layer fields (ADR 0104 D1); a vintage-only difference raises
+  `SUBSTITUTION`, never a silent match — a test, not a hope.
+- **A10 — The escalation ladder is durable.** D9's timers are `due_at` rows worked by an
+  idempotent poller that catches up after a missed tick (a deploy, a crash); never
+  in-process timers — the scale pass named this as the place the absence-as-health fault
+  would return.
+
 ## Review trail
 
 | Date       | Reviewer                                                                             | Outcome                                                                     |
 | ---------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
 | 2026-09-03 | Fable (lens session), from the founder's in-session answers and two research reports | Created; D1–D8 locked by the founder's answers, D9 proposed for the founder |
+| 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)               | A1–A10 recorded; A8 leaves one Turkish clock basis open for a YMM           |

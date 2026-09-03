@@ -145,3 +145,6 @@ item, then is deleted):
 | Annex | For |
 |---|---|
 | [`OD-72-rls-census.md`](OD-72-rls-census.md) | OD-72 (142 naked-RLS tables) · OD-73 (12 RLS-off tables with full `anon` DML) |
+| [`annex-0103-0104-premortem.md`](annex-0103-0104-premortem.md) | ADR 0103/0104 — twelve irsaliye scenarios walked end to end; ten ranked causes of failure (folded in as 0103 A1–A10) |
+| [`annex-0103-0104-scale.md`](annex-0103-0104-scale.md) | ADR 0103/0104 — three tenant profiles and the platform at 500/5,000 tenants; five choices that did not scale as written (folded in as 0104 S1–S4, S10) |
+| [`annex-0103-0104-adversary.md`](annex-0103-0104-adversary.md) | ADR 0103/0104 — ten attacks; two land (many-to-many, the door step ships last), two near-decisive (Turkish incumbents, the clock basis) — folded in as 0103 A2, A6–A8 |

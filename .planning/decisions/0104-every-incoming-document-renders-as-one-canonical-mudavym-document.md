@@ -216,6 +216,51 @@ failure modes (b) or is a PDF viewer with a sidebar (c).
   measurement in slice 4 shows correction rates not falling per vendor; or when D8's
   research says a legal floor cannot be met from our own storage.
 
+## Amendments after the premortem, scale and adversary passes (2026-09-03)
+
+Same three passes as ADR 0103 (annexes `annex-0103-0104-*.md`). None reopens a
+founder-locked answer; each names what it changes.
+
+- **S1 — The per-field envelope is stored as a document, not as rows (D1).** Modelled as
+  one row per field per revision, a single 30-location tenant writes ~9 M rows a year
+  before anyone corrects anything (scale pass, arithmetic in the annex). Resolved: layer 1
+  is **one JSONB document per revision** carrying every field's envelope; the append-only
+  table holds only the corrections (who, when, field, before, after). The semantics of D1
+  and D5 are unchanged; the storage shape is.
+- **S2 — Duplicate detection is keyed by tenant (D7).** The commercial-event key includes
+  `restaurant_id` (with vendor, date and content hash); without it a shared vendor
+  delivering to two sibling locations the same morning merges as a duplicate.
+- **S3 — Rendering is isomorphic, server-side only for export (D10).** One component
+  renders on screen client-side; the server renders the same component only for print and
+  the hybrid PDF/A-3, asynchronously, on one warm renderer — never "every screen-open
+  through headless Chromium at the 09:00 receiving peak". Slice 1 carries the cheapest
+  load test: render the existing `vendor-attachments` corpus through one warm Chromium and
+  record p50/p95 and memory drift before slice 2 fixes the architecture.
+- **S4 — The intake gate has a false-positive budget (D6).** Thresholds are set on the
+  existing corpus in slice 1, with **≤ 2 % false positives** as the budget for a _blocking_
+  verdict; above that the gate warns instead of blocks. Past roughly 5–10 % staff route
+  around any gate, which is worse than no gate.
+- **S5 — Many-to-many, named (D7).** `document_deliveries` is the join (ADR 0103 A2): a
+  consolidated weekly invoice covers several deliveries; a split shipment carries several
+  partial invoices; two legal entities can invoice one truck. The "received 10 vs billed
+  12" column is computed per (document line, delivery) pair.
+- **S6 — Direction and the informal document (D2).** Every canonical document carries
+  `direction ∈ {issued_by_vendor, issued_by_us}` — a Turkish `iade faturası` is ours, the
+  reverse of a vendor credit memo — and `informal_note` is a first-class type for the
+  farmer with a handwritten slip, so a legally normal transaction never reads like a
+  broken intake aging in `needs_review`.
+- **S7 — Vintage and lot are structured RESOLVED fields (D1)** — see ADR 0103 A9.
+- **S8 — Mapping memory: the latest human-confirmed correction wins (D5).** Conflicting
+  history is shown, never silently averaged; the slice-4 test seeds a wrong-then-right
+  pair and asserts the suggestion follows the latest.
+- **S9 — The presentation PDF is a tripwire against the signed XML (D14).** OCR never
+  becomes a _source_ for a machine-readable document, but a header-and-totals-only read of
+  the PDF runs as a check; a mismatch is a named exception ("the PDF says 10, the signed
+  XML says 12"), never invisible.
+- **S10 — The door view ships in slice 2, not slice 5 (D12).** The differentiator is
+  load-bearing on door capture (ADR 0103 A6); a design that ships it last would have
+  measured itself as an invoice-centric three-way match for four slices.
+
 ## Review trail
 
 | Date       | Reviewer                                                                                                                                            | Outcome                                                                                                          |
@@ -223,3 +268,4 @@ failure modes (b) or is a PDF viewer with a sidebar (c).
 | 2026-09-03 | Fable (lens session), from the founder's in-session answers and the template research                                                               | Created; D1–D7, D9–D12 locked by the founder's answers; D8 and D13 proposed                                      |
 | 2026-09-03 | Fable, from the retention research and the founder's answers (churn = export then hold to the floor, plus a tenant-side mirror; signed XML primary) | D8 and D14 locked; D13 still proposed pending the sketch review; GT 509 primary source still to be read          |
 | 2026-09-03 | Fable, after reviewing the three rendered directions                                                                                                | D13 recommendation recorded: C-led synthesis (C spine, A sheet, B verdict block); the founder locks or redirects |
+| 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)                                                                              | S1–S10 recorded; D12 slice order changed (door view to slice 2); storage shape of D1 changed, semantics kept     |
