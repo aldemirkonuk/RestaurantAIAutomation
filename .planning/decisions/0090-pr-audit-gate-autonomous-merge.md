@@ -113,7 +113,11 @@ autonomous" merge), with the autonomy scoped as narrowly as those answers allow:
   and the PR comment says so in words, never a silent green
   ([[absence-reported-as-health]] — a check that can't verify must not read as
   health).
-- Both write the same report shape to `.planning/07-reference/pr-audits/`.
+- **Corrected, sixth audit round:** only the Claude-Code path still writes
+  `.planning/07-reference/pr-audits/` (a convenience copy, not what's
+  checked). The CI path never did once the report-shape design changed
+  (see the third Correction) — its full report lives only in the PR
+  comment, which is the actual durable record for that path.
 
 **Model corrected from "Sonnet max" to Opus, same day, before merge.** The
 original ask specified Sonnet at maximum reasoning effort. [[agent-dispatch-hardness-threshold]]
@@ -478,12 +482,55 @@ contrived shape, not a realistic `gh pr merge` invocation today, named
 rather than engineered around given the "loose regex, known limitation"
 design already stated for this whole hook.
 
+## Correction — 2026-09-03, found by the gate's own SIXTH real audit (final)
+
+A closing round, deliberately scoped as one combined correctness+security
+pass rather than three separate angles, explicitly asked to try to defeat
+the parsers/hook one more time and to say plainly if nothing real turned
+up. Its own words: *"Had the workflow-level finding not existed, my honest
+answer would have been APPROVE… this surface has genuinely converged."*
+17 new adversarial shapes against `_verdict_of`, 20 against
+`DIRECT_PUSH_PATTERN`, more against `MARKER_RE` and `_extract_pr_number` —
+all held; the 4 `DIRECT_PUSH_PATTERN` misses found are the exact global-git-
+flag gap already named in that file's own comment.
+
+One real finding, in a layer no prior round had audited: **the YAML that
+*consumes* `wait_upstream`'s return value, not the Python that produces
+it.** `wait_upstream` returning 0 on a *confirmed* red required check (kept
+that way by round 4, which fixed only the *timeout* branch to exit 1,
+reasoning the confirmed-red case was "legitimate, known-good, nothing to
+say") meant the "Wait for the existing required checks" step succeeds, the
+"Run the PR audit gate" step correctly SKIPS, and every step having
+succeeded-or-skipped, **the JOB's own conclusion is `success`** — for a run
+that audited nothing at all. Confirmed against this PR's own run
+33693914368. Harmless today only because this check is not yet required;
+the instant it is (the branch-protection PATCH this ADR has deferred to the
+founder throughout), a required context reading SUCCESS while never having
+audited anything is exactly the fault class this file's own NEVER VACUOUS
+header exists to prevent — round 4's reasoning for the distinction didn't
+survive contact with how GitHub actually evaluates a required check (it
+asks "is there a successful run of this name for the current SHA," not
+"did that run's job actually do the thing its name claims"). Fixed:
+`wait_upstream` now exits 1 for a confirmed-red required check too, the
+same as the timeout case — every non-SUCCESS path agrees now: don't merge,
+and don't let the JOB look like it had something to say when it didn't.
+
+Also closed the same round: this document's own drift after five prior
+Corrections — the "both write the same report shape" line (no longer true;
+only the Claude-Code path still writes `.planning/07-reference/pr-audits/`,
+corrected in place above) and the Review-trail table, which had fallen two
+rows behind its own Correction count (fixed by this edit).
+
+## Review trail
+
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | Aldemir (via `AskUserQuestion`) | Both enforcement layers; fully autonomous merge — answered live, this ADR records it |
 | 2026-09-02 | — | Created; status left `Proposed` pending the founder's explicit lock per this log's own convention |
 | 2026-09-02 | Aldemir (chat) | Asked "sonnet ultrathink or opus high" — corrected model from "Sonnet max" to **Opus / high** per ADR 0050's own override rule, before merge. Files/branding renamed off "sonnet" to match (`pr-merge-{auditor,adversary}.md`, `pr-audit-gate.yml`, `pr_audit_gate.py`, `require_pr_audit.py`) |
-| 2026-09-03 | `PR Audit Gate` (Opus, run 33695630472) | BLOCK — security + correctness, both confirmed real; 4 fixes landed same day, see Correction above |
+| 2026-09-03 | `PR Audit Gate` (Opus, run 33695630472) | BLOCK — security + correctness, both confirmed real; 4 fixes landed same day, see first Correction above |
 | 2026-09-03 | pr-audit-gate skill, security angle (Opus subagent) | BLOCK — the verdict-parser fix from the first correction was incomplete (wrong function) and the fork-secret claim was wrong for the new trigger; both confirmed independently and fixed, see second Correction above |
 | 2026-09-03 | pr-audit-gate skill, all 3 angles (fresh Opus subagents) | BLOCK, BLOCK, BLOCK — a deny-list verdict decision in two places (one confirmed by execution to invert a literal adversary "VERDICT: BLOCK" into a merge), an unauthenticated marker check (confirmed by execution against a shimmed outsider comment), an `--auto` merge race, and a deny-list state classifier; 6 fixes landed same day plus a `--self-test`, see third Correction above |
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — a GITHUB_TOKEN merge silently removes the post-merge deploy audit (confirmed against GitHub's documented behavior + this repo's own merge history); a repo-wide hook that both over- and under-blocked real git commands (confirmed by execution); a diff-truncation gap the third round's correctness angle didn't reach (confirmed by harness-executing a planted regression past the old cut); 6 fixes landed same day, `--self-test` grown 17 → 24, see fourth Correction above |
+| 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — round 4's own `workflow_dispatch` fix 403'd on every run (missing `actions: write`, self-caught independently before either report landed) and round 4's own `\n`-exclusion regex fix regressed a real backslash-continuation case; both fixed same day, `--self-test` grown 24 → 29, see fifth Correction above |
+| 2026-09-03 | pr-audit-gate skill, combined correctness+security (fresh Opus subagent, final round) | BLOCK — one finding, in the YAML consuming `wait_upstream`'s return value rather than the Python producing it: a confirmed-red required check reported job SUCCESS having audited nothing; fixed same day. Explicitly stated the parsers/hook have converged after five prior rounds' adversarial testing found nothing new, see sixth Correction above |

@@ -215,9 +215,27 @@ def wait_upstream(pr_number: str) -> int:
         failed = [c for c in reported if c not in pending and reported[c] != "SUCCESS"]
 
         if failed:
+            # Exit 1, not 0 (CORRECTED, sixth audit round -- round 4 argued
+            # this case was "legitimate, known-good, nothing to say" and left
+            # it at exit 0, distinct from the timeout case it fixed to exit
+            # 1). CONFIRMED live against this PR's own run 33693914368: the
+            # step succeeds, "Explain a skip" succeeds, "Run the PR audit
+            # gate" is SKIPPED (not failed), and the JOB CONCLUSION is
+            # `success` -- for a run that audited nothing. That distinction
+            # ("legitimate to skip" vs "the job reports success") is exactly
+            # the gap: this check's name is `PR Audit Gate`, and once it is
+            # ever made a required context, GitHub only asks "is there a
+            # successful run of this name for the current head SHA" -- it
+            # does not re-derive whether an audit actually happened. A
+            # required check that reads SUCCESS while never having audited
+            # anything is the absence-reported-as-health shape this whole
+            # file exists to prevent, one layer up in the YAML that consumes
+            # these return values rather than in the Python itself. Every
+            # non-SUCCESS path here now agrees: don't merge, and don't let
+            # the JOB look like it had something to say when it didn't.
             print(f"Upstream red: {failed}")
             _write_github_output("status", "upstream_red")
-            return 0
+            return 1
 
         if not missing and not pending and names:
             if required is not None:
@@ -242,18 +260,17 @@ def wait_upstream(pr_number: str) -> int:
             prev_total = len(checks)
 
         if time.monotonic() > deadline:
-            # Exit 1, not 0. CONFIRMED live (gate's own fourth audit,
-            # correctness angle, harness-executed): returning 0 here made
-            # THIS STEP succeed, downstream steps correctly skip the audit
-            # (status=upstream_red), and the JOB shows green having audited
-            # nothing and confirmed nothing -- absence reported as health,
-            # inside the guard whose whole job is catching that shape. A
-            # confirmed-red required check (the `failed` branch above) is a
-            # legitimate, known-good "nothing to say" case and stays exit 0;
-            # a timeout means we never found out, which is different and
-            # must show as a failure. GITHUB_OUTPUT is still written first,
-            # so steps.upstream.outputs.status stays available to whatever
-            # reads it.
+            # Exit 1, not 0, for the same reason the `failed` branch above
+            # now also exits 1 (originally this was the only non-zero exit
+            # here, on the theory that a confirmed-red required check was a
+            # "legitimate, known-good, nothing to say" case that could stay
+            # exit 0 -- the sixth audit round found that distinction doesn't
+            # survive contact with how a required check is actually
+            # evaluated: GITHUB_OUTPUT is still written first, so
+            # steps.upstream.outputs.status stays available to whatever
+            # reads it, but the JOB itself must not report success for a
+            # run that never audited anything, timeout or confirmed-red
+            # alike.
             print(f"Timed out after {MAX_WAIT_SECONDS}s waiting on: {missing + pending} "
                   "-- never confirmed either way, not the same as a confirmed failure.")
             _write_github_output("status", "upstream_red")
