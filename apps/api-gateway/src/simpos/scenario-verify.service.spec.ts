@@ -392,7 +392,7 @@ describe("ScenarioVerifyService.verify — a failed read is never an empty one",
       (x: Row) => x.table === "pos_checks" && x.ok === false,
     );
     expect(failedRead).toBeTruthy();
-    expect(failedRead.error).toBe("statement timeout");
+    expect(failedRead?.error).toBe("statement timeout");
 
     for (const id of [
       "checks.landed",
