@@ -32,7 +32,14 @@ import {
   UpdateOrderDto,
   VerifyReceiptDto,
 } from "./dto/procurement.dto";
-import { computeMatch, isDiscrepancy, MatchResult } from "./invoice-match";
+import {
+  computeMatch,
+  isDiscrepancy,
+  MatchResult,
+  MatchUnitError,
+  toBottleOperands,
+} from "./invoice-match";
+import { readAliasedQuantity } from "./quantity-aliases";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
@@ -828,6 +835,21 @@ export class ProcurementService {
           quantity: args.quantity ?? 1,
           // The vocabulary of the column, not of this codebase: price_history
           // predates the canonical singular unit list and defaults to 'BOTTLE'.
+          //
+          // This label is now TRUE rather than merely constant. All three
+          // callers pass a bottle count and a per-bottle price: the two
+          // `order_confirmed` writers use `bottles_total`, and
+          // `receipt_verified` passes the match's normalised bottle figure
+          // alongside `effectiveUnitCost`. Before the units reached
+          // `computeMatch`, the receipt writer put a raw invoice number — a case
+          // count on any order not placed in bottles — into a column asserting
+          // bottles, and no reader could tell.
+          //
+          // It stays hardcoded, deliberately: this is a per-bottle price series
+          // by construction, so a `unit` that could vary would invite a caller
+          // to write a case price into it and make the whole series
+          // incomparable. Any future non-bottle observation needs a decision
+          // about what the series means, not a widened column.
           unit: "BOTTLE",
           effective_date: new Date().toISOString().slice(0, 10),
           source: args.source,
@@ -852,6 +874,68 @@ export class ProcurementService {
         error: e?.message,
       });
     }
+  }
+
+  /**
+   * The unit an order was placed in, and how many bottles one of them is.
+   *
+   * `procurement_orders` carries `unit_type` and `bottles_total` but NOT
+   * `bottles_per_unit` — only the LINE (`procurement_order_items`) has it, which
+   * is why this reads the line rather than trusting the header alone.
+   *
+   * The fallback derives the pack size as `bottles_total / quantity`, and does
+   * so only when that division is exact and at least 1. That guard matters:
+   * back-deriving pack size is the move that let a legacy order which booked 5
+   * bottles for 5 cases teach the door that a case holds one bottle
+   * (`order-units.ts`). An inexact or absent derivation yields NO pack size, and
+   * `computeMatch` then refuses a multiplying unit outright rather than
+   * guessing — which is the correct outcome for a row we cannot read.
+   */
+  private async resolveOrderMatchUnits(
+    restaurantId: string,
+    orderId: string,
+    orderRow: Record<string, any>,
+  ): Promise<{ unitType: string | null; bottlesPerUnit: number | null }> {
+    const unitType = orderRow.unit_type ?? null;
+
+    try {
+      const { data } = await this.databaseService.supabase
+        .from("procurement_order_items")
+        .select("unit_type, bottles_per_unit")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .maybeSingle();
+      const line = data as any;
+      if (line?.bottles_per_unit != null) {
+        return {
+          unitType: line.unit_type ?? unitType,
+          bottlesPerUnit: Number(line.bottles_per_unit),
+        };
+      }
+    } catch (e: any) {
+      // A missing line must not strand a delivery someone is standing in front
+      // of; the derivation below still has a chance, and failing that the match
+      // refuses rather than guesses.
+      this.logger.warn("Could not read the order line's pack size", {
+        orderId,
+        error: e?.message,
+      });
+    }
+
+    const quantity = Number(orderRow.quantity);
+    const bottlesTotal = Number(orderRow.bottles_total);
+    if (
+      Number.isFinite(quantity) &&
+      quantity > 0 &&
+      Number.isFinite(bottlesTotal) &&
+      bottlesTotal > 0 &&
+      Number.isInteger(bottlesTotal / quantity) &&
+      bottlesTotal / quantity >= 1
+    ) {
+      return { unitType, bottlesPerUnit: bottlesTotal / quantity };
+    }
+
+    return { unitType, bottlesPerUnit: null };
   }
 
   /** The wine this order is for, as the price series needs to key it. */
@@ -1008,7 +1092,16 @@ export class ProcurementService {
       rejection_reason: dto.rejectionReason ?? undefined,
       delivery_notes: dto.deliveryNotes ?? undefined,
       tracking_number: dto.trackingNumber ?? undefined,
-      quantity_received: dto.quantityReceived ?? undefined,
+      // Stored in the order's own unit_type, beside `quantity`. The canonical
+      // field says so in its name; the old unitless one is still accepted, and
+      // the two disagreeing is a 400 rather than a silent choice.
+      quantity_received:
+        readAliasedQuantity({
+          canonicalName: "quantityReceivedInOrderUom",
+          canonical: dto.quantityReceivedInOrderUom,
+          aliasName: "quantityReceived",
+          alias: dto.quantityReceived,
+        }) ?? undefined,
       price_verified: dto.priceVerified ?? undefined,
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
@@ -1546,7 +1639,33 @@ export class ProcurementService {
             const currentShadow = currentStock?.shadow_stock ?? 0;
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
             const shadowRelease = Math.min(resolvedQuantity, currentShadow);
-            const unitCost = row.final_price ?? row.suggested_price ?? null;
+
+            // WHAT KIND OF PRICE THIS IS.
+            //
+            // `final_price` is the price we AGREED at ordering time. Nobody has
+            // read an invoice at this point — markDelivered runs when the goods
+            // arrive, and verifyReceipt is the step where a human compares the
+            // vendor's document against what is on the floor. So this number is
+            // an expectation, and the lot must say so.
+            //
+            // It used to be passed with no provenance at all, and
+            // apply_stock_movement inferred `'invoice'` from the mere presence
+            // of a number — so every delivery booked a lot stamped
+            // invoice-verified, `inventory_lot_rollup.has_invoice_cost` went
+            // true, and analytics labelled the PO's own quote "invoiced lot
+            // WAC". `receiving.service.ts:215-218` refuses to guess a cost for
+            // exactly this reason; this path guessed one and then dressed it up.
+            //
+            // A `suggested_price` fallback was also read off the order row
+            // here. `procurement_orders` has no such column (production
+            // information_schema, 2026-09-02:
+            // the price columns are final_price, negotiated_price,
+            // quoted_price, invoice_unit_price, final_confirmed_cost,
+            // prefilled_invoice_unit_price) — so it was always `undefined` and
+            // the `??` chain fell through it silently. Reading a column that
+            // does not exist is not a fallback, it is a no-op wearing one.
+            const unitCost = row.final_price ?? null;
+            const costProvenance = unitCost == null ? null : "estimated";
 
             if (shadowRelease > 0) {
               await this.databaseService.supabase.rpc("apply_stock_movement", {
@@ -1568,6 +1687,7 @@ export class ProcurementService {
               p_source: "order",
               p_reason: "order delivered — physical receipt",
               p_unit_cost: unitCost,
+              p_cost_provenance: costProvenance,
               p_order_id: orderId,
               p_idempotency_key: `order-delivered-live:${orderId}`,
             });
@@ -1707,10 +1827,15 @@ export class ProcurementService {
    * @param unitCost What the bottle VERIFIABLY cost, from the invoice — landed,
    *   including allocated freight and fees. Passing it is the difference between
    *   a match that means something and a match that is decoration: without it
-   *   apply_stock_movement writes cost_provenance='estimated' and the lot keeps
-   *   the price we hoped for at ordering time, so catching a $2 overcharge
-   *   changes a badge on a screen and leaves inventory valuation, WAC, pour cost
-   *   and COGS all still quoting the old number.
+   *   the lot keeps the price we hoped for at ordering time, so catching a $2
+   *   overcharge changes a badge on a screen and leaves inventory valuation,
+   *   WAC, pour cost and COGS all still quoting the old number. Non-null only
+   *   when an invoice was actually read (`computeMatch` returns
+   *   `effectiveUnitCost = null` without one), which is why `'invoice'` is a
+   *   safe provenance for it and would not be for anything markDelivered has.
+   * @param userId Who verified the receipt. Recorded on the revaluation so the
+   *   valuation change has an author. Resolves to `public.users(user_id)` —
+   *   `auth.users` is a disjoint table and an FK to it 23503s on every write.
    */
   private async applyReceiptAdjustment(
     restaurantId: string,
@@ -1719,6 +1844,7 @@ export class ProcurementService {
     delta: number,
     reason: string,
     unitCost?: number | null,
+    userId?: string | null,
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
@@ -1763,27 +1889,112 @@ export class ProcurementService {
       );
     }
 
-    const { error } = await this.databaseService.supabase.rpc(
-      "apply_stock_movement",
-      {
-        p_inventory_id: inventoryId,
-        p_stock_state: "live",
-        p_delta: delta,
-        p_transaction_type: "adjustment",
-        p_source: "receiving",
-        p_reason: reason,
-        p_unit_cost: unitCost ?? null,
-        p_order_id: orderId,
-        p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
-      },
-    );
-    if (error) {
-      this.logger.error(
-        `verifyReceipt adjustment failed for ${inventoryId}: ${error.message}`,
+    // QUANTITY FIRST, THEN PRICE. The two are separate writes because they are
+    // separate facts: `apply_stock_movement` only ever creates or consumes
+    // bottles, and `revalue_lot` only ever restates what bottles cost.
+    //
+    // Order matters. A negative delta consumes lots FIFO, so revaluing before
+    // adjusting would restate lots that are about to be deleted and the
+    // revaluation receipt would overstate what it covered.
+    if (delta !== 0) {
+      const { error } = await this.databaseService.supabase.rpc(
+        "apply_stock_movement",
+        {
+          p_inventory_id: inventoryId,
+          p_stock_state: "live",
+          p_delta: delta,
+          p_transaction_type: "adjustment",
+          // `inventory_transaction_source` is exactly (pos, manual, order,
+          // mobile_count, reconciliation, system, import, api) — read from
+          // production 2026-09-02. There is no 'receiving'. The RPC casts
+          // `p_source::inventory_transaction_source`, so this raised on EVERY
+          // call and verifyReceipt returned 422 for every stock correction it
+          // ever attempted. `receiving.service.ts:205-212` hit the identical
+          // bug on the door path and settled on 'order' — a receipt correction
+          // is sourced from a procurement order in exactly the same sense.
+          //
+          // `verify-receipt.spec.ts` stubs rpc() as always-succeeds, which is
+          // why the enum never got a chance to say no. `lot-cost-truth.spec.ts`
+          // checks these literals against the enum in the production dump
+          // instead of against a mock.
+          p_source: "order",
+          p_reason: reason,
+          // A price only rides along when it CREATES bottles: those extra
+          // bottles are covered by the same invoice, so the lot is genuinely
+          // invoice-priced. On a negative delta the price would land on a
+          // ledger row nothing values stock from, so it is left off entirely
+          // and the correction below carries it to the lot instead.
+          p_unit_cost: delta > 0 ? (unitCost ?? null) : null,
+          p_cost_provenance: delta > 0 && unitCost != null ? "invoice" : null,
+          p_order_id: orderId,
+          p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
+        },
       );
-      throw new UnprocessableEntityException(
-        `Adjustment failed for item ${inventoryId}: ${error.message}`,
-      );
+      if (error) {
+        this.logger.error(
+          `verifyReceipt adjustment failed for ${inventoryId}: ${error.message}`,
+        );
+        throw new UnprocessableEntityException(
+          `Adjustment failed for item ${inventoryId}: ${error.message}`,
+        );
+      }
+    }
+
+    // THE CORRECTION ITSELF.
+    //
+    // Before this, a verified invoice price could not reach the lot it
+    // corrected. A negative ledgerDelta only DELETEd lots, so the price landed
+    // on a ledger row and inventory valuation kept quoting the estimate. A
+    // positive one created a SECOND lot at invoice cost beside the estimated
+    // original, and `inventory_lot_rollup.wac` blended the guess with the
+    // correction forever — under the label "invoiced lot WAC". A zero delta,
+    // the commonest case of all (the count matched, only the price differed),
+    // wrote nothing anywhere.
+    //
+    // `revalue_lot` restates the lots THIS order created, preserving the prior
+    // cost in `inventory_lot_revaluations` rather than overwriting it.
+    if (unitCost != null) {
+      const { data: receipt, error: revalError } =
+        await this.databaseService.supabase.rpc("revalue_lot", {
+          p_inventory_id: inventoryId,
+          p_source_order_id: orderId,
+          p_unit_cost: unitCost,
+          p_cost_provenance: "invoice",
+          p_performed_by: userId ?? null,
+          p_reason: reason,
+        });
+
+      if (revalError) {
+        this.logger.error(
+          `verifyReceipt revaluation failed for ${inventoryId}: ${revalError.message}`,
+        );
+        throw new UnprocessableEntityException(
+          `The count was corrected but the price was not, for item ${inventoryId}: ${revalError.message}`,
+        );
+      }
+
+      // A revaluation that reached nothing is reported, not assumed away. It
+      // is a legitimate outcome — every bottle from this delivery has already
+      // been poured — but "the correction covered no bottles" and "the
+      // correction covered them all" must not look identical in the log.
+      const covered = (receipt as any)?.lots_revalued ?? 0;
+      const matched = (receipt as any)?.lots_matched ?? 0;
+      if (matched === 0) {
+        this.logger.warn(
+          `verifyReceipt: no live lot from order ${orderId} remains for ${inventoryId}, ` +
+            `so the verified unit cost ${unitCost} was recorded on the order but corrected no stock.`,
+        );
+      } else {
+        this.logger.log({
+          message: "Receipt verification revalued stock",
+          orderId,
+          inventoryId,
+          unitCost,
+          lotsMatched: matched,
+          lotsRevalued: covered,
+          bottlesRevalued: (receipt as any)?.bottles_revalued ?? 0,
+        });
+      }
     }
   }
 
@@ -1811,11 +2022,67 @@ export class ProcurementService {
       (a) => a.inventoryId && Number.isFinite(a.delta) && a.delta !== 0,
     );
 
+    // Every quantity on this payload has a canonical unit-declaring name and a
+    // deprecated unitless alias. Read them ONCE, here, through the helper that
+    // refuses a disagreeing pair — so nothing below can reach past it to
+    // `body.acceptedQuantity` and reintroduce the ambiguity.
+    const invoiceQuantity = readAliasedQuantity({
+      canonicalName: "invoiceQuantityInInvoiceUom",
+      canonical: body.invoiceQuantityInInvoiceUom,
+      aliasName: "invoiceQuantity",
+      alias: body.invoiceQuantity,
+    });
+    const shippedQuantity = readAliasedQuantity({
+      canonicalName: "shippedQuantityInShippedUom",
+      canonical: body.shippedQuantityInShippedUom,
+      aliasName: "shippedQuantity",
+      alias: body.shippedQuantity,
+    });
+    const freeGoodsQuantity = readAliasedQuantity({
+      canonicalName: "freeGoodsQuantityInCountedUom",
+      canonical: body.freeGoodsQuantityInCountedUom,
+      aliasName: "freeGoodsQuantity",
+      alias: body.freeGoodsQuantity,
+    });
+    const acceptedQuantity = readAliasedQuantity({
+      canonicalName: "acceptedQuantityInCountedUom",
+      canonical: body.acceptedQuantityInCountedUom,
+      aliasName: "acceptedQuantity",
+      alias: body.acceptedQuantity,
+    });
+    const rejectedQuantity = readAliasedQuantity({
+      canonicalName: "rejectedQuantityInCountedUom",
+      canonical: body.rejectedQuantityInCountedUom,
+      aliasName: "rejectedQuantity",
+      alias: body.rejectedQuantity,
+    });
+    // The ADR 0059 pre-fill trio. Read through the same gate as their twins:
+    // an extraction proposal that could silently disagree with itself would
+    // poison the only corpus that can grade the extractor.
+    readAliasedQuantity({
+      canonicalName: "prefilledInvoiceQuantityInInvoiceUom",
+      canonical: body.prefilledInvoiceQuantityInInvoiceUom,
+      aliasName: "prefilledInvoiceQuantity",
+      alias: body.prefilledInvoiceQuantity,
+    });
+    readAliasedQuantity({
+      canonicalName: "prefilledShippedQuantityInShippedUom",
+      canonical: body.prefilledShippedQuantityInShippedUom,
+      aliasName: "prefilledShippedQuantity",
+      alias: body.prefilledShippedQuantity,
+    });
+    readAliasedQuantity({
+      canonicalName: "prefilledFreeGoodsQuantityInCountedUom",
+      canonical: body.prefilledFreeGoodsQuantityInCountedUom,
+      aliasName: "prefilledFreeGoodsQuantity",
+      alias: body.prefilledFreeGoodsQuantity,
+    });
+
     const hasMatchFields =
-      body.acceptedQuantity != null ||
-      body.invoiceQuantity != null ||
+      acceptedQuantity != null ||
+      invoiceQuantity != null ||
       body.invoiceUnitPrice != null ||
-      body.rejectedQuantity != null;
+      rejectedQuantity != null;
 
     const { data: orderRow, error: fetchError } =
       await this.databaseService.supabase
@@ -1830,6 +2097,7 @@ export class ProcurementService {
     }
 
     // What markDelivered already pushed into the ledger; corrections are relative to it.
+    // Stated in the ORDER's unit, like `quantity` beside it.
     const stockedQty =
       (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
     const orderedQty = (orderRow as any).quantity ?? 0;
@@ -1839,28 +2107,69 @@ export class ProcurementService {
       (orderRow as any).quoted_price ??
       null;
 
+    // The order's own unit, which every comparison below is anchored to. It was
+    // sitting on the row this method already reads and was never looked at:
+    // `computeMatch` got `quantity` as a bare number, so an order placed in
+    // cases of 12 and invoiced in bottles produced a confident wrong verdict.
+    const orderUnits = await this.resolveOrderMatchUnits(
+      restaurantId,
+      orderId,
+      orderRow as any,
+    );
+
     // Silence is NOT agreement. An unstated invoice used to be inferred from the
     // PO, which had two consequences: physical_vs_bill compared a number to
     // itself and always passed, and price_verified=true was written for a
     // delivery where nobody had looked at a document. That is a manufactured
     // audit assertion in a column a customer will lean on in a vendor dispute.
     // Absent now means absent, and the verdict comes back `unmatched`.
-    const match = hasMatchFields
-      ? computeMatch({
-          orderedQty,
-          poUnitPrice,
-          shippedQty: body.shippedQuantity ?? null,
-          invoiceQty: body.invoiceQuantity ?? null,
-          invoiceUnitPrice: body.invoiceUnitPrice ?? null,
-          acceptedQty: body.acceptedQuantity ?? stockedQty,
-          rejectedQty: body.rejectedQuantity ?? 0,
-          freeGoodsQty: body.freeGoodsQuantity ?? 0,
-          allocatedCharges: body.allocatedCharges ?? 0,
-          priceOverrideReason: body.priceOverrideReason ?? null,
-          stockedQty,
-        })
-      : null;
-    const hasInvoice = body.invoiceQuantity != null;
+    //
+    // EVERY operand now declares its unit. `computeMatch` converts them all to
+    // bottles before it compares anything, and refuses — rather than guessing —
+    // a unit it cannot read or a case with no pack size. A refusal reaches the
+    // caller as a 400 that names the document; the alternative is the thing this
+    // whole change exists to end, a verdict nobody can doubt and nothing can check.
+    const matchInput = {
+      orderedQtyInOrderedUom: orderedQty,
+      orderedUom: orderUnits.unitType,
+      orderedBottlesPerUnit: orderUnits.bottlesPerUnit,
+      poUnitPrice,
+      shippedQtyInShippedUom: shippedQuantity ?? null,
+      shippedUom: body.shippedUom ?? null,
+      shippedBottlesPerUnit: body.shippedBottlesPerUnit ?? null,
+      invoiceQtyInInvoiceUom: invoiceQuantity ?? null,
+      invoiceUom: body.invoiceUom ?? null,
+      invoiceBottlesPerUnit: body.invoiceBottlesPerUnit ?? null,
+      invoiceUnitPrice: body.invoiceUnitPrice ?? null,
+      acceptedQtyInCountedUom: acceptedQuantity ?? stockedQty,
+      rejectedQtyInCountedUom: rejectedQuantity ?? 0,
+      freeGoodsQtyInCountedUom: freeGoodsQuantity ?? 0,
+      stockedQtyInCountedUom: stockedQty,
+      countedUom: body.countedUom ?? null,
+      countedBottlesPerUnit: body.countedBottlesPerUnit ?? null,
+      allocatedCharges: body.allocatedCharges ?? 0,
+      priceOverrideReason: body.priceOverrideReason ?? null,
+    };
+
+    let match: MatchResult | null = null;
+    let bottles: ReturnType<typeof toBottleOperands> | null = null;
+    if (hasMatchFields) {
+      try {
+        match = computeMatch(matchInput);
+        bottles = toBottleOperands(matchInput);
+      } catch (e) {
+        if (e instanceof MatchUnitError) {
+          // 400, not 500: the caller can fix this by stating the unit. Degrading
+          // to a verdict would manufacture exactly the confident wrong answer
+          // the unit fields were added to prevent.
+          throw new BadRequestException(
+            `Cannot verify this receipt: ${e.message}`,
+          );
+        }
+        throw e;
+      }
+    }
+    const hasInvoice = invoiceQuantity != null;
 
     // A price that differs from the agreed one is never accepted silently (D-B).
     if (match?.requiresOverride) {
@@ -1870,7 +2179,18 @@ export class ProcurementService {
     }
 
     // Correct the ordered line to the accepted count, then apply any unlisted extras.
-    if (match && match.ledgerDelta !== 0 && (orderRow as any).inventory_id) {
+    //
+    // The gate used to be `match.ledgerDelta !== 0` alone, which silently
+    // dropped the entire point of the three-way match: when the count was right
+    // and only the PRICE was wrong — the commonest discrepancy there is, and
+    // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
+    // and the verified landed cost never reached the books. A verified price is
+    // now reason enough to write, on its own.
+    if (
+      match &&
+      (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
+      (orderRow as any).inventory_id
+    ) {
       await this.applyReceiptAdjustment(
         restaurantId,
         orderId,
@@ -1880,6 +2200,7 @@ export class ProcurementService {
         // Verified landed cost, so the corrected lot carries what the bottle
         // really cost rather than what we expected it to.
         match.effectiveUnitCost,
+        userId,
       );
     }
 
@@ -1893,6 +2214,12 @@ export class ProcurementService {
         adj.delta,
         adj.reason ||
           `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
+        // No unit cost: a free-form adjustment is a count correction on an item
+        // the invoice line does not describe, so there is no verified price to
+        // put on it. Passing one would be inventing the number the whole of
+        // this change exists to stop inventing.
+        null,
+        userId,
       );
     }
 
@@ -1940,14 +2267,18 @@ export class ProcurementService {
     }
 
     if (match) {
-      const acceptedQty = body.acceptedQuantity ?? stockedQty;
-      const rejectedQty = body.rejectedQuantity ?? 0;
+      // These columns sit beside `quantity` and are read back by clients that
+      // display the order's own unit, so they stay in the COUNTED unit as
+      // submitted — not in the bottle-equivalents the verdict was computed from.
+      // Converting them here would silently restate a manager's count.
+      const acceptedQty = acceptedQuantity ?? stockedQty;
+      const rejectedQty = rejectedQuantity ?? 0;
       Object.assign(update, {
         quantity_received: acceptedQty + rejectedQty,
         accepted_quantity: acceptedQty,
         rejected_quantity: rejectedQty,
         rejected_reason: body.rejectedReason ?? null,
-        invoice_quantity: body.invoiceQuantity ?? null,
+        invoice_quantity: invoiceQuantity ?? null,
         invoice_unit_price: body.invoiceUnitPrice ?? null,
         backorder_quantity: match.backorderQty,
         match_status: match.verdict,
@@ -2007,7 +2338,13 @@ export class ProcurementService {
         ),
         price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
         source: "receipt_verified",
-        quantity: body.invoiceQuantity ?? null,
+        // BOTTLES, which is what the `unit: 'BOTTLE'` this table hardcodes has
+        // always claimed. It used to be the raw invoice number: on an order
+        // billed in cases of 12, a 2 was written into a column labelled BOTTLE,
+        // and `effectiveUnitCost` — a per-bottle amount divided by a case count
+        // — was written beside it. Both are now genuinely per bottle, so the
+        // hardcoded label is true rather than merely constant.
+        quantity: bottles?.invoiceQty ?? null,
         notes: `Verified against the invoice: ${match.verdict}.`,
       });
     }
@@ -3777,21 +4114,59 @@ export class ProcurementService {
   }
 
   /**
-   * Returns completed/sent procurement conversations for send history.
-   * D-03: Used by the Procurement Emails tab on /communications.
+   * Every vendor conversation this restaurant has had, except the ones still
+   * waiting on the manager.
+   *
+   * D-03: Used by the Procurement Emails tab on /communications, the page that
+   * describes itself as the one place a manager sees every vendor
+   * conversation. ADR 0084 — it was showing ONE row out of twenty-six.
+   *
+   * MEASURED ON PRODUCTION (`exzueerziesmczwlhomd`, 2026-09-02), because the
+   * two constraints below have very different sizes and only one of them was
+   * suspected:
+   *
+   *   27 conversation rows in total, across 2 restaurants
+   *   12 pass the old status allow-list
+   *    2 survive `procurement_orders!inner`
+   *    2 the old query returned in total  ← the join was the binding constraint
+   *
+   * 25 of 27 rows carry `order_id IS NULL`, so the INNER embed dropped them
+   * before the status filter was ever consulted. Widening the status list
+   * ALONE would have moved the count from 2 to 2 and shipped as a fix. The
+   * embed is now `!left`: a conversation that is not attached to a purchase
+   * order is still a conversation, and every inbound vendor reply in
+   * production is one of those.
+   *
+   * On the main tenant that is 1 visible row before, 25 after.
+   *
+   * WHAT IS EXCLUDED, AND WHY IT IS A DENY-LIST NOW
+   *
+   * The allow-list was the second half of the fault: a status absent from it
+   * is invisible, so every value the workflow gains — `DISCARDED` and
+   * `CANCELLED` both post-date the list — disappears silently and nothing
+   * reports that it did. A ledger must fail toward showing too much, so the
+   * filter is inverted. Exactly two things are withheld, and both are withheld
+   * because they are LIVE ELSEWHERE, never because they are uninteresting:
+   *
+   *   status = PENDING_APPROVAL       — the approval queue on /orders
+   *                                     (`getActiveConversations`, which
+   *                                     selects exactly this status)
+   *   status = DRAFT AND outbound     — an unsent draft of ours, same queue
+   *
+   * Showing either in the history ledger would put the same row in two live
+   * places and invite a second send of an email already awaiting approval.
+   *
+   * `DRAFT` inbound is NOT excluded. `procurement_conversations.status`
+   * defaults to `'DRAFT'` at the column level, and the inbound path does not
+   * set it, so every vendor reply we have ever received wears a status that
+   * describes us rather than them — 10 of the 27 rows. They are received mail,
+   * not drafts, and they were the largest single thing missing from the page.
+   *
+   * DISCARDED (3) and CANCELLED (1) are shown. "We drafted this and killed it"
+   * is part of the record of what happened with a vendor; the page renders an
+   * unrecognised status as its own lowercase chip, so they arrive labelled.
    */
   async getConversationHistory(restaurantId: string): Promise<any[]> {
-    const HISTORY_STATUSES = [
-      "AUTO_SENT",
-      "APPROVED",
-      "SENT",
-      "COMPLETED",
-      "CLOSED",
-      // Delivered to the vendor but the status write failed afterwards. It must
-      // stay visible — it is a real sent email a human has to reconcile.
-      "SEND_UNCONFIRMED",
-    ];
-
     const { data, error } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select(
@@ -3799,15 +4174,17 @@ export class ProcurementService {
         id,
         order_id,
         provider_id,
+        direction,
         outbound_email_type,
         round_count,
         created_at,
         sent_at,
         status,
         content,
+        message_text,
         constraint_flags,
         rolling_summary,
-        procurement_orders!inner(
+        procurement_orders!left(
           id, order_number, quantity,
           inventory:inventory_id(wine_name)
         ),
@@ -3815,7 +4192,18 @@ export class ProcurementService {
       `,
       )
       .eq("restaurant_id", restaurantId)
-      .in("status", HISTORY_STATUSES)
+      // The two exclusions, as filters rather than a post-fetch drop, so
+      // `limit` counts rows the manager can actually see.
+      //
+      // Each is written `status.is.null,<test>` because `neq` against a NULL
+      // status evaluates to NULL, i.e. EXCLUDES the row — which for a
+      // deny-list ledger is backwards: an unrecognised or absent status is the
+      // case we most want on screen. `status` is nullable (it only has a
+      // DEFAULT), so this is reachable, and it is the same shape as
+      // `one-tap-actions.service.ts:90`. Two separate `.or()` calls are ANDed.
+      .or("status.is.null,status.neq.PENDING_APPROVAL")
+      // NOT (status = DRAFT AND direction = outbound), by De Morgan.
+      .or("status.is.null,status.neq.DRAFT,direction.eq.inbound")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -3831,12 +4219,24 @@ export class ProcurementService {
       id: row.id,
       orderId: row.order_id,
       providerId: row.provider_id,
+      // The DB stores lowercase 'inbound'/'outbound'; `getOrderConversations`
+      // already normalises to uppercase for the UI, so this does too rather
+      // than shipping two conventions for one field.
+      direction: String(row.direction ?? "outbound").toUpperCase() as
+        | "OUTBOUND"
+        | "INBOUND",
       emailType: row.outbound_email_type,
       status: row.status,
       roundCount: row.round_count,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? row.created_at,
-      draftContent: row.content,
+      // `content` only, until ADR 0084. `content` is NULL on all ten inbound
+      // rows in production — their body is in `message_text`, which is the
+      // NOT NULL column — so the page printed "No message body was recorded
+      // for this exchange" about ten messages whose bodies were recorded.
+      // `getActiveConversations` and `getOrderConversations` have always read
+      // the pair; this method was the odd one out.
+      draftContent: row.content ?? row.message_text ?? null,
       constraintFlags: row.constraint_flags,
       rollingSummary: row.rolling_summary,
       orderNumber: row.procurement_orders?.order_number ?? null,

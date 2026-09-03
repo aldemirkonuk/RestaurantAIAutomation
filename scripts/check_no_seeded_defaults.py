@@ -62,15 +62,71 @@ THE FOUR RULES
      to `number` restores a fabricated denominator under the cellar map's fill
      bar without touching a single literal, so S1–S3 would not see it.
 
+THE FIFTH RULE — THE SERVER SIDE (added 2026-09-02, ADR 0088)
+-------------------------------------------------------------
+(S5) NO INVENTED MEASUREMENT IN A ROW THE GATEWAY WRITES. Inside
+     SERVER_SCAN_ROOTS, an object literal shaped like a database row (three or
+     more snake_case keys) must not assign a **wholly literal** number to a key
+     in the measurement vocabulary (`…_wage`, `…_cost`, `capacity…`, `…_pct`,
+     `…_count`, `…_days`, …).
+
+     The shape it exists for, from `team.service.ts` before ADR 0088:
+
+         hourly_wage: a.role === "staff" ? 22 : a.role === "manager" ? 28 : 32,
+
+     — described in its own comment as a "mock wage". Measured on production
+     2026-09-02: **all 11 `team_members` rows carried exactly those literals**
+     (8 at $32.00, 3 at $28.00). Not a fallback for missing data — the entire
+     dataset — and the sole input to `laborCost()`, `shifts.labor_cost`, the
+     week total, the Tonight-labor pulse, the per-shift labour lens and the CSV
+     export's "Labor cost" column.
+
+     "Wholly literal" is the whole rule. `x ?? 1` and `dto.qty || 1` are
+     excluded: one branch is a caller value, so the column can still carry
+     something real. A ternary whose every branch is a number cannot — no input
+     reaches the row, and the condition (a role, a type) only chooses which
+     invention to write.
+
+     WHY S5 IS NOT ANCHORED ON `.insert(`. The defect above inserts `rows`, an
+     array built by `.map()` several lines earlier. A rule anchored on
+     `.insert({…})` sees nothing at all — verified by writing that rule first
+     and watching it return zero hits against the pre-fix file. The row shape
+     itself is the anchor, because it survives being passed around.
+
 WHAT THIS GUARD DOES NOT CLAIM
 ------------------------------
 - It does not prove a rendered figure was measured. That needs dataflow across
   a network hop and is undecidable here; `check_windowed_figures.py` says the
   same thing about its own rule, for the same reason.
-- It does not read `apps/api-gateway`. The gateway's `capacity_bottles` default
-  was fixed in the same change, but a server-side fabrication guard is a
-  different scan with different anchors, and conflating them would let a green
-  run here be read as a stronger claim than it is.
+- **It reads only part of `apps/api-gateway`.** This header used to say it read
+  none of it, on the grounds that "a server-side fabrication guard is a
+  different scan with different anchors". The scan is indeed different — S5
+  above has its own vocabulary, its own anchor and its own root list — but a
+  second script would have been a second thing to remember to run, so it lives
+  here and reports under its own heading. A green run means S1–S4 over the web
+  roots AND S5 over the server roots; neither borrows the other's confidence.
+- **S5 is not enforced across the whole gateway.** Run over
+  `apps/api-gateway/src` entire, the rule reports 10 hits outside its roots, on
+  2026-09-02, in modules other work owns:
+
+      calendar/calendar.service.ts:484            generation_horizon_days: 90
+      common/orchestrator/prospects.service.ts:220 message_count: 1
+      pos-hub/pos-mapping-review.service.ts:141    line_count: 0, unit_count: 0
+      pos-hub/pos-mapping-review.service.ts:346    line_count: 0, unit_count: 0
+      procurement/procurement.service.ts:2335      reminder_days_before: 1
+      procurement/recurring-orders.service.ts:769  days_until: 2
+      procurement/recurring-orders.service.ts:976  reminder_days_before: 1
+      procurement/recurring-orders.service.ts:1124 reminder_days_before: 2
+
+  They are listed rather than silently excluded, because a root list that
+  quietly omits its findings is the fault this guard is about. Several are
+  probably legitimate (a counter initialised to zero, a policy default nobody
+  measures); triaging them belongs to the sessions that own those modules, and
+  each root joins SERVER_SCAN_ROOTS when it has been.
+- Two gateway files cannot be scrubbed at all —
+  `inventory/photo-count.service.ts` and `menus/parsers/scan-parser.service.ts`
+  raise `unterminated backtick`. They are outside SERVER_SCAN_ROOTS today; if a
+  root ever contains them the guard exits 2 rather than skipping them.
 - It does not police the legacy pages. ADR 0051 binds rebuilt surfaces only,
   deliberately; the SCAN_ROOTS below are that list and grow with it.
 - It does not judge prose. `CellarMapView`'s empty state says "Create zones like
@@ -81,8 +137,8 @@ WHAT THIS GUARD DOES NOT CLAIM
   `placeholderData` today; they back legacy surfaces and are named here rather
   than silently excluded.
 
-WHY A NEW FILE RATHER THAN AN EXTENSION
----------------------------------------
+WHY A NEW FILE RATHER THAN AN EXTENSION (still true of `check_windowed_figures`)
+--------------------------------------------------------------------------------
 `check_windowed_figures.py` is scoped, by its own header, to
 `apps/web/src/pages/receiving/next` plus the gateway files its `SERVER_WINDOWS`
 register cites, and every one of its cannot-check anchors is that register.
@@ -148,6 +204,30 @@ SCAN_HOOKS = [
 
 # S4's anchor. If this file moves, the guard says so rather than passing.
 PINNED_HOOK = Path("apps/web/src/hooks/useStorageLocations.ts")
+
+# S5's roots — gateway modules whose row writes have been triaged. Grows one
+# module at a time, as each is triaged; see the header for the 10 measured hits
+# that sit outside it today.
+SERVER_SCAN_ROOTS = [
+    Path("apps/api-gateway/src/team"),
+    Path("apps/api-gateway/src/restaurants"),
+]
+
+# S5's anchor. `ensureRosterFromAccess` in this file wrote 100% of production's
+# wage data from a literal; if the file moves, the guard says so.
+PINNED_SERVER_FILE = Path("apps/api-gateway/src/team/team.service.ts")
+
+# S5: column names that assert a MEASUREMENT about the world. A row may carry
+# an invented `status: "active"`; it may not carry an invented `hourly_wage`.
+MEASUREMENT_KEY = re.compile(
+    r"(?:^|_)(wage|cost|price|capacity|quantity|qty|amount|total|rate|pct|"
+    r"percent|target|temperature|humidity|threshold|hours|minutes|weight|"
+    r"volume|abv|score|level|count|bottles|days)(?:_|$)",
+    re.I,
+)
+
+# A database column, as opposed to a DTO field or a React prop.
+SNAKE_KEY = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$")
 
 # The four zone names measured in production. Not a stylistic blocklist —
 # these are the exact strings 84 tenant rows carry.
@@ -436,6 +516,140 @@ def check_write_loop(rel: str, code: str, rep: "Report") -> None:
             )
 
 
+# ── S5: the server side ──────────────────────────────────────────────────────
+
+
+def object_spans(code: str) -> list[tuple[int, str]]:
+    """Every balanced `{…}` span in the file, with its start offset.
+
+    Deliberately anchor-free. The defect S5 exists for builds its row inside a
+    `.map()` and inserts the resulting array many lines later, so any rule that
+    starts from `.insert({` sees nothing — measured, not assumed.
+    """
+    spans: list[tuple[int, str]] = []
+    stack: list[int] = []
+    for i, ch in enumerate(code):
+        if ch == "{":
+            stack.append(i)
+        elif ch == "}":
+            if stack:
+                start = stack.pop()
+                spans.append((start, code[start : i + 1]))
+    if stack:
+        raise CannotCheck("unterminated `{` while scanning for row literals")
+    return spans
+
+
+def key_values(obj: str) -> list[tuple[str, str]]:
+    """
+    Top-level `key: value` pairs inside one object literal.
+
+    The value runs to the next `,` or the closing `}` **at depth 1**, not to the
+    end of the line: `{ restaurant_id: rid, capacity_bottles: 500 }` on one line
+    has to yield two pairs, not one. (An earlier line-terminated version yielded
+    one, and the single-line self-test case is what caught it.)
+    """
+    out: list[tuple[str, str]] = []
+    depth, i = 0, 0
+    while i < len(obj):
+        ch = obj[i]
+        if ch in "[({":
+            depth += 1
+            i += 1
+            continue
+        if ch in "])}":
+            depth -= 1
+            i += 1
+            continue
+        if depth == 1:
+            km = re.match(r"([A-Za-z_$][\w$]*)\s*:", obj[i:])
+            if km and (i == 0 or not re.match(r"[\w$]", obj[i - 1])):
+                j = i + km.end()
+                vdepth, start = 0, j
+                while j < len(obj):
+                    c = obj[j]
+                    if c in "[({":
+                        vdepth += 1
+                    elif c in "])}":
+                        if vdepth == 0:
+                            break  # the object's own closing brace
+                        vdepth -= 1
+                    elif c == "," and vdepth == 0:
+                        break
+                    j += 1
+                out.append((km.group(1), obj[start:j].strip()))
+                i = j
+                continue
+        i += 1
+    return out
+
+
+def wholly_literal_number(value: str) -> bool:
+    """
+    True when NO caller input can reach this column.
+
+    `22` → True. `a.role === "staff" ? 22 : 28` → True: the condition only picks
+    which invention to write. `dto.qty ?? 1` and `x || 0` → False: one branch is
+    a real value, so the column can carry something measured.
+    """
+    v = value.strip().rstrip(",")
+    if not v:
+        return False
+    if "??" in v or "||" in v:
+        return False
+    branches: list[str] = []
+    depth, cur, i = 0, "", 0
+    while i < len(v):
+        c = v[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        if depth == 0 and c == "?":
+            cur = ""  # the condition is discarded; only the branches are values
+            i += 1
+            continue
+        if depth == 0 and c == ":":
+            branches.append(cur.strip())
+            cur = ""
+            i += 1
+            continue
+        cur += c
+        i += 1
+    branches.append(cur.strip())
+    branches = [b for b in branches if b]
+    if not branches:
+        return False
+    return all(re.fullmatch(r"-?\d+(?:\.\d+)?", b) for b in branches)
+
+
+def check_server_row(rel: str, code: str, rep: "Report") -> None:
+    """S5 — a row-shaped literal must not assert an invented measurement."""
+    for at, obj in object_spans(code):
+        pairs = key_values(obj)
+        if sum(1 for k, _ in pairs if SNAKE_KEY.match(k)) < 3:
+            continue  # not a database row — a DTO, an options bag, a props object
+        for key, value in pairs:
+            if MEASUREMENT_KEY.search(key) and wholly_literal_number(value):
+                rep.server_rows.append(
+                    f"{rel}:{line_of(code, at)}  `{key}: {value[:60]}` — a row written "
+                    "by the gateway asserts a measurement no caller supplied. "
+                    "`team_members.hourly_wage` was written this way and became "
+                    "100% of production's wage data (11 of 11 rows, 2026-09-02)."
+                )
+
+
+def check_server_pin(root: Path, rep: "Report") -> None:
+    """S5's anchor: the file that wrote production's wage data still exists."""
+    path = root / PINNED_SERVER_FILE
+    if not path.is_file():
+        raise CannotCheck(
+            f"{PINNED_SERVER_FILE} is missing. S5 pins the file whose backfill wrote "
+            "every wage in production; if it moved, repoint the pin rather than "
+            "losing the check."
+        )
+
+
 def check_pins(root: Path, rep: "Report") -> None:
     """S4 — the fixed hook keeps its unknown-capable shapes and its silence."""
     path = root / PINNED_HOOK
@@ -469,15 +683,50 @@ def check_pins(root: Path, rep: "Report") -> None:
 @dataclass
 class Report:
     files: list[str] = field(default_factory=list)
+    server_files: list[str] = field(default_factory=list)
     roots_seen: dict[str, int] = field(default_factory=dict)
     scanned_chars: int = 0
+    server_scanned_chars: int = 0
     row_sets: list[str] = field(default_factory=list)
     placeholders: list[str] = field(default_factory=list)
     write_loops: list[str] = field(default_factory=list)
     lost_unknown: list[str] = field(default_factory=list)
+    server_rows: list[str] = field(default_factory=list)
 
     def violations(self) -> list[str]:
-        return self.row_sets + self.placeholders + self.write_loops + self.lost_unknown
+        return (
+            self.row_sets
+            + self.placeholders
+            + self.write_loops
+            + self.lost_unknown
+            + self.server_rows
+        )
+
+
+def server_inventory(root: Path) -> tuple[list[Path], dict[str, int]]:
+    """S5's files. A root that resolves to nothing is CANNOT CHECK."""
+    files: list[Path] = []
+    per_root: dict[str, int] = {}
+    for rel in SERVER_SCAN_ROOTS:
+        d = root / rel
+        if not d.is_dir():
+            raise CannotCheck(
+                f"server scan root {rel} does not exist. It is listed as a triaged "
+                "gateway module; repoint it or remove the entry deliberately. A "
+                "missing root must never read as nothing to check."
+            )
+        found = sorted(
+            p
+            for p in d.rglob("*")
+            if p.suffix == ".ts" and not SKIP_NAME.search(p.name)
+        )
+        if not found:
+            raise CannotCheck(
+                f"server scan root {rel} exists but holds no .ts file the guard would read."
+            )
+        per_root[str(rel)] = len(found)
+        files.extend(found)
+    return files, per_root
 
 
 def inventory(root: Path) -> tuple[list[Path], dict[str, int]]:
@@ -546,6 +795,26 @@ def run(root: Path) -> Report:
         )
 
     check_pins(root, rep)
+
+    # S5 — the server side.
+    server_files, server_roots = server_inventory(root)
+    rep.roots_seen.update(server_roots)
+    for path in server_files:
+        rel = str(path.relative_to(root))
+        rep.server_files.append(rel)
+        src = path.read_text(encoding="utf-8")
+        try:
+            code = scrub(src)
+        except CannotCheck as exc:
+            raise CannotCheck(f"{rel}: {exc}") from exc
+        rep.server_scanned_chars += len(code)
+        check_server_row(rel, code, rep)
+
+    if rep.server_scanned_chars == 0:
+        raise CannotCheck(
+            "every server file was empty after scrubbing — S5 examined nothing."
+        )
+    check_server_pin(root, rep)
     return rep
 
 
@@ -620,12 +889,55 @@ export function Page() {
 """
 
 
-def _scaffold(tmp: Path, hook: str = CLEAN_HOOK, page: str = CLEAN_PAGE) -> None:
+# The exact pre-fix shape, lifted verbatim from team.service.ts@e5f44657.
+PREFIX_SERVER = """
+const rows = missing.map((a: any) => {
+  const u = userMap.get(a.user_id)
+  return {
+    restaurant_id: restaurantId,
+    user_id: a.user_id,
+    display_name: u?.name || u?.email || "Team member",
+    employment_type: "full_time",
+    status: "active",
+    // Seed mock wage so labor lens has something when tracking is on;
+    hourly_wage: a.role === "staff" ? 22 : a.role === "manager" ? 28 : 32,
+  }
+})
+await this.sb.from("team_members").insert(rows)
+"""
+
+CLEAN_SERVER = """
+const rows = missing.map((a: any) => {
+  const u = userMap.get(a.user_id)
+  return {
+    restaurant_id: restaurantId,
+    user_id: a.user_id,
+    display_name: u?.name || u?.email || "Team member",
+    employment_type: "full_time",
+    status: "active",
+    hourly_wage: null,
+  }
+})
+await this.sb.from("team_members").insert(rows)
+"""
+
+
+def _scaffold(
+    tmp: Path,
+    hook: str = CLEAN_HOOK,
+    page: str = CLEAN_PAGE,
+    server: str = CLEAN_SERVER,
+) -> None:
     for rel in SCAN_ROOTS:
         (tmp / rel).mkdir(parents=True, exist_ok=True)
         (tmp / rel / "Page.tsx").write_text(page, encoding="utf-8")
     (tmp / PINNED_HOOK).parent.mkdir(parents=True, exist_ok=True)
     (tmp / PINNED_HOOK).write_text(hook, encoding="utf-8")
+    for rel in SERVER_SCAN_ROOTS:
+        (tmp / rel).mkdir(parents=True, exist_ok=True)
+        (tmp / rel / "some.service.ts").write_text(server, encoding="utf-8")
+    (tmp / PINNED_SERVER_FILE).parent.mkdir(parents=True, exist_ok=True)
+    (tmp / PINNED_SERVER_FILE).write_text(server, encoding="utf-8")
 
 
 def self_test() -> int:
@@ -655,9 +967,12 @@ def self_test() -> int:
 
     try:
         files, per_root = inventory(REPO_ROOT)
+        server_files, server_per_root = server_inventory(REPO_ROOT)
     except CannotCheck as exc:
         print(f"   FAIL  the real repository could not be inventoried: {exc}")
         return 1
+    per_root.update(server_per_root)
+    files = files + server_files
 
     scanned_chars = 0
     unreadable: list[str] = []
@@ -680,6 +995,11 @@ def self_test() -> int:
             any(p.name == "useStorageLocations.ts" for p in files),
         ),
         ("the cellar map is among them", any(p.name == "CellarMapView.tsx" for p in files)),
+        (
+            "the gateway file that wrote production's wage data is among them",
+            any(p.name == "team.service.ts" for p in server_files),
+        ),
+        ("more than 3 real gateway files are scanned", len(server_files) > 3),
         ("tests and stories are excluded", not any(SKIP_NAME.search(p.name) for p in files)),
         ("every real file parsed, offsets intact", not unreadable),
         ("the scrubber examined a non-trivial amount of code", scanned_chars > 10_000),
@@ -741,6 +1061,31 @@ def self_test() -> int:
         )
         if not ok:
             failures.append("seed injected into a real file is caught")
+        # restore it before the S5 injection, so the next result is S5's alone
+        (mirror / rel).write_text(victim.read_text(encoding="utf-8"), encoding="utf-8")
+
+        server_victim = REPO_ROOT / PINNED_SERVER_FILE
+        (mirror / PINNED_SERVER_FILE).write_text(
+            server_victim.read_text(encoding="utf-8")
+            + "\nconst seededRow = {\n"
+            "  restaurant_id: restaurantId,\n"
+            "  user_id: a.user_id,\n"
+            '  employment_type: "full_time",\n'
+            '  hourly_wage: a.role === "staff" ? 22 : 32,\n'
+            "}\n",
+            encoding="utf-8",
+        )
+        try:
+            got = verdict(run(mirror))
+        except CannotCheck as exc:
+            got = f"cannot-check ({exc})"
+        ok = got == "violation"
+        print(
+            f"   {'ok  ' if ok else 'FAIL'}  the pre-fix wage literal appended to the REAL "
+            f"team.service.ts is caught: {got}"
+        )
+        if not ok:
+            failures.append("S5 fires on a real gateway file")
 
     print("\n== B. THE GUARD FIRES ON THE SHAPES IT EXISTS TO CATCH\n")
 
@@ -849,6 +1194,50 @@ def self_test() -> int:
         ),
         "clean",
     )
+    case(
+        "S5 the exact pre-fix wage backfill, verbatim",
+        lambda t: (t / PINNED_SERVER_FILE).write_text(PREFIX_SERVER, encoding="utf-8"),
+        "violation",
+    )
+    case(
+        "S5 a bare literal measurement in a row",
+        lambda t: (t / SERVER_SCAN_ROOTS[0] / "some.service.ts").write_text(
+            CLEAN_SERVER
+            + "\nconst z = { restaurant_id: rid, storage_zone: 'main', "
+            "capacity_bottles: 500 }\n",
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "S5 does NOT fire on a caller value with a fallback (`?? 1`)",
+        lambda t: (t / SERVER_SCAN_ROOTS[0] / "some.service.ts").write_text(
+            CLEAN_SERVER
+            + "\nconst z = { restaurant_id: rid, event_kind: 'x', "
+            "reminder_days_before: dto.reminderDaysBefore ?? 1 }\n",
+            encoding="utf-8",
+        ),
+        "clean",
+    )
+    case(
+        "S5 does NOT fire on an options bag (not a row — no snake_case columns)",
+        lambda t: (t / SERVER_SCAN_ROOTS[0] / "some.service.ts").write_text(
+            CLEAN_SERVER
+            + "\nconst opts = { retries: 3, timeoutHours: 2, backoffRate: 5 }\n",
+            encoding="utf-8",
+        ),
+        "clean",
+    )
+    case(
+        "S5 does NOT fire on a non-measurement column (`status`, `shift_type`)",
+        lambda t: (t / SERVER_SCAN_ROOTS[0] / "some.service.ts").write_text(
+            CLEAN_SERVER
+            + "\nconst z = { restaurant_id: rid, member_id: m, shift_type: 'am', "
+            "day_of_week: 3 }\n",
+            encoding="utf-8",
+        ),
+        "clean",
+    )
 
     print("\n== C. CANNOT CHECK MUST NOT READ AS A PASS\n")
 
@@ -867,6 +1256,19 @@ def self_test() -> int:
     case(
         "the pinned hook is gone",
         lambda t: (t / PINNED_HOOK).unlink(),
+        "cannot-check",
+    )
+
+    def delete_server_root(t: Path) -> None:
+        d = t / SERVER_SCAN_ROOTS[1]
+        for p in sorted(d.rglob("*"), reverse=True):
+            p.unlink() if p.is_file() else p.rmdir()
+        d.rmdir()
+
+    case("a server scan root was deleted", delete_server_root, "cannot-check")
+    case(
+        "the pinned gateway file is gone",
+        lambda t: (t / PINNED_SERVER_FILE).unlink(),
         "cannot-check",
     )
     case(
@@ -939,6 +1341,12 @@ def main(argv: list[str]) -> int:
             print(f"== THE HOOK CAN NO LONGER SAY 'UNKNOWN' ({len(rep.lost_unknown)})")
             for v in rep.lost_unknown:
                 print(f"   {v}\n")
+        if rep.server_rows:
+            print(
+                f"== THE GATEWAY WRITES AN INVENTED MEASUREMENT ({len(rep.server_rows)})"
+            )
+            for v in rep.server_rows:
+                print(f"   {v}\n")
         print(
             "ADR 0051: a rebuilt page shows live data or says it does not know, and\n"
             "nothing is pre-installed. An empty server response means NO ROWS; a\n"
@@ -948,15 +1356,19 @@ def main(argv: list[str]) -> int:
         return 1
 
     print(
-        f"PASS — {len(rep.files)} file(s) across {len(rep.roots_seen)} rebuilt surface(s), "
-        f"{rep.scanned_chars:,} chars examined."
+        f"PASS — {len(rep.files)} web file(s) and {len(rep.server_files)} gateway file(s) "
+        f"across {len(rep.roots_seen)} root(s); "
+        f"{rep.scanned_chars:,} + {rep.server_scanned_chars:,} chars examined."
     )
-    print("  Checked: no module-level table of `id:`-bearing rows; no placeholderData")
+    print("  S1-S4 (web): no module-level table of `id:`-bearing rows; no placeholderData")
     print("  except keepPreviousData; no write loop installing a module constant into")
     print("  a tenant database; and useStorageLocations still expresses unknown")
     print("  (nullable capacity, locationsUnavailable) and names no invented zone.")
-    print("  NOT checked: that a rendered figure was measured — undecidable here.")
-    print("  See this file's header for the full boundary.")
+    print("  S5 (gateway): no row-shaped literal in the triaged modules asserts a")
+    print("  measurement no caller supplied.")
+    print("  NOT checked: that a rendered figure was measured — undecidable here;")
+    print("  and S5 covers only SERVER_SCAN_ROOTS, with the 10 hits outside it")
+    print("  listed by name in this file's header rather than silently dropped.")
     return 0
 
 

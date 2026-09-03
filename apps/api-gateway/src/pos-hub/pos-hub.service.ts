@@ -146,7 +146,10 @@ export interface ResolvedWebhookSecret {
 
 /** Env-var-safe token: `generic_webhook` -> `GENERIC_WEBHOOK`. */
 function envToken(raw: string): string {
-  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "_");
 }
 
 /**
@@ -270,10 +273,7 @@ export class PosHubService {
   // =========================================================================
 
   /** Log a key-resolution outcome once per (source, provider, restaurant). */
-  private logSecretResolutionOnce(
-    key: string,
-    emit: () => void,
-  ): void {
+  private logSecretResolutionOnce(key: string, emit: () => void): void {
     if (this.loggedSecretResolutions.has(key)) return;
     // Overflow clears rather than stops deduping: memory stays bounded and the
     // route keeps reporting, at the cost of repeating a line after 500 pairs.
@@ -464,10 +464,12 @@ export class PosHubService {
         errors: ["No recognizable checks in payload"],
       };
 
-    const [mappings, tableLookup] = await Promise.all([
+    const [mappingLookup, tableLookup] = await Promise.all([
       this.loadItemMappings(restaurantId, providerKey),
       this.loadTables(restaurantId),
     ]);
+    const mappings = mappingLookup.rows;
+    if (mappingLookup.error) errors.push(mappingLookup.error);
     const tables = tableLookup.tables;
     // Degrade, do not reject: table resolution is an enrichment, so a failed
     // lookup must not turn into a 500 the POS retries forever. But it is SAID,
@@ -562,8 +564,24 @@ export class PosHubService {
   // Item mappings (pos_item_mappings) + wine heuristic
   // =========================================================================
 
-  private async loadItemMappings(restaurantId: string, source: string) {
-    const { data } = await this.dbService
+  /**
+   * Same shape as `loadTables` below, for the same reason.
+   *
+   * A failed read here returned `[]`, and `resolveWine` finds nothing in an
+   * empty array — so every line on every check ingested with
+   * `inventory_id: null`, `is_wine` from the name heuristic only, and no
+   * depletion. The ingest then reported `errors: []`. That is the mechanism
+   * that manufactures "the POS bridge stopped mapping" as a silent condition.
+   *
+   * An empty mapping table is NOT an error (a restaurant that has mapped
+   * nothing yet is normal) and is never reported as one; only a real failure
+   * is, through the same `errors` channel a failed check upsert uses.
+   */
+  private async loadItemMappings(
+    restaurantId: string,
+    source: string,
+  ): Promise<{ rows: any[]; error: string | null }> {
+    const { data, error } = await this.dbService
       .getClient()
       .from("pos_item_mappings")
       .select(
@@ -571,7 +589,14 @@ export class PosHubService {
       )
       .eq("restaurant_id", restaurantId)
       .in("source", [source, "*"]);
-    return data || [];
+    if (error) {
+      this.logger.error(
+        `pos_item_mappings lookup failed for r=${restaurantId} src=${source} — ` +
+          `every line will ingest unmapped rather than wrongly mapped: ${error.message}`,
+      );
+      return { rows: [], error: `pos_item_mappings: ${error.message}` };
+    }
+    return { rows: data || [], error: null };
   }
 
   /**
@@ -587,11 +612,21 @@ export class PosHubService {
   ): Promise<Map<string, InventoryVolumes>> {
     const out = new Map<string, InventoryVolumes>();
     if (!inventoryIds.length) return out;
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_inventory")
       .select("id, bottle_size_ml, pour_size_ml, menu_price_current")
       .in("id", inventoryIds);
+    // An empty map is the safe degrade — resolveSaleVolume queues the line
+    // rather than guessing a volume (ADR 0011) — but it must not be silent:
+    // a failed read here queues an ENTIRE service as unresolved and looks
+    // exactly like a restaurant whose inventory rows all vanished.
+    if (error)
+      this.logger.error(
+        `restaurant_inventory volume lookup failed for ${inventoryIds.length} ` +
+          `id(s) — every wine line on this check will queue as unresolved ` +
+          `rather than deplete by a guessed volume: ${error.message}`,
+      );
     for (const row of data || []) {
       const positive = (v: unknown) => {
         const n = Number(v);
@@ -779,6 +814,24 @@ export class PosHubService {
           // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
           // it is because B19 is a recorded decision; superseding it is the
           // founder's call, not this change's.
+          //
+          // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
+          //
+          // `apply_stock_movement` (production definition, read 2026-09-02)
+          // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
+          // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
+          // already wrote — therefore returned the sale's transaction id and
+          // MOVED NOTHING: a voided check stayed depleted forever, and the
+          // caller could not tell, because an idempotent hit and a real
+          // movement are the same `{ error: null }`.
+          //
+          // `${idem}:void` is derived from the sale's key rather than random,
+          // so a REPLAYED void is still idempotent — the property the sale
+          // already had, extended to the reversal.
+          //
+          // pos-hub.void-idempotency.spec.ts pins this against a mock that
+          // actually implements the early return; the older B19 tests could
+          // not see it because their mock ignores the key.
           ({ error: rpcError } = await db.rpc("apply_stock_movement", {
             p_inventory_id: it.inventory_id,
             p_stock_state: "live",
@@ -786,7 +839,7 @@ export class PosHubService {
             p_transaction_type: isVoid ? "return" : "sale",
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-            p_idempotency_key: idem,
+            p_idempotency_key: isVoid ? `${idem}:void` : idem,
           }));
         }
 
@@ -953,21 +1006,34 @@ export class PosHubService {
       //
       // `notes` is the idempotency key verbatim. It used to be `pos:${key}`
       // while the key already began with "pos:", rendering "pos:pos:…".
-      const { error } = await db.from("wine_consumption_log").upsert(
-        {
-          restaurant_id: restaurantId,
-          inventory_id: item.inventory_id,
-          wine_name: item.name,
-          consumption_type: unit,
-          quantity: qty,
-          volume_ml: volumeMl,
-          unit_price: unitPrice,
-          total_revenue: unitPrice != null ? unitPrice * qty : null,
-          source: "pos",
-          notes: idempotencyKey,
-        },
-        { onConflict: "restaurant_id,notes", ignoreDuplicates: true },
-      );
+      //
+      // Measured on the first ADR 0093 live day (2026-09-03): this was an
+      // `upsert(..., { onConflict: "restaurant_id,notes" })`, and EVERY call
+      // failed with 42P10 "there is no unique or exclusion constraint matching
+      // the ON CONFLICT specification" — the index above is PARTIAL
+      // (`where notes is not null and source = 'pos'`), and Postgres only
+      // matches a partial index to a conflict target that repeats its
+      // predicate, which PostgREST cannot express. So the mirror had written
+      // zero rows for every POS sale since 2026-08-24 while the error was
+      // logged and nothing else noticed. The honest shape is a plain INSERT
+      // with the partial unique index as the backstop: a replay raises 23505,
+      // which is the idempotent no-op the upsert was meant to be.
+      const { error } = await db.from("wine_consumption_log").insert({
+        restaurant_id: restaurantId,
+        inventory_id: item.inventory_id,
+        wine_name: item.name,
+        consumption_type: unit,
+        quantity: qty,
+        volume_ml: volumeMl,
+        unit_price: unitPrice,
+        total_revenue: unitPrice != null ? unitPrice * qty : null,
+        source: "pos",
+        notes: idempotencyKey,
+      });
+      if (error?.code === "23505") {
+        // Already mirrored under this key — a webhook replay. Nothing to add.
+        return;
+      }
 
       // This result used to be discarded, which made the comment above a claim
       // the code did not honour. supabase-js RESOLVES with `{ data, error }` on
@@ -982,7 +1048,7 @@ export class PosHubService {
       // progress all quietly under-count over a ledger that looks complete.
       if (error) {
         this.logger.error(
-          `wine_consumption_log upsert FAILED for ${item.name} ` +
+          `wine_consumption_log insert FAILED for ${item.name} ` +
             `(r=${restaurantId}, key=${idempotencyKey}): ${error.message} ` +
             `[${error.code ?? "no-code"}] — the demand series is now short one ` +
             `event and nothing else records that.`,
@@ -1146,14 +1212,42 @@ export class PosHubService {
     return byLabel?.id ?? null;
   }
 
+  /**
+   * "Is my POS connection live?" — the one screen an operator opens to answer
+   * exactly that.
+   *
+   * The `error` used to be discarded, so a failed `pos_checks` read returned
+   * `totalChecks: 0, sources: []` and Settings → POS rendered
+   * "Ingestion (30d): 0 checks from this source" — the same sentence a
+   * genuinely idle integration produces. A status endpoint that cannot tell
+   * "dead" from "quiet" is answering the wrong question, and it answers it in
+   * the reassuring direction.
+   *
+   * Now it returns `unavailable: true` with `totalChecks: null`, which the
+   * client renders as an em dash (ADR 0051). A real measured zero still
+   * renders `0`.
+   */
   async getStatus(restaurantId: string) {
     const client = this.dbService.getClient();
     const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { data } = await client
+    const { data, error } = await client
       .from("pos_checks")
       .select("source, opened_at, closed_at")
       .eq("restaurant_id", restaurantId)
       .gte("opened_at", since30);
+    if (error) {
+      this.logger.error(
+        `pos_checks status read failed for r=${restaurantId} — reporting ` +
+          `UNAVAILABLE rather than "0 checks": ${error.code ?? "?"} ${error.message}`,
+      );
+      return {
+        windowDays: 30,
+        unavailable: true as const,
+        totalChecks: null,
+        sources: null,
+        generatedAt: new Date().toISOString(),
+      };
+    }
     const rows = data || [];
     const bySource = new Map<
       string,
@@ -1168,6 +1262,7 @@ export class PosHubService {
     }
     return {
       windowDays: 30,
+      unavailable: false as const,
       totalChecks: rows.length,
       sources: Array.from(bySource.entries()).map(([source, s]) => ({
         source,

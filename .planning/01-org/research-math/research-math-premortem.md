@@ -89,7 +89,7 @@ exist.
 contains no latency table (`intelligence.md:96-99`). A second, earlier tell: the OD-03
 session is scheduled before `harness_overhead_ms` has a first reading.
 
-**Counter-pressure.** Three, in order. (1) `OD-03 (OPEN-DECISIONS.md:26)` already carries the rule
+**Counter-pressure.** Three, in order. (1) `OD-03 (OPEN-DECISIONS.md:28)` already carries the rule
 — *"A scoped bake-off on this repo's actual workloads. No pick from repute."* — so the
 counter-pressure is enforcement, not invention: [[decision-office-charter]] rejects an
 OD-03 ADR whose evidence section has no measurements from this repo. (2) The bake-off

@@ -32,7 +32,7 @@ obviously within our control than an outreach email to a company that may not re
 advances — a slice at a time, each slice individually defensible. Six months on, the
 differentiating surface is half-built, the sunk cost is real, and the Beli conversation is
 finally opened from a materially weaker position: there is nothing left to co-design, so the
-only thing on the table is distribution on someone else's terms. `OD-07 (OPEN-DECISIONS.md:30)` still
+only thing on the table is distribution on someone else's terms. `OD-07 (OPEN-DECISIONS.md:32)` still
 reads "open." It was closed months ago, by accumulation.
 
 **Earliest observable signal.** The conjunction, not either half: **OD-07's line unchanged for

@@ -14,7 +14,9 @@ import {
   TransactionType,
   TransactionSource,
   StockType,
+  ReconcileResultDto,
 } from "./dto/inventory-ledger.dto";
+import { mapStockCountResult } from "../inventory/stock-count-result";
 
 // ============================================================================
 // DATABASE ROW INTERFACE
@@ -454,6 +456,27 @@ export class InventoryLedgerService {
   // RECONCILIATION
   // ==========================================================================
 
+  /**
+   * Reconcile an item against a physical count.
+   *
+   * ADR 0078 — A COUNT IS A RECORD. Two things changed here.
+   *
+   * 1. THE 400 IS GONE. This used to `throw new BadRequestException("No
+   *    adjustment needed - counts match")` when the difference was zero, so a
+   *    manager who counted a shelf and found it correct got an error. That was
+   *    not a cosmetic wart: it is the same fault as the missing ledger row, one
+   *    layer up. The successful outcome had no representation, so the system
+   *    could only ever hear about counts that went wrong. Agreement now returns
+   *    200 with the recorded count and `transaction: null`.
+   *
+   * 2. THE EXPECTED QUANTITY IS READ UNDER A LOCK. The old code SELECTed
+   *    `restaurant_inventory.stock_live` — an unlocked read of a trigger
+   *    -maintained projection — and computed the delta in JS against it. That
+   *    is exactly the A11 race `set_stock_absolute` was written to fix, and it
+   *    also meant the "Expected N" written into the reason string could differ
+   *    from the value the delta was actually computed against.
+   *    `record_stock_count` locks the row first and reads the lot sum under it.
+   */
   async reconcileInventory(
     restaurantId: string,
     userId: string,
@@ -461,67 +484,75 @@ export class InventoryLedgerService {
     wineId: string,
     actualCount: number,
     notes?: string,
-  ): Promise<InventoryTransactionResponseDto> {
-    // Read current live quantity from the projection. Phase 2 made
-    // inventory_lots the source of truth; restaurant_inventory.stock_live is a
-    // trigger-maintained projection — reading it is correct and cheap, but we
-    // must NOT write it directly (that is what apply_stock_movement is for).
-    const { data: currentData, error: currentError } =
-      await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .select("stock_live")
-        .eq("id", inventoryId)
-        .single();
-
-    if (currentError || !currentData) {
-      throw new BadRequestException(`Inventory item not found: ${inventoryId}`);
-    }
-
-    const currentStock = currentData.stock_live || 0;
-    const difference = actualCount - currentStock;
-
-    if (difference === 0) {
-      throw new BadRequestException("No adjustment needed - counts match");
-    }
-
-    // Apply the adjustment through the single Phase 2 write primitive, which
-    // writes the inventory_lots layer and the inventory_transactions ledger row
-    // atomically (delta-based, version-locked, negative-guarded). This replaces
-    // the removed record_inventory_transaction RPC that direct-updated the
-    // ghost `live_stock` column.
-    const reason = notes
-      ? `Physical count reconciliation: Expected ${currentStock}, Actual ${actualCount} — ${notes}`
-      : `Physical count reconciliation: Expected ${currentStock}, Actual ${actualCount}`;
-
-    const { data: transactionId, error: rpcError } =
-      await this.databaseService.supabase.rpc("apply_stock_movement", {
-        p_inventory_id: inventoryId,
-        p_stock_state: "live",
-        p_delta: difference,
-        p_transaction_type: "reconciliation",
-        p_source: "reconciliation",
-        p_performed_by: userId,
-        p_reason: reason,
-        // Every stock write carries a key now (decision A7). A reconcile is a
-        // one-off correction rather than something retried over flaky
-        // signal, so a per-call timestamped key is sufficient — it only
-        // needs to survive one request, not an offline outbox.
-        p_idempotency_key: `reconcile:${inventoryId}:${Date.now()}`,
-      });
-
-    if (rpcError || !transactionId) {
-      this.logger.error({
-        message: "Reconciliation apply_stock_movement failed",
-        inventoryId,
-        wineId,
-        error: rpcError?.message,
-      });
+    clientCountId?: string,
+  ): Promise<ReconcileResultDto> {
+    if (
+      actualCount == null ||
+      Number.isNaN(Number(actualCount)) ||
+      Number(actualCount) < 0
+    ) {
       throw new BadRequestException(
-        rpcError?.message || "Failed to apply reconciliation movement",
+        "actualCount must be a non-negative number",
       );
     }
 
-    return this.getTransaction(restaurantId, transactionId as string);
+    // A client-supplied id makes a retry idempotent; the timestamped fallback
+    // does NOT, and never did. It is preserved deliberately rather than being
+    // silently upgraded: the count row inherits exactly the retry-safety the
+    // caller supplies, no better and no worse. A reconcile retried without a
+    // clientCountId records a second count, the same way it previously applied a
+    // second movement.
+    const idempotencyKey = clientCountId
+      ? `reconcile:${inventoryId}:${clientCountId}`
+      : `reconcile:${inventoryId}:${Date.now()}`;
+
+    const { data: raw, error: rpcError } =
+      await this.databaseService.supabase.rpc("record_stock_count", {
+        p_inventory_id: inventoryId,
+        p_counted_qty: Math.round(Number(actualCount)),
+        p_idempotency_key: idempotencyKey,
+        p_stock_state: "live",
+        p_source: "reconciliation",
+        p_transaction_type: "reconciliation",
+        p_performed_by: userId,
+        p_reason: notes
+          ? `Physical count reconciliation — ${notes}`
+          : "Physical count reconciliation",
+      });
+
+    if (rpcError) {
+      this.logger.error({
+        message: "Reconciliation record_stock_count failed",
+        inventoryId,
+        wineId,
+        error: rpcError.message,
+      });
+      throw new BadRequestException(
+        rpcError.message || "Failed to record the count",
+      );
+    }
+
+    const count = mapStockCountResult(raw);
+    if (!count) {
+      // A successful RPC always returns an object. Nothing back means the call
+      // did not do what it claims, and reporting success here would be the same
+      // absence-as-health fault this ADR exists to remove.
+      this.logger.error({
+        message: "record_stock_count returned no payload",
+        inventoryId,
+      });
+      throw new BadRequestException(
+        "The count could not be confirmed as recorded",
+      );
+    }
+
+    // `transaction` is null exactly when the count agreed. It is a result, not
+    // an error and not missing data.
+    const transaction = count.transactionId
+      ? await this.getTransaction(restaurantId, count.transactionId)
+      : null;
+
+    return { count, transaction };
   }
 
   // ==========================================================================

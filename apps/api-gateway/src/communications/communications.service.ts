@@ -196,14 +196,16 @@ export class CommunicationsService {
   }
 
   /**
-   * Send a daily summary SMS to manager
+   * Send a daily summary SMS to manager.
+   *
+   * `deliveriesToday` was dropped from this signature on 2026-09-02 — see
+   * `SmsService.sendDailySummary`. It was a hardcoded `0` all the way down.
    */
   async sendDailySummary(data: {
     recipientPhone: string;
     restaurantName: string;
     lowStockCount: number;
     pendingOrders: number;
-    deliveriesToday: number;
   }): Promise<CommunicationResultDto> {
     this.logger.log(`Sending daily summary SMS to: ${data.recipientPhone}`);
 
@@ -212,7 +214,6 @@ export class CommunicationsService {
       restaurantName: data.restaurantName,
       lowStockCount: data.lowStockCount,
       pendingOrders: data.pendingOrders,
-      deliveriesToday: data.deliveriesToday,
     });
 
     return {

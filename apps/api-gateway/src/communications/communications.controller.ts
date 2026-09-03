@@ -14,12 +14,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiHeader,
-} from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { CommunicationsService } from "./communications.service";
 import { GmailService } from "./gmail.service";
@@ -30,7 +25,6 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { DatabaseService } from "../database/database.service";
 import {
   SendEmailDto,
-  SendSmsDto,
   LowStockAlertDto,
   DailySummaryDto,
   SendTemplateTestDto,
@@ -39,7 +33,9 @@ import {
   CommunicationStatusDto,
 } from "./dto/communication.dto";
 import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 
 @ApiTags("Communications")
@@ -63,7 +59,12 @@ import { NonProductionGuard } from "./guards/non-production.guard";
  *    scaffolding that writes real rows, approves real orders and sends real
  *    vendor email; in production they 404. See non-production.guard.ts.
  *  - D3: POST /webhooks/gmail stays @Public() but is now authenticated by a
- *    Google-signed Pub/Sub OIDC token (GmailPushAuthService, fail-closed).
+ *    Google-signed Pub/Sub OIDC token (GmailPushAuthService). It is genuinely
+ *    fail-closed only as of ADR 0094 (2026-09-02): until then this line, the
+ *    service's own docstring and the Swagger description below all said
+ *    "fail-closed" while the unset-config branch returned true and admitted
+ *    the push. Missing config now refuses, and GMAIL_PUBSUB_REQUIRE_AUTH is
+ *    deleted.
  *    /webhooks/gmail/force-fetch is an operator action, not a push, so it lost
  *    @Public() and falls under the class-level JwtAuthGuard.
  */
@@ -105,11 +106,64 @@ export class CommunicationsController {
   }
 
   /**
-   * Send a raw email
+   * Send a raw email.
+   *
+   * ⚠️ KEPT DELIBERATELY. 2026-09-02, ADR 0084 — narrowed to a service caller
+   * 2026-09-02 by ADR 0099.
+   *
+   * This route had the same shape as the raw-SMS route deleted below — body
+   * only, no `@CurrentUser()`, no tenant, no ownership check on the
+   * destination address, and no record written — so any authenticated user of
+   * any tenant could send arbitrary HTML to any address on the internet from
+   * the OAuth-verified sender domain, leaving no trace. It was scheduled for
+   * deletion for exactly that reason.
+   *
+   * It was not deleted because it has a caller:
+   *
+   *   services/agent-orchestrator/services/email_composer_service.py:354
+   *     `send_via_gateway()` POSTs `{api_gateway_url}/communications/email`
+   *   ← agents/provider_conversation_agent.py:3074 (`_send_message`)
+   *
+   * ADR 0099 CORRECTION. 0084 called it a LIVE caller and said "that is the
+   * path every approved vendor email travels". Measured against production
+   * 2026-09-02, it is neither. That caller had been refused since `fdaa7fa0`
+   * (2026-08-25) added the class-level JwtAuthGuard above, and it sends no
+   * `Authorization` header. And before that: of 17 outbound
+   * `procurement_conversations` rows, **zero** carry the row shape this Python
+   * path writes on success (`message_id` like `<wineops-…@wineops.ai>`,
+   * `email_headers.gmail_message_id`, `delivery_status='sent'`). All 17 carry
+   * the gateway-native shape written by `procurement.service.ts`, which calls
+   * `GmailService` in process and never touches this route. Real vendor mail
+   * travels THAT path. `agent_activity_logs` is empty. Deleting this route
+   * would have stopped nothing — but keeping it needed a reason better than a
+   * caller that was already 401ing.
+   *
+   * The caller identity 0084 asked for is now the `X-Admin-Key` service key
+   * (see ServiceKeyGuard below). Still NOT fixed: this route writes no
+   * `procurement_conversations` row of its own — the caller does that — and
+   * it still carries no tenant.
    */
   @Post("email")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Send an email via Gmail API" })
+  // ADR 0099 — the caller identity this route was waiting for.
+  //
+  // The note above ends "do not delete this route until that caller has
+  // somewhere else to go". It now does: `X-Admin-Key`, the ADMIN_API_KEY the
+  // gateway and the orchestrator already share in the other direction.
+  //
+  // @Public() does NOT mean unauthenticated here. Nest runs class guards before
+  // method guards and requires all of them to pass, so a method-level guard can
+  // only ADD to the class-level JwtAuthGuard, never stand in for it. @Public()
+  // short-circuits the JWT check so ServiceKeyGuard — which fails closed on an
+  // unset key — is what actually decides. Same shape as POST /webhooks/gmail
+  // below (ADR 0019 D3), which is @Public() and authenticated by a Google OIDC
+  // token.
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiOperation({
+    summary: "Send an email via Gmail API (service callers only)",
+  })
+  @ApiHeader({ name: "X-Admin-Key", required: true })
   @ApiResponse({ status: 200, type: CommunicationResultDto })
   async sendEmail(@Body() dto: SendEmailDto): Promise<CommunicationResultDto> {
     this.logger.log(`Sending email to: ${dto.to.join(", ")}`);
@@ -121,38 +175,40 @@ export class CommunicationsController {
       text: dto.bodyText,
       cc: dto.cc,
       bcc: dto.bcc,
+      replyTo: dto.replyTo,
+      threadId: dto.threadId,
+      inReplyTo: dto.inReplyTo,
+      references: dto.references,
     });
 
     return {
       success: result.success,
       messageId: result.messageId,
+      threadId: result.threadId,
       error: result.error,
       channel: "email",
     };
   }
 
-  /**
-   * Send a raw SMS
-   */
-  @Post("sms")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Send an SMS via Plivo" })
-  @ApiResponse({ status: 200, type: CommunicationResultDto })
-  async sendSms(@Body() dto: SendSmsDto): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending SMS to: ${dto.to}`);
-
-    const result = await this.smsService.sendSms({
-      to: dto.to,
-      message: dto.message,
-    });
-
-    return {
-      success: result.success,
-      messageId: result.messageId,
-      error: result.error,
-      channel: "sms",
-    };
-  }
+  // POST /communications/sms was DELETED 2026-09-02 (ADR 0084).
+  //
+  // It took `@Body()` and nothing else — no `@CurrentUser()`, no tenant, no
+  // ownership check on the destination number — and it wrote no record. Any
+  // authenticated user of any tenant could send arbitrary text to any phone
+  // number on earth from the platform's own Plivo sender, leaving no trace.
+  // `SendSmsDto` validated that `to` was a string and `message` was a string;
+  // that is the whole of what stood between a session token and the carrier.
+  //
+  // Deleted rather than guarded because it had no caller. Verified across the
+  // whole tree before deletion: `apps/web`, `apps/mobile`, `packages`,
+  // `scripts`, every `*.spec.ts`, and the Python orchestrator (which sends SMS
+  // through `services/plivo_client.py` directly and has never used this
+  // route). Every SMS the product actually sends goes through `SmsService`
+  // from a typed method — low-stock, daily summary, delivery, approval —
+  // each of which knows what it is sending and to whom.
+  //
+  // The sibling raw-email route is NOT deleted: it has a live caller. See the
+  // note on `sendEmail` above.
 
   /**
    * Send a low stock alert via all channels
@@ -165,6 +221,7 @@ export class CommunicationsController {
   @ApiResponse({ status: 200, type: MultiChannelResultDto })
   async sendLowStockAlert(
     @Body() dto: LowStockAlertDto,
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ): Promise<MultiChannelResultDto> {
     this.logger.log(`Sending low stock alert for: ${dto.wineName}`);
 
@@ -183,10 +240,46 @@ export class CommunicationsController {
         recommendedQty: dto.recommendedQty,
         preferredSupplier: dto.preferredSupplier,
         estimatedDelivery: dto.estimatedDelivery,
-        restaurantId: dto.restaurantId,
+        // ADR 0084. The tenant is DERIVED, never accepted.
+        //
+        // `payload.restaurantId` is the room this alert is broadcast into
+        // (`communications.service.ts` emits `notification:new` to
+        // `restaurant:${restaurantId}`), so a body-supplied value is a
+        // body-supplied broadcast target: pick another tenant's id and your
+        // chosen title and body appear in their live UI.
+        //
+        // `assertTenantMatch`, which `JwtAuthGuard` runs on every request to
+        // this controller, already refuses a top-level `restaurantId` that
+        // disagrees with the JWT — verified, not assumed
+        // (`common/tenant/assert-tenant-match.ts`, reached from
+        // `auth/guards/jwt-auth.guard.ts`). So this is not the only lock on
+        // the door. It is the one that does not depend on a decorator staying
+        // where it is: derive the room from the token and the body cannot name
+        // it at all, whatever happens to the guard chain above.
+        restaurantId: this.resolveAlertTenant(dto.restaurantId, user),
       },
       recipients,
     );
+  }
+
+  /**
+   * The tenant an alert may be broadcast into: the caller's own, always.
+   *
+   * A body value is permitted only when it agrees with the token — kept so a
+   * disagreement is REFUSED rather than silently rewritten, which would hide
+   * a caller that thinks it is addressing someone else.
+   */
+  private resolveAlertTenant(
+    fromBody: string | undefined,
+    user: { restaurantId?: string } | undefined,
+  ): string | undefined {
+    const fromToken = user?.restaurantId;
+    if (fromBody && fromBody !== fromToken) {
+      throw new BadRequestException(
+        "restaurantId does not match the authenticated tenant",
+      );
+    }
+    return fromToken;
   }
 
   /**
@@ -206,7 +299,6 @@ export class CommunicationsController {
       restaurantName: dto.restaurantName,
       lowStockCount: dto.lowStockCount,
       pendingOrders: dto.pendingOrders,
-      deliveriesToday: dto.deliveriesToday,
     });
   }
 
@@ -1058,7 +1150,7 @@ export class CommunicationsController {
   @ApiOperation({
     summary: "Gmail Pub/Sub push notification webhook",
     description:
-      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when those are unset.",
+      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when either is unset: every push is refused with 401 and inbound email stops until both are set.",
   })
   @ApiHeader({
     name: "Authorization",

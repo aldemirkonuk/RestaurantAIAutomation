@@ -101,12 +101,20 @@ export async function listReports(): Promise<GeneratedReport[]> {
 /**
  * Same endpoint, with the gateway's `count: "exact"` total kept instead of
  * thrown away — a register count must be the count, not an array length.
+ *
+ * `limit` bounds the ROWS, never the total: the gateway counts over the whole
+ * filtered set, so a caller that renders twenty rows can ask for a page and
+ * still print the real figure beside it.
  */
-export async function listReportsWithTotal(): Promise<{
+export async function listReportsWithTotal(
+  opts: { limit?: number; offset?: number } = {},
+): Promise<{
   reports: GeneratedReport[]
   total: number
 }> {
-  const { data } = await apiClient.get<ReportListResponse>('/reports')
+  const { data } = await apiClient.get<ReportListResponse>('/reports', {
+    params: { limit: opts.limit, offset: opts.offset },
+  })
   const reports = Array.isArray(data?.reports) ? data.reports : []
   return { reports, total: typeof data?.total === 'number' ? data.total : reports.length }
 }
