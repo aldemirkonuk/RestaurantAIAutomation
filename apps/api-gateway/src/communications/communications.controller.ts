@@ -59,7 +59,12 @@ import { NonProductionGuard } from "./guards/non-production.guard";
  *    scaffolding that writes real rows, approves real orders and sends real
  *    vendor email; in production they 404. See non-production.guard.ts.
  *  - D3: POST /webhooks/gmail stays @Public() but is now authenticated by a
- *    Google-signed Pub/Sub OIDC token (GmailPushAuthService, fail-closed).
+ *    Google-signed Pub/Sub OIDC token (GmailPushAuthService). It is genuinely
+ *    fail-closed only as of ADR 0094 (2026-09-02): until then this line, the
+ *    service's own docstring and the Swagger description below all said
+ *    "fail-closed" while the unset-config branch returned true and admitted
+ *    the push. Missing config now refuses, and GMAIL_PUBSUB_REQUIRE_AUTH is
+ *    deleted.
  *    /webhooks/gmail/force-fetch is an operator action, not a push, so it lost
  *    @Public() and falls under the class-level JwtAuthGuard.
  */
@@ -1145,7 +1150,7 @@ export class CommunicationsController {
   @ApiOperation({
     summary: "Gmail Pub/Sub push notification webhook",
     description:
-      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when those are unset.",
+      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when either is unset: every push is refused with 401 and inbound email stops until both are set.",
   })
   @ApiHeader({
     name: "Authorization",
