@@ -22,7 +22,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -30,6 +30,7 @@ import type {
   CellarRegistersVM,
   RegisterReadoutVM,
 } from './useCellarNextData';
+import { registerHref } from './cellar-format';
 import type { RegisterId } from './cellar-format';
 
 const mock = vi.hoisted(() => ({
@@ -60,6 +61,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', () => ({
 }));
 
 import CellarNext from './CellarNext';
+import type { CellarNextProps } from './CellarNext';
 
 function bottle(over: Partial<BottleVM> = {}): BottleVM {
   return {
@@ -163,10 +165,14 @@ const base = {
   refetch: vi.fn(),
 };
 
-function draw(
-  props: { category?: 'wines' | 'beer' | 'whiskey' | 'cocktails' } = {},
-  route = '/cellar',
-) {
+/**
+ * `props` is typed from the COMPONENT, never restated. The literal union that
+ * used to sit here was written when only four registers had routes, and it
+ * silently went stale the moment `CellarNextProps['category']` widened to all
+ * seven — `tsc` caught it the first time a test passed `'spirits'`, which is
+ * three months of drift this file would otherwise have carried unnoticed.
+ */
+function draw(props: Partial<CellarNextProps> = {}, route = '/cellar') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -704,6 +710,54 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.queryByTestId('register-empty')).not.toBeInTheDocument();
   });
 
+  /**
+   * THE THREE ROUTES ADDED 2026-09-03, through the prop they actually pass.
+   *
+   * `App.tsx:321-323` mounts `<CellarNext category="spirits" | "non_alcoholic"
+   * | "soft_drinks" />`. Until this test existed those three ids were exercised
+   * only as register CARDS on the overview and (for soft drinks) through the
+   * `?register=` query path — `open = category ?? fromQuery` made that
+   * *probably* equivalent, and "probably equivalent" is not a test. Each case
+   * asserts the register's own content rendered, not merely that nothing threw.
+   */
+  it.each([
+    ['spirits', 'Spirits', 'Rittenhouse Rye'],
+    ['non_alcoholic', 'Non-alcoholic', 'Seedlip Garden 108'],
+    ['soft_drinks', 'Soft drinks', 'Coca-Cola 330ml'],
+  ] as const)(
+    'renders the %s register through the category prop the route passes',
+    (category, heading, bottle) => {
+      mock.current = { ...base, registers: readout() };
+      mock.register = {
+        data: registerVM({
+          register: category,
+          rows: [houseRow({ key: `k-${category}`, name: bottle, producer: null })],
+          counts: { total: 1, houseRows: 1, matched: 0, matchedLoosely: 0, catalogueOnly: 0 },
+        }),
+        loading: false, error: null, refetch: () => {},
+      };
+      draw({ category });
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(heading);
+      expect(screen.getByTestId(`catalogue-${category}`)).toBeInTheDocument();
+      expect(screen.getByText(bottle)).toBeInTheDocument();
+      // The record is the point of the register, not just that it mounted.
+      expect(screen.getByText('$618.40')).toBeInTheDocument();
+      // And stocking is withheld here exactly as on every other register.
+      expect(screen.queryByTestId('register-empty')).not.toBeInTheDocument();
+    },
+  );
+
+  it('the route and the in-page link for the three new registers agree', () => {
+    // A `<Link to>` this page renders must be a route `App.tsx` mounts, or the
+    // spine sends the reader to the query-string fallback while the URL bar
+    // shows a real route. The two were added in the same session and this is
+    // the assertion that keeps them together.
+    expect(registerHref('spirits')).toBe('/spirits');
+    expect(registerHref('non_alcoholic')).toBe('/non-alcoholic');
+    expect(registerHref('soft_drinks')).toBe('/soft-drinks');
+  });
+
   it('reports the house lines no register can hold rather than dropping them', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = {
@@ -752,7 +806,7 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
   });
 
-  it('retiring a cocktail takes two presses and never carries the seal', () => {
+  it('retiring a cocktail takes two presses and never carries the seal', async () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
     mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
@@ -781,8 +835,19 @@ describe('CellarNext — the registers that are not wines', () => {
     fireEvent.click(off);
     // First press asks; it does not write.
     expect(retire).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /confirm/ }));
+
+    // Awaited, not fire-and-forget: `doRetire` sets `said` and clears
+    // `confirmRetire` AFTER the mutation resolves, so an unawaited click
+    // updates state outside `act()` and React logs a warning that would
+    // otherwise sit in this suite's output forever.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /confirm/ }));
+    });
     expect(retire).toHaveBeenCalledWith('c1');
+    // And the outcome is reported to the operator, not swallowed.
+    expect(screen.getByTestId('cocktail-said')).toHaveTextContent(
+      /dated, not deleted/,
+    );
   });
 
   it('an unknown ?register value opens the overview rather than an invented register', () => {

@@ -13,11 +13,47 @@ import { describe, expect, it } from 'vitest';
 import { EM, matchNote, quoteSource, shortDate } from './cellar-format';
 
 describe('shortDate', () => {
+  /**
+   * THE PRECONDITION, ASSERTED — because without it every test below is a
+   * no-op that passes with the fix deleted.
+   *
+   * The bug only shows in a zone WEST of UTC: `new Date('2026-03-02')` is
+   * UTC midnight, so `2 Mar` renders as `1 Mar` in New York and as `2 Mar`
+   * in UTC. `src/__tests__/setup.ts:12` pins `process.env.TZ` to
+   * `America/New_York` before anything touches `Date`, for exactly this
+   * reason. CI sets no TZ of its own (`.github/workflows/ci.yml` has none),
+   * so that setup line is the only thing standing between this file and a
+   * suite of assertions that cannot fail.
+   *
+   * Measured 2026-09-03, both directions: with the `timeZone: 'UTC'` override
+   * deleted from `shortDate`, `TZ=UTC pnpm vitest run cellar-format.test.ts`
+   * fails with `expected '1 Mar 2026' to be '2 Mar 2026'` — the pin reaches
+   * `toLocaleDateString`, and a shell `TZ` does not override it. This test
+   * fails loudly if that ever stops being true, rather than going quiet.
+   */
+  it('is running in a zone where the bug is observable at all', () => {
+    const offsetMinutes = new Date('2026-03-02T00:00:00Z').getTimezoneOffset();
+    expect(
+      offsetMinutes,
+      'the suite must run west of UTC (src/__tests__/setup.ts pins America/New_York) ' +
+        'or every date assertion in this file passes with the fix deleted',
+    ).toBeGreaterThan(0);
+  });
+
   it('holds a calendar date on the day the document says, in any timezone', () => {
     // `doc_date` is a `date` column: no instant, no zone, no shifting.
     expect(shortDate('2026-03-02')).toBe('2 Mar 2026');
     expect(shortDate('2026-01-01')).toBe('1 Jan 2026');
     expect(shortDate('2026-12-31')).toBe('31 Dec 2026');
+  });
+
+  it('does not simply render every date in UTC — an instant still moves', () => {
+    // The pair that proves the override is targeted rather than blanket: a
+    // late-evening UTC instant belongs to the PREVIOUS day in New York, and
+    // must render as that day, because "when did we last sell it" is a
+    // question about the reader's evening.
+    expect(shortDate('2026-03-02T02:00:00Z')).toBe('1 Mar 2026');
+    expect(shortDate('2026-03-02')).toBe('2 Mar 2026');
   });
 
   it('renders an instant in the reader’s own timezone', () => {

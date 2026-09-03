@@ -165,10 +165,16 @@ export const REGISTER_TITLE: Record<RegisterId, string> = {
 };
 
 /**
- * The four registers that have a route of their own in `App.tsx`. The other
- * three open on the parent as `?register=<id>`, which is deep-linkable and
- * needs no route — `App.tsx` is outside this page's paths and adding three
- * routes there is filed in the page note §9 rather than done here.
+ * All seven registers now have a route of their own. `/spirits`,
+ * `/non-alcoholic` and `/soft-drinks` were added to `App.tsx:321-323` by the
+ * parent session on 2026-09-03 — this map and those routes have to move
+ * together, because an entry here with no route behind it is a dead link and a
+ * route with no entry here sends every in-page link to the query-string
+ * fallback instead.
+ *
+ * `registerHref` keeps that fallback for exactly one reason: it is what any
+ * register added to the vocabulary in future gets, for free, until somebody
+ * gives it a route.
  */
 export const REGISTER_ROUTE: Partial<Record<RegisterId, string>> = {
   wines: '/wines',

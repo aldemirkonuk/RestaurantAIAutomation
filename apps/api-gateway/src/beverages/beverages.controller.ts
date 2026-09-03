@@ -27,12 +27,14 @@ import {
 } from "./dto/beverages.dto";
 
 /**
- * Read-only lists over `public.beverages` and `public.cocktails`.
+ * The cellar's registers: reads over `public.beverages`, and full CRUD over
+ * `public.cocktails` — the one table here that carries a `restaurant_id`.
  *
  * TENANT SCOPE. Both routes name the restaurant in the path, so
  * `assertTenantMatch` inside `JwtAuthGuard` refuses a caller reaching into
  * another house (and refuses a tenantless session naming one at all) before
- * this controller runs. `/beverages/:id` still reads a GLOBAL catalogue — the
+ * this controller runs. `/beverages/:restaurantId` still reads a GLOBAL
+ * catalogue (there is no per-beverage GET here at all) — the
  * table has no `restaurant_id` — and the response says so in `scope`; the path
  * parameter is there so the read is attributable and gated, not to imply the
  * rows belong to the house.

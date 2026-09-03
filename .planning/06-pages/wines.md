@@ -309,12 +309,19 @@ figure now carries the date it was taken.
 |---|---|---|---|---|---|
 | pass one (2026-09-02) | 1,706 | 8 | 293 | 363 | 2,362 across 11 |
 | pass two (audit, 2026-09-03) | 3,108 | 12 | 949 | 388 | 4,445 across 16 |
-| pass three (this build) | **4,537** | **14** | 1,240 | 473 | **6,250 across 18** |
+| pass three (this build) | **4,546** | **14** | 1,341 | 473 | **6,360 across 19** |
 
 Pass three added `HouseRecordLeaf.tsx` (240) and `CocktailRegister.tsx` (564),
 and grew `useCellarNextData.ts` (503 → 739), `CatalogueRegister.tsx` (261 → 523)
-and `cellar-format.ts` (271 → 373). That is **~5.0× the ~900-line budget**, and
+and `cellar-format.ts` (271 → 382). That is **~5.1× the ~900-line budget**, and
 the number is stated rather than softened.
+
+*(The pass-three row was first written mid-build and was 9 lines light by the
+time the audit fixes landed — caught by the Sonnet re-audit at 3 lines, then
+drifting further as the three route tests and the timezone-precondition test
+were added. Re-measured at final state, 2026-09-03. The lesson is the one this
+page keeps teaching: a figure quoted as exact has to be taken last, or it is a
+figure quoted as exact and wrong.)*
 
 The reason it is defensible, stated so the founder can reject it: this directory
 is not one page. It is **eight surfaces** — the cellar parent, six registers with
@@ -518,6 +525,19 @@ score was permitted.
   date in a smaller coat. Calendar dates are now formatted in UTC; instants
   (`created_at`, a `timestamptz`) stay local, because "when did we last sell it"
   is a question about the reader's evening. Pinned in `cellar-format.test.ts`.
+
+  *Re-verified after the Sonnet audit flagged the test as possibly vacuous on a
+  UTC runner.* It is not: `apps/web/src/__tests__/setup.ts:12` pins
+  `process.env.TZ = 'America/New_York'` before anything touches `Date`, with a
+  comment naming this exact hazard. Measured both directions 2026-09-03 — with
+  the `timeZone: 'UTC'` override deleted, `TZ=UTC pnpm vitest run
+  cellar-format.test.ts` **fails** with `expected '1 Mar 2026' to be '2 Mar
+  2026'`. The audit checked `.github/workflows/ci.yml` for a `TZ` and found
+  none, which is true, and missed the setup file. The test now asserts that
+  precondition itself (`getTimezoneOffset() > 0`) so it can never go quiet if
+  somebody removes the pin, plus a companion case proving the override is
+  targeted rather than blanket — an *instant* still renders in the reader's own
+  zone.
 
 **The two alternative directions considered, and not built** — the founder
 decides after seeing the page:
@@ -794,7 +814,15 @@ Each one is a file the p4 page agent does not own; none was built.
 
 ### Gaps found in the third pass (2026-09-03) — the beverages catalogue
 
-17. **Three registers still have no route, and this page may not add them.**
+17. ~~**Three registers still have no route.**~~ — **CLOSED 2026-09-03** by the
+    parent session: `App.tsx:321-323` now mounts `/spirits`,
+    `/non-alcoholic` and `/soft-drinks`, and `REGISTER_ROUTE` in
+    `cellar-format.ts` carries the matching three entries, so in-page links and
+    routes agree. Both halves are pinned by tests added after the Sonnet audit:
+    three `draw({ category })` render assertions and one asserting
+    `registerHref` returns the route `App.tsx` actually mounts. The original
+    finding, kept because the constraint it names still binds any future
+    register:
     `App.tsx` is outside this page's paths. `CellarNext`'s `category` prop now
     accepts all seven register ids, so the three lines below are the whole of
     what is needed; until they land, `/spirits`, `/non-alcoholic` and

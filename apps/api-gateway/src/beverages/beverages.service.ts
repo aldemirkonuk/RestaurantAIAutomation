@@ -56,13 +56,19 @@ const MISSING_FUNCTION_CODES = new Set(["42883", "PGRST202", "PGRST203"]);
 
 /**
  * The catalogue columns every read of `public.beverages` selects. One home,
- * and deliberately a MODULE-LEVEL const rather than a static class property:
- * `scripts/check_read_columns_exist.py` resolves a module const and checks each
- * column against the migrations, but cannot resolve `Class.COLUMNS`, which it
- * counts as "a read nobody is checking". Measured 2026-09-03 by instrumenting
- * that guard: this const resolves; the five `McpConnectionsService.ROW_COLUMNS`
- * and three `PaymentMethodsService.COLUMNS` sites in neighbouring modules do
- * not, and are 8 of its 10 unreadable reads.
+ * and deliberately a MODULE-LEVEL const rather than a static class property.
+ *
+ * `scripts/check_read_columns_exist.py` resolves a module-level const and
+ * checks every column in it against the migrations; it cannot resolve
+ * `Class.COLUMNS`, and counts such a site as "a read nobody is checking"
+ * against a ceiling. So the shape of this declaration is load-bearing, and
+ * moving it onto the class would silently drop fourteen columns out of guard
+ * coverage without changing a single character of the query.
+ *
+ * No headcount of the repo's unreadable sites is quoted here on purpose: an
+ * earlier version of this comment named one, the neighbouring modules fixed
+ * theirs the same afternoon, and the number was stale within the hour. Run
+ * the guard for the current figure.
  */
 const CATALOGUE_COLUMNS =
   "id, beverage_type, name, display_name, producer, brand, country, region, abv_pct, volume_ml, package_format, price_reference, identity_status, observed_at";
