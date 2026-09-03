@@ -1037,6 +1037,9 @@ what happened rather than a list of what is left.**
 | G17 | `apps/api-gateway/src/mcp-runtime/` + the per-tenant scheduler (ADR 0022) | **A probe is manual.** The register is current as of the last check and prints that date; nothing keeps it fresh. A scheduled probe under `ScheduledTenantsService.runPerTenant` would — and would also turn a page-level "check this" into standing outbound traffic from our infrastructure to addresses tenants typed in, which wants quiet hours, back-off and its own decision. Deferred deliberately, not forgotten |
 | G18 | nothing may CALL a model-context tool | **Tool invocation, and it is a DECISION not a gap.** Tools are listed on the row and there is no `tools/call`, no route reaching one, no column recording one, and a structural test asserting the runtime service has no `call`/`callTool`/`invoke` method. A tool call can send an email to a vendor or place an order — the subject of ADR 0013's commitment guardrail, which has never been extended to model-context dispatch. `GET /mcp-connections/runtime` returns that sentence and the page prints it. **The fork for the founder:** does ADR 0013 extend to a third-party tool call, and what is the human step (the seal, a draft, a per-tool grant)? The table needs no new column either way |
 | G7 | `apps/api-gateway/src/auth/auth.controller.ts:487-491` | there is no **authenticated** way to fetch the identity-provider registry. `POST /auth/sign-in-methods` is `@Public()` and rate-limited by IP (10 / 600s), which a shared restaurant network would exhaust. An authenticated `GET /auth/me/sign-in-methods` returning `declared`/`methods`/`unavailable` would let the Sign-in rail use the server's own labels and reasons instead of page prose |
+| G19 | `apps/api-gateway/src/payment-methods/payment-methods.controller.ts:65-79` + `billing/billing.controller.ts:66-78` | **The house's payment reads are not role-gated.** Every *write* on both modules calls `assertCanManageRestaurant` (`:92-98`, `:114-125`, `:138-148`); the two reads take any authenticated member of the restaurant, and the page gates only the controls — the card rows render for every role (`PaymentRegister.tsx:370-385`). Harmless today because the register is empty by construction, and live the moment `STRIPE_SECRET_KEY` is set (G13): a staff member's own `/profile` would show the house's cards. Toast gates this behind `Account Admin > Manage Integrations`, Square behind `account & settings`. The fix has a precedent in this repo — `assertManagerOrOwner(userId, restaurantId, "read the restaurant record")` on `getLocation`, pinned by `organizations/get-location-is-role-gated.spec.ts`. Filed 2026-09-03 (fourth pass); worth closing whether or not the Connections split happens |
+| G20 | `components/settings/IntegrationsAuth.tsx:161` + `settings/next/ServicesSection.tsx:128` + `profile/next/ConnectionsRegister.tsx:224` | **Three renderings of one catalogue, each a different subset, and no one list anywhere.** All three navigate to `/authorize/:id`; POS, sender identity, the calendar iCal feed and payments appear in none of them. DESIGN-FOUNDATION §6 rates "one list of everything that acts on your behalf" as **now**, and §6b measures that the product has no such list. Closing it is the Connections surface (§13a) — a placement decision for the founder, not a defect this page can fix alone |
+| G21 | `apps/api-gateway/src/integrations/integrations-oauth.service.ts:476-484` | **A grant is recorded against a restaurant and then listed across all of them.** `restaurant_id` is written on the connection row (`:150`, `:439`) and `listConnections` filters on `user_id` alone, so a Drive grant made while standing in restaurant A is listed while standing in restaurant B. The column is not merely unused — it is written and then ignored by the only read path, which is worse than absent because the schema implies a scope the code does not keep. Same file as G3; closing both is one change |
 
 ## 10. Maturity
 
@@ -1235,3 +1238,104 @@ credentials, which restaurants you belong to, and the exit.
 5. 403 branch for the manager-only writes.
 6. `v3.0-TECH-DEBT.md:502` (the "dashboard profile card with no handler", L102) was
    never located — leave it tracked there, not here.
+
+---
+
+## 13a. The Connections surface — where the outward connections belong (2026-09-03, fourth pass)
+
+> **Status: a recommendation with sketches, not a build.** No code changed on any page
+> this pass. Per retire-to-write, **no page note was created** for this surface — it is
+> described here, and **the route is the parent's call, not this note's**. `settings.md`
+> is another builder's file and was not touched.
+
+### The founder's note, and the answer
+
+> *"Like the design, research once more, and be definite about comprehensiveness of
+> design, MCP's to connectors, to Third party apps and so on. Maybe not in profile
+> you're right."*
+
+**You are right.** Three of this page's seven registers are about the house, not the
+person — and one of them is the house's cards on file, on a page every member reaches.
+The full argument, the ten-product survey with URLs and the twenty-eight-item
+comprehensiveness checklist are in **`DESIGN-FOUNDATION.md` §6b**; the surface is drawn
+in **`.planning/sketches/097-integrations-home/`** (`connections.html`,
+`profile-after.html`, `checklist.html`). This section records only what `/profile`
+itself must do about it.
+
+### What leaves this page, and what it is replaced by
+
+| Register | Today | Why it does not belong here | Where it goes |
+|---|---|---|---|
+| **V — How the house pays** | `PaymentRegister.tsx`, "an instrument added here charges the house" (`:240`) | `payment_methods` has **no `user_id` column at all** (`20260903094600_payment_methods.sql:53`). It is a house object on a personal page — and the *read* is ungated (below) | Connections, Register II |
+| **IV — Model context** | `McpRegister.tsx`, "Servers the house agents may call" (`:319`) | The table's own comment disagrees with the register's lead — *"acts with the user's authority, so it hangs off the user"* (`20260903094500_user_mcp_connections.sql:53-54`). Both are in the tree, and both cannot be true | Connections, Register I — **after** the founder settles the scope (Q2) |
+| **VI — The house** | `HouseRegister.tsx` — restaurant record, memberships, plan | Never personal; it is here because there was nowhere else | Connections' header, or `/settings` |
+
+`/profile` keeps **Register I** (who you are), **Register II** (what protects this
+account — the four `Not built` rows are the personal gap, G11), **Register III** (what
+is attached to *you*: sign-in links, your own Drive/Excel grants, your devices) and
+**Register VII** (the exit, where the seal is pressed once). That is the same cut Stripe
+makes between Personal and Business settings, and the same one GitHub makes between a
+user's authorized OAuth apps and an organization's installed Apps.
+
+**The reciprocal obligation.** Connections must list every personal grant that acts
+inside the house — named, with its scope and last action, and **explicitly not
+revocable there**, linking to the owner's profile. One list, two owners marked, revoke
+where the owner is. Without that, moving payments off `/profile` just creates a second
+incomplete list, which is the fault the surface exists to fix.
+
+### The defect this pass measured, which is not a design question
+
+**`GET /payment-methods` and `GET /billing/provider` have no role check.**
+`payment-methods.controller.ts:65-79` and `billing.controller.ts:66-78` take any
+authenticated member of the restaurant; every *write* on both modules calls
+`assertCanManageRestaurant` (`:92-98`, `:114-125`, `:138-148`) and the page gates only
+the *controls* on `isManagerOrOwner` — the card rows themselves render for every role
+(`PaymentRegister.tsx:370-385`). Today the register is empty by construction, so nothing
+leaks. The day `STRIPE_SECRET_KEY` is set (G13), **a staff member's own `/profile` shows
+the house's cards on file.** Toast gates this behind `Account Admin > Manage
+Integrations`; Square behind `account & settings`. The precedent for the fix is already
+in this repo: `assertManagerOrOwner(userId, restaurantId, "read the restaurant record")`
+on `getLocation`, added 2026-09-03 and pinned by
+`organizations/get-location-is-role-gated.spec.ts`. **Filed as G19 (see §9).** It is
+worth closing whether or not the split happens.
+
+### Two more measurements the split would fix
+
+- **The same catalogue is rendered three times and each shows a different subset** —
+  `components/settings/IntegrationsAuth.tsx:161`, `settings/next/ServicesSection.tsx:128`
+  and `profile/next/ConnectionsRegister.tsx:224` all navigate to `/authorize/:id`, while
+  POS, sender identity, the calendar feed and payments appear in **none** of them. There
+  is no one list anywhere in the product. **G20.**
+- **A grant is recorded against a restaurant and then listed across all of them.**
+  `integration_oauth_connections.restaurant_id` is written at
+  `integrations-oauth.service.ts:150` and `:439`, but `listConnections` filters on
+  `user_id` alone (`:476-484`). A Drive grant made while standing in restaurant A is
+  listed while standing in restaurant B. **G21.**
+
+### What the parent must decide and add (nothing here was built)
+
+If the recommendation is taken as a **route**, these lines are outside this page's paths
+and belong to the parent:
+
+- `apps/web/src/App.tsx` — a `<Route path="/connections">` inside the `DashboardLayout`
+  block, alongside `/settings`.
+- `apps/web/src/lib/mudavym/useMudavymDesign.ts` — `'connections'` in `MUDAVYM_PAGES`,
+  plus `mudavym_design_connections` in the gateway's `ACTIVE_FEATURE_FLAGS` and a flags
+  migration.
+- `apps/web/src/components/layout/Sidebar.tsx` — a `NavItem`
+  `{ name: 'Connections', href: '/connections', icon: Plug, description: 'What acts for
+  this house — the till, payments, senders and model-context servers.' }`. **`NavItem`
+  has no role field today** (`Sidebar.tsx:42-50`), so a manager-only entry needs one; the
+  alternative is showing it to everyone and letting the page refuse, which is the weaker
+  shape.
+
+If it is taken as a **Settings section** instead, it is one new `SectionId` in
+`settings/next/st-format.ts:82` and the retirement of `services` / `pos` / `email` into
+it — but that file belongs to the settings builder, so it is named here and not touched.
+
+### What was deliberately not done this pass
+
+No page code changed; the founder asked for research and a recommendation, and a page
+built before the route is decided is a page built twice. The sketches carry full example
+data at 1440 (`shots-097/`), no emoji, and every claim about the repo carries its
+`file:line`.

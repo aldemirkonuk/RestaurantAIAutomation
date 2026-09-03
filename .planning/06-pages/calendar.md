@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-02
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -95,6 +95,32 @@ unchanged with the flag off):
 - ⚫ **`labels` are not collected** (they were never forwarded to the API, §10)
 - ⚫ **The collapsible left sidebar is gone**; its two jobs (type legend, search) are a select
   and an input in the header, so `localStorage['wineops-calendar-sidebar']` is unused here
+
+**Researched and designed, not built** (fourth pass, 2026-09-03 —
+[[0111-the-calendar-is-the-houses-day-book|ADR 0111]], sketches
+`.planning/sketches/098-calendar-quant-overlay/`). Every line below is a design with a
+measurement behind it and **no code**; §1b's *Quant overlay* subsection carries the detail
+and §13 carries the slices:
+
+- ⚪ **The world outside, drawn on the day it lands on** — weather, a covers forecast, and
+  three risk marks (price · delivery · quality) per cell, with the past half of the month
+  holding what the ledger recorded and stating what the forecast got wrong
+- ⚪ **A deadlines strip** — order-window cutoffs, invoice due dates, expiring certificates,
+  recurring orders and ending promotions in one band, each card naming the table it came
+  from and whether the term was *stated* or *inferred*
+- ⚪ **Notes, daily actions and meetings as first-class day-book kinds** — a `calendar_day_notes`
+  table so a memo stops being collected into a void, recommendation/one-tap/proposal rows
+  projected onto their date, and Google Meet links on entries that have been pushed
+- ⚪ **A ⌘K assistant for the day** — extending the existing propose→confirm allowlist with a
+  `calendar` family, split by ADR 0013's test: it may create, move, annotate, remind and note
+  alone; anything that **leaves the house** — mailing a vendor, amending an order, pushing to a
+  connected external calendar — is a proposal under the hold-to-approve seal
+- ⚪ **Four external-calendar directions** — push, pull, two-way with stated conflict rules, and
+  the day-book exposed as the Mudavym MCP server's first three tools
+- 🔴 **Measured blocker, and it decides the order:** of the six inputs the overlay needs, five
+  find **nothing** in production today — 0 of 14 restaurants carry a coordinate, the best-covered
+  tenant has 22 observed service days, `vendor_price_observations` is empty, no order carries a
+  promised *or* actual delivery date, and there is no shelf-life column anywhere in 88 migrations
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_calendar`)
 
@@ -254,6 +280,160 @@ cancels an entry's browser-queued copies whenever it saves that entry
 (`EventSheet.tsx` `clearBrowserQueue`), so anything the redesign touches has exactly one
 sender. The residue is named in §9: an entry created on the legacy page and never opened here
 can still fire twice.
+
+
+### Quant overlay — research 2026-09-03
+
+**Nothing in this subsection is built.** It is the research-and-design pass behind
+[[0111-the-calendar-is-the-houses-day-book|ADR 0111]], commissioned by the
+founder's fourth-pass note on this page ("weather forecast — basically all Quant detailed
+work — to predict weather, pricings, transportation, quality of food"; "keep the customer
+inside the app … MCP or API connections is a must") and widened the same day to the whole
+program: meetings, notes, daily actions, reminders, Google Meet, a ⌘K assistant, and all
+four external-calendar directions. Sketches:
+`.planning/sketches/098-calendar-quant-overlay/` (`month-overlay.html`, `connections.html`).
+
+#### The structural idea
+
+A calendar is the only surface in this product that draws the past and the future in one
+grid. The design makes that the subject rather than hiding it. **Left of today a cell holds
+what the ledger recorded; right of today it holds a forecast that names its issuer and its
+issue time; when a day passes the cell keeps both and states the error.** That is what
+converts DESIGN-FOUNDATION §6's standing objection — *"Weather-driven forecasting on the
+grid — a guess on a page whose virtue is that everything is a fact"* — from a veto into a
+constraint: a published meteorological forecast, attributed, is a citable observation
+about the future; *our* covers number derived from it and shown without its error is the
+thing §6 actually forbids, and it is the last slice, not the first.
+
+#### What each signal is, and what production actually holds
+
+Measured against the live database on 2026-09-03, not inferred.
+
+| Signal | Source + maths | Schema today | Honest state when absent |
+|---|---|---|---|
+| **Weather** | Open-Meteo `/v1/forecast` (no key, hourly + daily, 16 days, `timezone`, `past_days` — <https://open-meteo.com/en/docs>); NWS `api.weather.gov` as the keyless US fallback, OpenWeather as the keyed global one. **No maths — transcription**, stamped with issuer, issue time and horizon, and kept so a day can be scored later | `restaurants.latitude` / `.longitude` exist (`20260807001252_distributor_geo_foundation.sql:50-51`) and are **populated on 0 of 14 rows**. 13 carry `address`, 14 carry `timezone`, `google_place_id` exists | "No location set for this house" + the control that sets one. Never a default city. Provider down ⇒ the last reading with its age |
+| **Covers** | `holtWintersAdditive(series, 7, …)` (`analytics/engine/forecasting.ts:120`, live at `insights/insight-generator.service.ts:699`) for level/trend/weekday, weather as a **ridge regressor on the residual** via `multipleRegression(X, y, {ridgeLambda})` (`analytics/engine/regression.ts:47`). Temperature as deviation-from-norm plus its square, precipitation as `log(1+mm)` — the effect is non-linear and saturating. Selected on pinball loss at τ = the critical ratio, **never MAPE/MASE** (ADR 0048) | `pos_checks.covers integer` (`baseline:4202`). **173 rows, 129 with covers, 26 distinct days — 22 of them one restaurant.** `holtWintersAdditive` refuses below `2 * period` (`:136`), so 22 points *runs* and means nothing; a weather coefficient is not estimable at all | **Withheld below 90 observed service days**, with "22 of 90" on the face of the cell. The weather term withheld separately below 180. A model that cannot beat `seasonalNaive` on RMSSE is not drawn |
+| **Price** | Trailing 30-day median per `(item, vendor)`; a move reported only where ≥5 observations back it | `vendor_price_observations` (`20260805154027_…:50`) — table, five indexes, RLS. **0 rows** | A **dashed** mark reading "no quote". Never a calm mark, never "flat" — the difference between *stable* and *unobserved* is the whole ADR 0020 fault |
+| **Delivery risk** | p50 / p90 of `delivered_at − expected_delivery_date` over the last 30 completed orders per vendor; a public road/weather advisory for the corridor. **<8 completed runs ⇒ a count, never a percentile** | `procurement_orders.expected_delivery_date` / `.delivered_at` (`baseline:4533-4534`) — **2 orders, 0 with either date**. `providers.lead_time_days` set on 11 of 21, and **4 of those are exactly 7, the column DEFAULT** (`baseline:4864`) | Two states that must never collapse: "stated 7 days — the column default, not measured" and "no completed run". Production is the second, on every vendor |
+| **Quality at the door** | **No score.** Three facts side by side: the forecast temperature at the delivery hour, the cold-holding line (FDA Food Code 3-501.16 — TCS at 41 °F/5 °C or below, 4-hour limit without control under 3-501.19, <https://www.fda.gov/media/127796/download>), and this vendor's refusal history | `procurement_receipt_events.outcome` / `.refusal_reason` (`accepted\|short\|refused`, `wrong_wine\|broken_case\|temperature\|other` — `20260901220000_door_facts_are_columns.sql:125`). **No shelf-life column anywhere in 88 migrations**; `storage_locations.temperature_min/max` is a zone spec, not a reading | The mark shows the forecast temperature and the door history and nothing else, and says in one line that a spoilage *score* needs `shelf_life_days` on the item first |
+| **Deadlines** | Nothing computed. Every dated row projected onto the day it falls on, carrying the table it came from and whether the term was *stated* or *inferred from N orders* | `calendar_events` 19 rows ✅ · `recurring_orders.next_order_date` exists, **0 rows** · `team_certifications.expires_at` + `idx_team_certs_expiry` exist (`baseline:5609`, `:11390`), **0 rows** · `vendor_promotions` / `provider_promotions` **0 rows** · `procurement_documents` **0 rows and no `due_date` column** · **no vendor cutoff column exists anywhere** | A cutoff nobody stated and no order implies appears as "no order window recorded for this vendor" plus the control that records one — never as a guess |
+
+**Why weather is defensible at all.** Badorf & Hoberg, *The impact of daily weather on
+retail sales*, J. Retailing & Consumer Services **52** (2020), 673 stores: weather moves
+daily sales **up to 23.1% by store location and 40.7% by sales theme**, the effect is
+**non-linear**, and weather forecasts improve sales-forecast accuracy **up to seven days
+ahead with the improvement diminishing by horizon**
+(<https://www.sciencedirect.com/science/article/abs/pii/S0969698919303236>) — which is why
+the forecast's weight decays across the month rather than being drawn identically on day 2
+and day 14. Bujisic, Bogicevic & Parsa, *The effect of weather factors on restaurant
+sales*, J. Foodservice Business Research **20**(3) (2017) 350-370, tested 17 factors and
+found the effect differs by menu item and by daypart, lunch being the most
+temperature-sensitive
+(<https://www.tandfonline.com/doi/abs/10.1080/15378020.2016.1209723>). The field already
+does this: 7shifts shows the local forecast beside projected labour while a manager builds
+a schedule (<https://kb.7shifts.com/hc/en-us/articles/14620377028627-7shifts-Sales-Forecast>);
+Tenzo says the effect is about *extremes*, with rain saturating past a point
+(<https://www.gotenzo.com/resources/insight/how-does-weather-affect-restaurant-sales/>).
+
+**The licence trap, which is the real fork.** Open-Meteo's keyless tier is **CC-BY 4.0 and
+explicitly non-commercial** — 300,000 calls/month, and "websites or apps that have
+subscriptions" are named as commercial use (<https://open-meteo.com/en/terms>). A
+commercial Mudavym needs API Standard, ~$29/month for 1M calls
+(<https://open-meteo.com/en/pricing>). At one coordinate per house refreshed hourly, 14
+houses is ~10k calls/month, so **cost is never the constraint; the licence is.** The
+genuinely free alternative, NWS `api.weather.gov`, is open data for any purpose with no key
+(only a descriptive `User-Agent`) and serves `/points/{lat},{lon}` plus `/alerts/active` —
+but it is **United States only** (<https://www.weather.gov/documentation/services-web-api>).
+Design answer: a `WeatherProvider` interface with three implementations selected by
+environment, and the row states which issuer answered.
+
+#### External connections — what exists, and the four directions
+
+**What exists, measured.** `GET /api/v1/integrations/oauth/catalog` against the local
+gateway on 2026-09-03 returns both connectors with `"available": false,
+"unavailableReason": "Google OAuth is not configured on this deployment."`, and
+`integration_oauth_connections` has **0 rows in production** — exactly what
+`20260826170000_integration_oauth_tables.sql` predicted. The apparatus itself is complete:
+encrypted tokens, a CSRF state row, a scope-disclosure screen at `/authorize/:integrationId`
+(`App.tsx:285`), and an `availability()` gate that refuses to offer an unconfigured
+connector (`integrations-oauth.service.ts:88-118`). **`provider` is CHECKed to
+`('google','microsoft')` but `integration_id` is a free `VARCHAR(64)`, so a
+`google_calendar` connector is a row in `INTEGRATION_DEFINITIONS`
+(`integrations-oauth.constants.ts:33`) and needs no migration.** The web app has a Google
+Sign-In client id (`VITE_GOOGLE_CLIENT_ID`, `lib/googleIdentity.ts:74`); the gateway's
+`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pair is unset on this checkout — a different
+credential shape, and it needs a registered redirect URI the sign-in flow never needed.
+
+Four directions, in the order ADR 0111 recommends building them:
+
+1. **Push** — Mudavym entries into a Mudavym-owned *secondary* calendar. Scope
+   `calendar.app.created`, Google's narrowest
+   (<https://developers.google.com/workspace/calendar/api/auth>). One mapping table, one
+   write per mutation, no sync token, no webhook. Duplicates closed by an idempotency key
+   and by updating the provider's own event id rather than searching. Only we can delete;
+   a copy deleted in Google returns on the next push, **and the row says so before the
+   operator connects**. This is also the only way a Google Meet link can exist —
+   `conferenceData.createRequest` with `conferenceDataVersion=1`
+   (<https://developers.google.com/workspace/calendar/api/guides/create-events>).
+2. **Pull** — external events into a **read-only lane** of the day, drawn with the account
+   they came from and never as a ribbon in the delivery spine. `syncToken` incremental sync;
+   deletions arrive explicitly; `410 GONE` ⇒ discard and full-sync
+   (<https://developers.google.com/workspace/calendar/api/guides/sync>). Watch channels are
+   an optimisation over polling and never the only path: HTTPS with a valid certificate, no
+   auto-renewal, and Google states plainly that notifications are not 100% reliable
+   (<https://developers.google.com/workspace/calendar/api/guides/push>). Quota is not a
+   constraint — 10,000 req/min per project, 600 per user
+   (<https://developers.google.com/workspace/calendar/api/guides/quota>).
+3. **Two-way** — the only direction that can lose data. **Last writer wins per field**
+   (our `updated_at` vs their `etag`), **a delete never wins silently** (delete-vs-edit ⇒
+   the delete is refused, the entry is marked disputed and goes to the day's conflict line),
+   the loser is kept as a note, and the echo is closed by stamping every outbound write with
+   our own request id and ignoring an inbound change whose `etag` we produced.
+4. **Expose** — the day-book as the Mudavym MCP server's **first shipped tools**:
+   `calendar.read_day`, `calendar.list_deadlines`, `calendar.propose_entry`, per
+   `08-softwares/mudavym-mcp.md`'s rule *"it reads freely and it commits nothing"*. No send
+   verb is implemented, so there is nothing to refuse at runtime — the same structural
+   choice ADR 0107 made by shipping the handshake without `tools/call`. CalDAV (RFC 4791) is
+   out of scope: it is a WebDAV server to build, not an API to call
+   (<https://datatracker.ietf.org/doc/html/rfc4791>).
+
+#### The ⌘K assistant, and the line it may not cross
+
+The machinery is built and proven: `POST /ask-ai/propose` → a human looks →
+`POST /ask-ai/confirm` → execute, with a validated allowlist, grounding against candidate
+ids, and a `proposed → confirmed → executed | failed | discarded` lifecycle
+(`ask-ai.service.ts:305,525,653,700`). The web client's own header states the rule — *"this
+module never executes anything by itself"* (`services/api/askAi.ts`). The allowlist is two
+families today, and widening it is stated in the code as a founder decision.
+
+A third family, `calendar`, split by exactly [[0013-one-commitment-guardrail|ADR 0013]]'s
+test — *does this leave the house?*
+
+- **May act alone** (reversible, in-house, written to the settings ledger with the utterance
+  that asked for it): create · move · resize · annotate an entry; set or clear a reminder;
+  write a day note; exclude a day from the baselines; draft an in-house notification.
+- **May never act alone**, each a proposal under the hold-to-approve seal: mail or message a
+  vendor; place or amend an order; **push an entry to a connected external calendar other
+  people read**; invite an outside attendee; create a Meet link that generates invitations.
+  The third is the one this research adds to ADR 0013's surface, and it is not obvious: a
+  push is a write to someone else's system that other humans see, which is the same class of
+  act as sending mail.
+
+MCP's own specification reaches the same place from the other side — clients **SHOULD**
+prompt for confirmation on sensitive operations and show tool inputs before the call
+(<https://modelcontextprotocol.io/specification/2025-06-18/server/tools>). Mudavym does not
+rely on the client for that; the server-side allowlist is the gate.
+
+#### What this research recommends be built first
+
+Nine slices, in [[0111-the-calendar-is-the-houses-day-book|ADR 0111]] §6.
+The head of the list: **(1) the coordinate**, **(2) the weather overlay**, **(3) past cells
+holding the record and stating the forecast error**. Weather is first because it is the only
+signal that needs nothing from the tenant but a location, produces a real number for every
+house on day one, and — through slice 3 — is what accumulates the history slice 9's covers
+model cannot honestly exist without. The covers overlay is **time-gated, not effort-gated**;
+it may sit unbuilt for three months after slice 2 ships, and the page should say which day of
+ninety it is on.
 
 
 ## 2. Entry
@@ -458,6 +638,67 @@ one-file change nobody on this page's paths may make:
    closed, and the guard passes over this directory having actually read it.
 
 
+### Found while researching the quant overlay and the external connections, 2026-09-03
+
+Measured against the live production database (project `exzueerziesmczwlhomd`) and the
+local gateway on :4000. All of these are **outside** `pages/calendar/next/**`; each is the
+reason a slice in §13 is where it is. Detail in §1b *Quant overlay* and
+[[0111-the-calendar-is-the-houses-day-book|ADR 0111]].
+
+1. 🔴 **No restaurant has a coordinate.** `restaurants.latitude` / `.longitude` were added
+   in `20260807001252_distributor_geo_foundation.sql:50-51` and are **NULL on all 14 rows**,
+   while 13 carry an `address`, 14 carry a `timezone` and `google_place_id` exists. Every
+   weather-derived signal on this page is blocked on one field nobody has ever filled.
+   **Why not yet:** it is a `/settings` or onboarding control, not a calendar one.
+2. 🔴 **The covers series cannot support a weather model.** `pos_checks` holds 173 rows,
+   129 with `covers`, across **26 distinct days — and 22 of those belong to one restaurant**
+   (2026-08-03 → 2026-09-05). `holtWintersAdditive` refuses below `2 * period`
+   (`analytics/engine/forecasting.ts:136`), so a weekly model *runs* on 22 points and means
+   nothing, and a weather coefficient is not estimable at all. This is why §13.28 is
+   time-gated rather than effort-gated.
+3. 🟠 **Three of the six deadline classes have no data and one has no column.**
+   `vendor_price_observations` 0 rows · `team_certifications` 0 rows (the table **and**
+   `idx_team_certs_expiry` exist, purpose-built, `baseline:5609`, `:11390`) ·
+   `recurring_orders` 0 rows · `provider_promotions` / `vendor_promotions` 0 rows ·
+   `procurement_documents` **0 rows and no `due_date` column at all** (only `doc_date`) ·
+   and **no vendor cutoff column exists anywhere in 88 migrations**.
+4. 🟠 **A stated lead time may be a default nobody chose.** `providers.lead_time_days` is
+   `integer DEFAULT 7` (`baseline:4864`), set on 11 of 21 providers — **4 of them exactly
+   7**. Meanwhile `procurement_orders` has 2 rows with `expected_delivery_date` and
+   `delivered_at` **null on both** (`baseline:4533-4534`), so no vendor has a measured
+   distribution. Any UI drawing a lead time must say *stated*, *defaulted* or *measured*.
+5. 🟠 **There is no shelf-life column and no temperature reading anywhere.** The only
+   temperature fact the house records is `procurement_receipt_events.refusal_reason =
+   'temperature'` (`20260901220000_door_facts_are_columns.sql:125`) — an outcome, not a
+   measurement — and `storage_locations.temperature_min/max` (`baseline:5498-5499`) is a
+   zone specification. A spoilage *score* would be invented arithmetic; a door *record* is
+   real today.
+6. 🟠 **Four concrete suspects for the iCal feed nobody has seen subscribe**, all one-line,
+   all in this module: `Content-Disposition: attachment` (`calendar.controller.ts:647-650`)
+   tells clients to save a file rather than subscribe; every event is built with
+   `new Date('YYYY-MM-DDTHH:mm:00')`, which resolves on the **server's** clock rather than
+   the restaurant's IANA zone (`calendar.service.ts:1287-1294`); no `X-PUBLISHED-TTL` /
+   `REFRESH-INTERVAL` is emitted; and the token endpoint returns a **relative path** with no
+   absolute origin and no `webcal://` alternative (`:666`). Settings.md §10 had already
+   named the first; the other three are new.
+7. 🟡 **The OAuth apparatus is complete and has never been used.**
+   `GET /integrations/oauth/catalog` returns both connectors with
+   `"available": false, "unavailableReason": "Google OAuth is not configured on this
+   deployment."`, and `integration_oauth_connections` has **0 rows in production**. The web
+   app has a Google Sign-In client id (`VITE_GOOGLE_CLIENT_ID`,
+   `lib/googleIdentity.ts:74`); the gateway's `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+   pair is a **different credential shape** and needs a registered redirect URI the sign-in
+   flow never needed.
+8. ✅ **Adding a calendar connector needs no migration.**
+   `integration_oauth_connections.provider` is CHECKed to `('google','microsoft')` but
+   `integration_id` is a free `VARCHAR(64)`
+   (`20260826170000_integration_oauth_tables.sql`), so `google_calendar` is a row in
+   `INTEGRATION_DEFINITIONS` (`integrations-oauth.constants.ts:33`).
+9. 🟡 **`analytics_day_exclusions` does not exist in production.** The table that lets a
+   manager rule a closure out of every baseline is on this branch only
+   (`20260903091000_days_the_engine_must_not_count.sql`); a `select` against it on the live
+   database returns `42P01`. The month grid's hatched "closed" cell depends on it.
+
 ## 10. Maturity
 
 **partial.**
@@ -571,6 +812,38 @@ enough memory attached that the next conversation starts where the last one ende
 5. The iCal copy in Settings promises Outlook/Apple/Google (`Settings.tsx:207`) for a
    feed nobody has seen subscribe.
 
+### The remaining "honest abouts", and what a profound fix costs (2026-09-03)
+
+The founder's fourth-pass note on this page: *"Fix all the issues in honest about,
+bulletproof, profound SOTA is a must have quality."* An em dash is honest, not finished.
+Every 🔒 and ⚫ still standing in §1a is listed here with **the fix that removes the reason
+for the em dash**, not the one that hides it, and what that fix costs. Ordered by
+cost-to-value, cheapest and most valuable first.
+
+| # | Honest about | Why it is honest today | The profound fix | Cost |
+|---|---|---|---|---|
+| 1 | **The iCal feed has never been seen to subscribe** | Nobody has ever tested it (`v3.0-TECH-DEBT.md:243-245`) | Four concrete suspects, all one-line: drop `Content-Disposition: attachment` (`calendar.controller.ts:647-650`), which tells clients to *save a file* rather than subscribe; build each event in the **restaurant's** IANA zone instead of `new Date('YYYY-MM-DDTHH:mm:00')` on the server's clock (`calendar.service.ts:1287-1294`); emit `X-PUBLISHED-TTL` / `REFRESH-INTERVAL`; return an absolute origin and a `webcal://` alternative rather than a relative path (`:666`) | **XS.** Four lines and one real client to test against. The single cheapest item on this page |
+| 2 | **Vendor link and repeat rule are create-time only** | `UpdateCalendarEventDto` carries neither field and the pipe runs `forbidNonWhitelisted` (`calendar.dto.ts:229-296`) | Add `providerId`, `orderId` and `recurrence` to the update DTO, the mapper and one spec | **XS.** Mechanical; the sheet already renders the disabled state and would just stop needing it |
+| 3 | **`getEventTypes` reports absence as health** | An errored `calendar_event_types` query returns the eight built-ins (`calendar.service.ts:858-885`), so "no custom types" and "the table was unreachable" are the same answer | Return a discriminated result — `{types, source: 'tenant' \| 'builtin', readable: boolean}` — and let the page say which. The rebuilt page already renders the honest branch if the shape appears | **S.** One service function, one DTO field, callers unchanged |
+| 4 | **Production rows carry values the enums do not contain** | `event_type: 'audit'` and `status: 'active'` are live on `calendar_events`; `PATCH` validates both with `@IsEnum` (`calendar.dto.ts:36-59`), so any edit echoing the stored value is refused | Widen the enums to the values production actually holds, **then** migrate — measure first, because coercing into the enum rewrites the tenant's record | **S.** One DTO change plus a measured backfill. Blocked on nothing |
+| 5 | **Reminder offsets are whole days only** | `reminder_days_before` is an `INTEGER` of days (`baseline:2358`), so the sheet offers *On the day / 1 / 2 / 7* and says why | Add `reminder_minutes_before`, the Create/Update DTO fields, the mapper, and one branch in `reminder-window.ts` `reminderDueAt`. The 15-minute cron then bounds the resolution honestly — "15 minutes before" is representable, "3 minutes before" is not, and the sheet should say the tick length rather than offer a granularity the scheduler cannot keep | **S.** One migration, four touch points, and a sentence about the tick |
+| 6 | **A client-expanded recurring occurrence gets no reminder** | A series is one row; occurrences expanded in `lib/calendar/recurrence.ts` carry no id to key a dispatch on | Two paths, and they are not equivalent. **Cheaper:** add an occurrence key to `calendar_reminder_dispatches`' unique index so an occurrence can be claimed without existing as a row. **More honest:** materialise occurrences server-side at create time, which also gives the per-occurrence edit route §9.8 says is missing and makes an occurrence draggable | **M** cheap / **L** honest. The honest one closes three separate 🔒s at once and is the better buy |
+| 7 | **A recurring occurrence is not draggable** | There is no per-occurrence route; `updateRecurringEventOccurrence` calls `PATCH /calendar/events/:id/occurrence`, which the controller does not serve (§9.8) | Falls out of #6's honest path. On its own it is the same server-side materialisation with a smaller payoff | **L**, or **free** after #6 |
+| 8 | **The email reminder channel is rendered disabled** | The cron writes the inbox row and the push; mail needs a recipient policy, and `RecipientResolverService` still falls back to a global env address for the legacy tenant (`communications/scheduled-tasks.service.ts:120-146`) | Not a calendar fix. Give the resolver a per-restaurant recipient set with an explicit "no recipient" state, and let every sender read it. Mailing the wrong house is the defect ADR 0022 spent its length preventing | **M**, and it belongs to communications, not here |
+| 9 | **The meeting-memo prompt is not built** | It asked for notes and discarded them (`CalendarPage.tsx:307-310`); `/documents-reports` has no upload path to persist them to | **Stop waiting on documents.** A note is a day's marginalia, not a document: give it `calendar_day_notes(restaurant_id, business_date, body, author, created_at)`. Conflating the two is what left the prompt writing into a void for a year | **S.** One migration, one panel. ADR 0111 slice 5 |
+| 10 | **`labels` are collected and dropped** | Never forwarded to `createEvent`/`updateEvent`; `buildCreatePayload` has no such field (`services/api/calendar.ts:105-121`) | Either add the column and the DTO field, or **remove the input**. Both are honest; a field that looks like it saves is not. Recommend removal until something reads a label | **XS** either way |
+| 11 | **The month above 500 entries reports `hasMore` instead of paginating** | `@Max(500)` caps the page; the rebuilt page surfaces `hasMore` rather than showing the first 100 silently | Real cursor pagination on `(start_date, id)`. Worth doing when a house exceeds 500 entries in a month, and no house is close | **M**, and correctly deferred |
+| 12 | **Quiet hours are read on the restaurant's clock, not the reader's** | `notification_preferences` has no per-user timezone (§9.3) | Add one, defaulting to the restaurant's. Then reconcile the two runtimes: the orchestrator compares against the *process's* `datetime.now()` (`notification_agent.py:1487-1512`) on a **closed** interval, the gateway against the restaurant's clock on a **half-open** one | **M**, and half of it is a Python change this page does not own |
+| 13 | **The legacy browser scheduler is still booted for everyone** | `main.tsx:20` calls `startReminderScheduler()` unconditionally; `main.tsx` is shared and the shipping page must render byte-for-byte with the flag off | Delete the boot when the legacy calendar is retired. Until then the residue is real: an entry created on the legacy page, never opened in the rebuilt sheet, can fire twice | **XS** to do, **blocked** on retiring the legacy page |
+| 14 | **The reminder job is off, and says so** | `CALENDAR_REMINDERS_ENABLED` is unset; the page renders "built but not switched on" with the flag name | Not a defect and not an em dash to remove — it is a switch, and arming it is the founder's. Live status on production, 2026-09-03: `served: true, armed: false, pending: 0` | **Zero.** One environment variable |
+| 15 | **`generation_horizon_days: 90` is a gateway-written measurement** | `calendar.service.ts:496` writes a literal horizon onto every recurrence rule no caller supplied (§9.4) | Take it from the caller, or from a restaurant setting, with the current value as the documented default rather than an invisible one. Also add `apps/api-gateway/src/calendar` to `SERVER_SCAN_ROOTS` so the ADR 0051 guard reads this module at all | **S**, plus one line in `scripts/` this build does not own |
+
+**The pattern across all fifteen**, worth naming because it is the same one every time: the
+cheap fixes (#1, #2, #10) are cheap because the honesty was doing the work of a missing
+line of code, and the expensive ones (#6, #7, #12) are expensive because the honesty was
+doing the work of a missing *model*. Only the second kind needed the em dash. The first
+kind should not survive another pass.
+
 ## 13. Roadmap
 
 1. ~~**Move reminders server-side.**~~ — **done 2026-09-03**
@@ -627,3 +900,64 @@ enough memory attached that the next conversation starts where the last one ende
     built and tested; this is the founder's switch. Before flipping it, check
     `GET /calendar/reminders/status` on the target deployment: `served` says whether ADR 0022
     enumerates that restaurant, and `pending` says how many entries would come due.
+
+### The calendar program — slices from ADR 0111 (added 2026-09-03)
+
+Items 20-30 are the build order recorded in
+[[0111-the-calendar-is-the-houses-day-book|ADR 0111]] §6, which is where the
+rationale, the alternatives and the measurements live. Nothing here is built. Sizes are the
+ADR's; the order is not preference — each slice earns the trust the next one spends.
+
+20. **The coordinate** (**S**). A location field on the restaurant — a map pin, or a geocode
+    of the `address` / `google_place_id` already stored — written to
+    `restaurants.latitude` / `.longitude`. The columns exist; **0 of 14 rows carry a value**,
+    and nothing in items 21-24 exists without one. *Outside this page: it is a `/settings`
+    or onboarding field.*
+21. **The weather overlay** (**M**). A `WeatherProvider` interface with an Open-Meteo
+    implementation (and NWS / OpenWeather behind the same interface), refreshed under
+    `ScheduledTenantsService.runPerTenant`, into a `weather_readings` table that **keeps**
+    each reading with its issuer and issue time. Gated on fork A — the keyless Open-Meteo
+    tier is non-commercial.
+22. **Past cells hold the record**, and a passed day states its forecast error (**S**). No
+    new data; it is the reconciliation line. This is also DESIGN-FOUNDATION §6's own
+    "need it now" idea for this page, and the first thing in the product that would write
+    `prediction_outcomes` — a forecast-accuracy ledger migrated long ago and **written by
+    nothing** (ADR 0048 Lane A).
+23. **The deadlines strip** (**M**). Over what exists first (`calendar_events`,
+    `recurring_orders`), then `vendor_terms(restaurant_id, provider_id, weekday,
+    cutoff_time, delivery_weekday, minimum_order, provenance)` and
+    `procurement_documents.due_date`. `vendor_terms` is already named as `/settings`'
+    "need it now" in DESIGN-FOUNDATION §6 — *"Vendor terms as a tab … each with provenance
+    … Unblocks the calendar and notification ideas."* **Coordinate with the settings owner;
+    do not build it twice.**
+24. **Notes and daily actions on the day** (**M**). `calendar_day_notes`, plus
+    `recommendation_actions` / `one_tap_actions` / `ai_proposed_actions` rows projected onto
+    their date and linking back. Closes §12 item 9 — the memo-into-a-void fault — without
+    waiting on the documents upload path.
+25. **The ⌘K calendar family** (**M**). Extends `ask-ai`'s propose→confirm allowlist with
+    `calendar.create/move/annotate/remind/note`, split by
+    [[0013-one-commitment-guardrail|ADR 0013]]'s leaves-the-house test. The
+    dispatcher already fails loudly when the allowlist and its switch disagree
+    (`ask-ai.service.ts:955-959`), so the widening is safe by construction.
+26. **Google Calendar connector — push** (**M**). A `google_calendar` row in
+    `INTEGRATION_DEFINITIONS`, scope `calendar.app.created`, one mapping table. **No
+    migration for the connector itself.** Requires the gateway's `GOOGLE_CLIENT_ID` /
+    `GOOGLE_CLIENT_SECRET` and a registered redirect URI, neither of which this deployment
+    has. Also the only way a Google Meet link can exist on an entry.
+27. **Pull, then two-way** on the same connector (**L**). Sync tokens, watch-channel renewal,
+    an external-event read-only lane, and the conflict rules stated in ADR 0111 §5 —
+    last-writer-wins **per field**, a delete that never wins silently, the loser kept as a
+    note, and the echo closed by request-id stamping. Ship the conflict line and exercise a
+    delete refusal in a test before calling it done.
+28. **The covers overlay** (**M**, but **time-gated not effort-gated**). Withheld below 90
+    observed service days; the weather regressor withheld below 180. Item 21 is what
+    accumulates the history. The page should say which day of ninety it is on.
+29. **The Mudavym MCP server's first three tools** — `calendar.read_day`,
+    `calendar.list_deadlines`, `calendar.propose_entry` (**M**). Per
+    `08-softwares/mudavym-mcp.md`; the propose verb lands in item 25's proposal queue so
+    there is one approval surface, not two. No send verb is implemented, so there is nothing
+    to refuse at runtime.
+30. **Two fixes that belong to no slice and should ship immediately** (**XS**), because each
+    is one line and each is a live defect: the iCal `Content-Disposition: attachment` header
+    (`calendar.controller.ts:647-650`), and the zone-less `new Date()` in the feed
+    (`calendar.service.ts:1287-1294`). See §12 item 1.

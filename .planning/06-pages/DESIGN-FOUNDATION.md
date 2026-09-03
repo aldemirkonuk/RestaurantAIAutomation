@@ -475,3 +475,292 @@ registers, sequenced after OD-113. Both studies live in the session record
 (`menu-page-research-2026-09-03.md` with the five-cause premortem;
 `menu-scenarios-2026-09-03.md`; `backtest-register-prompt-2026-09-03.md`); their
 conclusions are the lines above.
+
+### 6b. Where the outward connections live (2026-09-03)
+
+The founder's note on `/profile`: *"be definite about comprehensiveness of design,
+MCP's to connectors, to Third party apps and so on. Maybe not in profile you're
+right."* This section is the definite answer. It supersedes nothing in §6 or §6a;
+it sharpens §6's `/profile` row, whose exponential idea ("**Connected
+capabilities** — one list of everything that acts on your behalf … each with its
+scope, its last action and a revoke", rated **now**) was written before the wave-4
+builds existed and before the placement question was asked.
+
+#### The rule the field agrees on
+
+Ten products were read (sources below). Placement is decided by **whose credential
+it is and in whose name the action is taken** — never by what the thing is called.
+
+| The credential authenticates | The action is attributed to | Where it lives |
+|---|---|---|
+| a **person** | that person | personal / account settings |
+| the **business** | the business | a role-gated house or org surface |
+| **both** — the org permits the app, the person connects their account | both | **two tiers with a governance link**, never one |
+
+The third row is the one nobody skips. Notion: a workspace owner "can restrict
+which connections members are allowed to install", and an Enterprise admin's
+**Manage** tab decides which pages a connection reaches and who may connect or
+disconnect it. Slack: the workspace owner pre-approves an app *and its scopes*,
+then members install it. Claude: "Only Owners can add them to Team and Enterprise
+plans. Once a connector has been added … users individually connect to and enable
+that connector." Linear: personal API keys under *Settings → Account → Security &
+Access*, workspace OAuth applications and webhooks under *Settings →
+Administration → API*, **and the admin governs whether members may mint personal
+keys at all**. Claude Code's MCP scopes are the same idea in a config file — a
+`project` server is shared through version control but **requires each user's
+approval before it runs**, while a `user` server is private and never shared.
+
+Stripe states the taxonomy outright: the Dashboard's settings are **Personal**
+(password, communication preferences, active sessions, 2FA), **Account/Business**
+(account details, payouts, legal entity, domains) and **Product**. GitHub mirrors
+one tree for a user's authorized OAuth apps and another for an organization's
+installed GitHub Apps. Vercel installs at the account/team (billing runs through
+the Vercel account) and attaches resources at the project.
+
+And the two products closest to Mudavym's trade have **no personal tier at all**.
+Toast: *Integrations → Integration management*, gated on the `Account Admin >
+Manage Integrations` permission, removed one location at a time. Square:
+*Settings → App integrations*, restricted to sellers with `account & settings`
+permissions. Neither has a concept of "my connection".
+
+**Corollary, on comprehensiveness.** Every connection must state, on its row,
+**whose it is, what it may do, when it last did something, and how to stop it**.
+Zapier's App Connections row is the field's most complete instance and is worth
+copying wholesale: name, the app, **the number of workflows depending on it**, the
+last time it changed, **the avatars of everyone it is shared with**, plus test,
+reconnect, rename, transfer-ownership and delete.
+
+#### Applying the rule to what Mudavym actually has
+
+Measured on `feat/mudavym-design-p4`, 2026-09-03. Fourteen things can act.
+
+| Attachment | Authenticates | Scope in the schema | Verdict |
+|---|---|---|---|
+| Google / Microsoft **sign-in** link | a person | `user_oauth_accounts`, identity only, no token | **personal** — correct today |
+| Google Drive / Excel **API grants** | a person | `integration_oauth_connections.user_id NOT NULL`, `restaurant_id` **nullable** (`20260826170000:125-126`) | **personal**, but it writes the *house's* exports into a *person's* Drive |
+| Sessions, 2FA, passkeys, personal API tokens | a person | none exist (G11) | **personal** — correct, and the largest personal gap |
+| **Point of sale** (Toast / pos-hub) | the business | keyed by `restaurantId` on every route (`pos-hub.controller.ts:65,73`) | **the house's** — has no home on any personal page |
+| **Payment provider + cards on file** | the business | `payment_methods.restaurant_id NOT NULL`, **no `user_id` column at all** (`20260903094600:53`) | **the house's** — and it is on `/profile` today |
+| **Sender identity** | the *deployment* | one env mailbox, `GMAIL_SENDER_EMAIL \|\| "notifications@wineops.ai"` (`gmail.service.ts:75-80`) | **should be the house's**; is nobody's |
+| **Calendar iCal feed** | nobody — `@Public()` (`calendar.controller.ts:632-633`) | per-restaurant token | **the house's**, and public to anyone holding the URL |
+| **Vendor-facing public page** | nobody — `@Public()` (`vendor-portal.controller.ts:20-21`) | per-slug | **the house's** |
+| **Model-context servers** | *contested* | `user_mcp_connections` — **both** `user_id` and `restaurant_id` NOT NULL (`20260903094500:55,61`) | **the open fork** |
+| Model provider, encryption keys | the deployment | env | **listed, never controlled here** |
+
+Three findings decide the placement, and each is a fact, not a preference:
+
+1. **`payment_methods` has no user column.** It is a house object living on a
+   personal page. Worse, the *read* is ungated — `GET /payment-methods`
+   (`payment-methods.controller.ts:65-79`) and `GET /billing/provider` (`:66-78`)
+   take any authenticated member, and the card rows render for every role
+   (`PaymentRegister.tsx:370-385`); only the buttons check
+   `isManagerOrOwner`. Toast and Square both gate this behind a named permission.
+   The precedent for the fix is already in the tree —
+   `assertManagerOrOwner(userId, restaurantId, "read the restaurant record")` on
+   `getLocation`, added 2026-09-03.
+2. **The same catalogue is rendered in three places and each shows a different
+   subset** — `components/settings/IntegrationsAuth.tsx:161`,
+   `settings/next/ServicesSection.tsx:128`,
+   `profile/next/ConnectionsRegister.tsx:224` — while POS, sender identity, the
+   calendar feed and payments appear in **none** of them. There is no one list.
+3. **The scope taxonomy already exists and is already wrong in one place.**
+   `settings/next/st-format.ts:31` defines `Kept = 'restaurant' | 'account' |
+   'browser'`; `:103` labels `services` as `'account'` while the grants it renders
+   are per-user, and `listConnections` (`integrations-oauth.service.ts:476-484`)
+   filters on `user_id` alone — so a grant recorded against restaurant A is listed
+   while standing in restaurant B. The label is on the tab; it needs to be on the row.
+
+#### The decision
+
+**Profile keeps what is personal: who you are, what protects this account, and what
+is attached to you.** A house-scoped surface named **Connections** — opening on
+*"What acts for this house"* — holds the till, the payment provider, the sender
+identity, the calendar feed, the public page and the model-context servers, plus a
+**named-but-not-revocable row for every personal grant that acts inside the
+house**, each linking to its owner's profile. One list; two owners marked; revoke
+lives where the owner is. Sketch **097**.
+
+*The name.* "Connections" over "Integrations" (Toast/Square's word, which reads as
+an IT department), over "Connectors" (Claude's, which would read as a copy), and
+over "Apps" (a POS bridge and a sending address are not apps). Notion, Zapier and
+Claude all use *connect* as the verb; "Connections" is the word a user will already
+have met.
+
+**The strongest counter-argument, and why it loses.** *Settings already has
+`services`, `pos`, `email` and `calendar` tabs — all four are connections. A
+Connections surface is a fourth place to render the same OAuth catalogue, and
+retire-to-write says adding costs retiring.* This is the best case against, and it
+fails on two measurements. First, it is not additive: those four tabs **collapse
+into it**, so the surface count falls. Second, `/settings` is under a standing
+founder instruction that "there should be more" — growing it with a consolidation
+is how the sprawl that `/settings` was collapsed to escape comes back. What the
+counter-argument does win is the *route* question, which is genuinely open and is
+the founder's (§ below).
+
+**The second counter-argument, which is the sharper one.** *Production has one real
+tenant and no `staff` role at all (§6, "Two asks are blocked by tenancy"). For a
+one-person house the split is pure friction: two pages, one person.* True today. It loses because the split is not for the
+single-owner house — it is for the hour the house hires a GM, when the owner needs
+to know what that account can do, and discovering the answer is *"it was on his
+personal profile page"* is the failure this whole page exists to prevent. The cost
+is one nav row, role-gated, so the single owner sees exactly one extra item.
+
+#### The comprehensiveness checklist
+
+Twenty-eight items, four groups, each with the `file:line` that proves the claim —
+rendered in full at `.planning/sketches/097-integrations-home/checklist.html`.
+Totals: **8 built · 8 a shape · 9 absent · 3 the founder's decision.**
+
+- **The list itself (7).** One list of everything that acts *(absent)* · scope on
+  the row *(built — `integrations-oauth.constants.ts:43-66`, better than the
+  field)* · last action not last edit *(MCP yes, OAuth no)* · revoke on every row
+  *(partial — the calendar feed can only be regenerated, POS has no disconnect)* ·
+  whose it is *(absent)* · what depends on it *(absent — Zapier's workflow count)*
+  · an unconfigured provider says so and does nothing *(built, best-in-class)*.
+- **Scope and governance (6).** Two tiers with a link *(absent — any member may
+  complete `POST /integrations/oauth/:id/authorize`)* · role gate on the house's
+  rows, **read as well as write** *(writes only)* · a grant survives its author
+  *(**decision** — both tables `ON DELETE CASCADE` on the user, so deleting the
+  GM deletes the house's Toast bridge)* · the house's own sender identity
+  *(absent)* · per-resource grant *(absent, not yet urgent)* · multi-location
+  *(**decision** — the two tables already disagree: `integration_oauth_connections.restaurant_id`
+  nullable, `user_mcp_connections.restaurant_id` NOT NULL)*.
+- **Trust and forensics (9).** Consent in our own words *(built — ahead of the
+  field)* · soft revoke not delete *(built)* · **a connection event log** *(absent
+  — the cheapest item on the list and the one most missed after an incident)* ·
+  re-consent when scopes change *(absent — a trusted MCP server that starts
+  advertising `place_order` triggers nothing)* · expiry visible *(stored at
+  `20260826170000:138`, read by no surface)* · a failed read is not an empty list
+  *(page yes, wire no — `listConnections` returns `[]` on error, G3)* · outbound
+  address safety *(built — the guard parses to sixteen bytes and pins the address
+  into the socket; the strongest thing in the wave)* · secrets encrypted and never
+  returned *(built)* · key rotation with a record *(absent)*.
+- **Acting (6).** Handshake not declaration *(built, ADR 0107)* · tool invocation
+  gated *(**decision** — ADR 0013 has never been extended)* · card on file without
+  a PAN *(built to the credential, ADR 0110)* · webhook delivery proven *(built —
+  "configured" and "has ever received a signed delivery" are different states)* ·
+  freshness of the register *(manual, G17)* · a catalogue of what could be
+  connected *(two entries, both still branded WineOps in their copy —
+  `integrations-oauth.constants.ts:46,48,63`)*.
+
+**The shape of the gap:** Mudavym is *ahead* of every product compared on the two
+hardest items (a consent screen in our own words; an outbound guard that pins the
+address) and *behind* on the two cheapest (one list; a log of who attached what).
+And one thing in this comparison **no competitor ships**: applied to a connections
+page, ADR 0020's rule that a failed read must name the register it could not read.
+Every product above shows an empty list whether nothing is connected or the read
+failed.
+
+#### What only the founder can decide
+
+1. **Route or Settings section?** Toast and Zapier make connections top-level
+   because they are the substance of the product; Notion, Slack, Square, Linear
+   and GitHub make them a settings section because they are not. The founder's own
+   words this pass — *"we need to keep the customer inside the app … so MCP or API
+   connections is a must"* — argue for top-level, role-gated. Not decided here.
+2. **Whose is a model-context server?** The migration says one thing and the page
+   says another, and both are in the tree: *"acts with the user's authority, so it
+   hangs off the user"* (`20260903094500:53-54`) versus *"Servers the house agents
+   may call"* (`McpRegister.tsx:319`).
+3. **May a tool ever be called, and what is the human step** — the seal, a draft, a
+   per-tool grant? (G18; the fork ADR 0107 deliberately left open.)
+4. **Does the house get its own sending address?** A domain, a DNS record and a
+   provider decision, not a page.
+5. **May a manager see, or approve, what a member has connected?** A GM's personal
+   Drive grant receives the house's exports today and no owner can see it exists.
+
+*Sources for this section:*
+[Stripe settings categories](https://support.stripe.com/topics/dashboard) ·
+[Stripe Organizations](https://docs.stripe.com/get-started/account/orgs) ·
+[Linear API & webhooks](https://linear.app/docs/api-and-webhooks) ·
+[Linear security & access](https://linear.app/docs/security-and-access) ·
+[Notion connections](https://www.notion.com/help/add-and-manage-connections-with-the-api) ·
+[Slack app approval](https://slack.com/help/articles/222386767-Manage-app-approval-for-your-workspace) ·
+[Vercel integrations](https://vercel.com/docs/integrations) ·
+[GitHub apps](https://docs.github.com/en/apps/using-github-apps/about-using-github-apps) ·
+[Zapier app connections](https://help.zapier.com/hc/en-us/articles/36818633398157-App-connections-on-Zapier) ·
+[Zapier connection sharing](https://help.zapier.com/hc/en-us/articles/8496326497037-Share-app-connections-with-members-of-your-Team-or-Enterprise-account) ·
+[Claude custom connectors](https://support.claude.com/en/articles/11175166-about-custom-connectors-via-remote-mcp) ·
+[Claude Code MCP scopes](https://code.claude.com/docs/en/mcp) ·
+[Toast integration management](https://doc.toasttab.com/doc/platformguide/adminRestaurantServiceIntegrationsAndToastPartnerIntegrations.html) ·
+[Square app integrations](https://squareup.com/help/ca/en/article/5437-manage-your-square-app-marketplace-subscriptions) ·
+[Square OAuth revocation](https://developer.squareup.com/docs/oauth-api/receive-and-manage-tokens)
+
+---
+
+### 6c. The calendar program (2026-09-03)
+
+The founder's note on `/calendar` asked for two things §6's row does not cover — *"weather
+forecast (basically all Quant detailed work) to predict weather, pricings, transportation,
+quality of food"* and *"keep the customer inside the app … MCP or API connections is a
+must"* — then widened it the same day to the whole program: meetings, notes, daily actions,
+reminders, Google Meet, a ⌘K assistant, and every external-calendar direction.
+
+The full design is [[0111-the-calendar-is-the-houses-day-book|ADR 0111]];
+the measurements and the per-signal detail are in
+[[calendar|calendar.md]] §1b *Quant overlay*, §9 and §12; the drawing is
+`.planning/sketches/098-calendar-quant-overlay/`. Three things belong **here**, because
+they change how §6 should be read.
+
+#### 1. §6's "Do not copy" for `/calendar` is upheld, not overturned
+
+§6 lists, under **Do not copy**: *"Weather-driven forecasting on the grid — a guess on a
+page whose virtue is that everything is a fact."* That is still right, and the design
+obeys it on a distinction §6 implies without stating:
+
+> **A published meteorological forecast, attributed to its issuer and its issue time, is a
+> citable observation about the future. Our covers number derived from it and drawn without
+> its error is a guess.** The first is drawn from slice one. The second is the last slice,
+> gated on ninety days of the house's own history, and withheld with a sentence until then.
+
+The mechanism that keeps the two apart is the same one that satisfies §6's *other*
+"need it now" idea for this page — *"The day that already happened — past cells hold what
+the ledger recorded"*. **Left of today a cell holds the record; right of today it holds a
+forecast that names whose it is; when a day passes the cell keeps both and states the
+error.** One rule, both ideas, and after ninety days the house has not merely a model but
+evidence about whether to believe one.
+
+§6's `/calendar` "need it now" exponential idea — **order-by windows as calendar objects**
+— is unchanged and becomes slice 4 of the program. It depends on `vendor_terms`, which
+§6 already files as `/settings`' own "need it now" (*"Vendor terms as a tab … each with
+provenance … Unblocks the calendar and notification ideas"*). **One table, two pages, one
+builder.**
+
+#### 2. The competitive lens, extended to the two things §6 did not price
+
+| | What the field does | What we do differently, and why |
+|---|---|---|
+| **Weather on an operating surface** | 7shifts shows the local forecast beside projected labour as a manager builds a schedule [^7sf]; Tenzo frames the effect as *extremes* rather than absolute temperature, with rain saturating past a point [^tzwx]. The academic result is larger than either markets: weather moves daily retail sales **up to 23.1% by store location and 40.7% by sales theme**, non-linearly, and forecasts improve accuracy **up to seven days ahead with diminishing returns by horizon** [^bh20]; the effect differs by menu item and by daypart, lunch being most temperature-sensitive [^bbp17] | Nobody in the field **keeps** the forecast and scores itself against it. That is the whole difference. It also forces two things the vendors do not do: the covers term is **non-linear**, and the forecast's weight **decays with horizon** rather than being drawn identically on day 2 and day 14 |
+| **External calendars** | Every operating product either publishes a read-only feed or does a full two-way sync and hopes. Notion Calendar's chrome was already ruled out in §6 as the wrong idiom for a wall calendar in a kitchen | Four directions built in an order — push, pull, two-way, expose — where each earns the trust the next spends, and **two-way ships with its conflict rules written down first**: last-writer-wins *per field*, a delete that never wins silently, the loser kept as a note, the echo closed by request-id stamping |
+
+#### 3. The two facts that decide everything downstream
+
+- **The keyless weather source is not commercially licensed.** Open-Meteo's free tier is
+  CC-BY 4.0 and explicitly non-commercial, naming subscription apps as commercial use
+  [^om]; API Standard is ~$29/month for 1M calls [^omp], and one coordinate per house
+  refreshed hourly is ~10k calls/month for fourteen houses. **Cost is never the constraint;
+  the licence is.** The genuinely free alternative, NWS `api.weather.gov`, is open data for
+  any purpose with no key — and United States only [^nws]. Design answer: a
+  `WeatherProvider` interface, three implementations chosen by environment, and the row
+  states which issuer answered.
+- **Five of the six inputs the overlay needs are empty in production.** 0 of 14 restaurants
+  carry a coordinate; the best-covered tenant has 22 observed service days;
+  `vendor_price_observations`, `team_certifications`, `recurring_orders` and
+  `procurement_documents` are all at zero rows; and there is no shelf-life column anywhere.
+  A beautiful overlay shipped today would be a page of dashes — which is why the build
+  order starts with **the coordinate**, not with the maths.
+
+**The placement question is already answered.** §6b decides *where* a connection lives by
+whose credential it is; a calendar connection is the third row of that table — the house
+permits the connector, the person connects their account — so it is **two tiers with a
+governance link**, never one. ADR 0111 fork D asks the consequence §6b's rule raises and
+does not answer: `integration_oauth_connections` is keyed on `user_id`, but the day-book is
+per restaurant, so when a manager leaves, whose Google calendar was the house's?
+
+[^7sf]: https://kb.7shifts.com/hc/en-us/articles/14620377028627-7shifts-Sales-Forecast
+[^tzwx]: https://www.gotenzo.com/resources/insight/how-does-weather-affect-restaurant-sales/
+[^bh20]: Badorf & Hoberg, *The impact of daily weather on retail sales: An empirical study in brick-and-mortar stores*, Journal of Retailing and Consumer Services **52** (2020) — https://www.sciencedirect.com/science/article/abs/pii/S0969698919303236
+[^bbp17]: Bujisic, Bogicevic & Parsa, *The effect of weather factors on restaurant sales*, Journal of Foodservice Business Research **20**(3) (2017) 350-370 — https://www.tandfonline.com/doi/abs/10.1080/15378020.2016.1209723
+[^om]: https://open-meteo.com/en/terms · https://open-meteo.com/en/docs
+[^omp]: https://open-meteo.com/en/pricing
+[^nws]: https://www.weather.gov/documentation/services-web-api
