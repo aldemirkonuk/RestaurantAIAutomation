@@ -400,3 +400,44 @@ product or help documentation, not from a hands-on account; vendor-claimed figur
 marked. "Table stakes we lack" is measured against each page's §1a Features list, not
 against a fresh read of the running app. `/cellar` and `/wine-agent` have no page note
 in this vault yet, so their rows are written against `/wines` and `/sommelier`.*
+
+### 6a. Adapting the cellar to the house, and whether `/menu` exists (2026-09-03)
+
+The founder's rule: every restaurant is different — a whisky bar, a beer hall, a
+non-alcoholic house with soft drinks only — and a house changes what it carries
+without the platform sensing it. Four calls were made and two studies run.
+
+**Decided (founder, 2026-09-03):** the declared registers (wine · beer · whisky ·
+cocktails · spirits · non-alcoholic · soft drinks) live in **their own table, one
+authoritative row per restaurant** (`restaurant_cellar_registers`, `source:
+inferred | confirmed | manual`, dated) — never a second copy on `restaurants`;
+the platform **infers from the imported menu and inventory, then asks the house
+to confirm at onboarding**; registers **ship now, honestly gated** (a register with
+no ledger behind it says so; counts come from the library's `beverage_kind`;
+stocking waits for OD-113); the prompt shape and the `/menu` question were
+delegated with a backtest and a scenario study attached.
+
+**Backtest of the prompt shape** (four scenarios: a wine house adding six taps, a
+non-alcoholic café adding cocktails, a hotel bar importing 900 items, a seasonal
+spritz list on in June and off in September; three trade sources) — verdict
+**AMEND**: the persistent, dismissible **inline notice** beats an interrupting
+pop-up in all four (an interrupt is dismissed reflexively within weeks and then
+tells nobody anything), with three amendments now in the build: the notice's
+call-to-action names the register ("add your beers to /inventory"), several
+registers switched on together produce one aggregated notice, and the symmetric
+state — a register switched **off while items remain** — gets its own notice and a
+"not on the list" band so nothing is lost.
+
+**`/menu` as a surface** (five operator scenarios: a 400-label wine-led room, a
+seasonal cocktail bar, a three-site group, a fast-casual with a fixed list, a
+hotel with one cellar and three outlets) — **do not build now.** Four of five are
+served by Settings-declared registers plus the inventory-add check; the menu
+tables that exist (`restaurant_menus`, `menu_items`, food and full types unused)
+stay a sensing mechanism, never a second source of truth. **Trigger to build it:**
+Mudavym's first genuinely multi-outlet tenant (a core list with per-site
+additions, or one cellar feeding several outlets), which production does not
+have. The minimum page, when it comes, is the write surface into the declared
+registers, sequenced after OD-113. Both studies live in the session record
+(`menu-page-research-2026-09-03.md` with the five-cause premortem;
+`menu-scenarios-2026-09-03.md`; `backtest-register-prompt-2026-09-03.md`); their
+conclusions are the lines above.
