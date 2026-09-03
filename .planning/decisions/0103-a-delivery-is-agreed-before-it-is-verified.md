@@ -236,7 +236,14 @@ what it changes; none reopens a founder-locked answer.
   research it rests on flags that a delivery _at the restaurant's premises_ may require
   the invoice at delivery, with no 7-day window at all — the modal restaurant case — and
   calls it a question for a Turkish YMM. Those rows are seeded `unknown` (which blocks,
-  D4) until a YMM answers; the founder may already have that answer from their accountant.
+  D4) until a YMM answers; the founder chose (2026-09-03) to keep them `unknown` and put the question to their
+  accountant. The question, verbatim, for a YMM: _"Bir tedarikçi malı doğrudan işletmemizin
+  adresine teslim ettiğinde (işyerinde teslim), e-İrsaliye'ye 7 gün içinde kabul / kısmi
+  kabul / red yanıtı verme hakkımız var mı, yoksa VUK 231/5 gereği fatura teslim anında
+  düzenlenmek zorunda olduğu için bu yanıt penceresi fiilen ortadan kalkıyor mu? Yanıt
+  penceresi varsa süre fiili sevk tarihinden mi, teslim tarihinden mi başlar? İrsaliyeli
+  fatura ile teslimde hangi itiraz süresi geçerlidir (TTK 21/2, 8 gün)?"_ The rows are
+  seeded from the answer, with its date and the YMM named in `vendor_terms.source`.
 - **A9 — Vintage is structured (D6 needs a machine signal).** Vintage, and lot/batch where
   applicable, are RESOLVED-layer fields (ADR 0104 D1); a vintage-only difference raises
   `SUBSTITUTION`, never a silent match — a test, not a hope.
