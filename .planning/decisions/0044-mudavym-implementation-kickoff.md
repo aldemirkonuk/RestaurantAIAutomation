@@ -142,3 +142,43 @@ first, then this branch rebases onto it (tailwind scales, İznik@600,
 citation guard, byte-identical legacy re-check) before any merge is
 proposed. `feat/mudavym-brand` remains the one branch this session never
 pushes to.
+
+## Status — 2026-09-02, wave 4 built, founder review open
+
+Seven more pages are built behind their own flags on `feat/mudavym-design-p4`
+(cut from main `77eb7888`): `/reports` (MERGE), `/notifications` (REWORK),
+`/recommendations` (REWORK), `/calendar` (KEEP), `/settings` (KEEP Editorial +
+"more"), `/profile` (KEEP+ with MCPs · linked accounts · payments), and `/cellar`
+as the parent of `/wines` `/beer` `/whiskey` `/cocktails` (REJECT the crowded
+design, IA decided). Mechanics unchanged from §Mechanics: one `mudavym_design_<page>`
+flag each, OFF by default, columns added by a NEW migration
+`20260902230000_mudavym_design_flags_p4.sql` (the applied 20260831090000 file is
+not widened — an edited applied migration reads as ownerless to parity); legacy
+pages byte-untouched; per-page `06-pages` note carries §1a/§1b/§8/§9/§13; every
+page directory is now in `check_no_seeded_defaults.py`'s `SCAN_ROOTS`.
+
+Page-choice reasoning (a judgment call, recorded here rather than as a new ADR):
+the wave took every page with a REWORK/MERGE/KEEP+ verdict that had no build
+yet, plus the two the founder named most strongly (`/calendar` as the one page
+liked unreservedly, `/cellar` as the decided IA). Left for the next wave:
+`/login` + `/register` ("the most important step" — improve today's, not a
+Next), `/onboarding` (five sketches asked for), `/vendor-prices`, `/promotions`,
+`/wine-agent` (the general chatbot, scope defined, name open), `/sommelier` (HOLD).
+
+Review protocol as before: Sonnet audit per page (all seven ran; defects sent
+back to the builder and fixed with tests), founder elimination on the gallery
+artifact **Mudavym Wave Four**
+(<https://claude.ai/code/artifact/fb2f9455-8d35-411c-85c9-cfb0dbbf7abe> — update
+that URL, never republish new), which records the founder's per-page call
+(Keep / Rework / Merge / Hold + note) in the artifact's own store. The competitor
+reference the founder asked for is DESIGN-FOUNDATION §6 (48 sources); its
+cross-page finding — provenance, not arrangement, is the differentiator on six of
+the seven surfaces — is the design position this wave built to.
+
+Shortcuts and overruns, stated: every page is over the ~900-line guidance the
+brief set (1,340–2,360 lines); the builders each cut once and declared the
+remainder genuine surface. Three page notes were corrected mid-wave because the
+brief's premises were stale (recommendations was not broken; the reports mock
+answerer and unwired generator were already gone). `/settings` failed its first
+audit on five false provenance claims — the fix is to grep every runtime
+(orchestrator and mobile included) before calling a setting "read by nothing".
