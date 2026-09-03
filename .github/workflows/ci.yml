@@ -614,6 +614,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_new_tables_are_locked_down.py
 
+      # ADR 0096. On a controller with no class-level guard, a route carrying
+      # `@Public()` and a route carrying nothing are runtime-identical, so a
+      # reader cannot tell a decision from an omission — which is how OD-20's
+      # five unguarded controllers happened. This does not judge whether
+      # `@Public()` is the right answer; it refuses to let a route decline to
+      # answer. It is also the compensating control for `TenantGuard`'s
+      # deliberate fall-through (`tenant.guard.ts:37-46`), which cannot refuse a
+      # guardless route because global guards run before passport populates
+      # `request.user`.
+      - name: Every route declares whether it is authenticated
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_route_exposure.py
+
       # Three defects that shipped together and shared one shape: a table the
       # design depended on had no writer, or a fallback filled a gap with a
       # confident guess. None was visible in production (2 orders, 1 order line,
