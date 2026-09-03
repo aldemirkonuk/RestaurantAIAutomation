@@ -30,7 +30,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
+import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS } from './rp-sheet';
+
+/**
+ * The two registers added in the fourth pass decode heavily on the way in
+ * (`goals` reshapes a progress payload; `bench` flattens the overview's eight
+ * lenses), so their fixtures go through the catalogue's own `select` — which
+ * is what the data layer does, and which pins the decoder as well as the view.
+ */
+const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw);
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
@@ -99,13 +108,137 @@ const TILL = {
   ],
 };
 
+/** The goals desk's writes, stubbed. `beforeEach` clears the calls. */
+const deskStub = {
+  canWrite: true,
+  readOnlyReason: null as string | null,
+  busy: null as string | null,
+  error: null as string | null,
+  clearError: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  archive: vi.fn(),
+  ask: vi.fn(),
+  asking: null as string | null,
+  proposal: null as unknown,
+  dismiss: vi.fn(),
+  place: vi.fn(),
+};
+
+/** `GET /analytics/goals/:rid/progress` — three goals, three different truths. */
+const GOALS = {
+  status: 'active',
+  goals: [
+    {
+      goal: {
+        id: 'g1',
+        name: 'Lift wine revenue',
+        metric_key: 'wine_revenue',
+        direction: 'at_least',
+        deadline: '2026-12-31',
+        period: 'custom',
+        baseline_value: 1000,
+      },
+      metricLabel: 'Wine revenue',
+      unit: 'currency',
+      current: 4200,
+      target: 9000,
+      progressPct: 0.4667,
+      expectedByNow: 3000,
+      onTrack: true,
+      daysLeft: 40,
+      projectedAtDeadline: 9400,
+      projectionHitsTarget: true,
+    },
+    {
+      goal: {
+        id: 'g2',
+        name: 'Hold purchasing',
+        metric_key: 'purchase_spend',
+        direction: 'at_most',
+        deadline: null,
+        period: 'month',
+        baseline_value: null,
+      },
+      metricLabel: 'Purchasing spend',
+      unit: 'currency',
+      current: null,
+      target: 4000,
+      progressPct: null,
+      expectedByNow: null,
+      onTrack: null,
+      daysLeft: null,
+      projectedAtDeadline: null,
+      projectionHitsTarget: null,
+    },
+    {
+      goal: {
+        id: 'g3',
+        name: 'Attach rate',
+        metric_key: 'wine_attach_rate',
+        direction: 'at_least',
+        deadline: null,
+        period: 'month',
+        baseline_value: null,
+      },
+      unreadable: true,
+      reason: 'the pos_checks query failed',
+    },
+  ],
+  total: 3,
+  computed: 3,
+  truncated: false,
+  supportedMetrics: [
+    { key: 'wine_revenue', label: 'Wine revenue', unit: 'currency' },
+    { key: 'purchase_spend', label: 'Purchasing spend', unit: 'currency' },
+  ],
+  basis: {
+    current: 'each goal recomputed over the window that opens on its creation date',
+    peers: 'no other restaurant’s books are in this comparison',
+  },
+};
+
+/** `GET /analytics/overview/:rid` — the benchmark cutting's one call. */
+const BENCH = {
+  financial: null,
+  cashflow: {
+    basis: { outflow: 'delivered procurement_orders' },
+    spendLast30d: 1200,
+    spendPrev30d: 900,
+    paceDeltaPct: 33.3,
+    committedOpenOrders: 400,
+    openOrderCount: 2,
+  },
+  seasonality: {
+    weekdayProfile: [{ day: 'Monday', mean: 2, stdev: 1, n: 12 }],
+    bestDay: 'Friday',
+    worstDay: 'Monday',
+    tie: false,
+    trendPerDayPct: -0.4,
+    basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
+  },
+  activeGoals: [
+    {
+      name: 'Lift wine revenue',
+      metric_key: 'wine_revenue',
+      baseline_value: 1000,
+      current_value: 4200,
+      target_value: 9000,
+      direction: 'at_least',
+    },
+  ],
+};
+
 function base() {
   return {
     restaurantId: 'r1',
+    goalsDesk: deskStub,
     reading: ok(READING),
     registers: {
       reading: ok(READING),
       till: ok(TILL),
+      goals: ok(decode('goals', GOALS)),
+      bench: ok(decode('bench', BENCH)),
       pacing: ok({
         basis: { outflow: 'delivered procurement_orders' },
         spendLast30d: 1200,
@@ -205,6 +338,12 @@ const arrange = () => fireEvent.click(screen.getByText('Arrange the sheet'));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  deskStub.canWrite = true;
+  deskStub.readOnlyReason = null;
+  deskStub.error = null;
+  deskStub.busy = null;
+  deskStub.asking = null;
+  deskStub.proposal = null;
   hook.current = base();
 });
 
@@ -393,7 +532,9 @@ describe('ReportsNext — the subject is the reader’s too', () => {
       'Show instead of Margin against movement',
     ) as HTMLSelectElement;
     const options = Array.from(swap.options);
-    expect(options).toHaveLength(11);
+    // Thirteen since the fourth pass: the goals desk and the benchmark joined.
+    expect(options).toHaveLength(13);
+    expect(options.map((o) => o.value)).toEqual(expect.arrayContaining(['goals', 'bench']));
     const already = options.find((o) => o.value === 'till');
     expect(already?.disabled).toBe(true);
     expect(already?.textContent).toContain('already on the sheet');
@@ -457,9 +598,31 @@ describe('ReportsNext — the sheet codec', () => {
       ],
     };
     const decoded = decodeSheet(v1);
-    expect(decoded.cuttings).toEqual([
-      { id: 'till', slot: { x: 0, y: 0, w: 6, h: 8 }, graph: 'area' },
-    ]);
+    // The saved slot and the deliberate removal both survive…
+    expect(decoded.cuttings[0]).toEqual({
+      id: 'till',
+      slot: { x: 0, y: 0, w: 6, h: 8 },
+      graph: 'area',
+    });
+    expect(decoded.cuttings.some((c) => c.id === 'ledger')).toBe(false);
+    // …and the two analyses that did not exist when this blob was written are
+    // added at the foot, because their absence was never a decision.
+    expect(decoded.cuttings.map((c) => c.id)).toEqual(['till', 'goals', 'bench']);
+    expect(decoded.cuttings[1].slot.y).toBe(8);
+  });
+
+  it('never resurrects a cutting the reader took off, only ones that did not exist', () => {
+    // A v3 blob is current: every id in it was offered, so `on: false` is a
+    // decision and must be honoured. Nothing is added back.
+    const decoded = decodeSheet({
+      v: 3,
+      blocks: [
+        { i: 'till', x: 0, y: 0, w: 6, h: 8, g: 'area', on: true },
+        { i: 'goals', on: false },
+        { i: 'bench', on: false },
+      ],
+    });
+    expect(decoded.cuttings.map((c) => c.id)).toEqual(['till']);
   });
 
   it('drops a drawing that is no longer true of its analysis', () => {
@@ -704,5 +867,300 @@ describe('ReportsNext — honesty', () => {
     const pacingCut = screen.getByRole('region', { name: 'Spend pacing' });
     fireEvent.click(within(pacingCut).getByText('Show the working'));
     expect(within(pacingCut).getByText(/Outflow: delivered procurement_orders/)).toBeInTheDocument();
+  });
+});
+
+/* ══ FOURTH PASS, 2026-09-03 ══════════════════════════════════════════════ */
+
+/** A sheet with ONE cutting, so a move has no neighbour to argue with. */
+function alone(id = 'till', slot = { x: 0, y: 0, w: 4, h: 4 }, graph = 'area') {
+  return { ...base(), sheet: { cuttings: [{ id, slot, graph }] } };
+}
+
+const gripFor = (title: string) =>
+  within(screen.getByRole('region', { name: title })).getByRole('button', {
+    name: `Move ${title}`,
+  });
+
+describe('ReportsNext — moving a cutting without a pointer', () => {
+  it('gives every cutting a named grip while arranging, and none while reading', () => {
+    paint();
+    // Reading: no handles, no chrome. The sheet is plain paper.
+    expect(screen.queryByRole('button', { name: 'Move Through the till' })).toBeNull();
+    arrange();
+    // The grip is a real button with an accessible name — the exact thing
+    // Grafana's own dashboard is recorded as lacking (grafana#79627).
+    expect(gripFor('Through the till')).toBeInTheDocument();
+    expect(gripFor('The reading')).toBeInTheDocument();
+  });
+
+  it('picks a cutting up on Space, says where it is, and teaches the keys', () => {
+    hook.current = alone();
+    paint();
+    arrange();
+    const grip = gripFor('Through the till');
+    expect(grip).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.keyDown(grip, { key: ' ' });
+    expect(grip).toHaveAttribute('aria-pressed', 'true');
+
+    const said = screen.getByRole('status', { name: '' });
+    expect(said.textContent).toContain('Through the till picked up');
+    expect(said.textContent).toContain('column 1 of 12, row 1');
+    expect(said.textContent).toContain('Shift and an arrow key resize it');
+  });
+
+  it('moves one column per arrow key and resizes on Shift, and both survive the save', () => {
+    hook.current = alone();
+    paint();
+    arrange();
+    const grip = gripFor('Through the till');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight', shiftKey: true });
+    fireEvent.keyDown(grip, { key: 'ArrowDown', shiftKey: true });
+    fireEvent.keyDown(grip, { key: 'Enter' });
+    expect(grip).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByText('Rule it off'));
+    expect(saveSheet).toHaveBeenCalledTimes(1);
+    const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<Record<string, unknown>> };
+    expect(saved.cuttings[0]).toEqual({
+      id: 'till',
+      slot: { x: 2, y: 0, w: 5, h: 5 },
+      graph: 'area',
+    });
+  });
+
+  it('announces the position the RULING gave, not the one the key asked for', () => {
+    // Two cuttings stacked in one column. Nudging the lower one down leaves no
+    // gap — vertical compaction pulls it straight back — and the sentence must
+    // say that rather than reporting the row that was requested.
+    hook.current = {
+      ...base(),
+      sheet: {
+        cuttings: [
+          { id: 'till', slot: { x: 0, y: 0, w: 6, h: 4 }, graph: 'area' },
+          { id: 'ledger', slot: { x: 0, y: 4, w: 6, h: 4 }, graph: 'table' },
+        ],
+      },
+    };
+    paint();
+    arrange();
+    const grip = gripFor('Figures of record');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowDown' });
+    const said = screen.getByRole('status', { name: '' }).textContent ?? '';
+    expect(said).toContain('did not move');
+    expect(said).toContain('row 5');
+    expect(said).not.toContain('row 6');
+  });
+
+  it('puts a cutting back where it was on Escape', () => {
+    hook.current = alone();
+    paint();
+    arrange();
+    const grip = gripFor('Through the till');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'Escape' });
+    expect(screen.getByRole('status', { name: '' }).textContent).toContain('Move cancelled');
+
+    fireEvent.click(screen.getByText('Rule it off'));
+    const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: { x: number } }> };
+    expect(saved.cuttings[0].slot.x).toBe(0);
+  });
+
+  it('ignores arrow keys until a cutting is actually picked up', () => {
+    hook.current = alone();
+    paint();
+    arrange();
+    const grip = gripFor('Through the till');
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.click(screen.getByText('Rule it off'));
+    const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: { x: number } }> };
+    expect(saved.cuttings[0].slot.x).toBe(0);
+  });
+
+  it('offers every keystroke as a button too — WCAG 2.2 SC 2.5.7 is not the keyboard one', () => {
+    hook.current = alone();
+    paint();
+    arrange();
+    fireEvent.keyDown(gripFor('Through the till'), { key: ' ' });
+
+    const bar = screen.getByRole('group', { name: 'Placing Through the till' });
+    for (const name of [
+      'Move Through the till left one column',
+      'Move Through the till right one column',
+      'Move Through the till up one row',
+      'Move Through the till down one row',
+      'Make Through the till one column wider',
+      'Make Through the till one column narrower',
+      'Make Through the till one row taller',
+      'Make Through the till one row shorter',
+    ]) {
+      expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+    }
+
+    // And they do the same thing the keys do — a click, no drag, no keyboard.
+    fireEvent.click(
+      within(bar).getByRole('button', { name: 'Move Through the till right one column' }),
+    );
+    fireEvent.click(within(bar).getByRole('button', { name: 'Make Through the till one row taller' }));
+    fireEvent.click(within(bar).getByRole('button', { name: 'Place it' }));
+    fireEvent.click(screen.getByText('Rule it off'));
+    const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: unknown }> };
+    expect(saved.cuttings[0].slot).toEqual({ x: 1, y: 0, w: 4, h: 5 });
+  });
+
+  it('drops the pick-up when the sheet stops being arranged', () => {
+    hook.current = alone();
+    paint();
+    arrange();
+    fireEvent.keyDown(gripFor('Through the till'), { key: ' ' });
+    expect(screen.getByRole('group', { name: 'Placing Through the till' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Rule it off'));
+    expect(screen.queryByRole('group', { name: 'Placing Through the till' })).toBeNull();
+  });
+});
+
+describe('ReportsNext — a house layout to start from', () => {
+  it('offers the named layouts only while arranging, and applies one to the draft', () => {
+    paint();
+    expect(screen.queryByText('Buying week')).toBeNull();
+    arrange();
+    fireEvent.click(screen.getByText('Buying week'));
+    // The buying sheet carries the reorder list; the house sheet does not.
+    expect(screen.getByRole('region', { name: 'What to buy back' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'The writing desk' })).toBeNull();
+    // Nothing is saved until the sheet is ruled off — it is a starting point.
+    expect(saveSheet).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReportsNext — the goals desk', () => {
+  it('shows each goal against its own target, and says so when progress is unknown', () => {
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    expect(within(goals).getByText('Lift wine revenue')).toBeInTheDocument();
+    // The bar is the SERVER's progressPct, and it is labelled with it.
+    expect(within(goals).getByRole('img', { name: '46.7% of the target' })).toBeInTheDocument();
+    // A goal whose progress the engine could not compute draws NO bar — an
+    // empty track would claim the engine answered zero.
+    expect(
+      within(goals).getByText(/Progress is unknown — the engine returned no figure/),
+    ).toBeInTheDocument();
+    // And a goal that could not be scored at all names the failure.
+    expect(
+      within(goals).getByText(/could not be scored \(the pos_checks query failed\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('lets an owner set, edit, archive and ask — and asks with the goal’s own id', () => {
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Archive Lift wine revenue' }));
+    expect(deskStub.archive).toHaveBeenCalledWith('g1');
+
+    fireEvent.click(
+      within(goals).getByRole('button', {
+        name: 'Ask the book which analysis shows Lift wine revenue',
+      }),
+    );
+    expect(deskStub.ask).toHaveBeenCalledWith('g1', 'Lift wine revenue');
+
+    fireEvent.click(within(goals).getByRole('button', { name: 'Edit Lift wine revenue' }));
+    // The measure is locked on an edit, and the form says why.
+    const measure = within(goals).getByLabelText('Measure') as HTMLSelectElement;
+    expect(measure.disabled).toBe(true);
+    expect(within(goals).getByText(/baseline was taken against it when it was set/)).toBeInTheDocument();
+  });
+
+  it('is read-only for a role that cannot set goals, and says which role can', () => {
+    deskStub.canWrite = false;
+    deskStub.readOnlyReason = 'Goals are set by owners and managers.';
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    expect(within(goals).getByText('Goals are set by owners and managers.')).toBeInTheDocument();
+    expect(within(goals).queryByRole('button', { name: 'Edit Lift wine revenue' })).toBeNull();
+    expect(within(goals).queryByRole('button', { name: /Set a goal/ })).toBeNull();
+  });
+
+  it('shows the book’s proposal as a proposal — labelled, and never as a caption', () => {
+    deskStub.proposal = {
+      goalId: 'g1',
+      goalName: 'Lift wine revenue',
+      cutting: { id: 'till', graph: 'area', days: 90 },
+      why: 'The till is where wine revenue is booked.',
+      refusal: null,
+    };
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    expect(
+      within(goals).getByText(/the assistant’s words, not a measurement/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(goals).getByRole('button', { name: 'Put it on the sheet' }));
+    expect(deskStub.place).toHaveBeenCalledWith({ id: 'till', graph: 'area', days: 90 });
+  });
+
+  it('says plainly when the book proposed nothing, and offers nothing to place', () => {
+    deskStub.proposal = {
+      goalId: 'g1',
+      goalName: 'Lift wine revenue',
+      cutting: null,
+      why: null,
+      refusal: 'ANTHROPIC_API_KEY is not configured on this gateway, so no model can be asked.',
+    };
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    expect(within(goals).getByText(/ANTHROPIC_API_KEY is not configured/)).toBeInTheDocument();
+    expect(within(goals).queryByRole('button', { name: 'Put it on the sheet' })).toBeNull();
+  });
+});
+
+describe('ReportsNext — the benchmark cutting', () => {
+  it('compares the house with its own past and says there are no peers in the data', () => {
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).getByText(/No other house is in this comparison/)).toBeInTheDocument();
+    expect(
+      within(bench).getByText(/there is no market median to stand beside these figures/),
+    ).toBeInTheDocument();
+  });
+
+  it('names the ambiguity when both buying windows read zero', () => {
+    // Measured live on 2026-09-03: the dev tenant returns 0 and 0, and
+    // `getCashflow` sums a loader that degrades a failed query to `[]`. A pair
+    // of zeros is therefore "no delivered order came back", not "nothing was
+    // bought" — and the cutting must not present it as a measured standstill.
+    hook.current = withRegister(
+      'bench',
+      ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
+    );
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(
+      within(bench).getByText(/Both buying windows came back at zero/),
+    ).toBeInTheDocument();
+    expect(within(bench).getByText(/not necessarily .nothing was bought./)).toBeInTheDocument();
+    // …and it draws no bars at all: two bars at zero are an empty axis.
+    expect(within(bench).getByText(/no bars are drawn/)).toBeInTheDocument();
+  });
+
+  it('does not say it when the windows carry real figures', () => {
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/Both buying windows came back at zero/)).toBeNull();
+  });
+
+  it('withholds every figure the overview call did not return, rather than zeroing them', () => {
+    hook.current = withRegister('bench', ok(decode('bench', { ...BENCH, cashflow: null })));
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(
+      within(bench).getByText(/The buying lens did not answer inside the overview call/),
+    ).toBeInTheDocument();
   });
 });

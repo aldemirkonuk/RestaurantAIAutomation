@@ -6,8 +6,9 @@
  *    analysis, then maybe people don\u2019t want it — they\u2019re going to select from
  *    that aspect."          — the founder's review of the first pass, 2026-09-03
  *
- * Eleven entries, defined in `rp-registers-trade.tsx` and
- * `rp-registers-house.tsx` and assembled here. Every one of them is an endpoint
+ * Thirteen entries, defined in `rp-registers-trade.tsx`,
+ * `rp-registers-house.tsx`, `rp-registers-bench.tsx` and
+ * `rp-registers-goals.tsx` and assembled here. Every one of them is an endpoint
  * the gateway actually serves, cited below by `analytics.controller.ts` line,
  * plus the writing desk, which has no endpoint and says so. Nothing here is
  * aspirational: an analysis that is not in this file cannot be put on the
@@ -35,6 +36,8 @@ import type { AnalysisId, GraphType } from './rp-sheet';
 import type { AnalysisSpec } from './rp-spec';
 import { ahead, pacing, reading, till, week } from './rp-registers-trade';
 import { ledger, quadrants, restock, seats, service, writing } from './rp-registers-house';
+import { bench } from './rp-registers-bench';
+import { goals } from './rp-registers-goals';
 
 export type { AnalysisSpec, ViewCtx } from './rp-spec';
 export type {
@@ -52,6 +55,8 @@ export type {
   SeatsRegister,
   ServiceRegister,
 } from './rp-registers-house';
+export type { BenchGoalRow, BenchRegister } from './rp-registers-bench';
+export type { GoalRow, GoalsRegister } from './rp-registers-goals';
 
 /* ─────────────────────────────────────────────────────── the catalogue ── */
 
@@ -59,14 +64,17 @@ export type {
  * Declared as a keyed map, not an array of `{ id, … }` objects, so the shape
  * cannot be read as a table of seeded rows (ADR 0051 / S1). Every path below
  * is a route on `apps/api-gateway/src/analytics/analytics.controller.ts`:
- * insights :292 · pos-revenue :671 · cashflow :644 · seasonality :634 ·
- * forecast :209 · menu-engineering :614 · financial :126 ·
- * table-performance :425 · waiters :443 · inventory-science :156. (Every line
- * re-grepped from the `@Get(...)` decorators on 2026-09-03.)
+ * insights :293 · pos-revenue :738 · cashflow :711 · seasonality :701 ·
+ * forecast :210 · menu-engineering :681 · financial :127 ·
+ * table-performance :426 · waiters :444 · inventory-science :157 ·
+ * goals/:rid/progress :518 · overview :788. (Every line re-grepped from the
+ * `@Get(...)` decorators after the fourth pass, 2026-09-03.)
  */
 export const CATALOGUE: Record<AnalysisId, AnalysisSpec> = {
   reading,
   till,
+  goals,
+  bench,
   pacing,
   week,
   ahead,

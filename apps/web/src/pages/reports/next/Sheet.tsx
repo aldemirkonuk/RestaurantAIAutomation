@@ -26,9 +26,18 @@
  * dashed edge and a grab cursor, and lifting one raises it on `tuck`. Letting
  * go rules the account off and writes the arrangement to the reader's own
  * preferences. The ruling is the promise that a cutting lands square.
+ *
+ * FOURTH PASS, 2026-09-03 — the same paper is now movable from the keyboard.
+ * `layouts` was always a CONTROLLED prop (react-grid-layout re-derives from it
+ * whenever it stops deep-equalling the previous one), so `rp-arrange.ts` writes
+ * the same draft this component reads and the grid follows. Nothing in the
+ * pointer path below changed; the keyboard is a second writer of one state, not
+ * a second interaction. The only thing this file gained is the GHOST: the
+ * outline of where a picked-up cutting started, so "Escape puts it back" names
+ * a place the reader can see.
  */
 
-import { useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Responsive,
   WidthProvider,
@@ -37,9 +46,13 @@ import {
 } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { tuck } from '@/lib/mudavym';
+import { colsForWidth, slotRect } from './rp-arrange';
 import {
-  SHEET_COLS,
+  SHEET_BREAKPOINTS,
+  SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
+  SHEET_MIN_H,
+  SHEET_MIN_W,
   SHEET_ROW_HEIGHT,
   type AnalysisId,
   type Slot,
@@ -62,15 +75,22 @@ export interface SheetProps {
   cuttings: SheetCutting[];
   arranging: boolean;
   onMove: (slots: Partial<Record<AnalysisId, Slot>>) => void;
+  /** The sheet element, shared with `useArrange` so both measure one ruling. */
+  containerRef?: (el: HTMLDivElement | null) => void;
+  /** Where a keyboard-held cutting started. Drawn as an outline, not a child. */
+  ghost?: Slot | null;
 }
 
-export function Sheet({ cuttings, arranging, onMove }: SheetProps) {
+export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: SheetProps) {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
+
   const layouts = useMemo((): ResponsiveLayouts => {
     const lg: LayoutItem[] = cuttings.map((c) => ({
       i: c.id,
       ...c.slot,
-      minW: 3,
-      minH: 3,
+      minW: SHEET_MIN_W,
+      minH: SHEET_MIN_H,
       static: !arranging,
     }));
     return { lg, md: lg, sm: lg, xs: lg, xxs: lg };
@@ -86,17 +106,46 @@ export function Sheet({ cuttings, arranging, onMove }: SheetProps) {
     [arranging, onMove],
   );
 
+  /* The ghost is positioned from react-grid-layout's OWN `calcGridItemPosition`
+     against the measured width, so it lands on the same pixel the item did
+     rather than on a second, drifting idea of where column 4 is. Absolute
+     inside `.rp-sheet`, which is `position: relative`, and never a grid child:
+     a real child would take part in compaction and push the sheet around. */
+  useLayoutEffect(() => {
+    if (!ghost || !el) {
+      setGhostBox(null);
+      return;
+    }
+    const width = el.clientWidth;
+    const rect = slotRect(ghost, width, colsForWidth(width));
+    setGhostBox(
+      rect
+        ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+        : null,
+    );
+  }, [el, ghost]);
+
+  const attach = useCallback(
+    (node: HTMLDivElement | null) => {
+      setEl(node);
+      containerRef?.(node);
+    },
+    [containerRef],
+  );
+
   return (
     <div
+      ref={attach}
       className="rp-sheet"
       data-arranging={arranging}
       style={{ ['--rp-tuck' as keyof CSSProperties]: `${tuck.ms}ms ${tuck.easing}` } as CSSProperties}
     >
+      {ghostBox && <div className="rp-ghost" style={ghostBox} aria-hidden />}
       <Grid
         className="layout"
         layouts={layouts}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        cols={{ lg: SHEET_COLS, md: SHEET_COLS, sm: 6, xs: 4, xxs: 2 }}
+        breakpoints={SHEET_BREAKPOINTS}
+        cols={SHEET_BREAKPOINT_COLS}
         rowHeight={SHEET_ROW_HEIGHT}
         margin={SHEET_MARGIN}
         containerPadding={[0, 0]}

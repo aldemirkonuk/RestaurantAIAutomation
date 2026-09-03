@@ -685,3 +685,240 @@
   color: var(--ink-3);
   border-top: 1px solid var(--paper-2);
 }
+
+/* ══ FOURTH PASS, 2026-09-03 ═══════════════════════════════════════════════
+   Arranging without a pointer, and the goals desk.
+
+   Two rules govern everything below.
+
+   (1) A control that exists for the keyboard must be VISIBLE, or it is a
+       secret. The grip and the placing bar are ordinary ink-on-paper controls
+       that appear while the sheet is being arranged — nothing here is a
+       screen-reader-only affordance, because WCAG 2.5.7 is about people who
+       use a pointer and cannot drag, and they need to SEE the alternative.
+
+   (2) The ghost is drawn from react-grid-layout's own position maths, so it
+       lands on the same pixel the cutting left. It is an outline, never a
+       fill: a filled rectangle would read as a second cutting. */
+
+/* ── the grip ─────────────────────────────────────────────────────────────
+   Same weight as "Take off" so neither reads as the primary act, but it sits
+   first in the tab order because moving is the common one. */
+.rp-grip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: grab;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-grip[aria-pressed='true'] {
+  cursor: grabbing;
+  border-color: var(--seal);
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+}
+
+/* A cutting that is being placed reads as lifted — the same `tuck` shadow a
+   dragged one takes, so the two paths look like one interaction. */
+.rp-cut[data-held='true'] {
+  border-style: solid;
+  border-color: var(--seal);
+  box-shadow: 0 6px 18px -8px var(--seal-ring);
+}
+
+/* ── the placing bar: the single-pointer path (WCAG 2.2 SC 2.5.7) ───────── */
+.rp-placing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--paper-2);
+  background: var(--seal-tint);
+}
+.rp-placing__set {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.rp-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--seal-ring);
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+.rp-step[data-strong='true'] {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+
+/* ── the ghost: where a held cutting started ──────────────────────────────
+   `Escape puts it back` names a place, so the place is drawn. */
+.rp-ghost {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px dashed var(--seal);
+  border-radius: 10px;
+  background: transparent;
+  opacity: 0.55;
+}
+
+/* The live region carries the running position. Clipped rather than
+   `display: none`, which removes it from the accessibility tree entirely. */
+.rp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.rp-arrange__help {
+  margin: 0;
+}
+
+/* ── small button states the page had not needed until now ─────────────── */
+.rp-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rp-mini[data-strong='true'] {
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+  border-color: var(--seal);
+}
+.rp-mini[disabled],
+.rp-step[disabled] {
+  border-style: dashed;
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+/* ── the goals desk ───────────────────────────────────────────────────── */
+.rp-goals {
+  display: grid;
+  gap: 10px;
+}
+.rp-goals__error {
+  color: var(--seal-deep);
+}
+.rp-goals__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.rp-goal {
+  display: grid;
+  gap: 5px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--paper-2);
+}
+.rp-goal:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.rp-goal__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rp-goal__name {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-1);
+}
+.rp-goal__line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rp-mono {
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-1);
+}
+
+/* A progress bar is drawn ONLY from the server's own progressPct. An unknown
+   draws no track at all — an empty track reads as "nothing has happened". */
+.rp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+.rp-bar span {
+  display: block;
+  height: 100%;
+  background: var(--seal);
+}
+
+.rp-goalform {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--seal-ring);
+  border-radius: 8px;
+}
+.rp-goalform > .rp-row,
+.rp-goalform > .rp-cap {
+  grid-column: 1 / -1;
+}
+.rp-input {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+.rp-page .rp-input {
+  background: var(--paper-0) !important;
+  color: var(--ink-1) !important;
+}
+
+/* The assistant's proposal. Dashed, because nothing has been committed. */
+.rp-proposal {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--seal);
+  border-radius: 8px;
+  background: var(--seal-tint);
+}
+.rp-proposal .rp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

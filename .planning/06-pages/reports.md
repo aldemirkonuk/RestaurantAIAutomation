@@ -52,9 +52,29 @@ persistence.
   remove one, "Add a cutting" to put any catalogued analysis on. One toggle
   ("Arrange the sheet") enters arranging; "Rule it off" saves; "Put it all
   back" restores the house sheet.
-- **A catalogue of eleven analyses**, each an endpoint the gateway actually
-  serves (§4). Eight lie on the default sheet; `seats`, `service` and `restock`
+- **A catalogue of thirteen analyses**, each an endpoint the gateway actually
+  serves (§4). Ten lie on the default sheet; `seats`, `service` and `restock`
   are one click away.
+- **Move and resize a cutting from the keyboard** (fourth pass): Tab to a
+  cutting's **Move** grip, Space to pick it up, arrow keys to move one grid
+  unit, Shift+arrow to resize, Enter to place, Escape to put it back — with a
+  live region announcing the position the ruling GAVE. Every one of those ten
+  outcomes is also a real button (the placing bar), so a pointer that cannot
+  drag has the same reach (WCAG 2.2 SC 2.5.7).
+- **A ghost outline** marks where a picked-up cutting started, so "Escape puts
+  it back" names a place the reader can see.
+- **Named house layouts** — "The house sheet", "Before service", "Buying week",
+  "Month end". Applying one writes the DRAFT, never the saved sheet: it is a
+  starting point you then edit.
+- **The Goals desk** (`goals`, on the default sheet): every goal against its own
+  target with the SERVER's own `progressPct`, pace, days left and Holt
+  projection; set, edit and archive in place; and **"Ask the book"** — the
+  assistant picks which catalogued analysis shows a goal, validated against a
+  closed catalogue on both sides, and proposes it for the reader to place.
+- **"Against ourselves"** (`bench`, on the default sheet): this house against
+  its own past — buying this month against last, the week's own extremes, each
+  goal against its baseline — and one sentence saying plainly that no other
+  house's books are in the comparison.
 - **Per cutting: "Show instead"** — change which analysis occupies that square
   of paper, keeping its position and size. An analysis already on the sheet is
   offered but disabled (a duplicate is not a comparison).
@@ -98,6 +118,8 @@ is what it still cannot do, and why.
 | Cutting | What it answers | Window | Drawings offered |
 |---|---|---|---|
 | The reading | What the engine has noticed, in its own sentences | the stored insight feed, hourly | table · bars |
+| Goals | What this house said it would do, and how far along it is | each goal from the day it was set | table (the desk) · bars · one figure |
+| Against ourselves | This house against its own past — and that no peer is in the data | 180d buying · 90d weekdays · each goal | bars · table · one figure |
 | Through the till | What guests actually paid, day by day | 7 / 30 / 90 days, your choice | area · line · bars · **heat map** · table · one figure |
 | Spend pacing | Whether buying runs hot or cold against last month | 180 days, two 30-day windows | bars · table · one figure |
 | The week's shape | Which nights carry the week | last 90 days of consumption | bars · line · area · table |
@@ -111,8 +133,12 @@ is what it still cannot do, and why.
 
 **What you can do to a sheet**
 
-- **Move** any cutting by dragging it anywhere on the ruling, while arranging.
-- **Resize** any cutting by pulling its bottom-right corner, while arranging.
+- **Move** any cutting by dragging it anywhere on the ruling, while arranging —
+  or from the keyboard (grip → Space → arrows → Enter), or with the placing
+  bar's buttons, with no drag and no keyboard.
+- **Resize** any cutting by pulling its bottom-right corner, while arranging —
+  or with Shift+arrow, or with the four size buttons.
+- **Start from a named house layout** and then edit it into your own.
 - **Change what a cutting shows** ("Show instead") to any of the eleven; the
   square of paper keeps its position and size.
 - **Change how it is drawn** ("Draw as") to any drawing that is true of that
@@ -126,6 +152,8 @@ is what it still cannot do, and why.
 - **Change the till's window** (7 / 30 / 90) from inside the till cutting. That
   is the only period control on the page, because it is the only register whose
   endpoint takes one.
+- **Set, edit and archive a goal** on the goals desk (owners and managers), and
+  ask the book which catalogued analysis to put on the sheet to watch it.
 
 **What every drawing tells you**
 
@@ -145,21 +173,37 @@ is what it still cannot do, and why.
 
 - ⌘K / Ctrl-K opens "Ask the book"; Escape closes it.
 - Every chip, filter, window button, "Show instead", "Draw as", "Take off",
-  "Add a cutting" and "Show the working" is a real control with a visible focus
-  ring, reachable by Tab.
+  "Add a cutting", "Show the working", every house layout and every goal control
+  is a real control with a visible focus ring, reachable by Tab.
+- **Arranging** (fourth pass): Tab reaches each cutting's **Move** grip;
+  Space or Enter picks it up; arrows move one grid unit; Shift+arrow resizes;
+  Enter or Space places; Escape puts it back. An `aria-live="assertive"` region
+  announces the resulting position after every step.
 
 **What it still cannot do, and why**
 
-- **Move or resize a cutting from the keyboard.** `react-grid-layout` exposes no
-  keyboard affordance and the shipping canvas has the same limitation. Everything
-  else is reachable, and the default sheet is usable without ever arranging.
+- ~~**Move or resize a cutting from the keyboard.**~~ **BUILT 2026-09-03**
+  (fourth pass). `react-grid-layout` still exposes no keyboard affordance — its
+  own request for one, react-grid-layout#936, went stale and was closed
+  unimplemented — but its layout is a CONTROLLED prop and this page already
+  holds it, so the keyboard writes the same draft the pointer writes and runs
+  the library's own `moveElement` + `compact` to do it. No new dependency.
+  `rp-arrange.ts`.
 - **Draw a weekday × hour heat map.** No analytics endpoint returns hour-of-day
   grain today — `pos_checks.opened_at` would have to be bucketed by hour in the
   gateway first (§13.13). Weekday × week is offered because `pos-revenue` really
   does return a date per row.
 - **Discard an arrangement mid-edit.** "Rule it off" saves and "Put it all back"
-  resets to the house sheet; there is no cancel. Adding a fourth button was not
+  resets to the house sheet; there is no cancel. Escape cancels a single
+  keyboard MOVE, which is not the same thing. Adding a fourth button was not
   worth it until the founder says it is.
+- **Compare this house with any other house.** No peer set exists — Mudavym
+  holds one tenant's books (memory: production-tenant-shape). "Against
+  ourselves" says so in words rather than drawing a median nobody measured.
+- **Enforce the goals-desk role gate server-side.** The analytics routes carry
+  `JwtAuthGuard` at class level and no role guard; the desk hides its controls
+  from a role that is not owner or manager, which is a courtesy, not an
+  enforcement (§9.8).
 - **Write a report.** `POST /reports/generate` still files a `pending` row that
   nothing fills (OD-81). The button is off, with the reason.
 - **Show two cuttings of the same register.** Deliberate: a duplicate is not a
@@ -174,11 +218,16 @@ this list is the note-side index (ADR 0044 §2).
 |---|---|---|
 | `rp-open` | `settle` 420ms | the opening line on mount — opacity + 6px rise, once |
 | `rp-rule` | `settle` 320ms | the twelve-column feint ruling fading up when Arrange is entered, down when the sheet is ruled off |
-| `rp-lift` | `tuck` 300ms | a cutting's shadow rising while it is dragged; duration + easing injected as `--rp-tuck` from the token, so the curve on screen IS `tuck` |
+| `rp-lift` | `tuck` 300ms | a cutting's shadow rising while it is dragged **or held from the keyboard**; duration + easing injected as `--rp-tuck` from the token, so the curve on screen IS `tuck` |
 | `rp-ink` | `ink` 160ms | hover/focus micro-states on cuttings, chips, buttons, links; nothing translates |
 | `rp-working` | `turn` 420ms | "Show the working" — the server's `basis` sentences on `grid-rows 0fr→1fr` |
 | `rp-ask` | `settle` 320ms | the ⌘K palette panel arriving |
 | `rp-sheen` | — (not a token) | skeleton bars while a register is genuinely in flight; identical to the dashboard's `skel-sheen`. Never shown for an unknown |
+
+The fourth pass added the keyboard path and **no new motion**: the ghost and the
+placing bar appear and vanish with the pick-up, and a cutting moved by an arrow
+key does not tween between grid positions — a tweened cutting would be somewhere
+the live region says it is not.
 
 Deliberate non-motions: no `tally` (a figure of record is read, not watched, and
 half of them are em dashes); no chart entrance animation (`isAnimationActive=
@@ -399,6 +448,178 @@ renders an em dash that means "we did not look". §13.15. (c) A weekday × **hou
 heat map is not built because no endpoint has hour grain (§9.5). (d) No
 `HoldToApprove` anywhere: nothing on this page commits anything to another party.
 
+### Fourth pass, 2026-09-03
+
+**What the founder asked**, verbatim:
+
+> - the Goals section that owners/managers decide, and it can be edited (will be
+>   using AI to create the analytics and their wanted feature if not already
+>   created), and then they will have access to edit change as they like. Will be
+>   available to visible.
+> - Keyboard drag and resize are not supported by the grid library; everything
+>   else is keyboard-reachable. research web find a way to be able to do that,
+>   engineering part is important research and analyze — if found ways create me
+>   a sketch for it
+> - For competitor lens, I understand it. but also it s a great feature to have,
+>   but it has to be somehow editable for personalized screens.
+
+#### 1. Keyboard drag and resize — the research, and why it needed no dependency
+
+**The claim in §9 was true and the conclusion drawn from it was wrong.**
+`react-grid-layout` still exposes no keyboard affordance; its own request for one
+([react-grid-layout#936](https://github.com/react-grid-layout/react-grid-layout/issues/936),
+opened 2019 — *"you should be able to tab to the resize handle, hit space or
+enter to activate it, and then use the arrow keys to resize"*) went stale and was
+closed unimplemented. What does not follow is that the limitation is the
+library's to fix. Measured in the installed package rather than inferred from the
+docs (`apps/web/node_modules/react-grid-layout@2.2.2/dist/chunk-XM2M6TC6.mjs`):
+
+- `ResponsiveGridLayout` re-derives its internal layout whenever the `layouts`
+  prop stops deep-equalling the previous one (`derivedLayout`, `:1348-1361`) —
+  so the prop is **controlled**, and a parent that writes a new slot re-renders
+  the grid at that slot without touching the library's event system.
+- The library's own pointer path is two calls: `moveElement(...)` then
+  `compactor.compact(...)` (`:800-811` for a drag, `:925-930` for a resize), and
+  **both are exported from `react-grid-layout/core`**. The keyboard therefore
+  runs the *same arithmetic the mouse runs*, not an approximation: a keyboard
+  move and a dragged move to the same square produce a bit-identical layout,
+  because they are the same function.
+
+`apps/web/src/pages/reports/next/rp-arrange.ts` is that, and nothing else was
+added to `package.json`.
+
+**Where the interaction came from.** `@dnd-kit`'s `KeyboardSensor`
+(<https://dndkit.com/api-documentation/sensors/keyboard>) is the canonical
+implementation of the pick-up model, and its defaults are taken verbatim:
+`start: ['Space','Enter']`, `end: ['Space','Enter']`, `cancel: ['Escape']`.
+`react-aria`'s drag-and-drop (<https://react-aria.adobe.com/dnd>) contributes the
+**drag affordance** — a real focusable named control rather than a `tabIndex` on
+the panel — which is exactly the defect
+[grafana#79627](https://github.com/grafana/grafana/issues/79627) records against
+Grafana's dashboard, built on this same library: panels carry `tabIndex="0"` with
+no accessible name and *"keyboard users are unable to interact with the move
+panel functionality"*. Neither library was adopted: running either beside RGL
+means two drag systems that must agree about collision and compaction on every
+frame. React Flow's accessibility guide
+(<https://reactflow.dev/learn/advanced-use/accessibility>) uses arrows to move a
+selected node and **Shift for a bigger step**; Shift is resize here instead,
+because one unit of a twelve-column ruling is already a coarse step and resize
+has no other keyboard route at all.
+
+**Why there is also a bar of buttons.** WCAG 2.2 SC 2.5.7 Dragging Movements
+(<https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html>) requires
+that *"all functionality that uses a dragging movement for operation can be
+achieved by a single pointer without dragging"*, and its Understanding document
+states that keyboard equivalence (2.1.1) and pointer operability *"are evaluated
+independently"* — so the arrow keys alone do **not** satisfy it. The placing bar
+gives every one of the ten outcomes a real button, which is the W3C's own listed
+sufficient technique (G219; "up/down buttons to reorder list items").
+
+**The strongest counter-argument, and why it loses here.** Atlassian's
+`pragmatic-drag-and-drop` accessibility guidance
+(<https://atlassian.design/components/pragmatic-drag-and-drop/accessibility-guidelines>)
+argues the opposite outright: do not build directional keyboard drag, give each
+item an **action menu of named outcomes** instead — *"directional arrow movement
+does not translate well to all experiences"*, menus avoid screen-reader mode
+switching, and they user-tested as more discoverable. It is the better answer for
+a board, where destinations have names ("move to Doing", "move to top"). It loses
+on a free twelve-column canvas because the outcomes ARE the coordinates: a menu
+would have to enumerate twelve columns times n rows, which is not a menu, and a
+short list of swaps offers strictly less than the pointer can do — a second-class
+path. Sketch 096 direction C draws it anyway, so the founder can see the trade.
+What their argument DID win is the announcement discipline: a live region that
+names the item and both its old and its new position.
+
+**The one house rule this adds — announce the position the SHEET gave.**
+Vertical compaction means a nudge can be undone by the ruling, and a nudge into
+an occupied square displaces a neighbour. Every sentence is built from the layout
+*after* `compact()` has run, read back out of the result; when the result equals
+what was there before it says *"did not move"*. Announcing the intent would be
+the page reporting its own request as an outcome — the same fault as reporting an
+absence as health (ADR 0020). `rp-arrange.test.ts` pins it (21 cases).
+
+**Sketch**: `.planning/sketches/096-reports-keyboard-arrange/` — index plus three
+directions (the built grip-and-placing-bar, the compass card, the move-to menu),
+each showing the focus ring, the ghost outline and the announcement.
+
+#### 2. The Goals section
+
+`GET/POST /analytics/goals/:rid` and `PUT …/status` already existed
+(`analytics.controller.ts`); three things did not, and were built:
+
+| Route | Why it did not exist before, and what it fixes |
+|---|---|
+| `GET /analytics/goals/:rid/progress` | `listGoals` returns the STORED `current_value`, written at creation as the baseline and refreshed only when one goal's progress is opened (`goals.service.ts:359`). A bar drawn off the list reads "nothing done yet" for a goal that is half met — an absence rendered as a measurement. This recomputes each one, caps at six and **reports the cap** rather than applying it silently |
+| `PATCH /analytics/goals/:rid/:goalId` | There was no edit route at all; only status. `metricKey` is deliberately NOT editable — the baseline was measured against the old metric and every figure is counted from it — and the form says so |
+| `POST /analytics/goals/:rid/:goalId/cutting-spec` | "AI will create the analytics" (below) |
+
+**"AI will create the analytics", read honestly.** The forbidden reading is a
+model writing a sentence or a figure that reaches a chart: the insight engine is
+deterministic and its sentences are templates over computed arithmetic, which is
+the whole reason a reader can trust them (ADR 0020/0051). The built reading is a
+model **configuring** that engine. `apps/api-gateway/src/analytics/report-cuttings.ts`
+holds a frozen catalogue of the eleven analyses a model may name, with the
+drawings that are true of each and the windows the page offers;
+`checkCuttingSpec` validates the model's three enum values and **refuses**
+anything outside it rather than repairing it — a repaired spec would be shown to
+the reader as the assistant's proposal while being something else. That refusal
+is the lesson `ux-optimizer.service.ts` already learned the hard way
+(`filterProposals`: *"the parser used to accept any string, so an invented kind
+was written straight into `ux_proposals.kind` as though it were real"*). The one
+free-text field the model returns is its reason, printed as *"the assistant's
+words, not a measurement"* and never as a caption, an axis or a figure. The call
+goes through `common/model-client` with NF-A metadata (`taskType:
+"goal_cutting_spec"`), so it is attributable and separable in the spend ledger.
+Without `ANTHROPIC_API_KEY` the route answers `available: false` with the reason
+and proposes nothing — no hand-written "sensible" fallback, because a fallback
+dressed as an assistant's answer is the fabrication this seam exists to prevent.
+The page validates the returned id AGAIN against its own catalogue, so a drift
+between the two copies surfaces as a sentence, never as a blank square.
+
+#### 3. Competitor lens — both readings, on the founder's call
+
+- **(a) "the lens ideas landing as cuttings a person can keep or remove per
+  personal sheet" is ALREADY TRUE, and here is where.** Every §6 idea that got
+  built is a catalogue entry, and the catalogue is the "Show instead" list; the
+  arrangement — which cuttings, where, how drawn — is stored per USER under
+  `reportsSheet` (§8), not per restaurant. §6's *"blocks that cite their
+  working"* is "Show the working" (the server's own `basis`). §6's *"a house
+  layout, not an empty one"* was the one "need it: now" idea still missing and
+  is now built: four named layouts that write the DRAFT, so they are a starting
+  point you then edit — which is the literal reading of *"editable for
+  personalized screens"*.
+- **(b) The benchmark cutting is built as "Against ourselves"** — one call to
+  `GET /analytics/overview/:rid`, drawing only comparisons the SERVER computed:
+  buying this 30 days against the 30 before with the engine's own
+  `paceDeltaPct`, the week's own extremes (withheld on a tie), and each active
+  goal's baseline → now → target printed side by side with **no delta computed
+  here**, because both operands are on screen and the page has no business
+  making a claim about the distance. It states in words that **no other house's
+  books are in the comparison**, and points at the one median the engine does
+  publish (the menu-engineering crosshair) rather than duplicating it. There is
+  no peer set to draw and none was invented.
+
+#### Two alternative directions considered and not built (this pass)
+
+1. **The compass card** (sketch 096-B) — the same handlers behind a floating
+   3×3 pad anchored to the held cutting, with named outcomes underneath. Calmer
+   inside a small cutting; it costs a floating layer that must chase a cutting
+   which moves on every keystroke, and can end up off-screen at the foot of a
+   long sheet. It is a swap, not a rewrite, if the founder prefers it.
+2. **A role guard on the goals write routes.** The desk gates its controls on
+   `activeRole`, which is a courtesy. Adding `RolesGuard` to the analytics
+   controller would gate `EngineInsightsPanel`'s existing goal POST on the
+   shipping page too — a behaviour change to a surface this pass does not own.
+   Filed as §9.8 and §13.17.
+
+**Substituted or left out, and why.** (a) The goals desk lives on the **Table**
+drawing, because it is a list of records with a form, and a form is not a
+picture; the other two drawings say so in one line rather than hiding the desk
+silently. (b) `suggestedActions` (the insight sentences `getGoalProgress`
+already returns) are not rendered — "The reading" is the cutting for engine
+sentences, and printing four of them inside every goal would be the same feed
+twice. (c) No `HoldToApprove`: nothing here commits anything to another party.
+
 ## 2. Entry
 
 In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
@@ -415,36 +636,50 @@ In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
   actions, the arrange bar), `Sheet.tsx` (the react-grid-layout canvas: move +
   resize), `Cutting.tsx` (one renderer for every analysis, plus the two
   switches), `rp-spec.ts` (the contract a catalogue entry signs),
-  `rp-registers-trade.tsx` + `rp-registers-house.tsx` (**the eleven analyses**:
-  path, window, truthful drawings, decoder and view builder each),
-  `rp-catalogue.tsx` (assembles them; the only file that names all eleven),
+  `rp-registers-trade.tsx` + `rp-registers-house.tsx` + `rp-registers-bench.tsx`
+  + `rp-registers-goals.tsx` (**the thirteen analyses**: path, window, truthful
+  drawings, decoder and view builder each; the last two added in the fourth
+  pass — the benchmark, and the goals desk, which is the only one that writes),
+  `rp-catalogue.tsx` (assembles them; the only file that names all thirteen),
+  `rp-arrange.ts` (**the keyboard's half of the canvas** — RGL's own
+  `moveElement`/`compact` over the same controlled layout, plus every sentence
+  the live region reads), `Placing.tsx` (the grip, the placing bar and the
+  announcer), `useGoalsDesk.ts` (the goals desk's four writes and the one
+  question),
   `rp-view.ts` (the one shape every analysis reduces to), `rp-plot.tsx`
   (recharts kit, the heat-map table, the four honest states, "show the
   working"), `ReadingList.tsx` (the insight feed's own stateful list),
   `AskTheBook.tsx` (⌘K palette + ranker),
-  `useReportsNextData.ts` (`useQueries` over whatever is on the sheet + the v2
-  sheet codec), `rp-sheet.ts` (ids, drawings, slots, the house arrangement),
-  `rp-format.ts`, `reports-next.css`, `MOTIONS.md`, `ReportsNext.test.tsx`
-  (31 tests) and `Sheet.test.tsx` (5 — the drag/resize contract).
+  `useReportsNextData.ts` (`useQueries` over whatever is on the sheet + the v3
+  sheet codec + the desk, so the page has exactly one data seam), `rp-sheet.ts`
+  (ids, drawings, slots, the house arrangement, the named house layouts and
+  their packer), `rp-format.ts`, `reports-next.css`, `MOTIONS.md`,
+  `ReportsNext.test.tsx` (50 tests), `rp-arrange.test.ts` (21 — the keyboard
+  arithmetic and every announcement) and `Sheet.test.tsx`
+  (5 — the pointer drag/resize contract).
   `Cuttings.tsx` was **deleted** in the second pass — its eight bespoke bodies
   are now `view` builders in the two register files. Route already gated at
   `App.tsx:306`.
-  **Size, honestly:** 18 files; 14 of them source, totalling 3,608 lines
-  (counted 2026-09-03, excluding the two test files, the CSS and `MOTIONS.md`).
-  That is well past the p4 brief's "~900 lines across its files" — pass one
-  already shipped 2,213, and this pass roughly doubled what the page does
-  (eleven analyses against eight cuttings, seven drawings against one apiece).
-  The response was to split rather than to cut: the largest source
-  file is `rp-registers-house.tsx` at 662 lines, and the two largest are
-  declarative register definitions, not logic. Recorded here rather than left
-  for a reader to discover.
+  **Size, honestly:** 24 files; 19 of them source, totalling **5,759 lines**
+  (counted 2026-09-03 after the fourth pass, excluding the three test files, the
+  CSS and `MOTIONS.md`; pass one shipped 2,213 and pass two 3,608). That is far
+  past the p4 brief's "~900 lines across its files", and it keeps growing
+  because the page keeps being asked to do more: thirteen analyses against
+  eight, seven drawings against one apiece, a register that writes, and a second
+  input path for the whole canvas. The response has been to split rather than to
+  cut — the largest source files are `rp-registers-house.tsx` (662) and
+  `rp-registers-goals.tsx` (576), and both are declarative register definitions
+  rather than logic; the keyboard engine is 477 lines of which roughly half is
+  the research it encodes. Recorded here rather than left for a reader to
+  discover, and it is a real argument for splitting the catalogue into its own
+  directory the next time this page is opened.
 
 ## 4. Endpoints
 
 The widest analytics consumer among the 17 core-ops pages. Atlas rows:
 [ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics`, 39 — atlas's **all-unguarded warning**
 is stale; guarded at class level since 2026-08-24 (#31),
-`apps/api-gateway/src/analytics/analytics.controller.ts:84`),
+`apps/api-gateway/src/analytics/analytics.controller.ts:85`),
 :618 (`user-preferences`), :249 (`inventory`), :389 (`procurement`), :663 (`wines`).
 
 | Method | Path | Call site |
@@ -460,20 +695,26 @@ is stale; guarded at class level since 2026-08-24 (#31),
 
 **Mudavym redesign reads (all via `apiClient`, all tenant-keyed on
 `activeRestaurantId`, all behind the class-level `JwtAuthGuard` at
-`apps/api-gateway/src/analytics/analytics.controller.ts:84`):**
+`apps/api-gateway/src/analytics/analytics.controller.ts:85`):**
 
 | Method | Path | Cutting | Verified at |
 |---|---|---|---|
-| GET | `/analytics/insights/:rid?limit=40` | The reading · Ask the book | `analytics.controller.ts:292` |
-| GET | `/analytics/pos-revenue/:rid?days=` | Through the till | `analytics.controller.ts:671` |
-| GET | `/analytics/cashflow/:rid` | Spend pacing | `analytics.controller.ts:644` |
-| GET | `/analytics/seasonality/:rid` | The week's shape | `analytics.controller.ts:634` |
-| GET | `/analytics/forecast/:rid?horizon=14` | What's coming | `analytics.controller.ts:209` |
-| GET | `/analytics/menu-engineering/:rid` | Margin against movement | `analytics.controller.ts:614` |
-| GET | `/analytics/financial/:rid` | Figures of record | `analytics.controller.ts:126` |
-| GET | `/analytics/table-performance/:rid?sinceDays=90` | The room (added 2026-09-03) | `analytics.controller.ts:425` |
-| GET | `/analytics/waiters/:rid?sinceDays=90` | Who served it (added 2026-09-03) | `analytics.controller.ts:443` |
-| GET | `/analytics/inventory-science/:rid` | What to buy back (added 2026-09-03) | `analytics.controller.ts:156` |
+| GET | `/analytics/insights/:rid?limit=40` | The reading · Ask the book | `analytics.controller.ts:293` |
+| GET | `/analytics/pos-revenue/:rid?days=` | Through the till | `analytics.controller.ts:738` |
+| GET | `/analytics/cashflow/:rid` | Spend pacing | `analytics.controller.ts:711` |
+| GET | `/analytics/seasonality/:rid` | The week's shape | `analytics.controller.ts:701` |
+| GET | `/analytics/forecast/:rid?horizon=14` | What's coming | `analytics.controller.ts:210` |
+| GET | `/analytics/menu-engineering/:rid` | Margin against movement | `analytics.controller.ts:681` |
+| GET | `/analytics/financial/:rid` | Figures of record | `analytics.controller.ts:127` |
+| GET | `/analytics/table-performance/:rid?sinceDays=90` | The room (added 2026-09-03) | `analytics.controller.ts:426` |
+| GET | `/analytics/waiters/:rid?sinceDays=90` | Who served it (added 2026-09-03) | `analytics.controller.ts:444` |
+| GET | `/analytics/inventory-science/:rid` | What to buy back (added 2026-09-03) | `analytics.controller.ts:157` |
+| GET | `/analytics/goals/:rid/progress?status=active` | Goals — **new route, fourth pass** | `analytics.controller.ts:518` |
+| GET | `/analytics/overview/:rid` | Against ourselves (added 2026-09-03) | `analytics.controller.ts:788` |
+| PATCH | `/analytics/goals/:rid/:goalId` | Goals desk, edit — **new route, fourth pass** | `analytics.controller.ts:542` |
+| PUT | `/analytics/goals/:rid/:goalId/status` | Goals desk, archive | `analytics.controller.ts:603` |
+| POST | `/analytics/goals/:rid` | Goals desk, set a goal | `analytics.controller.ts:497` |
+| POST | `/analytics/goals/:rid/:goalId/cutting-spec` | "Ask the book" — **new route, fourth pass**; model-configured, catalogue-validated | `analytics.controller.ts:563` |
 | GET/PATCH | `/users/:userId/preferences` | the sheet: slots, subjects and drawings, key `reportsSheet` | `hooks/useUserPreferences.ts:73,83` |
 
 **Only what is on the sheet is fetched.** `useQueries` builds its query list from
@@ -516,8 +757,15 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
   **OFF**; per-browser override `localStorage["mudavym.design.reports"]`
   (`"1"|"true"|"on"` forces the redesign, `"0"|"false"|"off"` forces legacy).
   Precedence and defaults: `lib/mudavym/useMudavymDesign.ts:1-23`.
-- **Redesign arrangement** persists per USER (not per restaurant) under the new
-  preference key `reportsSheet` — **v2**: `{ v: 2, blocks: [{ i, x, y, w, h, g,
+- **Redesign arrangement** persists per USER (not per restaurant) under the
+  preference key `reportsSheet` — **v3 since 2026-09-03** (fourth pass). v3 adds
+  the `goals` and `bench` ids and one rule about a MISSING id: `encodeSheet`
+  writes every id, on or off, so an id absent from a stored blob cannot mean
+  "the reader took it off" — it can only mean the analysis did not exist when
+  that sheet was written. Those ids, and only those (`IDS_ADDED_IN_V3`), are put
+  back on at the foot. A reader who ruled off a sheet last week therefore gets
+  the goals desk the founder asked to be visible, and a reader who deliberately
+  took a cutting off keeps it off. The v2 shape, unchanged, was: `{ v: 2, blocks: [{ i, x, y, w, h, g,
   on }] }`, where `g` is the drawing and `on` says whether the cutting is on the
   sheet at all. A new key on purpose: writing to the legacy page's
   `dashboardBlocks` would rewrite a layout in a block vocabulary the legacy
@@ -533,7 +781,7 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 
 - The 39 analytics endpoints behind every number on this page are guarded since
   2026-08-24 (#31) — `@UseGuards(JwtAuthGuard)` at class level
-  (`apps/api-gateway/src/analytics/analytics.controller.ts:84`); the atlas row
+  (`apps/api-gateway/src/analytics/analytics.controller.ts:85`); the atlas row
   ([ENDPOINTS](../foundation/ENDPOINTS.md):10 — "classify these") is stale.
 - `Reports.v1.backup.tsx` is registered dead code (`v3.0-TECH-DEBT.md:257`).
 - Analytics truth-suite work is carried-forward unbuilt scope
@@ -592,17 +840,46 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 
 **Known limitations inside this page's own build:**
 
-- **Dragging and resizing a cutting is pointer-only.** `react-grid-layout`
-  exposes no keyboard affordance, and the shipping canvas has the same
-  limitation. Everything else on the sheet is keyboard-reachable (every chip,
-  filter, window picker, "Show instead", "Draw as", "Take off", "Add a cutting",
-  "Show the working" and the ⌘K palette are real controls with visible focus
-  rings), and the default arrangement is usable without ever entering Arrange. A
-  keyboard path — move/resize the focused cutting with the arrow keys while
-  arranging — is the honest fix and is not built.
+- ~~**Dragging and resizing a cutting is pointer-only.**~~ **CLOSED 2026-09-03**
+  (fourth pass, §1b). The library still exposes no keyboard affordance
+  (react-grid-layout#936, stale and closed), but its `layouts` prop is
+  controlled and its `moveElement`/`compact` are exported from
+  `react-grid-layout/core`, so the keyboard runs the pointer path's own
+  arithmetic over the same draft: `apps/web/src/pages/reports/next/rp-arrange.ts`,
+  `Placing.tsx`. No new dependency. A single-pointer path (the placing bar's ten
+  buttons) ships with it, because WCAG 2.5.7 is evaluated independently of 2.1.1.
 - **There is no cancel while arranging.** "Rule it off" saves; "Put it all back"
   resets to the house sheet. A reader who swaps a cutting to see what it holds
   and then wants their old sheet must swap it back by hand.
+- **The goals-desk role gate is client-side only.** `useGoalsDesk` hides the
+  set/edit/archive/ask controls unless `activeRole` is `owner` or `manager`
+  (`useAuth().activeRole`, from `user_restaurant_access`). The routes themselves
+  carry only the class-level `JwtAuthGuard`
+  (`apps/api-gateway/src/analytics/analytics.controller.ts:85`) and no
+  `RolesGuard`, so a `staff` token could still POST a goal by hand. **Not
+  fixed here**: adding a role guard to the analytics controller would also gate
+  `EngineInsightsPanel`'s existing goal POST on the shipping page, which is a
+  behaviour change to a surface this pass does not own. §13.17.
+- **`cashflow.spendLast30d` / `spendPrev30d` are unconditional sums, and a
+  failed loader degrades to `[]`.** Measured live on the dev tenant on
+  2026-09-03: both windows came back `0` while `openOrderCount` was `0` too, so
+  "bought nothing for two months" and "the `procurement_orders` read did not
+  answer" render identically. `loadOrders` logs the failure
+  (`advanced-analytics.service.ts:125-146`, `logQueryFailure`) but the payload
+  carries no signal of it, and `toDaily` zero-fills on top
+  (`:162-178`). This is the SAME shape §9.2 fixed for `financial.cogs`, in a
+  lens that pass fixed around. **Not fixed here**: `getCashflow` also feeds the
+  "Spend pacing" cutting and `getOverview`, so the fix is a payload change with
+  three readers and belongs in its own pass with its own spec — the honest fix
+  is a `basis.rows` count and a `null` when the loader returned nothing at all.
+  Both cuttings say the ambiguity in words in the meantime
+  (`rp-registers-bench.tsx`). §13.19.
+- **The "Ask the book" happy path was not exercised against a live model.** The
+  local gateway's Anthropic key has no credit balance (measured with curl,
+  2026-09-03: `Anthropic 400: Your credit balance is too low`), so what was
+  proven live is the DEGRADE path — the route answered `available: true`,
+  `spec: null`, with the reason, rather than throwing. The parse-and-validate
+  path is covered by `goal-cutting-spec.spec.ts` against a stubbed client.
 - **`basket` (pairings) and `vendor-scorecard` are real endpoints with no
   catalogue entry.** Their payload shapes were not read closely enough this pass
   to write a decoder that could not silently guess a field name — and a guessed
@@ -631,24 +908,31 @@ exists** (OD-81). What changed is that no surface claims otherwise.
 
 ### What the rebuild adds (flag `mudavym_design_reports`, default OFF)
 
-**Ten live registers** in the catalogue, all authenticated and tenant-keyed,
+**Twelve live registers** in the catalogue, all authenticated and tenant-keyed,
 plus the writing desk that is honest about having none. Seven drawings, offered
 per register only where they are true of its data. Every register renders four
 distinct states, every cutting prints its window and can print the server's own
 `basis` sentence, and both the subject and the drawing of every cutting are the
-reader's choice and persist with the layout. 36 tests hold the honesty rules,
-the two switches and the drag/resize contract (31 render-contract in
-`ReportsNext.test.tsx`, 5 canvas in `Sheet.test.tsx`).
+reader's choice and persist with the layout. **The whole canvas has a second
+input path**: a keyboard and a set of buttons that run react-grid-layout's own
+move/compact arithmetic over the same controlled layout, with a live region that
+reports the position the ruling gave rather than the one that was asked for. One
+register now WRITES (the goals desk), and the assistant attached to it may
+configure the deterministic engine but never speak a figure. 76 tests hold all
+of it (50 render-contract in `ReportsNext.test.tsx`, 21 keyboard arithmetic and
+announcements in `rp-arrange.test.ts`, 5 pointer canvas in `Sheet.test.tsx`),
+plus 25 in the gateway (`goal-cutting-spec.spec.ts`).
 
 **And three gateway shapes that were reporting absence as fact** — `financial`
 COGS/revenue, the forecast total, the seasonality tie-break — are fixed at the
 source rather than papered over here (§9.2-9.4), each with a spec and each
 verified live with curl.
 
-**Why not "complete":** the report writer is still absent (§13.2); goals has no
-cutting yet (§13.6); two real endpoints are catalogued nowhere (§9); no endpoint
-has hour grain, so the weekday × hour heat map the founder named first cannot be
-drawn (§9.5). The shipping page keeps its monthly reconciliation and data-tables
+**Why not "complete":** the report writer is still absent (§13.2); two real
+endpoints are catalogued nowhere (§9); no endpoint has hour grain, so the
+weekday × hour heat map the founder named first cannot be drawn (§9.5); the
+goals-desk role gate is client-side only (§9.8); and there is no peer benchmark,
+because there is no peer data (§13.16). The shipping page keeps its monthly reconciliation and data-tables
 sections, which the redesign deliberately does not carry (§1b).
 
 ## 11. Data flow
@@ -657,7 +941,7 @@ sections, which the redesign deliberately does not carry (§1b).
 
 | Method | Path | Auth | Gateway controller | Returns |
 |---|---|---|---|---|
-| GET | `/analytics/insights/:rid` (+`?refresh=true`) | JWT (class, `analytics/analytics.controller.ts:84`) | same file | Generated insights (347-type generator) |
+| GET | `/analytics/insights/:rid` (+`?refresh=true`) | JWT (class, `analytics/analytics.controller.ts:85`) | same file | Generated insights (347-type generator) |
 | GET/POST | `/analytics/goals/:rid` | JWT | `analytics.controller.ts` | Goals + progress |
 | GET/POST | `/analytics/recommendations/:rid/actions`, `…/action` | JWT | `analytics.controller.ts` | Server-side hide/pin disposition |
 | GET | `/analytics/table-performance/:rid` | JWT | `analytics.controller.ts` | Seating density |
@@ -665,7 +949,7 @@ sections, which the redesign deliberately does not carry (§1b).
 | GET | `/inventory/:rid` family | JWT | `inventory` module | Stock for the inventory blocks |
 | GET | `/procurement/orders` | JWT | `procurement.controller.ts` | Order metrics |
 | GET | `/wines?ids=` | JWT | `wines` module | Names for ids |
-| GET | **AI Command Palette** → `/analytics/insights/:rid` | JWT | `analytics.controller.ts:292` | ~~No request is made~~ — corrected 2026-09-02: it queries the real feed via `useEngineInsights` (`AICommandPalette.tsx:1-27`) |
+| GET | **AI Command Palette** → `/analytics/insights/:rid` | JWT | `analytics.controller.ts:293` | ~~No request is made~~ — corrected 2026-09-02: it queries the real feed via `useEngineInsights` (`AICommandPalette.tsx:1-27`) |
 | — | **Report Generator** | — | **none** | ~~`console.log`~~ — corrected 2026-09-02: no `onGenerate` prop is passed at all (`Reports.tsx:911-917`); the component states generation is unavailable |
 
 All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
@@ -690,7 +974,9 @@ All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
 | `POST /analytics/recommendations/:rid/action` | Manager disposition (hide/pin) persists server-side and suppresses the insight for everyone (`EngineInsightsPanel.tsx:163-170,281,309`) |
 | `POST /analytics/goals/:rid` | Goal appears in the goals block and in insight generation |
 | Command palette / report generator | **none** — the palette only reads; the generator is not wired (§10) |
-| Redesign: `PATCH /users/:id/preferences` key `reportsSheet` (v2) | the reader's sheet — slots, subjects AND drawings — persists across devices; deep-merged server-side, so it cannot disturb `dashboardBlocks` or any other key |
+| Redesign: `PATCH /users/:id/preferences` key `reportsSheet` (v3) | the reader's sheet — slots, subjects AND drawings — persists across devices; deep-merged server-side, so it cannot disturb `dashboardBlocks` or any other key |
+| Redesign: `POST /analytics/goals/:rid`, `PATCH …/:goalId`, `PUT …/:goalId/status` | the goals desk. A goal appears in the desk, in "Against ourselves", and in insight generation |
+| Redesign: `POST /analytics/goals/:rid/:goalId/cutting-spec` | **no row is written.** One model call through `common/model-client` (NF-A `task_type: goal_cutting_spec`, so it lands in the spend ledger) returning three enum values the gateway validates against a frozen catalogue. Nothing is applied: the reader places the proposed cutting, or does not |
 
 ## 12. Design intent
 
@@ -738,8 +1024,12 @@ about it, with a visible line back to the data.
    redesign** (per-register `Refused`, with 401/403 separated from 5xx). Still
    open on the shipping page.
 5. Delete `pages/Reports.v1.backup.tsx` (`v3.0-TECH-DEBT.md:257`).
-6. **Goals still has no cutting** (`GET/POST /analytics/goals/:rid`,
-   `analytics.controller.ts:484,496`). Seating density
+6. ~~**Goals still has no cutting**~~ — **DONE 2026-09-03** (fourth pass):
+   `goals` is a catalogue entry on the default sheet, reading a NEW
+   `GET /analytics/goals/:rid/progress`, and it writes (set / edit / archive /
+   ask the book). The original note, kept because its reasoning still holds for
+   the next writing cutting: (`GET/POST /analytics/goals/:rid`,
+   `analytics.controller.ts:485,497`). Seating density
    (`table-performance`, :425) **was built** on 2026-09-03 as "The room", along
    with `waiters` and `inventory-science`. Adding goals is now one entry in
    `rp-catalogue.tsx` — a path, a decoder, a view builder and the drawings that
@@ -770,13 +1060,32 @@ about it, with a visible line back to the data.
     and a total per bucket, and a `basis` naming the window. The page's `matrix`
     renderer and its blank-means-unrecorded rule already exist; this is the only
     missing half.
-14. **Named house layouts** — DESIGN-FOUNDATION §6's "a house layout, not an
-    empty one" ("Before service", "Buying week"). Now cheap: a layout is
-    `{ id, slot, graph }[]` and the codec is versioned. Held this pass so two
-    per-cutting switches could land without a preset menu burying them.
-15. **Catalogue `basket` and `vendor-scorecard`** (`analytics.controller.ts:460`,
-    `:624`) once their payload shapes have been read line by line (§9).
-16. **Foundation**: the global `select { background: white !important }` rule
+14. ~~**Named house layouts**~~ — **DONE 2026-09-03** (fourth pass). Four:
+    "The house sheet", "Before service", "Buying week", "Month end". A layout is
+    a LIST OF IDS and carries no geometry of its own — `packSlots` lays each one
+    out at the size it is declared with, which keeps a hand-written slot table
+    (and `check_no_seeded_defaults.py` S1's shape) out of the file. Applying one
+    writes the draft, never the saved sheet.
+15. **Catalogue `basket` and `vendor-scorecard`** (`analytics.controller.ts:461`,
+    `:691`) once their payload shapes have been read line by line (§9).
+16. **A peer benchmark that is not ourselves** — DESIGN-FOUNDATION §6 files it
+    "later", and it is still not buildable: no other house's books are in this
+    product (memory: production-tenant-shape — ten restaurant rows, one real
+    tenant). "Against ourselves" occupies the shape and says so. What a real one
+    would need, in order: a consented, anonymised cohort; a cohort size floor
+    below which a median is re-identifiable; and a basis sentence naming the
+    cohort and its n. None of the three is a page change.
+17. **A role guard on the goals write routes** (§9). `POST /analytics/goals/:rid`,
+    `PATCH …/:goalId` and `PUT …/status` should be owner/manager-only server
+    side. The guard exists (`auth/guards/roles.guard.ts`); applying it touches
+    the shipping page's existing goal POST, so it is a decision, not a patch.
+19. **`getCashflow` must distinguish "no delivered order" from "the read did not
+    answer"** (§9). Shape: count the rows the loader actually returned, publish
+    it in `basis`, and return `null` for `spendLast30d`/`spendPrev30d` when the
+    loader came back empty AND the query errored — the same repair
+    `analytics.service.ts:428-441` already made for `financial.cogs`. Three
+    readers: "Spend pacing", "Against ourselves" and `getOverview`.
+20. **Foundation**: the global `select { background: white !important }` rule
     (`apps/web/src/styles/globals.css:433-438`, `.dark` at `:464-468`; §9.6)
     overrides the house tokens on every Mudavym page. This page patches it
     locally; the rule itself should be scoped or dropped.

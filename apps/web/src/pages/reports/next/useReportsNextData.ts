@@ -13,7 +13,7 @@
  * turn off, and it is stated here rather than hidden in the palette.
  *
  * Every catalogue path is behind the class-level `JwtAuthGuard`
- * (`apps/api-gateway/src/analytics/analytics.controller.ts:84`), so they go
+ * (`apps/api-gateway/src/analytics/analytics.controller.ts:85`), so they go
  * through the shared `apiClient` — a raw `fetch` sends no bearer token and
  * 401s into a silently empty panel, which is exactly the failure ADR 0020
  * exists to stop. `src/__tests__/no-raw-gateway-fetch.test.ts` enforces it.
@@ -35,10 +35,12 @@ import { apiClient } from '@/services/api/client';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { failureOf, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
+import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import {
   ANALYSIS_IDS,
   DEFAULT_ON,
   DEFAULT_SLOTS,
+  IDS_ADDED_IN_V3,
   isAnalysisId,
   isGraphType,
   type AnalysisId,
@@ -63,7 +65,8 @@ export interface Register<T> {
   refetch: () => void;
 }
 
-const ROOT = 'reports-next';
+/** Exported so a write elsewhere (`useGoalsDesk`) can invalidate this read. */
+export const ROOT = 'reports-next';
 
 /* ────────────────────────────────────────────────── the sheet itself ───── */
 
@@ -81,7 +84,18 @@ const ROOT = 'reports-next';
  * into this one with every cutting drawn its default way.
  */
 const SHEET_PREF_KEY = 'reportsSheet';
-const SHEET_VERSION = 2;
+
+/**
+ * v3 adds two analyses — the goals desk and the benchmark — and one rule about
+ * what a MISSING id means. `encodeSheet` writes every id, on or off, so an id
+ * that is absent from a stored blob cannot mean "the reader took it off": it
+ * can only mean the analysis did not exist when that sheet was written. Those
+ * are put back on (`IDS_ADDED_IN_V3`), which is why a reader who ruled off a
+ * sheet last week still gets the goals desk the founder asked to be visible,
+ * without a reader who deliberately took a cutting off having it forced back.
+ */
+const SHEET_PREF_KEY_VERSIONS = [1, 2, 3];
+const SHEET_VERSION = 3;
 
 interface StoredBlock {
   i?: unknown;
@@ -125,7 +139,8 @@ export function defaultSheet(): SheetState {
  */
 export function decodeSheet(stored: unknown): SheetState {
   const s = stored as StoredSheet | undefined;
-  if (!s || !Array.isArray(s.blocks) || (s.v !== 1 && s.v !== 2)) return defaultSheet();
+  if (!s || !Array.isArray(s.blocks) || !SHEET_PREF_KEY_VERSIONS.includes(Number(s.v)))
+    return defaultSheet();
   const cuttings: Cutting[] = [];
   const seen = new Set<AnalysisId>();
   for (const b of s.blocks) {
@@ -144,7 +159,21 @@ export function decodeSheet(stored: unknown): SheetState {
     const graph = isGraphType(b?.g) ? graphOrDefault(id, b.g) : defaultGraph(id);
     cuttings.push({ id, slot, graph });
   }
-  return seen.size > 0 ? { cuttings } : defaultSheet();
+  if (seen.size === 0) return defaultSheet();
+
+  // An analysis introduced after this blob was written was never offered to
+  // this reader, so its absence is not a decision. It lands at the foot, where
+  // it cannot appear underneath something already being read.
+  if (Number(s.v) < SHEET_VERSION) {
+    let foot = cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
+    for (const id of IDS_ADDED_IN_V3) {
+      if (seen.has(id)) continue;
+      const slot = { ...DEFAULT_SLOTS[id], x: 0, y: foot };
+      cuttings.push({ id, slot, graph: defaultGraph(id) });
+      foot += slot.h;
+    }
+  }
+  return { cuttings };
 }
 
 export function encodeSheet(state: SheetState): StoredSheet {
@@ -164,6 +193,14 @@ export function encodeSheet(state: SheetState): StoredSheet {
 
 export interface ReportsNextData {
   restaurantId: string | null;
+  /**
+   * The goals desk's writes. It lives behind this hook rather than beside it so
+   * the page has exactly ONE data seam: everything the page does to the
+   * gateway — every read and the four writes — arrives through here, which is
+   * what lets the render-contract tests hold the page still by mocking one
+   * thing (`ReportsNext.test.tsx`).
+   */
+  goalsDesk: GoalsDesk;
   /** One entry per analysis currently being read. Absent = not on the sheet. */
   registers: Partial<Record<AnalysisId, Register<unknown>>>;
   /** Always read, on the sheet or not: the ⌘K palette searches it. */
@@ -189,6 +226,8 @@ export function useReportsNextData(
    * must be able to see what they are choosing before they commit to it.
    */
   showing: AnalysisId[] | null = null,
+  /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
+  placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
 ): ReportsNextData {
   const { activeRestaurantId } = useAuth();
   const rid = activeRestaurantId;
@@ -257,8 +296,11 @@ export function useReportsNextData(
     void qc.invalidateQueries({ queryKey: [ROOT] });
   }, [qc]);
 
+  const goalsDesk = useGoalsDesk({ place: placeCutting, queryRoot: ROOT });
+
   return {
     restaurantId: rid,
+    goalsDesk,
     registers,
     reading,
     tillDays,

@@ -50,6 +50,8 @@ import {
   Working,
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
+import { Grip, PlacingBar } from './Placing';
+import type { ArrangeApi } from './rp-arrange';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
 import type { Register } from './useReportsNextData';
@@ -194,6 +196,8 @@ export interface CuttingProps {
   arranging: boolean;
   /** Every analysis, with the ones already on the sheet marked. */
   swapOptions: Array<{ id: AnalysisId; taken: boolean }>;
+  /** The keyboard/button path over the same layout state (`rp-arrange.ts`). */
+  arrange: ArrangeApi;
   onGraph: (g: GraphType) => void;
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
@@ -207,6 +211,7 @@ export default function Cutting({
   ctx,
   arranging,
   swapOptions,
+  arrange,
   onGraph,
   onSwap,
   onRemove,
@@ -230,8 +235,10 @@ export default function Cutting({
     <Body view={spec.view(null, ctx)} graph={drawn} windowLine={windowLine} />
   );
 
+  const held = arrange.picked === id;
+
   return (
-    <section className="rp-cut" aria-label={spec.title}>
+    <section className="rp-cut" aria-label={spec.title} data-held={held || undefined}>
       {/* Not a <header>: the section's heading is the h2 below it, and a nested
           banner landmark per cutting would drown the page's own. */}
       <div className="rp-cut__head">
@@ -240,13 +247,22 @@ export default function Cutting({
           <p className="rp-cut__window">{windowLine}</p>
         </div>
         {arranging ? (
-          <button type="button" className="rp-mini rp-ink rp-focus" onClick={onRemove}>
-            Take off
-          </button>
+          <div className="rp-row" style={{ gap: 6 }}>
+            {/* The grip comes FIRST in the tab order, before "Take off": the
+                common act while arranging is moving, and putting the
+                destructive control on the way to it is how a reader loses a
+                cutting they meant to nudge. */}
+            <Grip id={id} title={spec.title} arrange={arrange} />
+            <button type="button" className="rp-mini rp-ink rp-focus" onClick={onRemove}>
+              Take off
+            </button>
+          </div>
         ) : spec.takesWindow ? (
           <TillWindowPicker days={ctx.days} onChange={onDays} />
         ) : null}
       </div>
+
+      {held && <PlacingBar title={spec.title} arrange={arrange} />}
 
       {arranging && (
         <div className="rp-cut__controls rp-no-drag">

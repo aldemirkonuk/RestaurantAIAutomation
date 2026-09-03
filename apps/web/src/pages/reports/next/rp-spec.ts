@@ -8,10 +8,23 @@
 
 import type { GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
+import type { GoalsDesk } from './useGoalsDesk';
 
 export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
   days: number;
+  /**
+   * The one register on this sheet that WRITES.
+   *
+   * Every other analysis is a pure function of a payload, which is what makes
+   * "Show instead" and "Draw as" safe: swapping a cutting cannot swap a side
+   * effect with it. Goals is the exception the founder asked for — *"they will
+   * have access to edit change as they like"* — so its handlers ride the
+   * context rather than the payload, and the exception is declared here in one
+   * place instead of being smuggled into a view builder. Absent (on a
+   * rendering that has no desk wired) the goals cutting is read-only and says so.
+   */
+  goals?: GoalsDesk;
 }
 
 export interface AnalysisSpec {

@@ -54,13 +54,22 @@ import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
 import Cutting from './Cutting';
+import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
+import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { ensureFraunces, failureLine } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
+  HOUSE_LAYOUT_CUTTINGS,
+  HOUSE_LAYOUT_IDS,
+  HOUSE_LAYOUT_NOTE,
+  HOUSE_LAYOUT_TITLE,
+  packSlots,
   type AnalysisId,
+  type Cutting as SheetSlotCutting,
   type GraphType,
+  type HouseLayoutId,
   type SheetState,
   type Slot,
 } from './rp-sheet';
@@ -99,7 +108,17 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // another analysis reads it immediately, rather than shimmering until the
   // sheet is ruled off. You cannot choose an analysis you cannot see.
   const showing = useMemo(() => (draft ? draft.cuttings.map((c) => c.id) : null), [draft]);
-  const data = useReportsNextData(tillDays, setTillDays, showing);
+  // The desk's "put it on the sheet" needs the draft, and the draft's placer
+  // needs the desk — so the page hands the data layer a STABLE callback that
+  // forwards to whatever `placeProposed` is this render. One seam, no cycle.
+  const placeRef = useRef<(cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void>(
+    () => {},
+  );
+  const place = useCallback(
+    (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => placeRef.current(cut),
+    [],
+  );
+  const data = useReportsNextData(tillDays, setTillDays, showing, place);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
@@ -154,6 +173,43 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
 
   const edit = useCallback(
     (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
+    [],
+  );
+
+  /* ── the keyboard's half of the canvas ──────────────────────────────────
+     `useArrange` writes THIS draft — the same state react-grid-layout is
+     handed as its `layouts` prop, and the same state `onMove` writes when a
+     pointer finishes a drag. One layout, two ways in. */
+  const sheetEl = useRef<HTMLElement | null>(null);
+  const applyCuttings = useCallback(
+    (next: SheetSlotCutting[]) => setDraft((d) => (d ? { cuttings: next } : d)),
+    [],
+  );
+  const arrange = useArrange({
+    cuttings: draft?.cuttings ?? null,
+    apply: applyCuttings,
+    sheetRef: sheetEl,
+    arranging,
+  });
+  const holdSheetEl = useCallback((node: HTMLDivElement | null) => {
+    sheetEl.current = node;
+  }, []);
+
+  /**
+   * A named house layout — DESIGN-FOUNDATION §6's *"a house layout, not an
+   * empty one"*, and the founder's *"editable for personalized screens"*: it
+   * writes the DRAFT, so it is a starting point you then edit. Nothing is
+   * saved until the sheet is ruled off.
+   */
+  const applyHouseLayout = useCallback(
+    (which: HouseLayoutId) => {
+      const ids = HOUSE_LAYOUT_CUTTINGS[which];
+      const slots = packSlots(ids);
+      setDraft({
+        cuttings: ids.map((id) => ({ id, slot: slots[id], graph: defaultGraph(id) })),
+      });
+      setArranging(true);
+    },
     [],
   );
 
@@ -223,7 +279,39 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     [onSheet],
   );
 
-  const ctx = useMemo(() => ({ days: tillDays }), [tillDays]);
+  /**
+   * Put a cutting the goals desk proposed onto the sheet, and open arranging so
+   * the reader lands looking at it with the controls in reach. It writes the
+   * draft like every other change: the assistant's proposal is never saved
+   * behind the reader's back — "Rule it off" is still what commits it.
+   */
+  const placeProposed = useCallback(
+    (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => {
+      if (cut.days !== null) setTillDays(cut.days);
+      setDraft((d) => {
+        const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
+        if (base.cuttings.some((c) => c.id === cut.id))
+          return {
+            cuttings: base.cuttings.map((c) => (c.id === cut.id ? { ...c, graph: cut.graph } : c)),
+          };
+        const foot = base.cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
+        return {
+          cuttings: [
+            ...base.cuttings,
+            { id: cut.id, slot: { ...DEFAULT_SLOTS[cut.id], x: 0, y: foot }, graph: cut.graph },
+          ],
+        };
+      });
+      setArranging(true);
+    },
+    [data.sheet],
+  );
+  placeRef.current = placeProposed;
+
+  const ctx = useMemo(
+    () => ({ days: tillDays, goals: data.goalsDesk }),
+    [data.goalsDesk, tillDays],
+  );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
     id: c.id,
@@ -236,6 +324,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ctx={ctx}
         arranging={arranging}
         swapOptions={swapOptions}
+        arrange={arrange}
         onGraph={(g) => onGraph(c.id, g)}
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
@@ -301,6 +390,24 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
               what it shows and how it is drawn — a drawing is only offered where it is true of that
               register.
             </p>
+            {/* The keyboard sentence lives in ArrangeHelp and nowhere else: it is
+                what every grip's `aria-describedby` points at, so saying it twice
+                would read it twice to the reader who most needs it once. */}
+            <ArrangeHelp />
+            <p className="rp-row" style={{ margin: 0 }}>
+              <span className="rp-eyebrow">Start from a house layout</span>
+              {HOUSE_LAYOUT_IDS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="rp-mini rp-ink rp-focus"
+                  title={HOUSE_LAYOUT_NOTE[id]}
+                  onClick={() => applyHouseLayout(id)}
+                >
+                  {HOUSE_LAYOUT_TITLE[id]}
+                </button>
+              ))}
+            </p>
             {offSheet.length > 0 && (
               <p className="rp-row" style={{ margin: 0 }}>
                 <span className="rp-eyebrow">Add a cutting</span>
@@ -330,7 +437,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             sheet” and add one back.
           </p>
         ) : (
-          <Sheet cuttings={cuttings} arranging={arranging} onMove={onMove} />
+          <Sheet
+            cuttings={cuttings}
+            arranging={arranging}
+            onMove={onMove}
+            containerRef={holdSheetEl}
+            ghost={arrange.origin}
+          />
         )}
 
         <footer className="rp-foot">
@@ -342,6 +455,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </p>
         </footer>
       </div>
+
+      {/* One live region for the whole sheet. It reports the position the
+          RULING gave, never the one that was asked for — see `rp-arrange.ts`. */}
+      <ArrangeAnnouncer message={arrange.message} />
 
       <AskTheBook open={asking} onClose={() => setAsking(false)} reading={data.reading} />
     </div>

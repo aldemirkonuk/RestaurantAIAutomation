@@ -91,7 +91,15 @@ function makeClient(rowsByTable: Rows) {
 function makeGoals(rowsByTable: Rows) {
   const client = makeClient(rowsByTable);
   const db = { getClient: () => client } as unknown as DatabaseService;
-  const service = new GoalsService(db, {} as InsightGeneratorService);
+  // ConfigService and ModelClientService joined the constructor for the goals
+  // desk's "ask the book which analysis shows this goal" (report-cuttings.ts).
+  // Neither is reached by any POS-revenue path, so both are stubbed empty here.
+  const service = new GoalsService(
+    db,
+    {} as InsightGeneratorService,
+    { get: () => undefined } as never,
+    {} as never,
+  );
   return { service, client };
 }
 
