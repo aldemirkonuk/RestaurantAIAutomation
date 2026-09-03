@@ -180,6 +180,49 @@
 }
 .rc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 
+/* ── the dismissal sheet — the one write that is a standing instruction ──── */
+
+.rc-sheet { padding: 12px 14px; }
+.rc-sheet-title { font-size: 14px; margin: 0 0 2px; color: var(--ink-1, #211c16); }
+.rc-sheet-block { margin-top: 10px; }
+.rc-scopes { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.rc-scope {
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: 12px; color: var(--ink-2, #4f473c); line-height: 1.4; cursor: pointer;
+}
+.rc-scope input { margin-top: 2px; accent-color: var(--seal, #1a5e6b); }
+.rc-scope input:disabled + span { color: var(--ink-4, #a89e8e); cursor: not-allowed; }
+.rc-scope input:focus-visible {
+  outline: 2px solid var(--seal, #1a5e6b); outline-offset: 2px;
+}
+.rc-sheet-promise {
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid var(--paper-2, #eae4d8);
+  color: var(--ink-2, #4f473c); line-height: 1.5;
+}
+.rc-act:disabled {
+  border-color: var(--paper-2, #eae4d8); background: transparent;
+  color: var(--ink-4, #a89e8e); cursor: not-allowed;
+}
+.rc-act:disabled:hover { background: transparent; color: var(--ink-4, #a89e8e); }
+
+/* what a dismissal actually silenced, on the dismissed / history leaves */
+.rc-silenced { margin-top: 8px; color: var(--ink-2, #4f473c); line-height: 1.5; }
+
+/* which clock "standing" is read from — the two are different facts */
+.rc-basis {
+  display: block; font-size: 10px; color: var(--ink-4, #a89e8e);
+  margin-top: 2px; line-height: 1.35;
+}
+
+/* the denominator's second half, under the head's double rule */
+.rc-suppressed { margin-top: 8px; line-height: 1.5; }
+
+/* days ruled out of every baseline */
+.rc-excl { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.rc-excl li { display: grid; gap: 2px; }
+.rc-excl .rc-quiet { justify-self: start; margin-top: 2px; }
+
 /* ── the working ─────────────────────────────────────────────────────────── */
 
 .rc-work { display: grid; grid-template-rows: 0fr; }

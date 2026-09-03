@@ -11,6 +11,7 @@ import { GoalsService } from "./goals.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 
@@ -43,6 +44,9 @@ import { AuthModule } from "../auth/auth.module";
     InsightGeneratorService,
     DevTruthService,
     InsightSchedulerService,
+    // The engine's one hook for "do not count this day" — closures, buyouts,
+    // outages the manager has ruled out of every baseline.
+    DayExclusionsService,
   ],
   exports: [AnalyticsService, InsightGeneratorService, GoalsService],
 })

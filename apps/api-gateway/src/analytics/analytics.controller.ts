@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -35,6 +36,7 @@ import {
   catalogCoverage,
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { Persona } from "./metric-registry";
 
 /**
@@ -91,6 +93,7 @@ export class AnalyticsController {
     private readonly consultantsService: ConsultantsService,
     private readonly insightGenerator: InsightGeneratorService,
     private readonly scheduler: InsightSchedulerService,
+    private readonly dayExclusions: DayExclusionsService,
   ) {}
 
   @Get("metrics")
@@ -887,6 +890,68 @@ export class AnalyticsController {
       throw new HttpException(
         error.message || "Failed to load recommendation history",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ---- Days the engine must not count (the exclusion store) ---------------
+  //
+  // The second half of "if the person says dismiss, it should be avoided at
+  // all costs": a dismissal silences an ENTRY, an exclusion removes a DAY from
+  // the arithmetic underneath every entry. A closure that dragged the Wednesday
+  // average down is not answered by hiding the sentence — the average is still
+  // wrong. Stored separately from `recommendation_actions` on purpose: one is
+  // what a manager did with a card, the other is what the analysis may look at.
+
+  @Get("exclusions/:restaurantId")
+  @ApiOperation({
+    summary: "Business dates excluded from the analytics baselines",
+    description:
+      "Closures, buyouts and outages the manager has ruled out. `readable:false` means the store could not be read AT ALL — which is not the same as an empty list, and the caller must not present its numbers as clean.",
+  })
+  async listDayExclusions(@Param("restaurantId") restaurantId: string) {
+    return this.dayExclusions.list(restaurantId);
+  }
+
+  @Post("exclusions/:restaurantId")
+  @ApiOperation({
+    summary: "Exclude a business date from every baseline",
+    description: "Body: { businessDate: 'YYYY-MM-DD', reason?, createdBy? }.",
+  })
+  async excludeDay(
+    @Param("restaurantId") restaurantId: string,
+    @Body()
+    body: { businessDate?: string; reason?: string | null; createdBy?: string },
+  ) {
+    try {
+      if (!body?.businessDate) throw new Error("businessDate is required");
+      return await this.dayExclusions.exclude(
+        restaurantId,
+        body.businessDate,
+        body.reason ?? null,
+        body.createdBy ?? null,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to exclude the day",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Delete("exclusions/:restaurantId/:businessDate")
+  @ApiOperation({ summary: "Put an excluded business date back in the analysis" })
+  async includeDay(
+    @Param("restaurantId") restaurantId: string,
+    @Param("businessDate") businessDate: string,
+  ) {
+    try {
+      await this.dayExclusions.include(restaurantId, businessDate);
+      return { restored: businessDate };
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to restore the day",
+        HttpStatus.BAD_REQUEST,
       );
     }
   }

@@ -15,9 +15,16 @@
  *   phase 'failed'  → a FailureVM with the status; 401/403/other are three
  *                     different sentences, never one empty list
  *   phase 'ready'   → a real answer, including a real empty book
- * `updatedAt` is null for entries the disposition store has never seen, so
- * "how long it has stood" renders as an em dash on the standing leaf — the
- * feed carries no first-fired timestamp (page note §13).
+ * `firstSeenAt` is the first time a rule was ever shown, attached by the
+ * gateway from `recommendation_impressions`; `updatedAt` is when the
+ * disposition store last touched the entry. They are different facts and the
+ * page says which one it is showing. Both null ⇒ an em dash, never a zero.
+ *
+ * Two stores, kept apart on purpose: `dismiss()` writes a SCOPED suppression
+ * key to `recommendation_actions` (the gateway builds the key), and
+ * `excludeDay()` writes a business date to `analytics_day_exclusions`. Hiding
+ * a sentence and correcting an average are different acts, and a manager who
+ * asked for both and got one is told which one landed.
  *
  * Tenant-keyed: every read is keyed by `activeRestaurantId` and a sequence
  * number, so a restaurant switch can never paint the previous tenant's rows.
@@ -35,6 +42,8 @@ import {
   type FailureVM,
   type Hand,
   type StakeId,
+  type SuppressionScope,
+  type SuppressionVM,
 } from './rec-format';
 
 const BASE = '/analytics/recommendations';
@@ -67,6 +76,22 @@ export interface EntryVM {
   assignedName: string | null;
   /** Axis 2 — when the store last touched it. null = never touched = unknown. */
   updatedAt: string | null;
+  /**
+   * The first time this rule was ever SHOWN, from `recommendation_impressions`
+   * (gateway `attachFirstSeen`). Null when nothing recorded it — an em dash,
+   * never today.
+   */
+  firstSeenAt: string | null;
+  /** What the observation is about ("Wednesday"), when the rule names one. */
+  subject: string | null;
+  /** The period it covers at its grain ("d:2026-09-02"), when it has one. */
+  periodKey: string | null;
+  /**
+   * The keys a dismissal writes, built by the gateway. Undefined only on rows
+   * that came from the actions table (the dismissed/snoozed/history leaves),
+   * where the stored `ruleKey` IS the key.
+   */
+  suppression: SuppressionVM | null;
 }
 
 export interface StateCounts {
@@ -87,6 +112,34 @@ export interface DigestPref {
 export interface TeamOption {
   id: string;
   name: string;
+}
+
+/** Days the manager has ruled out of every baseline. */
+export interface DayExclusion {
+  businessDate: string;
+  reason: string | null;
+  createdAt: string | null;
+}
+
+/** One dismissal, as the sheet resolved it. Built in Entry, posted here. */
+export interface DismissChoice {
+  /** The reason code the manager picked. */
+  reason: string;
+  /** The scope they chose — and the one actually stored. */
+  scope: SuppressionScope;
+  /** The gateway-built key for that scope. The page never invents one. */
+  key: string;
+  /** A business date to also drop from the baselines, or null. */
+  excludeDate: string | null;
+  /** What will never be shown, in words — rendered back after the write. */
+  said: string;
+}
+
+export interface ExclusionsVM {
+  items: DayExclusion[];
+  /** False = the store could not be read AT ALL. Not the same as empty. */
+  readable: boolean;
+  problem: string | null;
 }
 
 type Phase = 'loading' | 'ready' | 'failed';
@@ -113,6 +166,29 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
     assignedTo: typeof raw.assignedTo === 'string' ? raw.assignedTo : null,
     assignedName: typeof raw.assignedName === 'string' ? raw.assignedName : null,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
+    firstSeenAt: typeof raw.firstSeenAt === 'string' ? raw.firstSeenAt : null,
+    subject: typeof raw.subject === 'string' && raw.subject ? raw.subject : null,
+    periodKey: typeof raw.periodKey === 'string' && raw.periodKey ? raw.periodKey : null,
+    suppression: readSuppression(raw.suppression),
+  };
+}
+
+/**
+ * The gateway's suppression block, read defensively. The page NEVER builds a
+ * key — "the same insight" has to mean one thing on both sides of the wire —
+ * so an entry that arrives without one gets `null` and the dismissal sheet
+ * falls back to the bare rule key it already has, saying so.
+ */
+function readSuppression(raw: unknown): SuppressionVM | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as { key?: unknown; scope?: unknown; keys?: unknown };
+  const keys = s.keys as Record<string, unknown> | undefined;
+  if (typeof s.key !== 'string' || !keys) return null;
+  const pick = (k: string) => (typeof keys[k] === 'string' ? (keys[k] as string) : s.key as string);
+  return {
+    key: s.key,
+    scope: (s.scope as SuppressionScope) ?? 'rule',
+    keys: { insight: pick('insight'), subject: pick('subject'), rule: pick('rule') },
   };
 }
 
@@ -125,6 +201,17 @@ export interface RecommendationsData {
   counts: StateCounts | null;
   rulesEvaluated: number | null;
   generatedAt: string | null;
+  /** How many fired and were withheld because they had been dismissed. */
+  suppressed: number | null;
+  /**
+   * False when the dismissal store could not be read — the book below may
+   * contain entries already dismissed, and the page has to say so.
+   */
+  suppressionsReadable: boolean;
+  /** undefined = not asked yet. */
+  exclusions: ExclusionsVM | undefined;
+  excludeDay: (date: string, reason: string) => Promise<boolean>;
+  includeDay: (date: string) => Promise<void>;
   /** undefined = not asked yet; null = the read failed. */
   digest: DigestPref | null | undefined;
   team: TeamOption[] | null | undefined;
@@ -141,6 +228,7 @@ export interface RecommendationsData {
     said: string,
     removeFromLeaf: boolean,
   ) => Promise<void>;
+  dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
   restore: (ruleKey: string) => Promise<void>;
   bulk: (entries: EntryVM[], patch: Record<string, unknown>, said: string) => Promise<void>;
 }
@@ -157,6 +245,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [rulesEvaluated, setRulesEvaluated] = useState<number | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [digest, setDigest] = useState<DigestPref | null | undefined>(undefined);
+  const [suppressed, setSuppressed] = useState<number | null>(null);
+  const [suppressionsReadable, setSuppressionsReadable] = useState(true);
+  const [exclusions, setExclusions] = useState<ExclusionsVM | undefined>(undefined);
   const [team, setTeam] = useState<TeamOption[] | null | undefined>(undefined);
   const [note, setNote] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ ruleKey: string; label: string } | null>(null);
@@ -181,6 +272,10 @@ export function useRecommendationsNextData(): RecommendationsData {
             : [];
           setEntries(list.map((r) => toEntry(r, 'active')));
           setRulesEvaluated(num(data?.rulesEvaluated));
+          setSuppressed(num(data?.suppressed));
+          // Absent field ⇒ an older gateway ⇒ we cannot claim the dismissals
+          // were honoured. Only an explicit `true` counts as readable.
+          setSuppressionsReadable(data?.suppressionsReadable === true);
           setGeneratedAt(typeof data?.generatedAt === 'string' ? data.generatedAt : null);
           const sc = data?.stateCounts as Partial<StateCounts> | undefined;
           setCounts(
@@ -237,6 +332,83 @@ export function useRecommendationsNextData(): RecommendationsData {
     };
   }, [rid]);
 
+  const say = useCallback((text: string) => {
+    setNote(text);
+  }, []);
+
+  // The exclusion store — read once per tenant, and separately from the book,
+  // so an unreadable exclusion list never takes the entries down with it. It
+  // IS read eagerly, though: the dismissal sheet has to know whether the
+  // "also exclude this day" choice can be offered at all before it is opened.
+  useEffect(() => {
+    let cancelled = false;
+    setExclusions(undefined);
+    if (!rid) return;
+    apiClient
+      .get<ExclusionsVM>(`/analytics/exclusions/${rid}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setExclusions({
+          items: Array.isArray(data?.items) ? data.items : [],
+          readable: data?.readable === true,
+          problem: typeof data?.problem === 'string' ? data.problem : null,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setExclusions({ items: [], readable: false, problem: failureOf(err).message });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
+
+  /**
+   * Rule a day out of the analysis. Returns whether it landed — the caller
+   * words its confirmation off the answer, never off the intent.
+   */
+  const excludeDay = useCallback(
+    async (date: string, reason: string): Promise<boolean> => {
+      if (!rid) return false;
+      try {
+        const { data } = await apiClient.post<DayExclusion>(
+          `/analytics/exclusions/${rid}`,
+          { businessDate: date, reason },
+        );
+        setExclusions((prev) => ({
+          items: [
+            { businessDate: date, reason, createdAt: data?.createdAt ?? null },
+            ...(prev?.items ?? []).filter((e) => e.businessDate !== date),
+          ],
+          readable: true,
+          problem: null,
+        }));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [rid],
+  );
+
+  const includeDay = useCallback(
+    async (date: string) => {
+      if (!rid) return;
+      try {
+        await apiClient.delete(`/analytics/exclusions/${rid}/${date}`);
+        setExclusions((prev) =>
+          prev
+            ? { ...prev, items: prev.items.filter((e) => e.businessDate !== date) }
+            : prev,
+        );
+        say(`${date} counts again in every average.`);
+      } catch (err) {
+        say(`That day is still excluded (${failureOf(err).message}).`);
+      }
+    },
+    [rid, say],
+  );
+
   // The roster is only fetched when someone opens an assign menu.
   const loadTeam = useCallback(() => {
     if (!rid || team !== undefined) return;
@@ -252,10 +424,6 @@ export function useRecommendationsNextData(): RecommendationsData {
       )
       .catch(() => setTeam(null));
   }, [rid, team]);
-
-  const say = useCallback((text: string) => {
-    setNote(text);
-  }, []);
 
   const offerUndo = useCallback((ruleKey: string, label: string) => {
     setUndo({ ruleKey, label });
@@ -312,6 +480,56 @@ export function useRecommendationsNextData(): RecommendationsData {
     [rid, say, offerUndo],
   );
 
+  /**
+   * Dismiss, at the scope the manager chose — and say what that means.
+   *
+   * This is the one write on the page that is a STANDING INSTRUCTION rather
+   * than a note about a card, so it is the one write that has to be spelled
+   * out afterwards. The key it posts is built by the gateway and carried on
+   * the entry (`entry.suppression.keys`); the page never constructs one,
+   * because "the same insight" must mean exactly one thing on both sides.
+   *
+   * The optional day exclusion is a SEPARATE write to a separate store, and
+   * its success is reported separately: hiding the sentence does not fix an
+   * average that a closure dragged down, and a manager who asked for both and
+   * got one must be told which one.
+   */
+  const dismiss = useCallback(
+    async (entry: EntryVM, choice: DismissChoice) => {
+      if (!rid) return;
+      const before = entry;
+      setEntries((prev) => prev.filter((e) => e.ruleKey !== entry.ruleKey));
+      try {
+        await apiClient.post(`${BASE}/${rid}/action`, {
+          ruleKey: choice.key,
+          status: 'dismissed',
+          reason: choice.reason,
+          snapshot: snapshotOf(entry),
+        });
+      } catch (err) {
+        const f = failureOf(err);
+        setEntries((prev) => [before, ...prev.filter((e) => e.ruleKey !== before.ruleKey)]);
+        say(
+          f.expired
+            ? 'Your session has expired — nothing was dismissed. Sign in again.'
+            : `Nothing was dismissed (${f.message}) — the entry is back where it was.`,
+        );
+        return;
+      }
+
+      let tail = '';
+      if (choice.excludeDate) {
+        const landed = await excludeDay(choice.excludeDate, choice.reason);
+        tail = landed
+          ? ` ${choice.excludeDate} is also out of the analysis — its numbers stop counting toward every average.`
+          : ` The entry is dismissed, but ${choice.excludeDate} could NOT be excluded from the analysis — the averages still count it.`;
+      }
+      say(`${choice.said}${tail} Undo here, or on the History leaf.`);
+      offerUndo(choice.key, choice.said);
+    },
+    [rid, say, offerUndo, excludeDay],
+  );
+
   const restore = useCallback(
     async (ruleKey: string) => {
       if (!rid) return;
@@ -355,6 +573,11 @@ export function useRecommendationsNextData(): RecommendationsData {
   return {
     leaf,
     setLeaf,
+    suppressed,
+    suppressionsReadable,
+    exclusions,
+    excludeDay,
+    includeDay,
     phase,
     entries,
     failure,
@@ -370,6 +593,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     clearUndo: () => setUndo(null),
     refetch,
     setDisposition,
+    dismiss,
     restore,
     bulk,
   };

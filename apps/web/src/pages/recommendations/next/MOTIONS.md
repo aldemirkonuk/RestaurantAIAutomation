@@ -19,6 +19,25 @@ transitions and the leaf animation outright (the `@media` guard in that file),
 and the two WAAPI motions collapse to their end state through `animate()`'s
 reduced-motion branch inside `HoldToApprove`.
 
+## Second pass, 2026-09-03 — the dismissal sheet
+
+The sheet added no motion, deliberately. It is the only control on the page
+that stores a **standing instruction** ("never show me this again"), and it
+asks three questions before it will act; a panel that slides, fades or grows
+while a person is deciding what to silence is asking them to hurry. It appears
+and disappears instantly, inside the entry, and the only motion anywhere near it
+is `rc-ink` on its own buttons.
+
+Two more non-motions came with it:
+
+- **`Dismiss it` is disabled until a reason is picked**, and the disabled state
+  does not pulse, shake or draw attention to itself. The sentence beside it says
+  why. A control that jitters to tell you it is unhappy is a control that has
+  given up on words.
+- **The scope radios do not animate between states.** The promise sentence under
+  them rewrites in place when the scope changes — instantly, because it is the
+  claim the manager is agreeing to and a claim must not arrive by transition.
+
 ## Deliberate non-motions
 
 - **The seal is rationed to one act.** Only *ruling an entry off* — asserting

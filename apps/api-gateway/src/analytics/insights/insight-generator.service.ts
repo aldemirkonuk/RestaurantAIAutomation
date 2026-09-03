@@ -17,6 +17,46 @@ import {
   InsightEvidence,
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import { DayExclusionsService } from "./day-exclusions.service";
+import { RecommendationActionsService } from "../recommendation-actions.service";
+import {
+  SuppressionScope,
+  buildSuppressionKey,
+  dayGrain,
+  effectiveScope,
+  insightRuleId,
+  isSuppressed,
+  suppressionKeys,
+  trendGrain,
+  windowGrain,
+} from "./suppression";
+
+/**
+ * The floor under any "vs its own history" sentence.
+ *
+ * A mean over one or two same-weekday observations is not a baseline, it is a
+ * coincidence with a percentage attached. Three is the minimum this generator
+ * has always required for the weekday comparison; it is named here because the
+ * requirement now has to survive the OBSERVED-day filter below (a history of
+ * five Wednesdays, three of them closures, is a history of two).
+ */
+export const MIN_BASELINE_N = 3;
+
+/**
+ * Period-over-period needs comparable windows. Two sums are only comparable
+ * when they cover the same number of trading days, so the comparison is
+ * withheld unless both windows carry at least this many observed days and
+ * their observed-day counts differ by no more than one.
+ *
+ * Without this the running gateway emitted, on 2026-09-03:
+ *   "sales fell 100% vs the previous week ($0 vs $2.4k)"
+ * — from a current window with no records in it at all.
+ */
+export const MIN_PERIOD_OBSERVED = 4;
+export const MAX_PERIOD_OBSERVED_GAP = 1;
+
+/** A 28-day trend needs half its days to be real ones. */
+export const MIN_TREND_OBSERVED = 14;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -37,7 +77,11 @@ import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 export class InsightGeneratorService {
   private readonly logger = new Logger(InsightGeneratorService.name);
 
-  constructor(private readonly dbService: DatabaseService) {}
+  constructor(
+    private readonly dbService: DatabaseService,
+    private readonly dayExclusions: DayExclusionsService,
+    private readonly actions: RecommendationActionsService,
+  ) {}
 
   // ==========================================================================
   // Public API
@@ -91,7 +135,10 @@ export class InsightGeneratorService {
   ) {
     const startedAt = Date.now();
     const maxPerCategory = opts.maxPerCategory ?? 5;
-    const bundle = await this.loadBundle(restaurantId);
+    const [bundle, suppressions] = await Promise.all([
+      this.loadBundle(restaurantId),
+      this.actions.listSuppressions(restaurantId),
+    ]);
     const candidates = availableCandidates(bundle.availability);
 
     let insights: InsightRecord[] = [];
@@ -110,6 +157,30 @@ export class InsightGeneratorService {
       const set = new Set(opts.categories);
       insights = insights.filter((i) => set.has(i.category));
     }
+
+    // ---- The manager's dismissals, honoured HERE ---------------------------
+    // This is the fix for "if the person says dismiss, it should be avoided at
+    // all costs". Before it, `dismiss` wrote a row that exactly one consumer
+    // read — the recommendations feed's own filter — while this generator, the
+    // thing that produces the sentence and also feeds Reports, the mobile tab
+    // and the hourly `analytics_insights` persist, had never heard of it. The
+    // count is kept and returned rather than swallowed: a page that shows four
+    // insights when six fired has to be able to say so (ADR 0020).
+    const beforeSuppression = insights.length;
+    if (suppressions.keys.size > 0) {
+      insights = insights.filter(
+        (i) =>
+          !isSuppressed(
+            {
+              ruleId: insightRuleId(i.candidateKey),
+              subject: i.subject,
+              periodKey: i.periodKey,
+            },
+            suppressions.keys,
+          ),
+      );
+    }
+    const suppressed = beforeSuppression - insights.length;
 
     // Rank: score desc, cap per category.
     insights.sort((a, b) => b.score - a.score);
@@ -141,6 +212,16 @@ export class InsightGeneratorService {
       // over here (ADR 0020: a surface never asserts what it cannot support).
       candidateTypesAvailable: candidates.length,
       candidateTypesTotal: INSIGHT_CANDIDATES.length,
+      // How many fired and were then withheld because the manager dismissed
+      // them, and whether the dismissal list was readable at all. `false` here
+      // means the list below may contain things already dismissed — the
+      // surface must say that rather than present it as clean.
+      suppressed,
+      suppressionsReadable: suppressions.readable,
+      // Days the manager ruled out of the baselines, and whether THAT store
+      // was readable. Same contract, same reason.
+      excludedDays: Array.from(bundle.excludedDates).sort(),
+      exclusionsReadable: bundle.exclusionsReadable,
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -229,6 +310,11 @@ export class InsightGeneratorService {
     const client = this.dbService.getClient();
     const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
     const since180 = new Date(Date.now() - 180 * 86400000).toISOString();
+
+    // The manager's own exclusions — closures, buyouts, outages. Loaded with
+    // the data, not after it, because every daily series below is built
+    // through `toDaily` and every one of them must honour the same list.
+    const exclusions = await this.dayExclusions.load(restaurantId);
 
     const [cons, ords, inv, checks, tables, venue, goals] =
       await Promise.allSettled([
@@ -344,6 +430,8 @@ export class InsightGeneratorService {
           : null,
       goals: ok<any>(goals),
       availability: new Set<DataRequirement>(),
+      excludedDates: exclusions.dates,
+      exclusionsReadable: exclusions.readable,
     };
 
     if (bundle.consumption.length) bundle.availability.add("consumption");
@@ -356,10 +444,27 @@ export class InsightGeneratorService {
     return bundle;
   }
 
+  /**
+   * A daily series, and — separately — which of those days are EVIDENCE.
+   *
+   * The `values` array still carries 0 for a day with no rows, because every
+   * downstream sum expects a dense series. `observed` is the correction: false
+   * means "this restaurant filed nothing for this day", which is an ABSENCE,
+   * not a measurement of zero. Before this distinction existed, a closure, a
+   * POS outage and a genuinely dead day were the same number to every baseline,
+   * and the running gateway said "Wednesday sales came in 100% lower than your
+   * average Wednesday ($0 vs $104)" about a day it had no records for.
+   *
+   * A day the manager has excluded is also `observed: false` — from the
+   * engine's point of view "we were shut" and "nothing was filed" are the same
+   * instruction (do not treat this as a trading day), even though they reach
+   * the code by different routes and are stored in different places.
+   */
   private toDaily(
     rows: Array<{ date: string; value: number }>,
     days: number,
-  ): { dates: string[]; values: number[] } {
+    excluded?: ReadonlySet<string>,
+  ): { dates: string[]; values: number[]; observed: boolean[] } {
     const byDay = new Map<string, number>();
     for (const r of rows) {
       if (!r.date) continue;
@@ -367,6 +472,7 @@ export class InsightGeneratorService {
     }
     const dates: string[] = [];
     const values: number[] = [];
+    const observed: boolean[] = [];
     const today = new Date();
     for (let d = days; d >= 1; d--) {
       // exclude today (partial day would distort baselines)
@@ -375,8 +481,9 @@ export class InsightGeneratorService {
         .substring(0, 10);
       dates.push(day);
       values.push(byDay.get(day) || 0);
+      observed.push(byDay.has(day) && !excluded?.has(day));
     }
-    return { dates, values };
+    return { dates, values, observed };
   }
 
   // ==========================================================================
@@ -389,13 +496,18 @@ export class InsightGeneratorService {
       date: c.date,
       value: c.qty,
     }));
-    const { dates, values } = this.toDaily(rows, 90);
+    const { dates, values, observed } = this.toDaily(
+      rows,
+      90,
+      bundle.excludedDates,
+    );
     const label = "bottles sold";
 
     this.timeSeriesInsights({
       push,
       dates,
       values,
+      observed,
       measure: "bottles",
       measureLabel: label,
       unit: "units",
@@ -531,12 +643,17 @@ export class InsightGeneratorService {
   private computeOrdersFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("orders")) return;
     const rows = bundle.orders.map((o) => ({ date: o.date, value: o.cost }));
-    const { dates, values } = this.toDaily(rows, 90);
+    const { dates, values, observed } = this.toDaily(
+      rows,
+      90,
+      bundle.excludedDates,
+    );
 
     this.timeSeriesInsights({
       push,
       dates,
       values,
+      observed,
       measure: "purchase_spend",
       measureLabel: "purchasing spend",
       unit: "currency",
@@ -665,11 +782,16 @@ export class InsightGeneratorService {
       date: (c.closed_at || c.opened_at || "").substring(0, 10),
       value: c.total || 0,
     }));
-    const { dates, values } = this.toDaily(revRows, 90);
+    const { dates, values, observed } = this.toDaily(
+      revRows,
+      90,
+      bundle.excludedDates,
+    );
     this.timeSeriesInsights({
       push,
       dates,
       values,
+      observed,
       measure: "revenue",
       measureLabel: "sales",
       unit: "currency",
@@ -1053,6 +1175,8 @@ export class InsightGeneratorService {
     push: Push;
     dates: string[];
     values: number[];
+    /** Which days are evidence. Missing = every day is (legacy callers). */
+    observed?: boolean[];
     measure: string;
     measureLabel: string;
     unit: InsightEvidence["unit"];
@@ -1071,49 +1195,82 @@ export class InsightGeneratorService {
       dimension,
       category,
     } = params;
+    const observed = params.observed ?? values.map(() => true);
     const nonZeroDays = values.filter((v) => v > 0).length;
     if (nonZeroDays < 7) return;
 
     // 1. Latest complete day vs same-weekday history.
+    //
+    // "Latest" means the latest day this restaurant actually filed something
+    // for. Taking the last index unconditionally is what produced the sentence
+    // the founder quoted: with no records for yesterday, `values[lastIdx]` is
+    // 0, `deltaPct` is -1, and the template renders a 100% collapse from an
+    // absence. When the day compared is NOT the newest day in the series, the
+    // sentence carries its date, so a skipped-back comparison can never be
+    // mistaken for one about yesterday.
     const lastIdx = values.length - 1;
-    const lastDate = dates[lastIdx];
-    const weekday = new Date(`${lastDate}T00:00:00Z`).getUTCDay();
-    const history: number[] = [];
-    for (let i = 0; i < lastIdx; i++) {
-      if (new Date(`${dates[i]}T00:00:00Z`).getUTCDay() === weekday)
-        history.push(values[i]);
-    }
-    if (history.length >= 3) {
-      const cmp = E.groupBaseline(values[lastIdx], history);
-      if (cmp && cmp.direction !== "in_line") {
-        const ev: InsightEvidence = {
-          entity: E.WEEKDAY_NAMES[weekday],
-          measureLabel,
-          unit,
-          value: cmp.value,
-          baseline: cmp.baselineMean,
-          deltaPct: cmp.deltaPct,
-          direction: cmp.direction,
-        };
-        push(
-          this.record(
-            `${dimension}.${measure}.vs_same_weekday`,
-            category,
-            "baseline",
-            ev,
-            {
-              effectPct: cmp.deltaPct,
-              z: cmp.z,
-              n: history.length,
-            },
-          ),
-        );
+    let dayIdx = lastIdx;
+    while (dayIdx >= 0 && !observed[dayIdx]) dayIdx--;
+    if (dayIdx >= 0) {
+      const lastDate = dates[dayIdx];
+      const weekday = new Date(`${lastDate}T00:00:00Z`).getUTCDay();
+      const history: number[] = [];
+      for (let i = 0; i < dayIdx; i++) {
+        // Same weekday AND a day with records. A history of five Wednesdays,
+        // three of them closures, is a history of two — and two Wednesdays are
+        // not "your average Wednesday".
+        if (!observed[i]) continue;
+        if (new Date(`${dates[i]}T00:00:00Z`).getUTCDay() === weekday)
+          history.push(values[i]);
+      }
+      if (history.length >= MIN_BASELINE_N) {
+        const cmp = E.groupBaseline(values[dayIdx], history);
+        // `deltaPct === null` means the baseline mean was 0 — a ratio against
+        // nothing. `groupBaseline` reports that as `in_line` and the verbalizer
+        // refuses it a second time; both are deliberate and both are asserted
+        // in `baseline-honesty.spec.ts`.
+        if (cmp && cmp.direction !== "in_line" && cmp.deltaPct !== null) {
+          const ev: InsightEvidence = {
+            entity: E.WEEKDAY_NAMES[weekday],
+            measureLabel,
+            unit,
+            value: cmp.value,
+            baseline: cmp.baselineMean,
+            deltaPct: cmp.deltaPct,
+            direction: cmp.direction,
+            n: history.length,
+            date: dayIdx === lastIdx ? undefined : lastDate,
+          };
+          push(
+            this.record(
+              `${dimension}.${measure}.vs_same_weekday`,
+              category,
+              "baseline",
+              ev,
+              {
+                effectPct: cmp.deltaPct,
+                z: cmp.z,
+                n: history.length,
+                subject: E.WEEKDAY_NAMES[weekday],
+                periodKey: dayGrain(lastDate),
+              },
+            ),
+          );
+        }
       }
     }
 
-    // 2. Period over period.
+    // 2. Period over period — only between comparable windows.
     const window = params.periodWindow ?? 7;
-    const cmp = E.periodOverPeriod(values, window);
+    const obsIn = (from: number, to: number) =>
+      observed.slice(from, to).filter(Boolean).length;
+    const curObs = obsIn(values.length - window, values.length);
+    const prevObs = obsIn(values.length - 2 * window, values.length - window);
+    const comparable =
+      curObs >= MIN_PERIOD_OBSERVED &&
+      prevObs >= MIN_PERIOD_OBSERVED &&
+      Math.abs(curObs - prevObs) <= MAX_PERIOD_OBSERVED_GAP;
+    const cmp = comparable ? E.periodOverPeriod(values, window) : null;
     if (cmp && cmp.deltaPct !== null && cmp.direction !== "flat") {
       const ev: InsightEvidence = {
         measureLabel,
@@ -1129,20 +1286,29 @@ export class InsightGeneratorService {
           category,
           "period",
           ev,
-          { effectPct: cmp.deltaPct, n: window * 2 },
+          {
+            effectPct: cmp.deltaPct,
+            n: window * 2,
+            periodKey: windowGrain(window, dates[values.length - 1]),
+          },
         ),
       );
     }
 
-    // 3. Trend (last 28 days, weekly slope as % of level).
+    // 3. Trend (last 28 days, weekly slope as % of level) — over real days.
     const recent = values.slice(-28);
-    const trend = E.trendPerPeriodPct(recent);
+    const recentObs = observed.slice(-28);
+    const trendSeries = recent.filter((_, i) => recentObs[i]);
+    const trend =
+      trendSeries.length >= MIN_TREND_OBSERVED
+        ? E.trendPerPeriodPct(trendSeries)
+        : null;
     if (trend !== null && Math.abs(trend * 7) >= 0.05) {
       const ev: InsightEvidence = {
         measureLabel,
         unit,
         trendPctPerWeek: trend * 7,
-        n: recent.length,
+        n: trendSeries.length,
       };
       push(
         this.record(
@@ -1152,15 +1318,20 @@ export class InsightGeneratorService {
           ev,
           {
             effectPct: trend * 7,
-            n: recent.length,
+            n: trendSeries.length,
+            periodKey: trendGrain(28, dates[values.length - 1]),
           },
         ),
       );
     }
 
     // 4. Anomaly scan over the last 14 days (robust z vs the 90-day window).
+    //    A day with no records is neither a candidate nor part of the
+    //    comparison set: "the 27th was 5σ below typical" about a closure is the
+    //    same lie as the 100% one, told with a Greek letter.
     for (let i = Math.max(0, values.length - 14); i < values.length; i++) {
-      const rest = values.filter((_, j) => j !== i);
+      if (!observed[i]) continue;
+      const rest = values.filter((_, j) => j !== i && observed[j]);
       const z = E.robustZScore(values[i], rest);
       if (z !== null && Math.abs(z) >= 3) {
         const ev: InsightEvidence = {
@@ -1179,6 +1350,7 @@ export class InsightGeneratorService {
             {
               z,
               n: values.length,
+              periodKey: dayGrain(dates[i]),
             },
           ),
         );
@@ -1202,10 +1374,22 @@ export class InsightGeneratorService {
       n?: number;
       boost?: number;
       entityLabel?: string;
+      /** What the sentence is ABOUT, for the suppression key. */
+      subject?: string | null;
+      /** The period it covers, at its grain ("d:2026-09-02"). */
+      periodKey?: string | null;
     },
   ): InsightRecord | null {
     const sentence = verbalize(template, evidence);
     if (!sentence) return null;
+    const subject =
+      scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
+    const periodKey = scoreParams.periodKey ?? null;
+    const target = {
+      ruleId: insightRuleId(candidateKey),
+      subject,
+      periodKey,
+    };
     return {
       candidateKey,
       category,
@@ -1216,6 +1400,16 @@ export class InsightGeneratorService {
       entityKey: scoreParams.entityLabel ?? evidence.entity ?? null,
       entityLabel: scoreParams.entityLabel ?? evidence.entity ?? null,
       evidence,
+      subject,
+      periodKey,
+      // The three keys a dismissal could be written under, computed once, at
+      // the only place that knows what this insight is about. The UI never
+      // builds a key: one definition of "the same insight", server-side.
+      suppression: {
+        key: buildSuppressionKey(target, "insight"),
+        scope: effectiveScope(target, "insight"),
+        keys: suppressionKeys(target),
+      },
       periodStart: null,
       periodEnd: null,
     };
@@ -1236,6 +1430,20 @@ export interface InsightRecord {
   entityKey: string | null;
   entityLabel: string | null;
   evidence: InsightEvidence;
+  /** What the sentence is about ("Wednesday", "Table 4"), or null. */
+  subject: string | null;
+  /** The period it covers at its own grain ("d:2026-09-02"), or null. */
+  periodKey: string | null;
+  /**
+   * How to silence this, and how wide that silence really is. Built here
+   * because this is the only place that knows the subject and the period; the
+   * web never constructs a key.
+   */
+  suppression: {
+    key: string;
+    scope: SuppressionScope;
+    keys: Record<SuppressionScope, string>;
+  };
   periodStart: string | null;
   periodEnd: string | null;
 }
@@ -1255,4 +1463,8 @@ interface Bundle {
   venueFeatures: Record<string, unknown> | null;
   goals: any[];
   availability: Set<DataRequirement>;
+  /** Business dates the manager ruled out of every baseline. */
+  excludedDates: Set<string>;
+  /** False when that list could not be read — never the same as "empty". */
+  exclusionsReadable: boolean;
 }

@@ -11,18 +11,48 @@
  * and the sealed "rule off" — lives under "the working", which opens on the
  * house `settle` curve (the founder's named favourite motion).
  *
- * Honesty: `standing` is an em dash whenever the disposition store has never
- * touched the entry, because the feed carries no first-fired timestamp. The
- * house's own hand is rendered DISABLED with the reason, because no autonomous
- * execution exists anywhere in the gateway today.
+ * Honesty: `standing` is the first time this rule was ever SHOWN — the gateway
+ * reads it from `recommendation_impressions` — and the row says which clock it
+ * came from, because "first fired" and "last decided on" are different facts.
+ * An em dash only where nothing recorded either. The house's own hand is
+ * rendered DISABLED with the reason, because no autonomous execution exists
+ * anywhere in the gateway today.
+ *
+ * The dismissal sheet (2026-09-03) is the one control here that stores a
+ * STANDING INSTRUCTION rather than a note about a card, so it is the one that
+ * asks before it acts: a reason, a scope (this finding · this subject · the
+ * whole rule), and — separately — whether the day should also come out of the
+ * analysis. It never builds a suppression key; the gateway sends all three.
  *
  * All styling is in `rec-next.css` (imported by the page) — Mudavym tokens only.
  */
 
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
-import { EM, entryNo, fmtStanding, fmtWakes, urgencyLabel, STAKE_LABEL } from './rec-format';
-import type { EntryVM, Leaf, TeamOption } from './useRecommendationsNextData';
+import {
+  EM,
+  SCOPE_ORDER,
+  STAKE_LABEL,
+  STANDING_BASIS,
+  dateOfGrain,
+  dismissalSentence,
+  entryNo,
+  fmtDay,
+  fmtWakes,
+  readKey,
+  scopeLabel,
+  scopePromise,
+  standingOf,
+  urgencyLabel,
+  type SuppressionScope,
+} from './rec-format';
+import type {
+  DismissChoice,
+  EntryVM,
+  ExclusionsVM,
+  Leaf,
+  TeamOption,
+} from './useRecommendationsNextData';
 
 const REASONS: Array<{ id: string; label: string }> = [
   { id: 'not_relevant', label: 'Not relevant' },
@@ -51,10 +81,15 @@ export interface EntryProps {
   selected: boolean;
   expanded: boolean;
   team: TeamOption[] | null | undefined;
+  /** The day-exclusion store, so the sheet can offer — or refuse — that choice. */
+  exclusions: ExclusionsVM | undefined;
+  /** The `d` key asked for this entry's dismissal sheet. */
+  openDismiss: boolean;
+  onDismissOpened: () => void;
   onToggleExpand: () => void;
   onToggleSelect: () => void;
   onAct: () => void;
-  onDismiss: (reasonCode: string) => void;
+  onDismiss: (choice: DismissChoice) => void;
   onSnooze: (days: number, label: string) => void;
   onPin: () => void;
   onRate: (value: 'helpful' | 'not_helpful') => void;
@@ -89,10 +124,68 @@ function Quiet({
   );
 }
 
+/**
+ * What this entry can actually be silenced BY.
+ *
+ * A scope the entry cannot support is not offered. A rule that names no
+ * weekday cannot be silenced "for Wednesdays", and a rule that names no period
+ * cannot be silenced "for this day" — offering either would be the fake
+ * control the house rule forbids, and would quietly store a wider silence than
+ * the manager agreed to. The gateway has already resolved this: it sends the
+ * three keys, and `keys.insight === keys.rule` is exactly the case where the
+ * narrow choice does not exist.
+ */
+function scopesFor(e: EntryVM): SuppressionScope[] {
+  const keys = e.suppression?.keys;
+  if (!keys) return ['rule'];
+  // Walk WIDEST first. Two scopes that resolve to the same key are the same
+  // instruction, and the honest name for it is the wider one: a rule naming no
+  // weekday collapses all three keys to the bare rule key, and calling that
+  // "this exact finding" would promise a narrow silence while storing a total
+  // one. Then restore the reading order (narrowest first) so the default stays
+  // the narrowest choice the entry can actually support.
+  const seen = new Set<string>();
+  const kept = new Set<SuppressionScope>();
+  for (const s of [...SCOPE_ORDER].reverse()) {
+    if (seen.has(keys[s])) continue;
+    seen.add(keys[s]);
+    kept.add(s);
+  }
+  return SCOPE_ORDER.filter((s) => kept.has(s));
+}
+
 export default function Entry(props: EntryProps) {
   const { entry: e, leaf, focused, selected, expanded, team } = props;
   const [menu, setMenu] = useState<'dismiss' | 'snooze' | 'assign' | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
+
+  /* ── the dismissal sheet's own state ──────────────────────────────────── */
+  const scopes = useMemo(() => scopesFor(e), [e]);
+  const [reason, setReason] = useState<string | null>(null);
+  const [scope, setScope] = useState<SuppressionScope>(scopes[0]);
+  const [alsoExclude, setAlsoExclude] = useState(false);
+  useEffect(() => {
+    // Opening the sheet always starts from the founder's default — the exact
+    // finding — never from whatever was chosen last time.
+    if (menu === 'dismiss') {
+      setReason(null);
+      setScope(scopes[0]);
+      setAlsoExclude(false);
+    }
+  }, [menu, scopes]);
+
+  // The keyboard shortcut opens the sheet; it never dismisses. A dismissal
+  // now carries a scope, and a keystroke cannot choose one for the manager.
+  const { openDismiss, onDismissOpened } = props;
+  useEffect(() => {
+    if (!openDismiss) return;
+    setMenu('dismiss');
+    onDismissOpened();
+  }, [openDismiss, onDismissOpened]);
+
+  const day = dateOfGrain(e.periodKey);
+  const exclusions = props.exclusions;
+  const canExclude = !!day && exclusions?.readable === true;
 
   useEffect(() => {
     const node = rootRef.current;
@@ -110,8 +203,11 @@ export default function Entry(props: EntryProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [menu]);
 
-  const standing = leaf === 'snoozed' ? fmtWakes(e.snoozeUntil) : fmtStanding(e.updatedAt);
+  const stood = standingOf(e);
+  const standing = leaf === 'snoozed' ? fmtWakes(e.snoozeUntil) : stood.text;
   const live = leaf === 'standing';
+  /** On the dismissed/history leaves the row's own key IS the stored silence. */
+  const silenced = leaf === 'dismissed' || leaf === 'history';
 
   return (
     <article
@@ -155,9 +251,24 @@ export default function Entry(props: EntryProps) {
           <Fact label="Would change">{STAKE_LABEL[e.stake]}</Fact>
           <Fact label="Whose hand">Yours, in {e.hand.where}</Fact>
           <Fact label={leaf === 'snoozed' ? 'Wakes' : 'Standing'}>
-            <span className="rc-num">{standing}</span>
+            <span className="rc-num" title={leaf === 'snoozed' ? undefined : STANDING_BASIS[stood.basis]}>
+              {standing}
+            </span>
+            {leaf !== 'snoozed' && (
+              <span className="rc-basis">{STANDING_BASIS[stood.basis]}</span>
+            )}
           </Fact>
         </div>
+
+        {/* what a dismissal actually silenced, read back from the stored key */}
+        {silenced && e.status === 'dismissed' && (
+          <p className="rc-said rc-silenced" data-testid="rc-silenced">
+            {dismissalSentence(e.ruleKey)}{' '}
+            {readKey(e.ruleKey).subject
+              ? 'Return it to the book below to see it again.'
+              : 'Return it to the book below to hear from this rule again.'}
+          </p>
+        )}
 
         {/* ── controls ──────────────────────────────────────────────────── */}
         <div className="rc-controls">
@@ -189,20 +300,106 @@ export default function Entry(props: EntryProps) {
         </div>
 
         {menu === 'dismiss' && (
-          <div className="rc-menu" role="group" aria-label="Dismiss with a reason">
-            <span className="rc-micro">Why are you dismissing it?</span>
+          <div className="rc-menu rc-sheet" role="group" aria-label="Dismiss this entry">
+            <p className="rc-serif rc-sheet-title">Dismiss it — and never show it again</p>
+
+            <div className="rc-sheet-block">
+              <span className="rc-micro">Why are you dismissing it?</span>
+              <div className="rc-row">
+                {REASONS.map((r) => (
+                  <Quiet
+                    key={r.id}
+                    pressed={reason === r.id}
+                    onClick={() => setReason(r.id)}
+                  >
+                    {r.label}
+                  </Quiet>
+                ))}
+              </div>
+            </div>
+
+            <div className="rc-sheet-block">
+              <span className="rc-micro">Never show me…</span>
+              <div className="rc-scopes" role="radiogroup" aria-label="What to silence">
+                {scopes.map((s) => (
+                  <label key={s} className="rc-scope">
+                    <input
+                      type="radio"
+                      name={`scope-${e.ruleKey}`}
+                      value={s}
+                      checked={scope === s}
+                      onChange={() => setScope(s)}
+                    />
+                    <span>{scopeLabel(s, e.subject, day)}</span>
+                  </label>
+                ))}
+              </div>
+              {scopes.length === 1 && (
+                <p className="rc-why">
+                  This rule names no weekday and no date, so there is no narrower
+                  silence to offer {EM} dismissing it silences the whole rule.
+                </p>
+              )}
+            </div>
+
+            <div className="rc-sheet-block">
+              <label className="rc-scope">
+                <input
+                  type="checkbox"
+                  checked={alsoExclude}
+                  disabled={!canExclude}
+                  onChange={(ev) => setAlsoExclude(ev.target.checked)}
+                />
+                <span>
+                  Also exclude {day ? fmtDay(day) : 'this day'} from the analysis
+                </span>
+              </label>
+              <p className="rc-why">
+                {!day
+                  ? `This entry names no single day, so there is nothing to exclude ${EM} dismissing it hides the entry only.`
+                  : exclusions === undefined
+                    ? 'Reading the exclusion list…'
+                    : exclusions.readable
+                      ? 'A closure or an outage should not drag the average down. Excluding the day stops its numbers counting toward every baseline, on this page and everywhere else.'
+                      : `The exclusion store could not be read (${exclusions.problem ?? 'no reason given'}), so this cannot be offered. Dismissing still works.`}
+              </p>
+            </div>
+
+            <p className="rc-said rc-sheet-promise">
+              After this you will not see{' '}
+              {scopePromise(scope, e.subject, scope === 'insight' ? day : null, e.ruleKey)}.
+              Undo it from the History leaf.
+            </p>
+
             <div className="rc-row">
-              {REASONS.map((r) => (
-                <Quiet
-                  key={r.id}
-                  onClick={() => {
-                    setMenu(null);
-                    props.onDismiss(r.id);
-                  }}
-                >
-                  {r.label}
-                </Quiet>
-              ))}
+              <button
+                type="button"
+                className="rc-act"
+                disabled={!reason}
+                onClick={() => {
+                  if (!reason) return;
+                  const key = e.suppression?.keys[scope] ?? e.ruleKey;
+                  setMenu(null);
+                  props.onDismiss({
+                    reason,
+                    scope,
+                    key,
+                    excludeDate: alsoExclude && day ? day : null,
+                    said: `Dismissed. You will not see ${scopePromise(
+                      scope,
+                      e.subject,
+                      scope === 'insight' ? day : null,
+                      e.ruleKey,
+                    )}.`,
+                  });
+                }}
+              >
+                Dismiss it
+              </button>
+              <Quiet onClick={() => setMenu(null)}>Keep it standing</Quiet>
+              {!reason && (
+                <span className="rc-said">Pick a reason first {EM} it is stored with the entry.</span>
+              )}
             </div>
           </div>
         )}

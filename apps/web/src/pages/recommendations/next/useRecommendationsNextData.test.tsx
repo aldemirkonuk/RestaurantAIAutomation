@@ -51,9 +51,12 @@ beforeEach(() => {
   auth.rid = 'r1';
   api.get.mockReset();
   api.post.mockReset();
-  api.get.mockImplementation(async (url: string) =>
-    url.includes('/digest') ? { data: { digestEnabled: false, digestHour: 7 } } : { data: FEED },
-  );
+  api.get.mockImplementation(async (url: string) => {
+    if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+    if (url.includes('/exclusions'))
+      return { data: { items: [], readable: true, problem: null } };
+    return { data: FEED };
+  });
 });
 
 describe('useRecommendationsNextData transport', () => {
@@ -71,7 +74,91 @@ describe('useRecommendationsNextData transport', () => {
     expect(result.current.entries[0].stake).toBe('stock');
     // nothing has touched this entry, so "how long it has stood" is unknown
     expect(result.current.entries[0].updatedAt).toBeNull();
+    expect(result.current.entries[0].firstSeenAt).toBeNull();
     fetchSpy.mockRestore();
+  });
+
+  it('reads the exclusion store through apiClient, keyed by tenant', async () => {
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.exclusions).toBeDefined());
+    expect(api.get).toHaveBeenCalledWith('/analytics/exclusions/r1');
+    expect(result.current.exclusions?.readable).toBe(true);
+  });
+
+  it('an unreadable exclusion store is NOT an empty one', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/exclusions')) throw { response: { status: 500 }, message: 'no table' };
+      if (url.includes('/digest')) return { data: null };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.exclusions).toBeDefined());
+    expect(result.current.exclusions).toEqual({
+      items: [],
+      readable: false,
+      problem: 'no table',
+    });
+    // …and the book itself still read.
+    expect(result.current.phase).toBe('ready');
+  });
+
+  it('a feed with no suppression fields is not reported as honoured', async () => {
+    // An older gateway that has never heard of dismissal scopes must not have
+    // its silence read as "your dismissals were applied".
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.suppressionsReadable).toBe(false);
+  });
+
+  it('dismisses at the key the gateway supplied, and excludes the day separately', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], {
+        reason: 'not_relevant',
+        scope: 'insight',
+        key: 'stockout_imminent#chablis-2021#d:2026-09-02',
+        excludeDate: '2026-09-02',
+        said: 'Dismissed.',
+      });
+    });
+
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({
+        ruleKey: 'stockout_imminent#chablis-2021#d:2026-09-02',
+        status: 'dismissed',
+        reason: 'not_relevant',
+      }),
+    );
+    // The exclusion is a SEPARATE store and a separate write.
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/exclusions/r1',
+      expect.objectContaining({ businessDate: '2026-09-02' }),
+    );
+    expect(result.current.entries).toHaveLength(0);
+  });
+
+  it('says so when the entry was dismissed but the day could not be excluded', async () => {
+    api.post.mockImplementation(async (url: string) => {
+      if (url.includes('/exclusions')) throw new Error('no table');
+      return { data: {} };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], {
+        reason: 'not_relevant',
+        scope: 'rule',
+        key: 'stockout_imminent',
+        excludeDate: '2026-09-02',
+        said: 'Dismissed.',
+      });
+    });
+    expect(result.current.note).toContain('could NOT be excluded');
   });
 
   it('writes a disposition through apiClient with the rule key and a snapshot', async () => {
@@ -107,14 +194,16 @@ describe('useRecommendationsNextData transport', () => {
     await waitFor(() => expect(result.current.entries).toHaveLength(1));
 
     let release: (v: unknown) => void = () => {};
-    api.get.mockImplementation(
-      (url: string) =>
-        url.includes('/digest')
-          ? Promise.resolve({ data: null })
-          : new Promise((res) => {
-              release = res;
-            }),
-    );
+    // Only the FEED read is held open — the digest and the exclusion list are
+    // separate reads and must not be the thing this test resolves.
+    api.get.mockImplementation((url: string) => {
+      if (url.includes('/digest')) return Promise.resolve({ data: null });
+      if (url.includes('/exclusions'))
+        return Promise.resolve({ data: { items: [], readable: true, problem: null } });
+      return new Promise((res) => {
+        release = res;
+      });
+    });
     auth.rid = 'r2';
     rerender();
     await waitFor(() => expect(result.current.entries).toHaveLength(0));

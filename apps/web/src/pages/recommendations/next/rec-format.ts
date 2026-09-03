@@ -152,27 +152,184 @@ export function handOf(ruleKey: string, category: string): Hand {
   return byCategory[category] ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
 }
 
+/* ── The scope of a dismissal ────────────────────────────────────────────── */
+
+/**
+ * The three scopes, and the words for each.
+ *
+ * The KEYS are built by the gateway (`analytics/insights/suppression.ts`) and
+ * arrive on every entry — this page never constructs one, because "the same
+ * insight" has to mean exactly one thing on both sides of the wire. What lives
+ * here is only the reading: given a key or a scope, what does the manager see
+ * on screen, and what are they promising to never see again.
+ */
+export type SuppressionScope = 'insight' | 'subject' | 'rule';
+
+export const SCOPE_ORDER: SuppressionScope[] = ['insight', 'subject', 'rule'];
+
+export interface SuppressionVM {
+  key: string;
+  scope: SuppressionScope;
+  keys: Record<SuppressionScope, string>;
+}
+
+/** A subject and a period, read back out of a key. Display only. */
+export function readKey(key: string): {
+  ruleId: string;
+  subject: string | null;
+  grain: string | null;
+} {
+  const [ruleId = '', subject = '*', grain = '*'] = key.split('#');
+  return {
+    ruleId,
+    subject: subject === '*' ? null : subject,
+    grain: grain === '*' ? null : grain,
+  };
+}
+
+/** The date a grain names ("d:2026-09-02" → "2026-09-02"), or null. */
+export function dateOfGrain(grain: string | null | undefined): string | null {
+  if (!grain) return null;
+  const m = /^[a-z]+\d*:(\d{4}-\d{2}-\d{2})$/.exec(grain);
+  return m ? m[1] : null;
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/**
+ * "2026-09-02" → "Wed 2 Sep". An unparseable date is an em dash, never today.
+ *
+ * Written out rather than delegated to `toLocaleDateString`: this string is
+ * part of a promise the manager is asked to agree to ("never show me this
+ * finding for Wed 2 Sep"), and Intl's short month drifts with the ICU version
+ * shipped by the runtime — the same date reads "Sep" in one browser and "Sept"
+ * in another. A date in a promise has to be the same date everywhere.
+ * Read in UTC, matching the business-date key the gateway stores.
+ */
+export function fmtDay(iso: string | null | undefined): string {
+  if (!iso) return EM;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return EM;
+  const t = new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00Z`);
+  if (Number.isNaN(t.getTime())) return EM;
+  return `${DAY_NAMES[t.getUTCDay()]} ${t.getUTCDate()} ${MONTH_NAMES[t.getUTCMonth()]}`;
+}
+
+/**
+ * The label on a scope choice, for THIS entry.
+ *
+ * A scope the entry cannot support is not offered — a rule that names no
+ * weekday cannot be silenced "for Wednesdays", and a control that pretended
+ * otherwise would be the fake button the house rule forbids.
+ */
+export function scopeLabel(
+  scope: SuppressionScope,
+  subject: string | null,
+  day: string | null,
+): string {
+  if (scope === 'insight')
+    return day ? `This exact finding — ${fmtDay(day)}` : 'This exact finding';
+  if (scope === 'subject')
+    return subject ? `Every ${subject}, for this rule` : 'This subject, for this rule';
+  return 'This rule entirely, for this restaurant';
+}
+
+/** What the manager is promising never to see again. Said in full. */
+export function scopePromise(
+  scope: SuppressionScope,
+  subject: string | null,
+  day: string | null,
+  rule: string,
+): string {
+  if (scope === 'insight')
+    return day
+      ? `this one finding about ${subject ?? 'this'} on ${fmtDay(day)} — the same rule will still be read on every other day`
+      : `this one finding — the same rule will still be read on other subjects and other days`;
+  if (scope === 'subject')
+    return `every ${subject ?? 'reading of this subject'} this rule ever finds — other subjects keep reporting`;
+  return `anything the rule ${rule} finds, on any day and any subject, until you return it`;
+}
+
+/**
+ * The sentence a dismissed entry carries on the Dismissed and History leaves:
+ * what is silenced, and where to undo it. Read from the stored key, so it
+ * describes what was ACTUALLY written, not what the sheet offered.
+ */
+export function dismissalSentence(storedKey: string): string {
+  const { ruleId, subject, grain } = readKey(storedKey);
+  const day = dateOfGrain(grain);
+  if (subject && day)
+    return `Silenced: this one finding about ${subject} on ${fmtDay(day)}. The rule still reads every other day.`;
+  if (subject)
+    return `Silenced: every ${subject} this rule finds. Other subjects still report.`;
+  return `Silenced: the rule ${ruleId}, entirely — every subject, every day.`;
+}
+
 /* ── Time, said only where it is known ───────────────────────────────────── */
 
 function daysBetween(a: number, b: number): number {
   return Math.floor((a - b) / 86_400_000);
 }
 
-/**
- * How long an entry has stood, from the disposition store's `updatedAt`.
- * `null` — which is every entry the book has never been touched on — is the
- * em dash, because the feed records no first-fired timestamp (page note §13).
- */
-export function fmtStanding(iso: string | null | undefined): string {
-  if (!iso) return EM;
+function elapsed(iso: string): string | null {
   const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return EM;
+  if (!Number.isFinite(t)) return null;
   const d = daysBetween(Date.now(), t);
   if (d <= 0) return 'today';
   if (d === 1) return '1 day';
   if (d < 30) return `${d} days`;
   const m = Math.floor(d / 30);
   return m === 1 ? '1 month' : `${m} months`;
+}
+
+/**
+ * How long an entry has stood.
+ *
+ * Until 2026-09-03 this was an em dash on every untouched entry, because the
+ * feed carried no first-fired timestamp — while `recommendation_impressions`
+ * had been recording the answer since 2026-08-17 and nothing read it. The
+ * gateway now attaches `firstSeenAt = the first time this rule was ever shown`
+ * (`recommendations.service.ts` `attachFirstSeen`), and THAT is the number
+ * here. `updatedAt` is the fallback and is a different fact — when the
+ * disposition store last touched the entry — so the page says which it is
+ * showing rather than letting the two read as one.
+ */
+export function standingOf(entry: {
+  firstSeenAt?: string | null;
+  updatedAt?: string | null;
+}): { text: string; basis: 'first-seen' | 'touched' | 'unknown' } {
+  if (entry.firstSeenAt) {
+    const t = elapsed(entry.firstSeenAt);
+    if (t) return { text: t, basis: 'first-seen' };
+  }
+  if (entry.updatedAt) {
+    const t = elapsed(entry.updatedAt);
+    if (t) return { text: t, basis: 'touched' };
+  }
+  return { text: EM, basis: 'unknown' };
+}
+
+export const STANDING_BASIS: Record<
+  'first-seen' | 'touched' | 'unknown',
+  string
+> = {
+  'first-seen': 'since it was first shown to you',
+  touched: 'since the book last recorded a decision on it — not when it first fired',
+  unknown: 'nothing has recorded when this entry first fired',
+};
+
+/**
+ * How long an entry has stood, from the disposition store's `updatedAt` alone.
+ * Kept for the snoozed/dismissed leaves, whose rows come from the actions
+ * table and carry no impression history.
+ */
+export function fmtStanding(iso: string | null | undefined): string {
+  if (!iso) return EM;
+  return elapsed(iso) ?? EM;
 }
 
 /**

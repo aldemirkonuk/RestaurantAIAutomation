@@ -18,9 +18,20 @@
  *
  * Two things the feed never did, kept here because they are the honest ones:
  *  - the head prints the DENOMINATOR — "17 rules were read, 4 stand" — so an
- *    empty book is a proven absence, not a silence (ADR 0020);
- *  - "standing" is an em dash for every entry the disposition store has never
- *    touched, because nothing records when a rule first fired (§13).
+ *    empty book is a proven absence, not a silence (ADR 0020), and since
+ *    2026-09-03 it also prints how many were withheld BY A DISMISSAL, so the
+ *    two kinds of absence are not read as one;
+ *  - "standing" is the real first-fired date, from `recommendation_impressions`
+ *    (gateway `attachFirstSeen`), and an em dash only where nothing recorded it.
+ *
+ * Second pass, 2026-09-03 — dismissal that holds. The founder: "if the person
+ * says dismiss, then it should be avoided at all costs — and then we are going
+ * to let them know about this as well; or they have the opportunity to either
+ * cancel it and discard it from the analysis or not." Dismiss now writes a
+ * SCOPED suppression key (rule # subject # period — see the gateway's
+ * `analytics/insights/suppression.ts`) that the insight generator honours on
+ * every subsequent run, offers separately to take the day out of the analysis,
+ * and says in words what will never be shown and where to undo it.
  *
  * Transport: everything goes through `apiClient`. The page note's §10 "broken"
  * verdict (six raw `fetch` calls, no bearer, 401 on every request) was written
@@ -41,11 +52,13 @@ import {
   URGENCY_RANK,
   ensureFraunces,
   failureSentence,
+  fmtDay,
   fmtReadAt,
   type StakeId,
 } from './rec-format';
 import {
   useRecommendationsNextData,
+  type DismissChoice,
   type EntryVM,
   type Leaf,
   type TeamOption,
@@ -92,6 +105,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedIdx, setFocusedIdx] = useState(-1);
+  /** The entry whose dismissal sheet the `d` key asked to open. */
+  const [sheetFor, setSheetFor] = useState<string | null>(null);
   const { leaf, setLeaf } = data;
 
   useEffect(() => {
@@ -104,6 +119,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     setSelected(new Set());
     setExpanded(new Set());
     setFocusedIdx(-1);
+    setSheetFor(null);
   }, [leaf]);
 
   /**
@@ -161,8 +177,14 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     [data, navigate],
   );
 
-  const dismiss = (e: EntryVM, reason: string) =>
-    void data.setDisposition(e, { status: 'dismissed', reason }, `Dismissed — “${reason}”.`, true);
+  /**
+   * Dismiss is the only write on this page that is a STANDING INSTRUCTION
+   * rather than a note about a card, so it does not go through
+   * `setDisposition`: the sheet resolves a scope, the gateway's key for that
+   * scope, and an optional day exclusion, and the hook says in words what will
+   * never be shown again.
+   */
+  const dismiss = (e: EntryVM, choice: DismissChoice) => void data.dismiss(e, choice);
 
   const snooze = (e: EntryVM, days: number, label: string) =>
     void data.setDisposition(
@@ -233,7 +255,10 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           if (e && leaf === 'standing') act(e);
           break;
         case 'd':
-          if (e && leaf === 'standing') dismiss(e, 'not_now');
+          // The key opens the sheet rather than dismissing: a dismissal now
+          // carries a SCOPE, and a keystroke cannot choose one on the
+          // manager's behalf. `e` expands the working; `d` asks the question.
+          if (e && leaf === 'standing') setSheetFor(e.ruleKey);
           break;
         case 's':
           if (e && leaf === 'standing') snooze(e, 1, 'until tomorrow');
@@ -286,6 +311,20 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             Read at {fmtReadAt(data.generatedAt)} · one entry = one deterministic rule that fired
           </p>
           <DoubleRule />
+          {/*
+            The denominator's second half. "17 rules were read, 4 stand" is only
+            true if the other 13 are accounted for, and the ones you dismissed
+            are a different kind of absence from the ones that did not fire.
+          */}
+          {data.phase === 'ready' && leaf === 'standing' && (
+            <p className="rc-said rc-suppressed" data-testid="rc-suppressed">
+              {!data.suppressionsReadable
+                ? `Your dismissals could not be read, so entries you have already dismissed may be standing below ${EM} this book is not proof they are gone.`
+                : data.suppressed && data.suppressed > 0
+                  ? `${data.suppressed} ${data.suppressed === 1 ? 'entry was' : 'entries were'} withheld because you dismissed ${data.suppressed === 1 ? 'it' : 'them'}. They are on the Dismissed leaf, and every one can be returned.`
+                  : 'Nothing was withheld by a dismissal.'}
+            </p>
+          )}
           {linked && data.phase === 'ready' && !data.entries.some((e) => e.ruleKey === linked) && (
             <p className="rc-said" role="status">
               The link asked for <span className="rc-num">{linked}</span>, which is not standing —
@@ -354,6 +393,42 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               ))}
             </div>
 
+            {/* days the engine was told not to count — the exclusion store */}
+            <div className="rc-aside-block">
+              <div className="rc-micro">Out of the analysis</div>
+              {data.exclusions === undefined ? (
+                <p className="rc-why">Reading the excluded days…</p>
+              ) : !data.exclusions.readable ? (
+                <p className="rc-why" role="status">
+                  The excluded-day store could not be read (
+                  {data.exclusions.problem ?? 'no reason given'}), so every average below
+                  may still be counting days you ruled out. Not an empty list {EM} an
+                  unreadable one.
+                </p>
+              ) : data.exclusions.items.length === 0 ? (
+                <p className="rc-why">
+                  No day has been ruled out. Every day with records counts toward the
+                  averages; days with no records were never counted as zero.
+                </p>
+              ) : (
+                <ul className="rc-excl">
+                  {data.exclusions.items.map((x) => (
+                    <li key={x.businessDate}>
+                      <span className="rc-num">{fmtDay(x.businessDate)}</span>
+                      <span className="rc-why">{x.reason ?? 'no reason given'}</span>
+                      <button
+                        type="button"
+                        className="rc-quiet"
+                        onClick={() => void data.includeDay(x.businessDate)}
+                      >
+                        Count it again
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             {/* the digest — a control whose sender does not exist */}
             <div className="rc-aside-block">
               <div className="rc-micro">Daily digest</div>
@@ -375,7 +450,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               <div className="rc-micro">Keys</div>
               <p className="rc-keys">
                 j / k move · e the working · a act
-                <br />d dismiss · s snooze · p pin · x select
+                <br />d the dismissal sheet · s snooze · p pin · x select
               </p>
             </div>
           </aside>
@@ -434,8 +509,11 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         team={data.team}
                         onToggleExpand={() => setExpanded((p) => toggle(p, e.ruleKey))}
                         onToggleSelect={() => setSelected((p) => toggle(p, e.ruleKey))}
+                        exclusions={data.exclusions}
+                        openDismiss={sheetFor === e.ruleKey}
+                        onDismissOpened={() => setSheetFor(null)}
                         onAct={() => act(e)}
-                        onDismiss={(reason) => dismiss(e, reason)}
+                        onDismiss={(choice) => dismiss(e, choice)}
                         onSnooze={(days, label) => snooze(e, days, label)}
                         onPin={() => pin(e)}
                         onRate={(v) => rate(e, v)}
@@ -476,12 +554,15 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                 void data.bulk(
                   picked,
                   { status: 'dismissed', reason: 'not_now' },
-                  `Dismissed ${picked.length} entries.`,
+                  `Dismissed ${picked.length} entries — each rule entirely, on every subject and every day. Return any of them from the Dismissed leaf.`,
                 );
                 setSelected(new Set());
               }}
+              // Bulk cannot ask a scope question per entry, so it takes the
+              // widest one and SAYS so on the control — never silently.
+              title="Silences each selected rule entirely, on every subject and every day"
             >
-              Dismiss them
+              Dismiss them — whole rules
             </button>
             <button
               type="button"

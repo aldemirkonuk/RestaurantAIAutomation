@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-02
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
@@ -67,9 +67,22 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 - `?insight=<ruleKey>` (NEW-759) opens and focuses that entry, and says in words when
   the rule asked for is **not** standing (ruled off, dismissed, snoozed, or no longer
   firing) instead of landing silently on a book that does not contain it
-- 🚧 **"Standing" is an em dash on the standing leaf** — the feed carries no first-fired
-  timestamp, so how long an entry has stood is unknown until the disposition store has
-  touched it (§13.7). It is never rendered as 0 days or as today.
+- **"Standing" is the real first-fired date** (second pass, 2026-09-03). The gateway now
+  attaches `firstSeenAt = min(shown_at)` per rule key from `recommendation_impressions`
+  (`recommendations.service.ts` `attachFirstSeen`), and the entry says which clock it read
+  — "since it was first shown to you" vs "since the book last recorded a decision on it".
+  An em dash only where nothing recorded either; never 0 days, never today. Closes §13.7.
+- **Dismissal is a durable, SCOPED suppression the insight generator honours**
+  (second pass). Dismissing writes a key of the shape `rule#subject#period` — three scopes
+  offered per dismissal, defaulting to the exact finding — and both the recommendations
+  feed *and* `InsightGeneratorService.generate()` withhold anything it matches, on every
+  subsequent run. Before this, `dismiss` was read by exactly one consumer and the sentence
+  kept reappearing wherever else insights are shown.
+- **"Also exclude this from the analysis"** — the second choice at dismissal time, stored
+  separately in `analytics_day_exclusions` and consulted by every daily series the engine
+  builds. Hiding a sentence and correcting an average are different acts.
+- **The head prints what a dismissal withheld** — "3 entries were withheld because you
+  dismissed them" — and says so plainly when the dismissal store could not be read at all.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_recommendations`)
 
@@ -83,6 +96,10 @@ this list is the note-side index (ADR 0044 §2).
 | `rc-ink` | Ink micro-state | entry left-rule warming to the seal ring on hover/focus, quiet-button borders — `ink`, 160ms; nothing moves |
 | `rc-hold-pour` | The hold fills | `HoldToApprove` on **Hold to rule off** — `pour`, linear 620ms; an early release retreats on `tuck` and says what did not happen |
 | `rc-seal-stamp` | The seal lands | the hold completing and the entry being ruled off — `stamp`, ~11% overshoot, the only wax on the page |
+
+(Second pass, 2026-09-03: the dismissal sheet adds **no** motion — it is the one
+control that stores a standing instruction, and a panel that slides while someone
+decides what to silence is asking them to hurry. See MOTIONS.md §"Second pass".)
 
 Deliberate non-motions: the seal is rationed to ruling off (every other action is the
 same die pressed dry); a dismissed entry leaves at once and the undo line — not an
@@ -149,6 +166,93 @@ and says so plainly when the rule is not standing) but nothing on it mints a lin
 (§13.12). *The digest editor* (hour, minimum urgency, recipient) is not built at all,
 because its sender is not built either.
 
+### Second pass, 2026-09-03 — dismissal that holds
+
+**What the founder asked, verbatim.** *"I expect all of the endpoints to be profoundly
+solid, such as 'Wednesday sales came in 100% lower than your average Wednesday'. If the
+person says dismiss, then it should be avoided at all costs — and then we're going to let
+them know about this as well; or they have the opportunity to either cancel it and discard
+it from the analysis or not."* Plus, by message during the pass: **ask per dismissal**,
+default *this exact finding*, offer all three scopes, keep the exclusion checkbox separate,
+and make every choice undoable from the History leaf.
+
+**The sentence he quoted was real, and it was a bug.** On 2026-09-03 the local gateway
+returned it verbatim from the live rule engine, along with its sibling:
+
+```
+GET /api/v1/analytics/recommendations/550e8400-…
+  "Wednesday sales came in 100% lower than your average Wednesday ($0 vs $104)."
+  "sales fell 100% vs the previous week ($0 vs $2.4k)."
+```
+
+Neither is a measurement. `InsightGeneratorService.toDaily` bucketed rows by day and filled
+every gap with a literal `0`, so a closure, a POS outage and a genuinely dead day were the
+same number to every baseline downstream. The restaurant had not lost 100% of its Wednesday
+trade — the system had no records for that day and called it zero. Absence reported as a
+measurement, which is the same fault as absence reported as health, told with a percentage.
+
+**What was built in the gateway** (file:line):
+
+| Change | Where |
+|---|---|
+| A day with no rows is `observed: false`, not a zero; a day the manager excluded is too | `analytics/insights/insight-generator.service.ts` `toDaily` (:463) |
+| The weekday baseline compares the latest **observed** day, drops unobserved days from the same-weekday history, re-applies `MIN_BASELINE_N = 3` **after** that filter, and dates the sentence whenever it had to skip back | same file, `timeSeriesInsights` §1 |
+| Week-over-week withholds unless both windows carry ≥ `MIN_PERIOD_OBSERVED = 4` observed days and differ by ≤ 1 | same file, §2 |
+| The 28-day trend needs `MIN_TREND_OBSERVED = 14` real days; the anomaly scan skips unobserved days as candidates *and* as comparison set | same file, §3–§4 |
+| A baseline of zero yields no sentence — asserted at both guards (`groupBaseline` reports `in_line` with a null `deltaPct`; `verbalize('baseline')` returns null) | `engine/comparisons.ts:37`, `insights/insight-verbalizer.ts:99` |
+| The support count travels with the claim: "…over 11 past Wednesdays" | `insight-verbalizer.ts` `baseline` case |
+| **Suppression keys** — `rule#subject#grain`, three scopes, the bare rule key as the canonical `rule#*#*` so every dismissal written before today keeps meaning what it meant | **new** `analytics/insights/suppression.ts` |
+| `InsightGeneratorService.generate()` now reads the dismissal set and withholds what it matches, returning `suppressed` and `suppressionsReadable` | `insight-generator.service.ts` (the "dismissals, honoured HERE" block) |
+| `RecommendationsService` attaches `suppression.{key,scope,keys}` to every entry and filters on the same target the UI dismisses with | `analytics/recommendations.service.ts` |
+| `firstSeenAt` per rule from `recommendation_impressions` | `recommendations.service.ts` `attachFirstSeen` |
+| `readDispositions()` / `listSuppressions()` carry a `readable` flag — an unreadable actions table is no longer an empty one | `analytics/recommendation-actions.service.ts` |
+| **The exclusion store** and its three routes (`GET/POST/DELETE /analytics/exclusions/:rid`) | **new** `analytics/insights/day-exclusions.service.ts`, `analytics.controller.ts` |
+| Migration | **new** `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql` |
+
+**The key, written down.** A suppression key is `<ruleId>#<subject>#<grain>`:
+`ruleId` is the rule as the engine emits it (`sales_below_weekday_baseline`, or
+`insight:<candidateKey>` for a raw insight); `subject` is the slugged thing the sentence is
+about (`wednesday`, `table-4`) or `*`; `grain` is the period at its own grain (`d:2026-09-02`,
+`p7:2026-09-02`, `t28:2026-09-02`) or `*`. Three scopes, and only three:
+`insight` = `rule#subject#grain`, `subject` = `rule#subject#*`, `rule` = `rule#*#*`, which
+normalises back to the bare rule key. Matching is set membership over the five keys that
+could suppress a target — never a prefix scan — so a key nobody can generate cannot hide
+anything, and a key that IS generated can never be silently unmatched.
+
+Two honesty consequences, both built: a rule that names no subject and no period collapses
+all three keys, so the sheet offers **one** choice and *names it* "This rule entirely" plus
+a line saying why there is nothing narrower; and the sheet never constructs a key — the
+gateway sends all three, because "the same insight" must mean exactly one thing on both
+sides of the wire.
+
+**What the page does with it.** `Dismiss` opens a sheet: a reason (required — the button
+stays dark and says why), a scope radio group defaulting to the exact finding, and a
+separate checkbox "Also exclude Wed 2 Sep from the analysis" that is disabled with its
+reason when the entry names no day or the exclusion store cannot be read. Under them, in
+words, what will never be shown, and where to undo it. After the write, the status line
+repeats the promise and offers Undo; the Dismissed and History leaves render the stored key
+back as a sentence ("Silenced: this one finding about wednesday on Wed 2 Sep. The rule still
+reads every other day.") beside **Return it to the book**. The `d` key now *opens* the sheet
+rather than dismissing — a keystroke cannot choose a scope on the manager's behalf. Bulk
+dismiss cannot ask per entry, so it takes the widest scope and says so on the control itself:
+**"Dismiss them — whole rules"**.
+
+**Verified, not asserted.** Against the running local gateway on :4000: both 100% sentences
+are gone from the live feed (they were there an hour earlier, quoted above); `firstSeenAt`
+comes back as a real timestamp; a dismiss → re-read → restore round trip moved the feed from
+3 entries to 2 and back, with `suppressed: 1` reported in between; `GET /analytics/exclusions/:rid`
+returns `readable:false` with *"Could not find the table 'public.analytics_day_exclusions'"*
+until the migration applies, and the page renders exactly that sentence rather than an empty
+list. The withholding tests were also run against a pre-fix control (the observed-day
+distinction removed) and **6 of them fail** on it.
+
+**What is still open.** The scoped suppression path is proven by 67 gateway tests but only
+the *rule* scope could be exercised end-to-end on the local tenant, because the only entries
+that fire there name no subject — the subject/period scopes are unit-proven, not
+curl-proven. And `analytics_day_exclusions` does not exist in the database until this
+migration merges, so the exclusion checkbox is disabled in the running app today; that is
+rendered as the reason, not hidden.
+
 ## 2. Entry
 
 **Not in the sidebar.** Entries are:
@@ -170,7 +274,20 @@ because its sender is not built either.
   (every read/write through `apiClient`), `rec-format.ts` (the three axes + the
   failure shape), `rec-next.css` (all styling — Mudavym tokens only, with the
   motion tokens written out at the bottom), `MOTIONS.md`, and two test files
-  (15 tests). ~1,710 lines of source.
+  (**37 tests** after the second pass). 2,446 lines of source + 834 of tests — well past
+  the brief's ~900-line guideline, and disclosed rather than hidden: roughly a third of the
+  source is the honesty prose (four real states per read, three failure sentences, the
+  disclosure lines on every disabled control and every scope choice), and it is the part of
+  the page the founder's review was about.
+- Gateway, second pass (2026-09-03): **new** `analytics/insights/suppression.ts`
+  (the key grammar) and `analytics/insights/day-exclusions.service.ts` (the engine's
+  exclusion hook), plus edits to `insights/insight-generator.service.ts`,
+  `insights/insight-verbalizer.ts`, `recommendations.service.ts`,
+  `recommendation-actions.service.ts`, `analytics.controller.ts`, `analytics.module.ts`.
+  Four gateway specs, **67 tests**: `insights/suppression.spec.ts` (23),
+  `insights/baseline-honesty.spec.ts` (18), `insights/day-exclusions.service.spec.ts` (11),
+  `recommendation-suppression.spec.ts` (15). Migration
+  `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql`.
 
 ## 4. Endpoints
 
@@ -188,6 +305,9 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | POST | `…/:rid/action` | `Recommendations.tsx:263` |
 | POST | `…/:rid/bulk-action` | `Recommendations.tsx:404` |
 | GET | `/restaurants/:rid/team/members` | assignment picker, `Recommendations.tsx:346` → `services/api/team.ts:124` |
+| GET | `/analytics/exclusions/:rid` | **new 2026-09-03** — the days ruled out of every baseline, with a `readable` flag; `useRecommendationsNextData.ts` tenant effect |
+| POST | `/analytics/exclusions/:rid` | **new** — `{businessDate, reason}`; `excludeDay()` |
+| DELETE | `/analytics/exclusions/:rid/:businessDate` | **new** — `includeDay()`, "Count it again" |
 
 Same six endpoints in the Mudavym build, all through `apiClient`, all keyed by
 `activeRestaurantId`: `useRecommendationsNextData.ts` — feed and leaves in `load()`,
@@ -226,9 +346,18 @@ dashboard.md §7.
   (`1|true|on` forces the redesign, `0|false|off` forces legacy) — precedence over the
   flag, one machine only (`lib/mudavym/useMudavymDesign.ts:31-45`).
 - Redesign client state (none of it persisted): leaf, register filter, expanded set,
-  selection, keyboard cursor. Every query is keyed by `activeRestaurantId` and a
-  sequence number, so a restaurant switch clears the previous tenant's entries before
-  the new read lands (asserted in `useRecommendationsNextData.test.tsx`).
+  selection, keyboard cursor, and — second pass — the open dismissal sheet's reason, scope
+  and exclusion checkbox, which reset to the default (the exact finding, no reason, no
+  exclusion) every time the sheet opens rather than remembering the last choice. Every
+  query is keyed by `activeRestaurantId` and a sequence number, so a restaurant switch
+  clears the previous tenant's entries before the new read lands (asserted in
+  `useRecommendationsNextData.test.tsx`).
+- **Two server stores back the page's standing state**, deliberately apart:
+  `recommendation_actions` (a dismissal's scoped suppression key, plus snooze/done/pin/
+  assign/feedback) and `analytics_day_exclusions` (business dates out of every baseline,
+  migration `20260903091000`). Hiding a sentence and correcting an average are different
+  acts; merging them would make "was this baseline computed over an excluded day?"
+  unanswerable later.
 
 ## 9. Gaps
 
@@ -250,15 +379,30 @@ Outside the page's own paths, and therefore filed rather than built (2026-09-02)
   digest control disabled with that reason; the fix belongs in
   `apps/api-gateway/src/analytics/insights/insight-scheduler.service.ts` (or a sibling)
   and is §13.6.
-- **Nothing records when a rule first fired**, so "how long has this stood" is
-  unknowable for an untouched entry. The raw material already exists:
-  `recommendation_impressions` is written on every read
-  (`recommendations.service.ts:396-419`) and would answer it with
-  `min(created_at) per (restaurant_id, rule_key)` — but no endpoint exposes it. §13.7.
+- ~~**Nothing records when a rule first fired**~~ **Closed 2026-09-03.** The feed now
+  attaches `firstSeenAt` per rule from `recommendation_impressions`
+  (`recommendations.service.ts` `attachFirstSeen`), and the page renders it with the clock
+  it came from. Implementation note: a `min()` aggregate is NOT available — PostgREST on
+  this project answers `select=rule_key,created_at.min()` with `PGRST123 "Use of aggregate
+  functions is not allowed"` (measured 2026-09-03 against the live REST endpoint), so it is
+  one indexed `order(shown_at).limit(1)` per visible key, capped at 40 keys; anything past
+  the cap stays an em dash rather than becoming a guess.
 - **No autonomous execution exists** for any recommendation anywhere in the gateway;
   the product's only autonomy switch, `enable_ai_autonomous_send`, belongs to vendor
   email (`feature-flag-registry.ts:64`). The redesign says so on every entry rather
   than implying a capability. §13.8.
+- **The rule-wide silences are not visible in Settings.** The founder asked for them to
+  appear there "if a settings hook is trivial, else file it" — it is not trivial from this
+  page's paths (`apps/web/src/pages/settings/next/` belongs to another builder this wave and
+  has no analytics section), so it is filed: a Settings panel listing every stored
+  suppression key with its scope in words and a Return control, reading
+  `GET /analytics/recommendations/:rid/actions?status=dismissed`. Everything it needs
+  already exists; only the panel does not. §13.14.
+- **Per-wine demand series still count every calendar day.** The observed-day distinction
+  was applied to the three series that feed sentences (revenue, bottles, purchasing spend);
+  `demandProfile` in `computeInventoryFamily` still receives a dense per-wine series with
+  zeros for closures. It feeds a stockout probability, not a percentage claim, so it does
+  not misstate — but it is inconsistent, and worth a second pass. §13.15.
 - **`scripts/check_no_seeded_defaults.py` `SCAN_ROOTS` should gain
   `apps/web/src/pages/recommendations/next`** — the guard only binds directories listed
   there, so this rebuilt surface is currently unpoliced by it. Measured 2026-09-02: with
@@ -397,13 +541,9 @@ execution, no first-fired timestamp — in the same way.
    `analytics/insights/insight-scheduler.service.ts` reads `digest_enabled` /
    `digest_hour` / `digest_min_urgency` and sends (writing `last_sent_at`), or the
    endpoints and the table go. *Blocker: founder call on whether the product mails.*
-7. **Expose first-fired time so "standing" stops being an em dash.** The data already
-   accumulates in `recommendation_impressions`
-   (`analytics/recommendations.service.ts:396-419`); the cheapest fix is for
-   `getRecommendations` to attach `firstSeenAt = min(created_at)` per `rule_key` to each
-   recommendation. One join. The page renders it the moment it exists —
-   `EntryVM.updatedAt` is already the axis. *Blocker: none but ownership; it is a
-   gateway change and this wave is web-only.*
+7. ~~**Expose first-fired time so "standing" stops being an em dash.**~~ **Done
+   2026-09-03** — `attachFirstSeen` in `recommendations.service.ts`, rendered by
+   `standingOf()` with the clock it read named on the row (§1b second pass).
 8. **Decide whether the platform may ever act on a recommendation itself** — the
    founder's own third axis, and today the honest answer on every entry is "not built"
    (§9). It is an ADR, not a ticket: what may be done unattended, under whose
@@ -422,3 +562,15 @@ execution, no first-fired timestamp — in the same way.
 13. If the book ever grows past a screen, restore search / sort / category filters
     (§1b names them as deliberately dropped) — they are cheap, and the register alone
     stops scaling somewhere around twenty entries.
+14. **Show the standing silences in Settings** (§9). A panel listing every stored
+    suppression key with its scope in words and a Return control — the founder asked for it
+    if the hook were trivial; it is not, from this page's paths.
+15. **Apply the observed-day distinction to the per-wine demand series** (§9), so a closure
+    stops counting as zero demand for a stockout probability the way it used to count as
+    zero revenue for a baseline.
+16. **Two directions drawn out for the founder's choice** —
+    `.planning/sketches/090-recommendations-directions/`: `run-sheet.html` (banded
+    Tonight / This week / This month, register demoted to a filter strip) and
+    `two-pane-docket.html` (register · list · the working pinned open). Both carry the new
+    dismissal dialogue so its weight can be judged in place. The shipped build is neither;
+    the fork is the founder's.
