@@ -1018,18 +1018,61 @@ export class ToastService {
   }
 
   /**
-   * Get Toast API statistics
+   * Get Toast API statistics.
+   *
+   * This calls `GET {AGENT_ORCHESTRATOR_URL}/api/v1/toast/statistics`, and that
+   * route has never existed. The orchestrator registers exactly these prefixes
+   * (`main.py:151-186` plus the `APIRouter(prefix=…)` declarations under
+   * `services/agent-orchestrator/api/`):
+   *   /api/v1/{admin,analytics,collect,onboarding,pos,preview,procurement,
+   *            quality,research,scan,studio}, /api/templates, and the
+   *   unprefixed health/metrics routes.
+   * `git log --all -S"/api/v1/toast"` returns no orchestrator commit at all —
+   * the router was not removed or renamed, it was never written. These calls
+   * arrived in `91b75dd1` (2026-04-13), by which point the orchestrator already
+   * shipped eight route modules, none of them Toast.
+   *
+   * Of the six dead calls this is the sharpest, because it is the only one with
+   * no mock branch: it goes to the orchestrator in EVERY configuration, mock
+   * mode on or off, dev or prod. It has therefore never once succeeded.
+   *
+   * What it used to do was half-right. The catch returned HTTP 200 with
+   * `{mode, status: "unknown", error}` — honest about the VALUE, in that it
+   * refused to invent a statistic, which satisfies the first half of ADR 0020
+   * (no fabricated answers, LOCKED). But it was not honest about the SURFACE.
+   * ADR 0020's other half is that an action which cannot complete refuses out
+   * loud, and a 200 is not a refusal: every health-style caller read this
+   * endpoint as reachable, every time, for as long as it has existed.
+   *
+   * 501, deliberately, and not the 503 used for the other five. "Toast is not
+   * connected" is a condition the owner can change — connect Toast and those
+   * calls work, so 503 and its retry-later meaning are true there. Neither is
+   * true here: connecting Toast would not help, because the missing piece is an
+   * orchestrator router nobody has written. A 503 would promise a future in
+   * which this succeeds — a quieter version of the same fabrication — and would
+   * invite a monitor to retry a route that cannot ever answer.
+   *
+   * Whether this endpoint should exist at all is a live question and NOT
+   * settled here; see the PR that added this comment. Nothing in the product
+   * renders it, but `apps/web/src/services/api/toast.ts:110` exports a client
+   * for it and it is published in the OpenAPI spec, so retiring it is the
+   * founder's call, not this change's.
    */
   async getStatistics(): Promise<any> {
     try {
       const response = await this.httpClient.get("/api/v1/toast/statistics");
       return response.data;
     } catch (error) {
-      return {
-        mode: this.mockMode ? "mock" : "real",
-        status: "unknown",
-        error: error.message,
-      };
+      this.logger.error(
+        `Toast statistics requested, but GET /api/v1/toast/statistics has ` +
+          `never been implemented on the orchestrator (upstream said: ${error.message})`,
+      );
+      throw new HttpException(
+        "Toast API statistics are unavailable: the upstream " +
+          "/api/v1/toast/statistics route has never been implemented, so this " +
+          "endpoint cannot answer and retrying will not help.",
+        HttpStatus.NOT_IMPLEMENTED,
+      );
     }
   }
 
