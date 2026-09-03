@@ -78,7 +78,7 @@ export class MembersService {
       .eq("is_active", true)
       // `user_restaurant_access` has NO `granted_at`. That column lives on
       // `user_roles` (baseline migration 20260805000000, line 5834); this
-      // table's creation timestamp is `created_at` (same file, line 5814).
+      // table's creation timestamp is `created_at` (same file, line 5815).
       // Ordering by the absent name made PostgREST answer 42703 for every
       // tenant, and the catch below turned that into an empty roster.
       .order("created_at", { ascending: true });
@@ -99,7 +99,7 @@ export class MembersService {
     if (userIds.length === 0) return [];
 
     // `public.users` has NO `avatar_url` and NO `auth_provider` (baseline
-    // migration 20260805000000, lines 5620-5633 -- the provider column is
+    // migration 20260805000000, lines 5848-5861 -- the provider column is
     // `oauth_provider`, and avatars live on `team_members`). Naming them made
     // PostgREST answer 42703 and, with `error` unbound, every member came back
     // with `users: null` -- a roster of anonymous rows that looked like data.
