@@ -96,6 +96,14 @@ changes after repeated depletion patterns are proposed, never auto-applied.
   a total silent outage — see S09.
 
 ## 9. Simulation & deploy gate
+
+> **EXECUTES AS A CHECK since 2026-09-02 (ADR 0093)** — `scripts/simulate scenario … --apply`
+> posts a seeded day through the signed `generic_webhook` path and
+> `GET /simpos/:id/scenarios/runs/:runId/verify` compares it: `stock.bottle_transactions`,
+> `stock.pours`, `stock.projection` (projection = lots) and `consumption.mirror` are the
+> "correct ledger delta"; `stock.dedupe` + `webhook.duplicate` are "a replay is a no-op".
+> The first live verdict is pending the migrations reaching production on merge — the gate
+> now *runs*; it has not yet *passed* on the record.
 **SimPOS is the harness for exactly this** (`apps/api-gateway/src/simpos/` — non-production
 only since PR #32). A SimPOS check-close signs the canonical payload with a real HMAC and
 POSTs `generic_webhook` into the hub (`simpos.service.ts:485-509`), so the golden path runs

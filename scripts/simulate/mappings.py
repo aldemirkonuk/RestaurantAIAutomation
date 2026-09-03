@@ -120,12 +120,13 @@ def to_upsert_body(row: dict[str, Any], *, inventory_id: str | None = None) -> d
     if inventory_id:
         body["inventory_id"] = inventory_id
     if row.get("sale_unit"):
-        # Forward-compatible: `PosHubService.upsertItemMapping` does not
-        # currently whitelist this key (verified 2026-08-05 — it destructures
-        # source/external_item_id/item_name/category/is_wine/master_wine_id/
-        # inventory_id only, so sale_unit is silently dropped on that path).
-        # Sending it is still correct: it costs nothing today and stops being a
-        # silent gap the moment that whitelist is extended. Direct-SQL seeding
-        # is what actually sets sale_unit locally until then.
+        # `PosHubService.upsertItemMapping` DOES write this column now — it
+        # validates the label and puts `sale_unit` (and `sale_volume_ml`) on the
+        # upserted row (pos-hub.service.ts:1049-1099). The note that used to sit
+        # here said the opposite, measured 2026-08-05, before ADR 0011 reopened
+        # the vocabulary; re-read 2026-09-02 for ADR 0093 and corrected, because
+        # the whole depletion path depends on which of the two is true. Without
+        # a sale_unit on the row, `resolveSaleVolume` fails closed and every
+        # by-the-glass line queues as `no_sale_volume` instead of pouring.
         body["sale_unit"] = row["sale_unit"]
     return body

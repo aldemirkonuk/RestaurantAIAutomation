@@ -117,6 +117,33 @@ Generator write-set equals teardown tables **and** handlers (D-11/D-12). See `sc
 
 FK-safe order includes `restaurant_menus` (never shorthand `menus`) and sim-filtered `master_wine_library*`.
 
+#### ADR 0093 additions (2026-09-02) — the scenario harness writes ten more tables
+
+The harness ([[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]]) writes rows the sim seed never wrote. All ten are in `SYNTH_WRITE_SET`, `TEARDOWN_TABLES`, `TEARDOWN_HANDLERS` and `DELETE_ORDER`, with one assertion each in `scripts/test_simulate.py` and `services/agent-orchestrator/tests/test_synth_write_set_gate.py`.
+
+| Table | Written by | Already cascade-covered? |
+|---|---|---|
+| `inventory_lots` | seed apply path — opening stock via `apply_stock_movement` (D4) | yes, from `restaurant_inventory` (`ON DELETE CASCADE`) |
+| `inventory_transactions` | same | yes, from `restaurants` |
+| `pour_events` | a scenario's depletion path | **no FK to `restaurants` at all** |
+| `wine_consumption_log` | the consumption mirror | yes, from `restaurants` and from `restaurant_inventory` |
+| `pos_item_mappings` | hub line resolution | no FK to `restaurants`; only `inventory_id` cascades |
+| `pos_catalog_match_proposals` | the catalog matcher | **no** — `candidate_inventory_id` is `ON DELETE SET NULL` |
+| `restaurant_tables` | a check carries a table | **no FK to `restaurants` at all** |
+| `notifications` | the low-stock sweep the harness runs on demand | yes, from `restaurants` |
+| `analytics_insights` | the insight generator the harness runs on demand | **no FK to `restaurants` at all** |
+| `sim_scenario_runs` | the scenario runner — one row per run (D2) | yes, from `restaurants` |
+
+**Listed even where a cascade covers them, on purpose.** The rule in this file is an explicit list, not implicit cascade (`teardown.py:41`). A cascade is declared in a migration with no link to `write_set.py`; "the cascade covers it" is the assumption that leaves simulated rows inside a real tenant the day an on-delete action changes.
+
+**Order is load-bearing, and now asserted.** `assert_teardown_coverage()` gained a child-before-parent check because a table deleted out of order raises `23503`, the handler catches it and reports an orphan — which from the outside is indistinguishable from a table nobody listed. The pairs it enforces:
+
+- `pos_checks` before `restaurant_tables` — `pos_checks.table_id` references `restaurant_tables(id)` with **no** on-delete action.
+- `pour_events` / `inventory_transactions` / `wine_consumption_log` / `pos_catalog_match_proposals` / `pos_item_mappings` before `inventory_lots`, and `inventory_lots` before `restaurant_inventory`.
+- `sim_scenario_runs` / `notifications` / `analytics_insights` / `restaurant_inventory` before `restaurants`.
+
+The guard is proved against a broken order in `test_coverage_gate_catches_a_bad_delete_order`, not merely observed green.
+
 ### Gap vs FUNCTIONALITY-REGISTRY Table D (C2)
 
 Registry Table D domain buckets beyond the generator write-set remain **out of sim teardown** until a later phase widens the seed surface. Phase 37 closes the **generator write-set** gap (orgs, restaurants, URA, menus, inventory, oracle, provisional library) — not every registry domain.
