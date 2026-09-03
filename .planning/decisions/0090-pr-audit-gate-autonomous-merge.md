@@ -93,7 +93,14 @@ autonomous" merge), with the autonomy scoped as narrowly as those answers allow:
   weighty. A `PreToolUse` hook (`scripts/hooks/require_pr_audit.py`) blocks any
   Bash call shaped like `gh pr merge` or a direct push to `main` unless a passing
   audit report exists for that exact PR head SHA — this is the "you call it, make it
-  a constraint" half of the request: I cannot skip it from inside a session.
+  a constraint" half of the request. Precision on what kind of constraint (fifth
+  audit, security angle, note 6): the trusted-author set includes whoever is running
+  `gh` locally, so nothing code-level stops a session from posting a marker without
+  having actually done the work and then merging — the hook proves *some* marker
+  exists for this exact PR+SHA, not that a genuine audit produced it. This is
+  procedural, not cryptographic: it holds as long as the session follows this
+  skill's actual steps, the same trust basis every other instruction in this repo
+  runs on.
 - **CI side:** `.github/workflows/pr-audit-gate.yml` runs the same fan-out as
   four Anthropic Messages API calls (`scripts/pr_audit_gate.py`), gated on
   `main`'s required status contexts — read fresh from branch protection on
@@ -408,6 +415,68 @@ prior round reached — one of them the most consequential in this ADR.
 Every BLOCK above was reproduced against the real functions before being
 accepted, not taken from the subagents' prose. `--self-test` grew from 17 to
 24 invariants covering all of it.
+
+## Correction — 2026-09-03, found by the gate's own FIFTH real audit
+
+A verification round (correctness + security, fresh Opus subagents) re-tested
+round 4's three fixes by trying to defeat them rather than confirming they
+exist. Two hold. **The headline fix — the GITHUB_TOKEN deploy-chain
+workaround — does not work at all**, found independently by both angles:
+
+1. **The `workflow_dispatch` re-trigger 403s on every single run.**
+   `.github/workflows/pr-audit-gate.yml`'s `permissions:` block granted
+   `contents: write`, `pull-requests: write`, `checks: read` — no `actions:`
+   scope, which `gh workflow run` (and even looking the workflow up) requires.
+   GitHub's own rule: specifying a `permissions:` block sets every unlisted
+   scope to `none`. This repo already knew the shape — `deploy.yml` declares
+   `actions: write` for the identical `gh workflow run` call it makes.
+   **Confirmed by execution** (both angles, independently): the dispatch call
+   403s every time; the merge (already irreversible) still succeeds; the
+   dispatch failure was caught and reported — but the function returned 0,
+   so the JOB showed green having merged code with its own safety mechanism
+   silently non-functional. Self-caught between rounds 4 and 5, before either
+   agent's report arrived: `actions: write` added to the permissions block,
+   and the dispatch-failure path now returns 1 (a merge with a confirmed-
+   failed post-merge check must not report as a successful job, even though
+   the merge itself can't be undone).
+2. **Round 4's own `\n`-exclusion fix regressed a real case.** Excluding
+   newlines from `DIRECT_PUSH_PATTERN`'s scan fixed the multi-*statement*
+   false-positive but broke the multi-*line-same-statement* case — a plain
+   backslash line continuation (`git push \` + newline + `  origin main`)
+   stopped matching at all. Fixed by normalizing backslash-newline
+   continuations to a single space before matching, rather than encoding
+   "this newline doesn't end the statement" into the regex itself; bare
+   newlines (no preceding backslash) still correctly act as a boundary.
+   Also widened the trailing match to accept `;` and a quoted ref
+   (`git push origin main;` / `git push origin 'main'` previously fell
+   through since neither whitespace nor end-of-string followed "main").
+3. **Smaller, real, folded in the same round:** `MAX_TOKENS` raised
+   12000 → 16000 — with a large diff and "high" adaptive-thinking effort,
+   the model's own reasoning could consume the output budget before
+   reaching its final `VERDICT:` line, correctly failing to `UNPARSEABLE` →
+   BLOCK (safe direction) but false-blocking a large, genuinely fine PR on
+   token exhaustion rather than its content; confirmed the diff budget
+   itself (300,000 chars) is safe against `claude-opus-5`'s real 1M-token
+   context, well past the 200K this session had assumed. `.github/workflows/ci.yml`
+   added to both owned-path lists — it now carries a dependency (the
+   `workflow_dispatch:` trigger) the merge step relies on, and neither list
+   named it. `_redact` extended to `github_pat_`. The ADR's own "I cannot
+   skip it from inside a session" (this section, above) overstated the
+   guarantee — corrected in place to say what the hook actually proves
+   (a marker exists for this PR+SHA) versus what it can't (that a genuine
+   audit produced it) — procedural, not cryptographic, same as this repo's
+   [[decision-register-rots]] finding.
+
+`--self-test` grown 24 → 29. Two residual, explicitly non-blocking items
+both angles agreed on and left named rather than silently accepted: the
+Claude-Code-side merge (`gh pr merge --squash`) stays unpinned to an exact
+SHA, unlike the CI side's `gh api` call — same class as round 3's fix, a
+far smaller window (seconds inside one live session, not a CI queue); and
+`_extract_pr_number` can still mis-resolve a PR number when a `gh pr merge`
+flag takes a purely-numeric value ahead of the real positional argument — a
+contrived shape, not a realistic `gh pr merge` invocation today, named
+rather than engineered around given the "loose regex, known limitation"
+design already stated for this whole hook.
 
 | Date | Reviewer | Outcome |
 |---|---|---|

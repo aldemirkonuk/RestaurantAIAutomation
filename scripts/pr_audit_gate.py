@@ -72,7 +72,16 @@ MODEL = "claude-opus-5"
 # comment, which run_audit()'s try/except (added the same fix) now prevents
 # for any future API-shape drift.
 EFFORT = "high"
-MAX_TOKENS = 12000
+# 12000 -> 16000 (fifth audit, correctness angle): with a diff up to
+# DIFF_BUDGET (~90K tokens) and "high" adaptive-thinking effort, thinking
+# tokens can consume the output budget before the model reaches its final
+# `VERDICT:` line, which _verdict_of() then correctly reads as UNPARSEABLE
+# -> BLOCK (fails toward safety, not away from it) -- but that means a
+# genuinely large, genuinely fine PR gets false-BLOCKed on token exhaustion,
+# not on anything about the PR. Anthropic's own non-streaming guidance is
+# ~16000; confirmed Opus 5's real context window is 1M tokens, not the 200K
+# this was originally calibrated against, so there's ample room.
+MAX_TOKENS = 16000
 
 ANGLES = {
     "correctness": (
@@ -381,6 +390,12 @@ def _run_audit_inner(pr_number: str) -> int:
                                             # angle -- keep .claude/skills/pr-audit-gate/SKILL.md
                                             # step 4's list in sync with this one; they drifted
                                             # once already over CLAUDE.md.)
+        ".github/workflows/ci.yml",  # carries the workflow_dispatch: trigger the merge step
+                                       # below depends on to re-enter the CI/deploy chain a
+                                       # GITHUB_TOKEN merge would otherwise silently skip -- a
+                                       # PR removing that trigger would break the merge step
+                                       # with no escalation forcing a human to notice (found by
+                                       # the gate's own FIFTH audit, correctness angle's note 1).
     )
     # CONFIRMED live (gate's own third audit, security angle): the returncode
     # here was unchecked -- a failed `gh` call yields empty stdout exactly
@@ -629,10 +644,18 @@ def _run_audit_inner(pr_number: str) -> int:
     # 0085 exists because of -- would not just be skipped, it would not run
     # at all for this merge. workflow_dispatch is one of the two documented
     # exceptions to the suppression rule, so this explicitly re-enters the
-    # chain. Best-effort: a failure here is loud (stderr + PR comment) but
-    # does not un-merge or block on the merge already having happened --
-    # there is no clean rollback for "the merge succeeded but we couldn't
-    # confirm CI will re-run," so this fails LOUD, not closed.
+    # chain. Needs `actions: write` in the workflow's permissions block --
+    # confirmed missing and re-added, fifth audit, both angles independently
+    # (this exact gap was self-caught between rounds 4 and 5 and was already
+    # queued for this same fix cycle when both agents reported it too).
+    #
+    # Best-effort, and on failure this returns 1, not 0 (CONFIRMED live,
+    # fifth audit, both angles: the prior version returned 0 here, so a
+    # dispatch failure -- guaranteed on every run without the permission
+    # above -- made the JOB show green having merged code with no confirmed
+    # post-merge audit path. There is still no clean rollback for "the merge
+    # already happened" -- the merge is not undone -- but the JOB reporting
+    # itself must not look successful when its own safety mechanism failed.
     dispatch = _run(["gh", "workflow", "run", "ci.yml", "--ref", "main"], timeout=20)
     if dispatch.returncode != 0:
         print(f"WARNING: merged {sha7}, but could not dispatch ci.yml to "
@@ -645,6 +668,7 @@ def _run_audit_inner(pr_number: str) -> int:
               f"runs on their own — see ADR 0090's fourth Correction). "
               f"main's CI/deploy-audit chain may not have run for this "
               f"merge; check manually. Detail: {dispatch.stderr[:500]}"])
+        return 1
     return 0
 
 
@@ -664,6 +688,7 @@ def _redact(text: str) -> str:
     # only the Anthropic prefix was covered).
     text = re.sub(r"sk-ant-[A-Za-z0-9_-]{10,}", "[REDACTED]", text)
     text = re.sub(r"gh[oprsu]_[A-Za-z0-9]{20,}", "[REDACTED]", text)
+    text = re.sub(r"github_pat_[A-Za-z0-9_]{20,}", "[REDACTED]", text)  # fine-grained PAT prefix (fifth audit)
     return text[:2000] + ("... [truncated]" if len(text) > 2000 else "")
 
 
@@ -747,6 +772,16 @@ def run_self_test() -> int:
     check("push origin main still caught inside a multi-line command",
           bool(DIRECT_PUSH_PATTERN_FOR_TEST.search(
               "echo about to push\ngit push origin main")), True)
+    check("backslash line continuation is still caught (round 5 regression -- was NOT caught after round 4's fix)",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search(
+              _normalize_command_for_test("git push \\\n  origin main"))), True)
+    check("backslash continuation normalization doesn't wrongly join two real statements",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search(
+              _normalize_command_for_test("git push origin feat/x\ngh pr create --base main --fill"))), False)
+    check("trailing semicolon is caught (round 5 gap)",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search("git push origin main;")), True)
+    check("quoted ref is caught (round 5 gap)",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search("git push origin 'main'")), True)
 
     # wait_upstream's state classifier, exercised directly (see wait_upstream body)
     def classify(names, by_name):
@@ -786,7 +821,7 @@ def run_self_test() -> int:
         for line in failures:
             print(f"SELF-TEST FAILED: {line}")
         return 1
-    print("SELF-TEST OK — 24 invariants held.")
+    print("SELF-TEST OK — 29 invariants held.")
     return 0
 
 
@@ -795,8 +830,13 @@ def run_self_test() -> int:
 # pin it without importing across the scripts/hooks/ boundary. If you change
 # one, change both; this constant existing at all is the reminder.
 DIRECT_PUSH_PATTERN_FOR_TEST = re.compile(
-    r"\bgit\s+(?:-C\s+\S+\s+)?push\b[^|;&\n]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
+    r"\bgit\s+(?:-C\s+\S+\s+)?push\b[^|;&\n]*\b(?:origin\s+)?(?:HEAD:)?"
+    r"(?:refs/heads/)?['\"]?main['\"]?(?:[\s;]|$)"
 )
+
+
+def _normalize_command_for_test(command: str) -> str:
+    return re.sub(r"\\[ \t]*\n[ \t]*", " ", command)
 
 
 def main() -> int:

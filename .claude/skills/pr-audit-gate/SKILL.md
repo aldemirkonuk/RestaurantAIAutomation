@@ -63,9 +63,11 @@ individually while what they don't cover reaches production — this gate exists
 4. **Check whether this diff touches the gate's own files** — anything under
    `scripts/pr_audit_gate.py`, `scripts/hooks/require_pr_audit.py`,
    `.github/workflows/pr-audit-gate.yml`, `.claude/agents/pr-merge-*.md`,
-   `.claude/skills/pr-audit-gate/`, `.claude/settings.json`, `CLAUDE.md`, or
-   `.planning/decisions/0090-*.md`/`.planning/decisions/README.md`. Keep this
-   list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
+   `.claude/skills/pr-audit-gate/`, `.claude/settings.json`, `CLAUDE.md`,
+   `.planning/decisions/0090-*.md`/`.planning/decisions/README.md`, or
+   `.github/workflows/ci.yml` (carries the `workflow_dispatch:` trigger the
+   CI-side merge step depends on — added fifth audit, correctness angle).
+   Keep this list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
    third real audit (2026-09-03, compliance angle) found the CI side had
    `CLAUDE.md` in its owned-paths list and this step didn't, so a
    `CLAUDE.md`-only PR could steer the compliance angle's own reading of

@@ -77,6 +77,12 @@ permissions:
   contents: write        # sha-pinned merge (gh api .../merge) on PASS
   pull-requests: write    # gh pr comment
   checks: read            # read the required contexts (fetched fresh from branch protection, never hardcoded)
+  actions: write          # `gh workflow run ci.yml` after a PASS merge -- GitHub's documented
+                           # scope for triggering a workflow run via API. Added same round as
+                           # the dispatch call itself: without this the call 403s every time,
+                           # which the code handles (fails loud, doesn't block the already-done
+                           # merge) but the actual fix would never have worked. Self-caught before
+                           # a fifth audit round had to find it.
 
 jobs:
   audit:

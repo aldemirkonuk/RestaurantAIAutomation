@@ -91,9 +91,31 @@ MERGE_PATTERN = re.compile(r"\bgh\s+pr\s+merge\b(?P<tail>[^|;&\n]*)")
 # `-C <path>` between "git" and "push"; other global git flags before a
 # subcommand are a known residual gap (documented, not silently assumed
 # complete, per the note above).
+# v4 -> v5, CONFIRMED BY EXECUTION (fifth audit, correctness angle): adding
+# `\n` to the exclusion set fixed the multi-STATEMENT case but broke the
+# multi-LINE-same-statement case -- `git push \` + newline + `  origin main`
+# (an ordinary backslash line continuation) stopped matching entirely, since
+# the continuation's own newline now terminates the scan. Fixed by
+# normalizing backslash-newline continuations to a single space BEFORE
+# matching (see _normalize_command) rather than trying to encode "this
+# newline doesn't end the statement" into the pattern itself. Also widened
+# the trailing boundary from `(?:\s|$)` to also accept `;` and a closing
+# quote -- `git push origin main;` and `git push origin 'main'` previously
+# fell through since neither whitespace nor end-of-string followed "main".
 DIRECT_PUSH_PATTERN = re.compile(
-    r"\bgit\s+(?:-C\s+\S+\s+)?push\b[^|;&\n]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
+    r"\bgit\s+(?:-C\s+\S+\s+)?push\b[^|;&\n]*\b(?:origin\s+)?(?:HEAD:)?"
+    r"(?:refs/heads/)?['\"]?main['\"]?(?:[\s;]|$)"
 )
+
+
+def _normalize_command(command: str) -> str:
+    """Collapse a backslash-newline shell line continuation into a single
+    space, so a command split across lines for readability is still scanned
+    as one logical command. Deliberately leaves bare newlines (no preceding
+    backslash) alone -- those really do separate independent statements,
+    which DIRECT_PUSH_PATTERN's `\\n` exclusion still correctly treats as a
+    boundary."""
+    return re.sub(r"\\[ \t]*\n[ \t]*", " ", command)
 
 # Both this hook and scripts/pr_audit_gate.py (CI) must emit exactly this shape
 # in the PR comment they post: an HTML comment, invisible when rendered, that
@@ -243,7 +265,7 @@ def main() -> int:
     if payload.get("tool_name") != "Bash":
         return 0
 
-    command = str(payload.get("tool_input", {}).get("command", ""))
+    command = _normalize_command(str(payload.get("tool_input", {}).get("command", "")))
     merge_match = MERGE_PATTERN.search(command)
     is_direct_push = bool(DIRECT_PUSH_PATTERN.search(command))
     if not (merge_match or is_direct_push):
