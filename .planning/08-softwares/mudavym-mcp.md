@@ -225,10 +225,29 @@ behind each fronted module — but none claims this. Recorded as a gap row in
   chatbot": **`/sommelier` is one client, inside our UI, with one model we chose; the MCP
   server is the same capability offered to a client the house chose.** If both ship, the
   chat page should call the MCP tools rather than grow a second, divergent action set.
-- **The profile register is the mirror.** `/profile`'s Model context rail records servers
-  *this house may call outward*; this note is *the server other clients call inward*. Same
-  idea, opposite direction, and they must not be conflated in the UI: a row in
-  `user_mcp_connections` is never evidence that the Mudavym MCP server exists.
+- **The profile register is the mirror, and as of 2026-09-03 it is a working one.**
+  `/profile`'s Model context rail records servers *this house may call outward*; this note
+  is *the server other clients call inward*. Same idea, opposite direction, and they must
+  not be conflated in the UI: a row in `user_mcp_connections` is never evidence that the
+  Mudavym MCP server exists. That warning is now **more** load-bearing, not less, because
+  the mirror stopped being a list of shapes: `apps/api-gateway/src/mcp-runtime/` (ADR 0107,
+  migration `20260903104500`) performs the client half of the handshake — `initialize` →
+  `notifications/initialized` → `tools/list` over Streamable HTTP, revision `2025-06-18` —
+  so a row can now read `Connected`, name a server's version and list its tools. Every one
+  of those readings is about **someone else's** server. Nothing in this repo answers an
+  `initialize`; the tooling to *make* the call exists and the thing to *receive* one does
+  not, and §1's **None** is unchanged.
+- **What the client half settles for a future server half, and what it does not.** Settled
+  by demonstration: the transport (Streamable HTTP, both response encodings, the
+  `Mcp-Session-Id` echo, the `MCP-Protocol-Version` obligation) is a published spec this
+  codebase has now implemented once and can implement again from the other side. **Not**
+  settled, and the more important half of §7a and §0's *"it reads freely and it commits
+  nothing"*: the client deliberately has **no invocation path at all** — no `tools/call`,
+  no route reaching one, no column recording one — because a tool call can bind the house
+  and ADR 0013's commitment guardrail has never been extended to model-context dispatch.
+  A server built here inherits that fork rather than resolving it, and inherits it in the
+  harder direction: refusing to *make* a committing call is one absent method, while
+  refusing to *serve* one is every write verb in §3's 42-tool ladder.
 
 ## §7 Maturity & seams
 
