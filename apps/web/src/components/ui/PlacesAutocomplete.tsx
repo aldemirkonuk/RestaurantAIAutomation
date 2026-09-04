@@ -21,6 +21,16 @@ export interface PlaceResult {
    */
   latitude: number | null;
   longitude: number | null;
+  /**
+   * Google's stable identifier for the selected place.
+   *
+   * Kept alongside the coordinates because it is the only key that lets a later
+   * pass ask Google the same question again — the coordinate backfill for
+   * restaurants that signed up before this capture existed is keyed on it
+   * (`scripts/backfill_restaurant_coordinates.py`). Null when the prediction
+   * carried no place id.
+   */
+  googlePlaceId: string | null;
 }
 
 interface SuggestionRow {
@@ -105,6 +115,7 @@ function parseAddressComponents(
     // function can and cannot know.
     latitude: null,
     longitude: null,
+    googlePlaceId: null,
     streetAddress: [streetNumber, route].filter(Boolean).join(' '),
     city:
       get('locality') ||
@@ -258,6 +269,9 @@ export function PlacesAutocomplete({
       }
       result.latitude = place.location?.lat() ?? null;
       result.longitude = place.location?.lng() ?? null;
+      // `placeId` is on the prediction itself, so it survives even when
+      // fetchFields declines to return a location.
+      result.googlePlaceId = row.prediction.placeId ?? null;
       onPlaceSelect(result);
     } catch (err) {
       console.warn('[PlacesAutocomplete] getDetails failed', err);

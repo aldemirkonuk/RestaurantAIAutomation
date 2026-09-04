@@ -16,7 +16,12 @@ import { CalendarService } from "./calendar.service";
 
 /** Supabase stub: restaurant lookup, then events, then recurrence rules. */
 function makeDb(opts: {
-  restaurant?: { id: string; name: string } | null;
+  /**
+   * `timezone` is optional on purpose: production holds it on all 14 rows, but
+   * the feed has to keep working for a row that does not, and the tests below
+   * exercise both.
+   */
+  restaurant?: { id: string; name: string; timezone?: string | null } | null;
   events?: any[];
   rules?: any[];
 }) {
@@ -143,6 +148,94 @@ describe("iCal feed structure", () => {
 
     expect(out).toContain("BEGIN:VEVENT");
     expect(out).not.toMatch(/DESCRIPTION:\s*\r\n/);
+  });
+
+  /* ── The four subscribe suspects, closed 2026-09-03 (ADR 0111 §5) ──────── */
+
+  it("tells a client how often to come back", async () => {
+    // Without REFRESH-INTERVAL / X-PUBLISHED-TTL every client picks its own
+    // poll interval, and a delivery moved this morning surfaces tomorrow. The
+    // feed reading correctly and the feed being USEFUL are different things.
+    const out = await svc({
+      restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
+      events: [EVENT],
+    }).getICalFeed("tok");
+
+    expect(out).toContain("REFRESH-INTERVAL;VALUE=DURATION:PT1H");
+    expect(out).toContain("X-PUBLISHED-TTL:PT1H");
+  });
+
+  it("carries the refresh hint on the empty answer too", async () => {
+    // A subscriber whose first request hits an unknown token still has to be
+    // told when to retry; the empty calendar is a real answer, not a stub.
+    const out = await svc({ restaurant: null }).getICalFeed("nope");
+    expect(out).toContain("X-PUBLISHED-TTL:PT1H");
+  });
+
+  it("publishes a timed event in the RESTAURANT's zone, not the server's", async () => {
+    // The defect: `new Date('2026-08-03T09:00:00')` resolves on the process
+    // clock, so a 09:00 Palo Alto delivery published as 09:00Z — 02:00 local —
+    // for every subscriber. 09:00 PDT is 16:00Z, and this assertion is
+    // independent of the TZ the test runner happens to have.
+    const out = await svc({
+      restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
+      events: [EVENT],
+    }).getICalFeed("tok");
+
+    expect(out).toContain("DTSTART:20260803T160000Z");
+    expect(out).toContain("DTEND:20260803T170000Z");
+  });
+
+  it("uses the same restaurant's zone for a house that is not in the US", async () => {
+    const out = await svc({
+      restaurant: { id: "r1", name: "R", timezone: "Europe/Istanbul" },
+      events: [{ ...EVENT, start_time: "19:30", end_time: "21:00" }],
+    }).getICalFeed("tok");
+
+    expect(out).toContain("DTSTART:20260803T163000Z");
+    expect(out).toContain("DTEND:20260803T180000Z");
+  });
+
+  it("publishes a floating time when the restaurant has no zone, never a false UTC", async () => {
+    // A wall clock with no zone is RFC 5545 form one: no Z, no TZID. Stamping
+    // it UTC would assert an offset nobody recorded — the ADR 0020 fault in a
+    // date field.
+    const out = await svc({
+      restaurant: { id: "r1", name: "R", timezone: null },
+      events: [EVENT],
+    }).getICalFeed("tok");
+
+    expect(out).toContain("DTSTART:20260803T090000");
+    expect(out).not.toContain("DTSTART:20260803T090000Z");
+  });
+
+  it("falls back to floating for a timezone string it cannot resolve", async () => {
+    // A human-readable label is what a settings form would collect if nobody
+    // constrained it, and it is not an IANA name. (Legacy aliases like "PST"
+    // and "US/Pacific" ARE resolvable in Node's ICU and are deliberately let
+    // through — resolving an alias is a lookup, not a guess.)
+    const out = await svc({
+      restaurant: { id: "r1", name: "R", timezone: "Pacific Time" },
+      events: [EVENT],
+    }).getICalFeed("tok");
+
+    expect(out).toContain("DTSTART:20260803T090000");
+    expect(out).not.toContain("DTSTART:20260803T090000Z");
+  });
+
+  it("keeps an all-day event's calendar date whatever the server's clock is", async () => {
+    // VALUE=DATE is rendered from the Date's UTC fields, so a Date built at
+    // server-local midnight shifts the published date by a day east of UTC.
+    const out = await svc({
+      restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
+      events: [
+        { ...EVENT, all_day: true, start_time: null, end_time: null },
+      ],
+    }).getICalFeed("tok");
+
+    expect(out).toContain("DTSTART;VALUE=DATE:20260803");
+    // DTEND on an all-day event is exclusive: the day after.
+    expect(out).toContain("DTEND;VALUE=DATE:20260804");
   });
 
   it("expands a weekly recurrence into an RRULE with day codes", async () => {

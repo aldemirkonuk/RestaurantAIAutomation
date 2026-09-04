@@ -8,6 +8,10 @@ import { EventsModule } from "../events/events.module";
 import { AuthModule } from "../auth/auth.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { CommunicationsModule } from "../communications/communications.module";
+import { WeatherService } from "../weather/weather.service";
+import { NwsWeatherProvider } from "../weather/nws.provider";
+import { RecordedDaysService } from "./recorded-days.service";
+import { DayRecordService } from "./day-record.service";
 
 @Module({
   imports: [
@@ -26,7 +30,20 @@ import { CommunicationsModule } from "../communications/communications.module";
     forwardRef(() => CommunicationsModule),
   ],
   controllers: [CalendarController],
-  providers: [CalendarService, CalendarRemindersService],
-  exports: [CalendarService, CalendarRemindersService],
+  // The weather overlay's provider and service live here rather than in their
+  // own Nest module: a top-level module would have to be registered in
+  // `app.module.ts`, which this build does not own, and the calendar is the
+  // only consumer. `apps/api-gateway/src/weather/` stays a directory of its
+  // own so a second issuer (Open-Meteo, for the first non-US house) is a class
+  // beside `NwsWeatherProvider` and not a change here.
+  providers: [
+    CalendarService,
+    CalendarRemindersService,
+    NwsWeatherProvider,
+    WeatherService,
+    RecordedDaysService,
+    DayRecordService,
+  ],
+  exports: [CalendarService, CalendarRemindersService, WeatherService],
 })
 export class CalendarModule {}

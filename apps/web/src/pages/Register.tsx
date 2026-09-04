@@ -73,6 +73,28 @@ export function Register() {
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
 
+  /**
+   * The point the house asserted, taken from the Google Places selection.
+   *
+   * `restaurants.latitude` / `.longitude` have existed since
+   * `supabase/migrations/20260807001252_distributor_geo_foundation.sql:50-51`
+   * and were NULL on all 14 production rows, because this form resolved the
+   * coordinate as part of the same `fetchFields` call that fills in the city and
+   * postcode (PlacesAutocomplete.tsx:248-260) and then dropped it. Nothing that
+   * needs a location — the calendar's weather overlay first — can exist without
+   * it (ADR 0111 slice 1).
+   *
+   * It is null until a place is CHOSEN from the list, and it is cleared the
+   * moment the address is edited by hand: a coordinate that no longer matches
+   * the address on screen is worse than none, because nothing downstream can
+   * tell the two apart.
+   */
+  const [placePoint, setPlacePoint] = useState<{
+    latitude: number
+    longitude: number
+    googlePlaceId: string | null
+  } | null>(null)
+
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
 
@@ -939,6 +961,11 @@ export function Register() {
         phone: phone ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Sent only when a place was chosen from the list. A hand-typed address
+        // carries no point, and the gateway stores NULL rather than a guess.
+        latitude: placePoint?.latitude,
+        longitude: placePoint?.longitude,
+        googlePlaceId: placePoint?.googlePlaceId ?? undefined,
       })
       navigate('/verify-email', { replace: true })
     } catch (err: unknown) {
@@ -1121,7 +1148,12 @@ export function Register() {
                   id="restaurant-address"
                   country={country}
                   value={address}
-                  onChange={setAddress}
+                  onChange={(next) => {
+                    setAddress(next)
+                    // Typed by hand: whatever point was captured belongs to a
+                    // different address now.
+                    setPlacePoint(null)
+                  }}
                   onPlaceSelect={(place: PlaceResult) => {
                     setAddress(place.streetAddress)
                     if (place.city) setCity(place.city)
@@ -1129,6 +1161,17 @@ export function Register() {
                     if (place.postalCode) setPostalCode(place.postalCode)
                     if (place.country) setCountry(place.country)
                     if (place.neighborhood) setNeighborhood(place.neighborhood)
+                    // Google declines a location for some predictions; that is a
+                    // real "no coordinate", never 0,0.
+                    setPlacePoint(
+                      typeof place.latitude === 'number' && typeof place.longitude === 'number'
+                        ? {
+                            latitude: place.latitude,
+                            longitude: place.longitude,
+                            googlePlaceId: place.googlePlaceId,
+                          }
+                        : null,
+                    )
                   }}
                   placeholder="Start typing your street address…"
                   className="py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500"

@@ -569,8 +569,39 @@ export class ICalTokenResponseDto {
   token: string;
 
   @ApiProperty({
-    description: "Full subscription URL",
+    description:
+      "Subscription path, relative to the gateway. Kept for the callers that " +
+      "already read it; a calendar client cannot subscribe to a relative path.",
     example: "/api/v1/calendar/feed/abc123.ics",
   })
   feedUrl: string;
+
+  @ApiProperty({
+    description:
+      "The subscription URL a calendar client can actually take. NULL when " +
+      "the gateway has no configured public origin and the request carried no " +
+      "Host header to derive one — never a guessed origin.",
+    example: "https://api.mudavym.com/api/v1/calendar/feed/abc123.ics",
+    nullable: true,
+  })
+  absoluteFeedUrl: string | null;
+
+  @ApiProperty({
+    description:
+      "The same URL under the webcal:// scheme, which is what makes Apple " +
+      "Calendar and Outlook subscribe rather than download. NULL whenever " +
+      "absoluteFeedUrl is.",
+    example: "webcal://api.mudavym.com/api/v1/calendar/feed/abc123.ics",
+    nullable: true,
+  })
+  webcalUrl: string | null;
+
+  @ApiProperty({
+    description:
+      "Where the absolute origin came from, so a caller can tell a configured " +
+      "origin from one inferred from this request's own Host header.",
+    enum: ["config", "request", "none"],
+    example: "config",
+  })
+  originSource: "config" | "request" | "none";
 }

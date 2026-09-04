@@ -1,8 +1,46 @@
 # 0111 — The calendar is the house's day-book of events, deadlines and the world outside
 
-- **Status:** **draft — research and design only, nothing built.** The founder widened
-  the scope to all of it on 2026-09-03; this records the program he asked for, in the
-  order it can honestly be built. Not locked: the *Forks* section lists what only the founder can answer.
+- **Status:** **Proposed — 2026-09-03. Slices 1-3 and the iCal fixes are BUILT behind
+  `mudavym_design_calendar`; founder review open.** The document was a draft until the
+  founder answered five of its six forks the same day. Those answers are recorded below,
+  the build order they unblocked was executed as far as slice 3, and slices 4-9 remain
+  unbuilt and undispatched.
+
+  **The founder's five decisions, 2026-09-03 — each supersedes what this ADR proposed:**
+
+  | # | Fork | The decision | What it changed here |
+  |---|---|---|---|
+  | 1 | A — weather licence | **NWS now, behind a `WeatherProvider` interface**, so Open-Meteo commercial can be added the day a non-US house appears. The NWS attribution and the issuer + issue time travel with every reading | §2a said "defaulting to Open-Meteo". It does not: `NwsWeatherProvider` is the only implementation, `weather-provider.ts` is the seam, and a coordinate outside US coverage gets NWS's own 404 rendered as a sentence rather than a blank |
+  | 2 | B — where the coordinate comes from | **"When google maps API address is being used, take the geocode as well in sign up."** For the 13 existing rows: a one-off backfill from Places Details keyed on `google_place_id`, as a script with a dry run — never a migration that calls an external API | §6 slice 1 said "a map pin, or a geocode of the address". Neither: the point is captured from the place the operator *chose*, at the moment they choose it. A hand-typed address carries no point and `/settings` says so |
+  | 3 | E — public commodity indexes | **In, but as a separate register that never sits beside a vendor quote.** USDA My Market News is real and free; a national terminal-market price is simply not a price this house can be quoted | Moves from "rejected, filed as a fork" to a decided shape. Still unbuilt — the price mark is slice 4's dependency and `vendor_price_observations` holds 0 rows |
+  | 4 | F — the 90/180-day floors | **The numbers stand, and they are per RESTAURANT, never pooled across the chain** | Closes the fork this ADR raised without answering. Cross-tenant pooling stays unauthorised under ADR 0048 §Consequences until a DPA says otherwise; the floors are not a placeholder to be relaxed by a later builder |
+  | 5 | C — Google app verification | **Submit the app for verification now**, rather than staying in testing behind a user cap | Unblocks slices 7-8 on the calendar scopes. Nothing in slices 1-3 depends on it; the gateway's `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pair is still unset on every deployment |
+
+  Fork **D** — whose Google account is the house's when a manager leaves — is the one
+  left open, and slice 7 is where it becomes urgent.
+
+  **What is built, and where:** slice 1 (`apps/api-gateway/src/auth/auth.service.ts`
+  `coordinateColumns`, `apps/web/src/pages/Register.tsx`,
+  `scripts/backfill_restaurant_coordinates.py`); slice 2
+  (`apps/api-gateway/src/weather/`, `supabase/migrations/20260903160000_a_forecast_names_its_issuer.sql`,
+  `GET /calendar/weather`, `apps/web/src/pages/calendar/next/SkyMark.tsx`); slice 3
+  (`apps/api-gateway/src/calendar/recorded-days.service.ts` and `day-record.service.ts`,
+  `GET /calendar/day-record`); and the four iCal fixes
+  (`calendar.controller.ts`, `calendar.service.ts`, `calendar/zoned-time.ts`).
+
+  **One thing this ADR proposed and the build did NOT do,** because the measurement
+  contradicted it: §6 slice 2 said the weather refresh should run under
+  `ScheduledTenantsService.runPerTenant`. It does not. That scheduler enumerates only
+  tenants carrying `restaurant_feature_flags.flag_name = 'scheduled_communications'` or
+  matching `DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`),
+  and production has **one** such tenant out of fourteen — so a cron behind that gate
+  would have left thirteen houses with a permanently blank weather column and no sentence
+  explaining it, which is the absence-reported-as-health fault delivered by the mechanism
+  meant to prevent it. The refresh is **on read with a 60-minute max age**
+  (`weather/weather.service.ts`), which costs strictly fewer issuer calls than a cron and
+  works for every tenant. The cost is stated rather than hidden: a house nobody opens
+  accumulates no history, which matters for slice 9's ninety-day floor and is filed in
+  `calendar.md` §13.
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** calendar, day-book, weather, forecast, covers, quant, vendor-cutoff,
@@ -503,6 +541,20 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-03 (later) — **the founder answered five of the six forks and slices 1-3 plus the
+  iCal fixes were built.** The five answers are in §Status. Three things the BUILD measured
+  that the research pass had not, each of which changed the code:
+  - NWS's forecast property carrying the forecaster's own time is `updateTime`, not
+    `updated`; `generatedAt` refreshes on every poll, so keying "how old is this forecast"
+    on it would have made a twelve-hour-old grid read as new. Measured live against
+    `gridpoints/MTR/91,89` on 2026-09-03: `updateTime 12:26:50Z`, `generatedAt 13:01:51Z`.
+  - The NWS gridpoint forecast is **seven days**, not the sixteen an Open-Meteo response
+    carries. `horizonDays` is on the response so a cell past it says "beyond the forecast"
+    rather than looking broken.
+  - NWS publishes a probability of precipitation and **no quantitative amount at all**, so
+    `precipitation_amount_mm` is NULL on every row this issuer produces, and the rain bar
+    draws a chance rather than a depth. A `DEFAULT 0` would have published "no rain
+    expected" for every day of every forecast.
 - 2026-09-03 — drafted from a research pass against the live production database and the
   running local gateway. Every schema and row-count claim in §Context was measured, not
   inferred; every external claim carries a URL. The leading recommendation (deadlines

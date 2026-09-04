@@ -61,3 +61,31 @@ That is deliberate, and it is the same rule the rest of this file follows:
 - **The warning lines do not arrive.** A claimed-but-unconfirmed reminder or a
   truncated sweep is a fact that was already true when the page loaded; it is
   drawn, not performed — the same reasoning as "ruling off is drawn".
+
+## Fourth pass, 2026-09-03 — the sky and the record add no motion either
+
+`SkyMark.tsx` (ADR 0111 slices 2 and 3) introduces **no new motion token**. The
+weather mark and the day record are drawn into the cell that already exists;
+they ride the month grid's `cn-ink` for hover and focus and nothing else.
+
+The reasoning is the same rule this file has followed since the first pass, and
+here it is load-bearing rather than merely tidy:
+
+- **A forecast does not arrive.** The temperature in a cell is a number NOAA
+  published hours ago; the page is transcribing it, not receiving it. A mark
+  that animated in would perform freshness the reading does not have — and the
+  entire licence for drawing weather on this grid (DESIGN-FOUNDATION §6, ADR
+  0111 §2) is that it is *attributed and dated*, not that it is live.
+- **The rain bar does not fill.** Six ticks of a published probability are a
+  quantity of record. Filling them left to right would read as a measurement
+  being taken.
+- **A recorded cover count does not tally.** `tally` is reserved on this page
+  for a figure the house itself is counting. 41 covers is closed history read
+  out of `pos_checks`; counting it up would imply the night is still running.
+- **A stale reading does not pulse or fade.** When the refresh fails the cells
+  keep their numbers and the page adds a sentence saying how old they are. The
+  honesty is in the words, never in a treatment the reader has to decode.
+
+The one thing that does move is the month grid's own `settle` 0fr→1fr day
+expansion, unchanged: opening a day now reveals the sky and the record inside
+the ledger that was already expanding.

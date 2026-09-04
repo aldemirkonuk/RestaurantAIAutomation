@@ -653,3 +653,122 @@
   margin-right: 4px;
   color: var(--ink-3);
 }
+
+/* ============================================================
+   THE SKY AND THE RECORD — ADR 0111 slices 2 and 3.
+
+   Drawn from sketch 098 (`month-overlay.html`). Ink for everything except the
+   rain bar, which is the one place the İznik seal appears in a cell: rain is
+   the single weather fact that changes what a kitchen does, so it is the one
+   that earns the colour.
+
+   The mark is never absent. `[data-dark]` is the cell's own way of saying "no
+   reading, and here is why" — a cell that simply omitted the sky would read as
+   fair weather to anyone scanning the column, which is the absence-reported-as-
+   health fault drawn as a blank.
+   ============================================================ */
+
+.cn-sky {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.cn-sky svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--ink-3);
+}
+.cn-sky-lo {
+  color: var(--ink-3);
+}
+.cn-sky[data-dark='true'] {
+  color: var(--ink-3);
+  font-style: normal;
+}
+
+/* Six bars of rain CHANCE — NWS publishes no quantitative amount. */
+.cn-rain {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 9px;
+  margin-left: 2px;
+}
+.cn-rain i {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--paper-2);
+}
+.cn-rain i[data-on] {
+  height: 9px;
+  background: var(--seal);
+  opacity: 0.55;
+}
+/* A probability the issuer never published — visibly not a published 0%. */
+.cn-rain[data-none='true'] {
+  width: 23px;
+  border-bottom: 1px dashed var(--paper-2);
+  height: 5px;
+}
+
+/* ── the record under a passed day ──────────────────────────────────────── */
+.cn-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  line-height: 1.25;
+}
+.cn-record-figure {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.cn-record-tag {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.cn-record-said {
+  flex-basis: 100%;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+
+/* A day the house was shut is hatched, never drawn as a zero: a closure
+   counted as zero trading is the most damaging input a demand model can take. */
+.cn-cell[data-shut='true'] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--paper-0),
+    var(--paper-0) 6px,
+    var(--paper-1) 6px,
+    var(--paper-1) 12px
+  );
+}
+
+/* The axis between what is recorded and what is forecast. */
+.cn-axis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+.cn-axis .cn-axis-line {
+  flex: 1;
+  border-top: 1px solid var(--paper-2);
+}

@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Res,
   UseGuards,
 } from "@nestjs/common";
@@ -20,7 +21,7 @@ import {
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
-import { Response } from "express";
+import { Request, Response } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
@@ -41,6 +42,11 @@ import {
   UpdateEventStatusDto,
   ICalTokenResponseDto,
 } from "./dto/calendar.dto";
+import { WeatherService } from "../weather/weather.service";
+import type { WeatherWindow } from "../weather/weather.service";
+import { GetWeatherQueryDto } from "../weather/dto/weather.dto";
+import { DayRecordService } from "./day-record.service";
+import type { DayRecordWindow } from "./day-record.service";
 
 @ApiTags("calendar")
 @Controller("calendar")
@@ -51,6 +57,8 @@ export class CalendarController {
   constructor(
     private readonly calendarService: CalendarService,
     private readonly reminders: CalendarRemindersService,
+    private readonly weather: WeatherService,
+    private readonly dayRecord: DayRecordService,
   ) {}
 
   // ==========================================================================
@@ -626,6 +634,92 @@ export class CalendarController {
   }
 
   // ==========================================================================
+  // THE WEATHER OVERLAY (ADR 0111 slice 2)
+  // ==========================================================================
+
+  /**
+   * The published forecast for this house's own coordinate, day by day.
+   *
+   * It lives on the calendar controller because the calendar is its only
+   * consumer and the tenant scope is the same signed token — a separate
+   * top-level module would have to be registered in `app.module.ts`, which this
+   * build does not own.
+   *
+   * The response NEVER answers an empty list to mean a failure. `refusal`
+   * carries the sentence the page prints when the whole overlay is dark (no
+   * coordinate, outside the issuer's coverage, issuer down), and `staleReason`
+   * carries the one it prints beside readings that are real but old. Both are
+   * words, because a weather column that is silently blank is indistinguishable
+   * from a week of clear skies.
+   */
+  @Get("weather")
+  @ApiOperation({
+    summary:
+      "Published weather readings for this restaurant's coordinate, each with its issuer and issue time",
+  })
+  @ApiResponse({ status: 200, description: "Readings, or a refusal in words" })
+  async getWeather(
+    @Query() query: GetWeatherQueryDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<WeatherWindow> {
+    const today = new Date().toISOString().slice(0, 10);
+    const from = query.from?.slice(0, 10) || today;
+    const to = query.to?.slice(0, 10) || from;
+    try {
+      return await this.weather.windowFor(user.restaurantId, from, to);
+    } catch (error) {
+      this.logger.error({
+        message: "Weather read failed",
+        userId: user.userId,
+        restaurantId: user.restaurantId,
+        error: error.message,
+      });
+      throw new HttpException(
+        error.message || "Failed to read the weather register",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * What each passed day in the window actually held — ADR 0111 slice 3.
+   *
+   * The ledger's own record beside the forecast that stood before the day
+   * began. Two registers, two separate refusals: `recordedRefusal` and
+   * `weatherRefusal` never merge, because "no POS is connected" and "the
+   * forecast could not be read" are different sentences and the cell prints a
+   * different one for each.
+   */
+  @Get("day-record")
+  @ApiOperation({
+    summary:
+      "Passed days: what the ledger recorded, beside the forecast that stood before the day",
+  })
+  @ApiResponse({ status: 200, description: "Reconciled days" })
+  async getDayRecord(
+    @Query() query: GetWeatherQueryDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<DayRecordWindow> {
+    const today = new Date().toISOString().slice(0, 10);
+    const from = query.from?.slice(0, 10) || today;
+    const to = query.to?.slice(0, 10) || from;
+    try {
+      return await this.dayRecord.windowFor(user.restaurantId, from, to);
+    } catch (error) {
+      this.logger.error({
+        message: "Day record read failed",
+        userId: user.userId,
+        restaurantId: user.restaurantId,
+        error: error.message,
+      });
+      throw new HttpException(
+        error.message || "Failed to read the day record",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ==========================================================================
   // iCAL SUBSCRIPTION FEED (D-07, D-08, D-09)
   // ==========================================================================
 
@@ -644,12 +738,74 @@ export class CalendarController {
   ): Promise<void> {
     const icalString = await this.calendarService.getICalFeed(token);
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    // `attachment` told every client to SAVE A FILE. A saved .ics is a one-time
+    // import: the events land once and never move again, which is exactly the
+    // symptom behind "the feed has never been seen to subscribe"
+    // (v3.0-TECH-DEBT.md:243-245, ADR 0111 §5). `inline` lets the client treat
+    // the URL as a living subscription.
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="wineops-calendar.ics"',
+      'inline; filename="mudavym-calendar.ics"',
     );
     res.setHeader("Cache-Control", "no-cache, no-store");
     res.send(icalString);
+  }
+
+  /**
+   * The origin a subscriber should use, and where it came from.
+   *
+   * Two honest sources, in order: `API_PUBLIC_URL` (the same variable the OAuth
+   * callbacks use — integrations-oauth.service.ts:82), then the request's own
+   * `Host` (with `X-Forwarded-Proto` where a proxy set one), which is a fact
+   * about how this caller reached the gateway rather than a guess. If neither
+   * exists the answer is `none` and the URL fields are null: a fabricated
+   * origin would produce a subscription URL that silently never resolves.
+   */
+  private feedOrigin(req: Request): {
+    origin: string | null;
+    source: "config" | "request" | "none";
+  } {
+    const configured = process.env.API_PUBLIC_URL;
+    if (configured && configured.trim()) {
+      return { origin: configured.trim().replace(/\/+$/, ""), source: "config" };
+    }
+
+    const host = req?.headers?.host;
+    if (typeof host === "string" && host.trim()) {
+      const forwarded = req.headers["x-forwarded-proto"];
+      const proto =
+        (Array.isArray(forwarded) ? forwarded[0] : forwarded)
+          ?.split(",")[0]
+          ?.trim() ||
+        (req as unknown as { protocol?: string }).protocol ||
+        "http";
+      return { origin: `${proto}://${host.trim()}`, source: "request" };
+    }
+
+    return { origin: null, source: "none" };
+  }
+
+  /** Build the three URL fields of `ICalTokenResponseDto` from one token. */
+  private icalTokenResponse(
+    token: string,
+    req: Request,
+  ): ICalTokenResponseDto {
+    const path = `/api/v1/calendar/feed/${token}.ics`;
+    const { origin, source } = this.feedOrigin(req);
+    const absolute = origin ? `${origin}${path}` : null;
+    return {
+      token,
+      feedUrl: path,
+      absoluteFeedUrl: absolute,
+      // `webcal://` is not an IANA scheme, it is the de-facto handler
+      // registration Apple Calendar and Outlook bind to. Clicking an https://
+      // .ics link opens a browser download; clicking the webcal:// form opens
+      // the calendar app's subscribe dialog.
+      webcalUrl: absolute
+        ? absolute.replace(/^https?:\/\//, "webcal://")
+        : null,
+      originSource: source,
+    };
   }
 
   @Get("ical-token")
@@ -659,12 +815,12 @@ export class CalendarController {
   @ApiResponse({ status: 200, type: ICalTokenResponseDto })
   async getICalToken(
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Req() req: Request,
   ): Promise<ICalTokenResponseDto> {
     const token = await this.calendarService.getOrGenerateICalToken(
       user.restaurantId,
     );
-    const feedUrl = `/api/v1/calendar/feed/${token}.ics`;
-    return { token, feedUrl };
+    return this.icalTokenResponse(token, req);
   }
 
   @Post("ical-token/regenerate")
@@ -674,11 +830,11 @@ export class CalendarController {
   @ApiResponse({ status: 201, type: ICalTokenResponseDto })
   async regenerateICalToken(
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Req() req: Request,
   ): Promise<ICalTokenResponseDto> {
     const token = await this.calendarService.regenerateICalToken(
       user.restaurantId,
     );
-    const feedUrl = `/api/v1/calendar/feed/${token}.ics`;
-    return { token, feedUrl };
+    return this.icalTokenResponse(token, req);
   }
 }

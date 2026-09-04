@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "gridId": "MTR",
+    "gridX": 91,
+    "gridY": 89,
+    "forecast": "https://api.weather.gov/gridpoints/MTR/91,89/forecast",
+    "forecastHourly": "https://api.weather.gov/gridpoints/MTR/91,89/forecast/hourly",
+    "timeZone": "America/Los_Angeles"
+  }
+}

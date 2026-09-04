@@ -18,12 +18,34 @@
 
 import { useState } from 'react';
 import { Seal } from '../../../components/mudavym';
-import { EM, clock, longDay, span } from './cal-format';
+import { EM, clock, longDay, sinceOrUntil, span } from './cal-format';
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
+import { DayRecordMark, SkyMark } from './SkyMark';
 import { addDays, dayKey, parseDayKey, startOfWeek } from './cal-format';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MAX_RIBBONS = 3;
+
+/**
+ * Why this particular cell carries no forecast.
+ *
+ * One sentence per reason, and never an empty node: a cell that simply omits
+ * the sky reads as fair weather down the whole column. The page-level notice
+ * carries the gateway's full sentence; this is the cell-sized version of it.
+ */
+export function skyAbsence(data: CalendarData, day: string, today: string): string | null {
+  const w = data.weather;
+  if (w.isLoading) return 'Reading the forecast.';
+  if (w.isError) return `The forecast register could not be read (${w.errorMessage}).`;
+  const win = w.window;
+  if (!win) return null;
+  if (win.refusal) return win.refusal;
+  if (day < today) return 'No forecast was kept for this day.';
+  if (win.horizonDays !== null) {
+    return `Beyond ${win.issuer}'s ${win.horizonDays}-day forecast.`;
+  }
+  return `${win.issuer} published nothing for this day.`;
+}
 
 export interface MonthLedgerProps {
   data: CalendarData;
@@ -113,6 +135,8 @@ export function DayLedger({
   onCreateAt: (day: string) => void;
 }) {
   const all = data.byDay.get(day) ?? [];
+  const sky = data.weather.byDay?.get(day) ?? null;
+  const record = data.record.byDay?.get(day) ?? null;
   const deliveries = all.filter(isDelivery);
   const rest = all.filter((e) => !isDelivery(e));
   const ruledOffCount = deliveries.filter(data.isRuledOff).length;
@@ -147,6 +171,30 @@ export function DayLedger({
           Add to this day
         </button>
       </div>
+
+      {/* The sky over this day, or the record it holds — whichever side of
+          today it falls on. Attribution travels with the mark (ADR 0111 §2). */}
+      <div className="cn-row" style={{ gap: 12, marginBottom: 6 }}>
+        {record ? (
+          <DayRecordMark day={record} />
+        ) : (
+          <SkyMark reading={sky} absence={skyAbsence(data, day, dayKey(new Date()))} />
+        )}
+        {sky && record && <SkyMark reading={sky} absence={null} />}
+      </div>
+      {record && (
+        <p className="cn-meta" style={{ margin: '0 0 8px' }}>
+          {record.line}
+        </p>
+      )}
+      {!record && sky && (
+        <p className="cn-meta" style={{ margin: '0 0 8px' }}>
+          {sky.shortForecast ? `${sky.shortForecast}. ` : ''}
+          {sky.issuer}
+          {sky.issuerDetail ? ` ${sky.issuerDetail}` : ''}, issued{' '}
+          {sinceOrUntil(sky.issuedAt)}.
+        </p>
+      )}
 
       {all.length === 0 && (
         <p className="cn-quiet" style={{ margin: 0 }}>
@@ -247,6 +295,11 @@ export default function MonthLedger({
           const events = data.byDay.get(key) ?? [];
           const outside = d.getMonth() !== cursor.getMonth();
           const shown = events.slice(0, MAX_RIBBONS);
+          // Left of today the cell holds the record; right of it, the forecast.
+          // That axis is the whole structural idea of the overlay (ADR 0111 §2).
+          const past = key < today;
+          const sky = data.weather.byDay?.get(key) ?? null;
+          const record = data.record.byDay?.get(key) ?? null;
           return (
             <div
               key={key}
@@ -256,6 +309,7 @@ export default function MonthLedger({
               data-outside={outside}
               data-today={key === today}
               data-selected={selected === key}
+              data-shut={record?.recorded?.excluded || undefined}
               data-dropzone={over === key || undefined}
               aria-label={`${longDay(key)} — ${events.length === 0 ? 'nothing written' : `${events.length} entries`}`}
               onClick={() => onSelect(selected === key ? null : key)}
@@ -276,6 +330,15 @@ export default function MonthLedger({
               }}
             >
               <span className="cn-daynum">{d.getDate()}</span>
+              {past ? (
+                record ? (
+                  <DayRecordMark day={record} />
+                ) : (
+                  <SkyMark reading={sky} absence={skyAbsence(data, key, today)} />
+                )
+              ) : (
+                <SkyMark reading={sky} absence={skyAbsence(data, key, today)} />
+              )}
               {shown.map((ev) => (
                 <Ribbon
                   key={ev.id}

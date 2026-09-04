@@ -119,6 +119,112 @@ export interface ReminderJobStatus {
   };
 }
 
+/**
+ * `GET /calendar/weather?from&to` — the published forecast for this house's own
+ * coordinate (`apps/api-gateway/src/calendar/calendar.controller.ts` route
+ * "weather"; built in `weather/weather.service.ts` `windowFor`).
+ *
+ * Three fields exist only so the grid cannot lie about the sky:
+ *  - `refusal` — the whole overlay is dark and this is the sentence that says
+ *    why. An empty `readings` list with a null refusal is a real "the issuer
+ *    published nothing for these dates"; with a refusal it is a failure, and
+ *    they must never draw the same.
+ *  - `staleReason` — the readings below are real but old, because the refresh
+ *    failed. The cells still draw; the page says how old.
+ *  - `horizonDays` — NWS publishes seven days, not sixteen. A cell past the
+ *    horizon says "beyond the forecast" rather than looking broken.
+ */
+export interface WeatherReading {
+  businessDate: string;
+  issuer: string;
+  issuerDetail: string | null;
+  issuedAt: string;
+  fetchedAt: string;
+  validFrom: string;
+  validTo: string;
+  temperatureHigh: number | null;
+  temperatureLow: number | null;
+  /** The ISSUER's own unit, unconverted. NWS publishes F for US locations. */
+  temperatureUnit: 'C' | 'F';
+  /** Percent, or null where the issuer published none — never 0. */
+  precipitationProbability: number | null;
+  precipitationAmountMm: number | null;
+  windSummary: string | null;
+  shortForecast: string | null;
+}
+
+export interface WeatherAdvisory {
+  headline: string;
+  event: string;
+  severity: string | null;
+  onset: string | null;
+  ends: string | null;
+}
+
+export interface WeatherWindow {
+  from: string;
+  to: string;
+  coordinate: { latitude: number; longitude: number } | null;
+  readings: WeatherReading[];
+  forecastInAdvance: WeatherReading[];
+  refusal: string | null;
+  refusalReason:
+    | 'no-coordinate'
+    | 'outside-coverage'
+    | 'issuer-unreachable'
+    | 'issuer-refused'
+    | 'issuer-malformed'
+    | 'store-unreadable'
+    | null;
+  staleReason: string | null;
+  ageMinutes: number | null;
+  issuer: string;
+  horizonDays: number | null;
+  advisories: WeatherAdvisory[];
+  advisoriesReadable: boolean;
+}
+
+/**
+ * `GET /calendar/day-record?from&to` — what each PASSED day held, and the
+ * forecast that stood before it began (ADR 0111 slice 3).
+ *
+ * `recorded.covers` is `null`, never 0, when no check on the day carried a
+ * cover count: a POS that does not send them and a night nobody came are
+ * different facts. `line` is the sentence the cell prints, built by the
+ * gateway so the page cannot soften it.
+ */
+export interface ReconciledDay {
+  businessDate: string;
+  recorded: {
+    covers: number | null;
+    sales: number | null;
+    checkCount: number;
+    excluded: boolean;
+    exclusionReason: string | null;
+  } | null;
+  forecastInAdvance: {
+    issuer: string;
+    issuedAt: string;
+    leadDays: number;
+    temperatureHigh: number | null;
+    temperatureLow: number | null;
+    temperatureUnit: 'C' | 'F';
+    precipitationProbability: number | null;
+    shortForecast: string | null;
+  } | null;
+  line: string;
+}
+
+export interface DayRecordWindow {
+  from: string;
+  to: string;
+  days: ReconciledDay[];
+  posConnected: boolean;
+  recordedRefusal: string | null;
+  weatherRefusal: string | null;
+  pairsWritten: number;
+}
+
 export type EventStatus = 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled';
 
 export interface EventTypeRow {
@@ -361,6 +467,47 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     },
   });
 
+  /**
+   * The weather overlay (ADR 0111 slice 2).
+   *
+   * Its own query, keyed on the window, so a calendar read that 500s still
+   * leaves the sky readable and vice versa. `staleTime` is 15 minutes against a
+   * gateway max age of 60: asking more often than the issuer republishes tells
+   * the reader nothing, and the gateway will not call NWS again inside the hour
+   * anyway — it answers from the register it kept.
+   */
+  const weatherQ = useQuery({
+    queryKey: ['mudavym', 'calendar', 'weather', restaurantId, start, end],
+    enabled: !!restaurantId,
+    staleTime: 15 * 60_000,
+    queryFn: async () => {
+      const res = await apiClient.get<WeatherWindow>(
+        `/calendar/weather?from=${start}&to=${end}`,
+      );
+      return res.data;
+    },
+  });
+
+  /**
+   * What the passed days in this window actually held (ADR 0111 slice 3).
+   *
+   * Separate from the weather read even though the gateway composes both,
+   * because the two registers refuse separately: "no POS is connected" and "no
+   * location is set" are different sentences and a cell prints a different one
+   * for each.
+   */
+  const recordQ = useQuery({
+    queryKey: ['mudavym', 'calendar', 'day-record', restaurantId, start, end],
+    enabled: !!restaurantId,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const res = await apiClient.get<DayRecordWindow>(
+        `/calendar/day-record?from=${start}&to=${end}`,
+      );
+      return res.data;
+    },
+  });
+
   const ordersQ = useOrders();
 
   /** Anything else in the app moving a calendar row refreshes this window. */
@@ -453,6 +600,24 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     return m;
   }, [shown]);
 
+  /**
+   * One lookup per cell. Built from the gateway's own arrays rather than
+   * re-derived: the newest-per-day rule lives server-side (weather.service.ts
+   * `newestPerDay`) so the grid and the register can never disagree about which
+   * issuance a day is showing.
+   */
+  const weatherByDay = useMemo(() => {
+    const rows = weatherQ.data?.readings;
+    if (!rows) return null;
+    return new Map<string, WeatherReading>(rows.map((r) => [r.businessDate, r]));
+  }, [weatherQ.data]);
+
+  const recordByDay = useMemo(() => {
+    const rows = recordQ.data?.days;
+    if (!rows) return null;
+    return new Map<string, ReconciledDay>(rows.map((r) => [r.businessDate, r]));
+  }, [recordQ.data]);
+
   /* ── Mutations ─────────────────────────────────────────────────────────── */
 
   const invalidate = useCallback(() => {
@@ -531,6 +696,8 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       void typesQ.refetch();
       void providersQ.refetch();
       void reminderQ.refetch();
+      void weatherQ.refetch();
+      void recordQ.refetch();
     },
 
     /**
@@ -546,6 +713,29 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       refetch: () => {
         void reminderQ.refetch();
       },
+    },
+
+    /**
+     * The sky over this window, and the record of the days that have passed.
+     *
+     * `byDay` is the newest issuance for each date; `recordByDay` the passed
+     * days' reconciliation. Both are Maps so a cell is one lookup, and both are
+     * `null`-when-unknown rather than empty-when-unknown: `isError` on either
+     * makes the page say which register went dark, never draw a clear sky.
+     */
+    weather: {
+      window: weatherQ.data ?? null,
+      byDay: weatherByDay,
+      isLoading: weatherQ.isLoading,
+      isError: weatherQ.isError,
+      errorMessage: messageOf(weatherQ.error),
+    },
+    record: {
+      window: recordQ.data ?? null,
+      byDay: recordByDay,
+      isLoading: recordQ.isLoading,
+      isError: recordQ.isError,
+      errorMessage: messageOf(recordQ.error),
     },
 
     eventTypes: typesQ.data ?? [],

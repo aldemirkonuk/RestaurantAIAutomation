@@ -102,6 +102,58 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     return `Reminders are sent by the server — last run ${sinceOrUntil(job.status.lastRun.startedAt)}.`;
   })();
 
+  /**
+   * What the page may say about the sky, in one line.
+   *
+   * The overlay is a transcription of somebody else's published forecast, so
+   * the line always names them. When there is nothing to draw it says why —
+   * the one thing it may never do is go quiet, because a blank weather column
+   * reads as fair weather (DESIGN-FOUNDATION §6's standing objection, answered
+   * in ADR 0111 §2 by attribution rather than by omission).
+   */
+  const skyLine = (() => {
+    const w = data.weather;
+    if (w.isLoading) return `Reading the forecast${EM}`;
+    if (w.isError) return `The forecast register could not be read (${w.errorMessage}).`;
+    const win = w.window;
+    if (!win) return null;
+    if (win.refusal) return win.refusal;
+    if (win.staleReason) {
+      return `${win.staleReason} What is drawn is the last forecast read${
+        win.ageMinutes !== null ? `, ${win.ageMinutes} minutes ago` : ''
+      } — not the present.`;
+    }
+    if (win.readings.length === 0) {
+      return `${win.issuer} published no readings for these dates.`;
+    }
+    return `Sky by ${win.issuer}${
+      win.horizonDays !== null ? `, ${win.horizonDays} days ahead` : ''
+    }; each day names its own issue time. Beyond that the cells say so.`;
+  })();
+
+  /** True when `skyLine` is reporting a failure rather than describing one. */
+  const skyIsDark =
+    data.weather.isError ||
+    !!data.weather.window?.refusal ||
+    !!data.weather.window?.staleReason;
+
+  /**
+   * What the page may say about the passed days. Separate from `skyLine`
+   * because the two registers fail separately — "no POS is connected" and "no
+   * location is set" are different sentences.
+   */
+  const recordLine = (() => {
+    const r = data.record;
+    if (r.isError) return `The day record could not be read (${r.errorMessage}).`;
+    const win = r.window;
+    if (!win) return null;
+    if (win.recordedRefusal) return win.recordedRefusal;
+    if (!win.posConnected) {
+      return 'No sales register is connected, so a passed day holds no record of its trading.';
+    }
+    return null;
+  })();
+
   useEffect(() => {
     ensureFraunces();
   }, []);
@@ -370,6 +422,40 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
             below is not the whole period; narrow the view to see the rest.
           </p>
         )}
+
+        {/* The sky, and what it is allowed to claim. Every branch is a
+            sentence: a silently blank weather column is indistinguishable from
+            a week of clear skies (ADR 0111 §2, DESIGN-FOUNDATION §6). */}
+        {skyLine && (
+          <p
+            // `role="status"` is announced, so it is reserved for the branches
+            // that report a FAILURE — a dark overlay or a stale reading. The
+            // healthy line ("Sky by NOAA/NWS, 7 days ahead") is standing
+            // context, not an event, and announcing it on every render would
+            // bury the errors that matter.
+            role={skyIsDark ? 'status' : undefined}
+            className="cn-quiet"
+          >
+            {skyLine}
+          </p>
+        )}
+
+        {data.weather.window?.advisories.map((a) => (
+          <p key={a.headline} role="status" className="cn-notice">
+            <strong>{a.event}</strong> — {a.headline}
+          </p>
+        ))}
+
+        {data.weather.window &&
+          !data.weather.window.refusal &&
+          !data.weather.window.advisoriesReadable && (
+            <p className="cn-quiet">
+              The advisory feed could not be read, so this page is not saying
+              whether a warning is in force — only that it does not know.
+            </p>
+          )}
+
+        {recordLine && <p className="cn-quiet">{recordLine}</p>}
 
         {!data.ordersKnown && (
           <p className="cn-quiet">

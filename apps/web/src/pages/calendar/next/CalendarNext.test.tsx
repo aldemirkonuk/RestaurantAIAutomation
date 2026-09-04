@@ -96,6 +96,104 @@ function reminderStatus(over: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * One day of the published forecast, as `GET /calendar/weather` returns it.
+ * NWS's own numbers for Palo Alto on 2026-09-03, recorded live.
+ */
+function reading(over: Record<string, unknown> = {}) {
+  return {
+    businessDate: '2026-09-17',
+    issuer: 'NOAA/NWS',
+    issuerDetail: 'MTR/91,89',
+    issuedAt: new Date(2026, 8, 15, 5, 26, 0).toISOString(),
+    fetchedAt: new Date(2026, 8, 15, 11, 55, 0).toISOString(),
+    validFrom: '2026-09-17T06:00:00-07:00',
+    validTo: '2026-09-18T06:00:00-07:00',
+    temperatureHigh: 75,
+    temperatureLow: 58,
+    temperatureUnit: 'F' as const,
+    precipitationProbability: 27,
+    precipitationAmountMm: null,
+    windSummary: '2 to 12 mph',
+    shortForecast: 'Mostly Sunny then Chance Light Rain',
+    ...over,
+  };
+}
+
+/** The weather window with readings on one day, unless a test says otherwise. */
+function weatherWindow(over: Record<string, unknown> = {}) {
+  const readings = (over.readings as ReturnType<typeof reading>[] | undefined) ?? [reading()];
+  return {
+    window: {
+      from: '2026-08-31',
+      to: '2026-10-04',
+      coordinate: { latitude: 37.4419, longitude: -122.143 },
+      readings,
+      forecastInAdvance: [],
+      refusal: null,
+      refusalReason: null,
+      staleReason: null,
+      ageMinutes: 5,
+      issuer: 'NOAA/NWS',
+      horizonDays: 7,
+      advisories: [],
+      advisoriesReadable: true,
+      ...(over.window as Record<string, unknown>),
+    },
+    byDay: new Map(readings.map((r) => [r.businessDate, r])),
+    isLoading: false,
+    isError: false,
+    errorMessage: '',
+  };
+}
+
+/** A passed day's reconciliation, as `GET /calendar/day-record` returns it. */
+function reconciled(over: Record<string, unknown> = {}) {
+  return {
+    businessDate: '2026-09-08',
+    recorded: {
+      covers: 41,
+      sales: 3400,
+      checkCount: 12,
+      excluded: false,
+      exclusionReason: null,
+      ...(over.recorded as Record<string, unknown>),
+    },
+    forecastInAdvance: {
+      issuer: 'NOAA/NWS',
+      issuedAt: new Date(2026, 8, 5, 5, 26, 0).toISOString(),
+      leadDays: 3,
+      temperatureHigh: 75,
+      temperatureLow: 58,
+      temperatureUnit: 'F' as const,
+      precipitationProbability: 27,
+      shortForecast: 'Mostly Sunny',
+    },
+    line: 'The forecast that stood before this day is kept beside the record; no covers model exists yet to score it against.',
+    ...over,
+  };
+}
+
+function recordWindow(over: Record<string, unknown> = {}) {
+  const days = (over.days as ReturnType<typeof reconciled>[] | undefined) ?? [reconciled()];
+  return {
+    window: {
+      from: '2026-08-31',
+      to: '2026-10-04',
+      days,
+      posConnected: true,
+      recordedRefusal: null,
+      weatherRefusal: null,
+      pairsWritten: 0,
+      ...(over.window as Record<string, unknown>),
+    },
+    byDay: new Map(days.map((d) => [d.businessDate, d])),
+    isLoading: false,
+    isError: false,
+    errorMessage: '',
+  };
+}
+
 function mkData(over: Record<string, unknown> = {}) {
   const events = (over.events as CalEvent[] | undefined) ?? [];
   const byDay = new Map<string, CalEvent[]>();
@@ -132,6 +230,8 @@ function mkData(over: Record<string, unknown> = {}) {
       errorMessage: '',
       refetch: vi.fn(),
     },
+    weather: weatherWindow(),
+    record: recordWindow(),
     create: mutation(),
     update: mutation(),
     remove: mutation(),
@@ -568,5 +668,200 @@ describe('CalendarNext — reminders are kept by the house, not by this browser'
     expect(
       within(screen.getByRole('dialog')).getByText(/reminder has already been sent/),
     ).toBeInTheDocument();
+  });
+});
+
+/* ── the sky, and what it may claim (ADR 0111 slices 2 and 3) ─────────────── */
+
+describe('CalendarNext — the weather overlay', () => {
+  it('draws the issuer’s own numbers, in the issuer’s own unit', () => {
+    draw();
+    // 75/58 F, exactly what NWS published for MTR/91,89. Not converted, not
+    // rounded to a different scale — the number in the cell is the
+    // meteorologist's.
+    expect(screen.getByText('75°F')).toBeInTheDocument();
+    expect(screen.getByText('58°F')).toBeInTheDocument();
+  });
+
+  it('puts the issuer and the issue time on every mark', () => {
+    // The attribution is not decoration: it is the entire distinction between
+    // a citable published forecast and the guess DESIGN-FOUNDATION §6 forbids.
+    draw();
+    const mark = screen.getByText('75°F').closest('.cn-sky');
+    expect(mark).toBeTruthy();
+    expect(mark?.getAttribute('title')).toContain('NOAA/NWS');
+    expect(mark?.getAttribute('title')).toContain('MTR/91,89');
+    expect(mark?.getAttribute('title')).toContain('issued');
+  });
+
+  it('names the issuer and the horizon in the standing line', () => {
+    draw();
+    expect(screen.getByText(/Sky by NOAA\/NWS, 7 days ahead/)).toBeInTheDocument();
+  });
+
+  it('says why a cell has no reading, never leaving it blank', () => {
+    // A silently empty weather column is indistinguishable from a week of
+    // clear skies. Every cell without a reading carries a reason.
+    draw();
+    const dark = document.querySelectorAll('.cn-sky[data-dark="true"]');
+    expect(dark.length).toBeGreaterThan(0);
+    expect(dark[0].textContent).toContain('no reading');
+    expect(dark[0].getAttribute('title')).toBeTruthy();
+  });
+
+  it('prints the gateway’s refusal when the house has no coordinate', () => {
+    // The state all fourteen production rows were in on 2026-09-03.
+    state.current = mkData({
+      weather: weatherWindow({
+        readings: [],
+        window: {
+          coordinate: null,
+          refusal:
+            'No location is set for this house, so no forecast can be read. Set the address on Settings and the coordinate is captured with it.',
+          refusalReason: 'no-coordinate',
+          horizonDays: null,
+        },
+      }),
+    });
+    draw();
+    expect(screen.getByText(/No location is set for this house/)).toBeInTheDocument();
+  });
+
+  it('keeps a stale forecast on screen and says how old it is', () => {
+    state.current = mkData({
+      weather: weatherWindow({
+        window: {
+          staleReason: 'The weather service answered 503.',
+          ageMinutes: 143,
+        },
+      }),
+    });
+    draw();
+    expect(screen.getByText(/answered 503/)).toBeInTheDocument();
+    expect(screen.getByText(/143 minutes ago/)).toBeInTheDocument();
+    // and the readings are still drawn — they are real, just old
+    expect(screen.getByText('75°F')).toBeInTheDocument();
+  });
+
+  it('says the forecast register went dark rather than drawing a clear sky', () => {
+    state.current = mkData({
+      weather: { ...weatherWindow(), isError: true, errorMessage: 'Network Error', window: null, byDay: null },
+    });
+    draw();
+    expect(
+      screen.getByText(/The forecast register could not be read \(Network Error\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('refuses to imply there is no advisory when the advisory feed failed', () => {
+    state.current = mkData({
+      weather: weatherWindow({ window: { advisoriesReadable: false } }),
+    });
+    draw();
+    expect(screen.getByText(/only that it does not know/)).toBeInTheDocument();
+  });
+
+  it('renders an advisory the issuer actually has in force', () => {
+    state.current = mkData({
+      weather: weatherWindow({
+        window: {
+          advisories: [
+            {
+              headline: 'Heat Advisory issued September 15',
+              event: 'Heat Advisory',
+              severity: 'Moderate',
+              onset: null,
+              ends: null,
+            },
+          ],
+        },
+      }),
+    });
+    draw();
+    expect(screen.getByText('Heat Advisory')).toBeInTheDocument();
+  });
+
+  it('draws the flat hairline when the issuer published no chance of rain', () => {
+    // Visibly different from a published 0%, which draws six empty ticks.
+    state.current = mkData({
+      weather: weatherWindow({ readings: [reading({ precipitationProbability: null })] }),
+    });
+    draw();
+    expect(document.querySelector('.cn-rain[data-none="true"]')).toBeTruthy();
+  });
+});
+
+describe('CalendarNext — a passed day holds the record', () => {
+  it('shows what the ledger recorded beside what was forecast', () => {
+    draw();
+    expect(screen.getByText('41')).toBeInTheDocument();
+    expect(screen.getByText('covers · recorded')).toBeInTheDocument();
+    expect(screen.getByText(/forecast said 75°F, 3d ahead/)).toBeInTheDocument();
+  });
+
+  it('never claims an accuracy it cannot compute', () => {
+    // No covers model exists (slice 9, gated on 90 observed days) and no
+    // temperature observation is recorded anywhere, so the line says so and
+    // the cell never prints "out by N".
+    draw();
+    const mark = screen.getByText('41').closest('.cn-record');
+    expect(mark?.getAttribute('title')).toContain('no covers model exists yet');
+    expect(document.body.textContent).not.toMatch(/out by/);
+  });
+
+  it('renders an em dash, never a zero, when covers were not recorded', () => {
+    state.current = mkData({
+      record: recordWindow({
+        days: [
+          reconciled({
+            recorded: { covers: null, sales: 3400, checkCount: 12, excluded: false, exclusionReason: null },
+            line: 'Covers were not recorded on this day, so the forecast beside it cannot be scored.',
+          }),
+        ],
+      }),
+    });
+    draw();
+    expect(screen.getByText('covers not recorded')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('hatches a day the house was shut instead of drawing it as a zero', () => {
+    // A closure counted as zero trading is the most damaging input a demand
+    // model can be given.
+    state.current = mkData({
+      record: recordWindow({
+        days: [
+          reconciled({
+            recorded: { covers: null, sales: null, checkCount: 0, excluded: true, exclusionReason: 'Labor Day' },
+            line: 'Closed — Labor Day. Ruled out of the baselines.',
+          }),
+        ],
+      }),
+    });
+    draw();
+    expect(screen.getByText('closed')).toBeInTheDocument();
+    expect(screen.getByText('ruled out')).toBeInTheDocument();
+    expect(document.querySelector('.cn-cell[data-shut="true"]')).toBeTruthy();
+  });
+
+  it('says there is no sales register rather than reporting empty days', () => {
+    state.current = mkData({
+      record: recordWindow({ days: [], window: { posConnected: false } }),
+    });
+    draw();
+    expect(
+      screen.getByText(/No sales register is connected, so a passed day holds no record/),
+    ).toBeInTheDocument();
+  });
+
+  it('says the ledger went dark when the recorded register refuses', () => {
+    state.current = mkData({
+      record: recordWindow({
+        days: [],
+        window: { recordedRefusal: 'The sales register could not be read.' },
+      }),
+    });
+    draw();
+    expect(screen.getByText('The sales register could not be read.')).toBeInTheDocument();
   });
 });

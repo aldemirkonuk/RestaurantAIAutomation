@@ -96,15 +96,57 @@ unchanged with the flag off):
 - ⚫ **The collapsible left sidebar is gone**; its two jobs (type legend, search) are a select
   and an input in the header, so `localStorage['wineops-calendar-sidebar']` is unused here
 
+**Built by the fourth pass** (2026-09-03, ADR 0111 slices 1-3 + the iCal fixes; behind
+`mudavym_design_calendar` except where noted):
+
+- **The sky on every day cell, and it names whose it is.** High/low in the issuer's own unit,
+  a six-bar chance-of-rain mark, and the issuer + issue time on hover — NOAA/NWS with its
+  forecast office and grid (`MTR/91,89` for Palo Alto). This is the line DESIGN-FOUNDATION §6
+  drew: a *published, attributed* forecast is a citable observation; our own covers number
+  drawn without its error is the guess, and that is slice 9, still unbuilt
+- **A cell with no reading says why, and there are six different whys.** No coordinate on the
+  house · outside NWS coverage (it is US-only) · the issuer was unreachable, refused, or
+  answered something unreadable · the register itself could not be read. Never a blank: a
+  silently empty weather column is indistinguishable from a week of clear skies
+- **A stale forecast stays on screen with its age.** When the refresh fails the readings are
+  kept and the page says "the weather service answered 503 — what is drawn is the last
+  forecast read, 143 minutes ago, not the present"
+- **Every forecast is KEPT, per issuance.** `weather_readings` is not a cache: a new issuance
+  for the same day is a new row beside the old one, which is the only thing that makes "what
+  was forecast *before* the day" recoverable later
+- **A passed day holds the record.** Covers and sales from `pos_checks` beside the forecast
+  that stood before the day began, with its lead time in days
+- 🔒 **The passed day states no accuracy, and says so.** No covers model exists (slice 9,
+  gated on 90 observed service days — the house has 22) and **no temperature observation is
+  recorded anywhere in the product**, so the pair is kept and the score is withheld. The
+  first rows `prediction_outcomes` has ever received from this product carry
+  `accuracy_score: NULL` for exactly that reason
+- **Covers are an em dash, never a zero, when the POS did not send them**, and a day the
+  house was shut is **hatched and labelled "ruled out"** rather than drawn as zero trading —
+  a closure counted as a zero is the most damaging input a demand model can be given
+- **The coordinate is captured at sign-up** (*outside the flag; `Register.tsx` + the gateway's
+  register path*): the point resolves from the Google Places selection in the same call that
+  fills the city, and is written with the restaurant. A hand-typed address carries **no**
+  point — no default city, no 0,0, no geocode — and a half-pair is refused outright
+- **The iCal feed's four subscribe suspects are closed** (*outside the flag; the feed is
+  public*): `Content-Disposition: attachment` → `inline`, event times built in the
+  **restaurant's** IANA zone instead of the server's clock, `X-PUBLISHED-TTL` +
+  `REFRESH-INTERVAL` at one hour, and an absolute + `webcal://` URL. A restaurant with no
+  resolvable timezone gets a **floating** time (RFC 5545 form one), never a false UTC
+- ⚫ **Advisories are read but not kept.** NWS `/alerts/active` is a live best-effort read; a
+  failed advisory feed renders "this page is not saying whether a warning is in force — only
+  that it does not know", never "no advisories"
+
 **Researched and designed, not built** (fourth pass, 2026-09-03 —
 [[0111-the-calendar-is-the-houses-day-book|ADR 0111]], sketches
 `.planning/sketches/098-calendar-quant-overlay/`). Every line below is a design with a
-measurement behind it and **no code**; §1b's *Quant overlay* subsection carries the detail
-and §13 carries the slices:
+measurement behind it; §1b's *Quant overlay* subsection carries the detail and §13 carries
+the slices. Slices 1-3 have since been built and moved to the list above — what remains
+below is slices 4-9:
 
-- ⚪ **The world outside, drawn on the day it lands on** — weather, a covers forecast, and
-  three risk marks (price · delivery · quality) per cell, with the past half of the month
-  holding what the ledger recorded and stating what the forecast got wrong
+- ⚪ **The three remaining risk marks per cell** — price, delivery and quality. Weather and
+  the past half of the month are BUILT (above); these three are not, and each is blocked on
+  an empty table rather than on effort
 - ⚪ **A deadlines strip** — order-window cutoffs, invoice due dates, expiring certificates,
   recurring orders and ending promotions in one band, each card naming the table it came
   from and whether the term was *stated* or *inferred*
@@ -118,9 +160,13 @@ and §13 carries the slices:
 - ⚪ **Four external-calendar directions** — push, pull, two-way with stated conflict rules, and
   the day-book exposed as the Mudavym MCP server's first three tools
 - 🔴 **Measured blocker, and it decides the order:** of the six inputs the overlay needs, five
-  find **nothing** in production today — 0 of 14 restaurants carry a coordinate, the best-covered
-  tenant has 22 observed service days, `vendor_price_observations` is empty, no order carries a
-  promised *or* actual delivery date, and there is no shelf-life column anywhere in 88 migrations
+  found **nothing** in production on 2026-09-03 — 0 of 14 restaurants carried a coordinate, the
+  best-covered tenant had 22 observed service days, `vendor_price_observations` was empty, no
+  order carried a promised *or* actual delivery date, and there is no shelf-life column
+  anywhere in the migration corpus. **The first of the five is now closed by code rather than
+  by data**: sign-up captures the coordinate and `scripts/backfill_restaurant_coordinates.py`
+  offers the 13 existing rows the same lookup, keyed on `google_place_id`. The other four are
+  unchanged, which is why slices 4 and 9 stay unbuilt
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_calendar`)
 
@@ -281,6 +327,73 @@ cancels an entry's browser-queued copies whenever it saves that entry
 sender. The residue is named in §9: an entry created on the legacy page and never opened here
 can still fire twice.
 
+
+### Fourth pass, 2026-09-03 — the sky, the record, and a feed that can be subscribed to
+
+**What the founder asked.** *"We're going to add weather forecast (basically all Quant
+detailed work) to predict weather, pricings, transportation, quality of food and so on"*,
+widened the same day to the whole day-book. Then, on the research: **NWS now, behind a
+`WeatherProvider` interface**, and **"when google maps API address is being used, take the
+geocode as well in sign up"**. Three further forks answered in the same sitting: public
+commodity indexes go in a **separate register**, the 90/180-day floors are **per restaurant
+and never pooled**, and the Google app **goes for verification now**.
+
+**What was built.** ADR 0111's slices 1-3 and the two-plus-two iCal fixes, in that order.
+
+| Slice | What shipped | Where |
+|---|---|---|
+| 1 — the coordinate | The Google Places selection's point captured at sign-up and written with the restaurant; a backfill script for the 13 existing rows with a dry run, keyed on `google_place_id` | `apps/web/src/pages/Register.tsx`, `components/ui/PlacesAutocomplete.tsx`, `contexts/AuthContext.tsx`, `apps/api-gateway/src/auth/auth.service.ts` `coordinateColumns`, `auth/dto/register-restaurant.dto.ts`, `scripts/backfill_restaurant_coordinates.py` |
+| 2 — the weather overlay | `WeatherProvider` interface + `NwsWeatherProvider` (points → gridpoint → forecast, cached point resolution, descriptive User-Agent, `/alerts/active`), `weather_readings`, `GET /calendar/weather`, and the cell mark | `apps/api-gateway/src/weather/`, `supabase/migrations/20260903160000_a_forecast_names_its_issuer.sql`, `pages/calendar/next/SkyMark.tsx` |
+| 3 — the passed day | Covers/sales per day from `pos_checks` with closures hatched, paired with the forecast that stood *before* the day, written to `prediction_outcomes` with a NULL score | `apps/api-gateway/src/calendar/recorded-days.service.ts`, `day-record.service.ts`, `GET /calendar/day-record` |
+| — the iCal one-liners | `inline` not `attachment`; the restaurant's IANA zone not the server's; `X-PUBLISHED-TTL`/`REFRESH-INTERVAL`; absolute + `webcal://` URL | `calendar.controller.ts`, `calendar.service.ts`, `calendar/zoned-time.ts` |
+
+**The structural idea, and why it is not the veto DESIGN-FOUNDATION §6 wrote.** §6 forbids
+*"weather-driven forecasting on the grid — a guess on a page whose virtue is that everything
+is a fact"*. The grid now draws the past and the future in one page and **admits it**: left
+of today a cell holds what the ledger recorded, right of today a forecast **that names its
+issuer and its issue time**, and when a day passes the cell keeps both. A published
+meteorological forecast, attributed, is a citable observation about the future; our covers
+number derived from it and drawn without its error is the guess §6 actually forbids — and
+that is slice 9, gated on ninety observed service days, still unbuilt. One rule, and it also
+satisfies §6's other "need it now" idea for this page, *"the day that already happened"*.
+
+**Four things the build measured that the research pass had not**, each of which changed code:
+
+1. **NWS's issue time is `updateTime`, not `updated` or `generatedAt`.** Live against
+   `gridpoints/MTR/91,89` on 2026-09-03: `updateTime 12:26:50Z`, `generatedAt 13:01:51Z` —
+   35 minutes apart, and `generatedAt` refreshes on every poll. Keying "how old is this
+   forecast" on it would make a twelve-hour-old grid read as new.
+2. **The NWS horizon is 7 days, not the 16 an Open-Meteo response carries.** `horizonDays`
+   travels on the response so a cell past it says *"beyond NOAA/NWS's 7-day forecast"*
+   rather than looking broken.
+3. **NWS publishes a probability of precipitation and no quantitative amount at all.** So
+   `precipitation_amount_mm` is NULL on every row this issuer produces, the mark is a
+   *chance* bar rather than a depth, and a `DEFAULT 0` on that column would have published
+   "no rain expected" for every day of every forecast.
+4. **`Intl.DateTimeFormat` accepts `PST`, `EST` and `US/Pacific`** — they are resolvable ICU
+   aliases, not typos — so the iCal zone resolver lets them through and only refuses
+   genuinely unresolvable strings like a human-readable `"Pacific Time"`.
+
+**Where this build overruled the ADR it implements.** ADR 0111 §6 said slice 2's refresh
+should run under `ScheduledTenantsService.runPerTenant` (ADR 0022). It does not.
+`runPerTenant` enumerates only tenants carrying
+`restaurant_feature_flags.flag_name = 'scheduled_communications'` or matching
+`DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`), and
+production has **one such tenant out of fourteen** — a cron behind that gate would have left
+thirteen houses with a permanently blank weather column and no sentence explaining it, which
+is the absence-reported-as-health fault delivered by the mechanism meant to prevent it. The
+refresh is **on read, with a 60-minute max age** matching NWS's own republish cadence: fewer
+issuer calls than a cron, an 8-second provider timeout so a dead issuer cannot hang the
+grid, and stored readings served with their age when the refresh fails. The cost is real and
+is filed in §13 rather than hidden: **a house nobody opens accumulates no history**, which
+is the input slice 9's ninety-day floor depends on.
+
+**What is deliberately still withheld.** No accuracy figure anywhere. Scoring the weather
+forecast needs an *observation* and nothing in this product records one; scoring the day
+needs a *covers model* and that is slice 9. So `prediction_outcomes` receives its first rows
+ever — the forecast that stood before the day, paired with what the day turned out to be —
+with `accuracy_score` **NULL** and a `context.note` saying why. Writing a number there today
+would mean inventing the metric it scores.
 
 ### Quant overlay — research 2026-09-03
 
@@ -464,6 +577,9 @@ via :461.
 | GET/POST/PATCH/DELETE | `/calendar/event-types` | `useEventTypes` (`useCalendarPage.ts:2`) → `calendar.ts:293-328` |
 | GET | `/calendar/reminders/status` | `useCalendarNextData` (`pages/calendar/next/useCalendarNextData.ts` `reminderQ`) → `calendar.controller.ts` route `reminders/status`; built by `calendar-reminders.service.ts` `statusFor` |
 | GET | `/providers` | `useProviders` (`useCalendarPage.ts:2`) → `services/api/providers.ts:201` |
+| GET | `/calendar/weather?from&to` | `useCalendarNextData` (`weatherQ`) → `calendar.controller.ts` route `weather`; built by `weather/weather.service.ts` `windowFor`. **Added 2026-09-03, ADR 0111 slice 2** |
+| GET | `/calendar/day-record?from&to` | `useCalendarNextData` (`recordQ`) → `calendar.controller.ts` route `day-record`; built by `calendar/day-record.service.ts`. **Added 2026-09-03, ADR 0111 slice 3** |
+| GET | `/calendar/ical-token` | Settings; now answers `absoluteFeedUrl`, `webcalUrl` and `originSource` beside the relative `feedUrl` |
 
 ## 5. Signals
 
@@ -501,6 +617,19 @@ localStorage key `'wineops-calendar-sidebar'` (`pages/calendar/CalendarPage.tsx:
   (`lib/mudavym/useMudavymDesign.ts`). Off ⇒ `CalendarModular` renders byte-for-byte.
 - The rebuilt page keeps no sidebar, so `localStorage['wineops-calendar-sidebar']` is read
   only by the legacy tree.
+- **The weather overlay has no switch of its own, and that is deliberate.** It reads
+  `restaurants.latitude`/`.longitude`; a house without a point gets the sentence rather than
+  the overlay, so there is nothing to turn off. The issuer is chosen in code
+  (`NwsWeatherProvider`), and `NWS_USER_AGENT` optionally overrides the contact string NWS's
+  terms ask callers to send. **No API key exists or is needed** — NWS is open data.
+- **The refresh is on read with a 60-minute max age** (`weather/weather.service.ts`), not a
+  cron; see §9's fourth finding for why. A reader who opens the calendar twice in an hour
+  causes one issuer call, not two.
+
+### §13 slices 20-22, restated as built (2026-09-03)
+
+Items 20, 21 and 22 below are **done**; item 30's two fixes are done and so are the two
+further suspects it did not name. What follows them (23-29) is untouched.
 
 ## 9. Gaps
 
@@ -645,11 +774,20 @@ local gateway on :4000. All of these are **outside** `pages/calendar/next/**`; e
 reason a slice in §13 is where it is. Detail in §1b *Quant overlay* and
 [[0111-the-calendar-is-the-houses-day-book|ADR 0111]].
 
-1. 🔴 **No restaurant has a coordinate.** `restaurants.latitude` / `.longitude` were added
+1. ✅ **No restaurant has a coordinate** — **capture closed 2026-09-03; the 13 existing rows
+   still need the script run.** `restaurants.latitude` / `.longitude` were added
    in `20260807001252_distributor_geo_foundation.sql:50-51` and are **NULL on all 14 rows**,
    while 13 carry an `address`, 14 carry a `timezone` and `google_place_id` exists. Every
    weather-derived signal on this page is blocked on one field nobody has ever filled.
-   **Why not yet:** it is a `/settings` or onboarding control, not a calendar one.
+   **Fixed:** the sign-up form already resolved the point in the same `fetchFields` call that
+   fills the city and postcode (`components/ui/PlacesAutocomplete.tsx:248-260`) and dropped
+   it; it is now carried through `Register.tsx` → `AuthContext` → `RegisterRestaurantDto` →
+   `auth.service.ts` `coordinateColumns`, which writes both axes or neither and never a
+   default. **Still open:** the 13 rows that signed up before today.
+   `scripts/backfill_restaurant_coordinates.py` asks Google the same question keyed on
+   `google_place_id`, with a dry run and a per-row report; it refuses to geocode a free-text
+   address, so a row with no place id is *named* rather than filled, and its operator has to
+   re-select the address. The parent runs it on the founder's word.
 2. 🔴 **The covers series cannot support a weather model.** `pos_checks` holds 173 rows,
    129 with `covers`, across **26 distinct days — and 22 of those belong to one restaurant**
    (2026-08-03 → 2026-09-05). `holtWintersAdditive` refuses below `2 * period`
@@ -673,8 +811,9 @@ reason a slice in §13 is where it is. Detail in §1b *Quant overlay* and
    measurement — and `storage_locations.temperature_min/max` (`baseline:5498-5499`) is a
    zone specification. A spoilage *score* would be invented arithmetic; a door *record* is
    real today.
-6. 🟠 **Four concrete suspects for the iCal feed nobody has seen subscribe**, all one-line,
-   all in this module: `Content-Disposition: attachment` (`calendar.controller.ts:647-650`)
+6. ✅ **Four concrete suspects for the iCal feed nobody has seen subscribe** — **all four
+   closed 2026-09-03** (§12 item 1 carries what shipped). They were, all one-line, all in
+   this module: `Content-Disposition: attachment` (`calendar.controller.ts:647-650`)
    tells clients to save a file rather than subscribe; every event is built with
    `new Date('YYYY-MM-DDTHH:mm:00')`, which resolves on the **server's** clock rather than
    the restaurant's IANA zone (`calendar.service.ts:1287-1294`); no `X-PUBLISHED-TTL` /
@@ -698,6 +837,39 @@ reason a slice in §13 is where it is. Detail in §1b *Quant overlay* and
    manager rule a closure out of every baseline is on this branch only
    (`20260903091000_days_the_engine_must_not_count.sql`); a `select` against it on the live
    database returns `42P01`. The month grid's hatched "closed" cell depends on it.
+
+### Found while building the weather overlay, 2026-09-03
+
+Measured against the live NWS API and the local gateway on :4000. Each is **outside**
+`pages/calendar/next/**`.
+
+1. 🟠 **The per-tenant scheduler cannot carry a read that every tenant needs.**
+   `ScheduledTenantsService.runPerTenant` serves only tenants with
+   `restaurant_feature_flags.flag_name = 'scheduled_communications'` or matching
+   `DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`) — **one of
+   fourteen in production**. That is correct for a job that *sends* and wrong for one that
+   *reads*, and ADR 0111 §6 had assumed the weather refresh could ride it. The refresh is
+   on-read instead. **Why not yet:** whether ADR 0022's opt-in should govern reads as well as
+   sends is a founder decision, not a builder's.
+2. 🟠 **`weather_readings` is not in production.** The migration
+   `20260903160000_a_forecast_names_its_issuer.sql` is on this branch only; a select against
+   the table on the live database will answer `42P01` until it merges. The endpoint never
+   reaches it today because the no-coordinate branch fires first — which is honest, but it
+   means the register read path is proved by tests and not yet by production.
+3. 🟡 **No temperature observation is recorded anywhere in the product.** NWS publishes
+   forecasts; nothing records what the weather actually *was*. So a weather forecast's error
+   is not computable at all, which is half the reason slice 3 writes `prediction_outcomes`
+   with a NULL score. The other half is that no covers model exists yet.
+4. 🟡 **`prediction_outcomes` has no unique constraint but its primary key**
+   (`20260805000000_baseline_from_production.sql:7340-7344`). Slice 3's writer is therefore
+   idempotent by read-then-insert rather than by upsert: adding a unique index would reach
+   across a table `services/self-evolution/main.py` also writes. A concurrent double read of
+   the same window can duplicate one pair; that is recoverable, and a unique index on a
+   shared table is not.
+5. 🟡 **`Intl.DateTimeFormat` resolves `PST`, `EST` and `US/Pacific`.** They are ICU aliases,
+   not invalid identifiers, so any code validating an IANA zone by try/catch will accept
+   them. Measured on this Node build; only genuinely unresolvable strings such as a
+   human-readable `"Pacific Time"` throw.
 
 ## 10. Maturity
 
@@ -822,7 +994,7 @@ cost-to-value, cheapest and most valuable first.
 
 | # | Honest about | Why it is honest today | The profound fix | Cost |
 |---|---|---|---|---|
-| 1 | **The iCal feed has never been seen to subscribe** | Nobody has ever tested it (`v3.0-TECH-DEBT.md:243-245`) | Four concrete suspects, all one-line: drop `Content-Disposition: attachment` (`calendar.controller.ts:647-650`), which tells clients to *save a file* rather than subscribe; build each event in the **restaurant's** IANA zone instead of `new Date('YYYY-MM-DDTHH:mm:00')` on the server's clock (`calendar.service.ts:1287-1294`); emit `X-PUBLISHED-TTL` / `REFRESH-INTERVAL`; return an absolute origin and a `webcal://` alternative rather than a relative path (`:666`) | **XS.** Four lines and one real client to test against. The single cheapest item on this page |
+| 1 | ~~**The iCal feed has never been seen to subscribe**~~ — **all four suspects closed 2026-09-03** | Nobody had ever tested it (`v3.0-TECH-DEBT.md:243-245`) | **Done.** `Content-Disposition` is now `inline` (a saved .ics imports once and never updates, which is the reported symptom exactly); every timed event is built in the **restaurant's** IANA zone via `calendar/zoned-time.ts` and published as an absolute instant, with a **floating** time — never a false UTC — where the zone is unresolvable; `X-PUBLISHED-TTL` + `REFRESH-INTERVAL` are emitted at one hour, on the empty answer too; and `/calendar/ical-token` returns `absoluteFeedUrl`, `webcalUrl` and `originSource` (`config` \| `request` \| `none`) so a caller can tell a configured origin from one inferred from its own Host header, and gets **null rather than an invented origin** when there is neither. 20 gateway tests. **What is still not proved: no human has yet subscribed a real Outlook/Apple/Google client** — the four format defects are closed, the human UAT is not | **XS, spent.** The single cheapest item on this page, and it is now the settings surface's turn to offer the `webcal://` link |
 | 2 | **Vendor link and repeat rule are create-time only** | `UpdateCalendarEventDto` carries neither field and the pipe runs `forbidNonWhitelisted` (`calendar.dto.ts:229-296`) | Add `providerId`, `orderId` and `recurrence` to the update DTO, the mapper and one spec | **XS.** Mechanical; the sheet already renders the disabled state and would just stop needing it |
 | 3 | **`getEventTypes` reports absence as health** | An errored `calendar_event_types` query returns the eight built-ins (`calendar.service.ts:858-885`), so "no custom types" and "the table was unreachable" are the same answer | Return a discriminated result — `{types, source: 'tenant' \| 'builtin', readable: boolean}` — and let the page say which. The rebuilt page already renders the honest branch if the shape appears | **S.** One service function, one DTO field, callers unchanged |
 | 4 | **Production rows carry values the enums do not contain** | `event_type: 'audit'` and `status: 'active'` are live on `calendar_events`; `PATCH` validates both with `@IsEnum` (`calendar.dto.ts:36-59`), so any edit echoing the stored value is refused | Widen the enums to the values production actually holds, **then** migrate — measure first, because coercing into the enum rewrites the tenant's record | **S.** One DTO change plus a measured backfill. Blocked on nothing |
@@ -908,17 +1080,26 @@ Items 20-30 are the build order recorded in
 rationale, the alternatives and the measurements live. Nothing here is built. Sizes are the
 ADR's; the order is not preference — each slice earns the trust the next one spends.
 
-20. **The coordinate** (**S**). A location field on the restaurant — a map pin, or a geocode
+20. ~~**The coordinate** (**S**)~~ — **done 2026-09-03.** Captured at sign-up from the Google
+    Places selection; `scripts/backfill_restaurant_coordinates.py` covers the 13 existing
+    rows and has **not been run** — it needs `GOOGLE_MAPS_API_KEY` and the founder's word.
+    Original text: A location field on the restaurant — a map pin, or a geocode
     of the `address` / `google_place_id` already stored — written to
     `restaurants.latitude` / `.longitude`. The columns exist; **0 of 14 rows carry a value**,
     and nothing in items 21-24 exists without one. *Outside this page: it is a `/settings`
     or onboarding field.*
-21. **The weather overlay** (**M**). A `WeatherProvider` interface with an Open-Meteo
+21. ~~**The weather overlay** (**M**)~~ — **done 2026-09-03**, with two departures from the
+    text below: the issuer is **NWS** (the founder's call — the keyless Open-Meteo tier is
+    non-commercial), and the refresh is **on read with a 60-minute max age** rather than
+    under `runPerTenant`, because that scheduler serves one tenant in fourteen (§9). Original
+    text: A `WeatherProvider` interface with an Open-Meteo
     implementation (and NWS / OpenWeather behind the same interface), refreshed under
     `ScheduledTenantsService.runPerTenant`, into a `weather_readings` table that **keeps**
     each reading with its issuer and issue time. Gated on fork A — the keyless Open-Meteo
     tier is non-commercial.
-22. **Past cells hold the record**, and a passed day states its forecast error (**S**). No
+22. ~~**Past cells hold the record**~~ — **done 2026-09-03**, with one deliberate omission:
+    a passed day does **not** state a forecast error, because no observation and no covers
+    model exist to compute one. It keeps the pair and says so. Original text: No
     new data; it is the reconciliation line. This is also DESIGN-FOUNDATION §6's own
     "need it now" idea for this page, and the first thing in the product that would write
     `prediction_outcomes` — a forecast-accuracy ledger migrated long ago and **written by
@@ -957,7 +1138,26 @@ ADR's; the order is not preference — each slice earns the trust the next one s
     `08-softwares/mudavym-mcp.md`; the propose verb lands in item 25's proposal queue so
     there is one approval surface, not two. No send verb is implemented, so there is nothing
     to refuse at runtime.
-30. **Two fixes that belong to no slice and should ship immediately** (**XS**), because each
-    is one line and each is a live defect: the iCal `Content-Disposition: attachment` header
-    (`calendar.controller.ts:647-650`), and the zone-less `new Date()` in the feed
-    (`calendar.service.ts:1287-1294`). See §12 item 1.
+30. ~~**Two fixes that belong to no slice and should ship immediately**~~ — **done
+    2026-09-03, and all four rather than two**: `Content-Disposition` is `inline`, the
+    zone-less `new Date()` is gone, `X-PUBLISHED-TTL`/`REFRESH-INTERVAL` are emitted, and the
+    token endpoint returns an absolute + `webcal://` URL. See §12 item 1. **What remains is
+    not code**: no human has yet subscribed a real Outlook/Apple/Google client to the feed,
+    which is the only thing that can close `v3.0-TECH-DEBT.md:243-245`.
+
+31. **Offer the `webcal://` link on the settings surface.** `/calendar/ical-token` now returns
+    `absoluteFeedUrl`, `webcalUrl` and `originSource`; nothing reads them yet. The settings
+    subscribe panel still shows the relative path, which no calendar client can use. *Outside
+    this page — `pages/settings/**`; the exact patch is in the p4h builder's report.*
+
+32. **Prefetch the forecast for houses nobody opens.** The on-read refresh means a house
+    whose calendar is never opened accumulates no `weather_readings`, and slice 28's
+    ninety-day floor counts days of *history*, not days of *existence*. A scheduled prefetch
+    is the answer, and it needs ADR 0022's opt-in question settled for reads as well as
+    sends (§9, fourth finding).
+
+33. **Record a temperature observation, so a forecast can be scored.** Today
+    `prediction_outcomes` receives the pair with a NULL score because nothing in the product
+    records what the weather actually was. NWS publishes observations at
+    `/stations/{id}/observations`; the station is one field on the same `/points` response
+    the forecast already uses.

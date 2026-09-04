@@ -672,6 +672,52 @@ export class AuthService {
   }
 
   /**
+   * The coordinate columns to write for a sign-up, or nothing.
+   *
+   * The whole of the calendar's weather overlay rests on this pair, and the
+   * measurement that started ADR 0111 was that it is NULL on all 14 production
+   * rows while 13 of them carry an address — the sign-up form resolved the
+   * point from Google Places and dropped it. So the rule is stated once, here,
+   * and it is deliberately conservative:
+   *
+   *  - Both numbers, or neither. A longitude with no latitude is not a location,
+   *    and `restaurants.geog` (a generated column) only materialises when both
+   *    are present anyway.
+   *  - Finite and in range, or neither. `Infinity` and `NaN` survive JSON in
+   *    some clients and would poison a `decimal` insert.
+   *  - **Never a default.** There is no fallback city, no 0,0, no geocode of the
+   *    typed address. NULL is the honest value for "this house has not asserted
+   *    a point", and `/settings` renders it as a sentence.
+   *
+   * `google_place_id` is written only alongside a real pair: on its own it would
+   * assert that the row is tied to a Google place while carrying no location,
+   * and the column has a UNIQUE index that a stray value would occupy.
+   */
+  private coordinateColumns(dto: RegisterRestaurantDto): {
+    latitude?: number;
+    longitude?: number;
+    google_place_id?: string;
+  } {
+    const { latitude, longitude } = dto;
+    const usable =
+      typeof latitude === "number" &&
+      Number.isFinite(latitude) &&
+      Math.abs(latitude) <= 90 &&
+      typeof longitude === "number" &&
+      Number.isFinite(longitude) &&
+      Math.abs(longitude) <= 180;
+
+    if (!usable) return {};
+
+    const placeId =
+      typeof dto.googlePlaceId === "string" && dto.googlePlaceId.trim() !== ""
+        ? { google_place_id: dto.googlePlaceId.trim() }
+        : {};
+
+    return { latitude, longitude, ...placeId };
+  }
+
+  /**
    * Path B: Register a new restaurant (creates org + restaurant + user atomically).
    * User starts with email_verified: false and must verify email.
    */
@@ -721,6 +767,10 @@ export class AuthService {
             cuisine_type: dto.cuisineType,
             timezone: dto.timezone || "America/New_York",
             organization_id: org.id,
+            // The point the house asserted at sign-up, or nothing at all. See
+            // `coordinateColumns` — a half-pair and an out-of-range pair are
+            // both dropped rather than half-written.
+            ...this.coordinateColumns(dto),
           })
           .select()
           .single();

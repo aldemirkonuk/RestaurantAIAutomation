@@ -76,6 +76,17 @@ interface RegisterRestaurantData {
   phone?: string
   cuisineType?: string
   timezone?: string
+  /**
+   * The coordinate of the Google Places selection, when the operator chose one.
+   *
+   * Omitted — not zeroed, not defaulted — for a hand-typed address. The gateway
+   * writes NULL in that case, and `/settings` then says "no coordinate — set the
+   * address" rather than pointing the weather overlay at a place nobody named
+   * (ADR 0111 slice 1).
+   */
+  latitude?: number
+  longitude?: number
+  googlePlaceId?: string
 }
 
 interface JoinViaInviteData {
