@@ -21,7 +21,17 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 
 ## Surface — buttons → where they go
 
-- **Add provider** → (modal) → API `POST /api/v1/providers`
+- **Add provider** → (modal) → API `POST /api/v1/providers`, then
+  `PUT /api/v1/vendor-terms/:providerId` for the delivery days (ADR 0116).
+  Same on **Edit provider**. The two calls are deliberately decoupled: the
+  provider is already saved by the time the terms are written, and a terms
+  failure is reported as itself rather than as "failed to add provider"
+- **Record what they said** (Terms section of the redesign's TwinSheet) → API
+  `PUT /api/v1/vendor-terms/:providerId` (founder's decision 2026-09-04: the terms
+  register is reachable on the vendor's own row, not only in [[settings]]). Anyone
+  signed in may write; the author is filed by the gateway from the JWT
+  (`vendor-terms.controller.ts:29-35,91-98`) — recorded, not restricted
+- **Every vendor's terms** (same section) → [[settings]] `/settings?tab=vendor-terms`
 - **View orders** (row menu) → [[orders]] `/orders?provider=<id>`
 - **Discover tab** → renders the [[distributors]] map inline (no route change)
 - **Email vendor** → (QuickGmailModal on this page)
@@ -43,9 +53,23 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
 - Export; contextual insights rail
 - 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
+- **Vendor terms on the vendor's row** (redesign only, TwinSheet §Terms): the five terms
+  — closes / delivers / will not go below / lead time / payment — each showing its source
+  (stated by the house · on the vendor record · inferred with the receipt count and
+  confidence · unknown with the reason), editable in place. A value the gateway cannot tell
+  apart from its column default is rendered as UNKNOWN with that reason, never as a term
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
+
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
 
 Canonical source with curves: `apps/web/src/pages/providers/next/MOTIONS.md` —
 this list is the note-side index (ADR 0044 §2).
@@ -56,7 +80,9 @@ this list is the note-side index (ADR 0044 §2).
 | `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
 
 Deliberate non-motions: no card stagger (a roster is a reference, not an
-arrival), no count tallies, instant sheet close.
+arrival), no count tallies, instant sheet close. **The Terms section adds no
+motion**: a register that animates while you read a cutoff off it is a register
+that is harder to trust, and its open/close is the sheet's own `tuck`.
 
 ### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE)
 
@@ -96,6 +122,47 @@ the rebuilt page ever grows an Add control, it needs a `Panel` first. And
 `ProviderIntelligencePanel` inside the sheet is still the grey/blue skin, as §9
 already records.
 
+### Terms on the vendor row, 2026-09-04 (founder's decision)
+
+**What was asked.** Vendor terms (cutoffs, delivery days, minimums, payment
+terms) must be reachable from `/providers` on the vendor's own row, not only in
+`/settings`.
+
+**What was built.** `pages/providers/next/TermsSection.tsx`, rendered inside
+`TwinSheet.tsx:90-93` between the vendor's own record and the learned twin, fed
+by `pages/providers/next/useProviderTerms.ts`. It is **one register with two
+doors**, not a second store: the same rows, the same routes, and the settings
+section's own formatters imported from `pages/settings/next/st-format.ts`
+(`fmtCutoff`, `fmtWeekdays`, `fmtMoney`, `fmtWhen`, `SOURCE_LABEL`,
+`WEEKDAY_INITIALS`) rather than forked, so a cutoff cannot read one way here and
+another way there. A link at the foot goes to `/settings?tab=vendor-terms` for
+the whole house.
+
+**Honesty, as measured by the tests.** Every cell branches on `source`, so no
+path prints a value without provenance under it; a value indistinguishable from
+its column default arrives `source: 'unknown'` and renders as an em dash with the
+gateway's reason on the row itself (not only in a `title=`, which a
+non-hovering reader never sees); an unreadable register is words naming what
+could not be read, and a partially-read one names the specific book
+(`sources.statedTerms` / `sources.orders`); a 403 is said as permission, not as
+absence; a write whose audit row failed says so rather than letting the trail be
+assumed. Only touched fields are sent, because the gateway reads an explicit
+`null` as *withdraw* and a missing key as *leave alone*
+(`vendor-terms.dto.ts:15-26`).
+
+**Who may write.** Anyone signed in — the founder's call, and the controller's
+(`vendor-terms.controller.ts:29-35`). The author is taken from the JWT by the
+gateway and never sent by this form.
+
+**What is NOT built, and why.** The section reads the WHOLE house register and
+picks one row, because `GET /vendor-terms` is the only read route that exists —
+see §9 for the additive one-provider patch, which was written up rather than
+applied (`apps/api-gateway/src/vendor-terms/**` belonged to another builder this
+pass). Notes are not editable here (the field exists on the DTO; the row already
+has more controls than a sheet should carry — it stays in the settings
+register). The link is a plain `<a>`, so it costs a full page load; a
+`react-router` `Link` would need the sheet's tests to mount a router.
+
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with
 `?tab=discover` (`App.tsx:271-274`). PAGE_MAP records an outbound edge providers→orders
@@ -120,6 +187,10 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   catalogue `POST /providers` (`vendors.ts:121,131`) via `VendorSearchModal`
 - Discover: `GET /distributors/search`, `/distributors/facets`, `/distributors/:id`
   (`services/api/distributors.ts:158-173`; ENDPOINTS.md:210-216)
+- Terms (redesign only): `GET /vendor-terms` and `PUT /vendor-terms/:providerId`
+  (`apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:44,71`) via
+  `pages/providers/next/useProviderTerms.ts`. The GET is house-wide — there is no
+  per-provider read route (§9)
 - Intelligence panel: `GET /providers/:id/promotions`, `/providers/promotions/active`,
   `/expiring`, `/savings` + knowledge/conversation-memory
   (`services/api/provider-intelligence.ts`; ENDPOINTS.md:450-459)
@@ -142,6 +213,80 @@ none — no user-visible `WineOps` strings (grep of `Providers.tsx`: zero hits).
 - No feature flags
 
 ## 9. Gaps
+
+**Open 2026-09-04 — there is no one-provider read of the terms register.**
+`GET /vendor-terms` (`vendor-terms.controller.ts:44`) answers with every vendor's
+terms for the tenant, and `VendorTermsService.read` (`vendor-terms.service.ts:257`)
+computes inferences for all of them. The provider row therefore fetches the whole
+house register and filters client-side, which is correct but wasteful on a house
+with many vendors, and it means one slow vendor's inference delays the sheet.
+**The patch was NOT applied** — `apps/api-gateway/src/vendor-terms/**` belonged to
+another builder this pass — so it is written here instead:
+
+```ts
+// vendor-terms.controller.ts — additive, alongside the existing @Get()
+@Get(":providerId")
+@ApiOperation({ summary: "One vendor's terms, with where each field came from" })
+async readOne(
+  @CurrentUser("restaurantId") restaurantId: string,
+  @Param("providerId") providerId: string,
+): Promise<VendorTermsRow> {
+  if (!restaurantId) throw new HttpException(
+    "This session is not attached to a restaurant, so there are no vendor terms to read.",
+    HttpStatus.BAD_REQUEST);
+  // requireProvider is already the tenant-scoped row filter the write uses
+  // (vendor-terms.service.ts:784) — a provider of another house is 404, not empty.
+  const readout = await this.terms.read(restaurantId);
+  const row = readout.vendors.find((v) => v.providerId === providerId);
+  if (!row) throw new NotFoundException(
+    "That vendor does not belong to this restaurant.");
+  return row;
+}
+```
+
+That shape is honest but not yet cheaper — it still computes the whole readout.
+The cheaper version needs `VendorTermsService.read` to take an optional
+`providerIds` filter threaded into `readProviders`/`readStated`/`readOrders`, plus
+a jest spec asserting a provider of another tenant 404s and that the filtered read
+returns the same row as the unfiltered one. Route order matters: `@Get(":providerId")`
+must not shadow anything, and the register's own client
+(`pages/settings/next/useSettingsNextData.ts:470`) must keep using the list route.
+
+**Closed 2026-09-04 — ADR 0116. The delivery-days picker wrote into the
+geography column, and had since it was built.** `AddProviderModal.tsx:820`
+collected weekdays; `pages/Providers.tsx` sent them as `statesOrRegionsServed`;
+`services/api/providers.ts` mapped that to `regionsCovered`; the gateway wrote
+`providers.regions_covered` (`providers.service.ts:199`) — the column the
+provider map and the territory filters read. The sibling `deliverySchedule`
+field was declared on the web DTO (`services/api/providers.ts:88`) and never
+reached `mapProviderToApiPayload`'s output, so it was dropped on the floor.
+**And `EditProviderModal.tsx:324` read `regionsCovered` back INTO the picker**,
+so opening the dialog and saving wrote the weekdays again — the defect
+round-tripped through its own UI.
+
+Now: the picker writes `PUT /vendor-terms/:providerId` and nothing else, the
+edit dialog seeds from `GET /vendor-terms`, and when that register cannot be
+read the picker is **disabled with the reason in words** and the page skips the
+write — an empty selection is itself a statement ("no fixed days") this page
+would otherwise save. Mapping and payload pinned in
+`services/api/vendorTerms.test.ts` (9 cases).
+
+**Not cleaned up, on purpose.** Whatever weekday names are already in
+`regions_covered` are still there. `regions_covered` is free text and a "Sunday"
+in it cannot be proven a picker artefact rather than a place somebody meant —
+Sunday is a town in Louisiana — so removing one would destroy a row of somebody's
+data on an inference. `scripts/list_weekdays_in_regions_covered.py` lists every
+affected row with the value it would leave behind, and has **no `--apply`**. The
+rows are the founder's call.
+
+**Also closed here: the form no longer seeds `paymentTerms: 'Net 30'`.** Both
+dialogs defaulted the field to Net 30 in the browser, so every provider saved
+through them asserted terms nobody chose — the same fabricated answer
+`providers.payment_terms DEFAULT 'Net 30'` used to write, moved client-side. It
+would have refilled the column on every save after migration `20260903170000`
+dropped the default. Both now default to `''` with an explicit "Not stated"
+option.
+
 - TwinSheet's intelligence panel renders in the legacy grey/blue skin inside
   the İznik sheet (`ProviderIntelligencePanel` is a shared legacy component) —
   the founder's "set does not cohere" complaint, reproduced in miniature;
@@ -229,6 +374,14 @@ same shape.
 
 ## 13. Roadmap
 
+0. **Narrow the terms read to one provider** — the additive gateway patch in §9, plus
+   the `providerIds` filter that would make it actually cheaper. *Blocker: none once
+   `apps/api-gateway/src/vendor-terms/**` is free.*
+0a. **Terms notes on the provider row.** `notes` is on the DTO
+   (`vendor-terms.dto.ts:86-90`) and read back in the readout, but the sheet does not
+   edit it — deliberately, to keep the row from becoming a form. Revisit if the founder
+   asks for it.
+0b. **Make the whole-house link a router navigation** rather than an `<a>` full load.
 1. **Link to [[vendor-prices]] from the provider row and from a wine's provider list.**
    The comparison page exists, is guarded, and is unreachable — this is the single
    highest-value edge missing in the vendor cluster, and TIER-MAP S13 Pro already names

@@ -23,6 +23,25 @@ vi.mock('../../../components/providers/ProviderIntelligencePanel', () => ({
   ),
 }));
 
+// The sheet now carries the terms register; this file is about the GRID and the
+// sheet's shape, so the terms hook is stubbed here and asserted in
+// TermsSection.test.tsx against a mocked apiClient.
+vi.mock('./useProviderTerms', () => ({
+  useProviderTerms: () => ({
+    register: null,
+    row: null,
+    loading: true,
+    error: null,
+    denied: false,
+    saving: false,
+    saveError: null,
+    audited: null,
+    auditReason: null,
+    save: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {

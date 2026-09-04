@@ -13,12 +13,20 @@
  * `Sheet` (ADR 0112), which is the same 440px right slide-in on `tuck` that the
  * calendar's EventSheet shipped, with those three things added for free. What
  * is inside the sheet is unchanged, line for line.
+ *
+ * ── Third pass: terms on the vendor's own row ─────────────────────────────
+ * The founder's decision of 2026-09-04: the terms register (cutoffs, delivery
+ * days, minimums, payment terms) is reachable here, not only in /settings. The
+ * facts above are the vendor's own RECORD; `TermsSection` below is what this
+ * HOUSE knows about dealing with them, each term showing its source, editable
+ * in place through the same route the settings register writes.
  */
 
 import { Suspense, lazy } from 'react';
 import type { Provider } from '../../../services/api/providers';
 import { Sheet } from '../../../components/mudavym/Sheet';
 import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
+import { TermsSection } from './TermsSection';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -76,6 +84,12 @@ export function TwinSheet({ provider, onClose }: Props) {
         />
         <FactRow label="Regions" value={regions.length ? regions.join(', ') : EM} />
         <FactRow label="Last contact" value={fmtLastContact(provider.lastContactDate)} />
+      </div>
+
+      {/* what this house knows about dealing with them — same register as
+          /settings, read on open, one row of it */}
+      <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <TermsSection providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* the twin — fetched on open, never on the grid */}
