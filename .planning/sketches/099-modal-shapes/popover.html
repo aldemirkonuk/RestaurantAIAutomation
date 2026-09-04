@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>099 &middot; The popover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 099 &middot; the popover &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 099 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The popover &mdash; a choice, hanging off its control<span class="dot">.</span></h1>
+<p class="lede">A short list of options that belongs to the thing you just clicked. It does not dim the page, because the page is not what you are answering &mdash; the control is.</p>
+<div class="dbl"></div>
+
+<div class="nums">
+  <div><span class="n">anchor.bottom + 10</span><span class="k">top</span></div>
+  <div><span class="n">anchor.right &minus; width</span><span class="k">left, right-aligned</span></div>
+  <div><span class="n">max(16, &hellip;)</span><span class="k">clamped to the viewport</span></div>
+  <div><span class="n">ink &middot; 160ms</span><span class="k">motion token</span></div>
+  <div><span class="n">translateY 4&rarr;0</span><span class="k">enter keyframe</span></div>
+  <div><span class="n">transparent</span><span class="k">scrim &mdash; it catches, it does not dim</span></div>
+  <div><span class="n">no aria-modal</span><span class="k">Tab leaves; outside click closes</span></div>
+</div>
+<p class="cap">the arithmetic is <code>hooks/useAnchoredDialogPosition.ts:21-32</code>, carried into the primitive at <code>Sheet.tsx:196-226</code> so the house shape depends on no legacy hook</p>
+
+<div class="callout">
+  <b>Why this shape does not trap focus.</b> A sheet and a panel say &ldquo;nothing else matters until you deal with me&rdquo;, so Tab cycles inside and the body stops scrolling. A popover says the opposite: it is one control's own drawer, and tabbing past it should leave it, exactly as tabbing past a select does. Radix ships this distinction as <code>modal</code> defaulting to <b>false</b> on Popover and true on Dialog; the primitive matches it (<code>Sheet.tsx:254</code>: <code>const modal = shape !== 'popover'</code>).
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose I</span><h2>The bell</h2></div>
+<p class="sec-k">from <code>components/layout/Header.tsx:141</code> &middot; 320px, right-aligned under the bell</p>
+<div class="stage mid">
+  
+<div class="under" style="padding-top:66px">
+  <div class="u-eyebrow">The cellar</div>
+  <div class="u-h">Four hundred and eleven lines on the floor.</div>
+  <div class="u-row"><span class="t">&Ouml;k&uuml;zg&ouml;z&uuml; 2021 &middot; Kavakl&#305;dere</span><span>red</span><span>34 bottles</span><span>&#8378;18,700</span></div>
+  <div class="u-row"><span class="t">Narince 2022 &middot; Diren</span><span>white</span><span>18 bottles</span><span>&#8378;7,020</span></div>
+  <div class="u-row"><span class="t">Bo&#287;azkere 2019 &middot; Kayra</span><span>red</span><span>6 bottles</span><span>&#8378;4,140</span></div>
+  <div class="u-row"><span class="t">Efes Pilsen &middot; keg</span><span>beer</span><span>3 kegs</span><span>&#8378;5,400</span></div>
+  <div class="u-row"><span class="t">Yeni Rak&#305; 70cl</span><span>spirit</span><span>22 bottles</span><span>&#8378;9,240</span></div>
+  <div class="u-row"><span class="t">Emir 2023 &middot; Turasan</span><span>white</span><span>11 bottles</span><span>&#8378;3,850</span></div>
+</div>
+
+  
+<div class="bar">
+  <span class="ctl" style="font-family:var(--serif);font-weight:600;font-size:14px;color:var(--ink-1)">Mudavym</span>
+  <span class="ctl" style="position:relative">
+    <span class="av">L</span>
+    <span><span class="nm">Lokanta M&uuml;davim</span><span class="sub">Karak&ouml;y &middot; 1 of 3</span></span>
+    <svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+  <span class="sp"></span>
+  <span class="ctl"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg> <span class="kbd">&#8984;K</span></span>
+  <span class="ctl hot" style="position:relative"><svg class="" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span class="dotmark"></span></span>
+  <span class="ctl">
+    <span class="av">H</span><span class="nm">Hasan Demir</span><svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+</div>
+
+  <div class="ovl pop" style="width:320px;top:60px;right:150px">
+    <div class="oh" style="padding:11px 14px 9px"><div><span class="oh-eyebrow">Unread</span><h3 class="oh-title" style="font-size:16px">Six things happened</h3></div><div class="oh-side"><span class="lnk">Mark all read</span></div></div>
+    <div class="obody">
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span><span class="txt"><span class="lab">&Ouml;k&uuml;zg&ouml;z&uuml; 2021 fell below par</span><span class="sub">34 bottles &middot; 11 minutes ago</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></span><span class="txt"><span class="lab">Fikri Tar&#305;m delivered order #4128</span><span class="sub">signed by Zeynep &middot; 1 hour ago</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M13 16H8"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/></svg></span><span class="txt"><span class="lab">Invoice mismatch &mdash; Deniz Bal&#305;k&ccedil;&#305;l&#305;k</span><span class="sub">&#8378;340 over the quote &middot; 3 hours ago</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10 14.66v1.626a2 2 0 0 1-.976 1.696A5 5 0 0 0 7 21.978"/><path d="M14 14.66v1.626a2 2 0 0 0 .976 1.696A5 5 0 0 1 17 21.978"/><path d="M18 9h1.5a1 1 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"/><path d="M6 9H4.5a1 1 0 0 1 0-5H6"/></svg></span><span class="txt"><span class="lab">Wine attach passed 30% for the week</span><span class="sub">goal reached &middot; yesterday</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></span><span class="txt"><span class="lab">Kavakl&#305;dere replied about the March price</span><span class="sub">a draft is waiting &middot; yesterday</span></span></div>
+      <p class="quiet" style="color:var(--ink-3)">2 similar grouped</p>
+    </div>
+    <div class="ofoot"><span class="lnk">View all notifications</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose II</span><h2>The branch switcher</h2></div>
+<p class="sec-k">from <code>components/layout/RestaurantBranchSwitcher.tsx:77</code> &middot; the one control whose popover changes every query on the page</p>
+<p>Left-anchored, because the control is on the left. The primitive right-aligns to the anchor's right edge and clamps at 16px, which for a control near the left edge resolves to the left margin &mdash; the same arithmetic, no special case.</p>
+<div class="stage short">
+  
+<div class="under" style="padding-top:66px">
+  <div class="u-eyebrow">The cellar</div>
+  <div class="u-h">Four hundred and eleven lines on the floor.</div>
+  <div class="u-row"><span class="t">&Ouml;k&uuml;zg&ouml;z&uuml; 2021 &middot; Kavakl&#305;dere</span><span>red</span><span>34 bottles</span><span>&#8378;18,700</span></div>
+  <div class="u-row"><span class="t">Narince 2022 &middot; Diren</span><span>white</span><span>18 bottles</span><span>&#8378;7,020</span></div>
+  <div class="u-row"><span class="t">Bo&#287;azkere 2019 &middot; Kayra</span><span>red</span><span>6 bottles</span><span>&#8378;4,140</span></div>
+  <div class="u-row"><span class="t">Efes Pilsen &middot; keg</span><span>beer</span><span>3 kegs</span><span>&#8378;5,400</span></div>
+  <div class="u-row"><span class="t">Yeni Rak&#305; 70cl</span><span>spirit</span><span>22 bottles</span><span>&#8378;9,240</span></div>
+  <div class="u-row"><span class="t">Emir 2023 &middot; Turasan</span><span>white</span><span>11 bottles</span><span>&#8378;3,850</span></div>
+</div>
+
+  
+<div class="bar">
+  <span class="ctl" style="font-family:var(--serif);font-weight:600;font-size:14px;color:var(--ink-1)">Mudavym</span>
+  <span class="ctl hot" style="position:relative">
+    <span class="av">L</span>
+    <span><span class="nm">Lokanta M&uuml;davim</span><span class="sub">Karak&ouml;y &middot; 1 of 3</span></span>
+    <svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+  <span class="sp"></span>
+  <span class="ctl"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg> <span class="kbd">&#8984;K</span></span>
+  <span class="ctl" style="position:relative"><svg class="" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span class="dotmark"></span></span>
+  <span class="ctl">
+    <span class="av">H</span><span class="nm">Hasan Demir</span><svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+</div>
+
+  <div class="ovl pop" style="width:320px;top:60px;left:16px">
+    <div class="oh" style="padding:11px 14px 9px"><div><span class="oh-eyebrow">3 locations &middot; 1 chain</span><h3 class="oh-title" style="font-size:16px">Switch location</h3></div></div>
+    <div class="obody">
+      <span class="sect">M&uuml;davim Group</span>
+      <div class="item on"><span class="av" style="width:22px;height:22px;font-size:10px">K</span><span class="txt"><span class="lab">Lokanta M&uuml;davim &mdash; Karak&ouml;y</span><span class="sub">19 people &middot; Toast connected</span></span><svg class="" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M20 6 9 17l-5-5"/></svg></div>
+      <div class="item"><span class="av" style="width:22px;height:22px;font-size:10px">B</span><span class="txt"><span class="lab">Lokanta M&uuml;davim &mdash; Be&#351;ikta&#351;</span><span class="sub">11 people &middot; no till connected</span></span></div>
+      <span class="sect">Other locations</span>
+      <div class="item"><span class="av" style="width:22px;height:22px;font-size:10px">M</span><span class="txt"><span class="lab">Meyhane 1924</span><span class="sub">7 people</span></span></div>
+    </div>
+    <div class="ofoot"><span>Switching reloads every figure on this page for the new house.</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose III</span><h2>The user menu</h2></div>
+<p class="sec-k">from <code>components/layout/Header.tsx</code>, the menu below the bell (~<code>:258</code>) &middot; 224px, and the exit is the last row</p>
+<div class="stage short">
+  
+<div class="under" style="padding-top:66px">
+  <div class="u-eyebrow">The cellar</div>
+  <div class="u-h">Four hundred and eleven lines on the floor.</div>
+  <div class="u-row"><span class="t">&Ouml;k&uuml;zg&ouml;z&uuml; 2021 &middot; Kavakl&#305;dere</span><span>red</span><span>34 bottles</span><span>&#8378;18,700</span></div>
+  <div class="u-row"><span class="t">Narince 2022 &middot; Diren</span><span>white</span><span>18 bottles</span><span>&#8378;7,020</span></div>
+  <div class="u-row"><span class="t">Bo&#287;azkere 2019 &middot; Kayra</span><span>red</span><span>6 bottles</span><span>&#8378;4,140</span></div>
+  <div class="u-row"><span class="t">Efes Pilsen &middot; keg</span><span>beer</span><span>3 kegs</span><span>&#8378;5,400</span></div>
+  <div class="u-row"><span class="t">Yeni Rak&#305; 70cl</span><span>spirit</span><span>22 bottles</span><span>&#8378;9,240</span></div>
+  <div class="u-row"><span class="t">Emir 2023 &middot; Turasan</span><span>white</span><span>11 bottles</span><span>&#8378;3,850</span></div>
+</div>
+
+  
+<div class="bar">
+  <span class="ctl" style="font-family:var(--serif);font-weight:600;font-size:14px;color:var(--ink-1)">Mudavym</span>
+  <span class="ctl" style="position:relative">
+    <span class="av">L</span>
+    <span><span class="nm">Lokanta M&uuml;davim</span><span class="sub">Karak&ouml;y &middot; 1 of 3</span></span>
+    <svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+  <span class="sp"></span>
+  <span class="ctl"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg> <span class="kbd">&#8984;K</span></span>
+  <span class="ctl" style="position:relative"><svg class="" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span class="dotmark"></span></span>
+  <span class="ctl hot">
+    <span class="av">H</span><span class="nm">Hasan Demir</span><svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+</div>
+
+  <div class="ovl pop" style="width:224px;top:60px;right:16px">
+    <div class="oh" style="padding:11px 14px 9px;display:block"><div><span class="oh-eyebrow">Signed in</span><h3 class="oh-title" style="font-size:15px">Hasan Demir</h3><span class="sub" style="font-family:var(--mono);font-size:10px;color:var(--ink-3)">hasan@lokantamudavim.com</span></div></div>
+    <div class="obody">
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></span><span class="txt"><span class="lab">Profile</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9"/><path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"/><circle cx="12" cy="9" r="2"/><path d="M16.2 4.8c2 2 2.26 5.11.8 7.47"/><path d="M19.1 1.9a9.96 9.96 0 0 1 0 14.1"/><path d="M9.5 18h5"/><path d="m8 22 4-11 4 11"/></svg></span><span class="txt"><span class="lab">Connections</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></span><span class="txt"><span class="lab">Settings</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M12 7v14"/><path d="M16 12h2"/><path d="M16 8h2"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/><path d="M6 12h2"/><path d="M6 8h2"/></svg></span><span class="txt"><span class="lab">Help</span></span></div>
+      <div style="border-top:1px solid var(--paper-2);margin-top:5px;padding-top:3px">
+        <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></span><span class="txt"><span class="lab">Log out</span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose IV</span><h2>The invite dialog &mdash; the hard case, anchored</h2></div>
+<p class="sec-k">from <code>components/team/InviteTeamDialog.tsx</code>, positioned by <code>hooks/useAnchoredDialogPosition.ts</code> &middot; charcoal ground</p>
+<p>A form in a popover looks like a rule broken until you ask what the reader must do next. This is not a record and not a command &mdash; it is <b>two short choices about the roster you are looking at</b>, and covering that roster would hide the answer to &ldquo;who is missing?&rdquo;. The tree already made this call: the invite dialog is the one Radix dialog in the product that takes an anchor. The house shape keeps the decision and drops the second implementation.</p>
+<div class="stage mid mudavym" data-ground="charcoal">
+  
+<div class="under" style="padding-top:66px">
+  <div class="u-eyebrow">The roster</div>
+  <div class="u-h" style="display:flex;align-items:center;justify-content:space-between">Nineteen people work here.
+    <span class="btn" style="font-size:11.5px;padding:5px 11px">Invite member</span></div>
+  <div class="u-row"><span class="t">Hasan Demir</span><span>General manager</span><span>owner</span><span>active</span></div>
+  <div class="u-row"><span class="t">Ay&#351;e Y&#305;lmaz</span><span>Sommelier</span><span>manager</span><span>active</span></div>
+  <div class="u-row"><span class="t">Mert Kaya</span><span>Server</span><span>manager</span><span>active</span></div>
+  <div class="u-row"><span class="t">Zeynep Ar&#305;</span><span>Bar lead</span><span>manager</span><span>active</span></div>
+  <div class="u-row"><span class="t">Emre &Ouml;zt&uuml;rk</span><span>Line cook</span><span>manager</span><span>trial</span></div>
+</div>
+
+  
+<div class="bar">
+  <span class="ctl" style="font-family:var(--serif);font-weight:600;font-size:14px;color:var(--ink-1)">Mudavym</span>
+  <span class="ctl" style="position:relative">
+    <span class="av">L</span>
+    <span><span class="nm">Lokanta M&uuml;davim</span><span class="sub">Karak&ouml;y &middot; 1 of 3</span></span>
+    <svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+  <span class="sp"></span>
+  <span class="ctl"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg> <span class="kbd">&#8984;K</span></span>
+  <span class="ctl" style="position:relative"><svg class="" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span class="dotmark"></span></span>
+  <span class="ctl">
+    <span class="av">H</span><span class="nm">Hasan Demir</span><svg class="" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m6 9 6 6 6-6"/></svg>
+  </span>
+</div>
+
+  <div class="ovl pop" style="width:380px;top:118px;right:36px">
+    <div class="oh" style="padding:12px 15px 10px"><div><span class="oh-eyebrow">One link, single use</span><h3 class="oh-title" style="font-size:17px">Invite a team member</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <p class="quiet">Generate a single-use invite link that expires in 7 days. Share it with your new team member.</p>
+      <div class="frow"><span class="flab">Email address (optional)</span><div class="fin2 ph">colleague@restaurant.com</div>
+        <p class="quiet" style="padding:4px 0 0">Optional &mdash; for your own tracking. Anyone with the link can use it.</p></div>
+      <div class="frow"><span class="flab">Role</span>
+        <div class="chiprow"><span class="chip on">Manager</span><span class="chip">Staff</span></div>
+        <p class="quiet" style="padding:4px 0 0">You can change their role later in Settings &rarr; Team.</p></div>
+      <div class="btnrow" style="padding-bottom:14px"><span class="btn pri">Generate invite link</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">The boundary</span><h2>What a popover may never be</h2></div>
+<ul class="never">
+  <li><span class="h">Never a record</span><span>A vendor in a 320px drawer hanging off a card is a sheet that lost its shape. If the content survives the control being scrolled off screen, it was never a popover.</span></li>
+  <li><span class="h">Never a commitment</span><span>A popover closes on an outside click, and people dismiss them by accident &mdash; Apple's own guidance says so. <b>Nothing that spends money, sends a letter or tells nineteen people their shifts may be confirmed inside one.</b> The seal never appears in this shape.</span></li>
+  <li><span class="h">Never a long form</span><span>Four fields is the ceiling, and only when they are about the thing the anchor names. Beyond that the reader is filling in a page through a slot.</span></li>
+  <li><span class="h">Never anchorless</span><span>A popover with no visible trigger is a panel that forgot to centre itself. If you cannot point at what opened it, it is the wrong shape.</span></li>
+</ul>
+
+<div class="foot">
+  <b>Drawn from, and verified against:</b>
+  <code>hooks/useAnchoredDialogPosition.ts:21-32</code> and <code>components/mudavym/Sheet.tsx:196-226</code> (identical arithmetic) &middot;
+  <code>Sheet.tsx:254</code> (<code>modal = shape !== 'popover'</code>) &middot;
+  <code>sheet.css:55-57</code> (the popover's scrim is transparent; it catches the dismissing click, the same job the header's own <code>fixed inset-0</code> catcher does today at <code>Header.tsx:143-146</code>) &middot;
+  <code>components/layout/Header.tsx:141</code>, ~<code>:258</code> &middot;
+  <code>components/layout/RestaurantBranchSwitcher.tsx:77-83</code> &middot;
+  <code>components/team/InviteTeamDialog.tsx:36,72-75,100-125</code> (the copy above is that file's, verbatim).
+  <br><b>Outside the repo:</b>
+  <a href="https://www.radix-ui.com/primitives/docs/components/popover">Radix Popover</a> &mdash; <code>modal</code> defaults to false; content is positioned against the trigger or an explicit anchor &middot;
+  <a href="https://developer.apple.com/design/human-interface-guidelines/popovers">Apple HIG, Popovers</a> &mdash; &ldquo;a transient view&rdquo;; people &ldquo;can unintentionally dismiss a nonmodal popover&rdquo;; the arrow must point at the element that revealed it, and the popover must not cover it.
+  <br><b>Example data, not a tenant.</b>
+</div>
+</div>
+</body>
+</html>
