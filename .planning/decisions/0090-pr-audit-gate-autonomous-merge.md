@@ -521,6 +521,89 @@ only the Claude-Code path still writes `.planning/07-reference/pr-audits/`,
 corrected in place above) and the Review-trail table, which had fallen two
 rows behind its own Correction count (fixed by this edit).
 
+## Correction — 2026-09-04, found by live incident forensics, not an audit round
+
+The sixth round's "genuinely converged" held for the parsers and the hook —
+it did not hold for `wait_upstream`'s red branch, and this was not found by
+an Opus auditor at all. It was found the way this repo's `absence-reported-
+as-health` finding says most of these are found: production kept doing it.
+Confirmed on **four** separate PRs before this correction was written: two
+peer sessions independently reported the same shape on **#288** and **#294**
+(`Upstream red: ['CodeQL']` fired 93s into their runs, 2s and ~90s
+respectively after CodeQL's own check-run had already completed SUCCESS);
+this session's own **#291** hit it live during this exact investigation
+(28s after CodeQL finished clean); and re-checking open PRs while writing
+this correction turned up a fourth, independent instance already sitting on
+**#290** (`docs: close out ADR 0090` — the very PR that would have closed
+this document out, blocked by the bug it describes). All four cleared on
+`gh run rerun --failed` with no code change, which is what a transient
+misread predicts and a genuine failure would not.
+
+**Root cause, confirmed by direct capture, not inferred:** the working
+hypothesis going in was a *pending*-vocabulary gap — some interim
+`status`/`conclusion` combination (`IN_PROGRESS`-adjacent) that the old
+pending allow-list (`PENDING`, `IN_PROGRESS`, `QUEUED`) didn't name, so it
+fell through to `failed`. That hypothesis was wrong, and this PR (#297)
+proved it wrong against itself: polling
+`repos/.../commits/<sha>/check-runs` directly (not just `gh pr checks`,
+in case the gap was gh's own GraphQL mapping) every ~9s through this PR's
+own CI run, the `CodeQL` check-run (app `github-advanced-security`,
+distinct from the `Analyze Code (python/javascript)` matrix jobs that feed
+it) was captured going through, on the **same** check-run and the **same**
+`started_at`:
+
+```
+18:13:02Z  status=completed  conclusion=neutral
+18:13:12Z  status=completed  conclusion=success   (10s later, same check-run)
+```
+
+`NEUTRAL` is not an interim status — it is a real, already-`completed`
+**terminal** conclusion, and it is not a stale read of an old state:
+GitHub's own Checks REST API, not just `gh pr checks`'s GraphQL rollup,
+returned it. The code-scanning bridge that turns a matrix job's SARIF
+upload into this aggregate check-run posts a `neutral` conclusion first —
+plausibly a default it writes before the alert-processing step that
+decides the real verdict — and corrects it to the true conclusion within
+about ten seconds, without changing `completed_at`. `_classify_poll`
+correctly treats `NEUTRAL` as `failed`, and correctly so **in general**:
+round 3's own fix exists because a check that concludes NEUTRAL for a real
+reason (nothing to report) must not fall through to silently green. That
+is exactly why **option 2 (allow-listing `NEUTRAL` as pending) was
+considered and rejected**, not just skipped — it would have reopened the
+precise bug round 3 fixed, for the next PR where a check-run's NEUTRAL
+conclusion is genuine. The bug here was never in the vocabulary; it was in
+trusting a single read of a value GitHub itself had not finished settling.
+
+**Fix:** the green branch below has required the identical check SET on
+two consecutive polls since `wait_upstream` was first written, for exactly
+this class of reason (a check not yet scheduled is invisible, not
+missing). The red branch had no equivalent protection. It now does:
+`_confirmed_red()` requires the SAME non-empty failed set on two
+consecutive polls before returning red; a set that clears or changes shape
+between polls is logged but not trusted; a set that never stabilizes still
+times out red via the existing deadline path, so the fail-closed property
+this must not regress stayed intact — verified by keeping the "confirms on
+2 identical polls" case in `--self-test` alongside the new "1 poll never
+confirms" case. `_classify_poll` (the missing/pending/failed split) and
+`_confirmed_red` (the new debounce) are both extracted as pure functions
+`wait_upstream` calls and `--self-test` now calls directly too, closing a
+smaller, adjacent gap: the self-test's own state-classifier check had been
+a hand-retyped mirror of the real logic, not the real logic, since round 3
+added it — agreement by construction, not by sharing code. `--self-test`
+grown 29 → 35 invariants. A new `CLAIMS.jsonl` entry
+(`ADR-0090`) pins that the printed invariant count and the actual number
+of `check()` calls in the file stay equal, so this count cannot silently
+drift the way this document's own Review-trail table already had to be
+corrected once, in the sixth round above, for falling behind by two rows.
+
+Fix PR: [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297)
+— branch `fix/pr-audit-gate-red-debounce`. Like PR #261 before it, this PR
+touches `scripts/pr_audit_gate.py`, one of this ADR's own
+`_GATE_OWNED_PATHS`, so `touches_own_gate` force-escalates it to BLOCK
+regardless of what the audit angles conclude — it needs the founder to
+merge it directly, the same escalation path PR #261 needed and the sixth
+Correction's Review-trail row above records.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -534,3 +617,4 @@ rows behind its own Correction count (fixed by this edit).
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — a GITHUB_TOKEN merge silently removes the post-merge deploy audit (confirmed against GitHub's documented behavior + this repo's own merge history); a repo-wide hook that both over- and under-blocked real git commands (confirmed by execution); a diff-truncation gap the third round's correctness angle didn't reach (confirmed by harness-executing a planted regression past the old cut); 6 fixes landed same day, `--self-test` grown 17 → 24, see fourth Correction above |
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — round 4's own `workflow_dispatch` fix 403'd on every run (missing `actions: write`, self-caught independently before either report landed) and round 4's own `\n`-exclusion regex fix regressed a real backslash-continuation case; both fixed same day, `--self-test` grown 24 → 29, see fifth Correction above |
 | 2026-09-03 | pr-audit-gate skill, combined correctness+security (fresh Opus subagent, final round) | BLOCK — one finding, in the YAML consuming `wait_upstream`'s return value rather than the Python producing it: a confirmed-red required check reported job SUCCESS having audited nothing; fixed same day. Explicitly stated the parsers/hook have converged after five prior rounds' adversarial testing found nothing new, see sixth Correction above |
+| 2026-09-04 | Live production incidents, not an audit round (PRs #288, #290, #291, #294) | `wait_upstream`'s red branch had no debounce, unlike its green branch — a single poll catching the `CodeQL` check-run's real but transient `neutral` conclusion (self-corrects to `success` ~10s later, confirmed by direct Checks-API capture) was enough to declare upstream red on four separate PRs. Fixed same day: red branch now requires the same failed set on two consecutive polls; `--self-test` grown 29 → 35, see seventh Correction above. Fix PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297) — touches this ADR's own `_GATE_OWNED_PATHS`, needs the founder to merge directly |
