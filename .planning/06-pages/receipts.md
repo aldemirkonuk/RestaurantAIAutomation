@@ -136,6 +136,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):378 (`procurement/documents`
 | POST | `/procurement/documents/:id/verify` | `ReceiptsPage.tsx:103` → `documents.ts:104` |
 | GET | `/procurement/credits` (+ `/stats`) | `ReceiptsPage.tsx:83,89` → `services/api/credits.ts:51,58` |
 | POST | `/procurement/credits/:id/transition` | `ReceiptsPage.tsx:140` → `credits.ts:71` |
+| POST | `/procurement/documents/:id/extraction` | **No SPA call site** — the extraction door (`documents.controller.ts:351`). Fills a document ADR 0104 D6 stored unread with an extraction produced outside the gateway, because the configured Anthropic key has no credit. 409 once a document has lines or a real extraction. |
 
 ## 5. Signals
 

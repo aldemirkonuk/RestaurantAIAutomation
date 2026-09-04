@@ -70,7 +70,7 @@ canonical view is the third face of the same cabinet: the same document, opened.
 
 ## §3 Backend
 
-`apps/api-gateway/src/procurement/documents/` — **12 endpoints** across three
+`apps/api-gateway/src/procurement/documents/` — **13 endpoints** across three
 controllers, all `@UseGuards(JwtAuthGuard)` at class level.
 
 | Endpoint | Line |
@@ -85,6 +85,7 @@ controllers, all `@UseGuards(JwtAuthGuard)` at class level.
 | `POST /procurement/documents/:id/lines/:lineId/link` | `:226` |
 | `PATCH /procurement/documents/:id/lines/:lineId` | `:259` |
 | `POST /procurement/documents/:id/verify` | `:306` |
+| `POST /procurement/documents/:id/extraction` | `:351` — the extraction door. Applies an extraction produced OUTSIDE this gateway (a Claude Code session reading the PDF) to a document ADR 0104 D6 stored UNREAD, through the same `normalize` a model's answer goes through (`document-intake.service.ts:682`). 409 if the document already has lines or a non-degraded extraction — it fills, it never overwrites; 422 if the body is not the contract's JSON or carries no lines. The gateway's own extractor remains the product path. |
 | `@Controller("procurement/credits")` | `credits.controller.ts:90` (guard `:89`) |
 | `GET /procurement/credits` | `:94` |
 | `GET /procurement/credits/stats` | `:123` |

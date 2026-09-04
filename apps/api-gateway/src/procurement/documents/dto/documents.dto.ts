@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 import { SOURCE_CHANNELS, SourceChannel } from "../document-types";
 
 /**
@@ -53,6 +60,35 @@ export class UploadDocumentDto {
   @IsOptional()
   @IsUUID()
   orderId?: string;
+}
+
+/**
+ * The extraction door's body.
+ *
+ * `rawText` is the JSON the model contract in `DocumentExtractorService`'s
+ * SYSTEM_PROMPT describes, produced somewhere other than this gateway's model
+ * client — today, a Claude Code session reading the PDF, because the configured
+ * `ANTHROPIC_API_KEY` has no credit. `model` is a free-text label recorded
+ * verbatim in `extraction_model`, so the row says who read the page.
+ */
+export class ApplyExtractionDto {
+  @ApiProperty({
+    description:
+      "The extraction JSON, in the same shape DocumentExtractorService's SYSTEM_PROMPT asks a model for. A body that is not JSON, or that carries no lines, is refused with 422 rather than written.",
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4_000_000)
+  rawText!: string;
+
+  @ApiProperty({
+    description:
+      'Who read the document, recorded verbatim in `extraction_model` — e.g. "claude-code:claude-fable-5-1". Never the configured model\'s name: an extraction this gateway did not perform must not be attributable to the model it would have used.',
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  model!: string;
 }
 
 /** Exported so the CHECK-constraint vocabulary has exactly one definition. */
