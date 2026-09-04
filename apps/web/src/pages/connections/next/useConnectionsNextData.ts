@@ -103,9 +103,40 @@ export interface SenderIdentityVM {
   perHouse: { supported: boolean; reason: string };
 }
 
+/** The four MCP behaviour hints, tri-state. Null = the server did not say. */
+export interface McpAnnotationsVM {
+  readOnlyHint: boolean | null;
+  destructiveHint: boolean | null;
+  idempotentHint: boolean | null;
+  openWorldHint: boolean | null;
+}
+
 export interface McpToolGrantVM {
   toolName: string;
+  /** The classification the GATE uses. Never looser than `declaredRead`. */
   writes: boolean;
+  /**
+   * What the SERVER declared. TRUE = it said readOnlyHint: true. FALSE = it
+   * said otherwise. NULL = it said nothing, which carries the same permission
+   * as FALSE and is a different fact — so the row shows which.
+   */
+  declaredRead: boolean | null;
+  declaredAnnotations: McpAnnotationsVM | null;
+  /** 'manager_override' = a declared read that a manager made a write. */
+  classificationSource: 'declared' | 'manager_override';
+  /** Set = this grant is REFUSED at the gate until a manager re-consents. */
+  needsReconsentAt: string | null;
+  /** What changed, in words. Never null when the timestamp is set. */
+  needsReconsentReason: string | null;
+  toolListHash: string | null;
+  /**
+   * What the LAST sealed call on this tool was worth. 'proven' = a one-time
+   * challenge was redeemed for exactly that call; 'asserted' = the caller
+   * claimed the seal and nothing checked it (every call before 2026-09-04);
+   * null = no sealed call has ever been made, which is a third state and not a
+   * quiet 'asserted'.
+   */
+  lastSeal: 'proven' | 'asserted' | null;
   grantedBy: string | null;
   grantedByName: string | null;
   grantedAt: string;
@@ -133,7 +164,12 @@ export interface McpServerVM {
     serverName: string | null;
     serverVersion: string | null;
     protocolVersion: string | null;
-    tools: Array<{ name: string; title: string | null; description: string | null }> | null;
+    tools: Array<{
+      name: string;
+      title: string | null;
+      description: string | null;
+      annotations: McpAnnotationsVM | null;
+    }> | null;
     toolCount: number | null;
   } | null;
 }
@@ -362,6 +398,21 @@ export function useConnectionsNextData() {
     [qc, rid, uid],
   );
 
+  /**
+   * Re-read the model-context register.
+   *
+   * Added by the collapse (2026-09-04) for `HouseServerControls`, which owns
+   * declare and revoke since they left `/profile`. It is exposed rather than
+   * given a mutation of its own so that component keeps NO react-query
+   * dependency: it is a panel that can be lifted out whole the day the
+   * ownership fork in ADR 0114 is answered, and a component holding a
+   * `useQueryClient` cannot be rendered by a test that mocks this hook.
+   */
+  const refetchMcp = useCallback(() => {
+    invalidate('connections-next-mcp');
+    invalidate('connections-next-mcp-runtime');
+  }, [invalidate]);
+
   const regenerateFeed = useMutation({
     mutationFn: async () => {
       await apiClient.post('/calendar/ical-token/regenerate');
@@ -386,11 +437,25 @@ export function useConnectionsNextData() {
     onSuccess: () => invalidate('connections-next-mcp'),
   });
 
+  /**
+   * Grant a tool, or re-consent to one whose declaration moved.
+   *
+   * `sealed` is not a second route. Re-consenting IS granting again — against
+   * the declaration the server offers NOW — and a separate endpoint would have
+   * been a second place for the classification rule to be applied slightly
+   * differently. The gateway decides whether the seal was required; the page
+   * sends it when it is re-consenting, which is the only case where it is.
+   */
   const grantTool = useMutation({
-    mutationFn: async (v: { id: string; tool: string; writes: boolean }) => {
+    mutationFn: async (v: {
+      id: string;
+      tool: string;
+      writes: boolean;
+      sealed?: boolean;
+    }) => {
       await apiClient.put(
         `/mcp-connections/${v.id}/tools/${encodeURIComponent(v.tool)}`,
-        { writes: v.writes },
+        { writes: v.writes, sealed: v.sealed === true },
       );
     },
     onSuccess: () => invalidate('connections-next-mcp'),
@@ -493,6 +558,7 @@ export function useConnectionsNextData() {
     grantTool,
     revokeTool,
     probeServer,
+    refetchMcp,
   };
 }
 

@@ -28,6 +28,13 @@
  * The database is a hand-built double rather than a live Postgres: what is
  * under test is the DECISION, and a decision test that needs a container is a
  * decision test that stops being run.
+ *
+ * The read fixtures below carry `declared_read: true` since 2026-09-04. That is
+ * not padding: the gate now treats a grant claiming to be a read WITHOUT the
+ * server having declared it read-only as a write, so a fixture that omits the
+ * field is asserting the wrong thing about a row the table would refuse. The
+ * founder's rule and its own refusals are in
+ * `mcp-connections.tool-declaration.spec.ts`.
  */
 
 import { ForbiddenException } from "@nestjs/common";
@@ -99,6 +106,7 @@ function buildDb(fixture: Fixture): Recorder {
         }
         if (table === "mcp_tool_calls") {
           return {
+            ...chain({ data: [], error: null }),
             insert: (row: Record<string, unknown>) => {
               calls.push(row);
               return Promise.resolve({ data: null, error: null });
@@ -226,7 +234,7 @@ describe("calling a model-context tool", () => {
   it("runs a granted READ without a seal, for anyone who consented", async () => {
     const { service, runtime, organizations } = build({
       consent: liveConsent,
-      grant: { connection_id: CONNECTION_ID, tool_name: "list_checks", writes: false },
+      grant: { connection_id: CONNECTION_ID, tool_name: "list_checks", writes: false, declared_read: true, needs_reconsent_at: null },
     });
 
     const result = await service.callTool(
@@ -251,31 +259,37 @@ describe("calling a model-context tool", () => {
     expect(organizations.assertCanManageRestaurant).not.toHaveBeenCalled();
   });
 
-  it("runs a granted WRITE for a manager holding the seal", async () => {
+  it("no longer runs a WRITE on the claim of a seal alone", async () => {
+    // This test asserted the opposite until 2026-09-04, and the change is the
+    // founder's: a seal on a tool write is REDEEMED, not asserted. `sealed:
+    // true` was a claim in the same request as the thing it claimed about, so
+    // anything holding the manager's session could set it. The passing path —
+    // mint a challenge, spend it exactly once — is in
+    // `mcp-connections.seal-redemption.spec.ts`; here the point is that the old
+    // path is closed.
     const { service, runtime } = build({
       consent: liveConsent,
       grant: { connection_id: CONNECTION_ID, tool_name: "place_order", writes: true },
     });
 
-    const result = await service.callTool(
-      RESTAURANT,
-      "u-me",
-      CONNECTION_ID,
-      "place_order",
-      { sku: "KV-1" },
-      true,
-    );
-
-    expect(runtime.callTool).toHaveBeenCalled();
-    expect(result.writes).toBe(true);
-    expect(result.sealed).toBe(true);
+    await expect(
+      service.callTool(
+        RESTAURANT,
+        "u-me",
+        CONNECTION_ID,
+        "place_order",
+        { sku: "KV-1" },
+        true,
+      ),
+    ).rejects.toThrow(/proven rather than asserted/i);
+    expect(runtime.callTool).not.toHaveBeenCalled();
   });
 
   it("records the call, and records it when the server refused too", async () => {
     const { service, recorder } = build(
       {
         consent: liveConsent,
-        grant: { connection_id: CONNECTION_ID, tool_name: "list_checks", writes: false },
+        grant: { connection_id: CONNECTION_ID, tool_name: "list_checks", writes: false, declared_read: true, needs_reconsent_at: null },
       },
       {
         runtime: {

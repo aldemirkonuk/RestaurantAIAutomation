@@ -206,6 +206,25 @@ A built server would need one new table — a per-connection grant record (scope
 last handshake, revocation) — and that is a migration and a decision, not a field. It is
 not written here because it does not exist.
 
+**Correction, 2026-09-04 (two facts above have moved on this branch).** First,
+`user_mcp_connections` is now `restaurant_mcp_connections`: the attachment is the house's,
+not a person's, and a person's agreement is a row in `mcp_connection_consents`
+(ADR 0114, migration `20260903151000_the_house_declares_a_person_consents.sql`). Second,
+the outbound half no longer has "no grant record" — `mcp_tool_grants` holds one row per
+(server, tool), and since `20260904160000_the_server_declares_the_manager_confirms.sql` each
+row also carries the SERVER's own `annotations.readOnlyHint` declaration, a fingerprint of
+it, and a `needs_reconsent` state that suspends the grant when that declaration moves
+(ADR 0107 addendum, 2026-09-04). Both citations above point at migrations that are still
+accurate about what they themselves did; they are no longer accurate about the current
+shape, and are left in place as history rather than rewritten.
+
+**What it means for the INBOUND server, if it is ever built.** The rule the founder set for
+the client half applies symmetrically and cheaply: this note's own R/W legend is exactly
+the `readOnlyHint` / `destructiveHint` a Mudavym server would have to emit on every
+`tools/list`, and the 9 write tools would each need `readOnlyHint: false`. A server that
+omitted them would, under our own client's rule, be classified entirely as writes by any
+careful client — including ours.
+
 ## §6 Owner
 
 `unowned — gap.` No charter in `.planning/01-org/` mentions MCP, model context, or

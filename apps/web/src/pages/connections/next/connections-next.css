@@ -388,3 +388,29 @@
 @media (prefers-reduced-motion: reduce) {
   .mudavym .cx-btn { transition: none; }
 }
+
+/* A grant the gate is refusing right now.
+   Its own line and its own colour, because it is the one sentence on this page
+   that means "something you were told worked has stopped working, and here is
+   what moved". It uses the warn token rather than the seal: the seal marks a
+   thing you may do, and this marks a thing that is currently refused. */
+.mudavym .cx-reconsent {
+  display: block;
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ink-3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* A re-consent control names its tool, and a tool name is the server's word —
+   it can be long. `.cx-btn` is `white-space: nowrap` so a short label never
+   breaks awkwardly; this one control opts out instead of being truncated,
+   because a clipped label would hide WHICH tool the seal is for, which is the
+   only thing that makes the control safe to press. */
+.mudavym .cx-btn.is-reconsent {
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
+}

@@ -174,7 +174,7 @@ const OK_PROBE: McpProbeOutcome = {
   serverName: "House POS bridge",
   serverVersion: "3.1.0",
   protocolVersion: "2025-06-18",
-  tools: [{ name: "stock_on_hand", title: null, description: null }],
+  tools: [{ name: "stock_on_hand", title: null, description: null, annotations: null }],
   toolCount: 1,
   truncated: false,
 };

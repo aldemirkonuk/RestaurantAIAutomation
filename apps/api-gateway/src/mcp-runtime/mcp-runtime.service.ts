@@ -8,6 +8,7 @@ import type {
   McpProbeLimits,
   McpProbeOutcome,
   McpToolCallOutcome,
+  McpToolAnnotations,
   McpToolSummary,
 } from "./mcp-runtime.types";
 
@@ -900,5 +901,27 @@ function toSummary(value: unknown): McpToolSummary | null {
     name,
     title: asString(record?.title),
     description: asString(record?.description),
+    annotations: toAnnotations(record?.annotations),
+  };
+}
+
+/**
+ * The server's `annotations`, kept exactly as tri-state as it arrived.
+ *
+ * A non-boolean value in a boolean hint is read as "not said" rather than
+ * coerced: `readOnlyHint: "true"` is a server that did not answer the
+ * question in the protocol's terms, and coercing it would turn a malformed
+ * declaration into a permission.
+ */
+function toAnnotations(value: unknown): McpToolAnnotations | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const flag = (v: unknown): boolean | null =>
+    typeof v === "boolean" ? v : null;
+  return {
+    readOnlyHint: flag(record.readOnlyHint),
+    destructiveHint: flag(record.destructiveHint),
+    idempotentHint: flag(record.idempotentHint),
+    openWorldHint: flag(record.openWorldHint),
   };
 }

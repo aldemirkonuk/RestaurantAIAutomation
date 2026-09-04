@@ -46,6 +46,25 @@
  *   - The POS bridge has no disconnect endpoint of any kind
  *     (`pos-hub.controller.ts:55-305` has no delete route), so its control is
  *     disabled and names what actually stops the feed.
+ *
+ * THE COLLAPSE, 2026-09-04 (founder: "Move the registers and collapse the four
+ * tabs")
+ * ------------------------------------------------------------------------
+ * ADR 0114's own justification was a surface count that FELL; until this pass
+ * it had risen. Three things changed on this page, and nothing else:
+ *
+ *   1. Register anchors. `/settings`'s `services`, `pos`, `email` and
+ *      `calendar` tabs became one line pointing here, so their `?tab=` deep
+ *      links now redirect to `/connections#grants|#till|#sender|#feed` and
+ *      this page honours the fragment — see `REGISTER_ANCHORS`.
+ *   2. `HouseServerControls`. Declare and revoke arrived from `/profile`,
+ *      because both are `assertCanManageRestaurant` acts and a move that left
+ *      them behind would have deleted them.
+ *   3. Three stopNotes that said "on /profile" were corrected. Two now say
+ *      "on this page"; the third — adding or removing a card — says that
+ *      nothing can do it today, because the Stripe Elements panel did not
+ *      travel. That is a real subtraction, filed as §9 G-C9 rather than
+ *      papered over with a link to a page that no longer carries it.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -65,6 +84,9 @@ import {
 import { ensureFraunces } from './fonts';
 import {
   useConnectionsNextData,
+  type McpAnnotationsVM,
+  type McpServerVM,
+  type McpToolGrantVM,
   type ProviderStateVM,
 } from './useConnectionsNextData';
 import {
@@ -72,7 +94,9 @@ import {
   LoadingRegister,
   UnreadRegister,
   type RowChip,
+  type RowPermission,
 } from './AttachmentRow';
+import { HouseServerControls } from './HouseServerControls';
 import {
   DASH,
   count,
@@ -95,6 +119,28 @@ export interface ConnectionsNextProps {
   ground?: 'charcoal';
 }
 
+/**
+ * The anchors a `/settings?tab=…` deep link lands on (the collapse,
+ * 2026-09-04).
+ *
+ * Four `/settings` tabs became one line pointing here, and every bookmark and
+ * in-product link to those four still has to land somewhere true — so each
+ * redirects to `/connections#<anchor>` and this page honours the fragment.
+ * `settings/next/st-format.ts` holds the mapping; the ids are declared here
+ * because the element that carries one is here, and a fragment nothing on the
+ * page answers to is a link that silently does nothing.
+ */
+export const REGISTER_ANCHORS = [
+  'attached',
+  'till',
+  'sender',
+  'feed',
+  'servers',
+  'payment',
+  'grants',
+  'deployment',
+] as const;
+
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
   const [copied, setCopied] = useState(false);
@@ -102,6 +148,29 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   useEffect(() => {
     ensureFraunces();
   }, []);
+
+  /**
+   * Bring the fragment's register into view once its register has answered.
+   *
+   * Depends on the four register reads rather than on mount alone: a `#payment`
+   * arriving while the payment register is still loading would scroll to a
+   * skeleton and then be left behind when the real rows pushed the page down.
+   * `scrollIntoView` is guarded because jsdom does not implement it, and the
+   * behaviour is `auto` when the reader has asked for less motion.
+   */
+  const hash = typeof window === 'undefined' ? '' : window.location.hash.replace('#', '');
+  const anchorReady =
+    !d.pos.loading && !d.payments.loading && !d.mcp.loading && !d.houseGrants.loading;
+  useEffect(() => {
+    if (!hash || !anchorReady) return;
+    if (!(REGISTER_ANCHORS as readonly string[]).includes(hash)) return;
+    const el = document.getElementById(hash);
+    if (!el?.scrollIntoView) return;
+    const reduced =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  }, [hash, anchorReady]);
 
   const feed = feedUrl(d.ical.data?.token);
 
@@ -227,7 +296,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         </div>
 
         {/* ══ REGISTER I ════════════════════════════════════════════════ */}
-        <section className="cx-sec">
+        <section className="cx-sec" id="attached">
           <div className="cx-sec-h">
             <span className="cx-sec-n">Register I</span>
             <h2>What the house has attached</h2>
@@ -243,7 +312,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             everyone who works here
           </p>
 
-          {/* — the till — */}
+          {/* — the till — (`/settings?tab=pos` lands here) */}
+          <span id="till" aria-hidden />
           {d.pos.loading ? (
             <LoadingRegister name="the till" />
           ) : d.pos.error ? (
@@ -354,7 +424,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             />
           )}
 
-          {/* — the sender identity — */}
+          {/* — the sender identity — (`/settings?tab=email` lands here) */}
+          <span id="sender" aria-hidden />
           {d.sender.loading ? (
             <LoadingRegister name="the sender identity" />
           ) : d.sender.error ? (
@@ -399,7 +470,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             />
           )}
 
-          {/* — the calendar feed — */}
+          {/* — the calendar feed — (`/settings?tab=calendar` lands here) */}
+          <span id="feed" aria-hidden />
           {d.ical.loading ? (
             <LoadingRegister name="the calendar feed" />
           ) : d.ical.error ? (
@@ -478,7 +550,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             stopNote="Nothing to stop. Building this would need a restaurant-scoped page table and a route; neither exists."
           />
 
-          {/* — model-context servers — */}
+          {/* — model-context servers — (`/profile`'s Register IV lands here) */}
+          <span id="servers" aria-hidden />
           {d.mcp.loading ? (
             <LoadingRegister name="the model-context register" />
           ) : d.mcp.error ? (
@@ -528,8 +601,20 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   d.mcpRuntime.data?.invocation.reason ??
                   'The deployment did not say whether a tool may be called.'
                 }
-                controls={[{ label: 'Declare a server', disabled: true }]}
-                stopNote="Declaring a server is not built on this page yet; it is on /profile until this register moves fully."
+                controls={[]}
+                stopNote="Declaring one and revoking one are below, on this page. Both are refused by the gateway for anyone who is not a manager or an owner."
+              />
+
+              {/* THE COLLAPSE, 2026-09-04. Declare and revoke arrived here when
+                  `/profile` lost this register: both are gated by
+                  `assertCanManageRestaurant` at the gateway, so both are the
+                  house's, and a move that left them behind would have deleted
+                  them. See `HouseServerControls`. */}
+              <HouseServerControls
+                servers={d.mcp.data ?? []}
+                runtime={d.mcpRuntime.data ?? null}
+                canManage={d.isManager}
+                onChanged={d.refetchMcp}
               />
 
               {(d.mcp.data ?? []).map((s) => (
@@ -562,17 +647,23 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                           name, so it will not run a tool for you.
                         </>
                       )}
+                      {/* One line per suspended grant, naming the tool and what
+                          the server changed. The gate refuses these calls right
+                          now, and a row that showed only a chip would leave the
+                          manager guessing which tool and why. */}
+                      {s.toolGrants
+                        .filter((g) => g.needsReconsentAt)
+                        .map((g) => (
+                          <span key={g.toolName} className="cx-reconsent">
+                            Needs re-consent — {g.toolName}:{' '}
+                            {g.needsReconsentReason ??
+                              'its declaration changed and the change was not recorded.'}
+                          </span>
+                        ))}
                     </>
                   }
-                  permissionsLabel="Granted tools"
-                  permissions={
-                    s.toolGrants.length
-                      ? s.toolGrants.map((g) => ({
-                          text: `${g.toolName}${g.writes ? ' — writes' : ''}`,
-                          can: true,
-                        }))
-                      : [{ text: 'None granted — it may list, not call', can: false }]
-                  }
+                  permissionsLabel="Tools it lists · what it may do"
+                  permissions={toolLines(s)}
                   lastLabel="Last answered"
                   last={s.lastUsedAt ? when(s.lastUsedAt) : null}
                   lastDetail={
@@ -593,11 +684,34 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       busy: d.probeServer.isPending,
                       onClick: () => d.probeServer.mutate(s.id),
                     },
+                    // Behind the seal, because it turns a call the gate is
+                    // currently refusing back on. It re-grants against the
+                    // declaration the server offers NOW — which is why the
+                    // label carries the classification the manager would be
+                    // agreeing to, not the one they agreed to before.
+                    ...s.toolGrants
+                      .filter((g) => g.needsReconsentAt)
+                      .map((g) => {
+                        const nowWrites = declaredWrites(s, g.toolName);
+                        return {
+                          label: `Re-consent ${g.toolName} as a ${nowWrites ? 'write' : 'read'}`,
+                          seal: true,
+                          wrap: true,
+                          busy: d.grantTool.isPending,
+                          onClick: () =>
+                            d.grantTool.mutate({
+                              id: s.id,
+                              tool: g.toolName,
+                              writes: nowWrites,
+                              sealed: true,
+                            }),
+                        };
+                      }),
                   ]}
                   stopNote={
                     s.status === 'revoked'
                       ? 'Revoked. It is kept so the register can show what was once trusted.'
-                      : 'Withdrawing your consent stops it acting as you and touches nobody else. Revoking the attachment itself is a manager action on /profile.'
+                      : 'Withdrawing your consent stops it acting as you and touches nobody else. Revoking the attachment itself is a manager act, and it is on this page, above.'
                   }
                 />
               ))}
@@ -606,7 +720,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         </section>
 
         {/* ══ REGISTER II ═══════════════════════════════════════════════ */}
-        <section className="cx-sec">
+        <section className="cx-sec" id="payment">
           <div className="cx-sec-h">
             <span className="cx-sec-n">Register II</span>
             <h2>What the house pays with</h2>
@@ -661,12 +775,16 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               lastLabel="Last reconciled"
               last={null}
               lastDetail="Nothing has ever been synced."
-              controls={[
-                { label: 'Add a card', disabled: !d.payments.data?.provider.connected },
-              ]}
+              controls={[{ label: 'Add a card', disabled: true }]}
               stopNote={
                 d.payments.data?.provider.connected
-                  ? 'Adding a card happens on /profile, where the provider element is mounted.'
+                  ? // THE COLLAPSE, 2026-09-04. Register V left `/profile`, and the
+                    // Stripe Elements panel that mounted the card fields did NOT
+                    // come with it — it is bound to that page's data hook and UI
+                    // kit. So this control is disabled and says so, rather than
+                    // pointing at a page that no longer carries it. Filed as
+                    // `connections.md` §9 G-C9.
+                    'A provider is connected, so a card could be added — but the panel that mounts the provider’s own card fields has not been rebuilt here yet, and it is no longer on /profile. Nothing on this page can add one today.'
                   : 'Disabled because the provider is not connected, not because of your role.'
               }
             />
@@ -694,14 +812,14 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 last={null}
                 lastDetail="The register records no reconcile timestamp per instrument."
                 controls={[{ label: 'Remove', disabled: true }]}
-                stopNote="Removal detaches at the provider first and lives on /profile, where the provider client is loaded."
+                stopNote="Removal detaches at the provider first, and the client that does it has not been rebuilt here since this register left /profile. Until it is, an instrument is removed in the provider’s own dashboard — G-C9."
               />
             ))
           )}
         </section>
 
         {/* ══ REGISTER III ══════════════════════════════════════════════ */}
-        <section className="cx-sec">
+        <section className="cx-sec" id="grants">
           <div className="cx-sec-h">
             <span className="cx-sec-n">Register III</span>
             <h2>Personal grants that act inside this house</h2>
@@ -847,7 +965,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         </section>
 
         {/* ══ REGISTER IV ═══════════════════════════════════════════════ */}
-        <section className="cx-sec">
+        <section className="cx-sec" id="deployment">
           <div className="cx-sec-h">
             <span className="cx-sec-n">Register IV</span>
             <h2>Set once for every house on this deployment</h2>
@@ -1014,11 +1132,113 @@ function mcpChips(
   return [{ label: `${answering} answering`, tone: answering ? 'on' : 'warn' }];
 }
 
+/**
+ * Every tool the server LISTS, with two facts a manager has to see together:
+ * what the server declared about it, and what this house granted.
+ *
+ * They are printed on one line each because separating them is how the
+ * dangerous case hides. "send_purchase_order — granted" is reassuring;
+ * "send_purchase_order — the server declares it a write · granted as a write,
+ * behind the seal" is the same row telling the truth. A tool the server lists
+ * and nobody granted is shown as refused rather than omitted: a list of only
+ * what is permitted cannot be read as a list of what exists.
+ *
+ * A server that has never answered a probe has no list, and this returns the
+ * grants alone with that said in words — never an empty list, which would read
+ * as "it offers nothing".
+ */
+function toolLines(s: McpServerVM): RowPermission[] {
+  const grantOf = (name: string) =>
+    s.toolGrants.find(
+      (g) => g.toolName.trim().toLowerCase() === name.trim().toLowerCase(),
+    ) ?? null;
+
+  const grantWords = (g: McpToolGrantVM | null): string => {
+    if (!g) return 'not granted';
+    if (g.needsReconsentAt) return 'granted, SUSPENDED until re-consent';
+    if (g.writes) {
+      const how =
+        g.classificationSource === 'manager_override'
+          ? 'granted as a write by a manager overriding the server'
+          : 'granted as a write, behind the seal';
+      return `${how} · ${sealWords(g.lastSeal)}`;
+    }
+    return 'granted as a read';
+  };
+
+  if (!s.probe?.tools) {
+    // No list to show. The grants are still real and are shown as themselves.
+    return s.toolGrants.length
+      ? s.toolGrants.map((g) => ({
+          text: `${g.toolName} — the server has not listed its tools since this was granted · ${grantWords(g)}`,
+          can: !g.needsReconsentAt,
+        }))
+      : [
+          {
+            text: 'The server has not answered with a tool list, so what it offers is unknown',
+            can: false,
+          },
+        ];
+  }
+
+  return s.probe.tools.map((t) => {
+    const g = grantOf(t.name);
+    return {
+      text: `${t.name} — ${declaredWords(t.annotations)} · ${grantWords(g)}`,
+      // `can: false` renders it as something this attachment may NOT do, which
+      // is exactly right for both "nobody granted it" and "it is suspended".
+      can: Boolean(g) && !g?.needsReconsentAt,
+    };
+  });
+}
+
+/**
+ * What the last seal on this tool was actually worth.
+ *
+ * "sealed" was true of both a redeemed one-time challenge and a boolean the
+ * client set on itself, and printing the same word for both would let the
+ * weaker one borrow the stronger one's credibility. A tool nobody has ever
+ * sealed gets its own sentence rather than the reassuring half of the pair.
+ */
+function sealWords(last: 'proven' | 'asserted' | null): string {
+  if (last === 'proven') return 'last seal: proven';
+  if (last === 'asserted') return 'last seal: asserted, never checked';
+  return 'never called behind a seal';
+}
+
+/** What the server said about one tool, in the server's own vocabulary. */
+function declaredWords(a: McpAnnotationsVM | null): string {
+  if (!a) return 'the server declares nothing about it, so it counts as a write';
+  if (a.readOnlyHint === true) return 'the server declares it read-only';
+  if (a.readOnlyHint === false) {
+    return a.destructiveHint === false
+      ? 'the server declares it changes things, additively'
+      : 'the server declares it changes things';
+  }
+  return 'the server sent no readOnlyHint, so it counts as a write';
+}
+
+/**
+ * What re-consenting to this tool would classify it as, from the CURRENT list.
+ *
+ * Deliberately the server's declaration and not the grant's old `writes`: the
+ * point of a re-consent is to agree to what the server says now. A manager who
+ * wants to tighten it further still can, on the grant control — this is the
+ * one-click path back to the default, not a way to carry an old override
+ * silently forward.
+ */
+function declaredWrites(s: McpServerVM, toolName: string): boolean {
+  const t = s.probe?.tools?.find(
+    (x) => x.name.trim().toLowerCase() === toolName.trim().toLowerCase(),
+  );
+  return t?.annotations?.readOnlyHint !== true;
+}
+
 function serverChips(s: {
   status: string;
   probe: { status: string } | null;
   consent: { given: boolean };
-  toolGrants: Array<{ writes: boolean }>;
+  toolGrants: Array<{ writes: boolean; needsReconsentAt: string | null }>;
 }): RowChip[] {
   const chips: RowChip[] = [
     { label: probeWord(s.probe?.status), tone: s.probe?.status === 'ok' ? 'on' : 'off' },
@@ -1026,6 +1246,13 @@ function serverChips(s: {
   if (s.status === 'revoked') chips.push({ label: 'Revoked', tone: 'off' });
   if (s.toolGrants.some((g) => g.writes)) {
     chips.push({ label: 'Can write outside', tone: 'warn' });
+  }
+  const suspended = s.toolGrants.filter((g) => g.needsReconsentAt).length;
+  if (suspended) {
+    chips.push({
+      label: `${suspended} need${suspended === 1 ? 's' : ''} re-consent`,
+      tone: 'warn',
+    });
   }
   if (!s.consent.given) chips.push({ label: 'No consent from you', tone: 'off' });
   return chips;

@@ -162,6 +162,52 @@ const server = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** One tool as the last probe recorded it, annotations and all. */
+const listed = (
+  name: string,
+  annotations: Record<string, unknown> | null,
+) => ({
+  name,
+  title: null,
+  description: null,
+  annotations: annotations
+    ? {
+        readOnlyHint: null,
+        destructiveHint: null,
+        idempotentHint: null,
+        openWorldHint: null,
+        ...annotations,
+      }
+    : null,
+});
+
+const probeWith = (tools: unknown[]) => ({
+  status: 'ok',
+  detail: `Connected. ${tools.length} tools listed.`,
+  serverName: 'toast',
+  serverVersion: '1',
+  protocolVersion: '2025-06-18',
+  tools,
+  toolCount: tools.length,
+});
+
+/** One grant, with the declaration it was made against. */
+const granted = (toolName: string, over: Record<string, unknown> = {}) => ({
+  toolName,
+  writes: false,
+  declaredRead: true,
+  declaredAnnotations: null,
+  classificationSource: 'declared',
+  needsReconsentAt: null,
+  needsReconsentReason: null,
+  toolListHash: 'abc',
+  lastSeal: null,
+  grantedBy: 'u1',
+  grantedByName: 'Hasan',
+  grantedAt: '2026-09-03T00:00:00.000Z',
+  ...over,
+});
+
 const grant = (over: Record<string, unknown> = {}) => ({
   connectionId: 'c1',
   integrationId: 'google_drive',
@@ -315,13 +361,16 @@ describe('house declares, each person consents', () => {
     expect(screen.getByText(/declared by an account since deleted/i)).toBeInTheDocument();
   });
 
-  it('shows an ungranted server as able to list, not to call', () => {
+  it('says nothing about the tools of a server that has never listed any', () => {
     const d = base();
     d.mcp = reg([server()]);
     mockData.current = d;
     render(<ConnectionsNext />);
 
-    expect(screen.getByText(/none granted — it may list, not call/i)).toBeInTheDocument();
+    // Not an empty list, which would read as "it offers nothing".
+    expect(
+      screen.getByText(/has not answered with a tool list, so what it offers is unknown/i),
+    ).toBeInTheDocument();
   });
 
   it('marks a granted write tool on the row', () => {
@@ -329,19 +378,149 @@ describe('house declares, each person consents', () => {
     d.mcp = reg([
       server({
         consent: { given: true, at: '2026-09-02T00:00:00.000Z', liveCount: 2 },
-        toolGrants: [
-          { toolName: 'place_order', writes: true, grantedBy: 'u1', grantedByName: 'Hasan', grantedAt: '2026-09-03T00:00:00.000Z' },
-        ],
+        probe: probeWith([listed('place_order', { readOnlyHint: false })]),
+        toolGrants: [granted('place_order', { writes: true, declaredRead: false })],
       }),
     ]);
     d.tally = { ...d.tally, mayCallATool: 1, mayWrite: 1 };
     mockData.current = d;
     render(<ConnectionsNext />);
 
-    expect(screen.getByText('place_order — writes')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'place_order — the server declares it changes things · granted as a write, behind the seal · never called behind a seal',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText(/can write outside/i)).toBeInTheDocument();
     // And the ledger sentence stops saying "none may call a tool".
     expect(screen.queryByText(/none may call a tool/i)).not.toBeInTheDocument();
+  });
+
+  /* ── server-declared, manager-confirmed, re-consent on change ────────── */
+
+  it('shows a listed tool nobody granted as refused rather than omitting it', () => {
+    const d = base();
+    d.mcp = reg([
+      server({ probe: probeWith([listed('drop_table', { readOnlyHint: false })]) }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(
+        'drop_table — the server declares it changes things · not granted',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says when a tool counts as a write because the server declared NOTHING', () => {
+    const d = base();
+    d.mcp = reg([server({ probe: probeWith([listed('mystery', null)]) })]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(/the server declares nothing about it, so it counts as a write/i),
+    ).toBeInTheDocument();
+  });
+
+  it('names a manager override as an override, not as the server’s own word', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: probeWith([listed('list_checks', { readOnlyHint: true })]),
+        toolGrants: [
+          granted('list_checks', {
+            writes: true,
+            declaredRead: true,
+            classificationSource: 'manager_override',
+            // A redeemed one-time challenge, not a claimed boolean.
+            lastSeal: 'proven',
+          }),
+        ],
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(
+        'list_checks — the server declares it read-only · granted as a write by a manager overriding the server · last seal: proven',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('does not let an unchecked seal borrow a proven one’s word', () => {
+    // "sealed" was true of a redeemed one-time challenge AND of a boolean the
+    // client set on itself. Printing one word for both is how the weaker one
+    // borrows the stronger one's credibility.
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: probeWith([listed('place_order', { readOnlyHint: false })]),
+        toolGrants: [
+          granted('place_order', {
+            writes: true,
+            declaredRead: false,
+            lastSeal: 'asserted',
+          }),
+        ],
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(/last seal: asserted, never checked/i),
+    ).toBeInTheDocument();
+  });
+
+  it('states what changed on a suspended grant, and offers re-consent behind the seal', () => {
+    const d = base();
+    const grantTool = { mutate: vi.fn(), isPending: false };
+    d.grantTool = grantTool;
+    d.mcp = reg([
+      server({
+        consent: { given: true, at: '2026-09-02T00:00:00.000Z', liveCount: 1 },
+        // The server now says it is NOT read-only. It said the opposite when
+        // the grant was made.
+        probe: probeWith([listed('list_checks', { readOnlyHint: false })]),
+        toolGrants: [
+          granted('list_checks', {
+            writes: false,
+            declaredRead: true,
+            needsReconsentAt: '2026-09-04T09:00:00.000Z',
+            needsReconsentReason: 'the server changed readOnlyHint true to false',
+          }),
+        ],
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(
+        /Needs re-consent — list_checks: the server changed readOnlyHint true to false/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/1 needs re-consent/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/list_checks — .* · granted, SUSPENDED until re-consent/),
+    ).toBeInTheDocument();
+
+    // Behind the seal, and re-granting against what the server says NOW — a
+    // write — rather than carrying the old read classification forward.
+    const button = screen.getByRole('button', {
+      name: 'Re-consent list_checks as a write',
+    });
+    expect(button.className).toContain('is-seal');
+    fireEvent.click(button);
+    expect(grantTool.mutate).toHaveBeenCalledWith({
+      id: 's1',
+      tool: 'list_checks',
+      writes: true,
+      sealed: true,
+    });
   });
 
   it('reports a never-probed server as never called, not as healthy', () => {

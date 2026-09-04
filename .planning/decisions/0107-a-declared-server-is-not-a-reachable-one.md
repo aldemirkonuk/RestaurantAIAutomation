@@ -353,3 +353,158 @@ authenticated manager, recorded with their id — not cryptographic proof that t
 hold-to-approve gesture happened. What holds is the grant plus the role; the
 seal is the third lock. ADR 0114 states the limitation and what closing it would
 cost.
+
+---
+
+## Addendum — 2026-09-04: who classifies a tool as a write
+
+The 2026-09-03 addendum above shipped the gate and left one question inside it
+unanswered. `mcp_tool_grants.writes` had no default and no source: a manager was
+asked "does this tool commit the house?" about a tool they had never seen, and
+whatever they answered was frozen. The server had already said something about
+that tool and the row did not record it — so nothing could be checked, and a
+server that CHANGED its own declaration changed nothing on our side. A tool
+approved as a read on Tuesday could be a write on Wednesday and the gate would
+have gone on calling it a read.
+
+**The founder's rule (2026-09-04), in words:**
+
+> *Server-declared, manager-confirmed, re-consent on change.*
+>
+> A tool's own annotation is the DEFAULT classification. The granting manager
+> confirms each grant while seeing that default. An UNKNOWN annotation counts as
+> a write. A changed tool list — a tool added, removed, or its annotation
+> changed — REVOKES the affected grants until they are consented to again.
+
+**Where the default comes from.** MCP tools may carry `annotations`
+(`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) on the
+`tools/list` result —
+<https://modelcontextprotocol.io/specification/2025-06-18/server/tools>, §Data
+Types → Tool. The runtime now stores them tri-state per tool
+(`mcp-runtime.types.ts`, `McpToolAnnotations`): a hint the server omitted is
+`null`, not the spec's default, because "it said no" and "it said nothing" are
+different facts even where they carry the same permission.
+
+**Why silence is a write.** Two independent reasons, either sufficient. The
+protocol's own defaults say so — `readOnlyHint` defaults to `false` and
+`destructiveHint` to `true` (`schema/2025-06-18/schema.ts:881-923`), so an
+unannotated tool is by the protocol's reading possibly destructive. And the same
+spec section requires that a client *"MUST consider tool annotations to be
+untrusted unless they come from trusted servers"* — which is exactly why the
+annotation is a default a person confirms and never the decision itself. This is
+the absence-reported-as-health fault at its most expensive: the tool nobody
+classified is the one that spends money.
+
+**The asymmetry that makes it safe.** A manager may tighten — a declared read
+granted as a write, recorded as `classification_source = 'manager_override'`
+with `granted_by` as the actor. A manager may never loosen: a declared write, an
+unannotated tool, or a tool the server has not listed cannot be granted as a
+read. The refusal is a 400 in
+`McpConnectionsService.grantTool`, the rule is a pure function in
+`mcp-runtime/tool-classification.ts`, and the same rule is a CHECK constraint
+(`chk_mcp_tool_grants_no_downgrade`) so a row that violates it cannot be written
+at all. The gate applies it a third time on read, so such a row would be
+unusable even if one existed.
+
+**What a changed declaration does.** Every `tools/list` refresh runs through
+`McpConnectionsService.reconcileGrants`, called from the one place a fresh list
+is stored. A granted tool the server no longer lists is REVOKED — there is no
+declaration left to consent to. A granted tool whose annotations moved is
+SUSPENDED: `needs_reconsent_at` plus a reason in words ("the server changed
+readOnlyHint true to false"), which the gate quotes when it refuses the call and
+the page prints on the row. Only a manager granting it again, behind the seal,
+clears it — a server cannot clear its own suspension by reverting. An added tool
+suspends nothing, because nothing was granted for it.
+
+**And what a failed probe does: nothing.** `reconcileGrants` returns
+immediately when the probe produced no tool list. Revoking grants because a
+server was briefly unreachable would convert an outage into a permission change
+and would read, afterwards, as though the server had withdrawn the tools. A
+probe that failed is not evidence about a tool list.
+
+**Storage** — `supabase/migrations/20260904160000_the_server_declares_the_manager_confirms.sql`:
+`declared_read`, `declared_annotations`, `tool_fingerprint` (name + the four
+hints; deliberately not the description, so a reworded help text does not train
+people to click through the re-consent that matters), `tool_list_hash` (the
+whole list at grant time, as an audit fact), `classification_source`,
+`needs_reconsent_at`, `needs_reconsent_reason`. RLS unchanged.
+
+**What this addendum still does not claim.** The seal is unchanged and so is its
+limitation: `sealed: true` is an authenticated manager's assertion, logged with
+their id, not proof of the gesture. And an annotation remains the server's own
+word about itself — the mechanism here makes that word visible, checkable and
+re-confirmable; it does not make it true.
+
+---
+
+## Addendum — 2026-09-04 (second): the seal on a tool write is redeemed, not asserted
+
+ADR 0114 named this limitation itself, in its own words: `sealed: true` was *"an
+assertion by an authenticated manager, recorded with their id — not a
+cryptographic proof of the gesture"*. The consequence was that the claim and the
+thing it claimed about travelled in the same request, so anything holding a
+manager's session could buy wine by setting a boolean. The hold-to-approve
+gesture happened in a browser and left nothing a server could check.
+
+**The founder's rule (2026-09-04):**
+
+> The seal on a TOOL WRITE (and, later, anything that spends money) is
+> PROVABLE — challenge-and-redeem. When the hold begins, the gateway issues a
+> one-time, short-lived challenge token bound to the actor, the connection, the
+> tool and the argument hash; the write must carry that token and the gateway
+> redeems it exactly once. A replay, a different actor, a different tool or an
+> expired token is refused in words and filed. Ordinary sealed settings keep the
+> assertion model.
+
+**Shape.** `POST /mcp-connections/:id/tools/:tool/seal-challenge` mints one token
+and returns it once; the token is never stored, only its sha256
+(`mcp_seal_challenges.token_hash`). `POST …/call` carries it as `challenge` and
+`McpConnectionsService.redeemSeal` spends it. The binding is four-way — actor,
+connection, tool, `args_hash` — and the argument hash is what closes the
+substitution the assertion model could not see: a seal minted for six bottles
+cannot be spent on six hundred. Arguments are canonicalised by sorting keys at
+every level, so re-serialising the same call is not a different call; nothing
+else is coerced, because deciding that `"6"` and `6` are the same argument is
+the kind of helpfulness that ends in an order for six hundred.
+
+**Exactly once is the database's property, not the code path's.** The redeeming
+UPDATE carries `redeemed_at IS NULL` in its own filter and asserts that it
+touched a row; two requests racing the same token cannot both find it unspent.
+The token hash is uniquely indexed, redeemed rows included, so a spent hash stays
+unusable.
+
+**Every refusal is filed before it is thrown.** `redeemSeal` writes a
+`mcp_tool_calls` row with `outcome: 'refused'` and the sentence, then raises. A
+refused seal is precisely the event an incident review is opened for, and a log
+that held only the calls that went through would omit it — which is the
+absence-reported-as-health fault pointed at forensics.
+
+**The log now distinguishes proven from asserted.** `mcp_tool_calls.seal_proof`
+is `'proven'` (a challenge was redeemed for exactly that call), `'asserted'`
+(claimed and unchecked — every row written before this migration, backfilled as
+such) or null (not a sealed call). `/connections` prints it per tool: *"last
+seal: proven"*, *"last seal: asserted, never checked"*, or *"never called behind
+a seal"*. Relabelling history as proven would have made the log certify a
+guarantee it never had.
+
+**The control.** `components/mudavym/HoldToApprove.tsx` takes an optional
+`onChallenge` that is called when the gesture BEGINS — not at approval, because
+a token fetched at the moment of approval is the assertion model with extra
+steps — and passes the token to `onApprove`. If the mint fails, the control does
+NOT approve: it says *"The seal could not be issued — nothing sent."* Approving
+without the token would be this same hole arriving through the UI.
+`HoldToApprove.test.tsx` pins both.
+
+**What is NOT built, and is not pretended.** No surface passes `onChallenge`
+yet, because `/connections` still has no control that calls a tool — that is
+roadmap item 1 on `connections.md` and it was out of scope here. The gateway
+half is complete and specced; the browser half is a prop nobody has wired.
+Ordinary sealed settings keep the assertion model, by the founder's own scoping.
+
+**And what a proven seal still does not prove.** That a human held the button.
+It proves that whoever made the write had first obtained a token issued to that
+actor for that exact call and had not spent it — which defeats replay,
+substitution, a stolen `sealed: true`, and a token gone stale. Software driving
+that manager's session could still perform both halves. Closing THAT would need
+a signature from something the session does not hold, and that is a decision
+about hardware and enrolment, not a migration.

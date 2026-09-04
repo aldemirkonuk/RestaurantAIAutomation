@@ -14,8 +14,23 @@ import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
 import { McpSecretService } from "../mcp-runtime/mcp-secret.service";
 import type {
   McpProbeStatus,
+  McpToolAnnotations,
   McpToolSummary,
 } from "../mcp-runtime/mcp-runtime.types";
+import {
+  SEAL_TTL_MS,
+  digestsMatch,
+  hashCallArgs,
+  hashSealToken,
+  newSealToken,
+} from "../mcp-runtime/seal-challenge";
+import {
+  confirmClassification,
+  declaredClassification,
+  describeAnnotationChange,
+  fingerprintTool,
+  fingerprintToolList,
+} from "../mcp-runtime/tool-classification";
 import {
   CreateMcpConnectionDto,
   McpConnectionResponse,
@@ -98,8 +113,14 @@ const CONSENT_COLUMNS =
   "connection_id, user_id, consented_at, withdrawn_at, house_revoked_at, " +
   "house_revoked_by";
 
+const SEAL_COLUMNS =
+  "id, connection_id, actor_user_id, tool_name, args_hash, token_hash, " +
+  "issued_at, expires_at, redeemed_at";
+
 const GRANT_COLUMNS =
-  "connection_id, tool_name, writes, granted_by, granted_at, revoked_at";
+  "id, connection_id, tool_name, writes, granted_by, granted_at, revoked_at, " +
+  "declared_read, declared_annotations, tool_fingerprint, tool_list_hash, " +
+  "classification_source, needs_reconsent_at, needs_reconsent_reason";
 
 /** One consent, with both withdrawal axes kept apart. */
 interface ConsentRow {
@@ -243,10 +264,11 @@ export class McpConnectionsService {
     if (rows.length === 0) return [];
 
     const ids = rows.map((r) => String(r.id));
-    const [consents, grants, names] = await Promise.all([
+    const [consents, grants, names, seals] = await Promise.all([
       this.consentsFor(ids),
       this.grantsFor(ids),
       this.namesFor(rows),
+      this.lastSealsFor(ids),
     ]);
 
     return rows.map((r) => {
@@ -264,6 +286,10 @@ export class McpConnectionsService {
         toolGrants: (grants.get(id) ?? []).map((g) => ({
           ...g,
           grantedByName: names.get(g.grantedBy ?? "") ?? null,
+          // What the LAST sealed call on this tool was worth. Null when no
+          // sealed call has ever been made, which is not the same as one that
+          // was made and unproven.
+          lastSeal: seals.get(`${id}:${g.toolName.trim().toLowerCase()}`) ?? null,
         })),
       });
     });
@@ -564,16 +590,56 @@ export class McpConnectionsService {
 
   /* ── tool grants: a manager grants one tool, by name ────────────────── */
 
+  /**
+   * Grant one tool by name, against what the SERVER currently declares about it.
+   *
+   * "Server-declared, manager-confirmed, re-consent on change" (founder,
+   * 2026-09-04). Three things happen here and none of them is optional:
+   *
+   *   1. The server's own `annotations` from the LAST PROBE are read and turned
+   *      into a default classification. An unknown annotation is a write —
+   *      `tool-classification.ts` carries the two independent reasons.
+   *   2. The manager's answer is applied to that default. Tightening is
+   *      allowed; loosening is refused in words, not warned about.
+   *   3. The declaration is STORED on the grant — the annotation itself, its
+   *      fingerprint, and a hash of the whole list — so a later probe can tell
+   *      that the ground moved.
+   *
+   * This is also the re-consent path. Granting a tool that is currently
+   * suspended clears the suspension, and because clearing it re-enables a call
+   * that was refused, it must arrive sealed.
+   */
   async grantTool(
     restaurantId: string,
     grantedBy: string,
     id: string,
     toolName: string,
     writes: boolean,
+    sealed: boolean,
   ): Promise<McpConnectionResponse> {
     const row = await this.liveRow(restaurantId, id);
     const name = toolName.trim();
     if (!name) throw new BadRequestException("A tool grant needs a tool name");
+
+    const listed =
+      row.probeTools?.find(
+        (t) => t.name.trim().toLowerCase() === name.toLowerCase(),
+      ) ?? null;
+
+    const declared = declaredClassification(listed);
+    const confirmed = confirmClassification(declared, writes);
+    if (!confirmed.ok) {
+      // 400, not 403: the request is not refused for who is asking, it is
+      // refused because what it asks for cannot be true.
+      throw new BadRequestException(confirmed.refusal);
+    }
+
+    const existing = await this.liveGrantRow(row.id, name);
+    if (existing?.needs_reconsent_at && !sealed) {
+      throw new ForbiddenException(
+        `"${name}" is suspended because ${String(existing.needs_reconsent_reason ?? "its declaration changed")}. Re-consenting restores a call that is currently refused, so it runs only behind the seal.`,
+      );
+    }
 
     // Revoke-then-insert rather than upsert: the partial unique index is
     // `WHERE revoked_at IS NULL`, so a revoked grant and a live one for the
@@ -586,8 +652,20 @@ export class McpConnectionsService {
       .insert({
         connection_id: row.id,
         tool_name: name,
-        writes,
+        writes: confirmed.writes,
         granted_by: grantedBy,
+        // What the server said, at the moment a person agreed to it.
+        declared_read: listed ? declared.declaredRead : null,
+        declared_annotations: listed?.annotations ?? null,
+        tool_fingerprint: listed ? fingerprintTool(listed) : null,
+        tool_list_hash: row.probeTools
+          ? fingerprintToolList(row.probeTools)
+          : null,
+        classification_source: confirmed.source,
+        // A fresh grant is never suspended: it was just consented to against
+        // the declaration standing right now.
+        needs_reconsent_at: null,
+        needs_reconsent_reason: null,
       });
 
     if (error) {
@@ -598,6 +676,125 @@ export class McpConnectionsService {
     }
 
     return this.reread(restaurantId, grantedBy, id);
+  }
+
+  /** The live grant for one tool, or null. Used to see whether it is suspended. */
+  private async liveGrantRow(
+    connectionId: string,
+    toolName: string,
+  ): Promise<Record<string, unknown> | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("mcp_tool_grants")
+      .select(GRANT_COLUMNS)
+      .eq("connection_id", connectionId)
+      .ilike("tool_name", toolName)
+      .is("revoked_at", null)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The tool grants for this server could not be read: ${error.message}`,
+      );
+    }
+    return (data as Record<string, unknown> | null) ?? null;
+  }
+
+  /**
+   * Compare every live grant against a FRESH tool list, and suspend or revoke
+   * the ones the server has moved out from under.
+   *
+   * Called from one place — `writeProbe`, the single point a new `tools/list`
+   * lands — so there is no path by which a refreshed list is stored without
+   * this having run.
+   *
+   * THE ONE THING IT DOES NOT DO IS ACT ON SILENCE. `tools` is null for every
+   * probe that did not complete: unreachable, refused, protocol error,
+   * unconfigured. Revoking grants because a server was briefly down would
+   * convert an outage into a permission change, and would read afterwards as
+   * though the server had removed the tools. A probe that failed is not
+   * evidence about a tool list.
+   *
+   * A grant already suspended is left as it is, even if the declaration has
+   * since reverted. Only a manager re-granting it clears the flag — otherwise a
+   * server that flapped could clear its own suspension.
+   */
+  private async reconcileGrants(
+    connectionId: string,
+    tools: McpToolSummary[] | null,
+  ): Promise<void> {
+    if (tools === null) return;
+
+    const { data, error } = await this.databaseService.supabase
+      .from("mcp_tool_grants")
+      .select(GRANT_COLUMNS)
+      .eq("connection_id", connectionId)
+      .is("revoked_at", null);
+
+    if (error) {
+      // Logged, not raised. The probe itself succeeded and its result is worth
+      // recording; failing the whole call here would lose the evidence AND
+      // leave the grants unreconciled.
+      this.logger.error(
+        `MCP grants could not be reconciled after a probe: ${error.message}`,
+      );
+      return;
+    }
+
+    const byName = new Map(
+      tools.map((t) => [t.name.trim().toLowerCase(), t] as const),
+    );
+    const now = new Date().toISOString();
+
+    for (const raw of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const grant = raw;
+      const name = String(grant.tool_name);
+      const current = byName.get(name.trim().toLowerCase()) ?? null;
+
+      if (!current) {
+        // Removed. Revoked, not suspended: there is no declaration left to
+        // re-consent to, and a grant naming a tool the server no longer offers
+        // is a permission with no subject.
+        const { error: revokeError } = await this.databaseService.supabase
+          .from("mcp_tool_grants")
+          .update({
+            revoked_at: now,
+            needs_reconsent_at: now,
+            needs_reconsent_reason: `The server no longer lists "${name}", so the grant was revoked. Granting it again is only possible if the server offers it again.`,
+          })
+          .eq("id", String(grant.id));
+        if (revokeError) {
+          this.logger.error(
+            `A removed MCP tool kept its grant (${name}): ${revokeError.message}`,
+          );
+        }
+        continue;
+      }
+
+      if (grant.needs_reconsent_at) continue;
+
+      const fingerprint = fingerprintTool(current);
+      if (grant.tool_fingerprint === fingerprint) continue;
+
+      const granted = (grant.declared_annotations ??
+        null) as McpToolAnnotations | null;
+      const change =
+        describeAnnotationChange(granted, current.annotations) ??
+        (grant.tool_fingerprint
+          ? "the server's declaration for it changed"
+          : "it was granted before the server's declaration was recorded");
+
+      const { error: suspendError } = await this.databaseService.supabase
+        .from("mcp_tool_grants")
+        .update({
+          needs_reconsent_at: now,
+          needs_reconsent_reason: change,
+        })
+        .eq("id", String(grant.id));
+      if (suspendError) {
+        this.logger.error(
+          `A changed MCP tool was not suspended (${name}): ${suspendError.message}`,
+        );
+      }
+    }
   }
 
   async revokeTool(
@@ -634,7 +831,9 @@ export class McpConnectionsService {
     connectionId: string,
     toolName: string,
     sealed: boolean,
-  ): Promise<{ writes: boolean }> {
+    challenge: string | null,
+    args: Record<string, unknown>,
+  ): Promise<{ writes: boolean; sealProof: "proven" | "asserted" | null }> {
     const { data: consent, error: consentError } =
       await this.databaseService.supabase
         .from("mcp_connection_consents")
@@ -682,8 +881,27 @@ export class McpConnectionsService {
       );
     }
 
-    const writes = (grant as Record<string, unknown>).writes === true;
-    if (!writes) return { writes };
+    const grantRow = grant as unknown as Record<string, unknown>;
+
+    // A grant whose declaration moved is not a grant. It is refused BEFORE the
+    // read/write split, because a tool that was a read when it was granted and
+    // is a write now would otherwise sail through the read path — which is the
+    // exact failure this whole mechanism exists to prevent.
+    if (grantRow.needs_reconsent_at) {
+      throw new ForbiddenException(
+        `"${toolName}" needs re-consent before it runs again: ${String(
+          grantRow.needs_reconsent_reason ?? "its declaration changed",
+        )}. A manager grants it again on /connections, behind the seal.`,
+      );
+    }
+
+    // The stored classification, and a second belt on the same trousers: a row
+    // that claims to be a read without the server having declared it read-only
+    // is treated as a write whatever the column says. The table's CHECK makes
+    // such a row unwritable; this makes it unusable if one ever exists.
+    const writes =
+      grantRow.writes === true || grantRow.declared_read !== true;
+    if (!writes) return { writes, sealProof: null };
 
     // A write is a manager's act and it carries the seal. Both, not either:
     // the role says who may commit the house, the seal says they meant to.
@@ -697,7 +915,197 @@ export class McpConnectionsService {
         `"${toolName}" is granted as a write, so it runs only behind the seal. Hold the seal on the row and the call is made from there.`,
       );
     }
-    return { writes };
+
+    // And the seal must be REDEEMED, not asserted (founder, 2026-09-04). This
+    // is the line ADR 0114 named as its own limitation: until here, `sealed:
+    // true` was a claim in the same request as the thing it claimed about.
+    await this.redeemSeal(connectionId, userId, toolName, args, challenge);
+    return { writes, sealProof: "proven" };
+  }
+
+  /**
+   * Mint one challenge for one hold.
+   *
+   * Issued only for a tool that is actually granted as a write and not
+   * suspended — a challenge for a call the gate would refuse anyway would be a
+   * seal a manager could hold and then be told meant nothing, which teaches
+   * people that the seal is decoration.
+   *
+   * The token is returned HERE and nowhere else. What is stored is its hash.
+   */
+  async issueSealChallenge(
+    restaurantId: string,
+    userId: string,
+    id: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<{ challenge: string; expiresAt: string; toolName: string }> {
+    const row = await this.liveRow(restaurantId, id);
+    const name = toolName.trim();
+    const grant = await this.liveGrantRow(row.id, name);
+
+    if (!grant) {
+      throw new ForbiddenException(
+        `"${name}" is not granted on this server, so there is nothing to seal.`,
+      );
+    }
+    if (grant.needs_reconsent_at) {
+      throw new ForbiddenException(
+        `"${name}" needs re-consent before it runs again: ${String(
+          grant.needs_reconsent_reason ?? "its declaration changed",
+        )}. A seal cannot be issued for a call that is refused for another reason.`,
+      );
+    }
+    if (grant.writes !== true && grant.declared_read === true) {
+      throw new BadRequestException(
+        `"${name}" is granted as a read, and a read does not run behind the seal. Call it directly.`,
+      );
+    }
+
+    // The role is checked at the moment the seal is issued AND again when it is
+    // redeemed. A manager demoted between the two must not be able to spend a
+    // token they were legitimately given.
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      `seal a call to "${name}"`,
+    );
+
+    const token = newSealToken();
+    const expiresAt = new Date(Date.now() + SEAL_TTL_MS).toISOString();
+
+    const { error } = await this.databaseService.supabase
+      .from("mcp_seal_challenges")
+      .insert({
+        connection_id: row.id,
+        actor_user_id: userId,
+        tool_name: name,
+        args_hash: hashCallArgs(args),
+        token_hash: hashSealToken(token),
+        expires_at: expiresAt,
+      });
+
+    if (error) {
+      this.logger.error(`Failed to issue a seal challenge: ${error.message}`);
+      throw new InternalServerErrorException(
+        `The seal was not issued, so nothing can be approved with it: ${error.message}`,
+      );
+    }
+
+    return { challenge: token, expiresAt, toolName: name };
+  }
+
+  /**
+   * Spend one challenge, exactly once, for exactly this call.
+   *
+   * Five refusals and each names the thing that did not match, because "invalid
+   * token" is the message that makes an operator retry the same broken thing.
+   * Every one of them is FILED in `mcp_tool_calls` before it throws: a refused
+   * seal is precisely the event an incident review is opened for, and a log
+   * that holds only the calls that went through would omit it.
+   *
+   * Single use is a property of the UPDATE, not of this method: the redeeming
+   * statement carries `redeemed_at IS NULL` in its own filter, so two requests
+   * racing the same token cannot both find it unspent.
+   */
+  private async redeemSeal(
+    connectionId: string,
+    userId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    challenge: string | null,
+  ): Promise<void> {
+    const refuse = async (detail: string): Promise<never> => {
+      await this.recordCall(connectionId, userId, toolName, true, true, {
+        outcome: "refused",
+        detail,
+        sealProof: "asserted",
+      });
+      throw new ForbiddenException(detail);
+    };
+
+    if (!challenge) {
+      return refuse(
+        `"${toolName}" is a write, and a write's seal must be proven rather than asserted. Begin the hold on the row: it issues a one-time seal that this call has to carry.`,
+      );
+    }
+
+    const { data, error } = await this.databaseService.supabase
+      .from("mcp_seal_challenges")
+      .select(SEAL_COLUMNS)
+      .eq("token_hash", hashSealToken(challenge))
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `The seal could not be checked, so nothing was called: ${error.message}`,
+      );
+    }
+    const seal = (data as Record<string, unknown> | null) ?? null;
+    if (!seal) {
+      return refuse(
+        "That seal is not one this house issued, so the call was refused. Begin the hold again.",
+      );
+    }
+    if (!digestsMatch(String(seal.token_hash), hashSealToken(challenge))) {
+      // Unreachable through the lookup above, and kept because the lookup is
+      // one `.eq()` away from being changed to something looser.
+      return refuse("That seal did not match, so the call was refused.");
+    }
+    if (seal.redeemed_at) {
+      return refuse(
+        "That seal has already been spent. A seal is good for exactly one call, so a repeat of an approved order is a second approval, not a retry.",
+      );
+    }
+    if (String(seal.actor_user_id) !== userId) {
+      return refuse(
+        "That seal was issued to somebody else. A seal is one person's approval and cannot be spent by another.",
+      );
+    }
+    if (String(seal.connection_id) !== connectionId) {
+      return refuse(
+        "That seal was issued for a different server, so the call was refused.",
+      );
+    }
+    if (
+      String(seal.tool_name).trim().toLowerCase() !==
+      toolName.trim().toLowerCase()
+    ) {
+      return refuse(
+        `That seal was issued for "${String(seal.tool_name)}", not for "${toolName}". A seal approves one call, not a session.`,
+      );
+    }
+    if (String(seal.args_hash) !== hashCallArgs(args)) {
+      return refuse(
+        "The arguments changed after the seal was issued, so the call was refused. What was approved and what was sent have to be the same thing.",
+      );
+    }
+    if (new Date(String(seal.expires_at)).getTime() <= Date.now()) {
+      return refuse(
+        "That seal has expired. Hold it again — a seal is short-lived on purpose, so one left open cannot be spent later.",
+      );
+    }
+
+    // The redemption itself. `redeemed_at IS NULL` in the filter is what makes
+    // "exactly once" true under concurrency; an empty result means somebody
+    // else spent it between the read above and this write.
+    const { data: spent, error: spendError } = await this.databaseService.supabase
+      .from("mcp_seal_challenges")
+      .update({ redeemed_at: new Date().toISOString() })
+      .eq("id", String(seal.id))
+      .is("redeemed_at", null)
+      .select("id");
+
+    if (spendError) {
+      throw new InternalServerErrorException(
+        `The seal could not be redeemed, so nothing was called: ${spendError.message}`,
+      );
+    }
+    if ((spent ?? []).length === 0) {
+      return refuse(
+        "That seal was spent by another request a moment ago, so this one was refused. Exactly one call runs per seal.",
+      );
+    }
   }
 
   /**
@@ -714,14 +1122,17 @@ export class McpConnectionsService {
     toolName: string,
     args: Record<string, unknown>,
     sealed: boolean,
+    challenge: string | null = null,
   ): Promise<McpToolCallResponse> {
     const row = await this.liveRowWithSecret(restaurantId, id);
-    const { writes } = await this.assertCallable(
+    const { writes, sealProof } = await this.assertCallable(
       restaurantId,
       userId,
       row.id,
       toolName,
       sealed,
+      challenge,
+      args,
     );
 
     const opened = this.secrets.open(row.secret);
@@ -732,6 +1143,7 @@ export class McpConnectionsService {
       await this.recordCall(row.id, userId, toolName, writes, sealed, {
         outcome: "unconfigured",
         detail,
+        sealProof,
       });
       throw new ServiceUnavailableException(detail);
     }
@@ -746,6 +1158,7 @@ export class McpConnectionsService {
     await this.recordCall(row.id, userId, toolName, writes, sealed, {
       outcome: outcome.status,
       detail: outcome.detail,
+      sealProof,
     });
 
     // Only a call the server ANSWERED moves the last-answered stamp. A refused
@@ -763,6 +1176,8 @@ export class McpConnectionsService {
       toolName,
       writes,
       sealed,
+      // What the seal was WORTH on this call, not merely that it was claimed.
+      sealProof,
       status: outcome.status,
       detail: outcome.detail,
       calledAt: outcome.calledAt,
@@ -794,10 +1209,10 @@ export class McpConnectionsService {
   private async liveRow(
     restaurantId: string,
     id: string,
-  ): Promise<{ id: string; url: string }> {
+  ): Promise<{ id: string; url: string; probeTools: McpToolSummary[] | null }> {
     const { data, error } = await this.databaseService.supabase
       .from("restaurant_mcp_connections")
-      .select("id, url, revoked_at")
+      .select("id, url, revoked_at, probe_tools")
       .eq("id", id)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -818,7 +1233,16 @@ export class McpConnectionsService {
         "This server is revoked. Declare it again to use it.",
       );
     }
-    return { id: String(record.id), url: String(record.url) };
+    return {
+      id: String(record.id),
+      url: String(record.url),
+      // Null when this server has never been probed — which is a different fact
+      // from "it answered and listed nothing", and the classification treats
+      // both as "nothing declared" while the message says which one it saw.
+      probeTools: Array.isArray(record.probe_tools)
+        ? (record.probe_tools as McpToolSummary[])
+        : null,
+    };
   }
 
   /**
@@ -887,7 +1311,13 @@ export class McpConnectionsService {
     toolName: string,
     writes: boolean,
     sealed: boolean,
-    result: { outcome: string; detail: string },
+    result: {
+      outcome: string;
+      detail: string;
+      /** 'proven' = a challenge was redeemed for THIS call. 'asserted' = the
+       *  caller claimed it and nothing checked. Null on an unsealed call. */
+      sealProof?: "proven" | "asserted" | null;
+    },
   ): Promise<void> {
     const { error } = await this.databaseService.supabase
       .from("mcp_tool_calls")
@@ -899,6 +1329,7 @@ export class McpConnectionsService {
         sealed,
         outcome: result.outcome,
         detail: result.detail,
+        seal_proof: result.sealProof ?? null,
       });
     if (error) {
       // Logged, not raised. The call already happened; failing the response
@@ -941,12 +1372,53 @@ export class McpConnectionsService {
     return out;
   }
 
+  /**
+   * The proof level of the most recent SEALED call, per (connection, tool).
+   *
+   * Read for the register so a row can say "sealed: proven" or "sealed:
+   * asserted" rather than only "sealed", which was true of both and told a
+   * reader nothing about which. A tool with no sealed call at all gets no
+   * entry, and the page prints that as its own state — never as "asserted",
+   * which would be a claim about a call nobody made.
+   *
+   * A failure here is logged and returns an EMPTY map, so the register still
+   * renders; the page then shows the absence rather than a proof level nobody
+   * read.
+   */
+  private async lastSealsFor(
+    ids: string[],
+  ): Promise<Map<string, "proven" | "asserted">> {
+    const out = new Map<string, "proven" | "asserted">();
+    const { data, error } = await this.databaseService.supabase
+      .from("mcp_tool_calls")
+      .select("connection_id, tool_name, seal_proof, called_at")
+      .in("connection_id", ids)
+      .eq("sealed", true)
+      .order("called_at", { ascending: false });
+
+    if (error) {
+      this.logger.error(
+        `The seal history could not be read for the register: ${error.message}`,
+      );
+      return out;
+    }
+
+    // Newest first, so the FIRST row seen for a key is the latest one.
+    for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const key = `${String(r.connection_id)}:${String(r.tool_name).trim().toLowerCase()}`;
+      if (out.has(key)) continue;
+      const proof = r.seal_proof === "proven" ? "proven" : "asserted";
+      out.set(key, proof);
+    }
+    return out;
+  }
+
   private async grantsFor(
     ids: string[],
-  ): Promise<Map<string, Omit<McpToolGrantRecord, "grantedByName">[]>> {
+  ): Promise<Map<string, Omit<McpToolGrantRecord, "grantedByName" | "lastSeal">[]>> {
     const out = new Map<
       string,
-      Omit<McpToolGrantRecord, "grantedByName">[]
+      Omit<McpToolGrantRecord, "grantedByName" | "lastSeal">[]
     >();
     const { data, error } = await this.databaseService.supabase
       .from("mcp_tool_grants")
@@ -967,6 +1439,22 @@ export class McpConnectionsService {
         writes: r.writes === true,
         grantedBy: (r.granted_by as string | null) ?? null,
         grantedAt: String(r.granted_at),
+        // What the SERVER said, kept tri-state: true, false, or "it said
+        // nothing". The register shows the difference because "declared a
+        // write" and "declared nothing" are the same permission and not the
+        // same fact.
+        declaredRead:
+          typeof r.declared_read === "boolean" ? r.declared_read : null,
+        declaredAnnotations:
+          (r.declared_annotations as McpToolAnnotations | null) ?? null,
+        classificationSource:
+          r.classification_source === "manager_override"
+            ? "manager_override"
+            : "declared",
+        needsReconsentAt: (r.needs_reconsent_at as string | null) ?? null,
+        needsReconsentReason:
+          (r.needs_reconsent_reason as string | null) ?? null,
+        toolListHash: (r.tool_list_hash as string | null) ?? null,
       });
       out.set(key, list);
     }
@@ -1014,10 +1502,11 @@ export class McpConnectionsService {
     viewerUserId: string,
   ): Promise<McpConnectionResponse> {
     const id = String(row.id);
-    const [consents, grants, names] = await Promise.all([
+    const [consents, grants, names, seals] = await Promise.all([
       this.consentsFor([id]),
       this.grantsFor([id]),
       this.namesFor([row]),
+      this.lastSealsFor([id]),
     ]);
     const forRow = consents.get(id) ?? [];
     const mine = forRow.find(
@@ -1033,6 +1522,7 @@ export class McpConnectionsService {
       toolGrants: (grants.get(id) ?? []).map((g) => ({
         ...g,
         grantedByName: names.get(g.grantedBy ?? "") ?? null,
+        lastSeal: seals.get(`${id}:${g.toolName.trim().toLowerCase()}`) ?? null,
       })),
     });
   }
@@ -1086,6 +1576,10 @@ export class McpConnectionsService {
     // probe leaves the previous answer where it was, so the row keeps saying
     // "it last worked on the 3rd" instead of quietly refreshing to now.
     if (outcome.answeredAt) patch.last_used_at = outcome.answeredAt;
+
+    // Before the row is re-read for the response, so what the page renders is
+    // the reconciled state and not the one that was true a moment ago.
+    await this.reconcileGrants(id, outcome.tools);
 
     const { data, error } = await this.databaseService.supabase
       .from("restaurant_mcp_connections")

@@ -253,7 +253,66 @@ describe("McpRuntimeService.probe — the happy handshake", () => {
       name: "stock_on_hand",
       title: "Stock on hand",
       description: "What the cellar holds right now",
+      // Null, not an object of nulls: this server sent no `annotations` at all,
+      // and "it said nothing" is a different fact from "it sent annotations and
+      // filled none of them in". Both classify as a write; only one of them is
+      // the server having been asked.
+      annotations: null,
     });
+  });
+
+  it("keeps the server's annotations tri-state, and refuses to coerce one", async () => {
+    stub = await startStub((req, res, body) => {
+      const method = (body as { method?: string })?.method;
+      const id = (body as { id?: number })?.id;
+      if (method === "initialize") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "mcp-session-id": "sess-annot",
+        });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id, result: INIT_RESULT }));
+        return;
+      }
+      if (method === "notifications/initialized") {
+        res.writeHead(202).end();
+        return;
+      }
+      if (method === "tools/list") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              tools: [
+                {
+                  name: "read_only",
+                  annotations: { readOnlyHint: true, openWorldHint: false },
+                },
+                { name: "half_stated", annotations: { destructiveHint: true } },
+                // A hint that is not a boolean. The protocol asks a yes/no
+                // question and this is not an answer to it — reading the string
+                // as truthy would turn a malformed declaration into a
+                // permission.
+                { name: "malformed", annotations: { readOnlyHint: "true" } },
+              ],
+            },
+          }),
+        );
+        return;
+      }
+      res.writeHead(400).end();
+    });
+
+    const outcome = await runtime().probe(stub.url, null);
+    expect(outcome.tools?.[0].annotations).toEqual({
+      readOnlyHint: true,
+      destructiveHint: null,
+      idempotentHint: null,
+      openWorldHint: false,
+    });
+    expect(outcome.tools?.[1].annotations?.readOnlyHint).toBeNull();
+    expect(outcome.tools?.[2].annotations?.readOnlyHint).toBeNull();
   });
 });
 

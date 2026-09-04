@@ -44,6 +44,8 @@ export interface RowControl {
   disabled?: boolean;
   seal?: boolean;
   busy?: boolean;
+  /** Lets a long label wrap instead of being clipped. See `.cx-btn.is-reconsent`. */
+  wrap?: boolean;
 }
 
 export interface AttachmentRowProps {
@@ -141,7 +143,13 @@ export function AttachmentRow({
           <button
             key={c.label}
             type="button"
-            className={c.seal ? 'cx-btn is-seal' : 'cx-btn'}
+            className={[
+              'cx-btn',
+              c.seal ? 'is-seal' : '',
+              c.wrap ? 'is-reconsent' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             disabled={c.disabled || c.busy}
             onClick={c.onClick}
           >

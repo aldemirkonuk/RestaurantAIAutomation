@@ -33,6 +33,43 @@ export interface McpToolSummary {
   name: string;
   title: string | null;
   description: string | null;
+  /**
+   * The server's OWN `annotations` object, reduced to the four behaviour hints
+   * and kept tri-state. `null` for the whole object means the server sent no
+   * annotations at all; a `null` field means it sent annotations and left that
+   * one out. Those are different facts and the classification treats them the
+   * same way (both are "not declared read-only"), but the register shows which.
+   *
+   * The spec calls these "optional properties describing tool behavior" and
+   * warns, in the same section, that a client "MUST consider tool annotations
+   * to be untrusted unless they come from trusted servers"
+   * (https://modelcontextprotocol.io/specification/2025-06-18/server/tools,
+   * §Data Types → Tool). That warning is the whole reason this field is a
+   * DEFAULT and not a decision: the server declares, the manager confirms.
+   */
+  annotations: McpToolAnnotations | null;
+}
+
+/**
+ * The four behaviour hints of `ToolAnnotations`, tri-state.
+ *
+ * `null` means the server did not send that hint. It is deliberately NOT
+ * folded into the spec's own default at parse time: the spec defaults
+ * `readOnlyHint` to `false` and `destructiveHint` to `true`
+ * (schema/2025-06-18/schema.ts:881-923), and applying a default here would
+ * make "the server said this tool is not read-only" and "the server said
+ * nothing" the same stored value. The classification applies the default; the
+ * storage records what was actually said.
+ */
+export interface McpToolAnnotations {
+  /** Spec default when absent: `false` — i.e. NOT read-only. */
+  readOnlyHint: boolean | null;
+  /** Spec default when absent: `true`. Meaningful only when not read-only. */
+  destructiveHint: boolean | null;
+  /** Spec default when absent: `false`. */
+  idempotentHint: boolean | null;
+  /** Spec default when absent: `true`. */
+  openWorldHint: boolean | null;
 }
 
 export interface McpProbeOutcome {

@@ -74,6 +74,28 @@ the two registers that would actually leak are refused at the gateway as well.
   people have consented, the tools granted by name, and which of those can
   change something outside this app. *(New this pass: consent and per-tool
   grants are real rows in the database.)*
+- **Every tool the server LISTS, with two facts on one line** — what the SERVER
+  declared about it (`annotations.readOnlyHint`, or that it declared nothing)
+  and what this house granted. A listed tool nobody granted is shown as refused
+  rather than omitted: a list of only what is permitted cannot be read as a list
+  of what exists. A manager who classified a declared read as a write is named
+  as overriding the server, so the row never passes a person's judgement off as
+  the server's word.
+- **"Last seal: proven" vs "asserted"** — on every tool granted as a write, what
+  the most recent sealed call was actually worth. A seal is now *redeemed*: the
+  gateway mints a one-time token bound to the manager, the server, the tool and
+  the arguments when the hold begins, and spends it exactly once on the write.
+  A replay, a different actor, a different tool, changed arguments or an expired
+  token is refused in words and filed in the call log. Calls made before
+  2026-09-04 read "asserted, never checked", because they were.
+  *(New this pass; ADR 0107 addendum of 2026-09-04, second.)*
+- **"Needs re-consent: what changed"** — one line per grant the gateway is
+  currently refusing because the server's declaration moved since the grant
+  ("the server changed readOnlyHint true to false"), a warn chip counting them,
+  and a **Re-consent** control behind the seal that re-grants against what the
+  server says *now*. A tool the server has stopped listing is revoked outright,
+  and a probe that FAILED changes nothing — an outage is not a permission
+  change. *(New this pass; ADR 0107 addendum of 2026-09-04.)*
 - **Register II — what the house pays with.** Instruments on file, or the stated
   reason none can exist. *(Empty by construction today: no provider key.)*
 - **Register III — personal grants that act inside this house.** Every OAuth
@@ -294,6 +316,34 @@ written; this line is the correction.
 scoped to the restaurant on the token, two-tenant spec), G20 (no fourth
 catalogue — this page reads the shared route).
 
+**Closed 2026-09-04 — G-C7, who says a tool is a write.** The gap was that
+`mcp_tool_grants.writes` was a manager's answer to a question about a tool they
+had never seen, frozen forever: the server's own `annotations.readOnlyHint` was
+never stored, so nothing could be checked and a server that changed its
+declaration changed nothing here. It is now stored per grant
+(`declared_read`, `declared_annotations`, `tool_fingerprint`, `tool_list_hash`;
+migration `20260904160000_the_server_declares_the_manager_confirms.sql`), the
+declaration is the default a manager confirms, an unknown annotation counts as a
+write, and a moved declaration suspends the grant with the change in words until
+someone re-consents behind the seal. The rule, the spec citation and the two
+independent reasons silence is a write are in the ADR 0107 addendum of
+2026-09-04.
+
+**Closed 2026-09-04 — G-C8, a seal that proved nothing.** ADR 0114 shipped
+`sealed: true` as an assertion and said so; anything holding a manager's session
+could spend the house's money by setting a boolean. It is now challenge and
+redeem, bound four ways and single-use
+(`20260904170000_a_seal_is_redeemed_not_asserted.sql`,
+`mcp-connections.seal-redemption.spec.ts`). What it still does not prove is that
+a human held the button — see the ADR addendum for exactly where that line now
+sits and what moving it would cost.
+
+**Still open here.** An annotation is the server's own word about itself. This
+mechanism makes that word visible, checkable and re-confirmable; it does not
+make it true, and no amount of storage would. A server that lies about
+`readOnlyHint` is refused by nothing but the manager reading the tool's name —
+which is why the override direction is one-way and why the seal stayed.
+
 ## 10. Maturity
 
 **partial.** Every register renders from a real endpoint and every claim on the
@@ -341,7 +391,12 @@ is unread would see the dash only in that cell.
 ## 13. Roadmap
 
 1. **Call a granted tool from the row, behind hold-to-approve.** The gateway
-   gate is built and specced; the page has no call control yet. Blocked on
+   gate is built and specced, and since 2026-09-04 so is the provable seal:
+   `POST :id/tools/:tool/seal-challenge` mints the one-time token and
+   `HoldToApprove` takes an `onChallenge` prop that requests it when the gesture
+   begins. **Nothing on this page passes that prop yet**, because the page still
+   has no control that calls a tool — the browser half of the seal is wired and
+   unused, and is written here rather than implied to be live. Blocked on
    nothing but review of this surface.
 2. **Move Register IV/V/VI off `/profile` entirely**, leaving the pointer.
    Blocked on the founder seeing this page.
@@ -351,9 +406,17 @@ is unread would see the dash only in that cell.
    provider decision — not a page.
 5. **A last-used stamp on OAuth grants** (G-C6), so Register III can say what a
    personal grant actually did here.
-6. **Re-consent when a server's advertised tools change.** A trusted server that
-   starts advertising `place_order` triggers nothing today; the probe already
-   stores the tool list, so the diff is cheap.
+6. ~~**Re-consent when a server's advertised tools change.**~~ **Built
+   2026-09-04.** Every probe reconciles the live grants against the fresh list:
+   a removed tool's grant is revoked, a changed annotation suspends the grant
+   with the change in words, an added tool suspends nothing, and a failed probe
+   changes nothing at all. `McpConnectionsService.reconcileGrants`, specced in
+   `mcp-connections.tool-declaration.spec.ts`.
+6b. **Notify the house when a grant is suspended.** Today the suspension is
+   visible only to whoever next opens `/connections` or next tries the call. The
+   durable-notification funnel exists and this is one `persistForRestaurant`
+   call — held back only because nothing else on this page notifies yet, and one
+   surface that notifies inconsistently is worse than one that does not.
 7. **A house public page** (G-C2), if the founder wants one.
 8. **Retire `/settings`' `services` / `pos` / `email` / `calendar` tabs into
    this page.** Blocked: `settings/next/st-format.ts` belongs to another builder,

@@ -26,7 +26,9 @@ import {
   GrantMcpToolDto,
   McpConnectionResponse,
   McpRuntimeStateResponse,
+  McpSealChallengeResponse,
   McpToolCallResponse,
+  SealChallengeDto,
   SetHouseConsentDto,
   SetMcpConsentDto,
   SetMcpSecretDto,
@@ -275,7 +277,7 @@ export class McpConnectionsController {
   @ApiResponse({
     status: 200,
     description:
-      "The row with the grant on it. `writes` is required: whether a tool commits the house is the granting manager's judgement, and no layer defaults it.",
+      "The row with the grant on it. `writes` is required and is CONFIRMED against the server's own `annotations.readOnlyHint` from the last probe: a manager may classify a declared read as a write, and never a declared write as a read (400 if they try). A tool the server has not listed, or listed without annotations, is a write. Re-granting a tool that is suspended for a changed declaration additionally requires `sealed`.",
   })
   async grantTool(
     @Req() req: Request & { user: AuthenticatedUser },
@@ -287,7 +289,14 @@ export class McpConnectionsController {
       req,
       `grant the tool "${tool}"`,
     );
-    return this.service.grantTool(restaurantId, userId, id, tool, dto.writes);
+    return this.service.grantTool(
+      restaurantId,
+      userId,
+      id,
+      tool,
+      dto.writes,
+      dto.sealed === true,
+    );
   }
 
   @Delete(":id/tools/:tool")
@@ -325,7 +334,7 @@ export class McpConnectionsController {
   @ApiResponse({
     status: 403,
     description:
-      "No consent, no grant for that tool, not a manager for a tool granted as a write, or a write that did not arrive sealed.",
+      "No consent, no grant for that tool, a grant suspended because the server's declaration changed, not a manager for a tool granted as a write, a write that did not arrive sealed, or a seal that could not be REDEEMED — replayed, issued to somebody else, issued for another tool or other arguments, or expired. Every one of those is filed in mcp_tool_calls before it is thrown.",
   })
   async callTool(
     @Req() req: Request & { user: AuthenticatedUser },
@@ -341,6 +350,51 @@ export class McpConnectionsController {
       tool,
       dto.args ?? {},
       dto.sealed === true,
+      dto.challenge ?? null,
+    );
+  }
+
+  /**
+   * Begin a hold: mint the one-time seal this call will have to carry.
+   *
+   * A separate route on purpose. The whole value of challenge-and-redeem is
+   * that the approval and the write are two requests: a single request carrying
+   * its own proof proves nothing, which was exactly ADR 0114's stated
+   * limitation. The token is returned here and nowhere else — no route reads
+   * one back, and the table stores only its hash.
+   *
+   * The arguments are sent WITH the challenge request because the seal is bound
+   * to them: what was approved and what is sent have to be the same call.
+   */
+  @Post(":id/tools/:tool/seal-challenge")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Issue a one-time seal for one write, bound to its arguments" })
+  @ApiResponse({
+    status: 200,
+    description:
+      "The token, once, and when it expires. It is single-use and bound to this manager, this server, this tool and these arguments.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Not a manager, the tool is not granted, or the grant is suspended pending re-consent — a seal is not issued for a call that would be refused for another reason.",
+  })
+  async sealChallenge(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("tool") tool: string,
+    @Body() dto: SealChallengeDto,
+  ): Promise<McpSealChallengeResponse> {
+    const { userId, restaurantId } = await this.manager(
+      req,
+      `seal a call to "${tool}"`,
+    );
+    return this.service.issueSealChallenge(
+      restaurantId,
+      userId,
+      id,
+      tool,
+      dto.args ?? {},
     );
   }
 }

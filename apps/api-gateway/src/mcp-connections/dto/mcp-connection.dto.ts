@@ -13,6 +13,7 @@ import {
 } from "class-validator";
 import type {
   McpProbeStatus,
+  McpToolAnnotations,
   McpToolSummary,
 } from "../../mcp-runtime/mcp-runtime.types";
 
@@ -180,11 +181,46 @@ export interface McpRuntimeStateResponse {
 export interface McpToolGrantRecord {
   toolName: string;
   /**
-   * TRUE means this tool changes the world outside this app. A write runs only
-   * for a manager and only behind the seal; a read runs for anyone who has
-   * consented to the server.
+   * The classification the gate uses. TRUE means this tool changes the world
+   * outside this app: it runs only for a manager and only behind the seal.
+   *
+   * It is the SERVER's declaration unless the granting manager tightened it —
+   * see `classificationSource`. It can never be looser than the declaration.
    */
   writes: boolean;
+  /**
+   * What the server itself declared via `annotations.readOnlyHint` at grant
+   * time. TRUE = it declared the tool read-only. FALSE = it declared otherwise.
+   * NULL = it declared nothing, or had never been probed — which carries the
+   * same permission as FALSE and is a different fact, so the register shows
+   * both.
+   */
+  declaredRead: boolean | null;
+  /** The four hints as the server sent them. Null when it sent none. */
+  declaredAnnotations: McpToolAnnotations | null;
+  /**
+   * 'declared' — the manager accepted the server's classification.
+   * 'manager_override' — the server declared a read and the manager granted it
+   * as a write. The opposite override does not exist.
+   */
+  classificationSource: "declared" | "manager_override";
+  /**
+   * Set when the server's declaration has moved since this grant was made. A
+   * grant with this set is REFUSED at the gate until a manager grants it again.
+   */
+  needsReconsentAt: string | null;
+  /** What changed, in words. Never null when `needsReconsentAt` is set. */
+  needsReconsentReason: string | null;
+  /** The whole tool list as it stood when this was granted. An audit fact. */
+  toolListHash: string | null;
+  /**
+   * What the LAST sealed call on this tool was worth: 'proven' = a one-time
+   * challenge was redeemed for exactly that call; 'asserted' = the caller
+   * claimed the seal and nothing checked it (every call before 2026-09-04).
+   * Null = no sealed call has ever been made, which is a third state and not a
+   * quiet 'asserted'.
+   */
+  lastSeal: "proven" | "asserted" | null;
   grantedBy: string | null;
   grantedByName: string | null;
   grantedAt: string;
@@ -201,6 +237,17 @@ export interface McpToolGrantRecord {
 export class GrantMcpToolDto {
   @IsBoolean()
   writes!: boolean;
+
+  /**
+   * The hold-to-approve assertion, required only when this grant is a
+   * RE-CONSENT — the tool is currently suspended because the server changed its
+   * declaration, and granting it again turns a refused call back on. A first
+   * grant does not need it; the service decides which case this is, so a client
+   * cannot decide it for itself by omitting the field.
+   */
+  @IsOptional()
+  @IsBoolean()
+  sealed?: boolean;
 }
 
 /**
@@ -220,6 +267,42 @@ export class CallMcpToolDto {
   @IsOptional()
   @IsBoolean()
   sealed?: boolean;
+
+  /**
+   * The one-time challenge issued when the hold BEGAN, from
+   * `POST :id/tools/:tool/seal-challenge`.
+   *
+   * Required in practice for every tool granted as a write since 2026-09-04:
+   * the gateway redeems it exactly once and refuses a replay, a different
+   * actor, a different tool, different arguments or an expired token. `sealed`
+   * alone no longer buys a write — which was ADR 0114's stated limitation, now
+   * closed.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  @MaxLength(200)
+  challenge?: string;
+}
+
+/** The arguments a hold is being begun over, so the seal can be bound to them. */
+export class SealChallengeDto {
+  @IsOptional()
+  @IsObject()
+  args?: Record<string, unknown>;
+}
+
+/**
+ * One challenge, returned ONCE.
+ *
+ * The token is never stored in plaintext and never appears on any other
+ * response. A route that could read one back would be a route that hands out
+ * pre-approved purchases.
+ */
+export interface McpSealChallengeResponse {
+  challenge: string;
+  expiresAt: string;
+  toolName: string;
 }
 
 /** Whether the caller agrees this server may act in their name. */
@@ -252,6 +335,8 @@ export interface McpToolCallResponse {
   toolName: string;
   writes: boolean;
   sealed: boolean;
+  /** 'proven' when a challenge was redeemed for this call. Null on a read. */
+  sealProof: "proven" | "asserted" | null;
   status: McpProbeStatus;
   detail: string;
   calledAt: string;
