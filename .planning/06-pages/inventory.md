@@ -44,6 +44,7 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 - Switch branches and see another branch's stock
 - Contextual insights rail (analytics engine)
 - **Receipts & invoices depth in the dropdown, behind `mudavym_design_inventory` (OFF)** — the founder's named gap (MAKEOVER: KEEP the dropdowns, deepen receipt/invoice actions): for the wine's recent orders, every attached invoice / delivery receipt / packing slip with total, tie-out state and review status, E49-honest (null tie-out = dash, never a pass), linking into `/receipts`
+- **The house header, behind the same flag (OFF)** — `/inventory` is enrolled in `PageGate` (2026-09-04) with the SAME command page on both branches, purely so the page gets the chrome every other rebuilt page has: mark, page name, ⌘K "Search or act", house/branch switcher, bell, theme menu, account menu. No redesign, and no style change inside the page (measured — §1b)
 
 ## 1b. Motions used — Mudavym addition (flag `mudavym_design_inventory`)
 
@@ -55,6 +56,47 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 > from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
 > note; its motions live in `components/mudavym/MOTIONS.md`, not the table
 > below.
+>
+> **Enrolment, 2026-09-04 (founder's call).** The paragraph above was written
+> while `/inventory` was still routed OUTSIDE any gate
+> (`App.tsx:303`, `element={<InventoryCommandPage />}`), so no header actually
+> mounted here: the gate is the only thing that mounts `HouseHeader`
+> (`components/mudavym/PageGate.tsx`), and the one page the house runs on all
+> day was the last surface with no bell, no account menu and no theme switch.
+> The route is now
+> `<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />`
+> — the SAME component on both branches. This is not a redesign: the flag's
+> only effect on this route is the chrome.
+>
+> **What the flag does NOT do, measured 2026-09-04.** `PageGate` renders `next`
+> as-is with no wrapper, so the command page gains no `.mudavym` scope and no
+> ancestor of it changes. Measured rather than assumed: the route was loaded
+> twice in one browser (override `0`, then `1`) and the FULL computed style of
+> every element in the page's subtree diffed, keyed by a structural path that
+> re-indexes past the header so the two runs line up
+> (`$SP/measure-inventory-styles.mjs`). 1,939 elements compared, **zero**
+> property differences inside the page. The only four differences in the whole
+> tree are on the shell's own `<main>` — `height` 4113.25px → 4166.25px and the
+> two origins that track it — i.e. the header's 53px of occupied flow, which is
+> the point of adding it. Consistent with the source: every top-level selector
+> in `house-header.css` and `sheet.css` is scoped to `.mdv-*`/`.mudavym`, so
+> the stylesheets the header imports cannot reach the page's Tailwind
+> utilities. No token-driven component inside the command page changes.
+>
+> The header's ground on this route is always **paper** unless the app's own
+> dark theme is on: `readShellGroundFromDom` (`lib/mudavym/shellGround.ts:135`)
+> returns `charcoal` only when a `.mudavym[data-ground="charcoal"]` node is in
+> the document, and the command page declares none. Captures:
+> `$SP/shots-inventory-header/inventory.png` (paper) and
+> `inventory-charcoal.png` (the app's dark theme, where `.dark .mudavym` turns
+> the bar).
+>
+> One real behavioural change beyond the bar, named honestly: while a `next`
+> tree is mounted the gate claims a slot in `lib/mudavym/shellGround`, and the
+> nine shared shell overlays (command palette, scrim, Ask AI bar, …) render
+> their house shape rather than their legacy one. That is by design
+> (PageGate's header comment) and is now reachable from `/inventory` with the
+> flag on.
 
 Deliberately none. This is a card added inside the KEPT page (the founder's
 verdict kept `/inventory` as it is — the addition is styled native to the

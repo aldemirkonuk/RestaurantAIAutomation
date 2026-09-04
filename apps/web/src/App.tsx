@@ -300,7 +300,14 @@ function App() {
                   }
                 >
                   <Route path="/" element={<PageGate page="dashboard" legacy={<Dashboard />} next={<DashboardNext />} />} />
-                  <Route path="/inventory" element={<InventoryCommandPage />} />
+                  {/* `/inventory` is enrolled in the gate (founder, 2026-09-04) with the
+                      SAME page on both branches. The command page is not being
+                      redesigned — the gate is what mounts `HouseHeader`
+                      (PageGate.tsx), so without this route the one page the house
+                      runs on all day was the only surface with no bell, no account
+                      menu and no theme switch. Flag off, `legacy` renders the page
+                      with no wrapper and no class: byte-for-byte what shipped. */}
+                  <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
                       onto `/inventory` first — a bookmark lands somewhere that can

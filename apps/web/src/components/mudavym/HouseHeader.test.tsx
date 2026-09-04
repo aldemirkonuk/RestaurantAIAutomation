@@ -278,6 +278,23 @@ describe('the bell', () => {
     expect(urls).not.toContain('/notifications');
   });
 
+  /**
+   * Step 1 of the cadence recorded in `useBellBook.ts` and DESIGN-FOUNDATION §3
+   * item 2: 60 s is slow enough that a tab left open and returned to would show
+   * a stale badge for up to a minute. Focus closes that window. Without the
+   * `focus` listener this fails — the badge stays at 4 with no timer advanced.
+   */
+  it('re-reads the count the moment the window is focused again', async () => {
+    answer({ count: 4, rows: [] });
+    mount(<HouseHeader page="providers" />);
+    await screen.findByRole('button', { name: 'Notifications (4 unread)' });
+
+    answer({ count: 9, rows: [] });
+    fireEvent.focus(window);
+
+    expect(await screen.findByRole('button', { name: 'Notifications (9 unread)' })).toBeTruthy();
+  });
+
   it('is quiet only when the register actually said so', async () => {
     answer({ count: 0, rows: [] });
     mount(<HouseHeader page="providers" />);
@@ -338,5 +355,38 @@ describe('PageGate', () => {
     );
     expect(screen.getByText('legacy')).toBeTruthy();
     expect(container.querySelector('.mdv-hdr')).toBeNull();
+  });
+
+  /* ── /inventory: the same page on both branches ──────────────────────────
+     Enrolled 2026-09-04 so the command page gets the house chrome. Both
+     branches render the SAME component, so these two tests pin the ONLY
+     difference the flag may make: the header is there, or it is not. If the
+     gate ever started wrapping `next`, the second assertion in each test
+     would catch it — the page's own node must remain the gate's direct child
+     with nothing between it and the header. */
+  it('renders the header above the inventory command page when the override is on', async () => {
+    window.localStorage.setItem('mudavym.design.inventory', '1');
+    const { container } = mount(
+      <PageGate page="inventory" legacy={<main data-testid="cmd">command page</main>} next={<main data-testid="cmd">command page</main>} />,
+      '/inventory',
+    );
+    await waitFor(() => expect(container.querySelector('.mdv-hdr')).toBeTruthy());
+    expect(screen.getByText('Inventory')).toBeTruthy();
+    const page = screen.getByTestId('cmd');
+    // No wrapper element between the gate and the page: nothing new can
+    // introduce a `.mudavym` scope, or any other class, around the page.
+    expect(page.parentElement).toBe(container);
+    expect(page.className).toBe('');
+  });
+
+  it('renders /inventory with no header at all when the override is off', async () => {
+    window.localStorage.setItem('mudavym.design.inventory', '0');
+    const { container } = mount(
+      <PageGate page="inventory" legacy={<main data-testid="cmd">command page</main>} next={<main data-testid="cmd">command page</main>} />,
+      '/inventory',
+    );
+    expect(screen.getByTestId('cmd')).toBeTruthy();
+    expect(container.querySelector('.mdv-hdr')).toBeNull();
+    expect(container.querySelector('.mudavym')).toBeNull();
   });
 });
