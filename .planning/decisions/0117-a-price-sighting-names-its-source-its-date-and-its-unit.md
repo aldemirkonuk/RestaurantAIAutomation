@@ -92,6 +92,68 @@
   labelled index line for a house's own state, `GET /price-index/status` says per source
   when it last fetched, how many rows, and why it is silent. 40 tests. See the new section
   **"The index register, built"** below.
+
+  **Q1 is ANSWERED and step "class D-adjacent" is BUILT, 2026-09-04.** The founder,
+  asked §Founder-only questions Q1 ("run the existing vendor sweep?"), said: *"Run
+  it, labelled tier 4, never beside a quote."* Both halves are built on
+  `feat/mudavym-design-p4`:
+
+  * **Run it.** `apps/api-gateway/src/vendor-intel/vendor-site-sweep.service.ts` —
+    a daily cron (`20 4 * * *`) over every active `providers` row with a website,
+    **per restaurant**, **OFF by default** behind `VENDOR_SITE_SWEEP_ENABLED` (the
+    reason for the default is in `isSweepArmed`, `vendor-site-sweep.ts`). robots.txt
+    is honoured as before, and its `Crawl-delay` is now READ — `parseCrawlDelay`,
+    added to `vendor-page-extraction.ts`, because nothing in this repo parsed the
+    directive this ADR calls binding. Pacing is per host at a **10-second floor**
+    (`DEFAULT_HOST_INTERVAL_SECONDS`, reasoned in the constant's docblock), raised
+    to the host's own `Crawl-delay` whenever that is larger, never lowered below 2.
+    One vendor's failure is that vendor's status row and never the sweep's end.
+  * **Labelled tier 4.** `vendor-site-sighting.ts` writes `source_type
+    'website_scrape'` / `trust_tier 4` — both already admitted by
+    `vpo_source_type_check` and `vpo_trust_tier_check`
+    (`20260805154027_vendor_price_observations.sql:112-118`), **re-read, so again
+    no migration**. `source_ref` is the page URL plus the product, `source_url` the
+    page, plus the content hash. `observed_at` is **the page's own date when the
+    page states one** (`readPageStatedDate`, which requires an explicit label so a
+    vintage or a copyright year is never mistaken for provenance) and otherwise the
+    fetch time carrying `raw.undated = true` and `raw.dateBasis =
+    'fetch_time_undated'`; `effective_date` stays NULL unless the vendor claimed
+    one. `is_outlier` is the **same** `isOutlierAgainstPriors` at the **same**
+    `MIN_OUTLIER_SAMPLE` of 5, imported from `procurement/own-paper-sighting.ts`
+    and re-exported rather than forked. This closes the scrape half of the gap
+    `notifications.md` §13.25(b) named as the one that matters most.
+  * **Never beside a quote.** `comparisonClassOf` (`price-below-average.ts`)
+    partitions every product's sightings by class before the comparison:
+    `quoted` (invoice, quote, api_catalog, chat, social, manual) and `public_site`
+    (website_scrape), with an unrecognised `source_type` given a class of its own
+    rather than folded into the quotes. `items` carries only `quoted`;
+    `publicSiteItems` is the tier-4 line, its own. **Measured against a copy of
+    HEAD's file:** the pre-fix function ranked a $50 `website_scrape` as a **50%
+    saving** against a $100 invoice average; the same four rows now produce zero
+    items and `scanned.comparisons` 2 against `scanned.products` 1.
+  * Every refusal is counted by reason and surfaced per vendor at **`GET
+    /vendor-intel/site-sweep/status`**, together with why a vendor is silent
+    (disarmed / not yet swept / no website / robots forbids / fetch failed /
+    nothing priced / all refused) — six facts that would otherwise all render as
+    an empty register.
+
+  **What this does NOT do.** The refusal legs are the same as class A's, and on a
+  scrape the missing-bottle-volume leg is the common case rather than the corner
+  case: most shop pages do not print a size next to the price, and every such row
+  is refused rather than assumed to be 750ml. Expect the first real sweep to refuse
+  most of what it reads. That is the intended behaviour and the count says so.
+  Nothing about §Context 5 changes either: a monthly-ish page yields too few
+  sightings per 30-day window to light the market box on its own.
+
+  **Dry run, 2026-09-04, one real vendor site, robots honoured.** `www.wine.com`
+  served `robots.txt` (6,038 bytes) to the identifying UA: **no `Crawl-delay` for
+  any agent**, `/search` disallowed (so there is no permitted way to enumerate a
+  catalogue), `/` and `/product/*` allowed. The allowed homepage then returned
+  **HTTP 403** with a DataDome captcha body (768 bytes). `www.klwines.com` returned
+  **403 to the `robots.txt` request itself** behind a Cloudflare challenge. Under
+  this build both are `fetch_failed`, recorded per vendor as unverified — a fact
+  about our fetcher, not about the vendors' prices. Two of two real merchant sites
+  tried refused this environment at the page.
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** price sightings, vendor_price_observations, price register, market price, posted wholesale list, public index, provenance, is_outlier, Iowa, Oregon, OLCC, USDA, robots.txt, rate limit, attribution, Türkiye, ÖTV, GİB, TADB, hal.gov.tr, United Kingdom, HMRC alcohol duty, ONS, Defra, AHDB, WSTA, Liv-ex, currency default
@@ -393,14 +455,104 @@ and not an implementation detail.
    Options: state a unit on the agreed price, treat `final_price` as per-bottle
    by decree, or leave case-priced agreements out of the register permanently.
    Not guessed at.
+
+   **Researched in full, 2026-09-04 — see
+   `[[0119-an-agreed-price-states-its-unit]]` (Proposed).** The founder asked for
+   every angle, so Q6 now has its own ADR rather than an answer inline here. It
+   maps six options across five cost surfaces (migrations · readers · the
+   receiving door · this register · ADR 0070's `uom` rule), and three of its
+   findings bear directly on this ADR: (a) the sibling register
+   `price_index_postings` — shipped the same day for classes B/D/E — **already**
+   requires `price_unit NOT NULL` ("per package" / "per bottle" / "per case",
+   `20260904200000_a_posted_price_names_its_state.sql:96`), so class A is now the
+   only class whose price may be filed without a stated unit; (b) the
+   no-migration option, *derive the bottle price from the case price and the
+   pack*, is refuted by the trade itself — Connecticut defines the posted bottle
+   price as case ÷ pack **plus 2–8¢ by bottle size**
+   (<https://www.cga.ct.gov/2004/rpt/2004-R-0593.htm>), and New York lets a
+   discount attach to one unit and not the other
+   (<https://sla.ny.gov/price-posting>); (c) the recommendation is the shape ADR
+   0070 already chose for stock — a figure beside the unit it is stated in — put
+   on `procurement_order_items` where the pack already lives. Q6 stays **open**;
+   0119 carries seven founder-only questions of its own, including whether
+   `price_history.unit` stops being hardcoded.
 7. **Should the batch outlier pass still be built** alongside the write-time one
    (see the Status note)? A batch pass can re-judge a row after later evidence
    arrives; the write-time writer cannot.
+
+## The index register, built (2026-09-04)
+
+This is the concrete shape of steps 2 and 3. Classes D and E were always going to be
+their own line (ADR 0111); this section records how B, D and E share one register and
+never touch the market box's average.
+
+### The table
+
+`price_index_postings` (`supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`).
+It carries the founder's column list — `state, issuer, issued_at, fetched_at`, the product
+identity as posted, `price, price_unit, pack, source_ref, content_hash` — plus the three
+columns that were the whole reason a new table was needed: `source_class` (B/D/E, a CHECK
+that admits no other value), `price_basis` (which published number this is — the CA trade
+level, Iowa's `state_bottle_retail`), and `region` (a CA county). **Unique on
+`(source_ref, content_hash)`**, so a re-read of an unchanged posting dedups and a price
+change is a new row. **RLS on, `service_role` only, anon/authenticated revoked in the same
+migration**, with an in-file `DO` block that asserts every one of those and the column
+contract — proven on a live local Postgres (grants `NONE`, `relrowsecurity` true, the
+assertion NOTICE fired). It has **no `restaurant_id`**: the register is public and keyed
+by state, and the endpoint scopes it to a house's state at READ time. That is what keeps
+an Iowa shelf price out of a California house's market box — the comparison this ADR's
+`--apply` refusal named.
+
+### The parsers, and the coverage decision
+
+The parsers live in the gateway (`apps/api-gateway/src/price-index/`), not in a second
+Python script, so the scheduled fetch and the read endpoint share exactly one definition
+of "what this posted row means" — the same anti-drift rule `fetch_price_sightings.py`
+applies to `REFERENCE_VOLUME_ML`. The Python proof stays as the independent full-file
+measurement; the TS parsers are tested against the SAME recorded fixtures so the two
+cannot silently disagree.
+
+Coverage was read from the `restaurants` table, not guessed (14 houses: 3 Michigan,
+3 California, 3 Illinois, 2 Türkiye, 1 UK, 2 stateless). Of the tenant states, only
+**Michigan and California** post a list.
+
+- **California — LIVE (class B).** The public beer price posting is served by a SPA whose
+  "public" AppSync endpoint is authorised by a JWT the app signs IN THE BROWSER with a
+  secret shipped in its own bundle. Reproducing that (`fetchers.ts::californiaBearer`,
+  secret read from `PRICE_INDEX_CA_JWT_SECRET`, never committed) is the anonymous path a
+  member of the public uses — no login, no scrape. Fetched today for Santa Clara county
+  (where the CA houses sit): real rows, admitted only when `status = 'Active'`, the trade
+  level kept as `price_basis`, beer NOT normalised to a 750ml bottle.
+- **Iowa and Oregon — the control-state shelf lines (class D).** Ported from the Python
+  proof. These are the founder's "control-state shelf prices as a labelled index line,
+  state-scoped": no tenant sits in either state yet, but the endpoint can serve US-IA /
+  US-OR the moment one does, and the register has a tested implementation for it.
+- **Michigan — WITHHELD.** `michigan.gov` returns 403 to a polite anonymous fetcher
+  (Akamai edge block) on both the price-book page and a direct PDF; its robots.txt is also
+  403; the book is Excel/PDF, not a machine endpoint. Recorded unverified in the registry;
+  **its parser is deliberately not written, because there is no honest sample to write it
+  against.** A parser written against an invented Michigan row would be the exact fault
+  this ADR exists to prevent.
+
+### The scheduled fetch and the endpoint
+
+`price-index-fetch.service.ts` runs per source at its cadence and **defaults OFF** behind
+`PRICE_INDEX_FETCH_ENABLED` (allow-list — a typo leaves it silent, never a live crawler
+on). It is the one process here that makes outbound government requests in the house's
+name. The staleness gate (`staleness.ts`, the TS twin of the Python one) stands before
+every write: a run whose newest issuer date exceeds the source's cadence is refused whole
+— the measured `bh_fv020.txt` case. Every run's outcome (counts, refusals by reason, why
+it was silent) is kept for `GET /price-index/status`. `GET /price-index/:state?product=`
+returns the labelled index line(s) for one state, owner/manager-guarded like vendor-intel,
+each line carrying its class, issuer and date so the caller draws it as its OWN line and
+never beside a vendor quote.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-04 | Claude (research) | Created. Sources fetched and measured the same day; the leading candidate attacked and demoted from class B to class D before being recorded. Registry: `.planning/07-reference/price-sources.md`. Proof: `scripts/fetch_price_sightings.py` |
+| 2026-09-04 | Claude (build, index register) | Steps 2+3 BUILT on `feat/mudavym-design-p4`: `price_index_postings` migration (applied to a live local PG — RLS on, anon/authenticated NONE, uniqueness present, assertion NOTICE fired, idempotent), the gateway `price-index/` module (California LIVE via the app's anonymous JWT path; Iowa/Oregon class-D shelf lines; Michigan WITHHELD with the 403 evidence and no fabricated parser), a fetch job defaulting OFF behind `PRICE_INDEX_FETCH_ENABLED` with the staleness gate, and `GET /price-index/:state` + `/status`. 40 tests pass, gateway tsc + eslint clean on the module. Fixtures recorded in `.planning/07-reference/price-sources.md` and the module's `__fixtures__/`. |
+| 2026-09-04 | Claude (build, sweep) | Q1 answered by the founder and BUILT: the scheduled vendor-site sweep (OFF by default), tier-4 labelling with the undated flag and the shared outlier test, and the class gate that keeps a tier-4 row out of `items`. 30 new tests in `vendor-intel` (136 in the directory, all green); the gate proven against a copy of HEAD, where the same rows produced a fabricated 50% saving. Dry run against `www.wine.com` and `www.klwines.com`: robots honoured, both 403 at the page. The gateway on :4000 was DOWN for this session, so nothing was curl-verified. |
 | 2026-09-04 | Claude (build) | Step 1 BUILT on `feat/mudavym-design-p4`: `own-paper-sighting.ts` + `recordOwnPaperSighting`, both `price_history` call sites mirrored, idempotent on the existing `(source_ref, content_hash)` index, `is_outlier` written by `flagOutliers` at write time (founder's instruction; the divergence from this ADR's own batch-pass wording is recorded in the Status). 14 tests pass; `GET /vendor-intel/below-average` still 200 with `scanned.observations` 0 locally, the register being empty in this environment. Two new founder questions (Q6, Q7). |
 | 2026-09-04 | Claude (market research, TR + UK) | **Q4 researched, not decided.** ~65 fetch attempts recorded in `.planning/07-reference/price-sources.md` §"Türkiye and the United Kingdom, 2026-09-04". Verified: GİB ÖTV (III)(A) PDF, HMRC duty rates, hal.gov.tr HKS (daily, TL/kg, live today), Defra wholesale fruit and veg CSV, ONS `d7bv` JSON, TÜİK/Metro/Bizim Toptan robots.txt, five Turkish producers, five UK trade portals, WSTA, Liv-ex, AHDB terms. Unverified and named as such: resmigazete.gov.tr and mevzuat.gov.tr (TLS/DNS), TCMB EVDS, İBB Swagger, Booker, Brakes, Venus, all three UK grocers' robots.txt. Found the class-A USD-default defect above. Q5 updated (quote requested); Q8–Q12 filed in the registry. No code changed. |

@@ -278,3 +278,73 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
    outbound mail, so this one leaves the building.
 6. Add a role gate for approval controls so staff do not see buttons the server will
    reject.
+
+### An agreed price has no unit — research, 2026-09-04 (ADR 0119, Proposed)
+
+The founder asked for the full graph behind ADR 0117's Q6 (*"a case-priced agreement has
+no unit to state its price in"*). The research is
+[[0119-an-agreed-price-states-its-unit]]; this page is where it lands, because `/orders`
+is the surface that both creates the ambiguity and hides it. Nothing was built.
+
+**What this page shows today that is not true.** Measured at `HEAD` = `e8a7d6f5`:
+
+- `procurement_orders` holds four price columns — `quoted_price`, `negotiated_price`,
+  `final_price`, `invoice_unit_price` (`20260805000000_baseline_from_production.sql:4523-4525,
+  :4559`) — and **not one of them names a unit**, while the row beside them states the
+  unit of its *quantity* (`unit_type`, `:4521`). The invoice line one table over states
+  both (`uom :4387`, `pack_size :4388`, `unit_price :4391`, plus `allowance :4393` and
+  `deposit :4394` for the money that sits outside the unit price).
+- The per-bottle reading is enforced by arithmetic, not by the schema:
+  `totalCost = finalPrice × bottlesTotal` (`procurement.service.ts:469`) and
+  `line_total = finalPrice × units.bottlesTotal` (`:819-821`) — the latter written onto a
+  row whose column is called `final_unit_price` and whose `unit_type` may say `case`
+  (`:842-843`). A person reading that row reads a case price; the code means a bottle
+  price.
+- **It leaves the building.** `confirmDeal` emails the vendor
+  `` `${quantity} bottles of ${wineName}` `` (`:4810`) with `` ` at $X per bottle` ``
+  (`:4804-4806`), where `quantity` is the order's count *in the order's own unit*
+  (`:4701`). On an order of 5 cases of 12 that sentence says *"5 bottles"* for 60
+  bottles, and asserts a price unit nothing has checked.
+- Because of that, the price register refuses every case-priced agreement:
+  `packSize: bottlesPerConfirmedUnit === 1 ? 1 : null` (`:4778`) into
+  `decideOwnPaperSighting`'s pack-size refusal (`own-paper-sighting.ts:235-246`). **The
+  refusal is a gateway `logger.warn` (`:1097`) — this page never says it happened.** A
+  house that buys only by the case gets a permanently empty `quote` tier and no screen
+  anywhere explains why. That is absence reported as health, one layer up from the
+  register.
+
+**Where the research came out.** Six options mapped; the recommendation is that the
+agreed *price* carries its own `(uom, pack)` pair on `procurement_order_items`, exactly
+as the *quantity* already does — the shape xtraCHEF, Restaurant365, Odoo and NetSuite all
+converge on, and the shape the house already shipped for public postings the same day
+(`price_index_postings.price_unit NOT NULL`,
+`20260904200000_a_posted_price_names_its_state.sql:96`). The tempting no-migration option
+— derive the bottle price from the case price and the pack — was killed on evidence, not
+taste: Connecticut *defines* the posted bottle price as case ÷ pack **plus 2–8¢ by
+bottle size** (<https://www.cga.ct.gov/2004/rpt/2004-R-0593.htm>), split-case fees break
+linearity in the warehouse, and back-deriving pack size at this exact table is the
+documented cause of the receiving door's pack-size defect
+(`procurement.service.ts:1259-1268`).
+
+**What this page would owe if the founder takes it.** Three items, in order of
+independence:
+
+7. **Print the unit beside the price.** Every price this page renders — the order card,
+   the approval ceremony, the negotiation panel — shows a bare number today. Whatever
+   the schema decides, the page should never show a price without the unit it is in.
+   *Blocker: none for the display of the current per-bottle convention; the stated-unit
+   version waits on ADR 0119.*
+8. **Say the refusal out loud.** A case-priced order that could not enter the price
+   register should say so on the row, in the words the gateway already logs, with the
+   one thing that would fix it. A silent refusal is the same failure as a silent
+   default. *Blocker: ADR 0119 Q1 — whether the column ships before the desk can set
+   it.*
+9. **Fix the confirmation email before anything else.** *"5 bottles … at $X per bottle"*
+   on a five-case order is wrong now and reaches a vendor now; it needs no migration and
+   no decision beyond "state the real unit and the real count, or state neither". This
+   is ADR 0119's phase 0 and its Q5. *Blocker: none.*
+
+**Deliberately not proposed.** A unit control on the order form. Until the founder rules
+on ADR 0119 Q1–Q2 (does the column ship ahead of the UI; is header `final_price` demoted
+to an echo of the line), adding a picker would let the desk state a unit the schema
+cannot store, which is worse than the current refusal.
