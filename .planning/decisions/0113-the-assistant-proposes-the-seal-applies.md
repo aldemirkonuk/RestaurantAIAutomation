@@ -2,12 +2,17 @@
 
 - **Status:** **Proposed — research and design only, nothing built.** The founder asked for
   the approach, not the build: *"research this and understand how should we approach this."*
+  **Two of the five open questions were answered by the founder on 2026-09-04 and are now
+  binding on this ADR** — Q2, a sealed batch is revocable as one unit for seven days
+  (rule 4a), and Q5, what the assistant may read (rule 6). Q1, Q3 and Q4 remain open.
 - **Date:** 2026-09-03 (drafted) &middot; 2026-09-04 (survey verified, sketch 101 drawn)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** configuration assistant, settings, onboarding, propose, confirm, seal,
   hold-to-approve, batch, diff, provenance, skip, audit trail, correlation_id, MCP,
   excessive agency, ask-ai, allowlist
 - **Links:** [[0013-one-commitment-guardrail]] (the line a proposal may not cross),
+  [[0114-connections-are-the-houses-profile-is-the-persons]] §2 (house declares, each person
+  consents — the model rule 6 applies to reads),
   [[0020-no-fabricated-answers]], [[0107-a-declared-server-is-not-a-reachable-one]] (MCP
   runtime, per-tool grant), [[0111-the-calendar-is-the-houses-day-book]] §4 (the ⌘K
   allowlist, and that widening it is a founder decision),
@@ -166,7 +171,7 @@ the registers; the batch is a document the owner reads and prunes; one seal appl
 apply is not atomic and never claims to be; and a value that arrives this way is recorded as
 a third kind of value, distinguishable forever from one typed and from one nobody gave.**
 
-Five rules carry it.
+Six rules carry it.
 
 ### Rule 1 — three provenance states, not two
 
@@ -252,6 +257,40 @@ it can never be an undo (<https://www.salesforceben.com/setup-audit-trail-keep-t
 Mudavym's `changes.fields[*] = {from, to}` already does capture them. That is a real
 advantage over the field and it should be spent.
 
+#### Rule 4a — a sealed batch stays revocable as one unit for seven days (founder, 2026-09-04)
+
+Question 2 asked whether a sealed batch belongs to the house or dissolves into ordinary
+settings the moment it applies. **The founder's answer is neither extreme: it stays revocable
+as one unit for a stated window.**
+
+- The batch's `correlation_id` is written on every row it produces — the column the audit
+  trail already carries and nothing has ever set (`20260805132000:73-75`;
+  `settings-audit.service.ts:205-221`).
+- For **seven days** from the seal, one control — *"Undo this setup"* — restores **every**
+  prior value in the batch, by writing each field's stored `from` back through that
+  register's own owning service, as a new batch that names the one it reverses. Not a direct
+  table write, so every guard those services carry still runs on the way back.
+- **After seven days each value is an ordinary setting.** The audit rows stay forever and the
+  batch stays legible in `/logs` (`logs-timeline.service.ts:302`), but there is no longer a
+  single control that reverses them together; changing one is changing one setting.
+
+Two details the window forces, and both are honesty requirements rather than niceties.
+**First, the window must be stated on the receipt**, with the date it ends — a window the
+owner cannot see is a window they will discover has closed. **Second, an undo offered after
+a value has been changed again must say so rather than silently overwriting the newer
+value**: the row's current value no longer matches the batch's `to`, which means somebody
+acted after the seal, and restoring `from` would erase a person's later decision to fix a
+machine's earlier one. Those rows are shown and skipped by default, exactly as rule 3 refuses
+to batch over a stated value in the first place.
+
+Why a window at all, rather than forever or never. Forever makes every setting on the page
+permanently provisional and gives the batch a second life long after the house has built
+habits on it. Never — dissolving on apply — throws away the one advantage the survey found
+nothing else has: the from-values are already stored, so the undo costs nothing to keep for a
+while. Seven days is the founder's number and it is the right shape: long enough to cover
+"we tried it for a week and it was wrong", short enough that nobody reverses a month of
+operating decisions with one control.
+
 ### Rule 5 — the tool surface: many reads, one write, and the apply verb is never exposed
 
 `.planning/08-softwares/mudavym-mcp.md` §3 documents 42 tools, "33 read-only, 9 write — and
@@ -333,6 +372,52 @@ owner to reject the whole thing over one wrong row.
 reversible.** Rejected: an approval threshold is not reversible in the sense that matters —
 between the write and the notice, orders get sealed under it.
 
+### Rule 6 — what the assistant may read: everything the house exposes; a person's mail only by that person's consent (founder, 2026-09-04)
+
+Question 5 asked how much the assistant may read to make a good proposal. The founder's
+words:
+
+> everything valuable, but we don't want to touch people's privacy … nowadays everyone gives
+> their agents access to their mail — I say everything
+
+Recorded as a line with two sides, not as "everything".
+
+**The house's own record — readable, and every source named in the proposal.** The till
+history, the order book, inventory and the ledger, the settings registers themselves, and the
+house's vendor threads reached **through a house-declared connection**. These are the
+restaurant's books; a manager reading them is doing their job, and so is the assistant. The
+obligation that comes with it is disclosure, not restriction: **every proposal row names the
+source it was drawn from**, so *"your ceiling should be ₺5,000"* arrives as *"…because 84 of
+your last 90 orders were under it"* with the table named. A read the owner cannot trace is a
+read they cannot judge.
+
+**A person's mailbox or messages — only through that person's own consent row.** This is
+[[0114-connections-are-the-houses-profile-is-the-persons]] §2's model applied unchanged: the
+house **declares** the attachment, each person **consents** for themselves, and a consent is
+withdrawable "without touching the attachment or anybody else's consent"
+(`mcp_connection_consents`). Three consequences follow, and none of them is optional:
+
+1. **The consent is asked for in the same conversation, in plain words, naming what will be
+   read and why** — never assumed from the fact that a connection exists, and never inherited
+   from a colleague's grant.
+2. **The consent is recorded with the batch**, so a proposal that used a person's mail says
+   so on its own face and in its audit row, forever.
+3. **A withdrawn consent does not retroactively unmake a sealed value** — but it does mean
+   the assistant may not re-read that mailbox, and the register still names the source the
+   value came from. Absence of a current consent is never rendered as "no source".
+
+The distinction is not "sensitive versus not". It is **whose record it is.** A vendor thread
+in the house's shared inbox is the house's correspondence about the house's money. The same
+person's personal mailbox is theirs, and the fact that it may contain the same invoice does
+not transfer ownership of it. This is the identical test §6b used to place connections and
+rule 2 used to draw the assistant's write surface, applied a third time to reads.
+
+The founder's *"I say everything"* is honoured on the house's side without qualification, and
+the *"we don't want to touch people's privacy"* half is what makes the person's side a
+consent row rather than a setting. OWASP names the failure this avoids as excessive
+permissions — "a generic high-privileged identity" standing in for an individual user's
+scope (<https://owasp.org/www-project-top-10-for-large-language-model-applications/2_0_vulns/LLM06_ExcessiveAgency.html>).
+
 ## Consequences
 
 - **Easier.** A house that answers five sentences ends onboarding with eight registers
@@ -340,33 +425,42 @@ between the write and the notice, orders get sealed under it.
   `/settings` gains a truthful third provenance state instead of a binary. The `/logs`
   timeline's `correlation_id` filter finally has rows to filter.
 - **Harder / given up.** The role gate on `PUT /settings/approval-thresholds` becomes
-  blocking work before any of this ships. Four registers are permanently out of the
+  blocking work before any of this ships. Six registers are permanently out of the
   assistant's reach, and that will look arbitrary to anyone who has not read rule 2. The
   batch apply needs per-item outcome plumbing through eight services, which is the bulk of
-  the engineering.
-- **Revisit when:** a fifth register needs to move from "may never be proposed" to "may be
+  the engineering. Rule 4a adds a seven-day undo path that must handle the changed-since case
+  honestly rather than overwriting it, and rule 6 adds a consent prompt inside a setup
+  conversation, which is the one place a person is least inclined to read carefully.
+- **Revisit when:** a seventh register needs to move from "may never be proposed" to "may be
   proposed" (the rule is wrong, not the register); or a sealed batch is ever undone by an
   owner more than once in a house's first month (the proposal is being read as a formality,
-  which means the diff is too long).
+  which means the diff is too long); or an owner asks to undo a batch **after** the seven days
+  have run (the window is too short, and that request is the only evidence that would show
+  it).
 
 ## Questions only the founder can answer
 
 1. **Voice, or typing?** *"let AI assistant talk with you"* — literally talk? On the phone
    (`apps/mobile`) a voice-first setup is plausible; on desktop it is a novelty. The sketch
    draws typing.
-2. **Does the batch belong to the house or to the person?** If a manager seals a batch and
-   leaves, the values stay. Should a sealed batch be revocable by the owner as a unit, or
-   does it dissolve into ordinary settings the moment it applies?
+2. ~~**Does the batch belong to the house or to the person?**~~ **ANSWERED 2026-09-04 —
+   revocable as one unit for seven days, then ordinary settings.** See rule 4a. The
+   `correlation_id` the audit trail already carries is what makes it one unit.
 3. **Rule 2's line.** `features` is excluded because those switches "change what the system
    does on its own" (`st-format.ts:127`). Is that the founder's line too, or should the
    assistant be able to propose turning autonomy *on* — with the seal — as the natural end
    of a setup conversation?
 4. **The market drop threshold** is per-deployment today. Is per-house worth a column and a
    migration, or is one number for every house correct for now?
-5. **How much may the assistant read to make a good proposal?** A genuinely useful batch
-   wants the POS history, the vendor threads and the order book. Every one of those is
-   already an exposed read tool — but "the assistant read your vendor mail to set your
-   thresholds" is a sentence the founder should approve before it is true.
+5. ~~**How much may the assistant read to make a good proposal?**~~ **ANSWERED 2026-09-04 —
+   everything the house exposes, with every source named; a person's mailbox only through
+   that person's own consent row.** See rule 6.
+
+**Still open after the 2026-09-04 calls: 1, 3 and 4.** On 1, the working assumption is
+**typing first** and voice on mobile **left undecided** — the sketch draws typing and nothing
+in this ADR depends on the answer. On 3, `features` **stays outside the line** unless the
+founder says otherwise; rule 2 is written that way and the question stays filed rather than
+closed.
 
 ## Review trail
 
@@ -382,4 +476,10 @@ between the write and the notice, orders get sealed under it.
   `101-config-assistant/` draws the conversation, the proposal with the seal and the receipt,
   and the onboarding step — 8 screenshots at 1440, both grounds, `scrollWidth === 1440` and
   zero console errors on all eight.
+- 2026-09-04 — **two founder calls recorded**, both from the same session as the ADR. Q2 is
+  answered by rule 4a (seven-day batch revocation on the `correlation_id`); Q5 is answered by
+  rule 6 (the house's record without qualification, a person's mailbox only by that person's
+  consent row, per [[0114-connections-are-the-houses-profile-is-the-persons]] §2). Q1 and Q3
+  were touched in the same session and **deliberately left open** — typing first with voice
+  undecided, and `features` staying outside the line unless the founder moves it.
   **Nothing built** — no file under `apps/`, `supabase/` or `services/` was changed.
