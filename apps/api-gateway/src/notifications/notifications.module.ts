@@ -17,6 +17,7 @@ import { DeliveryRecordedProducer } from "./producers/delivery-recorded.producer
 import { InvoiceConfirmedProducer } from "./producers/invoice-confirmed.producer";
 import { SaleRecordProducer } from "./producers/sale-record.producer";
 import { MarketPriceProducer } from "./producers/market-price.producer";
+import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
 import { NotificationProducersService } from "./producers/notification-producers.service";
 
 @Module({
@@ -54,6 +55,7 @@ import { NotificationProducersService } from "./producers/notification-producers
     InvoiceConfirmedProducer,
     SaleRecordProducer,
     MarketPriceProducer,
+    GrantSuspendedProducer,
     NotificationProducersService,
   ],
   exports: [

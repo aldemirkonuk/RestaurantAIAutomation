@@ -412,11 +412,21 @@ is unread would see the dash only in that cell.
    with the change in words, an added tool suspends nothing, and a failed probe
    changes nothing at all. `McpConnectionsService.reconcileGrants`, specced in
    `mcp-connections.tool-declaration.spec.ts`.
-6b. **Notify the house when a grant is suspended.** Today the suspension is
-   visible only to whoever next opens `/connections` or next tries the call. The
-   durable-notification funnel exists and this is one `persistForRestaurant`
-   call — held back only because nothing else on this page notifies yet, and one
-   surface that notifies inconsistently is worse than one that does not.
+6b. ~~**Notify the house when a grant is suspended.**~~ **Built 2026-09-04**, on
+   the founder's call ("yes, one notification per suspension"). It is NOT the
+   single `persistForRestaurant` call this entry guessed at: it is the seventh
+   member of the `/notifications` producer family,
+   `apps/api-gateway/src/notifications/producers/grant-suspended.producer.ts`,
+   which sweeps `mcp_tool_grants` for `needs_reconsent_at` every 15 minutes
+   rather than emitting from inside `reconcileGrants` — an emit there has no
+   tenant, no quiet-hours audience and no run row, and would lose every manager
+   who was asleep when the probe ran. Dedupe `grant:<grantId>:<toolListHash>`
+   writes a standing suspension once and says it again after a re-consent and a
+   fresh change; recipients are this house's owners and managers only. Nothing
+   on THIS page changed, and the producer is off until
+   `NOTIFICATION_PRODUCERS_ENABLED` is set. The register row, the gaps and the
+   one tool-list case it deliberately cannot report (an ADDED tool) are in
+   [`notifications.md`](notifications.md) §11 and §13.30.
 7. **A house public page** (G-C2), if the founder wants one.
 8. **Retire `/settings`' `services` / `pos` / `email` / `calendar` tabs into
    this page.** Blocked: `settings/next/st-format.ts` belongs to another builder,

@@ -19,9 +19,10 @@ import { DeliveryRecordedProducer } from "./delivery-recorded.producer";
 import { InvoiceConfirmedProducer } from "./invoice-confirmed.producer";
 import { SaleRecordProducer } from "./sale-record.producer";
 import { MarketPriceProducer } from "./market-price.producer";
+import { GrantSuspendedProducer } from "./grant-suspended.producer";
 
 /**
- * The six notification producers, and the two crons that run them.
+ * The seven notification producers, and the two crons that run them.
  *
  * WHAT THIS FILE OWNS
  * -------------------
@@ -44,9 +45,11 @@ import { MarketPriceProducer } from "./market-price.producer";
  * TWO CADENCES, BECAUSE THE FIVE ARE NOT ONE KIND OF THING
  * -------------------------------------------------------
  * - **Fast, every 15 minutes.** Goal reached, ceiling held, delivery at the door,
- *   invoice certified. These are events with a reader who may need to act while
- *   the truck is still outside, or a period that closed at local midnight and
- *   should not be reported a day late.
+ *   invoice certified, a tool grant suspended. These are events with a reader
+ *   who may need to act while the truck is still outside, or a period that
+ *   closed at local midnight and should not be reported a day late. The grant
+ *   suspension joins them (founder, 2026-09-04) because a permission the house
+ *   did not change is already being refused by the time anybody reads it.
  * - **Daily, checked hourly.** The service record and the market signal. The
  *   service record cannot be written before its day is settled (see
  *   `service-day.ts`) and the hourly tick is what lets each tenant's own local
@@ -122,9 +125,11 @@ export interface ProducersStatus {
   timeZone: string | null;
   /**
    * What the one switch does, in words. There is exactly one and it arms ALL of
-   * them — the founder's call on 2026-09-03 ("arm all five", and the ceiling
-   * producer added the same day makes six). A per-producer switch was rejected:
-   * six env vars is six ways to have half a house watched and no way to see it.
+   * them — the founder's call on 2026-09-03 ("arm all five"; the ceiling
+   * producer added the same day made six, and the grant-suspension producer of
+   * 2026-09-04 makes seven). A per-producer switch was rejected:
+   * seven env vars is seven ways to have half a house watched and no way to
+   * see it.
    */
   armingNote: string;
   producers: ProducerStatus[];
@@ -153,6 +158,7 @@ export class NotificationProducersService {
     private readonly invoiceConfirmed: InvoiceConfirmedProducer,
     private readonly saleRecord: SaleRecordProducer,
     private readonly marketPrice: MarketPriceProducer,
+    private readonly grantSuspended: GrantSuspendedProducer,
   ) {}
 
   armed(): boolean {
@@ -241,6 +247,15 @@ export class NotificationProducersService {
         now,
         () =>
           this.invoiceConfirmed.sweepTenant(tenant.id, timeZone, audience, now),
+      ),
+      // Narrows the audience it is handed to owners and managers itself — the
+      // only producer that does, and the reason is in its own header.
+      [GrantSuspendedProducer.PRODUCER]: await this.runOne(
+        tenant.id,
+        GrantSuspendedProducer.PRODUCER,
+        now,
+        () =>
+          this.grantSuspended.sweepTenant(tenant.id, timeZone, audience, now),
       ),
     };
   }
@@ -385,6 +400,7 @@ export class NotificationProducersService {
       [CeilingHeldProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [DeliveryRecordedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [InvoiceConfirmedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
+      [GrantSuspendedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
     ];
@@ -401,6 +417,15 @@ export class NotificationProducersService {
         restaurantId,
         now,
       );
+    }
+
+    // The same shape for the seventh: a house whose servers have moved under
+    // nothing has no suspension to report, and that silence is a fact rather
+    // than a fault. `null` is a failed read and is reported as one.
+    let suspendedGrants: number | null = null;
+    if (armed && served !== false) {
+      suspendedGrants =
+        await this.grantSuspended.suspendedGrantCount(restaurantId);
     }
 
     const producers: ProducerStatus[] = [];
@@ -430,6 +455,19 @@ export class NotificationProducersService {
       } else if (served === null) {
         willWrite = null;
         silentReason = servedReason;
+      } else if (producer === GrantSuspendedProducer.PRODUCER) {
+        if (suspendedGrants === null) {
+          willWrite = null;
+          silentReason =
+            "The tool-grant register could not be read, so whether this house has a " +
+            "suspended grant is unknown.";
+        } else if (suspendedGrants === 0) {
+          willWrite = false;
+          silentReason =
+            "No tool grant on this house's model-context servers is suspended, so this " +
+            "producer will stay silent even though it is armed. It speaks when a probe " +
+            "finds that a server changed or withdrew a tool a manager had granted.";
+        }
       } else if (producer === MarketPriceProducer.PRODUCER) {
         if (marketSightings === null) {
           willWrite = null;

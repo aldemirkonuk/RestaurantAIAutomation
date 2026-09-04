@@ -22,6 +22,7 @@ export type Row = Record<string, any>;
 export class FakeDb {
   tables: Record<string, Row[]> = {
     analytics_goals: [],
+    mcp_tool_grants: [],
     notification_preferences: [],
     notification_producer_claims: [],
     notification_producer_runs: [],
@@ -31,9 +32,11 @@ export class FakeDb {
     procurement_orders: [],
     procurement_receipt_events: [],
     providers: [],
+    restaurant_mcp_connections: [],
     restaurants: [],
     shifts: [],
     team_members: [],
+    user_restaurant_access: [],
     wine_consumption_log: [],
   };
 

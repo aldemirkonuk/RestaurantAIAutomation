@@ -54,6 +54,12 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
   // test opts into rather than the ones it gets by accident.
   (market as any).visibleObservationCount =
     overrides.visibleObservationCount ?? recorder(async () => 12);
+  // The seventh producer narrows its own audience and is asked, by the status
+  // read, whether this house has a suspension standing. Default: none, which is
+  // the ordinary state; the cases below opt into the other two.
+  const grantSuspended = overrides.grantSuspended ?? stub("grant_suspended");
+  (grantSuspended as any).suspendedGrantCount =
+    overrides.suspendedGrantCount ?? recorder(async () => 0);
   const config = { get: (k: string) => env[k] };
 
   const service = new NotificationProducersService(
@@ -67,8 +73,18 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     (overrides.invoice ?? stub("invoice_confirmed")) as any,
     (overrides.sale ?? stub("sale_record")) as any,
     market as any,
+    grantSuspended as any,
   );
-  return { service, sweeps, ledger, tenants, goals, market, stub };
+  return {
+    service,
+    sweeps,
+    ledger,
+    tenants,
+    goals,
+    market,
+    grantSuspended,
+    stub,
+  };
 }
 
 describe("arming", () => {
@@ -102,12 +118,20 @@ describe("arming", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "grant_suspended",
     ]);
+  });
+
+  it("[REVERT-FAILS] a disarmed deployment writes no suspension notification", async () => {
+    const { service, sweeps, grantSuspended } = build();
+    await service.sweepFast();
+    expect(sweeps).not.toContain("grant_suspended");
+    expect((grantSuspended as any).sweepTenant.calls).toHaveLength(0);
   });
 });
 
 describe("the two cadences", () => {
-  it("the fast sweep runs the three event producers and opens a run row each", async () => {
+  it("the fast sweep runs the five event producers and opens a run row each", async () => {
     const { service, ledger } = build();
     await service.runFastForTenant(TENANT, new Date("2026-09-03T12:00:00Z"));
     expect(ledger.openRun.calls.map((c: any[]) => c[1])).toEqual([
@@ -115,8 +139,9 @@ describe("the two cadences", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "grant_suspended",
     ]);
-    expect(ledger.closeRun.calls).toHaveLength(4);
+    expect(ledger.closeRun.calls).toHaveLength(5);
   });
 
   it("[REVERT-FAILS] one producer throwing does not cost the others their run", async () => {
@@ -135,6 +160,7 @@ describe("the two cadences", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "grant_suspended",
     ]);
     // The failure is recorded on the run row rather than swallowed.
     const closed = ledger.closeRun.calls[0];
@@ -167,7 +193,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all five producers, their schedule and their next tick", async () => {
+  it("names all seven producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -178,23 +204,25 @@ describe("statusFor — what the page is allowed to say", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "grant_suspended",
       "sale_record",
       "market_price",
     ]);
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[5].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[4].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
+    expect(status.producers[6].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all six, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all seven, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 6 producers/);
-    expect(status.producers).toHaveLength(6);
+    expect(status.armingNote).toMatch(/arms all 7 producers/);
+    expect(status.producers).toHaveLength(7);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 6 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 7 producers at once/s,
       );
     }
   });
@@ -208,11 +236,50 @@ describe("statusFor — what the page is allowed to say", () => {
     const market = status.producers.find((p) => p.producer === "market_price")!;
     expect(market.willWrite).toBe(false);
     expect(market.silentReason).toMatch(/no sighting this restaurant can see/);
-    // …and the other five are not tarred with it.
-    for (const p of status.producers.filter((x) => x.producer !== "market_price")) {
+    // …and the other six are not tarred with it. The grant producer is given a
+    // suspension here so its own silence case does not mask this one.
+    for (const p of status.producers.filter(
+      (x) => x.producer !== "market_price" && x.producer !== "grant_suspended",
+    )) {
       expect(p.willWrite).toBe(true);
       expect(p.silentReason).toBeNull();
     }
+  });
+
+  it("[REVERT-FAILS] armed and served, the grant producer says it is mute with nothing suspended", async () => {
+    const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
+    const status = await service.statusFor("rest-1");
+    const grant = status.producers.find(
+      (p) => p.producer === "grant_suspended",
+    )!;
+    expect(grant.willWrite).toBe(false);
+    expect(grant.silentReason).toMatch(/No tool grant .* is suspended/);
+  });
+
+  it("[REVERT-FAILS] a house with a suspension standing is told this producer will speak", async () => {
+    const { service } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { suspendedGrantCount: recorder(async () => 2) },
+    );
+    const status = await service.statusFor("rest-1");
+    const grant = status.producers.find(
+      (p) => p.producer === "grant_suspended",
+    )!;
+    expect(grant.willWrite).toBe(true);
+    expect(grant.silentReason).toBeNull();
+  });
+
+  it("[REVERT-FAILS] an unreadable grant register is unknown, not an empty one", async () => {
+    const { service } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { suspendedGrantCount: recorder(async () => null) },
+    );
+    const status = await service.statusFor("rest-1");
+    const grant = status.producers.find(
+      (p) => p.producer === "grant_suspended",
+    )!;
+    expect(grant.willWrite).toBeNull();
+    expect(grant.silentReason).toMatch(/could not be read/);
   });
 
   it("[REVERT-FAILS] an unreadable price register is unknown, not an empty one", async () => {
