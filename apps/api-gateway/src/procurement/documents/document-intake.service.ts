@@ -2,12 +2,19 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { createHash } from "crypto";
 import { DatabaseService } from "../../database/database.service";
-import { DocumentExtractorService } from "./document-extractor.service";
+import {
+  DocumentExtractorService,
+  stripJsonFence,
+} from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
-import { applyTieOut, ParsedDocument } from "./parsed-document";
+import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
+import {
+  CanonicalDocumentService,
+  ReadResult,
+} from "../canonical/canonical-document.service";
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -60,6 +67,23 @@ export interface IntakeResult {
   error?: string;
 }
 
+/** What the extraction door reports back beyond the document itself. */
+export interface ExternalExtractionResult {
+  warnings: string[];
+  tieOut: {
+    computedLinesTotal: number | null;
+    tieOutDelta: number | null;
+    tiesOut: boolean | null;
+  };
+  /**
+   * The append-only revision this apply wrote (ADR 0104 D5), or the reason it
+   * could not be written. NEVER omitted on failure: a document whose lines
+   * landed and whose revision did not is a different thing from one where both
+   * did, and collapsing them is this repository's absence-as-health fault.
+   */
+  revision: ReadResult<{ revision: number; id: string }>;
+}
+
 @Injectable()
 export class DocumentIntakeService {
   private readonly logger = new Logger(DocumentIntakeService.name);
@@ -67,6 +91,7 @@ export class DocumentIntakeService {
   constructor(
     private readonly db: DatabaseService,
     private readonly extractor: DocumentExtractorService,
+    private readonly canonical: CanonicalDocumentService,
   ) {}
 
   /**
@@ -297,11 +322,7 @@ export class DocumentIntakeService {
     bytes: Buffer,
     parsed: ParsedDocument,
   ): Promise<string | null> {
-    const needsReview =
-      parsed.docType === "unknown" ||
-      parsed.tiesOut === false ||
-      parsed.warnings.length > 0 ||
-      parsed.lines.length === 0;
+    const needsReview = this.needsReview(parsed);
 
     /**
      * The columns migration 20260904120000 adds. Held apart so a database that
@@ -467,100 +488,395 @@ export class DocumentIntakeService {
 
     const documentId = data.id as string;
 
-    if (parsed.lines.length) {
-      const { error: lineErr } = await this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .insert(
-          // TWO INLINE LITERALS, not one with a conditional spread.
-          // `check_order_capture_contract.py` reads write payloads only when the
-          // column names are literal; a spread makes the whole write invisible
-          // to it, which is how a column the table does not have gets written in
-          // production. The second branch is the pre-migration fallback (see
-          // `schemaLagNote` above) and disappears with it.
-          //
-          // BT-149 / BT-150 and the printed literals (ADR 0104 D1, migration
-          // 20260904120000): before those columns existed the extractor read all
-          // three and threw them away at the end of the request, so
-          // `142,00 / KS(12)` and `142,00` were indistinguishable the moment the
-          // document was read back.
-          //
-          // order_line_id is left NULL on purpose in both. Matching lines to a
-          // PO is a separate, ranked step, and a low-confidence guess written
-          // here silently corrupts cost basis for months before anyone notices.
-          parsed.lines.map((l) =>
-            schemaLagNote
-              ? {
-                  document_id: documentId,
-                  restaurant_id: input.restaurantId,
-                  line_no: l.lineNo,
-                  vendor_sku: l.vendorSku,
-                  description: l.description,
-                  vintage: l.vintage,
-                  format_ml: l.formatMl,
-                  qty: l.qty,
-                  uom: l.uom,
-                  pack_size: l.packSize,
-                  qty_bottles: l.qtyBottles,
-                  free_goods_qty: l.freeGoodsQty,
-                  unit_price: l.unitPrice,
-                  line_total: l.lineTotal,
-                  allowance: l.allowance,
-                  deposit: l.deposit,
-                  order_line_id: null,
-                }
-              : {
-                  document_id: documentId,
-                  restaurant_id: input.restaurantId,
-                  line_no: l.lineNo,
-                  vendor_sku: l.vendorSku,
-                  description: l.description,
-                  vintage: l.vintage,
-                  format_ml: l.formatMl,
-                  qty: l.qty,
-                  uom: l.uom,
-                  pack_size: l.packSize,
-                  qty_bottles: l.qtyBottles,
-                  free_goods_qty: l.freeGoodsQty,
-                  unit_price: l.unitPrice,
-                  line_total: l.lineTotal,
-                  allowance: l.allowance,
-                  deposit: l.deposit,
-                  price_base_qty: l.priceBaseQty ?? null,
-                  price_base_uom: l.priceBaseUom ?? null,
-                  printed: l.printed ?? null,
-                  order_line_id: null,
-                },
-          ),
-        );
-      if (lineErr)
-        this.logger.warn(
-          `document ${documentId} stored but its lines failed: ${lineErr.message}`,
-        );
-    }
-
-    if (input.orderId)
-      await this.link(
-        documentId,
-        input.orderId,
-        input.restaurantId,
-        "manual",
-        1,
+    const lineErr = await this.insertDocumentLines(
+      documentId,
+      input.restaurantId,
+      parsed.lines,
+      schemaLagNote,
+    );
+    if (lineErr)
+      this.logger.warn(
+        `document ${documentId} stored but its lines failed: ${lineErr.message}`,
       );
-    else await this.autoLink(documentId, input.restaurantId, parsed);
 
-    // Pair lines against what was ordered. Only unambiguous matches are written;
-    // everything else waits for a person. Best-effort — a document is still
-    // useful unmatched, and failing intake over line pairing would lose it.
+    await this.linkAndMatch(
+      documentId,
+      input.restaurantId,
+      input.orderId ?? null,
+      parsed,
+    );
+
+    return documentId;
+  }
+
+  /**
+   * `needs_review` whenever the document did not tie out, came back unknown, or
+   * carries warnings — anything a person should look at before it is used to
+   * argue with a distributor.
+   *
+   * ONE RULE, TWO CALLERS. Intake writes it on insert; the extraction door
+   * writes it on update. Two copies would drift, and the drift would be
+   * invisible: a document that skipped review because the second copy forgot a
+   * clause looks exactly like one that passed it.
+   */
+  private needsReview(parsed: ParsedDocument): boolean {
+    return (
+      parsed.docType === "unknown" ||
+      parsed.tiesOut === false ||
+      parsed.warnings.length > 0 ||
+      parsed.lines.length === 0
+    );
+  }
+
+  /**
+   * Write a document's lines. Shared by intake and by the extraction door, so
+   * a line written through either carries the same columns.
+   *
+   * Returns the error rather than acting on it: intake WARNS (a document is
+   * still worth keeping without its lines, and failing the ingest would lose
+   * the paper), while the door THROWS (its entire purpose is to put lines on a
+   * document, so a silent success there would be a fabricated one).
+   */
+  private async insertDocumentLines(
+    documentId: string,
+    restaurantId: string,
+    lines: ParsedLine[],
+    schemaLagNote: string | null,
+  ): Promise<{ message: string } | null> {
+    if (!lines.length) return null;
+
+    const { error: lineErr } = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .insert(
+        // TWO INLINE LITERALS, not one with a conditional spread.
+        // `check_order_capture_contract.py` reads write payloads only when the
+        // column names are literal; a spread makes the whole write invisible
+        // to it, which is how a column the table does not have gets written in
+        // production. The second branch is the pre-migration fallback (see
+        // `schemaLagNote` above) and disappears with it.
+        //
+        // BT-149 / BT-150 and the printed literals (ADR 0104 D1, migration
+        // 20260904120000): before those columns existed the extractor read all
+        // three and threw them away at the end of the request, so
+        // `142,00 / KS(12)` and `142,00` were indistinguishable the moment the
+        // document was read back.
+        //
+        // order_line_id is left NULL on purpose in both. Matching lines to a
+        // PO is a separate, ranked step, and a low-confidence guess written
+        // here silently corrupts cost basis for months before anyone notices.
+        lines.map((l) =>
+          schemaLagNote
+            ? {
+                document_id: documentId,
+                restaurant_id: restaurantId,
+                line_no: l.lineNo,
+                vendor_sku: l.vendorSku,
+                description: l.description,
+                vintage: l.vintage,
+                format_ml: l.formatMl,
+                qty: l.qty,
+                uom: l.uom,
+                pack_size: l.packSize,
+                qty_bottles: l.qtyBottles,
+                free_goods_qty: l.freeGoodsQty,
+                unit_price: l.unitPrice,
+                line_total: l.lineTotal,
+                allowance: l.allowance,
+                deposit: l.deposit,
+                order_line_id: null,
+              }
+            : {
+                document_id: documentId,
+                restaurant_id: restaurantId,
+                line_no: l.lineNo,
+                vendor_sku: l.vendorSku,
+                description: l.description,
+                vintage: l.vintage,
+                format_ml: l.formatMl,
+                qty: l.qty,
+                uom: l.uom,
+                pack_size: l.packSize,
+                qty_bottles: l.qtyBottles,
+                free_goods_qty: l.freeGoodsQty,
+                unit_price: l.unitPrice,
+                line_total: l.lineTotal,
+                allowance: l.allowance,
+                deposit: l.deposit,
+                price_base_qty: l.priceBaseQty ?? null,
+                price_base_uom: l.priceBaseUom ?? null,
+                printed: l.printed ?? null,
+                order_line_id: null,
+              },
+        ),
+      );
+    return lineErr ? { message: lineErr.message } : null;
+  }
+
+  /**
+   * The post-extraction tail: attach the document to an order, then pair its
+   * lines with what was ordered.
+   *
+   * Shared with the extraction door so a document filled from outside the
+   * gateway is matched by exactly the code that matches one the gateway read
+   * itself. Without the link step the matcher returns empty — it looks up order
+   * lines THROUGH `procurement_document_links` — so "same matching" has to mean
+   * both halves or it means nothing.
+   *
+   * Best-effort throughout: a document is still useful unmatched, and failing
+   * over line pairing would lose the thing that was already written.
+   */
+  private async linkAndMatch(
+    documentId: string,
+    restaurantId: string,
+    orderId: string | null,
+    parsed: ParsedDocument,
+  ): Promise<void> {
+    if (orderId)
+      await this.link(documentId, orderId, restaurantId, "manual", 1);
+    else await this.autoLink(documentId, restaurantId, parsed);
+
     try {
-      await this.matchDocumentLines(documentId, input.restaurantId);
+      await this.matchDocumentLines(documentId, restaurantId);
     } catch (err: any) {
       this.logger.warn(
         `line matching failed for document ${documentId}: ${err?.message}`,
       );
     }
+  }
 
-    return documentId;
+  /**
+   * THE EXTRACTION DOOR — apply an extraction produced OUTSIDE this gateway to
+   * a document that was stored unread.
+   *
+   * WHY IT EXISTS. `DocumentExtractorService` calls Anthropic with
+   * `ANTHROPIC_API_KEY`, and that key has no credit: three synthetic PDFs
+   * pushed at the local gateway on 2026-09-04 all came back
+   * `422 Anthropic 400: Your credit balance is too low`. ADR 0104 D6 (PR #300)
+   * made that survivable — the document is stored unread rather than discarded
+   * — which leaves a real invoice sitting in `needs_review` with no lines and
+   * no way to fill it. A Claude Code session can read the PDF and post the JSON
+   * `SYSTEM_PROMPT` describes; this applies it.
+   *
+   * THE GATEWAY'S OWN EXTRACTOR REMAINS THE PRODUCT PATH. This is a supply
+   * door, not a second extractor: it does no reading of its own, and the only
+   * parser it may use is `extractor.normalize`, so a body that reaches the
+   * database has passed exactly the validation, tie-out and warning rules a
+   * model's answer passes.
+   *
+   * IT FILLS AN UNREAD DOCUMENT AND NEVER OVERWRITES A READ ONE. A document
+   * with lines, or with an extraction that was not the D6 degradation, is
+   * refused. Overwriting one would silently discard a manager's `editLine`
+   * corrections and the tie-out those corrections justify — the correction path
+   * is slice 3's, with its own append-only shape.
+   *
+   * ORDER OF WRITES IS LOAD-BEARING: lines first, header second. The other way
+   * round, a line insert that failed would leave a document claiming to be a
+   * read invoice with nothing on it — "the vendor billed nothing", which is a
+   * claim nobody made — AND closed to this door forever. This way a failure
+   * leaves the document exactly as degraded as it was, and the door open.
+   *
+   * NO STOCK, COST OR ORDER WRITES. Same as intake: this produces a document
+   * and its lines. Applying it to a delivery is still a separate, human step.
+   */
+  async applyExternalExtraction(
+    restaurantId: string,
+    documentId: string,
+    rawText: string,
+    model: string,
+    userId: string | null,
+  ): Promise<ExternalExtractionResult> {
+    const client = this.db.getClient();
+
+    // ---- 1. the document, scoped by tenant --------------------------------
+    // The gateway holds the service role, so this `eq` is the whole of tenant
+    // isolation on this route.
+    const { data: doc, error: docErr } = await client
+      .from("procurement_documents")
+      .select("id, status, doc_type, extraction_confidence")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    // `data: null` means BOTH "no such document" and "the read failed".
+    // Checking `error` first is what keeps a broken query from reporting as a
+    // document that does not exist (ADR 0067).
+    if (docErr) throw new Error(docErr.message);
+    if (!doc) throw new Error("NOT_FOUND");
+
+    if (doc.status !== "needs_review" && doc.status !== "received")
+      throw new Error(
+        `ALREADY_READ:this document is ${doc.status}, and only a document still awaiting review can be filled from outside`,
+      );
+
+    // ---- 2. is it actually unread? ----------------------------------------
+    // The D6 degradation is exactly `doc_type unknown`, confidence 0, no lines.
+    // Anything else has been read — by the model, by EDI, or by a person — and
+    // is refused rather than overwritten.
+    const confidence =
+      doc.extraction_confidence == null
+        ? null
+        : Number(doc.extraction_confidence);
+    if (doc.doc_type !== "unknown")
+      throw new Error(
+        `ALREADY_READ:this document was already read as a ${doc.doc_type}; this door only fills a document stored unread`,
+      );
+    if (confidence !== null && confidence > 0)
+      throw new Error(
+        `ALREADY_READ:this document already carries an extraction (confidence ${confidence}); this door only fills a document stored unread`,
+      );
+
+    const { data: existingLines, error: linesErr } = await client
+      .from("procurement_document_lines")
+      .select("id")
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .limit(1);
+    // A line read that FAILED must never be read as "this document has no
+    // lines" — that is the absence-reported-as-health fault, and here it would
+    // authorise overwriting a document that already has lines on it.
+    if (linesErr) throw new Error(linesErr.message);
+    if ((existingLines ?? []).length)
+      throw new Error(
+        "ALREADY_READ:this document already has lines; correcting a read document is not what this door does",
+      );
+
+    // ---- 3. parse, through the ONE parser ---------------------------------
+    // `normalize` is forgiving by design: prose comes back as an `unknown`
+    // document with a warning rather than as an error. That is right for a
+    // model's answer arriving mid-ingest and wrong here, where the caller is a
+    // person who can fix the body and retry — so the two shapes `normalize`
+    // would swallow are named and refused first.
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(stripJsonFence(rawText));
+    } catch (err: any) {
+      throw new Error(
+        `UNPARSABLE:rawText is not the JSON the extraction contract describes — ${err?.message ?? "unknown parse error"}`,
+      );
+    }
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      throw new Error(
+        "UNPARSABLE:rawText parsed to a JSON value that is not an object, so it carries no document",
+      );
+
+    const parsed = this.extractor.normalize(rawText, model);
+
+    // A zero-line extraction is refused rather than applied. Applying it would
+    // raise the document's confidence above zero and close this door, leaving a
+    // document that is still degraded on screen and no longer fillable — a
+    // permanent lock-out bought for nothing. A 422 is recoverable; that is not.
+    if (!parsed.lines.length)
+      throw new Error(
+        "UNPARSABLE:the extraction carries no lines. Applying it would close this door on a document that is still unread, so it is refused rather than written",
+      );
+
+    // ---- 4. lines FIRST ---------------------------------------------------
+    // `schemaLagNote: null` — migration 20260904120000 is on main, and this
+    // route did not exist before it. A database missing those columns fails
+    // loudly here, before the header moves, rather than dropping BT-149/BT-150
+    // quietly.
+    const lineErr = await this.insertDocumentLines(
+      documentId,
+      restaurantId,
+      parsed.lines,
+      null,
+    );
+    if (lineErr)
+      throw new Error(
+        `the extracted lines could not be written, so the document was left unread: ${lineErr.message}`,
+      );
+
+    // ---- 5. then the header ----------------------------------------------
+    const extractedSnapshot = parsed as unknown as Record<string, unknown>;
+    // Inline, never spread, and never assembled by a helper shared with the
+    // intake INSERT: `check_order_capture_contract.py` can only read a write
+    // whose column names are literal, and a payload it cannot read is one it
+    // cannot check for a column the table does not have.
+    //
+    // NOT WRITTEN, deliberately: `event_id`. No model call happened inside this
+    // gateway, so there is no neural-footprint row to point at, and NULL is the
+    // true statement. `source_channel`, `sha256`, `storage_path` and
+    // `file_bytes` belong to how the paper ARRIVED and are untouched — this
+    // door changes what we read off it, never where it came from.
+    const { error: headerErr } = await client
+      .from("procurement_documents")
+      .update({
+        printed: parsed.printed ?? null,
+        doc_type: parsed.docType,
+        doc_number: parsed.docNumber,
+        doc_date: parsed.docDate,
+        references_doc_number: parsed.referencesDocNumber,
+        extracted: extractedSnapshot,
+        extraction_confidence: parsed.confidence,
+        // VERBATIM, and deliberately not the configured model's name: an
+        // extraction this gateway did not perform must never be attributable to
+        // the model it would have used.
+        extraction_model: model,
+        currency: parsed.currency,
+        subtotal: parsed.subtotal,
+        freight: parsed.freight,
+        fuel_surcharge: parsed.fuelSurcharge,
+        split_case_fee: parsed.splitCaseFee,
+        delivery_fee: parsed.deliveryFee,
+        deposit_total: parsed.depositTotal,
+        tax: parsed.tax,
+        other_charges: parsed.otherCharges,
+        discount_total: parsed.discountTotal,
+        total: parsed.total,
+        computed_lines_total: parsed.computedLinesTotal,
+        tie_out_delta: parsed.tieOutDelta,
+        ties_out: parsed.tiesOut,
+        status: this.needsReview(parsed) ? "needs_review" : "received",
+        notes: parsed.warnings.length ? parsed.warnings.join("\n") : null,
+        // The D6 degradation ends with this write, so the fields that carry it
+        // are cleared in the same statement. Written explicitly rather than
+        // left alone: a stale "the intake gate rejected this" beside a freshly
+        // read document is worse than either state on its own.
+        intake_verdict: null,
+        intake_reason: null,
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (headerErr)
+      throw new Error(
+        `${parsed.lines.length} line(s) were written and the header was not, so this document now has lines under an unread header and this door will refuse it: ${headerErr.message}`,
+      );
+
+    // ---- 6. the same tail intake runs -------------------------------------
+    await this.linkAndMatch(documentId, restaurantId, null, parsed);
+
+    // ---- 7. one appended revision (ADR 0104 D1/D5) ------------------------
+    // Built from the COLUMNS rather than from `parsed`, so the revision records
+    // what the database actually holds — including the pairings step 6 just
+    // wrote — rather than what we hoped to write. `extracted` is the honest
+    // source value: a model produced these numbers by reading the page, and
+    // which model is in `extraction_model`.
+    const built = await this.canonical.buildFromDocumentId(
+      restaurantId,
+      documentId,
+    );
+    const revision: ReadResult<{ revision: number; id: string }> = built.ok
+      ? await this.canonical.persistRevision(
+          documentId,
+          built.value,
+          "extracted",
+          userId,
+        )
+      : { ok: false, error: built.error };
+    if (!revision.ok)
+      this.logger.warn(
+        `document ${documentId} was filled but no revision was appended: ${revision.error}`,
+      );
+
+    return {
+      warnings: parsed.warnings,
+      tieOut: {
+        computedLinesTotal: parsed.computedLinesTotal,
+        tieOutDelta: parsed.tieOutDelta,
+        tiesOut: parsed.tiesOut,
+      },
+      revision,
+    };
   }
 
   /**

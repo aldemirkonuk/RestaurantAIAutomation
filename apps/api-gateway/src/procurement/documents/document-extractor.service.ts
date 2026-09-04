@@ -104,6 +104,18 @@ RULES
 OUTPUT only valid JSON:
 {"docType":"invoice","docNumber":null,"docDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"printed":{}}],"unreadable":[]}`;
 
+/**
+ * The fence-stripping `normalize` applies before `JSON.parse`.
+ *
+ * Exported so a caller that wants to say WHY a body did not parse — the
+ * extraction door's 422 — can run the SAME preprocessing this parser runs.
+ * Duplicating the regex there would eventually let a body the door rejects be
+ * one `normalize` would have accepted, and vice versa.
+ */
+export function stripJsonFence(rawText: string): string {
+  return rawText.replace(/^```json\s*|\s*```$/g, "").trim();
+}
+
 type MediaType =
   | "image/jpeg"
   | "image/png"
@@ -234,7 +246,7 @@ export class DocumentExtractorService {
     const warnings: string[] = [];
     let parsed: any = {};
     try {
-      parsed = JSON.parse(rawText.replace(/^```json\s*|\s*```$/g, "").trim());
+      parsed = JSON.parse(stripJsonFence(rawText));
     } catch {
       // A model that returned prose instead of JSON has told us nothing usable.
       // Returning an empty invoice here would read downstream as a vendor who

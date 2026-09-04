@@ -114,6 +114,11 @@ describe("price base and printed literals — write", () => {
         DocumentIntakeService,
         { provide: DatabaseService, useValue: { getClient: () => chain } },
         { provide: DocumentExtractorService, useValue: extractor },
+        // DocumentIntakeService gained a CanonicalDocumentService dependency
+        // with the extraction door (it appends the document's revision). It is
+        // the real service over the same mocked client — nothing on the path
+        // under test reaches it, and a stub would have to pretend otherwise.
+        CanonicalDocumentService,
       ],
     }).compile();
     service = module.get(DocumentIntakeService);

@@ -20,7 +20,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
-import { UploadDocumentDto } from "./dto/documents.dto";
+import { ApplyExtractionDto, UploadDocumentDto } from "./dto/documents.dto";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 
@@ -340,6 +340,59 @@ export class DocumentsController {
       document: { ...doc, imageUrl },
       lines: lines ?? [],
       links: links ?? [],
+    };
+  }
+
+  /**
+   * The extraction door. Class-level `@UseGuards(JwtAuthGuard)` covers it, and
+   * `restaurantId` comes from the token exactly as it does on every sibling
+   * route — the id in the path is scoped by it, never trusted on its own.
+   */
+  @Post(":id/extraction")
+  @ApiOperation({
+    summary: "Apply an extraction produced outside this gateway",
+    description:
+      "Fills a document that was stored UNREAD (ADR 0104 D6) with an extraction someone else performed — today, a Claude Code session reading the PDF, because the configured Anthropic key has no credit. The body is the same JSON DocumentExtractorService asks a model for, and it goes through the same `normalize` (validation, tie-out, warnings) that a model's answer does; `model` is recorded verbatim in extraction_model so the row says who read the page. " +
+      "409 if the document already has lines or a non-degraded extraction: this door FILLS an unread document and never overwrites a read one, because overwriting would silently discard a manager's corrections. 422 if the body is not the contract's JSON, or carries no lines. Writes no stock, cost or orders — the gateway's own extractor remains the product path.",
+  })
+  async applyExtraction(
+    @Param("id") id: string,
+    @Body() body: ApplyExtractionDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    let applied: Awaited<
+      ReturnType<DocumentIntakeService["applyExternalExtraction"]>
+    >;
+    try {
+      applied = await this.intake.applyExternalExtraction(
+        user.restaurantId,
+        id,
+        body.rawText,
+        body.model,
+        user.userId,
+      );
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to apply the extraction";
+      if (msg === "NOT_FOUND")
+        throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+      if (msg.startsWith("ALREADY_READ:"))
+        throw new HttpException(msg.slice(13), HttpStatus.CONFLICT);
+      if (msg.startsWith("UNPARSABLE:"))
+        throw new HttpException(msg.slice(11), HttpStatus.UNPROCESSABLE_ENTITY);
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // The document as `GET :id` returns it, read back through that route's own
+    // code rather than reassembled here — the two shapes cannot drift if there
+    // is only one of them.
+    const detail = await this.detail(id, user);
+    return {
+      ...detail,
+      warnings: applied.warnings,
+      tieOut: applied.tieOut,
+      // Never omitted when it failed: a document whose lines landed and whose
+      // revision did not is a different thing from one where both did.
+      revision: applied.revision,
     };
   }
 
