@@ -7,6 +7,8 @@ import { format } from 'date-fns'
 import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
 import { apiClient, getErrorMessage } from '../../services/api/client'
+import { Panel, Popover } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 interface InviteTeamDialogProps {
   open: boolean
@@ -34,6 +36,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
   const [copied, setCopied] = useState(false)
   const anchorPos = useAnchoredDialogPosition(open, anchorRef)
+  const shell = useMudavymShell()
 
   const handleGenerate = async () => {
     setIsGenerating(true)
@@ -66,6 +69,137 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
     setRole('manager')
     setCopied(false)
     onClose()
+  }
+
+  /* The house shape, while a Mudavym page is on screen. Copy and behaviour are
+     the legacy dialog's, word for word; only the surface changes. Anchored
+     under its button when it has one — but modal, because this is a form that
+     commits, not a picker (see the `modal` note in Sheet.tsx). */
+  if (shell.on) {
+    const body = !invite ? (
+      <>
+        <p className="mdv-note">
+          Generate a single-use invite link that expires in 7 days. Share it with your new team
+          member.
+        </p>
+        <div className="mdv-form">
+          <div>
+            <label className="mdv-label" htmlFor="mdv-invite-email">
+              Email address (optional)
+            </label>
+            <input
+              id="mdv-invite-email"
+              type="email"
+              className="mdv-input"
+              value={targetEmail}
+              onChange={(e) => setTargetEmail(e.target.value)}
+              placeholder="colleague@restaurant.com"
+            />
+            <p className="mdv-hintline">
+              Optional — for your own tracking. Anyone with the link can use it.
+            </p>
+          </div>
+          <div>
+            <label className="mdv-label" htmlFor="mdv-invite-role">
+              Role
+            </label>
+            <select
+              id="mdv-invite-role"
+              className="mdv-select"
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'manager' | 'staff')}
+            >
+              <option value="manager">Manager</option>
+              <option value="staff">Staff</option>
+            </select>
+            <p className="mdv-hintline">You can change their role later in Settings → Team.</p>
+          </div>
+          <p className="mdv-hintline">Expires: 7 days from generation · Single-use</p>
+          <div className="mdv-actions">
+            <button type="button" className="mdv-btn" onClick={handleClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="mdv-btn mdv-btn--seal"
+              onClick={handleGenerate}
+              disabled={isGenerating}
+            >
+              {isGenerating ? 'Generating...' : 'Generate Invite Link'}
+            </button>
+          </div>
+          {onRosterOnly && (
+            <button
+              type="button"
+              className="mdv-link"
+              style={{ color: 'var(--ink-3)', justifySelf: 'center' }}
+              onClick={() => {
+                handleClose()
+                onRosterOnly()
+              }}
+            >
+              Add roster-only staff (no Mudavym login)
+            </button>
+          )}
+        </div>
+      </>
+    ) : (
+      <div className="mdv-form">
+        <p className="mdv-hintline" style={{ margin: 0 }}>
+          Share this link with your team member. It expires{' '}
+          {format(new Date(invite.expiresAt), 'MMM d, yyyy')}.
+        </p>
+        <div className="mdv-panelbox">
+          <span className="mdv-label">Invite code</span>
+          <p className="mdv-record">{invite.code}</p>
+        </div>
+        <div className="mdv-panelbox" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            style={{
+              flex: '1 1 auto',
+              minWidth: 0,
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontSize: 12,
+              color: 'var(--ink-2)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {invite.inviteUrl}
+          </span>
+          <button type="button" className="mdv-btn" onClick={handleCopy}>
+            {copied ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}{' '}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <p className="mdv-hintline" style={{ margin: 0 }}>
+          The link above includes the invite code. Your team member can paste it directly into
+          their browser.
+        </p>
+        <div className="mdv-actions">
+          <button type="button" className="mdv-btn mdv-btn--seal" onClick={handleClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    )
+
+    const shared = {
+      open,
+      onClose: handleClose,
+      label: invite ? 'Invite link generated' : 'Invite a team member',
+      eyebrow: 'The team',
+      title: invite ? 'Invite link generated' : 'Invite a Team Member',
+      bodyClassName: 'mdv-ovl__body--flush',
+      children: body,
+    }
+
+    return anchorRef ? (
+      <Popover {...shared} anchorRef={anchorRef} width={440} modal />
+    ) : (
+      <Panel {...shared} />
+    )
   }
 
   return (

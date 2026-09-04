@@ -20,10 +20,26 @@
  *
  * Usage (in the router):
  *   <PageGate page="dashboard" legacy={<Dashboard/>} next={<DashboardNext/>}/>
+ *
+ * ── The gate also tells the SHELL ─────────────────────────────────────────
+ * The app shell renders nine overlays over every page and they are shared with
+ * the legacy pages, so they may not be restyled globally without breaking ADR
+ * 0042's byte-for-byte promise. While a `next` tree is mounted this gate claims
+ * a slot in `lib/mudavym/shellGround`, and each shell overlay reads it: on ⇒
+ * the house shape, off ⇒ exactly the markup it always had. The ground is
+ * measured off the DOM the page rendered, because the page — not the gate —
+ * owns `data-ground` (see above).
  */
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { MudavymPage, useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
+import {
+  MudavymGroundContext,
+  claimMudavymShell,
+  readShellGroundFromDom,
+  releaseMudavymShell,
+  type MudavymGround,
+} from '../../lib/mudavym/shellGround';
 
 export interface PageGateProps {
   page: MudavymPage;
@@ -40,7 +56,28 @@ export interface PageGateProps {
 
 export function PageGate({ page, legacy, next }: PageGateProps) {
   const showNext = useMudavymDesign(page);
-  return <>{showNext ? next : legacy}</>;
+  const token = useRef<symbol>(Symbol('mudavym-page-gate'));
+  const [ground, setGround] = useState<MudavymGround | undefined>(undefined);
+
+  useEffect(() => {
+    if (!showNext) {
+      setGround(undefined);
+      return;
+    }
+    const id = token.current;
+    // Runs after the child has mounted, so its `.mudavym[data-ground]` root is
+    // in the document and can be read back.
+    const measured = readShellGroundFromDom();
+    setGround(measured);
+    claimMudavymShell(id, measured);
+    return () => releaseMudavymShell(id);
+  }, [showNext, page]);
+
+  if (!showNext) return <>{legacy}</>;
+  // Before the measurement lands the value is `undefined` — "nobody has
+  // declared a ground yet", which sends an overlay to the DOM rather than
+  // handing it a paper default the gate cannot actually vouch for.
+  return <MudavymGroundContext.Provider value={ground}>{next}</MudavymGroundContext.Provider>;
 }
 
 export default PageGate;

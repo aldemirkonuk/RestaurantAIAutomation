@@ -108,6 +108,26 @@ DRAFT/PENDING_APPROVAL exchange wears a dashed "AI draft · not sent" chip and
 its body renders in a dashed frame. Legacy page untouched; flag defaults OFF;
 override `mudavym.design.communications`.
 
+### Modal shape, 2026-09-03 (ADR 0112)
+
+**TemplateSheet re-skins the OUTER SURFACE only, and this is the one place in the
+wave where that is true.** The clarity banner is unchanged. Below it, the wrapper
+now carries `.cm-builder-skin`, and three structural selectors repaint the two
+legacy builders' *backdrop*, *card* and *header band* in house tokens — the
+blue/teal gradients become the one seal. **Everything inside those cards is still
+the legacy look**: toolbars, panel palettes, preview panes, buttons. That was a
+deliberate boundary, not an oversight — `GmailTemplateBuilder` is 1700+ lines and
+`SMSTemplateBuilder` 900+, and re-skinning their internals is a page rebuild, not
+a modal pass. Filed in §9/§13 as the remaining coherence gap.
+
+The selectors are structural (`> div`, `> div > div`, `> div > div > :first-child`)
+rather than Tailwind class-string matches, because a class string is not a
+contract; `AnimatePresence` and `Suspense` render no DOM node, so `> div` is and
+stays the builder's own overlay root. The wrapper deliberately does **not** carry
+a second `.mudavym` class — it already sits inside the page root, and a nested
+bare `.mudavym` re-declares the light token column on itself, which is the exact
+charcoal bug PageGate's header documents.
+
 ## 2. Entry
 
 - Sidebar (`components/layout/Sidebar.tsx:120`); command palette

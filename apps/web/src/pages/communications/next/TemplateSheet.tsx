@@ -38,6 +38,28 @@
  * The only gateway reader of this table filters `type='sender_identity'`
  * (procurement.service.ts:2697-2703), so an 'email'/'sms' row cannot reach the
  * outbound send path.
+ *
+ * ── Second pass: the OUTER SURFACE wears the wave, the builders do not ─────
+ * ADR 0112 makes every overlay over a rebuilt page look like the page under it.
+ * These two builders are the one exception, and it is a deliberate, bounded
+ * one: they are 1700+ and 900+ line legacy components with their own toolbars,
+ * palettes and preview panes, and re-skinning their INTERNALS is a rebuild, not
+ * a modal pass. What this sheet re-skins is the three layers it can reach
+ * structurally without touching them — their backdrop, their card and their
+ * header band (`.cm-builder-skin > div`, `> div > div`, `> div > div >
+ * :first-child`, matching GmailTemplateBuilder.tsx:852-863 and
+ * SMSTemplateBuilder.tsx:423-434). Everything inside the card is still the
+ * legacy look, and the page note says so.
+ *
+ * The selectors are structural, not class-string matches, because a Tailwind
+ * class string is not a contract — `AnimatePresence` and `Suspense` render no
+ * DOM node, so `> div` is the builder's own overlay root and stays so.
+ *
+ * The wrapper deliberately does NOT carry `.mudavym`: it already sits inside
+ * the page's root, and a SECOND bare `.mudavym` node re-declares the light
+ * token column on itself, which is precisely the charcoal bug PageGate's header
+ * documents. The charcoal rule therefore reads the ANCESTOR
+ * (`.mudavym[data-ground="charcoal"] .cm-builder-skin`), never this element.
  */
 
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
@@ -140,6 +162,32 @@ export function TemplateSheet({ channel, onClose }: Props) {
 
   return (
     <>
+      <style>{`
+        /* the builder's own full-screen backdrop */
+        .cm-builder-skin > div {
+          background: rgba(23,19,15,.28) !important;
+          backdrop-filter: none !important;
+        }
+        .dark .cm-builder-skin > div,
+        .mudavym[data-ground="charcoal"] .cm-builder-skin > div {
+          background: rgba(0,0,0,.5) !important;
+        }
+        /* its card */
+        .cm-builder-skin > div > div {
+          background: var(--paper-0) !important;
+          border: 1px solid var(--paper-2) !important;
+          border-radius: 14px !important;
+          box-shadow: 0 24px 60px -30px rgba(0,0,0,.5) !important;
+        }
+        /* its header band — the blue/teal gradient becomes the one seal.
+           background-image, not background-color: a Tailwind gradient paints
+           an image, and setting only the colour leaves the gradient on top. */
+        .cm-builder-skin > div > div > div:first-child {
+          background-image: none !important;
+          background-color: var(--seal) !important;
+        }
+      `}</style>
+
       {/* what's going on — above the builder's own z-[200] overlay */}
       <div
         role="status"
@@ -195,6 +243,7 @@ export function TemplateSheet({ channel, onClose }: Props) {
           overlay (backdrop, card, header) lives BELOW the banner instead of
           being clipped by it (Opus correctness review, DEFECT 7). */}
       <div
+        className="cm-builder-skin"
         style={{
           position: 'fixed',
           top: 52,

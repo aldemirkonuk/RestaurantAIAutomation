@@ -1,8 +1,15 @@
 /**
  * ShortcutsSheet — global keyboard cheat sheet (NEW-008). Opened with `?`.
+ *
+ * Two branches, one content model. While a Mudavym page is on screen this wears
+ * the house `Panel` (ADR 0112); otherwise it renders exactly the markup it
+ * always did, byte for byte — that is ADR 0042's promise and the test at
+ * ShortcutsSheet.test.tsx pins the class strings.
  */
 
 import { X } from "lucide-react";
+import { Panel } from "../mudavym/Sheet";
+import { useMudavymShell } from "../../lib/mudavym/shellGround";
 
 const GROUPS: { title: string; items: [string, string][] }[] = [
   {
@@ -52,7 +59,40 @@ export function ShortcutsSheet({
   open: boolean;
   onClose: () => void;
 }) {
+  const shell = useMudavymShell();
   if (!open) return null;
+
+  if (shell.on) {
+    return (
+      <Panel
+        open={open}
+        onClose={onClose}
+        label="Keyboard shortcuts"
+        eyebrow="The house"
+        title="Keyboard shortcuts"
+        footer="Page-specific shortcuts appear in each page's toolbar."
+      >
+        {GROUPS.map((group) => (
+          <div key={group.title}>
+            <span className="mdv-sect">{group.title}</span>
+            <ul style={{ listStyle: "none", margin: 0, padding: "0 0 6px" }}>
+              {group.items.map(([keys, desc]) => (
+                <li key={keys} className="mdv-item" style={{ cursor: "default" }}>
+                  <span className="mdv-item__text">
+                    <span className="mdv-item__label" style={{ whiteSpace: "normal" }}>
+                      {desc}
+                    </span>
+                  </span>
+                  <kbd className="mdv-kbd">{keys}</kbd>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </Panel>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center px-4"

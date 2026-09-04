@@ -52,7 +52,7 @@ this list is the note-side index (ADR 0044 §2).
 
 | id | name | fires |
 |---|---|---|
-| `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — `settle`, 320ms house curve, 24px travel |
+| `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — now the house `Sheet`'s `tuck` (spring 380/32, 300ms, 28px travel); the hand-rolled `settle`/24px variant is retired (ADR 0112) |
 | `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
 
 Deliberate non-motions: no card stagger (a roster is a reference, not an
@@ -78,6 +78,23 @@ learned behaviours stay in the sheet's intelligence panel. A second known
 coherence gap: that panel renders in the legacy grey/blue skin inside the
 İznik sheet — filed in §9 and v3.0-TECH-DEBT rather than hacked over with
 CSS overrides.
+
+### Modal shape, 2026-09-03 (ADR 0112)
+
+**TwinSheet is a `Sheet`** — the house's right slide-in, for one object's record.
+Its own overlay is deleted: the inline scrim, the `pv-sheet-in` keyframes and its
+private Esc handler are gone, replaced by `components/mudavym/Sheet.tsx`, which
+adds the three things it never had — a focus trap, focus returned to the card you
+opened it from, and a body-scroll lock. The component is 186 → 110 lines and what
+is *inside* the sheet is unchanged, line for line.
+
+Still legacy on this page, and honestly so: **Add provider** at §Surface line 24
+is `components/providers/AddProviderModal.tsx` → `VendorSearchModal.tsx`, both
+still the legacy white-and-wine dialogs. They are reachable from the LEGACY page
+only (`pages/Providers.tsx`), so nothing a Mudavym reader sees is mixed — but if
+the rebuilt page ever grows an Add control, it needs a `Panel` first. And
+`ProviderIntelligencePanel` inside the sheet is still the grey/blue skin, as §9
+already records.
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with

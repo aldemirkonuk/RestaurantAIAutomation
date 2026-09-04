@@ -33,6 +33,8 @@ import {
 } from "./commands";
 import { apiClient } from "../../services/api/client";
 import { ASK_AI_OPEN_EVENT } from "../askai/events";
+import { Panel } from "../mudavym/Sheet";
+import { useMudavymShell } from "../../lib/mudavym/shellGround";
 
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
@@ -66,6 +68,7 @@ export function CommandPalette({
   const location = useLocation();
   const toast = useToast();
   const { user } = useAuth();
+  const shell = useMudavymShell();
   const restaurantId = user?.restaurantId;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -250,6 +253,110 @@ export function CommandPalette({
   }, [active, open]);
 
   if (!open) return null;
+
+  if (shell.on) {
+    let houseIdx = -1;
+    return (
+      <Panel
+        open={open}
+        onClose={onClose}
+        label="Command palette"
+        showClose={false}
+        bodyClassName="mdv-ovl__body--flush"
+        footer={
+          <span style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <span>
+              <kbd className="mdv-kbd">↑</kbd> <kbd className="mdv-kbd">↓</kbd> to move,{" "}
+              <kbd className="mdv-kbd">↵</kbd> to run
+            </span>
+            <span>
+              <kbd className="mdv-kbd">?</kbd> for all shortcuts
+            </span>
+          </span>
+        }
+      >
+        <div className="mdv-field">
+          <Search size={15} aria-hidden style={{ color: "var(--ink-3)", flex: "none" }} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onKeyDown}
+            placeholder="Search pages, actions, insights…"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-list"
+            aria-label="Search pages, actions, insights"
+            aria-activedescendant={flat[active] ? `cmd-${flat[active].id}` : undefined}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <kbd className="mdv-kbd">esc</kbd>
+        </div>
+        <div id="command-list" ref={listRef} role="listbox" style={{ padding: "4px 0 8px" }}>
+          {flat.length === 0 ? (
+            <p className="mdv-quiet">Nothing here matches “{query}”.</p>
+          ) : (
+            SECTION_ORDER.filter((sec) => groups[sec]?.length).map((section) => (
+              <div key={section}>
+                <span className="mdv-sect">{section}</span>
+                {groups[section].map((cmd) => {
+                  houseIdx += 1;
+                  const idx = houseIdx;
+                  const Icon = cmd.icon;
+                  const isActive = idx === active;
+                  return (
+                    <button
+                      key={cmd.id}
+                      type="button"
+                      id={`cmd-${cmd.id}`}
+                      data-idx={idx}
+                      role="option"
+                      aria-selected={isActive}
+                      className="mdv-item"
+                      onMouseMove={() => setActive(idx)}
+                      onClick={() => run(cmd)}
+                    >
+                      <Icon
+                        size={15}
+                        aria-hidden
+                        className="mdv-item__icon"
+                        style={isActive ? { color: "var(--seal)" } : undefined}
+                      />
+                      <span className="mdv-item__text">
+                        <span className="mdv-item__label">{cmd.title}</span>
+                        {cmd.subtitle && <span className="mdv-item__sub">{cmd.subtitle}</span>}
+                      </span>
+                      {cmd.shortcut
+                        ? cmd.shortcut
+                            .split(" ")
+                            .map((k, i) => (
+                              <kbd key={i} className="mdv-kbd">
+                                {k}
+                              </kbd>
+                            ))
+                        : isActive && (
+                            <span className="mdv-item__icon" aria-hidden>
+                              {cmd.section === "Insights" && cmd.id.startsWith("rec-") ? (
+                                <ArrowRight size={13} />
+                              ) : (
+                                <CornerDownLeft size={13} />
+                              )}
+                            </span>
+                          )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </Panel>
+    );
+  }
 
   let renderIdx = -1;
   return (
