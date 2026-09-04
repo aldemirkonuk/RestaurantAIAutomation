@@ -16,6 +16,27 @@
   | 4 | F — the 90/180-day floors | **The numbers stand, and they are per RESTAURANT, never pooled across the chain** | Closes the fork this ADR raised without answering. Cross-tenant pooling stays unauthorised under ADR 0048 §Consequences until a DPA says otherwise; the floors are not a placeholder to be relaxed by a later builder |
   | 5 | C — Google app verification | **Submit the app for verification now**, rather than staying in testing behind a user cap | Unblocks slices 7-8 on the calendar scopes. Nothing in slices 1-3 depends on it; the gateway's `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pair is still unset on every deployment |
 
+  **2026-09-04 — the verification submission gains a second scope.** The founder
+  added the sending integration the same day ("add the gmail send integration
+  now"; ADR 0118), so the submission is no longer calendar-only. Both are
+  restricted/sensitive consent-screen scopes and both go in one submission —
+  Google reviews the OAuth client, not the feature, and a second submission later
+  would re-open the first one's approval.
+
+  | Scope | Feature it serves | Justification text for the submission |
+  |---|---|---|
+  | `https://www.googleapis.com/auth/calendar.app.created` | The day book (slices 7-8) | Mudavym creates one secondary calendar of its own and writes only the events it created there. It never reads, edits or deletes the user's existing calendars; `calendar.app.created` is the narrowest scope Google publishes that can do this, and a broader `calendar` or `calendar.events` scope would grant access to personal calendars the product has no use for. |
+  | `https://www.googleapis.com/auth/gmail.send` | The house's own letters (ADR 0118) | A restaurant manager writes a letter to a supplier by hand in Mudavym and releases it themselves; it is sent from their own mailbox so the envelope matches the sign-off and the supplier's reply returns to them, instead of leaving from an address shared by every restaurant on the deployment. `gmail.send` is the narrowest scope that can send: it grants no ability to read, search, list or modify any message, and Mudavym requests no other Gmail scope. Nothing is ever sent automatically — every message is composed by a person, held for a two-minute window in which they can pull it back, and blocked outright if it contains language that could form a binding purchase commitment. |
+
+  Both scopes need the consent screen, the privacy policy and the demo video to
+  show the *narrow* behaviour, and `gmail.send`'s reviewer question is always
+  "why not a draft?" — the answer is that a draft cannot be pulled back on a
+  timer and would leave the supplier's reply in a mailbox the house does not
+  watch. **Unsubmitted as of 2026-09-04**, and the gateway's
+  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` pair is still unset on every
+  deployment, so neither scope has ever been exercised against a real consent
+  screen.
+
   Fork **D** — whose Google account is the house's when a manager leaves — is the one
   left open, and slice 7 is where it becomes urgent.
 
@@ -566,7 +587,7 @@ citations across ~89 files — see the register-row memo); the parent files them
 |---|---|
 | A | **Weather licence.** Paid Open-Meteo commercial (~$29/mo, global), free NWS (US only), or keyed OpenWeather? A keyless call on the free tier is not available to a commercial product. |
 | B | **Where the coordinate comes from.** Geocode the stored `address`/`google_place_id` for all 14 rows in a migration, or ask each house to drop a pin? A geocode is a guess about a legal entity's location; a pin is a fact the operator asserted. |
-| C | **Google app verification.** Calendar scopes are consent-screen scopes. Stay in testing with a user cap, or verify the app? |
+| C | **Google app verification.** Calendar scopes are consent-screen scopes. Stay in testing with a user cap, or verify the app? *(Answered — submit. As of 2026-09-04 the submission also carries `gmail.send`; see the decision table above.)* |
 | D | **Whose calendar.** A connection is per *user* (`integration_oauth_connections.user_id`) but the day-book is per *restaurant*. When a manager leaves, whose Google calendar was the house's? |
 | E | **Public commodity indexes** on the price mark — in, out, or in a separate register that never sits beside a vendor quote? |
 | F | **The 90/180-day floors.** Are they the right numbers, and are they per-restaurant or per-chain? Cross-tenant pooling would relax them and is unauthorised under ADR 0048's §Consequences until a DPA says otherwise. |

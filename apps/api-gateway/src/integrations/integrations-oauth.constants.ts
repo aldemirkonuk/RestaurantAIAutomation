@@ -1,5 +1,5 @@
 export type IntegrationProvider = "google" | "microsoft";
-export type IntegrationId = "google_drive" | "excel";
+export type IntegrationId = "google_drive" | "excel" | "gmail_send";
 
 export interface ScopeDisclosure {
   /** The raw scope string sent to the provider. */
@@ -63,6 +63,55 @@ export const INTEGRATION_DEFINITIONS: Record<
       "Reading files you did not create with WineOps",
       "Your Gmail messages",
       "Deleting your Drive folders",
+    ],
+  },
+  /**
+   * The sending mailbox (founder, 2026-09-04: "add the gmail send integration
+   * now"; ADR 0118).
+   *
+   * ONE scope, and it is the narrowest Google publishes for this job.
+   * `gmail.send` can create and send a message and can do nothing else: it
+   * cannot open, list, search or label a single message in the mailbox — not
+   * even the ones it sent itself. `google_drive` above lists "Your Gmail
+   * messages" under `notRequested` and that stays exactly true, because reading
+   * mail is not what this asks for either.
+   *
+   * Deliberately NOT folded into `google_drive`. Widening an existing grant's
+   * scope list would send every Drive-connected person back through a consent
+   * screen for a power they never agreed to, and would make "connected" mean
+   * two different things depending on when you connected. A separate id gets a
+   * separate row (`UNIQUE (user_id, integration_id)`, 20260826170000:144), a
+   * separate consent screen, and a separate disconnect.
+   *
+   * NO `openid` / `email`. Those are what `google_drive` uses to learn the
+   * connected address for its Settings row, and they are read scopes about the
+   * person. The founder's line was the send scope and nothing else, so the
+   * connected address is NOT recorded for this grant and the sender line names
+   * the person who consented instead of asserting an address it never read
+   * (`house-sender.service.ts`). The consequence is filed in the report as a
+   * founder question rather than quietly solved by asking for one more scope.
+   */
+  gmail_send: {
+    id: "gmail_send",
+    provider: "google",
+    label: "Gmail — sending only",
+    providerLabel: "Google",
+    description:
+      "Lets this house's own letters leave from your Gmail mailbox, so the envelope matches the sign-off and the vendor's reply comes back to you.",
+    scopes: [
+      {
+        scope: "https://www.googleapis.com/auth/gmail.send",
+        label: "Send mail as you — and nothing else",
+        reason:
+          "A letter written on /communications is sent from your mailbox instead of the address every restaurant on this deployment shares. This scope permits sending only: it grants no ability to open, read, search or list any message in your mailbox, including the letters it sends itself.",
+      },
+    ],
+    notRequested: [
+      "Reading, searching or listing any message in your mailbox",
+      "Reading even the letters sent through this connection",
+      "Your drafts, labels, filters, settings or contacts",
+      "Deleting or changing anything already in your mailbox",
+      "Sending anything on its own — every letter is written and released by a person, and can be pulled back before it leaves",
     ],
   },
   excel: {

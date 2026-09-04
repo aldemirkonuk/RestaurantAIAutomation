@@ -70,9 +70,14 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **The guardrails over a human draft** (flag ON): commitment language and an
   unfilled `{{merge_field}}` **block** Send with the sentence; the round count on
   an order is **stated, not blocked**
-- **DARK — nothing can actually be sent today**, and the page says so in the sender
-  line: no `IntegrationDefinition` requests `gmail.send`, so every house resolves
-  to "no house sender" and Send is disabled carrying that reason (§9)
+- **The sending mailbox** (2026-09-04, founder: "add the gmail send integration
+  now"): `gmail_send` is now a declared `IntegrationDefinition` requesting
+  `https://www.googleapis.com/auth/gmail.send` **and no other scope** — a separate
+  house-declared, person-consented grant, not a widening of the Drive one. A
+  letter can leave as soon as somebody in the house consents; until one does the
+  sender line still says "no house sender" in words and Send stays disabled, but
+  it now names the row to click. Google app verification for the scope is
+  outstanding (ADR 0111) — see §9
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
 
@@ -317,17 +322,37 @@ chrome per dashboard.md §7.
 
 ### The composer's own gaps, 2026-09-04 (ADR 0118)
 
-- **BLOCKING — no house can send a letter today, and the page says so in words.** The
-  sending identity is resolved from `integration_oauth_connections.scopes`
-  containing `https://www.googleapis.com/auth/gmail.send`. `INTEGRATION_DEFINITIONS`
-  declares `google_drive` and `excel` only
-  (`apps/api-gateway/src/integrations/integrations-oauth.constants.ts:36-98`), and
-  `google_drive` lists "Your Gmail messages" under `notRequested` (`:64`).
-  **Why not yet:** widening an existing grant's scopes would change what people
-  already consented to without asking them, and `gmail.send` is a Google-verified
-  sensitive scope. The fix is a **third `IntegrationDefinition`** with its own
-  disclosure — outside this pass's paths (`integrations/` is not this builder's),
-  filed in §13.
+- **~~BLOCKING — no house can send a letter today~~ — CLOSED 2026-09-04.** The
+  third `IntegrationDefinition` this gap asked for exists: `gmail_send`, in
+  `apps/api-gateway/src/integrations/integrations-oauth.constants.ts`, requesting
+  `https://www.googleapis.com/auth/gmail.send` and nothing else, with its own
+  consent-screen disclosure stating that it can send and cannot read, search,
+  list, modify or delete a single message. The Drive grant was **not** widened —
+  `google_drive` still lists "Your Gmail messages" under `notRequested`, and a
+  Drive-only house still resolves to `kind: "none"`. Proved by
+  `apps/api-gateway/src/integrations/gmail-send-asks-for-one-thing.spec.ts` (8
+  assertions, 6 of which fail against `HEAD`'s constants file) and by the
+  dispatcher's own end-to-end spec in
+  `apps/api-gateway/src/communications/letters/house-letters.spec.ts`.
+  **What remains open, and is now the only thing between a house and a sent
+  letter:**
+  - **Google app verification.** `gmail.send` is a restricted scope; the OAuth
+    client is unverified and `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are unset
+    on every deployment, so nobody outside the test-user list can complete the
+    consent. Justification text is filed in ADR 0111. **Why not yet:** it is an
+    external review with a lead time, and the submission is the founder's to make.
+  - **The connections page's attachment row prints the wrong permissions for
+    it.** The row itself appears automatically (the catalogue drives the list),
+    but `apps/web/src/pages/connections/next/ConnectionsNext.tsx:964-968` (grep
+    `'Never mail, never other documents'` — the file is moving) hard-codes "Create and edit files it made" / "Never mail, never other
+    documents" for **every** unconnected integration — which is precisely untrue
+    of a sending grant. **Why not yet:** `pages/**` is outside this pass's paths;
+    the patch is written out in this session's report and in §13.
+  - **No live end-to-end send has been made.** The local gateway points at the
+    **production** Supabase project and consenting a real Google account would
+    put a real credential and a real sent message into it. **Why not:** ADR 0020
+    — a verification that requires fabricating production state is not a
+    verification worth having.
 - **HELD — the template library reads 400 until migration `20260904150000` applies.**
   `category`, `merge_fields`, `updated_by` and `last_used_at` do not exist on
   `communication_templates` yet. Measured live against `:4000` on 2026-09-04, the
@@ -342,6 +367,15 @@ chrome per dashboard.md §7.
   `restaurant-templates/`'s DTO is `whitelist: true, forbidNonWhitelisted: true`
   and models four columns; growing it to carry the purpose, the merge fields, the
   author and the last-use was outside this pass's paths. §13.
+- **NOT FIXED, BY DESIGN — a `gmail_send` grant records no email address.** The
+  scope list is send-only, so it carries no `openid`/`email` and
+  `fetchAccountEmail` (`integrations-oauth.service.ts:446-462`) stores `null`.
+  The sender line therefore names the **person** who consented rather than an
+  address, and the dispatcher **omits** the `From:` header instead of emitting a
+  blank one, letting Gmail stamp the authenticated mailbox. **Why not yet:**
+  adding `email` to the grant would make the address readable, but it widens a
+  grant the founder specified as the send scope and nothing else — that is a
+  founder call, filed in the session report, not one to take by default.
 - **NOT BUILT — a letter carries no attachment.** There is no attachment path on the
   manager-written route, and the composer does not pretend there is.
 - **NOT MEASURED LIVE — the guardrail refusal and the no-sender refusal are proved by spec, not by

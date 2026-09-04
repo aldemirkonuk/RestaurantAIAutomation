@@ -25,9 +25,14 @@
  *   4. the house has cut itself off from the
  *      grant that identity rests on (ADR 0114) → 403, from the token path
  *
- * (1) and (2) come before (3) deliberately. Today NO house has a sending
- * identity, so checking (3) first would make (1) and (2) unreachable and
- * untestable — the shape of a system that reports absence as health.
+ * (1) and (2) come before (3) deliberately. When this was written no house
+ * could have a sending identity at all, so checking (3) first would have made
+ * (1) and (2) unreachable and untestable — the shape of a system that reports
+ * absence as health. As of 2026-09-04 a house CAN have one (the `gmail_send`
+ * integration; ADR 0118), and the order still stands for the same reason: most
+ * houses will not have consented yet, and the ones that have deserve to be told
+ * their letter is off-book or trips a guardrail rather than being handed the
+ * one refusal that happens to be checkable first.
  *
  * WHAT IS RECORDED
  * ----------------
@@ -71,10 +76,17 @@ export const LETTER_STATUS = {
 } as const;
 
 /**
- * `processScheduledAutoSends` selects `status = 'AUTO_SEND_SCHEDULED'` and
- * nothing else (`procurement.service.ts:3739,3755,3951`). A house letter must
- * never wear that word, or the AI's cron would dispatch a human's letter
- * through the deployment mailbox — precisely what this build exists to stop.
+ * `processScheduledAutoSends` in `procurement.service.ts` selects on the literal
+ * `status = 'AUTO_SEND_SCHEDULED'`. A house letter must never wear that word, or
+ * the AI's cron would dispatch a human's letter through the deployment mailbox —
+ * precisely what this build exists to stop.
+ *
+ * CITED BY STRING, NOT BY LINE (corrected 2026-09-04). The header used to name
+ * `procurement.service.ts:3739,3755,3951`; on this tree the string is at 269,
+ * 4221, 4237, 4433, 4544 and 5006, and it moved again while this note was being
+ * written. `grep -n "AUTO_SEND_SCHEDULED" apps/api-gateway/src/procurement/
+ * procurement.service.ts` is the citation, because a line number in a file two
+ * other builders are editing is a claim with a shelf life of hours.
  */
 export const AI_ONLY_STATUS = "AUTO_SEND_SCHEDULED";
 
@@ -881,8 +893,14 @@ export async function sendThroughGrant(params: {
   text: string;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
+  // `From` is emitted only when we actually know the address. The `gmail_send`
+  // grant asks for the send scope and nothing else, so it carries no
+  // `openid`/`email` and no address was ever read for it — and `From: ` with
+  // nothing after it is a malformed header, which Gmail either rejects or
+  // silently repairs. Omitting it lets Gmail stamp the authenticated mailbox,
+  // which is the true answer and the one we could not have written ourselves.
   const mime = [
-    `From: ${params.from}`,
+    ...(params.from.trim() ? [`From: ${params.from.trim()}`] : []),
     `To: ${params.to}`,
     `Subject: ${params.subject}`,
     "MIME-Version: 1.0",

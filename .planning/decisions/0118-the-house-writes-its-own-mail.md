@@ -1,6 +1,21 @@
 # 0118 — The house writes its own mail
 
 - **Status:** Proposed — built behind `mudavym_design_communications`, founder review open
+  - **2026-09-04 (later the same day):** the send scope now exists. The founder
+    said "add the gmail send integration now", and `gmail_send` is declared in
+    `INTEGRATION_DEFINITIONS` — a separate integration requesting
+    `https://www.googleapis.com/auth/gmail.send` and no other scope, house-declared
+    and person-consented in the same shape as the Drive and Excel grants. **A
+    letter can therefore leave, once a person in the house has consented.** Until
+    one has, this ADR's "nothing can be sent today" consequence still describes
+    the live answer for that house, but it is now a fact about the house rather
+    than about the deployment. The Drive grant was NOT widened: `google_drive`
+    still lists "Your Gmail messages" under `notRequested`, and a Drive-only house
+    is still `kind: "none"`
+    (`apps/api-gateway/src/integrations/integrations-oauth.constants.ts`,
+    `apps/api-gateway/src/integrations/gmail-send-asks-for-one-thing.spec.ts`).
+    Google app verification for the scope is an open external dependency — see
+    ADR 0111's submission item.
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — the sender rule, the send costs, the recipient
   rule, the paid tier and the staff-broadcast exclusion were all decided in
@@ -234,11 +249,15 @@ stored a row nothing could send.
 
 ## Consequences
 
-- **Nothing can be sent today, and the page says so.** Every surface state is
-  reachable and honest, but no house has a `gmail.send` grant, so the live answer
-  is `kind: "none"`. The next build is a third `IntegrationDefinition` for
-  `gmail.send` with its own scope disclosure (and Google verification — it is a
-  sensitive scope). Filed in `communications.md` §9/§13.
+- **~~Nothing can be sent today, and the page says so.~~ SUPERSEDED 2026-09-04
+  by this ADR's own status line.** As written, this said no house had a
+  `gmail.send` grant because no integration asked for one, and named "a third
+  `IntegrationDefinition` for `gmail.send` with its own scope disclosure" as the
+  next build. That build happened the same day. What survives unchanged: the page
+  is still honest when the answer is `none`, the answer is still read off the
+  stored `scopes` array rather than a flag, and Google app verification for the
+  sensitive scope is still outstanding — so a house outside the OAuth test-user
+  list will meet Google's unverified-app screen, not ours.
 - **A migration is a precondition, not a follow-up.**
   `20260904150000_the_house_writes_its_own_mail.sql` adds `HOUSE_LETTER` to
   `chk_outbound_email_type`, `inserted_insights` to `procurement_conversations`,

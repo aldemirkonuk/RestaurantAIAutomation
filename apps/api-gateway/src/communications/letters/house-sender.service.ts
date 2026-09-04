@@ -26,16 +26,23 @@
  * stored answer and is asked of that answer — never of a config flag, and never
  * of the mere existence of a Google connection.
  *
- * Measured on this branch, 2026-09-04: `INTEGRATION_DEFINITIONS` declares two
- * integrations, `google_drive` and `excel`
- * (integrations-oauth.constants.ts:36-98), and NEITHER requests
- * `https://www.googleapis.com/auth/gmail.send`. `google_drive` explicitly lists
- * "Your Gmail messages" under `notRequested` (:64). So on today's tree this
- * resolver returns `kind: "none"` for every house, and the composer's Send is
- * disabled carrying that sentence. Widening the Drive grant's scopes to make
- * the button light up would be changing what people consented to without asking
- * them; the missing piece is named in `missing` and filed in the page note
- * instead.
+ * WHAT CHANGED ON 2026-09-04 (founder: "add the gmail send integration now")
+ * ------------------------------------------------------------------------
+ * Until today `INTEGRATION_DEFINITIONS` declared `google_drive` and `excel`
+ * only, neither requested `gmail.send`, and this resolver therefore returned
+ * `kind: "none"` for every house on the deployment — correctly, because there
+ * was no consent screen anywhere that asked for sending.
+ *
+ * There is now: `gmail_send` (integrations-oauth.constants.ts), a separate
+ * integration asking for `https://www.googleapis.com/auth/gmail.send` and for
+ * nothing else. What did NOT change is the rule underneath: the Drive grant's
+ * scopes were not widened, `google_drive` still lists "Your Gmail messages"
+ * under `notRequested`, and a house that has connected Drive is still `none`
+ * here. A person consents to sending separately, by name, or nothing may leave.
+ *
+ * So the answer for a given house is now a fact about that house rather than a
+ * fact about the deployment: `none` until somebody consents, `house_mailbox`
+ * the moment somebody does.
  *
  * FOUR STATES, NOT TWO (ADR 0051 clause 3). `none` and `unknown` are different
  * facts — "this house has no sending identity" and "we could not read whether
@@ -46,20 +53,40 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
+import { INTEGRATION_DEFINITIONS } from "../../integrations/integrations-oauth.constants";
 
-/** The Gmail scope that permits sending as the granting account. */
+/**
+ * The integration that asks for sending. Read from the catalogue rather than
+ * named as a string here: the resolver's refusal sentence tells a manager which
+ * row to click, and a hand-typed label drifts from the row the moment one of
+ * them is renamed.
+ */
+export const GMAIL_SEND_DEFINITION = INTEGRATION_DEFINITIONS.gmail_send;
+
+/**
+ * The Gmail scope that permits sending as the granting account.
+ *
+ * Asserted against the catalogue in the spec rather than trusted: this constant
+ * decides whether a stored grant counts, and the definition decides what is
+ * actually asked for. If they ever disagree, either every house silently loses
+ * its sender or one silently gains a sender it never consented to.
+ */
 export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
 /**
  * The undo window on a plain-button send, in milliseconds.
  *
  * Not a new number: it is the window the autonomous vendor-reply path already
- * stages a guardrail-clear reply for
- * (`common/orchestrator/inbound-responder.service.ts:36`,
- * `AUTO_SEND_UNDO_MS = 2 * 60 * 1000`). The founder's decision was "the AI
- * reply path's shape" for a house's own mailbox, so the shape includes its
- * duration. Re-declared rather than imported so this module does not reach into
- * the orchestrator's internals for a constant; the spec asserts the two agree.
+ * stages a guardrail-clear reply for (`AUTO_SEND_UNDO_MS` in
+ * `common/orchestrator/inbound-responder.service.ts`). The founder's decision
+ * was "the AI reply path's shape" for a house's own mailbox, so the shape
+ * includes its duration. Re-declared rather than imported so this module does
+ * not reach into the orchestrator's internals at runtime — but that constant is
+ * now EXPORTED and `house-letters.spec.ts` asserts the two are equal against it.
+ * Until 2026-09-04 it was private and the spec could only compare this value to
+ * a hardcoded literal, so the header's claim that "the spec asserts the two
+ * agree" was false: the AI path's window could have drifted and nothing would
+ * have failed. Found by the audit of 5e0a59a6, fixed the same day.
  */
 export const HOUSE_LETTER_UNDO_MS = 2 * 60 * 1000;
 
@@ -118,6 +145,28 @@ export class HouseSenderService {
       this.config.get<string>("GMAIL_SENDER_EMAIL") ??
       "notifications@wineops.ai"
     );
+  }
+
+  /**
+   * The name of the person whose grant a letter would ride on.
+   *
+   * Never throws and never invents: a failed read or a nameless row returns
+   * null, and the caller says "another member of this house" rather than
+   * printing an empty gap or a user id at a vendor.
+   */
+  private async personName(userId: string): Promise<string | null> {
+    try {
+      const { data, error } = await this.db.client
+        .from("users")
+        .select("name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error || !data) return null;
+      const name = (data as Record<string, unknown>).name;
+      return typeof name === "string" && name.trim() ? name.trim() : null;
+    } catch {
+      return null;
+    }
   }
 
   private base(): Pick<
@@ -212,11 +261,11 @@ export class HouseSenderService {
 
     if (withSend.length === 0) {
       const missing = [
-        `No connected Google account for this house has granted ${GMAIL_SEND_SCOPE}. There is no integration that asks for it: INTEGRATION_DEFINITIONS declares google_drive and excel only, and google_drive lists "Your Gmail messages" as not requested (integrations-oauth.constants.ts:64).`,
+        `No connected Google account for this house has granted ${GMAIL_SEND_SCOPE}. The consent that asks for it exists — "${GMAIL_SEND_DEFINITION.label}" on /connections, which requests that one scope and no other — but nobody in this house has been through it yet.`,
       ];
       if (rows.length > 0) {
         missing.push(
-          `${rows.length} Google ${rows.length === 1 ? "grant is" : "grants are"} connected to this house, but ${rows.length === 1 ? "it was" : "they were"} granted for files, not for sending. Sending as this account needs its own consent, asked for by name.`,
+          `${rows.length} Google ${rows.length === 1 ? "grant is" : "grants are"} connected to this house, but ${rows.length === 1 ? "it was" : "they were"} granted for files, not for sending. Sending as this account needs its own consent, asked for by name; the file grant is not widened to cover it.`,
         );
       }
       return {
@@ -228,8 +277,8 @@ export class HouseSenderService {
         undoMs: null,
         words:
           rows.length > 0
-            ? "No house sender. This house has connected a Google account, but it granted file access, not sending — a letter cannot leave in its name until sending is asked for and agreed to separately. Connect a sending mailbox on /connections."
-            : "No house sender. This house has not connected a mailbox of its own, and a Mudavym address is a paid-tier option that is not provisioned yet. Connect a mailbox on /connections; nothing is sent until one exists.",
+            ? `No house sender. This house has connected a Google account, but it granted file access, not sending — a letter cannot leave in its name until sending is asked for and agreed to separately. Connect "${GMAIL_SEND_DEFINITION.label}" on /connections; it asks for one permission, to send, and cannot read a single message.`
+            : `No house sender. This house has not connected a mailbox of its own, and a Mudavym address is a paid-tier option that is not provisioned yet. Connect "${GMAIL_SEND_DEFINITION.label}" on /connections; nothing is sent until somebody has.`,
         grant: null,
         missing,
       };
@@ -239,15 +288,32 @@ export class HouseSenderService {
     // mailbox they expect; otherwise the house's first live sending grant.
     const chosen =
       withSend.find((r) => String(r.user_id) === userId) ?? withSend[0];
+    const address = (chosen.account_email as string | null) ?? null;
+    const owner = String(chosen.user_id);
+    const mine = owner === userId;
+
+    // WHOSE MAILBOX, stated — and stated truthfully when we do not have an
+    // address to state. `gmail_send` asks for the send scope and nothing else,
+    // so it carries no `openid`/`email` and `fetchAccountEmail` records null
+    // for it (integrations-oauth.service.ts:446-462). Naming the PERSON who
+    // consented is a fact we hold; printing an address we never read would not
+    // be. A blank here would be the cardinal fault of this repo written onto
+    // the one line whose whole job is to say where the letter comes from.
+    const ownerName = mine ? null : await this.personName(owner);
+    const whose = address
+      ? `${address}, ${mine ? "your own connected mailbox" : `the mailbox ${ownerName ?? "another member of this house"} connected`}`
+      : mine
+        ? "the Google mailbox you consented with. Its address was not recorded, because the sending grant asks for permission to send and for nothing else — not even for the address it sends from; Google fills that in itself"
+        : `the Google mailbox ${ownerName ?? "another member of this house"} consented with. Its address was not recorded, because the sending grant asks for permission to send and for nothing else`;
 
     return {
       ...base,
       kind: "house_mailbox",
-      address: (chosen.account_email as string | null) ?? null,
+      address,
       sendable: true,
       ceremony: "undo",
       undoMs: HOUSE_LETTER_UNDO_MS,
-      words: `Sends as ${(chosen.account_email as string | null) ?? "the connected Google account (its address was not recorded)"}, this house's own connected mailbox. Send goes out after a ${Math.round(HOUSE_LETTER_UNDO_MS / 60000)}-minute window in which it can still be pulled back.`,
+      words: `Sends from ${whose}. Send goes out after a ${Math.round(HOUSE_LETTER_UNDO_MS / 60000)}-minute window in which it can still be pulled back.`,
       grant: {
         connectionId: String(chosen.id),
         integrationId: String(chosen.integration_id),

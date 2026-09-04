@@ -37,7 +37,15 @@ links: ["[[PAGE-CONTRACT]]", "[[profile]]", "[[settings]]"]
 - **Stop the house using it / Use it again** → API `PUT /api/v1/integrations/oauth/house-grants/:connectionId/access`
 - **Connect yours** → [[authorize-integration]] `/authorize/:integrationId`
 - **your profile** (in the role refusal) → [[profile]] `/profile`
-- **Connections** (from the three house registers, flag on) → this page, from [[profile]]
+- **Connections** (from `/profile`'s moved-registers line, flag on) → this page `#payment`, from [[profile]]
+- **Connections** (from `/profile`'s consent register, flag on) → this page `#servers`, from [[profile]]
+- **Connections — what acts for this house** (from `/settings`' contents column, flag on) → this page, from [[settings]]
+- **Declare a server** → API `POST /api/v1/mcp-connections` *(arrived from `/profile` 2026-09-04)*
+- **Hold to revoke &lt;server&gt;** → API `DELETE /api/v1/mcp-connections/:id` *(same)*
+
+**Fragments this page answers to** (`REGISTER_ANCHORS`, `ConnectionsNext.tsx`), each the
+landing place of a retired `/settings?tab=`: `#attached` · `#till` · `#sender` · `#feed` ·
+`#servers` · `#payment` · `#grants` · `#deployment`.
 
 ## 1. Purpose
 
@@ -110,6 +118,17 @@ the two registers that would actually leak are refused at the gateway as well.
   encryption and the model provider, named and read-only. *(The model provider
   row claims nothing: no endpoint reports its state — see §9.)*
 - **A written refusal for a non-manager**, which says the server refuses too.
+- **Declare a server, and revoke one** *(arrived from `/profile` 2026-09-04 with the
+  collapse; `HouseServerControls.tsx`)*. Four fields and only four — name, endpoint,
+  scopes, credential — with the credential disabled carrying the deployment's own reason
+  when it cannot be stored. Revoke carries the seal, because it destroys a stored
+  credential and re-declaring the same server does not undo it. A non-manager sees the
+  refusal in words rather than a hidden panel. *Changing a credential afterwards is
+  **not** here — the route answers, the button does not exist (§9 G-C8).*
+- **Register anchors** *(the collapse, 2026-09-04)*. Eight ids, one per register or
+  moved tab, so a `/settings?tab=pos` bookmark lands on the till rather than at the top
+  of a long list. Honoured once the register behind the fragment has answered, so a
+  deep link never scrolls to a skeleton.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
@@ -125,6 +144,11 @@ the two registers that would actually leak are refused at the gateway as well.
 | id | token | curve / ms | when it fires |
 |---|---|---|---|
 | `cx-btn-hover` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)` · 160ms | the background of a live control settles as the pointer enters it |
+
+**The collapse (2026-09-04) added none.** `HouseServerControls` reuses `cx-btn-hover`
+and the shared `HoldToApprove` ceremony on revoke; the register anchors scroll with the
+browser's own `scrollIntoView` (`auto` under `prefers-reduced-motion`), which is not a
+house token because it is not a house gesture.
 
 One motion, deliberately. Full reasoning, and the three motions considered and
 rejected (`tally` on the counts, `settle` per register, `stamp` on a granted
@@ -299,9 +323,31 @@ Each is rendered honestly on the page rather than hidden.
   `integrations-oauth.service.ts`). Not on this page's path — the house-grants
   route throws — but the personal list on `/profile` still infers a failure from
   an empty array.
-- **G-C8 — declaring a server is not on this page.** It stays on `/profile`.
-  *Why not yet:* the form and its secret field are built there; duplicating them
-  before the founder has reviewed this surface would build them twice.
+- ~~**G-C8 — declaring a server is not on this page.**~~ **CLOSED 2026-09-04 by
+  the collapse.** Declaring, and revoking, are on this page:
+  `HouseServerControls.tsx`, mounted under the model-context row. Both routes are
+  `assertCanManageRestaurant` at the gateway (`mcp-connections.controller.ts:150`
+  and `:203`), which is why they are the house's and belong here rather than on
+  `/profile`. The credential field is disabled carrying the deployment's own
+  reason when `MCP_CONNECTION_SECRET_KEY` is absent, and revoke is behind the
+  seal because it destroys a stored credential and re-declaring does not undo it.
+  *Still not here:* CHANGING a credential afterwards. `PUT /:id/secret` answers;
+  what is missing is a button, and the declare panel says which.
+
+- **G-C9 — nothing on this page (or anywhere) can add or remove a card, opened
+  2026-09-04 by the collapse.** Register V left `/profile`, but
+  `profile/next/StripeCardPanel.tsx` did not: it mounts Stripe's own iframes and
+  is bound to that page's data hook (`ProfileNextData`) and UI kit (`pf-ui`), so
+  moving it means moving both. The row therefore renders **Add a card** disabled
+  saying *"the panel that mounts the provider's own card fields has not been
+  rebuilt here yet, and it is no longer on /profile"*, and **Remove** disabled
+  naming the provider's own dashboard. This is the one capability the collapse
+  subtracted, and it is written here rather than left to be discovered.
+  *Why not yet:* it is a ~400-line port into a directory another builder was live
+  in, and it buys nothing today — `STRIPE_SECRET_KEY` is unset on this
+  deployment, the create path 503s, and the control was already disabled carrying
+  that sentence. It becomes urgent the day a key is set. Mirror: `profile.md`
+  §9 G12a.
 
 **Correction to the commit message (a9747074, 2026-09-04).** Its body says the two ungated
 reads were closed and "the old test pinned the defect and was replaced with its reason". There
@@ -398,8 +444,17 @@ is unread would see the dash only in that cell.
    has no control that calls a tool — the browser half of the seal is wired and
    unused, and is written here rather than implied to be live. Blocked on
    nothing but review of this surface.
-2. **Move Register IV/V/VI off `/profile` entirely**, leaving the pointer.
-   Blocked on the founder seeing this page.
+2. ~~**Move Register IV/V/VI off `/profile` entirely**, leaving the pointer.~~
+   **Done 2026-09-04** — the founder's call was *"Move the registers and collapse
+   the four tabs."* Register V (how the house pays) and Register VI (the house)
+   left whole; Register IV **split** along the gateway's own role gates — declare,
+   probe, secret and revoke are `assertCanManageRestaurant` acts and moved
+   (`HouseServerControls.tsx`), while `PUT /mcp-connections/:id/consent` has no
+   role check (`mcp-connections.controller.ts:218-235`) and stayed, because this
+   page is manager-only and a staff member would otherwise have lost the only
+   place they could stop a server acting in their name. `/profile` keeps five
+   registers and one line naming where each of the three went. See
+   `profile.md` §1b, *Fifth pass, 2026-09-04*.
 3. **A connection event log** — who attached, granted, revoked or cut off what,
    and when. §6b's cheapest absent item; `mcp_tool_calls` is one third of it.
 4. **The house's own sender** (G-C5). Needs a domain, a DNS record and a
@@ -427,8 +482,31 @@ is unread would see the dash only in that cell.
    `NOTIFICATION_PRODUCERS_ENABLED` is set. The register row, the gaps and the
    one tool-list case it deliberately cannot report (an ADDED tool) are in
    [`notifications.md`](notifications.md) §11 and §13.30.
-7. **A house public page** (G-C2), if the founder wants one.
-8. **Retire `/settings`' `services` / `pos` / `email` / `calendar` tabs into
-   this page.** Blocked: `settings/next/st-format.ts` belongs to another builder,
-   and §6b's counter-argument that this page must reduce surface count rather
-   than add to it is only satisfied once those four collapse.
+7. **Correct the unconnected row's permission bullets** (filed 2026-09-04 by the
+   `gmail_send` build, which cannot touch `pages/**`). A third integration now
+   exists — **Gmail, sending only**, one scope, `gmail.send`, declared in
+   `apps/api-gateway/src/integrations/integrations-oauth.constants.ts` and served
+   by `GET /integrations/oauth/catalog`. The row appears on this page for free,
+   because Register III maps the catalogue rather than a hand-written list. Its
+   **permission bullets do not**: `ConnectionsNext.tsx:964-968` (verified 2026-09-04 16:40; the file is moving, so grep `'Never mail, never other documents'`) hard-codes
+   `"Create and edit files it made"` / `"Never mail, never other documents"` on
+   every catalogue row, which is false for a sending grant and false in the exact
+   direction this page exists to prevent — it tells a manager the connection
+   cannot mail, next to a Connect button for a connection whose only power is to
+   mail. The fix is to render `c.scopes` and `c.notRequested`, both already on the
+   catalogue payload, instead of two literals; the patch is in the 2026-09-04
+   session report. **Until it lands this row is wrong, not merely thin.**
+8. **A house public page** (G-C2), if the founder wants one.
+9. ~~**Retire `/settings`' `services` / `pos` / `email` / `calendar` tabs into
+   this page.**~~ **Done 2026-09-04.** The four leave the contents column when
+   `mudavym_design_connections` is on and one line — *"Connections — what acts for
+   this house"* — replaces them; their `?tab=` links redirect to
+   `/connections#grants|#till|#sender|#feed`, and this page answers those
+   fragments (`REGISTER_ANCHORS` in `ConnectionsNext.tsx`, mapped by
+   `CONNECTIONS_ANCHOR` in `settings/next/st-format.ts`). **Measured: fourteen
+   registers become ten plus one line out.** §6b's counter-argument — that this
+   page must reduce surface count rather than add to it — is now satisfied: one
+   new route in exchange for four tabs and three registers. What is NOT done is
+   deleting the four sections' code; it still renders with the flag off, and its
+   retirement is gated on the flag reaching production (`settings.md` §13).
+10. **Port the card panel** (G-C9 below) — the one thing the collapse subtracted.

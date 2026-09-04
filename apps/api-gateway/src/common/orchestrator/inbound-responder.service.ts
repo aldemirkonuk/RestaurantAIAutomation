@@ -33,7 +33,12 @@ const NEGOTIATION_MODEL = "claude-haiku-4-5";
 // Undo window for autonomous sends: a guardrail-clear reply is staged and only
 // actually sent after this delay, giving the manager a chance to cancel/edit it
 // from the sidebar. Processed by ProcurementService's auto-send cron.
-const AUTO_SEND_UNDO_MS = 2 * 60 * 1000;
+// EXPORTED (2026-09-04) because `communications/letters/house-sender.service.ts`
+// re-declares this window for the house composer and claims in its own header
+// that "the spec asserts the two agree". That claim was not true while this was
+// private: the spec could only hardcode the literal, and would have gone on
+// passing if this number drifted. It is exported so the assertion can be real.
+export const AUTO_SEND_UNDO_MS = 2 * 60 * 1000;
 
 // Subject patterns that mark an inbound as an automated reply / bounce — never
 // reply to these (prevents auto-send loops with vacation responders, mailers, etc).
