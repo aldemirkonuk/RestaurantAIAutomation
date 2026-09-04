@@ -47,6 +47,15 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 Canonical source with curves: `apps/web/src/pages/communications/next/MOTIONS.md`
 — this list is the note-side index (ADR 0044 §2).
 

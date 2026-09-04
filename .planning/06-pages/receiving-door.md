@@ -40,6 +40,15 @@ Designed for a porter on a sidewalk with a phone at 12% and no signal in the wal
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving_door`)
 
+> **Chrome (2026-09-04): none, and that is the decision.** The house header
+> built this wave (`apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate`) deliberately does NOT render here. The door is routed outside
+> `DashboardLayout` because it is "full-screen and one-handed, used at a loading
+> dock by someone who is not navigating the app" (App.tsx:227-240), and it forces
+> the charcoal ground (`DoorNext.tsx:380`). The exclusion is a named constant —
+> `NO_CHROME` in `lib/mudavym/pageNames.ts` — rather than a route that happens
+> not to render a header, so it cannot be lost by accident.
+
 Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-door.md` —
 this list is the note-side index (ADR 0044 §2).
 

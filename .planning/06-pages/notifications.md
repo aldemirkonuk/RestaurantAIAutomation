@@ -185,6 +185,15 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_notifications`)
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 Canonical copy: `apps/web/src/pages/notifications/next/MOTIONS.md`. Every motion is a
 token from `lib/mudavym/motion.ts`; the CSS durations/easings are interpolated **from**
 the tokens, so what runs is the token. `prefers-reduced-motion` collapses all of it.
@@ -1235,6 +1244,55 @@ sibling's implementation differs, the sibling's file is the truth.
        dispersion test. **The real fix belongs to `vendor-intel/`:** run the
        consensus pass (`flagOutliers`, `vendor-price-consensus.ts:180-192`) and
        persist its verdict, or drop the filter and say the box is unscreened.
+
+       **DECIDED (proposed) 2026-09-04 —
+       [ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md).**
+       The writer is the MAD test this note names, run **over the group after a batch
+       lands** — never at write time, and never as a bound on the incoming value,
+       because outlier-ness is a property of the group and the column's own comment
+       already says so. A flagged row stays in the ladder so a bad parse is visible
+       and fixable at source. Still unbuilt; the ADR is Proposed.
+
+    b2. **What would fill the register first — decided in
+       [ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md),
+       2026-09-04.** The market box's honest sentence ("the register holds no
+       sighting this restaurant can see") stands, and the note can now say what
+       would end it. Re-measured on production **2026-09-04**:
+       `vendor_price_observations` **0**, and so is every table that could feed it —
+       `price_history` **0**, `procurement_documents` **0**,
+       `procurement_document_lines` **0**.
+
+       The first fill is **the house's own paper, and it needs no vendor and no
+       fetch.** `price_history` now has a writer (`procurement.service.ts:900`,
+       called at `:2902` when a receipt is verified and `:4393` when an order is
+       confirmed) — but it writes a **different table**, so the best-provenanced
+       price this house will ever have, a checked invoice line at trust tier 1,
+       never reaches the box. Mirroring those two writes into
+       `vendor_price_observations` as tier-1/2 tenant-scoped rows is the whole of
+       step one.
+
+       Three things measured the same day say why nothing else comes first:
+
+       - **A monthly published list can never light this box.** `MARKET_WINDOW_DAYS`
+         30 with `MIN_BASELINE_OBSERVATIONS` 3 *earlier* sightings needs **four
+         sightings inside thirty days**; the `(source_ref, content_hash)` dedup index
+         correctly discards a re-read of an unchanged price, so a monthly file yields
+         **one**. Loading 13,762 rows would leave this box exactly as silent as it is
+         now, while making the register look full.
+       - **Jurisdiction is not optional and has no column.** The estate is 3 Michigan,
+         3 Illinois, 3 California, 2 Türkiye, 1 UK, 2 unstated. The two sources that
+         parsed perfectly today (Iowa, Oregon) serve **zero** of them and are retail
+         shelf prices — Iowa's is its own cost × **exactly 1.50** at the median. Under
+         the founder's index rule they are a separate line, never a vendor quote.
+       - **A 200 is not freshness.** `https://www.ams.usda.gov/mnreports/bh_fv020.txt`
+         answered **200 with a price report dated 03-JAN-2024** on 2026-09-04 — 975
+         days stale. Any fetcher this page's data comes from has to refuse on the
+         **issuer's** date, not on the status code.
+
+       Full registry of 27 sources with the result of today's fetch against each:
+       [`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md).
+       Dry-run proof (writes nothing; `--apply` refused with its three blockers):
+       `scripts/fetch_price_sightings.py`.
 
     c. **A subject on every row (§13.21) is what the producers want next.** All
        five write rich `metadata` (`goalId`, `receiptEventId`, `documentId`,

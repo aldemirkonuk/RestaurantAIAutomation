@@ -328,3 +328,39 @@ invariants the database cannot.
    with description matching"); it is now a decision rather than a restraint.
 
 *Blocker on all eight: the founder locks ADR 0115. Nothing here is built.*
+
+### Filed separately — the price register, and why receiving is the thing that fills it
+
+**[ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md)
+(Proposed, 2026-09-04) — a price sighting names its source, its date and its unit.**
+Independent of the eight items above and of ADR 0115: this page's receiving door is the
+first and best writer the house's price register will ever have, and it is not wired to it.
+
+Measured on production 2026-09-04: `vendor_price_observations` **0 rows**,
+`price_history` **0**, `procurement_documents` **0**, `procurement_document_lines` **0**.
+`price_history` *does* have a writer — `procurement.service.ts:900`, called from receipt
+verification at `:2902` with the match's `effectiveUnitCost`, and from order confirmation
+at `:4393` — but it writes a **different table** from the one the market box, the calendar
+price mark and every register's `quote` line read. So the moment this page's four-way
+match settles what a vendor actually charged, the house produces its highest-trust price
+evidence (`source_type: 'invoice'`, trust tier 1) and then puts it somewhere nothing can
+compare it. **Where it would write:** the same call site at
+`procurement.service.ts:2902`, mirrored into `vendor_price_observations` scoped to the
+restaurant — the ADR's step one, and the only step that needs no vendor, no terms, no
+rate limit and no network.
+
+Two constraints from the ADR that land on this page's work:
+
+- **A sighting carries a unit, and the register has no food unit.** `unit_volume_ml` and
+  `pack_size` are the only unit columns, and `normalizeUnitPrice`
+  (`vendor-price-consensus.ts:115`) scales only by millilitres to a 750 ml reference.
+  Anything this page receives by weight or by count has no comparable unit at all — which
+  is the same seam ADR 0070 and OD-113 already circle, seen from the price side.
+- **`price_history.unit` is hardcoded `'BOTTLE'`** and the comment at
+  `procurement.service.ts:942` says why it must stay that way: a caller free to vary it
+  would write a case price into a per-bottle series and no reader could tell. Any mirror
+  into the sighting register inherits that constraint rather than escaping it.
+
+Registry of every source examined, with the result of the 2026-09-04 fetch against each:
+[`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md). Dry-run
+proof (writes nothing): `scripts/fetch_price_sightings.py`.

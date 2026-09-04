@@ -127,8 +127,10 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   carried a non-voided check appear (`goals.service.ts` `computeMetricWithSeries`). A day inside
   the answered window that is absent is `none` (hatched); a window that could not be read, or a
   house with no till at all, is `unknown` (nothing hatched, and the page says so); a day that has
-  not happened is `future`. Measured on the local tenant 2026-09-03: 12 of 22 days carried a
-  record, so ten drew hatched.
+  not happened is `future`. **A dated measurement, not a fact:** on 2026-09-03 the local tenant
+  carried 12 of 22 days, so ten drew hatched. The demo seed ends 2026-08-24 and the window is
+  relative to today, so the count falls by one each day this is left unre-seeded — read the
+  figure as of its date, never as the page's steady state.
 - **The day-exclusion control lives on the strip.** Striking a day rules it out of every baseline
   (the existing `POST /analytics/exclusions/:rid` write) and still asks for a reason first; an
   excluded day is struck through on the strip and can be counted again from there. When the
@@ -141,6 +143,15 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   and watches nothing — the page never infers a watch from a shared metric.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_recommendations`)
+
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
 
 Canonical source with curves: `apps/web/src/pages/recommendations/next/MOTIONS.md` —
 this list is the note-side index (ADR 0044 §2).
@@ -568,7 +579,7 @@ hand**, never "unknown", and the page never infers a watch from a shared metric.
 | `POST /analytics/goals/:rid` with `sourceRuleKey: "wine_sales_dive"` | **400** "Unknown recommendation rule 'wine_sales_dive'. A goal's source must be a rule the engine evaluates: …" |
 | the same with a **suppression** key (`rule#subject#grain`) — the likeliest near-miss | **400**, same refusal |
 | the same with `sourceRuleKey: "plowhorse_repricing"` | **400** "Could not find the 'source_rule_key' column of 'analytics_goals' in the schema cache" — the migration is not applied to this database, and migrations auto-apply on merge. The validator and the insert path are proven; the stored round-trip is **not yet measured against a real DB** |
-| `GET /analytics/pos-revenue/:rid?days=22` | 200, `posConnected: true`, window `2026-08-13 → 2026-09-03`, **12 of 22 days** in `dailySeries` — ten days hatched, none drawn as a zero |
+| `GET /analytics/pos-revenue/:rid?days=22` | 200, `posConnected: true`, window `2026-08-13 → 2026-09-03`, **12 of 22 days** in `dailySeries` — ten days hatched, none drawn as a zero. Dated: the seed ends 2026-08-24 and the window rolls with today, so this count falls by one a day |
 | `GET /analytics/exclusions/:rid` | 200 with `readable: false` ("Could not find the table 'public.analytics_day_exclusions' in the schema cache") — so the strip refuses to offer the strike and says why. The honesty branch is exercised live, not only in a test |
 | `GET /analytics/recommendations/:rid` | 200, `rulesEvaluated: 15`, 3 standing (2 × `goal_behind_*`, 1 × `staff_spread`) → the docket renders **Brief the floor** and **Not yet filed** |
 

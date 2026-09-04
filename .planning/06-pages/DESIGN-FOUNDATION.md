@@ -206,6 +206,45 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    scale (fonts are already settled — §1), spacing, radii, elevation, dark-mode story.
 2. **Shells** — DashboardLayout as the one frame; a named, closed list of
    chrome-free escapes with criteria.
+
+   **The rebuilt pages had no chrome at all — fixed 2026-09-04.** Measured:
+   `DashboardLayout.tsx:110` only re-exports `Header`, every legacy page renders
+   its own, and NO `pages/<page>/next` tree rendered one (`grep '<Header'` over
+   those directories returned nothing). So a Mudavym page had no bell, no
+   account menu, no theme switch and no way to change house — the sidebar
+   carried navigation and the user block, and nothing carried the rest. Asked
+   whether that was intended, the founder chose: *"Build a Mudavym header this
+   wave."* Built as `apps/web/src/components/mudavym/HouseHeader.tsx` (+
+   `house-header.css`), mounted by `PageGate` above every `next` tree — one
+   place, no page edits, and structurally incapable of appearing over a legacy
+   page. The legacy `Header` is untouched and stays for legacy pages until they
+   are retired.
+
+   - **The chrome-free list is now two, and both are decided, not accidental:**
+     `receiving_door` (routed outside `DashboardLayout` on purpose — "used at a
+     loading dock by someone who is not navigating the app", App.tsx:227-240) and
+     the SimPOS terminal (decision C26). `HouseHeader` reads that list from
+     `lib/mudavym/pageNames.ts` `NO_CHROME`, so the escape is a named constant
+     rather than a route that happens not to render a header.
+   - **The header wears the MARK, not the wordmark — a substitution, recorded.**
+     The brief asked for the wordmark. Measured first: sixteen rebuilt pages
+     already open with `<Wordmark size={13}/>` (ProvidersNext.tsx:119,
+     TeamNext.tsx:443, NotificationsNext.tsx:396, CellarNext.tsx:136,
+     ReportsNext.tsx:349, SettingsNext.tsx:146, …) and the sidebar prints the
+     full lockup at Sidebar.tsx:547 — so a wordmark in the bar would be the
+     house's name three times in one viewport, twice within 40px. The header
+     therefore carries `BrandMark variant="mark"` (the trued A+M interlock at
+     ADR 0047's 24px floor) and the pages keep the typographic signature
+     `Wordmark.tsx:9-12` reserves for them. **The fork for the founder:** the
+     alternative is the header keeping the wordmark and all sixteen pages
+     dropping their masthead one (the footer signature at `size={14}` stays
+     either way — it is the colophon, a different job). That is sixteen page
+     edits across directories other builders hold open this wave, so it was not
+     taken unilaterally.
+   - **Retire-to-write.** This retires nothing yet: it ADDS chrome that was
+     absent. What it makes retirable, on the founder's call above, is the
+     per-page masthead `Wordmark` in those sixteen files. Nothing else here
+     supersedes a document.
 3. **Page anatomy archetypes** — ✅ *proposed map exists (2026-08-26, founder's
    chosen first step)*: seven product archetypes (`command` · `list+detail` ·
    `canvas` · `form` · `calendar` · `chat` · `document`) + three structural buckets

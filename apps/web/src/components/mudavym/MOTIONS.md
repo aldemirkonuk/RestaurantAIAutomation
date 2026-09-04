@@ -23,3 +23,28 @@ Deliberate non-motions:
 `prefers-reduced-motion` renders **no animation at all**, not a shorter one: the
 panel carries `data-motion="none"` and `animate()` is never called. The test
 `Sheet.test.tsx` asserts both the token name and the `none`.
+
+---
+
+## The house header (2026-09-04)
+
+`HouseHeader` adds no new curve. Everything in the bar is a colour or a border
+crossing `ink` (`cubic-bezier(0.16, 1, 0.3, 1)`, 160ms) — chrome that animates
+is chrome you look at, and the bar's job is to be looked *past*.
+
+| id | token | curve / ms | fires |
+|---|---|---|---|
+| `mdv-hdr-ink` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)`, 160ms | hover on the mark, the search trigger, any of the four right-hand controls — background and border only, no movement. |
+| `mdv-hdr-hairline` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)`, 160ms | the bottom hairline appears once the page has scrolled more than 4px under it. It is a fact (there is something above), not a flourish, and it is the bar's only state. |
+| the four popovers | `ink` | (the primitive's) | the bell, the branch switcher, the theme menu and the account menu all open the house `Popover`, so they inherit `mdv-popover-ink` above rather than defining anything. |
+
+Deliberate non-motions:
+
+- **The bar never moves.** No slide-in on mount, no shrink on scroll. A header
+  that resizes as you read re-flows the page under it.
+- **No badge animation.** A new unread count appears; it does not pulse. The
+  bell is a register, and a register that flashes is asking to be believed.
+
+`prefers-reduced-motion` drops every transition in `house-header.css` (the
+`@media (prefers-reduced-motion: reduce)` block sets `transition: none`), and
+the popovers' own reduced-motion behaviour is the primitive's, unchanged.

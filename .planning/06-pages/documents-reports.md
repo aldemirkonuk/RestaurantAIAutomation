@@ -58,6 +58,15 @@ Behind `mudavym_design_documents_reports` (OFF — the Sorting Office, §1b):
 
 ## 1b. Redesign state — Direction D chosen, built 2026-08-31
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 The REWORK verdict (MAKEOVER-VERDICTS: *"more modern, more transformative…
 let's create three more sketches into this"*) is answered with a design
 canvas, 2026-08-31, in the locked Mudavym system (0042 tokens, Fraunces /
