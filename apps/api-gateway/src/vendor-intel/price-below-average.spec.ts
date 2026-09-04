@@ -60,7 +60,14 @@ describe("priceBelowAverage", () => {
     expect(out.items).toEqual([]);
     expect(out.skipped.thinHistory).toBe(1);
     // The reader is still told what was looked at, so an empty box can be read.
-    expect(out.scanned).toEqual({ observations: 3, products: 1 });
+    // `comparisons` added 2026-09-04 with the class gate: one product, one
+    // class, so the two agree here. They diverge only when a product carries
+    // sightings of more than one class.
+    expect(out.scanned).toEqual({
+      observations: 3,
+      products: 1,
+      comparisons: 1,
+    });
   });
 
   it("drops a group whose window mixes currencies rather than converting", () => {
@@ -106,7 +113,12 @@ describe("priceBelowAverage", () => {
   });
 
   it("ignores a drop too small to be news, and counts it", () => {
-    const out = priceBelowAverage([obs(20, 20), obs(14, 20), obs(7, 20), obs(1, 19.9)]);
+    const out = priceBelowAverage([
+      obs(20, 20),
+      obs(14, 20),
+      obs(7, 20),
+      obs(1, 19.9),
+    ]);
     expect(out.items).toEqual([]);
     expect(out.skipped.notBelow).toBe(1);
   });
@@ -138,13 +150,20 @@ describe("priceBelowAverage", () => {
   it("reports an empty register as empty rather than as nothing being cheap", () => {
     const out = priceBelowAverage([]);
     expect(out.items).toEqual([]);
-    expect(out.scanned).toEqual({ observations: 0, products: 0 });
+    expect(out.scanned).toEqual({
+      observations: 0,
+      products: 0,
+      comparisons: 0,
+    });
   });
 });
 
 describe("VendorComparisonService.belowTrailingAverage", () => {
   function makeService(rows: any[] | null, error: any = null) {
-    const calls: { or: string[]; eq: Array<[string, any]> } = { or: [], eq: [] };
+    const calls: { or: string[]; eq: Array<[string, any]> } = {
+      or: [],
+      eq: [],
+    };
     const q: any = {
       select: () => q,
       gte: () => q,

@@ -13,7 +13,14 @@ import {
   htmlToText,
   isPathAllowed,
   normalizeExtraction,
+  parseCrawlDelay,
 } from "./vendor-page-extraction";
+import {
+  ScrapeRefusalReason,
+  decideScrapeSighting,
+  isOutlierAgainstPriors,
+  readPageStatedDate,
+} from "./vendor-site-sighting";
 import { hashWineIdentity } from "./wine-identity";
 import {
   SsrfBlockedError,
@@ -46,13 +53,41 @@ Rules:
 - If a price is a range or "from X", use X and lower confidence.
 - If the page has no wine prices, return {"items": []}.`;
 
+/** Refusal tallies, one key per reason. Zeroed, never absent — an absent key
+ * and a zero count read identically to a caller, and only one of them means
+ * "measured and none". */
+export type ScrapeRefusalCounts = Record<ScrapeRefusalReason, number>;
+
+export function emptyRefusalCounts(): ScrapeRefusalCounts {
+  return {
+    no_restaurant: 0,
+    no_url: 0,
+    no_product_name: 0,
+    bad_price: 0,
+    bad_pack: 0,
+    no_bottle_volume: 0,
+    unnormalisable: 0,
+  };
+}
+
 export interface ExtractionRunResult {
   url: string;
   fetched: boolean;
   httpStatus: number | null;
   itemsFound: number;
   observationsWritten: number;
+  /** Rows the PARSER rejected (`normalizeExtraction`) before any judgement. */
   rejected: number;
+  /** Rows the SIGHTING judgement refused, by reason. ADR 0117's five legs. */
+  refusals: ScrapeRefusalCounts;
+  /** Rows written with `is_outlier` true. Written, never dropped. */
+  flaggedOutliers: number;
+  /** When we fetched. Always stated, so `observed_at` can be read against it. */
+  fetchedAt: string;
+  /** The page's own stated date, or null — the `undated` flag's other half. */
+  pageStatedDate: string | null;
+  /** The delay this host's robots.txt asked for, if it asked for one. */
+  crawlDelaySeconds: number | null;
   skippedReason?: string;
   warnings: string[];
 }
@@ -89,7 +124,9 @@ export class VendorPageExtractorService {
    * on an explicit Disallow. A vendor who bothered to write a rule gets it
    * honoured; a vendor with no opinion is not blocked by our caution.
    */
-  private async isAllowed(target: URL): Promise<boolean> {
+  private async readRobots(
+    target: URL,
+  ): Promise<{ allowed: boolean; crawlDelaySeconds: number | null }> {
     try {
       const robotsUrl = `${target.origin}/robots.txt`;
       // Guarded too, not just the page fetch below. This request is derived from
@@ -99,11 +136,14 @@ export class VendorPageExtractorService {
         headers: { "user-agent": USER_AGENT },
         signal: AbortSignal.timeout(8000),
       });
-      if (!res.ok) return true;
+      if (!res.ok) return { allowed: true, crawlDelaySeconds: null };
       const body = await res.text();
-      return isPathAllowed(body, target.pathname, "WineOpsBot");
+      return {
+        allowed: isPathAllowed(body, target.pathname, "WineOpsBot"),
+        crawlDelaySeconds: parseCrawlDelay(body, "WineOpsBot"),
+      };
     } catch {
-      return true;
+      return { allowed: true, crawlDelaySeconds: null };
     }
   }
 
@@ -130,6 +170,11 @@ export class VendorPageExtractorService {
       itemsFound: 0,
       observationsWritten: 0,
       rejected: 0,
+      refusals: emptyRefusalCounts(),
+      flaggedOutliers: 0,
+      fetchedAt: new Date().toISOString(),
+      pageStatedDate: null,
+      crawlDelaySeconds: null,
       warnings: [],
     };
 
@@ -160,7 +205,9 @@ export class VendorPageExtractorService {
       throw err;
     }
 
-    if (!(await this.isAllowed(target))) {
+    const robots = await this.readRobots(target);
+    result.crawlDelaySeconds = robots.crawlDelaySeconds;
+    if (!robots.allowed) {
       result.skippedReason = "Disallowed by robots.txt";
       this.logger.log(`Skipping ${url} — robots.txt disallows it`);
       return result;
@@ -175,6 +222,7 @@ export class VendorPageExtractorService {
         headers: { "user-agent": USER_AGENT, accept: "text/html" },
         signal: AbortSignal.timeout(20_000),
       });
+      result.fetchedAt = new Date().toISOString();
       result.httpStatus = res.status;
       if (!res.ok) {
         result.skippedReason = `HTTP ${res.status}`;
@@ -199,6 +247,11 @@ export class VendorPageExtractorService {
     // while the catalogue is identical, and hashing the raw markup would make
     // every re-scrape look like new evidence.
     const contentHash = crypto.createHash("sha256").update(text).digest("hex");
+
+    // The page's own claim about when its prices apply, if it makes one. Null
+    // is the `undated` flag: see `readPageStatedDate` for why a bare date
+    // elsewhere on the page is deliberately not picked up.
+    result.pageStatedDate = readPageStatedDate(text);
 
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -262,20 +315,51 @@ export class VendorPageExtractorService {
 
     if (dryRun || extraction.items.length === 0) return result;
 
-    result.observationsWritten = await this.writeObservations(
-      extraction.items,
-      { ...params, contentHash, httpStatus: result.httpStatus },
-    );
+    const written = await this.writeObservations(extraction.items, {
+      ...params,
+      contentHash,
+      httpStatus: result.httpStatus,
+      fetchedAt: result.fetchedAt,
+      pageStatedDate: result.pageStatedDate,
+    });
+    result.observationsWritten = written.written;
+    result.refusals = written.refusals;
+    result.flaggedOutliers = written.flaggedOutliers;
+    for (const w of written.warnings) result.warnings.push(w);
     return result;
   }
 
   /**
-   * Persist items as website_scrape observations.
+   * Persist items as tier-4 `website_scrape` sightings.
    *
-   * Uses upsert on the (source_ref, content_hash) dedup index so a re-scrape
-   * of an unchanged page is a no-op rather than a fresh observation. Without
-   * that, a nightly job would "confirm" a stale price 30 times a month and the
-   * consensus would treat repetition as corroboration.
+   * REWRITTEN 2026-09-04 on the founder's call ("run it, labelled tier 4,
+   * never beside a quote"). What the old writer did wrong, measured against
+   * ADR 0117 before it was changed:
+   *
+   *   * It defaulted nothing and refused nothing. `unit_volume_ml` went in as
+   *     the model reported it — `null` on most pages — and `normalizeUnitPrice`
+   *     skips the volume scaling entirely when it is absent
+   *     (`vendor-price-consensus.ts:132`), so a 375ml bottle entered the ladder
+   *     at half its true per-750ml price and topped it.
+   *   * It wrote `observed_at` at the column's `DEFAULT now()`, with no record
+   *     of whether the page had stated a date of its own. A price list last
+   *     revised in 2024 arrived stamped today.
+   *   * It wrote `is_outlier` at its `false` default — the exact gap
+   *     `notifications.md` §13.25(b) names, and the one that matters most,
+   *     because a scrape's parses are the dangerous ones.
+   *   * `restaurant_id` was whatever the caller passed, i.e. `null` from
+   *     `sweepCatalogue`, which publishes one house's reading into every other
+   *     house's market box (`vendor-comparison.service.ts:341`).
+   *
+   * All four are now refusals or recorded facts, and every refusal is counted
+   * by reason so a vendor whose page yields nothing says WHY rather than
+   * looking like a vendor with no prices.
+   *
+   * Still an upsert on `(source_ref, content_hash)`
+   * (`…vendor_price_observations.sql:141`): a re-scrape of an unchanged page is
+   * a no-op rather than a fresh observation. Without that, a nightly job would
+   * "confirm" a stale price 30 times a month and the consensus would read
+   * repetition as corroboration.
    */
   private async writeObservations(
     items: ExtractedItem[],
@@ -287,44 +371,87 @@ export class VendorPageExtractorService {
       restaurantId?: string | null;
       contentHash: string;
       httpStatus: number | null;
+      fetchedAt: string;
+      pageStatedDate: string | null;
     },
-  ): Promise<number> {
-    const rows = items.map((item) => ({
-      restaurant_id: ctx.restaurantId ?? null,
-      provider_id: ctx.providerId ?? null,
-      vendor_catalogue_id: ctx.vendorCatalogueId ?? null,
-      vendor_name_raw: ctx.vendorName ?? null,
-      product_name_raw: item.name,
-      // Without this the row is written and then permanently unreachable: the
-      // comparison endpoint looks up by master_wine_id or signature_hash, and
-      // a scrape knows neither until the name is resolved. The identity hash
-      // is what lets two vendors' pages for the same bottle land in one
-      // ladder; null (no usable name) means "not comparable", not "unmatched".
-      signature_hash: hashWineIdentity({
+  ): Promise<{
+    written: number;
+    refusals: ScrapeRefusalCounts;
+    flaggedOutliers: number;
+    warnings: string[];
+  }> {
+    const refusals = emptyRefusalCounts();
+    const warnings: string[] = [];
+
+    const candidates = items.map((item) => ({
+      item,
+      signatureHash: hashWineIdentity({
         producer: item.producer,
         name: item.name,
         vintage: item.vintage,
       }),
-      source_type: "website_scrape",
-      trust_tier: 4,
-      // Per-item source_ref keeps the dedup index meaningful: the page is the
-      // same, but each wine on it is a distinct observation.
-      source_ref: `${ctx.url}#${item.name}`,
-      source_url: ctx.url,
-      raw_price: item.price,
-      currency: item.currency,
-      pack_size: item.packSize,
-      unit_volume_ml: item.volumeMl,
-      parse_confidence: item.parseConfidence,
-      content_hash: ctx.contentHash,
-      http_status: ctx.httpStatus,
-      raw: {
-        producer: item.producer,
-        vintage: item.vintage,
-        inStock: item.inStock,
-        warnings: item.warnings,
-      },
     }));
+
+    // Priors for the outlier test, read ONCE for the whole page rather than per
+    // row. `isOutlierAgainstPriors` is imported from the own-paper writer, not
+    // reimplemented: the two writers must be the same MAD test at the same
+    // five-value floor or they will disagree about the same row.
+    const priors = await this.loadPriorUnitPrices(
+      candidates.map((c) => c.signatureHash).filter((h): h is string => !!h),
+      ctx.restaurantId ?? null,
+    );
+
+    const rows: Record<string, unknown>[] = [];
+    let flaggedOutliers = 0;
+
+    for (const { item, signatureHash } of candidates) {
+      const provisional = decideScrapeSighting({
+        restaurantId: ctx.restaurantId,
+        url: ctx.url,
+        providerId: ctx.providerId ?? null,
+        vendorCatalogueId: ctx.vendorCatalogueId ?? null,
+        vendorName: ctx.vendorName ?? null,
+        productName: item.name,
+        signatureHash,
+        price: item.price,
+        currency: item.currency,
+        packSize: item.packSize,
+        unitVolumeMl: item.volumeMl,
+        pageStatedDate: ctx.pageStatedDate,
+        fetchedAt: ctx.fetchedAt,
+        contentHash: ctx.contentHash,
+        httpStatus: ctx.httpStatus,
+        parseConfidence: item.parseConfidence,
+        raw: {
+          producer: item.producer,
+          vintage: item.vintage,
+          inStock: item.inStock,
+          warnings: item.warnings,
+        },
+      });
+
+      if (!provisional.write) {
+        refusals[provisional.reason] += 1;
+        this.logger.debug(provisional.message);
+        continue;
+      }
+
+      // Decided a second time, now that the group is known. The judgement is
+      // pure and cheap; running it twice is far less costly than threading a
+      // half-built row through the outlier read.
+      const isOutlier = signatureHash
+        ? isOutlierAgainstPriors(
+            priors.get(signatureHash) ?? [],
+            provisional.normalizedUnitPrice,
+          )
+        : false;
+      if (isOutlier) flaggedOutliers += 1;
+
+      rows.push({ ...provisional.row, is_outlier: isOutlier });
+    }
+
+    if (rows.length === 0)
+      return { written: 0, refusals, flaggedOutliers, warnings };
 
     const { data, error } = await this.databaseService.supabase
       .from("vendor_price_observations")
@@ -338,9 +465,68 @@ export class VendorPageExtractorService {
       this.logger.error(
         `Failed to write vendor price observations for ${ctx.url}: ${error.message}`,
       );
-      return 0;
+      // A failed write is NOT "nothing was found". Say which, on the result.
+      warnings.push(`Register write failed: ${error.message}`);
+      return { written: 0, refusals, flaggedOutliers: 0, warnings };
     }
-    return (data ?? []).length;
+    return {
+      written: (data ?? []).length,
+      refusals,
+      flaggedOutliers,
+      warnings,
+    };
+  }
+
+  /**
+   * The unit prices already on the register for these products, for the
+   * outlier test.
+   *
+   * Scoped exactly as `belowTrailingAverage` scopes its own read
+   * (`vendor-comparison.service.ts:341`): market rows plus this tenant's, never
+   * another tenant's. Judging a candidate against a group that includes rows
+   * this house may not see would flag a row for a reason its owner cannot
+   * inspect.
+   *
+   * A read failure returns EMPTY priors, which means `isOutlierAgainstPriors`
+   * sees fewer than MIN_OUTLIER_SAMPLE values and returns false — the row is
+   * written unflagged. That is the safe direction: a flag we could not compute
+   * must not be asserted, and an unflagged row stays visible in the ladder
+   * where a person can see it. The failure is logged rather than swallowed.
+   */
+  private async loadPriorUnitPrices(
+    signatureHashes: string[],
+    restaurantId: string | null,
+  ): Promise<Map<string, number[]>> {
+    const out = new Map<string, number[]>();
+    const unique = Array.from(new Set(signatureHashes));
+    if (unique.length === 0) return out;
+
+    let query = this.databaseService.supabase
+      .from("vendor_price_observations")
+      .select("signature_hash, normalized_unit_price")
+      .in("signature_hash", unique)
+      .not("normalized_unit_price", "is", null)
+      .limit(2000);
+    query = restaurantId
+      ? query.or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
+      : query.is("restaurant_id", null);
+
+    const { data, error } = await query;
+    if (error) {
+      this.logger.warn(
+        `Could not read prior sightings for the outlier test: ${error.message}. ` +
+          `Rows from this page are written UNFLAGGED rather than flagged on a guess.`,
+      );
+      return out;
+    }
+    for (const r of (data ?? []) as any[]) {
+      const v = Number(r.normalized_unit_price);
+      if (!r.signature_hash || !Number.isFinite(v)) continue;
+      const bucket = out.get(r.signature_hash) ?? [];
+      bucket.push(v);
+      out.set(r.signature_hash, bucket);
+    }
+    return out;
   }
 
   /**
@@ -351,8 +537,14 @@ export class VendorPageExtractorService {
    * gets a source blocked permanently, and a lost vendor costs more than a
    * slow sweep.
    */
-  async sweepCatalogue(opts: { limit?: number; dryRun?: boolean } = {}) {
-    const { limit = 25, dryRun = false } = opts;
+  async sweepCatalogue(
+    opts: {
+      limit?: number;
+      dryRun?: boolean;
+      restaurantId?: string | null;
+    } = {},
+  ) {
+    const { limit = 25, dryRun = false, restaurantId = null } = opts;
 
     const { data: vendors, error } = await this.databaseService.supabase
       .from("vendor_catalogue")
@@ -371,9 +563,19 @@ export class VendorPageExtractorService {
           url: v.website,
           vendorCatalogueId: v.id,
           vendorName: v.name,
+          // Added 2026-09-04. Without it every row this sweep produced would be
+          // refused (`no_restaurant`) — and before the refusal existed, every
+          // row it wrote carried a null `restaurant_id` and was therefore read
+          // by every house on the platform.
+          restaurantId,
           dryRun,
         }),
       );
+      // The scheduled sweep (`vendor-site-sweep.service.ts`) paces per HOST at
+      // a documented floor and honours each host's own Crawl-delay. This
+      // manual path keeps its own flat pause between vendors; it is
+      // owner-triggered, one run at a time, and the two must not share a
+      // limiter that a hand-run could exhaust for the nightly job.
       await new Promise((r) => setTimeout(r, 2000));
     }
     return results;

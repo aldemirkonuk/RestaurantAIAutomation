@@ -5,6 +5,7 @@ import { DatabaseModule } from "../database/database.module";
 import { VendorComparisonService } from "./vendor-comparison.service";
 import { VendorIntelController } from "./vendor-intel.controller";
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
+import { VendorSiteSweepService } from "./vendor-site-sweep.service";
 
 /**
  * AuthModule is required, not optional: VendorIntelController is guarded by
@@ -16,7 +17,15 @@ import { VendorPageExtractorService } from "./vendor-page-extractor.service";
 @Module({
   imports: [DatabaseModule, ConfigModule, AuthModule],
   controllers: [VendorIntelController],
-  providers: [VendorComparisonService, VendorPageExtractorService],
-  exports: [VendorComparisonService, VendorPageExtractorService],
+  providers: [
+    VendorComparisonService,
+    VendorPageExtractorService,
+    VendorSiteSweepService,
+  ],
+  exports: [
+    VendorComparisonService,
+    VendorPageExtractorService,
+    VendorSiteSweepService,
+  ],
 })
 export class VendorIntelModule {}

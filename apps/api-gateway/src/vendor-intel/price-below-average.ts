@@ -28,6 +28,16 @@ import {
  *  5. OUTLIERS ARE EXCLUDED BY THE CALLER (`is_outlier`), because
  *     outlier-ness is a property of the group computed by the consensus pass,
  *     not something to re-decide here.
+ *  6. A SIGHTING IS ONLY EVER COMPARED TO ITS OWN CLASS. Added 2026-09-04.
+ *     ADR 0117's decision sentence ends "*and a sighting may only ever be
+ *     compared to another sighting of its own class*", and until this pass
+ *     nothing here enforced it: a group was keyed on product identity alone,
+ *     so a tier-4 public-site list price arriving today became "the latest"
+ *     for a product whose earlier sightings were the house's own invoices,
+ *     and the box announced a saving between two numbers that are not the
+ *     same kind of number. The founder's call of 2026-09-04 — "run the vendor
+ *     site sweep, labelled tier 4, **never beside a quote**" — is this rule.
+ *     See `comparisonClassOf`.
  *
  * Every row that does not make it into the answer is counted, so the reader is
  * told what was looked at rather than shown a short list that could equally
@@ -50,9 +60,68 @@ export interface ObservationRow {
   yield_factor: number | string | null;
 }
 
+/**
+ * The comparison classes, and the one rule that separates them.
+ *
+ * ADR 0117 names five source classes (A own paper, B posted wholesale, C
+ * licensed feed, D retail reference, E public index) and says which may be set
+ * beside which. Only two of them can be told apart from `source_type` alone,
+ * because `source_type`'s CHECK
+ * (`supabase/migrations/20260805154027_vendor_price_observations.sql:112-115`)
+ * has no value meaning "a government's posted list" — ADR 0117 §"The
+ * provenance a sighting must carry" records that gap and calls the migration
+ * that closes it a precondition of class B/D/E ever being written. So this
+ * function draws the only line the data actually supports today, which is also
+ * exactly the line the founder drew:
+ *
+ *   • `quoted`      — a price a vendor gave, or the house's own paper:
+ *                     `invoice`, `quote`, `api_catalog`, `chat`, `social`,
+ *                     `manual`. ADR 0117 classes A and C.
+ *   • `public_site` — `website_scrape`. A list price on a public page, tier 4,
+ *                     signed by nobody.
+ *
+ * An UNRECOGNISED `source_type` gets a class of its very own
+ * (`other:<value>`), never folded into `quoted`. That is deliberate: when the
+ * class-B migration lands and a `posted_wholesale` value appears, the failure
+ * mode of this function must be "the new rows compare only with each other and
+ * someone notices", not "the new rows silently join the quotes". Absence
+ * reported as health is the fault this repo keeps meeting; a default branch
+ * that swallows an unknown class is that fault in one line.
+ */
+export type ComparisonClass = "quoted" | "public_site" | `other:${string}`;
+
+const QUOTED_SOURCE_TYPES: ReadonlySet<string> = new Set([
+  "invoice",
+  "quote",
+  "api_catalog",
+  "chat",
+  "social",
+  "manual",
+]);
+
+export function comparisonClassOf(sourceType: string | null): ComparisonClass {
+  const s = (sourceType ?? "").trim().toLowerCase();
+  if (s === "website_scrape") return "public_site";
+  if (QUOTED_SOURCE_TYPES.has(s)) return "quoted";
+  return `other:${s || "unstated"}`;
+}
+
+/** Human label for a class, for the box that has to print it. */
+export const COMPARISON_CLASS_LABEL: Readonly<Record<string, string>> =
+  Object.freeze({
+    quoted: "Quoted to this house",
+    public_site: "Public vendor site (tier 4)",
+  });
+
 export interface BelowAverageItem {
   /** `wine:<uuid>` or `sig:<hash>` — how the sightings were grouped. */
   productKey: string;
+  /**
+   * The class every sighting in this comparison shares. A product with both
+   * quotes and scraped prices yields up to one item per class, never one item
+   * mixing them.
+   */
+  sourceClass: ComparisonClass;
   productName: string | null;
   currency: string;
   /** The most recent sighting in the window. */
@@ -82,15 +151,47 @@ export interface BelowAverageSkips {
   thinHistory: number;
   mixedCurrency: number;
   notBelow: number;
+  /**
+   * Comparisons whose `source_type` this file has no class for. Ranked
+   * nowhere; counted here so the addition of a new source type is loud.
+   */
+  unrecognisedClass: number;
 }
 
+/**
+ * The classes that may appear in `items`. `public_site` is deliberately not
+ * one of them: the founder's rule is that a tier-4 page price is shown, and
+ * shown apart. It comes back in `publicSiteItems`, its own line.
+ */
+export const RANKED_CLASSES: readonly ComparisonClass[] = Object.freeze([
+  "quoted",
+]);
+
 export interface BelowAverageResult {
+  /** Comparisons between prices a vendor gave this house. The news. */
   items: BelowAverageItem[];
-  /** What the window actually contained, so an empty answer can be read. */
-  scanned: { observations: number; products: number };
+  /**
+   * Comparisons between public vendor-site list prices, tier 4. Its own line,
+   * never merged into `items` — the founder's rule of 2026-09-04.
+   */
+  publicSiteItems: BelowAverageItem[];
+  /**
+   * What the window actually contained, so an empty answer can be read.
+   *
+   * `products` counts distinct product identities; `comparisons` counts the
+   * (product, class) groups those identities split into. When the two differ,
+   * at least one product carried more than one class of sighting and they were
+   * NOT averaged together — the difference is the visible evidence that rule 6
+   * fired, rather than a silent partition nobody can see.
+   */
+  scanned: { observations: number; products: number; comparisons: number };
+  /** How many sightings arrived in each class. Printed by the box. */
+  byClass: Record<string, number>;
   skipped: BelowAverageSkips;
   averageExcludesLatest: true;
   minObservations: number;
+  /** Which classes may be ranked into `items`, and which are listed apart. */
+  classesRanked: readonly ComparisonClass[];
 }
 
 function numeric(v: unknown): number | null {
@@ -125,6 +226,7 @@ export function priceBelowAverage(
     thinHistory: 0,
     mixedCurrency: 0,
     notBelow: 0,
+    unrecognisedClass: 0,
   };
 
   interface Point {
@@ -135,14 +237,30 @@ export function priceBelowAverage(
     sourceType: string;
     label: string | null;
   }
-  const groups = new Map<string, Point[]>();
+  /**
+   * One entry per (product, class) - rule 6. The identity is kept as fields
+   * rather than parsed back out of the map key: a key that has to be split
+   * again is a key that can be split wrongly, and it was - the first cut of
+   * this change recovered the class with `lastIndexOf(" ")` and classified
+   * every group as unrecognised.
+   */
+  interface Group {
+    productKey: string;
+    sourceClass: ComparisonClass;
+    points: Point[];
+  }
+  const groups = new Map<string, Group>();
+  const productKeys = new Set<string>();
+  const byClass: Record<string, number> = {};
 
   for (const row of rows) {
-    const key = row.master_wine_id
+    const productKey = row.master_wine_id
       ? `wine:${row.master_wine_id}`
       : row.signature_hash
         ? `sig:${row.signature_hash}`
         : null;
+    const cls = comparisonClassOf(row.source_type);
+    const key = productKey === null ? null : `${productKey} ${cls}`;
     if (!key) {
       // No identity: this sighting cannot be compared with any other, and
       // grouping it by its free-text name would merge two different bottles
@@ -169,8 +287,15 @@ export function priceBelowAverage(
       continue;
     }
 
-    const bucket = groups.get(key) ?? [];
-    bucket.push({
+    productKeys.add(productKey as string);
+    byClass[cls] = (byClass[cls] ?? 0) + 1;
+
+    const bucket = groups.get(key) ?? {
+      productKey: productKey as string,
+      sourceClass: cls,
+      points: [],
+    };
+    bucket.points.push({
       unitPrice,
       observedAt: row.observed_at,
       currency: (row.currency ?? "USD").toUpperCase(),
@@ -182,8 +307,9 @@ export function priceBelowAverage(
   }
 
   const items: BelowAverageItem[] = [];
+  const publicSiteItems: BelowAverageItem[] = [];
 
-  for (const [productKey, points] of groups) {
+  for (const { productKey, sourceClass, points } of groups.values()) {
     const currencies = new Set(points.map((p) => p.currency));
     if (currencies.size > 1) {
       // Converting would require an FX rate nobody recorded; a saving stated
@@ -214,8 +340,9 @@ export function priceBelowAverage(
       continue;
     }
 
-    items.push({
+    const item: BelowAverageItem = {
       productKey,
+      sourceClass,
       productName:
         latest.label ?? earlier.map((p) => p.label).find((l) => l) ?? null,
       currency: latest.currency,
@@ -233,16 +360,34 @@ export function priceBelowAverage(
       },
       absoluteBelow,
       fractionBelow,
-    });
+    };
+
+    // Rule 6, at the point it matters. A `quoted` comparison is news the house
+    // can act on; a `public_site` comparison is a list price moving on a page
+    // and gets its own line, never a seat in the same list. An unrecognised
+    // class is ranked nowhere at all and counted, so it is visible.
+    if (sourceClass === "quoted") items.push(item);
+    else if (sourceClass === "public_site") publicSiteItems.push(item);
+    else skipped.unrecognisedClass += 1;
   }
 
-  items.sort((a, b) => b.fractionBelow - a.fractionBelow);
+  const byFraction = (a: BelowAverageItem, b: BelowAverageItem) =>
+    b.fractionBelow - a.fractionBelow;
+  items.sort(byFraction);
+  publicSiteItems.sort(byFraction);
 
   return {
     items: items.slice(0, limit),
-    scanned: { observations: rows.length, products: groups.size },
+    publicSiteItems: publicSiteItems.slice(0, limit),
+    scanned: {
+      observations: rows.length,
+      products: productKeys.size,
+      comparisons: groups.size,
+    },
+    byClass,
     skipped,
     averageExcludesLatest: true,
     minObservations,
+    classesRanked: RANKED_CLASSES,
   };
 }

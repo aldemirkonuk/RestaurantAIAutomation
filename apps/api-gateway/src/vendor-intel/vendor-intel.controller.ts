@@ -14,6 +14,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { VendorComparisonService } from "./vendor-comparison.service";
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
+import { VendorSiteSweepService } from "./vendor-site-sweep.service";
 import { ManualObservationDto } from "./dto/manual-observation.dto";
 
 const UUID_RE =
@@ -36,6 +37,7 @@ export class VendorIntelController {
   constructor(
     private readonly comparison: VendorComparisonService,
     private readonly extractor: VendorPageExtractorService,
+    private readonly siteSweep: VendorSiteSweepService,
   ) {}
 
   @Get("compare")
@@ -103,7 +105,12 @@ export class VendorIntelController {
     @Query("minObservations") minObservations?: string,
     @Query("limit") limit?: string,
   ) {
-    const clamp = (raw: string | undefined, min: number, max: number, dflt: number) => {
+    const clamp = (
+      raw: string | undefined,
+      min: number,
+      max: number,
+      dflt: number,
+    ) => {
       const n = raw === undefined ? NaN : Number(raw);
       if (!Number.isFinite(n)) return dflt;
       return Math.min(max, Math.max(min, Math.trunc(n)));
@@ -147,6 +154,7 @@ export class VendorIntelController {
   @Roles("owner")
   @ApiOperation({ summary: "Extract prices from one vendor page" })
   async scrape(
+    @CurrentUser() user: { restaurantId: string },
     @Body()
     body: {
       url: string;
@@ -159,6 +167,10 @@ export class VendorIntelController {
     if (!body?.url) throw new BadRequestException("url is required");
     const result = await this.extractor.extractFromUrl({
       url: body.url,
+      // The sighting is filed to the house that asked for it. A null here is a
+      // refusal (`vendor-site-sighting.ts`), and before that refusal existed it
+      // was a row every other house could read.
+      restaurantId: user.restaurantId,
       providerId: body.providerId ?? null,
       vendorCatalogueId: body.vendorCatalogueId ?? null,
       vendorName: body.vendorName ?? null,
@@ -173,10 +185,14 @@ export class VendorIntelController {
     summary:
       "Sweep active vendor_catalogue websites (sequential, rate-limited)",
   })
-  async sweep(@Body() body: { limit?: number; dryRun?: boolean }) {
+  async sweep(
+    @CurrentUser() user: { restaurantId: string },
+    @Body() body: { limit?: number; dryRun?: boolean },
+  ) {
     const results = await this.extractor.sweepCatalogue({
       limit: body?.limit,
       dryRun: body?.dryRun ?? false,
+      restaurantId: user.restaurantId,
     });
     return {
       success: true,
@@ -187,5 +203,54 @@ export class VendorIntelController {
       ),
       results,
     };
+  }
+
+  /**
+   * What the scheduled vendor-site sweep has done, per vendor — and, for every
+   * vendor it has done nothing to, why.
+   *
+   * This endpoint exists because the alternative is a register that is empty
+   * for six different reasons that all look identical from the outside: the
+   * sweep is off, the vendor has no site, its robots.txt forbids the page, the
+   * fetch failed, the page had no prices, or every price on it was refused for
+   * not naming its unit. Reading rows-written alone cannot tell those apart,
+   * and a reader who cannot tell them apart will read absence as health.
+   *
+   * Owner-only, matching `POST /vendor-intel/sweep`: it names this house's
+   * vendors and what their public pages say.
+   */
+  @Get("site-sweep/status")
+  @Roles("owner")
+  @ApiOperation({
+    summary:
+      "Per-vendor state of the scheduled site sweep: last fetch, rows written, refusals by reason, and why a vendor is silent",
+  })
+  async siteSweepStatus(@CurrentUser() user: { restaurantId: string }) {
+    return {
+      success: true,
+      ...(await this.siteSweep.status(user.restaurantId)),
+    };
+  }
+
+  /**
+   * Run the scheduled sweep now, for this house.
+   *
+   * Still gated on `VENDOR_SITE_SWEEP_ENABLED`: a hand-run must not be a way
+   * around the switch, or the switch is not a switch. A disarmed call returns
+   * the sentence saying so rather than an empty result.
+   */
+  @Post("site-sweep/run")
+  @Roles("owner")
+  @ApiOperation({ summary: "Run the vendor-site sweep now for this house" })
+  async runSiteSweep(
+    @CurrentUser() user: { restaurantId: string },
+    @Body() body: { dryRun?: boolean; limit?: number },
+  ) {
+    const summary = await this.siteSweep.sweep({
+      restaurantId: user.restaurantId,
+      limitPerRestaurant: body?.limit,
+      dryRun: body?.dryRun ?? false,
+    });
+    return { success: true, ...summary };
   }
 }
