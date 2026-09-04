@@ -8,7 +8,7 @@ it is an outage with no visible symptom:
     providers row with lead_time_days = NULL
       -> Provider.model_validate  raises pydantic.ValidationError
       -> BaseRepository.find_many catches only APIError, so it escapes
-      -> RFQAgent._select_vendors catches bare Exception and returns []
+      -> RFQAgent._select_competitor_vendors catches bare Exception and returns []
       -> "this house has no active vendors", for every restaurant, forever
 
 One ERROR line, an empty list, and nothing else. Absence reported as health,
