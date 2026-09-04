@@ -315,16 +315,27 @@ export class DocumentIntakeService {
      * once the migration is on every database the retry can never fire, and
      * `v3.0-TECH-DEBT.md` carries the note to delete it.
      */
-    const newColumns = {
-      printed: parsed.printed ?? null,
-    };
     let schemaLagNote: string | null = null;
+
+    /**
+     * The parser's own snapshot, cast ONCE up here rather than inline in the
+     * payload. `check_order_capture_contract.py` splits a write payload on
+     * top-level commas and does not know that `Record<string, unknown>` has one
+     * inside it — so an inline cast made this whole insert unreadable to the
+     * guard, and a column the table does not have could be written through it
+     * without CI noticing. Hoisting the cast is what makes the payload
+     * checkable; it changes nothing at runtime.
+     */
+    const extractedSnapshot = parsed as unknown as Record<string, unknown>;
 
     let { data, error } = await this.db
       .getClient()
       .from("procurement_documents")
       .insert({
-        ...newColumns,
+        // Inline, never spread: `check_order_capture_contract.py` can only read
+        // a write whose column names are literal, and a payload it cannot read
+        // is a payload it cannot check for a column the table does not have.
+        printed: parsed.printed ?? null,
         restaurant_id: input.restaurantId,
         provider_id: input.providerId ?? null,
         doc_type: parsed.docType,
@@ -342,7 +353,7 @@ export class DocumentIntakeService {
           input.source === "edi" || input.source === "sftp"
             ? bytes.toString("utf8").slice(0, 500_000)
             : null,
-        extracted: parsed as unknown as Record<string, unknown>,
+        extracted: extractedSnapshot,
         extraction_confidence: parsed.confidence,
         // ADR 0059 (L5, L6). Both were reachable all along and neither was
         // written: `extraction_model` has had a column and no writer since the
@@ -403,7 +414,7 @@ export class DocumentIntakeService {
             input.source === "edi" || input.source === "sftp"
               ? bytes.toString("utf8").slice(0, 500_000)
               : null,
-          extracted: parsed as unknown as Record<string, unknown>,
+          extracted: extractedSnapshot,
           extraction_confidence: parsed.confidence,
           extraction_model: parsed.extractionModel ?? null,
           event_id: parsed.eventId ?? null,
@@ -461,40 +472,66 @@ export class DocumentIntakeService {
         .getClient()
         .from("procurement_document_lines")
         .insert(
-          parsed.lines.map((l) => ({
-            document_id: documentId,
-            restaurant_id: input.restaurantId,
-            line_no: l.lineNo,
-            vendor_sku: l.vendorSku,
-            description: l.description,
-            vintage: l.vintage,
-            format_ml: l.formatMl,
-            qty: l.qty,
-            uom: l.uom,
-            pack_size: l.packSize,
-            qty_bottles: l.qtyBottles,
-            free_goods_qty: l.freeGoodsQty,
-            unit_price: l.unitPrice,
-            line_total: l.lineTotal,
-            allowance: l.allowance,
-            deposit: l.deposit,
-            // BT-149 / BT-150 and the printed literals (ADR 0104 D1,
-            // migration 20260904120000). Before those columns existed the
-            // extractor read all three and threw them away at the end of the
-            // request, so `142,00 / KS(12)` and `142,00` were indistinguishable
-            // the moment the document was read back.
-            ...(schemaLagNote
-              ? {}
+          // TWO INLINE LITERALS, not one with a conditional spread.
+          // `check_order_capture_contract.py` reads write payloads only when the
+          // column names are literal; a spread makes the whole write invisible
+          // to it, which is how a column the table does not have gets written in
+          // production. The second branch is the pre-migration fallback (see
+          // `schemaLagNote` above) and disappears with it.
+          //
+          // BT-149 / BT-150 and the printed literals (ADR 0104 D1, migration
+          // 20260904120000): before those columns existed the extractor read all
+          // three and threw them away at the end of the request, so
+          // `142,00 / KS(12)` and `142,00` were indistinguishable the moment the
+          // document was read back.
+          //
+          // order_line_id is left NULL on purpose in both. Matching lines to a
+          // PO is a separate, ranked step, and a low-confidence guess written
+          // here silently corrupts cost basis for months before anyone notices.
+          parsed.lines.map((l) =>
+            schemaLagNote
+              ? {
+                  document_id: documentId,
+                  restaurant_id: input.restaurantId,
+                  line_no: l.lineNo,
+                  vendor_sku: l.vendorSku,
+                  description: l.description,
+                  vintage: l.vintage,
+                  format_ml: l.formatMl,
+                  qty: l.qty,
+                  uom: l.uom,
+                  pack_size: l.packSize,
+                  qty_bottles: l.qtyBottles,
+                  free_goods_qty: l.freeGoodsQty,
+                  unit_price: l.unitPrice,
+                  line_total: l.lineTotal,
+                  allowance: l.allowance,
+                  deposit: l.deposit,
+                  order_line_id: null,
+                }
               : {
+                  document_id: documentId,
+                  restaurant_id: input.restaurantId,
+                  line_no: l.lineNo,
+                  vendor_sku: l.vendorSku,
+                  description: l.description,
+                  vintage: l.vintage,
+                  format_ml: l.formatMl,
+                  qty: l.qty,
+                  uom: l.uom,
+                  pack_size: l.packSize,
+                  qty_bottles: l.qtyBottles,
+                  free_goods_qty: l.freeGoodsQty,
+                  unit_price: l.unitPrice,
+                  line_total: l.lineTotal,
+                  allowance: l.allowance,
+                  deposit: l.deposit,
                   price_base_qty: l.priceBaseQty ?? null,
                   price_base_uom: l.priceBaseUom ?? null,
                   printed: l.printed ?? null,
-                }),
-            // order_line_id is left NULL on purpose. Matching lines to a PO is a
-            // separate, ranked step, and a low-confidence guess written here
-            // silently corrupts cost basis for months before anyone notices.
-            order_line_id: null,
-          })),
+                  order_line_id: null,
+                },
+          ),
         );
       if (lineErr)
         this.logger.warn(
