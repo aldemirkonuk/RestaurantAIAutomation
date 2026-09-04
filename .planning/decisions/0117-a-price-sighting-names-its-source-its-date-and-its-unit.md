@@ -9,7 +9,8 @@
   (the write), reached from `recordPriceHistory` so both call sites are covered:
   a verified receipt writes `invoice`/tier 1 in the INVOICE's own unit and pack
   (`bottles.units.invoice`, resolved by `toBottleOperands`), a confirmed order
-  writes `quote`/tier 2. Idempotent on the table's existing UNIQUE
+  writes `quote`/tier 2 **only when its resolved pack is exactly one bottle** —
+  every other pack, known or unknown, is refused (Q6). Idempotent on the table's existing UNIQUE
   `(source_ref, content_hash)` index, so **no migration was added**. 14 tests in
   `own-paper-sighting.spec.ts`, including the real `priceBelowAverage` run over
   the rows the real writer produces. Steps 2 and 3 (class B/C, class D/E) are
@@ -65,6 +66,32 @@
   quote himself**. If bought it is a **class-D retail reference only** — its own
   register, labelled retail, never beside a vendor quote. **The cost stays unmeasured
   until the quote arrives**; the pricing page returned 403 to this environment.
+
+  **Steps 2 and 3 of "The order of filling" are BUILT, 2026-09-04** — the founder's
+  call the same day: *"start them already, not from the bottom but from the top, full
+  coverage applicable"* and *"show control-state shelf prices as a labelled index line
+  in their own register, state-scoped."* The migration this ADR named a precondition
+  now exists — `supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`,
+  a NEW table `price_index_postings` keyed by **state, not restaurant** (the three
+  blockers `scripts/fetch_price_sightings.py` refused `--apply` over are cleared: it has
+  `source_class`, `issuer`, `state`, `issued_at` and `price_basis` columns, and it is not
+  restaurant-scoped so it can never enter the market box's `restaurant_id.is.null` read).
+  Applied to a live local Postgres: RLS on, anon/authenticated `NONE`, the
+  `(source_ref, content_hash)` uniqueness present, the in-file assertion NOTICE fired.
+  The parsers live in the gateway (`apps/api-gateway/src/price-index/`), one truth per
+  source so the scheduled fetch and the endpoint share it — **California is LIVE** (class
+  B beer posting, fetched today through the app's own anonymous JWT path, 8 of 13 fixture
+  rows admitted, 4 superseded + 1 duplicate refused and counted), **Iowa and Oregon** are
+  the control-state shelf lines (class D, ported from the Python proof against the same
+  fixtures), and **Michigan is WITHHELD** — recorded unverified with the reason
+  (`michigan.gov` returns 403 to a polite fetcher, robots.txt also 403, the price book is
+  Excel/PDF), its parser deliberately not written because no honest sample exists. A
+  scheduled fetch (`price-index-fetch.service.ts`) runs per source at its cadence,
+  **defaults OFF** behind `PRICE_INDEX_FETCH_ENABLED` (allow-list), with the staleness
+  gate standing before every write; `GET /price-index/:state?product=` returns the
+  labelled index line for a house's own state, `GET /price-index/status` says per source
+  when it last fetched, how many rows, and why it is silent. 40 tests. See the new section
+  **"The index register, built"** below.
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** price sightings, vendor_price_observations, price register, market price, posted wholesale list, public index, provenance, is_outlier, Iowa, Oregon, OLCC, USDA, robots.txt, rate limit, attribution, Türkiye, ÖTV, GİB, TADB, hal.gov.tr, United Kingdom, HMRC alcohol duty, ONS, Defra, AHDB, WSTA, Liv-ex, currency default
@@ -344,17 +371,28 @@ and not an implementation detail.
 5. **Pay for anything?** Wine-Searcher's trade API is the only broad wine-price source
    found; its pricing page refused this environment (403) so the cost is unmeasured. Worth
    a quote request?
-6. **A case-priced agreement has no unit to state it in.** Added 2026-09-04 while
-   building step 1. `price_history` hardcodes `unit: 'BOTTLE'` and its docblock
+6. **The agreed price's unit is not stated anywhere, so the mirror takes only
+   the single-bottle case.** Added 2026-09-04 while building step 1.
+   `price_history` hardcodes `unit: 'BOTTLE'` and its docblock
    (`procurement.service.ts:925`) records that all three callers pass a per-bottle
    figure — but nothing on `procurement_orders` states the unit of `final_price`
    separately from the order's own `unit_type`. On an order placed in cases the
    two readings differ by the pack size, and a case price filed as a bottle price
-   makes a whole ladder wrong. So the mirror **refuses** an `order_confirmed`
-   sighting whose order unit holds more than one bottle, and logs why. The receipt
-   path has no such gap: the invoice states its own unit. Options: add a stated
-   unit to the agreed price, treat `final_price` as per-bottle by decree, or leave
-   case-priced agreements out of the register. Not guessed at.
+   makes a whole ladder wrong.
+
+   **Stated exactly, because the earlier wording oversold it:** the mirror writes
+   an `order_confirmed` sighting **only when the order's resolved pack is exactly
+   one bottle**, and refuses every other case with a logged sentence. That is a
+   wider refusal than "an unstated unit" — it refuses a **known** pack of 12 just
+   as firmly as an unreadable one, because knowing the pack does not tell us
+   which unit the PRICE is in. It also refuses an order whose `unit_type` is
+   present but not `bottle` and whose line carries no `bottles_per_unit`. The
+   receipt path has no such gap: the invoice states its own unit, and
+   `toBottleOperands` has already resolved and refused it.
+
+   Options: state a unit on the agreed price, treat `final_price` as per-bottle
+   by decree, or leave case-priced agreements out of the register permanently.
+   Not guessed at.
 7. **Should the batch outlier pass still be built** alongside the write-time one
    (see the Status note)? A batch pass can re-judge a row after later evidence
    arrives; the write-time writer cannot.

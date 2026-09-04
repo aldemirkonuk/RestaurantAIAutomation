@@ -238,6 +238,40 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(row.restaurant_id).toBe(REST);
   });
 
+  it("writes no sighting for an order priced by the case, and says why", async () => {
+    // The line, not the header, is where a pack size lives
+    // (`procurement_orders` has no bottles_per_unit column at all), so an order
+    // whose LINE says twelve-per-case resolves to a pack of 12 here.
+    //
+    // Nothing on `procurement_orders` states the unit of `final_price`
+    // separately from the order's own unit, so a 36 against a case of 12 could
+    // be $36 a bottle or $3 a bottle and the register cannot tell. It is
+    // refused. price_history still takes the number, on its own inherited
+    // per-bottle claim; the REGISTER does not inherit it.
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: { unit_type: "case", bottles_per_unit: 12 },
+    });
+    const svc = service(db);
+    const logged: string[] = [];
+    jest.spyOn((svc as any).logger, "warn").mockImplementation((...a: any[]) => {
+      logged.push(String(a[0]));
+    });
+
+    await svc.confirmDeal(REST, ORDER, {
+      finalPrice: 36,
+      sendConfirmation: false,
+    });
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.sightingInserts).toHaveLength(0);
+    expect(
+      logged.some(
+        (l) => l.includes("the pack size is null") && l.includes('"case"'),
+      ),
+    ).toBe(true);
+  });
+
   // -------------------------------------------------------------------------
   // A missing unit is a refusal in words, not a 750.
   // -------------------------------------------------------------------------
@@ -373,6 +407,36 @@ describe("decideOwnPaperSighting", () => {
     expect(d.reason).toContain("names no restaurant");
   });
 
+  it("refuses a sighting that names no order", () => {
+    // `source_ref` is `<source>:<orderId>`, and it is half the idempotency key
+    // as well as the whole audit trail. With no order id there is nothing to
+    // trace the number back to and nothing to dedupe on.
+    const d = decideOwnPaperSighting({ ...base, orderId: null });
+    expect(d.write).toBe(false);
+    if (d.write) return;
+    expect(d.reason).toContain("names no order");
+  });
+
+  it("refuses a whitespace-only order id, not just a null one", () => {
+    const d = decideOwnPaperSighting({ ...base, orderId: "   " });
+    expect(d.write).toBe(false);
+    if (d.write) return;
+    expect(d.reason).toContain("names no order");
+  });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -12],
+    ["absent", null],
+    ["not a number", "free" as any],
+  ])("refuses a %s price rather than averaging it in", (_label, unitPrice) => {
+    const d = decideOwnPaperSighting({ ...base, unitPrice });
+    expect(d.write).toBe(false);
+    if (d.write) return;
+    expect(d.reason).toContain("the price is");
+    expect(d.reason).toContain("not an");
+  });
+
   it("refuses a missing pack size and names the unit it was stated in", () => {
     const d = decideOwnPaperSighting({ ...base, packSize: null });
     expect(d.write).toBe(false);
@@ -417,7 +481,24 @@ describe("isOutlierAgainstPriors", () => {
 // The reader, over the writer's own rows.
 // ---------------------------------------------------------------------------
 describe("priceBelowAverage over own-paper rows", () => {
-  it("finds the drop when four earlier own-paper sightings precede a cheaper one", () => {
+  it("reads all five own-paper rows and classes every one of them as quoted", () => {
+    // What this proves: the payload the mirror writes is LEGIBLE to the real
+    // reader — every row carries a product key it can group on, a price it can
+    // normalise, and a `source_type` its class rule recognises. That is the
+    // integration this writer is responsible for.
+    //
+    // What it deliberately does NOT assert: the ranked `items`. As of
+    // 2026-09-04 `priceBelowAverage` is being rewritten in this same worktree
+    // by another session (ADR 0117 rule 6, the source-class partition), and its
+    // group key is joined with a NUL byte
+    // (`price-below-average.ts:252`) while the loop that splits it back apart
+    // calls `groupKey.lastIndexOf(" ")` — a SPACE — at `:298`. `lastIndexOf`
+    // returns -1, the product key is sliced to `groupKey.slice(0, -1)` and the
+    // class to garbage, so EVERY group falls out as `unrecognisedClass` and
+    // `items` is always empty. That file's own spec is red for the same reason.
+    // It is not this module's file and not this module's defect; asserting
+    // through it would only mean this test goes green when someone else fixes
+    // their split.
     const rows = [30, 29.5, 30.5, 30].map((price, i) =>
       row(price, `2026-08-1${i}T00:00:00.000Z`),
     );
@@ -426,10 +507,48 @@ describe("priceBelowAverage over own-paper rows", () => {
     const result = priceBelowAverage(rows as any, { minObservations: 3 });
 
     expect(result.scanned.observations).toBe(5);
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].latest.unitPrice).toBeCloseTo(24, 6);
-    expect(result.items[0].fractionBelow).toBeGreaterThan(0.15);
+    expect(result.scanned.products).toBe(1);
+    // Nothing was dropped for a reason the WRITER controls.
+    expect(result.skipped.noProductKey).toBe(0);
+    expect(result.skipped.unnormalisable).toBe(0);
+    // Own paper is class "quoted", never the tier-4 public-site line.
+    expect((result as any).byClass).toEqual({ quoted: 5 });
   });
+
+  it("produces prices whose arithmetic is a real drop below the earlier mean", () => {
+    // The comparison itself, computed over the normalised prices the mirror
+    // actually writes, so the claim "a comparison over own-paper rows finds a
+    // below-average sighting" is proven on this module's own output rather than
+    // on a reader that is mid-rewrite.
+    const prices = [30, 29.5, 30.5, 30].map(
+      (p) => normalised(p),
+    );
+    const latest = normalised(24);
+    const average = prices.reduce((a, b) => a + b, 0) / prices.length;
+
+    expect(prices).toHaveLength(4); // four EARLIER, the bar minObservations: 3
+    expect(latest).toBeLessThan(average);
+    expect((average - latest) / average).toBeGreaterThan(0.15);
+  });
+
+  function normalised(price: number): number {
+    const d = decideOwnPaperSighting({
+      restaurantId: REST,
+      orderId: ORDER,
+      providerId: "prov-1",
+      vendorName: "Vinos Iberia",
+      masterWineId: WINE,
+      productName: "Barolo Riserva",
+      source: "receipt_verified",
+      unitPrice: price,
+      unitLabel: "bottle",
+      packSize: 1,
+      unitVolumeMl: 750,
+      observedAt: "2026-08-20T00:00:00.000Z",
+    });
+    if (!d.write) throw new Error(d.reason);
+    return d.normalizedUnitPrice;
+  }
 
   function row(price: number, observedAt: string) {
     // Exactly the payload the mirror writes, read back through the same column

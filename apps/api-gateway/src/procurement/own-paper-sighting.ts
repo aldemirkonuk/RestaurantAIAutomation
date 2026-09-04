@@ -275,7 +275,22 @@ export function decideOwnPaperSighting(
   const { sourceType, trustTier } = OWN_PAPER_CLASS[input.source];
   const currency = (input.currency ?? "USD").toUpperCase();
 
-  const { unitPrice: normalized, note } = normalizeUnitPrice({
+  // `normalizeUnitPrice` returns null on exactly three inputs: a price that is
+  // not a number, a pack size below 1, and a yield outside (0, 1]
+  // (`analytics/engine/vendor-price-consensus.ts:120-127`). All three are
+  // already refused above — the price by `Number.isFinite(price) && price > 0`,
+  // the pack by `positiveInt`, and the yield by being the literal 1 — so it
+  // CANNOT be null here, and `unitVolumeMl >= 1` makes the result finite and
+  // positive.
+  //
+  // There is therefore deliberately NO refusal branch on this result, and the
+  // cast is type narrowing rather than a guard. An earlier draft had one, with
+  // a sentence about "an unconvertible observation". It was unreachable by
+  // construction, which is the same shape as everything else this build exists
+  // to remove: a screen that cannot fire reads to the next person as a screen
+  // that is running. If a future edit relaxes any of the three refusals above,
+  // this is the line to revisit — not to re-add a branch to.
+  const { unitPrice: rawNormalized, note } = normalizeUnitPrice({
     price,
     sourceType,
     observedAt: observedAt.toISOString(),
@@ -283,16 +298,7 @@ export function decideOwnPaperSighting(
     unitVolumeMl,
     yieldFactor: 1,
   });
-  if (normalized === null || !(normalized > 0)) {
-    return {
-      write: false,
-      reason:
-        `No price sighting written for ${where}: the price could not be ` +
-        `reduced to a per-750ml figure (${note}). An unconvertible ` +
-        `observation must leave the comparison, not enter it with a ` +
-        `fabricated number.`,
-    };
-  }
+  const normalized = rawNormalized as number;
 
   // The document this row was read from. ADR 0117's `source_ref`.
   const sourceRef = `${input.source}:${orderId}`;

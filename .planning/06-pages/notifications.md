@@ -114,14 +114,23 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
 
 **Fourth pass, 2026-09-03** (founder review — KEEP, with doubt):
 
-- **The day rail.** The last fortnight as a row of cells above the book, each
-  showing that day's lines and how many are still open. Picking a day sends
-  `dateFrom`/`dateTo` to the register, so the count beside it is the
+- **The day rail — since 2026-09-04, the HOUSE day strip.** A row of cells above
+  the book, each showing that day's lines and how many are still open. Picking a
+  day sends `dateFrom`/`dateTo` to the register, so the count beside it is the
   **register's own** total for that day, not this screen's. Verified live: a
   click on 3 September issued
   `GET /notifications?…&dateFrom=2026-09-03T04:00:00.000Z&dateTo=2026-09-04T03:59:59.999Z`
   and the rail read "the register holds 6 lines for that day", matching a
-  direct curl of the same window.
+  direct curl of the same window. The founder's call of 2026-09-04 replaced this
+  page's own `DayRail.tsx` with the shared `components/mudavym/DayStrip.tsx`
+  (this page's slots are `NoteDays.tsx`), which changed three things here:
+  the window is a **full calendar month** with previous/next controls instead of
+  the last fortnight; the page gained a **keyboard map** (arrows · ↑↓ a week ·
+  Home/End · Enter/Space selects · Escape clears) and a visible focus ring,
+  neither of which the rail had; and a blank day now says *which kind* of blank
+  it is — hatched for "the loaded pages cover this day and the register wrote
+  nothing", plain for "these pages do not reach it", empty for a day that has
+  not happened. See §1b, fifth pass.
 - **The register's own filters, on the page** — `type` and `status` as pills,
   each a `GetNotificationsQueryDto` field applied server-side
   (`notifications.service.ts:811-817`). The bar states which controls are the
@@ -626,6 +635,66 @@ real endpoint over an empty table; the producer that would write a notification
 from a drop is §13.22 and is outside these paths. (4) Direction C stays a sketch
 until `related_entity_type`/`related_entity_id` are written — §13.21.
 
+### Fifth pass, 2026-09-04 — the rail becomes the house day strip
+
+The founder's third decision of the day: **one shared day strip**, per-page slots for
+what a day carries. `apps/web/src/pages/notifications/next/DayRail.tsx` is **deleted**
+(152 lines); this page now renders `components/mudavym/DayStrip.tsx` through its own
+slot file `NoteDays.tsx`.
+
+**The measured cause.** `/recommendations` and this page had each grown a day strip and
+the two had already drifted. That page's carried four record states, the hatched-not-a-
+zero rule, and a full keyboard map; this rail carried none of the three — no record
+states at all, no keyboard, and a bar whose height was a proportion of the busiest day
+on screen. Same object, two contracts, one of them missing the rule the other exists to
+enforce. `DESIGN-FOUNDATION.md` §3 item 4 now carries the dated amendment.
+
+**What this page kept.** The rail's original argument, which was right and is worth
+keeping written down: this book IS keyed by day, by its own producer — 237 distinct
+`group_key` values on the production register (2026-09-03), the twenty commonest being
+`low_stock_digest:2026-08-16`, `…:2026-08-17` and so on, eight rows apiece, one key per
+calendar day. The house writes a page a day. And the honesty that came with it: the
+figure in a cell counts the lines **on this screen**, never the register's total; the
+register's own figure appears only once a day is selected and read back.
+
+**What this page gained.** The month window, the month controls, the whole keyboard map,
+a visible focus ring, and one negative claim it could not make before.
+
+**The hatch, and exactly how far it is entitled to go** (`nt-book.ts` `dayCells`). The
+gateway returns notifications `order("created_at", { ascending: false })`
+(`notifications.service.ts:824`) and this page reads pages 1..N contiguously, so the rows
+on screen are a newest-first **prefix** of the register. That makes one negative claim
+safe: for any day strictly newer than the oldest loaded row's day, "no rows on screen"
+means "no rows in the register" — the register cannot be hiding a line between two lines
+this screen already holds. Those days hatch. Everything else is drawn plain and says
+nothing:
+
+- days at or older than the oldest loaded row's day — the page boundary can fall inside
+  a day, so even the oldest day is only safe because it HAS a row;
+- every day but one while a **day filter** is applied (the register was asked about one
+  day; nothing is known about the rest) — the strip's note says so on screen;
+- every day when nothing has been loaded at all.
+
+A **type or status** filter does *not* force plain: "no line of this kind that day" is a
+true statement about a narrower thing, and the note names the narrowing. Calling that
+"unknown" would be the opposite error — an absence the page can prove, reported as
+ignorance.
+
+**And the future half is empty, never hatched.** A day that has not happened is neither
+a record nor an absence; the cell's own title says exactly that, and the strip enforces
+it — a page cannot claim otherwise about a day after `today`.
+
+**Verified in the live browser, 2026-09-04** (web :5274, gateway :4000, tenant
+*Meyhouse Palo Alto*, captures in `$SP/shots-daystrip/`, both grounds): 30 cells for
+September 2026; month label and previous/next controls live; four days carried a record,
+26 drawn as future; the 1st selected read *"Tuesday 1 September — 1 line on this screen,
+1 still open — a record landed on this day"*; the note under the strip read *"Every other
+day is drawn blank while this filter is on: the register was asked about one day, so
+nothing is known about the rest."* Cell width measured off the rendered DOM: **35.4px at
+1440**, **30.1px at 1280**, no horizontal scroll at either, day number 11.5px throughout.
+The floor is `--mdv-ds-min: 30px`; below it the strip scrolls rather than shrinking the
+number.
+
 ## 2. Entry
 
 - Sidebar with unread badge (`Sidebar.tsx:144,410`).
@@ -644,7 +713,8 @@ until `related_entity_type`/`related_entity_id` are written — §13.21.
 - Rendered: `components/notifications/OneTapActionCenter.tsx` (:731);
   digest-stacking via `lib/notificationStack.ts` (:41).
 - Mudavym redesign (flag-gated): `apps/web/src/pages/notifications/next/` —
-  `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`, `DayRail.tsx`,
+  `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`, `NoteDays.tsx`
+  (`DayRail.tsx` **deleted** 2026-09-04 — the strip is the house's now),
   `BookFilterBar.tsx`, `MarketPricePanel.tsx`, `useNotificationsNextData.ts`,
   `useMarketPrice.ts`, `nt-format.ts`, `nt-book.ts`, `nt-snooze.ts`, and five
   test files — `NotificationsNext.test.tsx` (25 render-contract tests, both
@@ -735,11 +805,28 @@ dashboard.md §7.
 | Snooze durations | an hour · after service (8h) · tomorrow (24h) · next week (7d), from `nt-snooze.ts` `DURATIONS`. A record is dropped the moment its deadline passes, so the store cannot grow without bound |
 | Wake edges | the deadline, a newer `timestamp` on the row, one more folded repeat, or the row leaving `unread` — `nt-snooze.ts` `resolveSnoozes`, evaluated on every read rather than on a timer |
 | Keyboard | `j`/`k` move · `e` rule off / reopen · `s` put down for an hour · `Enter` open · `/` search. Nothing destructive is bound; no key fires while an input, textarea, select or contenteditable has focus |
-| Register narrowing | `type` and `status` pills and the day rail all send query params; the search box and the hide-read fold are screen-side and the bar says which is which |
+| Register narrowing | `type` and `status` pills and the day strip all send query params; the search box and the hide-read fold are screen-side and the bar says which is which |
 | Registers read | `GET /notifications` and `GET /vendor-intel/below-average`, since 2026-09-03. `/one-tap-actions` moved to the dashboard rail with the desk; pinned by `useNotificationsNextData.test.tsx` ("reads the notifications register and nothing else" — the market-price read lives in its own hook and its own test) |
 | Market-price poll | 60s (`useMarketPrice.ts` `MARKET_POLL_MS`), window 30 days, minimum 3 earlier sightings |
 
 ## 9. Gaps
+
+**Filed 2026-09-04, with the fifth pass (§1b), and why each is not yet closed:**
+
+- **The strip can only hatch what the loaded pages cover.** There is no per-day count
+  route: `GET /notifications` returns a page of rows and a total for the *current*
+  narrowing, never a histogram. So a day older than the oldest loaded row is drawn plain,
+  and while a day filter is on every other day is. *Why not yet:* closing it needs a
+  `GET /notifications/counts?from=&to=` on the gateway, which is outside a page pass —
+  and the honest half is already built, on the page, in words.
+- **The counts in a cell are still "on this screen".** Unchanged by the merge, and still
+  labelled. The register's own figure appears only for the selected day.
+- **A month older than the loaded pages is entirely plain.** Walking the strip back does
+  not fetch that month; the page reads pages 1..N of the register newest-first and the
+  strip reports what those rows say. *Why not yet:* the fix is either the counts route
+  above, or reading with `dateFrom`/`dateTo` for the whole month on every month change —
+  the second is a real extra read per click and was not taken without the founder.
+
 
 - **Custom one-tap actions do not persist**: created into `useState` only
   (`Notifications.tsx:173,575`), rendered at :693-700, gone on refresh. The
@@ -943,7 +1030,7 @@ calls `createSystemAction`.
 | DELETE | `/notifications/:id` | JWT | `:263-276` | 204 |
 | GET | `/procurement/orders/pending`, `/procurement/orders` | JWT | `procurement.controller.ts` | Orders the action center turns into cards |
 | GET | `/inventory/:rid` (low stock) | JWT | `inventory` module | Low-stock actions |
-| GET | `/notifications/producers/status` | JWT (class) | `notifications.controller.ts:453` | The five producers' own account of themselves: `armed` (env `NOTIFICATION_PRODUCERS_ENABLED`), `served` (does `runPerTenant` enumerate this house), `timeZone`, `armingNote`, and per producer `{cron, intervalMinutes, nextTickAt, lastRun, lastRunUnreadable, willWrite, silentReason}`. `willWrite` is three-state: `false` with a reason (disarmed / not served / the market register is empty), `null` when a source read failed, `true` otherwise. Tenant from the token, never a query. Verified live 2026-09-03: 200 with a session, **401 without one**. `lastRun: null` (never run) and `lastRunUnreadable: "<why>"` (the ledger could not be read) are separate fields on purpose |
+| GET | `/notifications/producers/status` | JWT (class) | `notifications.controller.ts:453` | The seven producers' own account of themselves: `armed` (env `NOTIFICATION_PRODUCERS_ENABLED`), `served` (does `runPerTenant` enumerate this house), `timeZone`, `armingNote`, and per producer `{cron, intervalMinutes, nextTickAt, lastRun, lastRunUnreadable, willWrite, silentReason}`. `willWrite` is three-state: `false` with a reason (disarmed / not served / the market register is empty / nothing is suspended), `null` when a source read failed, `true` otherwise. Tenant from the token, never a query. Verified live 2026-09-03: 200 with a session, **401 without one**. Re-verified live 2026-09-04 against the local gateway on :4000: **seven** producers, `armed: false`, `served: true`, `armingNote` reading "arms all 7 producers". `lastRun: null` (never run) and `lastRunUnreadable: "<why>"` (the ledger could not be read) are separate fields on purpose |
 | GET | `/vendor-intel/below-average?windowDays=30` | JWT | `vendor-intel.controller.ts:95` | The market box's read, built in this same pass. **The market-price producer calls the same `VendorComparisonService.belowTrailingAverage`**, so the box and the book cannot disagree about the same bottle. A second `GET /notifications/market-signals/:rid` was specified in the brief and deliberately NOT built |
 
 ### Fed by
@@ -962,7 +1049,8 @@ calls `createSystemAction`.
 | **Invoice certified** (`type: invoice_received`) | `invoice-confirmed.producer.ts` — `procurement_documents` where `status = 'verified'`, with amount, vendor and the tie-out. Never says approved, accepted or paid: verify "asserts only that the transcription is right" (`documents.controller.ts:305-310`), and a spec pins that vocabulary | **Built, NOT armed.** `*/15 * * * *`. This is §13.19's matching-good case; the two existing `invoice_received` producers still fire only on a discrepancy |
 | **Sale record** (`type: service_closed`) | `sale-record.producer.ts` — one line per settled service day from `pos_checks` (`voided = false`), with checks, revenue, covers and the best seller by revenue. **No POS ⇒ no row**, asked of `GoalsService.getPosRevenueWindow` whose `posConnected` is the one place that decides it (`analytics/goals.service.ts`, `getPosRevenueWindow` over `hasPosHistory` — **no line number on purpose: that file moved twice during the 2026-09-03 session, so grep the function names**). A connected POS with zero checks also writes nothing — a closed Monday and a failed import look identical | **Built, NOT armed.** Checked hourly (`0 * * * *`); a day is summarised once `service-day.ts` says it has settled. **Measured on production `exzueerziesmczwlhomd` 2026-09-03: `pos_checks` holds 173 rows and `restaurants.operating_hours` is now non-NULL on 2 of them** — so both settle rules can fire, and the row names which one decided. (The migration header's "every existing row keeps NULL" was true on 2026-09-02 and is not any more.) |
 | **Market price** (`type: price_change`) | `market-price.producer.ts` — calls `VendorComparisonService.belowTrailingAverage` (the box's own read), narrows to products **this house buys** (distinct `master_wine_id` on this restaurant's order items), and applies a 10% floor (`MARKET_SIGNAL_DROP_PCT`) and a 60% implausibility ceiling. One line per product per week | **Built, NOT armed, and MUTE if it were.** Once a day on the tenant's wall clock (`MARKET_SIGNAL_LOCAL_HOUR`, default 10). Measured on production 2026-09-03: `vendor_price_observations` holds **0 rows**, so nothing can fire regardless of arming — `GET /notifications/producers/status` says exactly that per producer (`willWrite: false`, `silentReason`), and the run row's `withheld_reason` distinguishes "nothing has been observed" from "nothing is cheap" |
-| *(all six)* | `notification-producers.service.ts` holds the two crons; `producer-ledger.service.ts` is the only thing that writes. Every emission claims a row in `notification_producer_claims` (UNIQUE `(restaurant_id, producer, dedupe_key, user_id)`, migration `20260903143000`) BEFORE it writes, so two gateway instances cannot both speak. Each producer opens and closes a `notification_producer_runs` row per tenant per sweep, carrying `withheld_reason` — the producer's own sentence for a legitimate no-op, so a zero is never reported as health | The claim is **per person**, not per event, so quiet hours DEFER a reader instead of losing them the record. The row's `created_at` is then the delivery time, which is why every producer carries `metadata.occurredAt` and says the real time in words |
+| **Tool grant suspended** (`type: grant_suspended`) | `grant-suspended.producer.ts` — sweeps `mcp_tool_grants` where `needs_reconsent_at IS NOT NULL`, scoped to this house through `restaurant_mcp_connections.restaurant_id` (the grants table carries no `restaurant_id` of its own). The stamp is `McpConnectionsService.reconcileGrants` (`mcp-connections.service.ts:720-798`), which runs from `writeProbe` (`:1582`) alone. The sentence names the server, the tool, what changed in the server's own words (`needs_reconsent_reason`, e.g. "the server changed readOnlyHint true to false"), when the change was SEEN, and that only a manager re-consenting on `/connections` clears it. Metadata carries `connectionId`, `tool`, `previousHash` (the grant's `tool_list_hash`), `currentHash` (hashed from the connection's current `probe_tools`), `changedAt` and `changedAtSource`. **The only producer that narrows its own audience**: owners and managers only, resolved through `user_restaurant_access` (`role IN ('owner','manager')`, `is_active = true`) and intersected with the sweep's audience so quiet hours still decide delivery. A failed role read THROWS — neither "tell everybody" nor "tell nobody" is honest | **Built, NOT armed.** `*/15 * * * *` — a permission the house did not change is already being refused. Dedupe `grant:<grantId>:<toolListHash>`, so a standing suspension is written once however many times it is swept, and a re-consent (revoke-then-insert, `mcp-connections.service.ts:648-651`) followed by a fresh change is a new row with a new id and a new hash, and is said again. A tool WITHDRAWN by the server is reported as a revocation, not a suspension; a tool ADDED is not reported at all, because it suspends nothing (`tool-classification.ts:172-176`) |
+| *(all seven)* | `notification-producers.service.ts` holds the two crons; `producer-ledger.service.ts` is the only thing that writes. Every emission claims a row in `notification_producer_claims` (UNIQUE `(restaurant_id, producer, dedupe_key, user_id)`, migration `20260903143000`) BEFORE it writes, so two gateway instances cannot both speak. Each producer opens and closes a `notification_producer_runs` row per tenant per sweep, carrying `withheld_reason` — the producer's own sentence for a legitimate no-op, so a zero is never reported as health | The claim is **per person**, not per event, so quiet hours DEFER a reader instead of losing them the record. The row's `created_at` is then the delivery time, which is why every producer carries `metadata.occurredAt` and says the real time in words |
 
 ### Writes
 
@@ -1302,10 +1390,15 @@ sibling's implementation differs, the sibling's file is the truth.
        the page stands; what changed is that receiving a delivery now moves it.
 
        Two things stayed unbuilt and are the founder's call, filed as ADR 0117
-       Q6 and Q7: an `order_confirmed` sighting on an order priced by the CASE is
-       refused, because nothing states the unit of `final_price` separately from
-       the order's own `unit_type`; and whether a batch outlier pass should still
-       be built alongside the write-time one.
+       Q6 and Q7. **Q6, stated exactly:** an `order_confirmed` sighting is
+       written **only when the order's resolved pack is exactly one bottle**.
+       Every other pack is refused with a logged sentence — a **known** pack of
+       12 just as firmly as an unreadable unit, because knowing the pack does not
+       tell us which unit the PRICE is in, and nothing on `procurement_orders`
+       states the unit of `final_price` separately from `unit_type`. So the
+       register currently takes the receipt path in full and the confirmation
+       path only for bottle-priced orders. **Q7:** whether a batch outlier pass
+       should still be built alongside the write-time one.
 
     b2. **What would fill the register first — decided in
        [ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md),
@@ -1421,3 +1514,34 @@ sibling's implementation differs, the sibling's file is the truth.
     (**stock ran out**, **the last bottle poured**) are the ones whose sources
     already hold hundreds of rows. Build toward the data that exists, not toward
     the table that sounds most important.
+
+28. **Give the register a per-day count route.** `GET /notifications/counts?from=&to=`
+    (or a histogram on the existing route) is the one thing that would let the day strip
+    speak about a day the loaded pages do not reach. Today the strip is honest about
+    exactly that limit and no more: it hatches only days strictly newer than the oldest
+    row on screen, where the newest-first contiguous read makes "no rows on screen" mean
+    "no rows in the register" (§1b fifth pass, §9). Gateway work, filed 2026-09-04.
+29. **Decide which other pages take the house day strip.** ADR-adjacent: the strip is now
+    `components/mudavym/DayStrip.tsx`, shared by this page and `/recommendations`
+    (`DayRail.tsx` deleted 2026-09-04, `DESIGN-FOUNDATION.md` §3 item 4 amended).
+    Nothing decides whether `/calendar`, `/reports` or `/logs` should adopt it, and
+    nothing stops a fourth page growing its own again — a guard is the shape that would,
+    and is not built.
+
+30. **A tool being ADDED to a connected server is reported nowhere.** The
+    grant-suspension producer (§11) can only speak about rows
+    `reconcileGrants` writes, and it deliberately writes none for an addition:
+    per-tool fingerprints exist precisely so "a server adding an unrelated tool
+    must not suspend a grant nobody touched"
+    (`mcp-runtime/tool-classification.ts:172-176`). A house that would like to
+    know its server grew a `delete_everything` tool it never granted therefore
+    learns it only by opening `/connections`. Closing this needs a decision
+    first — a new tool is not a permission change, so it is not this register's
+    event — and then somewhere durable to compare a probe's list against the
+    previous one. Filed 2026-09-04, not built, not faked.
+31. **`grant_suspended` has no register on the rebuilt page yet.** `KIND_BY_TYPE`
+    in `notifications/next/nt-format.ts` does not carry the type, so these rows
+    fall to *Other* — the exact way a new register goes invisible that the map's
+    own comment warns about. The one-line patch is written out in the pass
+    report; it was not applied because that file is under concurrent edit by the
+    day-strip builder. Web-only, blocking nothing in the gateway.
