@@ -221,7 +221,7 @@ this list is the note-side index (ADR 0044 §2).
 | `rp-lift` | `tuck` 300ms | a cutting's shadow rising while it is dragged **or held from the keyboard**; duration + easing injected as `--rp-tuck` from the token, so the curve on screen IS `tuck` |
 | `rp-ink` | `ink` 160ms | hover/focus micro-states on cuttings, chips, buttons, links; nothing translates |
 | `rp-working` | `turn` 420ms | "Show the working" — the server's `basis` sentences on `grid-rows 0fr→1fr` |
-| `rp-ask` | `settle` 320ms | the ⌘K palette panel arriving |
+| `rp-ask` | `settle` 320ms | the ⌘K palette panel arriving — **since 2026-09-04 run by the house `Panel`** (`components/mudavym/Sheet.tsx`), not by this page's own `animate()` call |
 | `rp-sheen` | — (not a token) | skeleton bars while a register is genuinely in flight; identical to the dashboard's `skel-sheen`. Never shown for an unknown |
 
 The fourth pass added the keyboard path and **no new motion**: the ghost and the
@@ -236,6 +236,16 @@ something happening); no cutting stagger; **nothing animates when a cutting
 changes its drawing or its subject** (a cross-fade would suggest two pictures
 are the same measurement in transit); the seal appears once, pressed **dry**,
 at "Ruled off." — wax is for committing to another party, not to your own layout.
+
+**Modal shape (ADR 0112) — landed 2026-09-04.** "Ask the book" is the house **`Panel`**:
+centered, `min(620px, 100vw − 32px)` at 10vh, `settle`, for an ask. The migration is done, not
+planned — `AskTheBook.tsx` renders `<Panel open onClose label showClose={false} footer=…>`, the
+field is the shared `.mdv-field`, and `.rp-ask`, `.rp-ask__scrim`, `.rp-ask__panel`,
+`.rp-ask__field` and `.rp-ask__foot` are deleted from `reports-next.css` together with the
+palette's private Esc listener and its own `animate(settle)` call. Only `.rp-ask__body` remains,
+because the list inside it is this page's. The palette gains a focus trap, focus returned to the
+opener and a body-scroll lock; the footer's refusal to answer free text is unchanged, word for
+word. `ReportsNext.test.tsx` pins it (77 tests).
 
 ### Design used, and why (ADR 0044 p4 wave · MAKEOVER-VERDICTS:177-181 — MERGE)
 

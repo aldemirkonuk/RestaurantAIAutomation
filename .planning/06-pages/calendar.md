@@ -116,11 +116,20 @@ unchanged with the flag off):
   was forecast *before* the day" recoverable later
 - **A passed day holds the record.** Covers and sales from `pos_checks` beside the forecast
   that stood before the day began, with its lead time in days
-- 🔒 **The passed day states no accuracy, and says so.** No covers model exists (slice 9,
-  gated on 90 observed service days — the house has 22) and **no temperature observation is
-  recorded anywhere in the product**, so the pair is kept and the score is withheld. The
-  first rows `prediction_outcomes` has ever received from this product carry
-  `accuracy_score: NULL` for exactly that reason
+- **A passed day states the forecast's error, from 2026-09-04.** The nearest reporting
+  station's observations are recorded beside the forecast, so `prediction_outcomes` now
+  receives the **first real `accuracy_score` this product has ever produced**: the absolute
+  error of the forecast daily high against the observed daily high, **in °C, lower is
+  better**, stated in words in every row and shown on the cell as *"the forecast was out by
+  1.1 °C on the high"*. Withheld with a reason when either side is missing, and the two
+  absences are distinguished (*no forecast stood before this day* / *no station observed it*)
+- 🔒 **The TRADING half is still unscored.** A day can carry a real weather score and no
+  claim whatever about covers: the covers model is slice 9, gated on 90 observed service
+  days, and the house has 22. The recorded covers travel beside the score, unscored
+- **The forecast refreshes on a schedule as well as on read** (hourly, every house with a
+  coordinate), so a house nobody opens still accumulates the history slice 9 needs. It does
+  not go through the ADR 0022 opt-in — that scheduler serves one house of fourteen — which
+  required a dated amendment to that ADR naming exactly the two NWS reads it permits
 - **Covers are an em dash, never a zero, when the POS did not send them**, and a day the
   house was shut is **hatched and labelled "ruled out"** rather than drawn as zero trading —
   a closure counted as a zero is the most damaging input a demand model can be given
@@ -178,7 +187,7 @@ Canonical copy lives beside the code in
 | `cn-open` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 420ms | the opening block (wordmark, period line, standing sentence) on mount, once |
 | `cn-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the view stage when the magnification changes — the same book, a page turned |
 | `cn-day-settle` | `settle` | HOUSE · 320ms | the day ledger opening under the month grid (`grid-template-rows: 0fr → 1fr`) — the row-expand the founder singled out on board 053 |
-| `cn-sheet-tuck` | `tuck` | spring 380/32 · 300ms | the event sheet arriving from the right, 28px + fade |
+| `cn-sheet-tuck` | `tuck` | spring 380/32 · 300ms | the event sheet arriving from the right, 28px + fade — **since 2026-09-04 run by the house primitive** (`components/mudavym/Sheet.tsx`), not by this page's keyframes |
 | `cn-drag` | **none, deliberately** | live `pointermove`, un-eased | a block dragged or resized in the Week/Day grid — easing between 15-minute snaps would draw a time the operator never chose |
 | `cn-drop-tuck` | `tuck` | spring 380/32 · 300ms | the same block settling into its committed slot after the pointer lifts; suppressed while the finger is down |
 | `cn-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states on cells, ribbons, ledger lines, tabs, chips, buttons — nothing moves |
@@ -190,6 +199,16 @@ not a set of figures arriving); nothing tallies (the counts are counts of record
 dash must never animate); ruling off is *drawn*, not animated (the delivery arrived in the
 orders book — the page did not do it); the sheet and the day ledger close instantly.
 `prefers-reduced-motion` collapses every row above to its end state.
+
+**Modal shape (ADR 0112) — landed 2026-09-04.** The event sheet is the house **`Sheet`**: a
+right slide-in, 440px, `tuck`, for one object's detail or edit. The migration is done, not
+planned — `EventSheet.tsx` renders `<Sheet open onClose label eyebrow title>` and the page's own
+`.cn-scrim`, `.cn-sheet` and `@keyframes cn-sheet-in` are deleted from `calendar-next.css`,
+along with the sheet's private Esc handler and its focus-the-Close-button effect. What the page
+gains that its copy never had: a focus trap, focus returned to the opener, a counted body-scroll
+lock, and no animation at all (rather than a shorter one) under `prefers-reduced-motion`. The
+form inside — every `.cn-*` class and every word of the honesty copy — is unchanged.
+`CalendarNext.test.tsx` pins it (44 tests).
 
 ### Design used, and why
 
@@ -578,7 +597,7 @@ via :461.
 | GET | `/calendar/reminders/status` | `useCalendarNextData` (`pages/calendar/next/useCalendarNextData.ts` `reminderQ`) → `calendar.controller.ts` route `reminders/status`; built by `calendar-reminders.service.ts` `statusFor` |
 | GET | `/providers` | `useProviders` (`useCalendarPage.ts:2`) → `services/api/providers.ts:201` |
 | GET | `/calendar/weather?from&to` | `useCalendarNextData` (`weatherQ`) → `calendar.controller.ts` route `weather`; built by `weather/weather.service.ts` `windowFor`. **Added 2026-09-03, ADR 0111 slice 2** |
-| GET | `/calendar/day-record?from&to` | `useCalendarNextData` (`recordQ`) → `calendar.controller.ts` route `day-record`; built by `calendar/day-record.service.ts`. **Added 2026-09-03, ADR 0111 slice 3** |
+| GET | `/calendar/day-record?from&to` | `useCalendarNextData` (`recordQ`) → `calendar.controller.ts` route `day-record`; built by `calendar/day-record.service.ts`. **Added 2026-09-03, ADR 0111 slice 3**; from 2026-09-04 each day also carries `observed`, `forecastErrorC` and `scoreWithheld` |
 | GET | `/calendar/ical-token` | Settings; now answers `absoluteFeedUrl`, `webcalUrl` and `originSource` beside the relative `feedUrl` |
 
 ## 5. Signals
@@ -622,9 +641,16 @@ localStorage key `'wineops-calendar-sidebar'` (`pages/calendar/CalendarPage.tsx:
   the overlay, so there is nothing to turn off. The issuer is chosen in code
   (`NwsWeatherProvider`), and `NWS_USER_AGENT` optionally overrides the contact string NWS's
   terms ask callers to send. **No API key exists or is needed** — NWS is open data.
-- **The refresh is on read with a 60-minute max age** (`weather/weather.service.ts`), not a
-  cron; see §9's fourth finding for why. A reader who opens the calendar twice in an hour
-  causes one issuer call, not two.
+- **The refresh is on read with a 60-minute max age** (`weather/weather.service.ts`). A
+  reader who opens the calendar twice in an hour causes one issuer call, not two.
+- **From 2026-09-04 it also runs hourly on a schedule**
+  (`weather/weather-prefetch.service.ts`, cron `0 * * * *`), for every restaurant carrying a
+  coordinate, so a house nobody opens still accumulates history. Switch:
+  `WEATHER_PREFETCH_ENABLED` — default **on**, the opposite of
+  `CALENDAR_REMINDERS_ENABLED`, because this one sends nothing to anybody. It skips a house
+  whose reading is still fresh (delegated to `windowFor`, so the cron and the page cannot
+  disagree about what fresh means), walks houses one at a time with a pause, and never lets
+  one house's failure stop the sweep.
 
 ### §13 slices 20-22, restated as built (2026-09-03)
 
@@ -632,6 +658,16 @@ Items 20, 21 and 22 below are **done**; item 30's two fixes are done and so are 
 further suspects it did not name. What follows them (23-29) is untouched.
 
 ## 9. Gaps
+
+**Provenance of the populated captures (added 2026-09-04).** The two `calendar-sky-*.png`
+shots in the capture set are **not a live tenant**: no production restaurant carries a
+coordinate (0 of 14, measured 2026-09-03), so `GET /calendar/weather` and
+`GET /calendar/day-record` were intercepted in the browser and answered from the checked-in
+NWS fixture (`apps/api-gateway/src/weather/__fixtures__/nws-forecast-palo-alto.json`, folded
+through the real `foldPeriodsToDays`) by `scratchpad/shoot-calendar-sky.mjs:94-106`. They show
+what the overlay renders when a house has a point, not what any house renders today. The two
+unlabelled captures (`calendar-paper.png`, `calendar-charcoal-charcoal.png`) are live, with no
+interception.
 
 - ~~**Two calendars are routed**~~ — **closed 2026-08-26.** `/calendar-classic` is
   retired (route, `pages/Calendar.tsx`, `NewEventTypeModal`, `EntityAutocomplete`
@@ -843,23 +879,29 @@ reason a slice in §13 is where it is. Detail in §1b *Quant overlay* and
 Measured against the live NWS API and the local gateway on :4000. Each is **outside**
 `pages/calendar/next/**`.
 
-1. 🟠 **The per-tenant scheduler cannot carry a read that every tenant needs.**
+1. ✅ **The per-tenant scheduler cannot carry a read that every tenant needs** — **closed
+   2026-09-04 by a dated amendment to ADR 0022**, which exempts exactly the weather
+   prefetch's two NWS reads for coordinate-bearing houses and nothing else. Anything that
+   reaches a person still goes through `runPerTenant`. The finding as measured:
    `ScheduledTenantsService.runPerTenant` serves only tenants with
    `restaurant_feature_flags.flag_name = 'scheduled_communications'` or matching
    `DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`) — **one of
    fourteen in production**. That is correct for a job that *sends* and wrong for one that
-   *reads*, and ADR 0111 §6 had assumed the weather refresh could ride it. The refresh is
-   on-read instead. **Why not yet:** whether ADR 0022's opt-in should govern reads as well as
-   sends is a founder decision, not a builder's.
+   *reads*, and ADR 0111 §6 had assumed the weather refresh could ride it. **Resolved:** the
+   refresh is on-read AND on an hourly prefetch that iterates coordinate-bearing restaurants
+   directly (`apps/api-gateway/src/weather/weather-prefetch.service.ts`).
 2. 🟠 **`weather_readings` is not in production.** The migration
    `20260903162000_a_forecast_names_its_issuer.sql` is on this branch only; a select against
    the table on the live database will answer `42P01` until it merges. The endpoint never
    reaches it today because the no-coordinate branch fires first — which is honest, but it
    means the register read path is proved by tests and not yet by production.
-3. 🟡 **No temperature observation is recorded anywhere in the product.** NWS publishes
-   forecasts; nothing records what the weather actually *was*. So a weather forecast's error
-   is not computable at all, which is half the reason slice 3 writes `prediction_outcomes`
-   with a NULL score. The other half is that no covers model exists yet.
+3. ✅ **No temperature observation is recorded anywhere in the product** — **closed
+   2026-09-04.** `weather_observations` (`20260904140000`) records the nearest station's
+   measurements, so a forecast's error is now computable and is computed. What remains is
+   the other half: no covers model exists, so the TRADING side of a day is still unscored.
+   Measured live at KPAO on 2026-09-04: five local days, **precipitation null on all of
+   them** — that station does not report rainfall, and `precipitation_total_mm` is nullable
+   for exactly that reason.
 4. 🟡 **`prediction_outcomes` has no unique constraint but its primary key**
    (`20260805000000_baseline_from_production.sql:7340-7344`). Slice 3's writer is therefore
    idempotent by read-then-insert rather than by upsert: adding a unique index would reach
@@ -1150,14 +1192,31 @@ ADR's; the order is not preference — each slice earns the trust the next one s
     subscribe panel still shows the relative path, which no calendar client can use. *Outside
     this page — `pages/settings/**`; the exact patch is in the p4h builder's report.*
 
-32. **Prefetch the forecast for houses nobody opens.** The on-read refresh means a house
-    whose calendar is never opened accumulates no `weather_readings`, and slice 28's
-    ninety-day floor counts days of *history*, not days of *existence*. A scheduled prefetch
-    is the answer, and it needs ADR 0022's opt-in question settled for reads as well as
-    sends (§9, fourth finding).
+32. ~~**Prefetch the forecast for houses nobody opens**~~ — **done 2026-09-04.** Hourly,
+    every restaurant with a coordinate, iterating them directly rather than through
+    `ScheduledTenantsService.runPerTenant` (which serves one house of fourteen). It required
+    a dated amendment to ADR 0022 naming exactly the two NWS reads it permits — the forecast
+    and the observations — and nothing else; anything that reaches a person is unchanged.
+    Switch: `WEATHER_PREFETCH_ENABLED`, default **on**, because it sends nothing and an
+    unarmed prefetch accumulates nothing.
 
-33. **Record a temperature observation, so a forecast can be scored.** Today
-    `prediction_outcomes` receives the pair with a NULL score because nothing in the product
-    records what the weather actually was. NWS publishes observations at
-    `/stations/{id}/observations`; the station is one field on the same `/points` response
-    the forecast already uses.
+33. ~~**Record a temperature observation, so a forecast can be scored**~~ — **done
+    2026-09-04.** `weather_observations` (`20260904140000`), fed from
+    `/gridpoints/{office}/{x},{y}/stations` → `/stations/{id}/observations`. The station list
+    is ranked nearest-first and the provider walks past a silent station to the next one, up
+    to four, because a grid square's nearest unit can be an amateur station that reports
+    nothing for days.
+
+34. **Score the covers forecast** — the half that is still unscored, and the reason a day
+    can carry a real weather error and no claim about trading. Blocked on slice 28 (90
+    observed service days; the house has 22), not on anything buildable.
+
+35. **Surface the score on the page.** `GET /calendar/day-record` returns `forecastErrorC`,
+    `scoreWithheld` and the `observed` block per day, and the cell's line already carries the
+    sentence. A register showing the house's forecast accuracy *over time* — the thing ninety
+    days of this data is actually for — is not built.
+
+36. **Give the prefetch a status surface.** `WeatherPrefetchService.status()` returns
+    `{ armed, cron, lastRun }` and no endpoint exposes it, so an operator cannot see whether
+    the sweep is running without reading the logs. The reminder job's
+    `GET /calendar/reminders/status` is the shape to copy.

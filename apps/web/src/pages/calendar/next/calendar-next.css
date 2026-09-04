@@ -480,42 +480,13 @@
   opacity: 0.75;
 }
 
-/* ── the event sheet ────────────────────────────────────────────────────── */
-.cn-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: rgba(23, 19, 15, 0.28);
-  border: 0;
-  cursor: default;
-}
-.cn-sheet {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 41;
-  width: 100%;
-  max-width: 440px;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  background: var(--paper-0);
-  border-left: 1px solid var(--paper-2);
-  box-shadow: -18px 0 48px rgba(23, 19, 15, 0.14);
-  /* tuck — an object that moved under a finger (spring 380/32) */
-  animation: cn-sheet-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-@keyframes cn-sheet-in {
-  from {
-    transform: translateX(28px);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
+/* ── the event sheet ──────────────────────────────────────────────────────
+   RETIRED 2026-09-04 (ADR 0112): `.cn-scrim`, `.cn-sheet` and `@keyframes
+   cn-sheet-in` are gone. The sheet is the house primitive now
+   (components/mudavym/Sheet.tsx + sheet.css), which owns the scrim colour, the
+   440px width, the tuck motion, the focus trap, the scroll lock and Esc — none
+   of which this page's copy had. The form's own classes below (.cn-form,
+   .cn-field, .cn-input, .cn-chip …) are unchanged and still this page's. */
 .cn-field {
   display: block;
   margin-bottom: 10px;
@@ -573,9 +544,9 @@
   .cn-block {
     transition: none !important;
   }
-  .cn-sheet {
-    animation: none !important;
-  }
+  /* The sheet's own reduced-motion branch moved with it: the primitive skips
+     the WAAPI enter entirely under `prefers-reduced-motion` (Sheet.tsx), which
+     is stronger than disabling a CSS animation after the fact. */
 }
 
 /* ── small layout primitives, so the TSX carries structure not styling ───── */

@@ -316,6 +316,25 @@ describe('CalendarNext — the KEEP', () => {
     expect(screen.getByLabelText('Starts')).toHaveValue('13:00');
   });
 
+  it('wears the house sheet: portalled, tokened, and closed by Esc (ADR 0112)', () => {
+    // Was a hand-rolled `.cn-scrim` + `aside.cn-sheet` with its own Esc handler
+    // and no focus trap. The primitive owns all of it now, so what this pins is
+    // that the calendar actually goes through it rather than keeping a copy.
+    draw('/calendar?openModal=true&date=today');
+    const root = document.querySelector('.mdv-ovl') as HTMLElement;
+    expect(root).not.toBeNull();
+    expect(root.parentElement).toBe(document.body);
+    expect(root).toHaveClass('mdv-ovl--sheet', 'mudavym');
+    expect(document.querySelector('.cn-sheet')).toBeNull();
+    expect(document.querySelector('.cn-scrim')).toBeNull();
+    // The form inside is untouched — same classes, same copy.
+    expect(root.querySelector('form.cn-form')).not.toBeNull();
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('deep-links into create from the command palette, including date=today', () => {
     draw('/calendar?openModal=true&date=today');
     const sheet = screen.getByRole('dialog');

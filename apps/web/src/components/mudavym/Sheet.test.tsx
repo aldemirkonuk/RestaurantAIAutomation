@@ -11,7 +11,18 @@
 import { useRef, useState } from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+
+/* `data-motion="none"` says what the component INTENDS; this spy says what it
+   actually scheduled. Under reduced motion the primitive must not call
+   `animate()` at all — not call it and let it collapse to the end state — so
+   the assertion has to be on the call, not on an attribute. */
+vi.mock('../../lib/mudavym/motion', async (orig) => {
+  const actual = await orig<typeof import('../../lib/mudavym/motion')>();
+  return { ...actual, animate: vi.fn(actual.animate) };
+});
+
 import { Panel, Popover, Sheet } from './Sheet';
+import { animate } from '../../lib/mudavym/motion';
 import {
   claimMudavymShell,
   getMudavymShell,
@@ -77,6 +88,8 @@ function Harness({
 beforeEach(() => {
   setReducedMotion(false);
   resetMudavymShell();
+  vi.mocked(animate).mockClear();
+  document.body.style.overflow = '';
 });
 
 describe('the house overlay', () => {
@@ -157,6 +170,50 @@ describe('the house overlay', () => {
     expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'none');
   });
 
+  it('schedules no animation at all under prefers-reduced-motion', () => {
+    setReducedMotion(true);
+    render(<Harness shape="sheet" />);
+    fireEvent.click(screen.getByRole('button', { name: 'opener' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(vi.mocked(animate)).not.toHaveBeenCalled();
+  });
+
+  it('does schedule one when motion is allowed — so the test above can fail', () => {
+    render(<Harness shape="sheet" />);
+    fireEvent.click(screen.getByRole('button', { name: 'opener' }));
+    expect(vi.mocked(animate)).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the scroll lock: two overlays, and the body stays locked until the second closes', () => {
+    // A boolean lock unlocks the page the moment EITHER overlay closes, which
+    // is the bug this counter exists to prevent — and it only ever shows up
+    // with two of them open.
+    function Two() {
+      const [a, setA] = useState(true);
+      const [b, setB] = useState(true);
+      return (
+        <div className="mudavym">
+          <Panel open={a} onClose={() => setA(false)} label="First" title="First">
+            <button type="button">a</button>
+          </Panel>
+          <Panel open={b} onClose={() => setB(false)} label="Second" title="Second">
+            <button type="button">b</button>
+          </Panel>
+        </div>
+      );
+    }
+    render(<Two />);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Second' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close First' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.body.style.overflow).toBe('');
+  });
+
   it('names its motion token when motion is allowed', () => {
     render(<Harness shape="sheet" />);
     fireEvent.click(screen.getByRole('button', { name: 'opener' }));
@@ -203,5 +260,44 @@ describe('the shell gate', () => {
     document.body.innerHTML = '<div class="mdv-ovl mudavym" data-ground="charcoal"></div>';
     expect(readShellGroundFromDom()).toBe('paper');
     document.body.innerHTML = '';
+  });
+});
+
+/**
+ * The `wide` sheet — ADR 0112's one anticipated exception, asked for by sketch
+ * 100 and used by exactly one surface (the house email composer).
+ *
+ * The assertion is on the ATTRIBUTE, not on a computed width: jsdom applies no
+ * stylesheet, so `getComputedStyle(...).maxWidth` reads empty for the 440px
+ * default too and a width test would pass for the wrong reason in both
+ * directions. `sheet.css` carries the 640px against `[data-wide='true']`, and
+ * this proves the component emits the hook that rule needs — and, just as
+ * importantly, that it does NOT emit it for a Panel, where it would be a
+ * no-op the next reader would take for a supported option.
+ */
+describe('the wide sheet', () => {
+  it('marks a wide Sheet and leaves a plain one unmarked', () => {
+    const { rerender } = render(
+      <Sheet open onClose={() => {}} label="Letter" wide>
+        <button type="button">body</button>
+      </Sheet>,
+    );
+    expect(document.querySelector('.mdv-ovl--sheet')).toHaveAttribute('data-wide', 'true');
+
+    rerender(
+      <Sheet open onClose={() => {}} label="Letter">
+        <button type="button">body</button>
+      </Sheet>,
+    );
+    expect(document.querySelector('.mdv-ovl--sheet')).not.toHaveAttribute('data-wide');
+  });
+
+  it('refuses to mark a Panel, where the rule does not exist', () => {
+    render(
+      <Panel open onClose={() => {}} label="Ask" wide>
+        <button type="button">body</button>
+      </Panel>,
+    );
+    expect(document.querySelector('.mdv-ovl--panel')).not.toHaveAttribute('data-wide');
   });
 });

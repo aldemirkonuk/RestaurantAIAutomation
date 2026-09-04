@@ -5,12 +5,12 @@
    (paper / warm charcoal) resolve without a second rule.
    ============================================================ */
 
-/* The page root and the palette that floats over it. `--rp-mono` is declared
-   once here so every figure of record below can be tabular mono without
-   repeating the stack; the palette needs the same vars but NOT the page's
-   ground, which is why the two selectors part company on the next rule. */
-.rp-page,
-.rp-ask {
+/* The page root. `--rp-mono` is declared once here so every figure of record
+   below can be tabular mono without repeating the stack. The palette used to
+   share this declaration (it floats outside `.rp-page` and needed the same
+   vars but not the ground); since ADR 0112 it is the house `Panel`, whose own
+   root carries `.mudavym`, so it no longer rides on this selector. */
+.rp-page {
   --rp-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
 }
@@ -445,8 +445,13 @@
   font-size: 12px;
   color: var(--ink-3);
 }
+/* The one `.rp-*` rule that also renders OUTSIDE `.rp-page`: the palette's
+   rows are portalled to `document.body` inside the house Panel, where
+   `--rp-mono` is not declared. The stack is repeated as the var's fallback
+   rather than re-declared on the overlay, so nothing this page owns leaks onto
+   a primitive every other page shares. */
 .rp-eyebrow {
-  font-family: var(--rp-mono);
+  font-family: var(--rp-mono, 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.12em;
@@ -636,56 +641,18 @@
   color: var(--ink-1);
 }
 
-/* ── "Ask the book" — the ⌘K palette ──────────────────────────────────── */
-.rp-ask {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  justify-content: center;
-}
-.rp-ask__scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.18);
-  border: 0;
-  cursor: default;
-}
-.rp-ask__panel {
-  position: relative;
-  margin-top: 10vh;
-  width: min(620px, calc(100vw - 32px));
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--paper-0);
-  border: 1px solid var(--paper-2);
-  border-radius: 14px;
-  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-.rp-ask__field {
-  width: 100%;
-  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
-  font-size: 17px;
-  background: transparent;
-  border: 0;
-  outline: none;
-  color: var(--ink-1);
-}
+/* ── "Ask the book" — the ⌘K palette ────────────────────────────────────
+   RETIRED 2026-09-04 (ADR 0112): `.rp-ask`, `.rp-ask__scrim`, `.rp-ask__panel`,
+   `.rp-ask__field` and `.rp-ask__foot` are gone. The palette is the house
+   `Panel` now (components/mudavym/Sheet.tsx + sheet.css), which owns the
+   positioner, the scrim, the 620px card, the `settle` motion, the footer rule,
+   the Fraunces field (`.mdv-field`) and — new — the focus trap, the returned
+   focus and the scroll lock. Only the scrolling body's padding below is still
+   this page's, because the list inside it is. */
 .rp-ask__body {
   overflow: auto;
   padding: 8px 14px 4px;
 }
-.rp-ask__foot {
-  margin: 0;
-  padding: 8px 14px 12px;
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--ink-3);
-  border-top: 1px solid var(--paper-2);
-}
-
 /* ══ FOURTH PASS, 2026-09-03 ═══════════════════════════════════════════════
    Arranging without a pointer, and the goals desk.
 

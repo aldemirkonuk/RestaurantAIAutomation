@@ -20,10 +20,17 @@
  * So this palette SEARCHES that feed and says so in one line. It selects among
  * sentences the engine wrote; it never composes one. A short honest list beats
  * a fluent invented one.
+ *
+ * THE SURFACE IS THE HOUSE PANEL, 2026-09-04 (ADR 0112). The `.rp-ask` wrapper,
+ * its scrim button, its `role="dialog"` card, its own Esc listener and its own
+ * `animate(settle)` call are gone; `components/mudavym/Sheet.tsx` runs all of
+ * them, identically, and adds the focus trap, the returned focus and the body
+ * scroll lock this copy never had. Every word of the copy is unchanged —
+ * including the footer, which is the whole point of the palette.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { animate, settle } from '@/lib/mudavym';
+import { Panel } from '@/components/mudavym/Sheet';
 import { failureLine } from './rp-format';
 import type { ReadingRow, Register } from './useReportsNextData';
 
@@ -71,84 +78,74 @@ export interface AskTheBookProps {
 
 export function AskTheBook({ open, onClose, reading }: AskTheBookProps) {
   const [query, setQuery] = useState('');
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  /* Esc, the focus move, the scrim, the settle motion and the scroll lock all
+     belong to the primitive now (ADR 0112). What stays here is the one thing
+     that is this palette's own: a fresh query every time it opens. */
   useEffect(() => {
-    if (!open) return;
-    setQuery('');
-    inputRef.current?.focus();
-    if (panelRef.current) {
-      animate(
-        panelRef.current,
-        [
-          { opacity: 0, transform: 'translateY(-6px)' },
-          { opacity: 1, transform: 'none' },
-        ],
-        settle,
-      );
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    if (open) setQuery('');
+  }, [open]);
 
   const results = useMemo(() => rank(reading.data ?? [], query), [reading.data, query]);
   if (!open) return null;
 
   return (
-    <div className="rp-ask">
-      <button type="button" aria-label="Close" className="rp-ask__scrim" onClick={onClose} />
-      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Ask the book" className="rp-ask__panel">
-        <label style={{ display: 'block', padding: '12px 14px 8px' }}>
-          <span className="rp-eyebrow" style={{ display: 'block', marginBottom: 6 }}>
-            Ask the book
-          </span>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search what the engine has already said…"
-            className="rp-ask__field rp-focus"
-          />
-        </label>
-        <hr className="rp-rule" style={{ margin: '0 14px' }} />
-        <div className="rp-ask__body">
-          {reading.failure ? (
-            <p role="status" className="rp-note">
-              {failureLine('insight register', reading.failure)}
-            </p>
-          ) : reading.loading ? (
-            <p className="rp-quiet">Reading the insight register…</p>
-          ) : results.length === 0 ? (
-            <p className="rp-quiet">
-              {(reading.data ?? []).length === 0
-                ? 'The engine has produced no sentence for this restaurant yet.'
-                : `Nothing the engine has said mentions that. It has ${(reading.data ?? []).length} sentences in total.`}
-            </p>
-          ) : (
-            <ul className="rp-list">
-              {results.slice(0, 20).map((r) => (
-                <li key={r.ruleKey} style={{ display: 'grid', gap: 2 }}>
-                  <span className="rp-eyebrow">
-                    {r.category}
-                    {r.entityLabel ? ` · ${r.entityLabel}` : ''}
-                  </span>
-                  <p className="rp-sentence">{r.sentence}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <p className="rp-ask__foot">
+    <Panel
+      open={open}
+      onClose={onClose}
+      label="Ask the book"
+      showClose={false}
+      bodyClassName="mdv-ovl__body--flush"
+      initialFocusRef={inputRef}
+      footer={
+        <>
           This searches sentences the engine computed from your own rows. It does not answer
           free-text questions — no endpoint in this product does, and a fluent invented answer is
           the one thing the book will not give you.
-        </p>
+        </>
+      }
+    >
+      <div className="mdv-field">
+        <label className="rp-eyebrow" htmlFor="rp-ask-field">
+          Ask the book
+        </label>
+        <input
+          id="rp-ask-field"
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search what the engine has already said…"
+        />
       </div>
-    </div>
+      <div className="rp-ask__body">
+        {reading.failure ? (
+          <p role="status" className="rp-note">
+            {failureLine('insight register', reading.failure)}
+          </p>
+        ) : reading.loading ? (
+          <p className="rp-quiet">Reading the insight register…</p>
+        ) : results.length === 0 ? (
+          <p className="rp-quiet">
+            {(reading.data ?? []).length === 0
+              ? 'The engine has produced no sentence for this restaurant yet.'
+              : `Nothing the engine has said mentions that. It has ${(reading.data ?? []).length} sentences in total.`}
+          </p>
+        ) : (
+          <ul className="rp-list">
+            {results.slice(0, 20).map((r) => (
+              <li key={r.ruleKey} style={{ display: 'grid', gap: 2 }}>
+                <span className="rp-eyebrow">
+                  {r.category}
+                  {r.entityLabel ? ` · ${r.entityLabel}` : ''}
+                </span>
+                <p className="rp-sentence">{r.sentence}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Panel>
   );
 }
 

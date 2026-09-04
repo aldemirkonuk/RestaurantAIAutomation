@@ -91,6 +91,15 @@ the two registers that would actually leak are refused at the gateway as well.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 | id | token | curve / ms | when it fires |
 |---|---|---|---|
 | `cx-btn-hover` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)` · 160ms | the background of a live control settles as the pointer enters it |
@@ -271,6 +280,15 @@ Each is rendered honestly on the page rather than hidden.
 - **G-C8 — declaring a server is not on this page.** It stays on `/profile`.
   *Why not yet:* the form and its secret field are built there; duplicating them
   before the founder has reviewed this surface would build them twice.
+
+**Correction to the commit message (a9747074, 2026-09-04).** Its body says the two ungated
+reads were closed and "the old test pinned the defect and was replaced with its reason". There
+was no old test: `git show --diff-filter=D --name-only a9747074` lists nothing, and
+`payment-methods.service.spec.ts` is untouched by that commit. Neither read had ever been
+covered by a spec; `apps/api-gateway/src/billing/billing-provider-read-is-role-gated.spec.ts` is
+new (+109 lines, added by that same commit), and the payment-methods gate is covered by the
+existing service spec rather than by a replacement for something deleted. The history stays as
+written; this line is the correction.
 
 **Closed this pass:** G19 (both reads role-gated, two specs), G21 (grants are
 scoped to the restaurant on the token, two-tenant spec), G20 (no fourth

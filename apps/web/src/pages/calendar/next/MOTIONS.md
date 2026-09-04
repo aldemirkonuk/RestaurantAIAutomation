@@ -14,7 +14,7 @@ nowhere else.
 | `cn-open` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 420ms | the opening block (wordmark, period line, standing sentence) on mount, once — opacity + 6px rise |
 | `cn-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the view stage when the magnification changes (Month ↔ Week ↔ Day ↔ Agenda) — "show the working": the same book, a page turned. Opacity + 8px rise |
 | `cn-day-settle` | `settle` | HOUSE · 320ms | the day ledger opening under the month grid — CSS `grid-template-rows: 0fr → 1fr` (`.cn-expand`). This is the row-expand the founder singled out by name on board 053 |
-| `cn-sheet-tuck` | `tuck` | HOUSE · 300ms, spring 380/32 shape | the event sheet arriving from the right, 28px + fade (`@keyframes cn-sheet-in`) — an object that moved under a hand |
+| `cn-sheet-tuck` | `tuck` | HOUSE · 300ms, spring 380/32 shape | the event sheet arriving from the right, 28px + fade. **Since 2026-09-04 this is the house primitive's own `tuck`** (`components/mudavym/Sheet.tsx`, ADR 0112), run through `animate()`; the page's `@keyframes cn-sheet-in` is retired. Same curve, same distance — an object that moved under a hand |
 | `cn-drag` | **none, deliberately** | live `pointermove`, un-eased | a block dragged or resized in the Week/Day grid. Easing between 15-minute snaps would draw a time the operator never chose, so the block tracks the finger exactly and the ghost clock reads the snapped value |
 | `cn-drop-tuck` | `tuck` | spring 380/32 `linear(…)` · 300ms | the same block settling into its committed `top`/`height` after the pointer lifts. Suppressed (`transition: none`) for as long as the finger is down |
 | `cn-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states on day cells, ribbons, ledger lines, tabs, chips and buttons — border, ground and ink only; nothing moves |
@@ -40,15 +40,17 @@ nowhere else.
 - **`prefers-reduced-motion`**: every WAAPI motion above collapses to its end
   state through `animate()`'s reduced-motion branch, and every CSS motion is
   disabled by the `@media (prefers-reduced-motion: reduce)` block at the foot of
-  `calendar-next.css` (`.cn-expand`, `.cn-ink`, `.cn-cell`, `.cn-block`,
-  `.cn-sheet`). The changes still happen; they stop travelling. `HoldToApprove`
+  `calendar-next.css` (`.cn-expand`, `.cn-ink`, `.cn-cell`, `.cn-block`); the
+  sheet's arrival is skipped by the primitive itself rather than by a CSS
+  override. The changes still happen; they stop travelling. `HoldToApprove`
   additionally swaps its timed hold for a two-step confirm.
 
 ## Third pass, 2026-09-03 — the reminder register adds no motion
 
 `ReminderRegister.tsx` (server-side reminders, ADR 0109) introduces **no new
 motion token**. It rides the sheet's existing `cn-sheet-tuck` on arrival, and
-its chips use `cn-ink` for hover/focus like every other chip on the page.
+its chips use `cn-ink` for hover/focus like every other chip on the page. (Since
+2026-09-04 that arrival is the house `Sheet`'s `tuck`, not this page's keyframes.)
 
 That is deliberate, and it is the same rule the rest of this file follows:
 

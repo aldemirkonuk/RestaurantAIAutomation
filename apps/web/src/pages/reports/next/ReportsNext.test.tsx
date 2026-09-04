@@ -661,6 +661,25 @@ describe('ReportsNext — the palette never fabricates', () => {
     expect(within(dialog).queryByText(/Prosecco \(\+/)).not.toBeInTheDocument();
   });
 
+  it('wears the house panel: portalled, tokened, and closed by Esc (ADR 0112)', () => {
+    // Was `.rp-ask` + `.rp-ask__scrim` + a hand-rolled `role="dialog"` card with
+    // its own Esc listener and its own animate(settle). The primitive owns all
+    // of it now; the copy in the footer is unchanged.
+    paint();
+    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    const root = document.querySelector('.mdv-ovl') as HTMLElement;
+    expect(root).not.toBeNull();
+    expect(root.parentElement).toBe(document.body);
+    expect(root).toHaveClass('mdv-ovl--panel', 'mudavym');
+    expect(document.querySelector('.rp-ask__scrim')).toBeNull();
+    expect(document.querySelector('.rp-ask__panel')).toBeNull();
+    expect(root.querySelector('.mdv-field input')).not.toBeNull();
+    expect(within(root).getByText(/does not answer\s+free-text questions/)).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
+  });
+
   it('says the insight register is unreadable rather than showing an empty palette', () => {
     hook.current = { ...base(), reading: broke(500, 'gateway down') };
     paint();
