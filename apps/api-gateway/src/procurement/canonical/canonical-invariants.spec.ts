@@ -29,6 +29,7 @@ import {
   FREE_GOODS_BILLED_ANYWAY,
   FREE_GOODS_INVOICE,
   LINES_DO_NOT_TIE,
+  TR_CASE_PRICED_INVOICE,
   TR_WINE_INVOICE,
 } from "./__fixtures__/synthetic-documents";
 
@@ -380,5 +381,45 @@ describe("the shape of every result", () => {
     };
     expect(priceBaseQuantity(zeroBase)[0].holds).toBe(false);
     expect(lineNetAmount(zeroBase)[0].holds).toBe(false);
+  });
+});
+
+/**
+ * BT-149 with the quantity in a DIFFERENT unit from the price base — the
+ * `1 ks × 12 şişe` case ADR 0104 D1 names, and the one the mapper could not
+ * produce until BT-149/BT-150 round-tripped through `ParsedDocument`.
+ */
+describe("line net amount across a case quantity and a bottle price base", () => {
+  it("holds on the TR 1 ks × 12 şişe invoice", () => {
+    const [first] = lineNetAmount(TR_CASE_PRICED_INVOICE);
+    expect(first.expected).toBe(142);
+    expect(first.holds).toBe(true);
+  });
+
+  it("passes every rule on that invoice, and tests something while doing it", () => {
+    const results = runInvariants(TR_CASE_PRICED_INVOICE);
+    expect(failures(results)).toEqual([]);
+    expect(summarise(results).holds).toBeGreaterThanOrEqual(8);
+  });
+
+  it("refuses rather than guessing when layer 2 has no pack size to convert with", () => {
+    // 1 ÷ 12 × 142 = 11,83 is the confident wrong answer available here. The
+    // invariant must report UNTESTABLE instead — a wrong "fails" would send a
+    // bookkeeper to argue a line that is in fact correct.
+    const noPack = {
+      ...TR_CASE_PRICED_INVOICE,
+      layer2: { providerId: null, lines: [] },
+    };
+    const [first] = lineNetAmount(noPack);
+    expect(first.holds).toBeNull();
+    expect(first.explanation).toMatch(/pack size/i);
+  });
+
+  it("keeps the Turkish price basis as printed, untouched", () => {
+    expect(TR_CASE_PRICED_INVOICE.layer1.lines[0].netPrice.as_printed).toBe(
+      "142,00 / KS(12)",
+    );
+    const printed = asPrintedNotMutated(TR_CASE_PRICED_INVOICE);
+    expect(printed[0].holds).toBe(true);
   });
 });

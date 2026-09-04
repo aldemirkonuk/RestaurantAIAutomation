@@ -67,6 +67,9 @@ function toParsed(document: Row, lines: Row[]): ParsedDocument {
       qtyBottles: n(l.qty_bottles) ?? 0,
       freeGoodsQty: n(l.free_goods_qty) ?? 0,
       unitPrice: n(l.unit_price),
+      // No BT-149/BT-150 columns on procurement_document_lines yet.
+      priceBaseQty: null,
+      priceBaseUom: null,
       lineTotal: n(l.line_total),
       allowance: n(l.allowance),
       deposit: n(l.deposit),

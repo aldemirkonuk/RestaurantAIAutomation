@@ -32,11 +32,11 @@
  *   price_list        a vendor price sheet.
  *   portal_export     a CSV or PDF pulled from a distributor portal.
  *
- * NOTE, so nobody reads this list as a capability: the EXTRACTOR does not yet
- * emit the five new types. `DocumentExtractorService.coerceDocType` carries its
- * own list of six and files anything else as `unknown` with a warning — the
- * database and this vocabulary can now hold them; classification into them is
- * slice 2's work, not this slice's.
+ * The extractor emits all twelve as of the slice-1 gap fix: the prompt names
+ * each with a one-line definition and `DocumentExtractorService.coerceDocType`
+ * accepts every literal in this list. `unknown` REMAINS the fallback, with its
+ * warning — widening the vocabulary must never turn "we do not know what this
+ * is" into a confident guess, which is the failure the fallback exists for.
  */
 export const DOC_TYPES = [
   "purchase_order",
