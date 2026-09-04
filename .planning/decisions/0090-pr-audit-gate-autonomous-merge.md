@@ -604,6 +604,16 @@ regardless of what the audit angles conclude — it needs the founder to
 merge it directly, the same escalation path PR #261 needed and the sixth
 Correction's Review-trail row above records.
 
+**Addendum, same day:** a **fifth** live instance, on PR #297 itself, before
+the fix above had even merged — `wait_upstream`'s own "Checkout the TRUSTED
+base commit" step (by design, see the top of this file: a PR cannot rewrite
+the code auditing it) ran the bug being fixed, from `main`, against the fix
+PR that fixes it. `CodeQL` completed SUCCESS at 18:18:16Z; the unfixed code
+declared "Upstream red: ['CodeQL']" at 18:18:46Z. Left as-is deliberately —
+not re-run — as a fifth data point the same shape as the first four, and
+because re-running it would only prove the OLD code again; the fix cannot
+validate itself until it is on `main`.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
