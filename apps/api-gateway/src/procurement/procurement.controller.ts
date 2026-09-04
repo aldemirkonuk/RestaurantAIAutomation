@@ -327,7 +327,7 @@ export class ProcurementController {
       );
     } catch (error) {
       // A refusal is not a server fault. Before the approval gate existed
-      // (ADR 0112) every throw from this method was re-wrapped as a 500, so a
+      // (ADR 0116) every throw from this method was re-wrapped as a 500, so a
       // 403 carrying the reason a person was stopped would have reached the
       // browser as "Internal Server Error" with the sentence buried in it.
       // HttpExceptions carry their own status and their own body; pass them.

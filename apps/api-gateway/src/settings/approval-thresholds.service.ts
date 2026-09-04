@@ -27,7 +27,7 @@ import type { SetApprovalThresholdDto } from "../vendor-terms/dto/vendor-terms.d
  * policy page that let a manager believe a ceiling was holding would have been
  * [[absence-reported-as-health]] pointed at money.
  *
- * **Changed 2026-09-03 (ADR 0112).** `approveOrder` now reads the order, reads
+ * **Changed 2026-09-03 (ADR 0116).** `approveOrder` now reads the order, reads
  * these rules through THIS service, resolves the actor's role at the
  * restaurant, and refuses the seal — with the rule and the number in words —
  * when the actor ranks below what the rule demands. `enforcedBy` is therefore

@@ -21,7 +21,7 @@ import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
-import { STAGE_LABEL, type OrderRowVM } from './useOrdersNextData';
+import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
 export interface LedgerRowProps {
   row: OrderRowVM;
@@ -32,6 +32,17 @@ export interface LedgerRowProps {
   onSelectChange: (next: boolean) => void;
   /** True while a bulk run is executing, so per-row dies stay quiet. */
   bulkRunning: boolean;
+  /**
+   * This house's approval verdict for this row, from
+   * `GET /procurement/order-approval-gate`.
+   *
+   * `undefined` means the gate has not answered — not "unrestricted". The
+   * ceremony renders exactly as it did before ADR 0116 in that case, and the
+   * gateway still refuses independently, which the row prints.
+   */
+  approval?: ApprovalGateRow;
+  /** Why the gate could not be read. Said in words above the ceremony. */
+  approvalGateError?: string | null;
 }
 
 const label = (text: string) => (
@@ -49,7 +60,16 @@ const label = (text: string) => (
   </span>
 );
 
-export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, bulkRunning }: LedgerRowProps) {
+export function LedgerRow({
+  row,
+  expanded,
+  onToggle,
+  selected,
+  onSelectChange,
+  bulkRunning,
+  approval,
+  approvalGateError,
+}: LedgerRowProps) {
   const approve = useApproveOrder();
   const deliver = useMarkOrderDelivered();
   // Bumped after a refused approval so the die (HoldToApprove) remounts armed.
@@ -58,6 +78,9 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
   const [deliverError, setDeliverError] = useState<string | null>(null);
 
   const isPendingStage = row.stage === 'pending' && !row.recurring;
+  // A verdict the gate actually gave. `undefined` is "not answered", which must
+  // never disable the ceremony — the page is a courtesy, the gateway is the gate.
+  const heldForApproval = approval ? !approval.mayApprove : false;
   const disagreement =
     row.listedTotal !== null &&
     row.computedTotal !== null &&
@@ -67,8 +90,19 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
     setApproveError(null);
     approve.mutate(row.id, {
       onError: (err) => {
+        // Since ADR 0116 a refusal's `message` IS the explanation — which rule
+        // fired, what the number was, who may sign (`services/api/orders.ts`
+        // promotes the 403 body onto it). Wrapping that in "The gateway refused
+        // (…)" would bury a sentence written to be read. A 403 is printed
+        // verbatim; anything else keeps the old framing, because a network
+        // error's message is not an explanation of anything.
+        const status = (err as { response?: { status?: number } })?.response?.status;
         const msg = (err as { message?: string })?.message ?? 'request failed';
-        setApproveError(`The gateway refused (${msg}) — still pending, nothing approved.`);
+        setApproveError(
+          status === 403
+            ? msg
+            : `The gateway refused (${msg}) — still pending, nothing approved.`,
+        );
         setAttempt((a) => a + 1);
       },
     });
@@ -222,18 +256,55 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
             <div style={{ minWidth: 230 }}>
               {isPendingStage && (
                 <>
-                  {label(`Approve · ${row.providerName ?? 'vendor'}`)}
+                  {label(
+                    heldForApproval
+                      ? `Waiting on ${approval?.requiredRole === 'owner' ? 'an owner' : 'a manager'}`
+                      : `Approve · ${row.providerName ?? 'vendor'}`,
+                  )}
                   <div style={{ marginTop: 4 }}>
+                    {/*
+                      The ceremony is DISABLED, never hidden. A control that
+                      disappears teaches nothing; a control that is visibly shut
+                      with the rule beside it teaches who to ask.
+                    */}
                     <HoldToApprove
                       key={`die-${row.id}-${attempt}`}
                       label={`Hold to approve · ${fmtMoney(row.total)}`}
                       approvedLabel="Approved"
-                      disabled={bulkRunning || approve.isPending}
+                      disabled={bulkRunning || approve.isPending || heldForApproval}
                       onApprove={onApprove}
                     />
                   </div>
+                  {heldForApproval && approval?.sentence && (
+                    <p
+                      style={{
+                        marginTop: 5,
+                        fontSize: 11,
+                        lineHeight: 1.55,
+                        color: 'var(--ink-2, #4F473C)',
+                      }}
+                      role="status"
+                    >
+                      {approval.sentence}
+                    </p>
+                  )}
+                  {approval && approval.untestable.length > 0 && (
+                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)' }}>
+                      {approval.untestable.length === 1 ? 'One rule' : `${approval.untestable.length} rules`}{' '}
+                      could not be tested on this order ({approval.untestable.join(', ')}), so{' '}
+                      {approval.untestable.length === 1 ? 'it' : 'they'} did not fire. An
+                      unknown is not a finding.
+                    </p>
+                  )}
+                  {approvalGateError && (
+                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }} role="status">
+                      This house&rsquo;s approval rules could not be read ({approvalGateError}), so
+                      nothing here says whether you may seal this. The gateway still decides, and
+                      will say so if it refuses.
+                    </p>
+                  )}
                   {approveError && (
-                    <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-2, #4F473C)' }} role="alert">
+                    <p style={{ marginTop: 4, fontSize: 11, lineHeight: 1.55, color: 'var(--ink-2, #4F473C)' }} role="alert">
                       {approveError}
                     </p>
                   )}

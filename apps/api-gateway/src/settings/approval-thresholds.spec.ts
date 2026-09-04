@@ -5,7 +5,10 @@ import {
   type OrderUnderTest,
   type ThresholdRow,
 } from "./approval-thresholds";
-import { ApprovalThresholdsService } from "./approval-thresholds.service";
+import {
+  ApprovalThresholdsService,
+  ENFORCED_AT,
+} from "./approval-thresholds.service";
 
 /**
  * The policy, and the three ways a threshold quietly stops meaning anything.
@@ -182,7 +185,23 @@ beforeAll(() => {
 afterAll(() => jest.restoreAllMocks());
 
 describe("ApprovalThresholdsService", () => {
-  it("says plainly that NOTHING enforces these thresholds yet", async () => {
+  /**
+   * REGRESSION OF ADR 0116, and the reason this test was inverted rather than
+   * deleted.
+   *
+   * It used to assert `enforcedBy: []` and a note ending "guarded by
+   * JwtAuthGuard alone", because for two passes nothing in the gateway read
+   * these rows before an order could be sealed and the register's opening
+   * sentence said so. `ProcurementService.assertApprovalAllowed` now does read
+   * them, so the OLD assertion is the one that would be lying.
+   *
+   * The field it guards is MEASURED, not asserted: the page renders "Nothing
+   * stops an order yet" from this array being empty. If enforcement is ever
+   * ripped out and this array is not emptied with it, the page starts claiming
+   * a gate that is gone — [[absence-reported-as-health]] pointed at money, and
+   * exactly what this line exists to catch in both directions.
+   */
+  it("names the one path that now enforces these thresholds", async () => {
     const { databaseService } = makeDb({
       restaurant_approval_thresholds: [],
       procurement_orders: [],
@@ -194,9 +213,15 @@ describe("ApprovalThresholdsService", () => {
     ).read("rest-1");
 
     expect(out.policyEmpty).toBe(true);
-    expect(out.enforcement.enforcedBy).toEqual([]);
+    expect(out.enforcement.enforcedBy).toEqual([ENFORCED_AT]);
+    expect(out.enforcement.wouldBeEnforcedAt).toBe(ENFORCED_AT);
     expect(out.enforcement.wouldBeEnforcedAt).toContain("procurement.service.ts");
-    expect(out.enforcement.note).toContain("JwtAuthGuard alone");
+    // The note describes the gate that exists, not the guard that used to be
+    // the only thing on the route.
+    expect(out.enforcement.note).not.toContain("JwtAuthGuard alone");
+    expect(out.enforcement.note).toContain("refuses the seal");
+    expect(out.enforcement.note).toContain("APPROVAL_NEEDED");
+    expect(out.enforcement.note).toContain("order_approval_refused");
   });
 
   it("computes the retrospective from the tenant's own orders, with the window caveat attached", async () => {

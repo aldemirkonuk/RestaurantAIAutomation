@@ -24,7 +24,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
  * `/settings/feature-flags`, under the same guards, in the same controller.
  *
  * `OrganizationsModule` is imported for `assertCanManageRestaurant`: only an
- * owner or a manager may write a threshold (ADR 0112, the founder's call). It
+ * owner or a manager may write a threshold (ADR 0116, the founder's call). It
  * exports one service and imports only Database and Auth, so this adds no cycle
  * — and `ProcurementModule` now imports THIS module for
  * `ApprovalThresholdsService`, which is why nothing here may ever import

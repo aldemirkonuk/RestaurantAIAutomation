@@ -116,8 +116,8 @@ export function Toggle({
 }
 
 export function Choice<T extends string>({
-  value, options, onChange, label,
-}: { value: T | null; options: Array<{ value: T; label: string }>; onChange: (v: T) => void; label: string }) {
+  value, options, onChange, label, disabled,
+}: { value: T | null; options: Array<{ value: T; label: string }>; onChange: (v: T) => void; label: string; disabled?: boolean }) {
   return (
     <div role="group" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
       {options.map((o) => {
@@ -127,13 +127,17 @@ export function Choice<T extends string>({
             key={o.value}
             type="button"
             aria-pressed={on}
+            disabled={disabled}
             onClick={() => onChange(o.value)}
             className="st-ink st-focus"
             style={{
               fontFamily: SANS, fontSize: 12, fontWeight: on ? 600 : 500, padding: '5px 12px', borderRadius: 8,
               border: `1px solid ${on ? 'var(--seal)' : 'var(--paper-2)'}`,
               background: on ? 'var(--seal-tint)' : 'transparent',
-              color: on ? 'var(--seal-deep)' : 'var(--ink-2)', cursor: 'pointer',
+              color: on ? 'var(--seal-deep)' : 'var(--ink-2)',
+              // Disabled, not hidden — the choice stays legible so a person can
+              // read the rule they are not allowed to change (ADR 0116).
+              cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
             }}
           >
             {o.label}

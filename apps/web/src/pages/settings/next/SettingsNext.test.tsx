@@ -158,10 +158,13 @@ function vendorTermsRegister(over: Record<string, unknown> = {}) {
           value: 2500, source: 'inferred', n: 96, confidence: 'high',
           basis: '96 delivered orders with a cost — the smallest they have ACCEPTED',
         },
-        // The default trap: 7 days on the vendor row proves nothing.
+        // ADR 0116 dropped `providers.lead_time_days DEFAULT 7` and NULLed every
+        // row that carried it, so the server no longer emits the "indistinguishable
+        // from the default" reason at all — a NULL is the unasked question and a
+        // number is a term. This fixture matches what the gateway returns now.
         leadTimeDays: {
           value: null, source: 'unknown',
-          reason: 'the vendor record reads 7 days, which is exactly the column default (providers.lead_time_days)',
+          reason: 'no delivered order in the window carries both a request and a delivery date',
         },
         paymentTerms: {
           value: null, source: 'unknown',
@@ -183,6 +186,15 @@ function vendorTermsRegister(over: Record<string, unknown> = {}) {
     ...over,
   };
 }
+
+/**
+ * The one path that enforces the thresholds — mirrors `ENFORCED_AT` in
+ * `apps/api-gateway/src/settings/approval-thresholds.service.ts`. Written out
+ * rather than imported, because a web test that imported a gateway constant
+ * would pass even if the gateway stopped sending the field.
+ */
+const ENFORCED_AT =
+  'apps/api-gateway/src/procurement/procurement.service.ts approveOrder → assertApprovalAllowed';
 
 function thresholdsRegister(over: Record<string, unknown> = {}) {
   return {
@@ -207,9 +219,13 @@ function thresholdsRegister(over: Record<string, unknown> = {}) {
       caveat: 'Counted over the last 365 days only.',
     },
     enforcement: {
-      enforcedBy: [],
-      wouldBeEnforcedAt: 'apps/api-gateway/src/procurement/procurement.service.ts:1438 approveOrder',
-      note: 'Nothing reads these thresholds yet.',
+      // ADR 0116. The register renders its opening sentence from THIS array, so
+      // the fixture is the whole difference between the page claiming a gate and
+      // the page admitting there is none. `enforcedByNothing()` below drives the
+      // other branch.
+      enforcedBy: [ENFORCED_AT],
+      wouldBeEnforcedAt: ENFORCED_AT,
+      note: 'approveOrder reads the order, reads these rules, resolves the actor\'s role and refuses the seal with the rule and the number in words.',
     },
     ...over,
   };
@@ -568,16 +584,21 @@ describe('SettingsNext — provenance and unknowns', () => {
  *    than "recording started on this date".
  */
 describe('SettingsNext — vendor terms', () => {
-  it('renders a value indistinguishable from its column default as UNKNOWN, with the reason', () => {
+  it('renders an unknown lead time as an em dash with the reason beside it', () => {
     mount('/settings?tab=vendor-terms');
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Vendor terms');
-    // Not "7 days". The cell is an em dash and the reason names the column.
+    // ADR 0116 dropped the column default, so the gateway no longer emits the
+    // "indistinguishable from the default" reason at all — an unknown lead time
+    // now says why the INFERENCE could not run. The em dash and the reason
+    // beside it are what this test is really for; the reason's wording moved.
     expect(screen.queryByText('7 days')).not.toBeInTheDocument();
     const cells = screen.getAllByText('—');
     expect(cells.length).toBeGreaterThan(0);
     expect(
-      screen.getByTitle(/exactly the column default \(providers\.lead_time_days\)/i),
+      screen.getByTitle(/no delivered order in the window carries both a request and a delivery date/i),
     ).toBeInTheDocument();
+    // And the old escape hatch is gone from the page's copy.
+    expect(screen.queryByTitle(/column default \(providers\.lead_time_days\)/i)).not.toBeInTheDocument();
   });
 
   it('shows a stated cutoff with the day it closes on, and names who said so', () => {
@@ -648,12 +669,82 @@ describe('SettingsNext — vendor terms', () => {
 });
 
 describe('SettingsNext — approval thresholds', () => {
-  it('says on its face that nothing enforces these yet, and names where enforcement must land', () => {
+  /**
+   * REGRESSION OF ADR 0116, inverted rather than deleted.
+   *
+   * This used to assert "Nothing stops an order yet", which was true for two
+   * passes. What matters is not which sentence the page shows but that it shows
+   * the one the SERVER's `enforcement.enforcedBy` implies — the field is
+   * measured, so the page tells the truth in both directions without either
+   * sentence being authored for the state it describes. Both branches are
+   * tested; testing only one would let the page hard-code either claim.
+   */
+  it('says it is ENFORCED, and names the path that enforces it', () => {
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText(/Enforced\./i)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(ENFORCED_AT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing stops an order yet/i)).not.toBeInTheDocument();
+  });
+
+  it('goes BACK to admitting nothing stops an order if the gate is ever removed', () => {
+    mock.current = base({
+      thresholds: remote(
+        thresholdsRegister({
+          enforcement: {
+            enforcedBy: [],
+            wouldBeEnforcedAt: ENFORCED_AT,
+            note: 'approveOrder writes status without consulting a role or an amount.',
+          },
+        }),
+      ),
+    });
     mount('/settings?tab=thresholds');
     expect(screen.getByText(/Nothing stops an order yet/i)).toBeInTheDocument();
-    expect(
-      screen.getByText('apps/api-gateway/src/procurement/procurement.service.ts:1438 approveOrder'),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Enforced\.$/)).not.toBeInTheDocument();
+  });
+
+  it('lets an owner or manager set a rule', () => {
+    mount('/settings?tab=thresholds');
+    expect(screen.getAllByRole('button', { name: /Set it|Change it/ })[0]).not.toBeDisabled();
+    expect(screen.queryByText(/Only an owner or a manager/i)).not.toBeInTheDocument();
+  });
+
+  it('DISABLES the editor for a role that could not be read, with the reason in words', () => {
+    // The founder's call: "only certain high tier like manager or owner can
+    // adjust it". The server refuses either way (`threshold-writes-are-role-
+    // gated.spec.ts`, 7 cases); this is the courtesy half.
+    //
+    // The state under test is `role: null` — a person whose role could not be
+    // RESOLVED, which `AuthContext` produces both when `/auth/me/role` fails and
+    // when the person has no access row. It is deliberately not `role: 'staff'`:
+    // staff never reach this page at all (`SettingsNext.tsx:142` sends them to
+    // "Ask a manager"), so a staff fixture would have tested the gate above it
+    // and proved nothing about this control. An unresolved role IS reachable,
+    // and it is the case that matters — a role nobody could read must not be
+    // able to raise a ceiling.
+    //
+    // Disabled, not hidden: the rule and its number stay legible, because a
+    // limit you cannot see is one you cannot plan around.
+    mock.current = base({ canManage: false, role: null });
+    mount('/settings?tab=thresholds');
+
+    expect(screen.getAllByText(/Only an owner or a manager of this restaurant may set a threshold/i)[0])
+      .toBeInTheDocument();
+    for (const b of screen.getAllByRole('button', { name: /Set it|Change it/ })) {
+      expect(b).toBeDisabled();
+    }
+    // The rule and its number are still on the page.
+    expect(screen.getByText('23 of 118')).toBeInTheDocument();
+  });
+
+  it('staff never see the register at all — the page gate is above this control', () => {
+    // Stated so the test above cannot be misread as "staff see a disabled
+    // editor". They see "Ask a manager" and no register.
+    mock.current = base({ canManage: false, role: 'staff' });
+    mount('/settings?tab=thresholds');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Ask a manager');
+    expect(screen.queryByText(/Only an owner or a manager of this restaurant may set a threshold/i))
+      .not.toBeInTheDocument();
   });
 
   it('shows how often each rule WOULD have fired, with its denominator', () => {

@@ -11,7 +11,9 @@
  */
 
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/services/api/client';
 import { useOrders } from '@/hooks/queries/useOrderQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
@@ -98,6 +100,37 @@ export interface MonthFigure {
   unpricedThisMonth: number;
 }
 
+/**
+ * What this house's approval rules say about one pending order.
+ *
+ * `GET /procurement/order-approval-gate`, one call for the whole house. The
+ * facts the rules test — whether this is the first order to a vendor, how far
+ * the price is above what the house last paid — are a single walk through the
+ * order ledger, so they are computed there and never here: a browser cannot see
+ * the ledger, and a per-row call would recompute the walk once per row and still
+ * not agree with itself.
+ */
+export interface ApprovalGateRow {
+  orderId: string;
+  requiredRole: 'owner' | 'manager' | null;
+  firedBy: string[];
+  reasons: string[];
+  untestable: string[];
+  mayApprove: boolean;
+  /** The whole sentence, when the caller may not seal it. Null when they may. */
+  sentence: string | null;
+}
+
+export interface ApprovalGate {
+  restaurantId: string;
+  callerRole: string | null;
+  policySet: boolean;
+  policyNote: string;
+  readable: boolean;
+  reason: string | null;
+  orders: ApprovalGateRow[];
+}
+
 export interface OrdersNextData {
   rows: OrderRowVM[];
   /** Station counts. Null while unknown (loading with no cache, or errored). */
@@ -115,6 +148,17 @@ export interface OrdersNextData {
   isError: boolean;
   errorMessage: string | null;
   refetch: () => void;
+  /**
+   * Per-order approval verdicts, keyed by order id. `null` while the gate has
+   * not been read, so an absent entry can never be mistaken for "anyone may
+   * seal this" — the page renders the ceremony as it always did until the gate
+   * actually answers.
+   */
+  approvalByOrder: Map<string, ApprovalGateRow> | null;
+  /** Why the gate could not be read. Rendered in words, never swallowed. */
+  approvalGateError: string | null;
+  /** The house's policy in one sentence, once the gate has answered. */
+  approvalPolicyNote: string | null;
 }
 
 function toRow(o: Order, providerNameById: Map<string, string>): OrderRowVM {
@@ -157,6 +201,22 @@ export function useOrdersNextData(): OrdersNextData {
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
   const ordersQuery = useOrders();
   const providersQuery = useProviders(restaurantId);
+
+  // Tenant-keyed: a restaurant switch must never carry the previous house's
+  // verdicts. `retry: false` because a 403/500 here is a real state the page
+  // renders in words — silently retrying would make the page look like it is
+  // still loading while it has an answer.
+  const gateQuery = useQuery<ApprovalGate>({
+    queryKey: ['procurement', 'order-approval-gate', restaurantId],
+    enabled: !!restaurantId,
+    retry: false,
+    queryFn: async () => {
+      const { data } = await apiClient.get<ApprovalGate>(
+        '/procurement/order-approval-gate',
+      );
+      return data;
+    },
+  });
 
   const providerNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -205,7 +265,26 @@ export function useOrdersNextData(): OrdersNextData {
     }
 
     const err = ordersQuery.error as { message?: string } | null;
+
+    // A gate that has not answered is `null`, not an empty map: an empty map
+    // reads as "every order is unrestricted", which is the one thing an
+    // unanswered gate must never be taken to mean.
+    const gate = gateQuery.data ?? null;
+    const approvalByOrder =
+      gate && gate.readable
+        ? new Map(gate.orders.map((o) => [o.orderId, o]))
+        : null;
+    const gateErr = gateQuery.error as { message?: string } | null;
+    const approvalGateError = gateQuery.isError
+      ? gateErr?.message ?? 'the approval rules could not be read'
+      : gate && !gate.readable
+        ? gate.reason ?? 'the approval rules could not be read'
+        : null;
+
     return {
+      approvalByOrder,
+      approvalGateError,
+      approvalPolicyNote: gate?.readable ? gate.policyNote : null,
       rows,
       counts,
       recurringCount,
@@ -217,5 +296,5 @@ export function useOrdersNextData(): OrdersNextData {
       errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
       refetch: () => void ordersQuery.refetch(),
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, providerNameById]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }

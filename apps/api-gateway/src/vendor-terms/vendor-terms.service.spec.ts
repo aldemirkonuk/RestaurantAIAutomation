@@ -77,7 +77,23 @@ const PID = "prov-1";
 const HOUSE = [{ timezone: "UTC", currency: "TRY" }];
 
 describe("VendorTermsService — a defaulted column is not a term", () => {
-  it("reports lead time as UNKNOWN when the vendor row holds exactly the column default", async () => {
+  /**
+   * REGRESSION OF THE MIGRATION, and the reason this case was inverted rather
+   * than deleted.
+   *
+   * It used to assert the opposite: a vendor row reading 7 days on Net 30 was
+   * reported UNKNOWN, because `providers.lead_time_days DEFAULT 7` and
+   * `payment_terms DEFAULT 'Net 30'` made a stated seven and an unasked
+   * question the same bytes. That was correct while the defaults stood.
+   *
+   * `20260903170000_a_default_is_not_an_answer.sql` dropped both and set every
+   * row carrying them to NULL. A 7 that survives is a 7 somebody typed, so the
+   * old assertion would make the register DISCARD a real answer — the same
+   * fault inverted. This case is what pins the two halves together: revert the
+   * migration without reverting the service and this fails, rather than the
+   * register quietly reporting defaults as terms.
+   */
+  it("reads a lead time of 7 and terms of Net 30 as TERMS, because the defaults are gone", async () => {
     const { databaseService } = makeDb({
       restaurants: HOUSE,
       providers: [
@@ -85,6 +101,7 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
           id: PID,
           name: "Anadolu",
           minimum_order: null,
+          // Exactly the two values the dropped defaults used to write.
           lead_time_days: PROVIDER_COLUMN_DEFAULTS.lead_time_days,
           payment_terms: PROVIDER_COLUMN_DEFAULTS.payment_terms,
         },
@@ -98,11 +115,47 @@ describe("VendorTermsService — a defaulted column is not a term", () => {
     const out = await new VendorTermsService(databaseService, audit.service).read(RID);
 
     const v = out.vendors[0];
-    expect(v.leadTimeDays.source).toBe("unknown");
+    expect(v.leadTimeDays).toMatchObject({
+      value: 7,
+      source: "vendor_record",
+      column: "providers.lead_time_days",
+    });
+    expect(v.paymentTerms).toMatchObject({
+      value: "Net 30",
+      source: "vendor_record",
+      column: "providers.payment_terms",
+    });
+    // The old escape hatch is gone from the copy as well as the logic.
+    expect(v.leadTimeDays.reason).toBeUndefined();
+    expect(v.paymentTerms.reason).toBeUndefined();
+  });
+
+  it("an EMPTY column is still unknown — a null is the unasked question", async () => {
+    const { databaseService } = makeDb({
+      restaurants: HOUSE,
+      providers: [
+        {
+          id: PID,
+          name: "Anadolu",
+          minimum_order: null,
+          lead_time_days: null,
+          payment_terms: null,
+        },
+      ],
+      restaurant_providers: [],
+      restaurant_vendor_terms: [],
+      procurement_orders: [],
+      users: [],
+    });
+    const audit = makeAudit();
+    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+
+    const v = out.vendors[0];
     expect(v.leadTimeDays.value).toBeNull();
-    expect(v.leadTimeDays.reason).toContain("column default");
+    expect(v.leadTimeDays.source).toBe("unknown");
+    expect(v.paymentTerms.value).toBeNull();
     expect(v.paymentTerms.source).toBe("unknown");
-    expect(v.paymentTerms.reason).toContain("default value (providers.payment_terms)");
+    expect(v.paymentTerms.reason).toBeTruthy();
   });
 
   it("reports lead time from the vendor record when it DIFFERS from the default", async () => {
@@ -260,9 +313,37 @@ describe("VendorTermsService — an unreadable source is never an empty one", ()
 });
 
 describe("VendorTermsService — the house's own zone and currency", () => {
-  it("flags a timezone that is still the column default, because the weekday depends on it", async () => {
+  /**
+   * The zone and the currency now answer to DIFFERENT rules, and this pair is
+   * the only place that difference is visible.
+   *
+   * `restaurants.timezone DEFAULT 'America/Los_Angeles'` was dropped by
+   * `20260903170000_a_default_is_not_an_answer.sql`, so a house reading Los
+   * Angeles today CHOSE Los Angeles. `restaurants.currency DEFAULT 'USD'`
+   * (baseline:3576) was NOT dropped — it was not named in the founder's
+   * decision — so a USD is still unattributable and still flagged.
+   */
+  it("BELIEVES a timezone a house has set, even the one that used to be the default", async () => {
     const { databaseService } = makeDb({
       restaurants: [{ timezone: "America/Los_Angeles", currency: "USD" }],
+      providers: [],
+      restaurant_providers: [],
+      restaurant_vendor_terms: [],
+      procurement_orders: [],
+      users: [],
+    });
+    const audit = makeAudit();
+    const out = await new VendorTermsService(databaseService, audit.service).read(RID);
+    expect(out.zone).toEqual({ zone: "America/Los_Angeles", isColumnDefault: false });
+    // The currency default still stands, so a USD is still flagged.
+    expect(out.currency).toEqual({ code: "USD", isColumnDefault: true });
+  });
+
+  it("flags an UNSET timezone, because the weekday depends on it", async () => {
+    // What the migration leaves behind: a house nobody has asked. The register
+    // suppresses cutoff arithmetic over this, which is why the flag exists.
+    const { databaseService } = makeDb({
+      restaurants: [{ timezone: null, currency: null }],
       providers: [],
       restaurant_providers: [],
       restaurant_vendor_terms: [],

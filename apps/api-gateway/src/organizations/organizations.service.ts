@@ -604,7 +604,15 @@ export class OrganizationsService {
         postal_code: dto.postalCode ?? null,
         phone: dto.phone ?? null,
         cuisine_type: dto.cuisineType ?? null,
-        timezone: dto.timezone ?? "America/New_York",
+        // An unanswered question is stored as nothing. Until 2026-09-03 this
+        // wrote "America/New_York" for a caller that sent no zone, which is the
+        // same fault as the column default the same day's migration dropped
+        // (`20260903170000_a_default_is_not_an_answer.sql`) — an invented answer
+        // nothing downstream can tell from a chosen one. The scheduled jobs now
+        // carry the absence and run that house's per-tenant work in UTC while
+        // saying so (`communications/scheduled-tenants.service.ts`,
+        // TIMEZONE_NOT_SET).
+        timezone: dto.timezone ?? null,
         organization_id: organizationId,
         chain_id: dto.chainId ?? null,
       })

@@ -38,7 +38,19 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const [phase, setPhase] = useState<Phase>('idle');
   const [note, setNote] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [result, setResult] = useState<{ ok: number; refused: number } | null>(null);
+  const [result, setResult] = useState<{
+    ok: number;
+    refused: number;
+    /**
+     * The distinct reasons the gateway gave, in the order first seen.
+     *
+     * A count alone taught nothing: "3 refused" reads as a bug. Since ADR 0116
+     * a refusal carries a whole sentence naming the rule and the number, and a
+     * bulk run over one house usually hits the SAME rule repeatedly, so the
+     * distinct set is short and is the useful thing to print.
+     */
+    reasons: string[];
+  } | null>(null);
 
   const fillRef = useRef<HTMLDivElement | null>(null);
   const embossRef = useRef<HTMLDivElement | null>(null);
@@ -89,17 +101,24 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     const ids = selectedRows.map((r) => r.id);
     const okIds: string[] = [];
     let refused = 0;
+    const reasons: string[] = [];
     for (let i = 0; i < ids.length; i++) {
       setProgress({ done: i, total: ids.length });
       try {
         await approve.mutateAsync(ids[i]);
         okIds.push(ids[i]);
-      } catch {
+      } catch (err) {
         refused += 1;
+        // Only a 403 carries an explanation. A network error's message is not
+        // one, and printing it as a reason would attribute a policy decision to
+        // a dropped connection.
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const msg = (err as { message?: string })?.message;
+        if (status === 403 && msg && !reasons.includes(msg)) reasons.push(msg);
       }
     }
     setProgress({ done: ids.length, total: ids.length });
-    setResult({ ok: okIds.length, refused });
+    setResult({ ok: okIds.length, refused, reasons });
     expectedAfterDoneRef.current = refused;
     setPhase('done');
     onApproved(okIds);
@@ -211,6 +230,22 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
                 : 'The rows settle; the seal stays rationed.'
               : `${fmtMoney(knownTotal)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
+          {phase === 'done' && result && result.reasons.length > 0 && (
+            <span
+              role="status"
+              style={{
+                display: 'block',
+                fontFamily: SANS,
+                fontSize: 11,
+                lineHeight: 1.55,
+                color: 'var(--ink-2, #4F473C)',
+                marginTop: 3,
+                maxWidth: 520,
+              }}
+            >
+              {result.reasons.join(' ')}
+            </span>
+          )}
         </div>
 
         {phase !== 'done' && (

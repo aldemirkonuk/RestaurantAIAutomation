@@ -73,7 +73,9 @@ the same day):
   *inferred* (with the receipt count and a confidence), or an em dash with the
   reason. **Live**, over `GET /vendor-terms` and `PUT /vendor-terms/:providerId`
   (`apps/api-gateway/src/vendor-terms/`), written into
-  `restaurant_vendor_terms` (migration `20260903140000`). Two of the five terms
+  `restaurant_vendor_terms` (migration `20260903140000`). **The provider form
+  writes the delivery days here** since 2026-09-04 (ADR 0116) — they used to go
+  into `providers.regions_covered`, the geography column. Two of the five terms
   are stated as BOUNDS rather than values, because that is all this house's own
   orders can support: the cutoff is a bracket (*after 13:40, before 15:10*) and
   the minimum is an upper bound (*they have accepted as little as X*)
@@ -81,9 +83,18 @@ the same day):
   2026-09-03)*: three rules — a manager's ceiling by amount, the first order to a
   vendor, and a price above what the house last paid — each with who set it and
   when, and each showing **how often it would have fired** over this
-  restaurant's own orders in the last 365 days. **Recorded, NOT enforced**, and
-  the register's first sentence says so and names the file and line where
-  enforcement has to land. `GET/PUT /settings/approval-thresholds`
+  restaurant's own orders in the last 365 days — which is what makes a number
+  chooseable rather than guessed. **ENFORCED since 2026-09-04 (ADR 0116)**:
+  `ProcurementService.assertApprovalAllowed` reads these rows, the order and the
+  actor's role before any seal and refuses with the rule and the number in
+  words; the refused order parks in `APPROVAL_NEEDED` and the refusal files as
+  `order_approval_refused`. The register's first sentence is rendered from
+  `enforcement.enforcedBy`, which is MEASURED — it said "nothing stops an order
+  yet" for two passes and needed no edit when the gate landed.
+  **Writing a rule is owner-or-manager only**, refused server-side
+  (`assertCanManageRestaurant`); the editor is disabled for anyone else with the
+  reason in words and the number still legible. `GET/PUT
+  /settings/approval-thresholds`
   (`apps/api-gateway/src/settings/approval-thresholds.service.ts`), table
   `restaurant_approval_thresholds`
 - **What changed here** *(rebuilt page only, `?tab=ledger`, added 2026-09-03)*:
@@ -317,6 +328,58 @@ so a granted date and an issued date stop being printed as "changed". Citation
   baseline migration and the code, not measured against a running database, and
   §9.9 is filed as a **suspected** defect for exactly that reason.
 
+### Fifth pass, 2026-09-04 — the decisions take effect (ADR 0116)
+
+**What the founder decided**, in session on 2026-09-03, three calls:
+
+1. **Thresholds: enforce.** *"only certain high tier like manager or owner can
+   adjust it, do option 1"* — an order above the house's threshold cannot be
+   sealed by a role below the rule; it waits for the named approver, in words on
+   the order; and only owner or manager may write or change a threshold.
+2. **Drop all three column defaults** and migrate existing rows to null. An
+   unset value reads as unknown everywhere.
+3. **Delivery days: repoint at vendor terms.**
+
+**What was built.** §13.23, §13.25 and §13.26 carry the file-level account; this
+is what changed on THIS page.
+
+| Register | Before | After |
+|---|---|---|
+| 13 Approval thresholds | opened with *"Nothing stops an order yet"*, rendered from `enforcement.enforcedBy` being empty | opens with *"Enforced"* and the path that enforces it — **from the same array**, so removing the gate puts the old sentence back |
+| 13 Approval thresholds | any signed-in person could write a rule | **owner or manager**, refused server-side; the editor is disabled for anyone else with the reason in words |
+| 12 Vendor terms | had no writer outside this page | the provider form writes `deliveryWeekdays` into it |
+| 12 Vendor terms | a `7` or a `Net 30` on a vendor record was reported UNKNOWN, because it could not be told from the column default | reported as a **term** — the defaults are gone and every row that carried one is NULL |
+
+**The one thing worth reading twice.** The enforcement banner was written in the
+fourth pass to render from a MEASURED array rather than from a hard-coded
+string — *"the day something reads these rows, that array is what changes"*. That
+day arrived and the page needed no edit at all. That is the whole argument for
+rendering claims from measurements: the page told the truth before the gate
+existed and tells the truth after it, and neither sentence was ever authored for
+the state it describes.
+
+**A measured correction to my own first attempt, worth recording because the
+first version of the test was the plausible wrong one.** The threshold editor is
+disabled for anyone who is not owner or manager. The obvious test — set the
+fixture to `role: 'staff'` and assert the disabled control — **fails**, and
+finding out why is the point: `SettingsNext.tsx:142` sends staff to *"Ask a
+manager"* and renders no register at all, so a staff fixture tests the page gate
+above this control and proves nothing about it. The state that actually reaches
+the disabled editor is `role: null` — a person whose role could not be
+RESOLVED, which `AuthContext` produces both when `/auth/me/role` fails and when
+the person has no access row. That is also the case that matters: a role nobody
+could read must not be able to raise a ceiling. Both are now pinned, the second
+explicitly so the first cannot be misread as "staff see a disabled editor".
+
+**Corrected here, because this page asserted it.** §9.12 named
+`payment-due.template.ts:108` as the route by which a fabricated `Net 30`
+reached a vendor's inbox. Measured on 2026-09-04: the field was already emitted
+only when truthy, so an absent term always printed nothing — and **nothing calls
+the mailer**, the cron having been deleted
+(`scheduled-tasks.service.ts:596-619`). The migration is still right; the
+argument for it was overstated by one link, and that link is now pinned in
+`payment-terms-are-not-fabricated.spec.ts` so nobody rebuilds it by accident.
+
 ### Fourth pass, 2026-09-03
 
 **What the founder asked for, verbatim:** *"Keep tab bar (side), look clean. The
@@ -519,18 +582,23 @@ the migration is in this worktree, so additive is the direction that keeps the
 database and the migration set consistent.)*
 
 **What is deliberately NOT built, and why.**
-- **Enforcement of the thresholds.** `procurement/` is outside the paths this
-  pass was cleared to edit. The exact patch — file, function, the shape of the
-  refusal, and the `/orders` read site — is §13.23, and the register says so on
-  its face rather than implying a gate.
+- ~~**Enforcement of the thresholds.**~~ **BUILT 2026-09-04, ADR 0116** — the
+  patch in §13.23 was carried out, with three departures named there. The
+  register's opening sentence now flips itself: it renders from
+  `enforcement.enforcedBy`, which is measured, so removing the gate would put
+  "Nothing stops an order yet" back on the page.
 - **A per-vendor threshold override.** Ottimate's vendor dimension; it needs a
   row per (restaurant, vendor, rule) and a reader that does not exist. Rendered
   as a no-switch row naming the CHECK constraint that closes the rule set.
 - **A second approver in the chain.** `procurement_orders` has one `approved_by`
   column; a chain needs a queue and a current-approver, which is a schema
   decision.
-- **Dropping the three column defaults.** §13.26 — a production ALTER with live
-  readers, including outbound vendor mail.
+- ~~**Dropping the three column defaults.**~~ **BUILT 2026-09-04, ADR 0116** —
+  migration `20260903170000`, plus a reader sweep across all four runtimes
+  (§13.26). Two claims in the sentence this bullet used to carry were **wrong**:
+  the payment-due template already printed nothing for an absent term, and
+  nothing calls that mailer at all, so no fabricated term has ever left the
+  building through it.
 - **Filing the other eight registers into the trail.** Their writes go through
   services this pass did not own; the register names all eight and the exact
   service each writes through, so their silence cannot be read as "nothing
@@ -581,8 +649,8 @@ changes, where the value is kept, and who may change it.
 | 09 | POS | Nothing to the till. It bookmarks whose connector documentation you are reading | `user_preferences.preferences.posConfig` | Anyone signed in | the preference record's date, shared |
 | 10 | Calendar | Regenerating **silently breaks every existing subscription**, with no undo | `restaurants.calendar_ical_token` | Owner or manager | never — the token has no date of its own |
 | 11 | Cellar | Declares which of the seven drinks registers the house carries, which decides which registers `/cellar` draws at all. Switching one on with nothing in the books behind it is allowed and asks you to confirm | `restaurant_cellar_registers`, one row per (restaurant, register) — and **only** where a person said something; an inference is computed at read time and never stored | Owner or manager (JWT on `/cellar`) | **changed** · — the readout carries no date per answer (§13.19) |
-| 12 | Vendor terms | Records what a vendor told this house: their cutoff, delivery days, minimum, lead time and payment terms. Nothing reads them yet outside this register — the calendar and orders contract is §13.24 | `restaurant_vendor_terms`, one row per (restaurant, provider), and **only** where a person said something. Every column independently nullable: five terms are five statements | Anyone signed in with a restaurant. Deliberately not owner-only — a cutoff is operational knowledge, and every write carries its author into the log (record it, do not restrict it, as ADR 0088 decided for access) | **stated** — real, with the person's name |
-| 13 | Approval thresholds | **Nothing, yet.** It records the house's written policy; no code consults it before an order is sealed. What it *does* do is tell you how many of your own last 365 days' orders each rule would have caught | `restaurant_approval_thresholds`, one row per (restaurant, rule) so each carries its own author and date. No rows are seeded: a house with none has set no policy, which is not "unlimited" | Anyone signed in with a restaurant, same reasoning as above | **set by · when** — real, per rule |
+| 12 | Vendor terms | Records what a vendor told this house: their cutoff, delivery days, minimum, lead time and payment terms. **The provider form now WRITES the delivery days here** (ADR 0116) instead of into `providers.regions_covered`; nothing else reads them yet — the calendar and orders contract is §13.24 | `restaurant_vendor_terms`, one row per (restaurant, provider), and **only** where a person said something. Every column independently nullable: five terms are five statements | Anyone signed in with a restaurant. Deliberately not owner-only — a cutoff is operational knowledge, and every write carries its author into the log (record it, do not restrict it, as ADR 0088 decided for access) | **stated** — real, with the person's name |
+| 13 | Approval thresholds | **Stops an order** (ADR 0116, 2026-09-04). `ProcurementService.assertApprovalAllowed` reads these rows, the order and the actor's role before any seal, refuses with the rule and the number in words, parks the order in `APPROVAL_NEEDED` and files `order_approval_refused`. The register still tells you how many of your own last 365 days' orders each rule would have caught — that is what makes a number choosable rather than guessed | `restaurant_approval_thresholds`, one row per (restaurant, rule) so each carries its own author and date. No rows are seeded: a house with none has set no policy, which is not "unlimited" — and the gate seals as before for such a house, saying so | **Owner or manager only** (`assertCanManageRestaurant`, server-side). Deliberately NOT the vendor-terms rule: a cutoff is knowledge about the world, a threshold is the house's own limit on spending, and a limit anybody may raise is not a limit | **set by · when** — real, per rule |
 | 14 | What changed here | Nothing — it is read-only, and there is no write or delete route at all. A log the person who made the change can edit is not a log | `public.system_audit_log`, which already existed. No new table, no migration | Read: anyone signed in with a restaurant. Write: only the three services that file into it | every row IS a date, and a name |
 
 **What "more" turned out to mean, twice.** First pass: *more substance per
@@ -887,7 +955,7 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
     store, read by `ManagerPreferencesRepository.is_quiet_hours`
     (`core/database.py:1410-1428`) — which has **no callers**. Worth knowing before
     anyone "fixes" quiet hours by wiring the dead one (§13.17).
-12. **Three column defaults assert facts nobody stated** (measured 2026-09-03):
+12. ~~**Three column defaults assert facts nobody stated**~~ **CLOSED 2026-09-04 — ADR 0116**, migration `20260903170000_a_default_is_not_an_answer.sql`; the reader sweep and the two corrections to this entry are in §13.26. The finding as it stood (measured 2026-09-03):
     `providers.lead_time_days DEFAULT 7` (`baseline:4864`),
     `providers.payment_terms DEFAULT 'Net 30'` (`baseline:4897`), and
     `restaurants.timezone DEFAULT 'America/Los_Angeles'` (`baseline:3575`). Each
@@ -898,7 +966,7 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
     a term (`vendor-terms.service.ts` — `leadTimeCell`, `paymentCell`); dropping
     the defaults is §13.26 and is a production ALTER with live readers
     (`providers.service.ts:1374,1382`).
-13. **The delivery-days checkbox writes into the geography column.**
+13. ~~**The delivery-days checkbox writes into the geography column.**~~ **CLOSED 2026-09-04 — ADR 0116**; the picker writes `PUT /vendor-terms/:providerId` and `EditProviderModal` seeds from that register (§13.25). The finding as it stood:
     `AddProviderModal.tsx:820` collects weekdays; `pages/Providers.tsx:458` sends
     them as `statesOrRegionsServed`; `services/api/providers.ts:162-163` maps that
     to `regionsCovered`; the gateway writes `providers.regions_covered`
@@ -907,7 +975,7 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
     and never reaches `buildProviderPayload`'s output (`:140-177`) — dropped
     entirely. So ticking three weekdays adds three weekday names to the list of
     regions a vendor covers, and does nothing else (§13.25).
-14. **Nothing enforces an approval threshold, and nothing ever has.**
+14. ~~**Nothing enforces an approval threshold, and nothing ever has.**~~ **CLOSED 2026-09-04 — ADR 0116**: `ProcurementService.assertApprovalAllowed` reads the rules, the order and the actor's role and refuses the seal in words; `PUT /settings/approval-thresholds` is owner/manager only (§13.23). The finding as it stood:
     `ProcurementService.approveOrder` (`procurement.service.ts:1438-1460`) writes
     `status`, `approved_at` and `approved_by` without reading a role or an amount;
     `POST /procurement/orders/:id/approve` (`procurement.controller.ts:283`)
@@ -1212,9 +1280,34 @@ cleared to edit, so each is filed rather than built):
 **Added 2026-09-03 by the fourth pass** (each is outside the paths this pass was
 cleared to edit, so each is filed rather than built):
 
-23. **Enforce the approval thresholds — the exact patch.** This is the single
-    highest-value item on this list: today anyone who can reach
-    `POST /procurement/orders/:id/approve` can seal any amount (§9.14).
+23. ~~**Enforce the approval thresholds — the exact patch.**~~ **DONE 2026-09-04 — ADR 0116.** Built almost exactly as specified below, with three departures, each named where it happens:
+    - the role comparison is a RANK test, not `requiredRole === "owner"`: a
+      rule may demand `manager`, and `owner` has to satisfy it
+      (`procurement/order-approval-gate.ts` `roleSatisfies`);
+    - an **unreadable** policy REFUSES rather than sealing. The patch below
+      did not distinguish it from an empty one, and they are opposites;
+    - the refused order is parked in `APPROVAL_NEEDED` — an existing
+      `ProcurementOrderStatus` member, `status` being `varchar(50)` with no
+      CHECK (`baseline:4527`) — so the ROW says it is waiting, not only the
+      log. No migration.
+
+    Also required and not in the patch: `procurement.controller.ts` re-wrapped
+    **every** throw as a 500, so the 403 and its sentence would have reached
+    the browser as "Internal Server Error". `HttpException` is now rethrown.
+
+    Files: `procurement/order-approval-gate.ts` (new),
+    `procurement.service.ts` `assertApprovalAllowed` / `approvalGate`,
+    `procurement.module.ts` (imports `SettingsModule` + `OrganizationsModule`),
+    `organizations.service.ts` `resolveRestaurantRole` (lifted out of
+    `assertManagerOrOwner`, one implementation),
+    `procurement/order-approval-gate.spec.ts` (21 cases).
+    The web half: `GET /procurement/order-approval-gate` (one call per house,
+    not per row) → `useOrdersNextData` → `LedgerRow` renders the ceremony
+    **disabled with the rule and the amount in words**, and
+    `services/api/orders.ts` promotes the 403 body onto `error.message` so all
+    four call sites print it. `pages/orders/next/ApprovalGate.test.tsx`, 9 cases.
+
+    The original entry, kept because the departures only read against it:
 
     **Gateway.** `apps/api-gateway/src/procurement/procurement.service.ts`,
     inside `approveOrder(restaurantId, orderId, userId)` at `:1438`, BEFORE the
@@ -1292,18 +1385,52 @@ cleared to edit, so each is filed rather than built):
       told something newer on the phone.
     - **`/notifications`**: a low-stock alert can say *"order by 14:00 or it is
       Friday"* only when the cutoff is stated.
-25. **Give the delivery-days checkbox a real home** (§9.13). Either point
-    `AddProviderModal`/`EditProviderModal` at `PUT /vendor-terms/:providerId`, or
-    delete the control. Today it silently pollutes `providers.regions_covered`,
-    which is also what the map and the territory filters read.
-26. **Drop the three column defaults, or make them nullable** (§9.12):
-    `providers.lead_time_days`, `providers.payment_terms`,
-    `restaurants.timezone`. A migration plus a sweep of the live readers
-    (`providers.service.ts:1374,1382`;
-    `communications/email-templates/payment-due.template.ts:108`;
-    everything that formats a date for a restaurant). Until then every vendor in
-    the database claims a seven-day lead time on Net 30 and every house is in
-    California unless somebody said otherwise.
+25. ~~**Give the delivery-days checkbox a real home**~~ **DONE 2026-09-04 — ADR 0116.** Pointed at `PUT /vendor-terms/:providerId`; the control was not
+    deleted, because the days are real information somebody is trying to
+    record. `pages/Providers.tsx` no longer sends `statesOrRegionsServed` or
+    `deliverySchedule` from the picker, and `EditProviderModal` seeds it from
+    `GET /vendor-terms` instead of from `regionsCovered` — reading the
+    geography column back into the control is what round-tripped the defect.
+    When that register cannot be read the picker is **disabled with the reason
+    in words** and the page skips the write, because an empty selection is
+    itself a statement ("no fixed days") this page would otherwise save.
+    Mapping and payload pinned in `services/api/vendorTerms.test.ts` (9 cases).
+    **Cleanup was deliberately NOT done**: `regions_covered` is free text and
+    a "Sunday" in it cannot be proven a picker artefact rather than a place,
+    so `scripts/list_weekdays_in_regions_covered.py` lists and proposes and has
+    no `--apply`. The rows it finds are the founder's call.
+26. ~~**Drop the three column defaults**~~ **DONE 2026-09-04 — ADR 0116**,
+    migration `20260903170000_a_default_is_not_an_answer.sql`: three
+    `DROP DEFAULT`s and three `UPDATE … SET col = NULL WHERE col = <default>`,
+    counted into a `RAISE NOTICE`. The migration states in its own header that
+    this erases real answers along with fabricated ones, because a default is
+    indistinguishable from an answer and no query separates them.
+    **Proven on the local Postgres in a rolled-back transaction**: with three
+    seeded providers and one restaurant it cleared 2 / 2 / 1 rows and left
+    intact the provider that carried a stated `21` days and `2% 10 net 30`.
+    **Production counts were not measured** — no production access this
+    session; the `NOTICE` reports them at apply time.
+
+    The reader sweep (all four runtimes) found the fault had COPIES, and each
+    is fixed:
+    | Site | Was | Now |
+    |---|---|---|
+    | `vendor-terms.service.ts` `leadTimeCell` / `paymentCell` | compared against `7` / `'Net 30'` and reported a match as unknown | the comparison is gone; a `7` is a term. **Couples this file to the migration** — named in ADR 0116's Consequences |
+    | `vendor-terms.service.ts` `readHouse` | `isColumnDefault` true when the zone EQUALLED Los Angeles | true only when the zone is unset. The `currency DEFAULT 'USD'` half is unchanged — it was not in the decision |
+    | `communications/email-templates/payment-due.template.ts:108` | named in §9.12 as the escape route to a vendor's inbox | **already correct**, and **nothing calls the mailer** — its only invocation is `tests/email-e2e.spec.ts`; the cron was deleted (`scheduled-tasks.service.ts:596-619`). Both pinned in `payment-terms-are-not-fabricated.spec.ts` |
+    | `communications/scheduled-tenants.service.ts:135` | `row.timezone \|\| "America/New_York"` | `TIMEZONE_NOT_SET` (empty string, not a valid IANA zone), so `notification-producers.service.ts:339-347` and `calendar-reminders.service.ts:176-185` both log `TIMEZONE_UNKNOWN` and run in UTC |
+    | `organizations.service.ts:577` | `dto.timezone ?? "America/New_York"` on location create | `?? null` |
+    | `AddProviderModal` / `EditProviderModal` | `paymentTerms: 'Net 30'` as the FORM default | `''`, with an explicit "Not stated" option. This would have refilled the column on every save |
+    | `providers.service.ts:201,420,1374,1382` | writes `?? null` / `?? undefined`, reads raw | unchanged — already correct |
+    | `restaurants/operating-hours.service.ts:179`, `simpos/scenario-verify.service.ts` | `?? null`, and says "an unrecorded timezone" | unchanged — already correct |
+
+    **NOT touched, and filed here rather than done in passing:**
+    `manager_preferences.report_timezone DEFAULT 'America/Los_Angeles'`
+    (`baseline:3692`) and `manager_report_profiles.timezone` (`baseline:3729`)
+    carry the same fault; neither was named in the decision.
+    `auth.service.ts:768` writes `dto.timezone || "America/New_York"` on
+    registration — the same fault on the sign-up path — and was left because
+    another builder held that file uncommitted for the whole session.
 27. **File the other eight registers into the settings trail.** Email sign-off
     (`restaurant-templates.service.ts`), Notifications
     (`notifications.service.ts`), Locations & chains (`organizations.service.ts`),
@@ -1331,3 +1458,60 @@ cleared to edit, so each is filed rather than built):
     (restaurant, provider, weekday) would hold it, and the inference cannot split
     it either way — a Friday cutoff of 11:00 and a weekday one of 15:00 land in
     the same bracket today, which the register says.
+31. **"Set this up with me" — the assistant's entry point on this page.** Proposed by
+    [ADR 0113](../decisions/0113-the-assistant-proposes-the-seal-applies.md) from the
+    founder's note of 2026-09-03: *"let AI assistant talk with you and handle all the configs
+    then approval button."* Sketch
+    [`101-config-assistant/`](../sketches/101-config-assistant/) draws the conversation, the
+    proposal and the seal.
+
+    **The control.** One line in the contents column, above the five groups, not a floating
+    button: *"Set this up with me"*. It opens the ⌘K assistant scoped to configuration —
+    `components/askai/AskAiSurface.tsx` is the surface, `HoldToApprove` is the seal. It is
+    **disabled with one line saying why** until the role gate below exists, per this page's
+    own rule that a control whose backend does not exist is never drawn as a working button.
+
+    **What it produces.** Not a chat transcript — a **proposal document**: every value it
+    would set, grouped by the register it belongs to, each row carrying the reason, the
+    current value, and where that current value came from. Rows are prunable. One
+    hold-to-approve applies what remains. The apply is **item by item across eight services
+    with no shared transaction**, so the completion screen is a receipt — written · refused
+    (with the reason) · not attempted — never a single checkmark. This is
+    [[0084-the-communications-gateway-says-what-it-did]] applied to configuration.
+
+    **What it may and may not touch** (ADR 0113 rule 2, drawn by blast radius rather than by
+    the word "settings"). May be proposed: `vendor-terms`, `thresholds`, `notifications`,
+    `cellar`, `calendar`, `email`, `map`, and `measurement` — the last with a caveat, because
+    `measurement` is `kind: 'browser'` (`pages/settings/next/st-format.ts:123`), kept in
+    localStorage, so **a server-side batch cannot write it at all** and the row must say so.
+    May never be proposed: `team`, `locations`, `features`, `services`, `pos` (the till
+    connection is a credential, not a judgment), `ledger` (read-only), and anything touching a
+    payment instrument — eight and six account for all fourteen. Notion draws the same line for the same
+    reason — its agent restructures a whole workspace and may not "manage any workspace level
+    settings, like member roles, billing, security features, and more"
+    (<https://www.notion.com/help/notion-agent>).
+
+    **The third provenance state.** This register page already distinguishes a value nobody
+    stated from one somebody typed — the rule of `vendor-terms/vendor-terms.service.ts:44-59`.
+    A sealed proposal is neither, and must be recorded as its own kind: a `system_audit_log`
+    row carrying the batch's `correlation_id` **and** the utterance in `reason`. Both columns
+    exist and neither is used — `reason` is in the baseline (`20260805000000:5564`),
+    `correlation_id` was added by `20260805132000:73-75`, and
+    `SettingsAuditService.record` sets neither (`settings-audit/settings-audit.service.ts:205-221`).
+    Filling them makes a sealed batch **undoable as a batch**, because `changes.fields[*]`
+    already stores `{from, to}` (`:89-91`) and `/logs` already filters this table by
+    `correlation_id` (`logs/logs-timeline.service.ts:302`). The reader exists and is unfed.
+    Salesforce's Setup Audit Trail is the counter-example: it records who changed what and
+    does not capture field-level before-and-after values, so it can never be an undo
+    (<https://www.salesforceben.com/setup-audit-trail-keep-track-of-metadata-changes-in-salesforce/>).
+
+    **Blocking precondition, and it belongs to this page.** `PUT /settings/approval-thresholds`
+    is guarded by `@UseGuards(JwtAuthGuard, TenantGuard)` and **no role decorator**
+    (`settings/settings.controller.ts:40,107`), so any authenticated member of the tenant can
+    today rewrite the policy that decides who may seal an order. `@Roles()` and `RolesGuard`
+    exist (`auth/decorators/roles.decorator.ts`, `auth/guards/roles.guard.ts`) and are used on
+    exactly two controllers (`auth.controller.ts`, `vendor-intel.controller.ts`). The
+    assistant does not create this hole, but it makes it reachable by sentence. OWASP names
+    the class: independent authorization enforcement, never the model's own judgment
+    (<https://owasp.org/www-project-top-10-for-large-language-model-applications/2_0_vulns/LLM06_ExcessiveAgency.html>).
+    **This gate ships before the assistant does.**

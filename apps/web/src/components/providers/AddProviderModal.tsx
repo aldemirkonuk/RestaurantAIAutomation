@@ -150,7 +150,12 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
     longitude: null,
     primaryBusinessType: 'Distributor',
     specialties: [],
-    paymentTerms: 'Net 30',
+    // Blank, not 'Net 30'. Seeding it made every provider added here assert
+    // Net 30 whether anybody chose it or not — the same fabricated answer
+    // `providers.payment_terms DEFAULT 'Net 30'` used to write, moved into the
+    // browser. Migration `20260903170000_a_default_is_not_an_answer.sql`
+    // dropped the column default; leaving the form default would refill it.
+    paymentTerms: '',
     deliveryDays: [],
     minimumOrder: null,
     notes: '',
@@ -251,7 +256,7 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
       address: '',
       primaryBusinessType: 'Distributor',
       specialties: [],
-      paymentTerms: 'Net 30',
+      paymentTerms: '',
       deliveryDays: [],
       minimumOrder: null,
       notes: '',
@@ -781,6 +786,13 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
                       onChange={(e) => setFormData({...formData, paymentTerms: e.target.value})}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
                     >
+                      {/*
+                        "Not stated" is the default and it is a real option, not
+                        a placeholder: a vendor nobody has asked about payment
+                        has no terms, and recording one would be inventing an
+                        answer. Nothing is sent when this is selected.
+                      */}
+                      <option value="">Not stated</option>
                       {PAYMENT_TERMS.map(term => (
                         <option key={term} value={term}>{term}</option>
                       ))}
@@ -811,6 +823,16 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Delivery Days <span className="text-gray-400 text-xs">(optional)</span>
                   </label>
+                  {/*
+                    These are recorded against the vendor as a TERM — with your
+                    name and today's date — through PUT /vendor-terms/:providerId.
+                    They used to be sent as `statesOrRegionsServed` and written
+                    into `providers.regions_covered`, the geography column, where
+                    the map and the territory filters read them.
+                  */}
+                  <p className="text-xs text-gray-500 mb-2">
+                    Recorded as this vendor&rsquo;s terms, with your name and today&rsquo;s date.
+                  </p>
                     <div className="flex flex-wrap gap-2">
                       {DELIVERY_DAYS.map((day) => {
                         const isSelected = formData.deliveryDays.includes(day)

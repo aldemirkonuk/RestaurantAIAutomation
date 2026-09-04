@@ -267,6 +267,8 @@ export default function OrdersNext() {
                     selected={selected.has(row.id)}
                     onSelectChange={(next) => setRowSelected(row.id, next)}
                     bulkRunning={bulkRunning}
+                    approval={data.approvalByOrder?.get(row.id)}
+                    approvalGateError={data.approvalGateError}
                   />
                 ))}
               </div>

@@ -157,15 +157,36 @@ export interface SourceStatus {
 const MISSING_RELATION_CODES = new Set(["42P01", "PGRST205", "PGRST202"]);
 
 /**
- * The defaults `providers` carries, so a value equal to one can be recognised.
- * Read off the baseline, not guessed — see the class header for the citations.
+ * The defaults `providers` USED TO carry — kept as the record of what was
+ * dropped, not as a value anything compares against.
+ *
+ * `lead_time_days DEFAULT 7` and `payment_terms DEFAULT 'Net 30'` stood in the
+ * baseline (20260805000000:4864 and :4897) until migration
+ * `20260903170000_a_default_is_not_an_answer.sql` dropped both and set every row
+ * that carried them to NULL. While they stood, `leadTimeCell` and `paymentCell`
+ * had to compare against these numbers and report a match as UNKNOWN. They no
+ * longer do — a 7 that survived the migration is a 7 somebody typed — and the
+ * comparison would now DISCARD a real answer.
+ *
+ * Kept exported so the specs can name what changed, and so a reader of this file
+ * can see which two values were erased rather than having to find the migration.
  */
 export const PROVIDER_COLUMN_DEFAULTS = {
   lead_time_days: 7,
   payment_terms: "Net 30",
 } as const;
 
-/** `restaurants` defaults, same purpose (baseline:3575 and the line after it). */
+/**
+ * `restaurants` fallbacks. `timezone DEFAULT 'America/Los_Angeles'`
+ * (baseline:3575) was dropped by the same migration; `currency DEFAULT 'USD'`
+ * (baseline:3576) was NOT — it was not named in the decision, and it is filed in
+ * `06-pages/settings.md` §13 rather than changed in passing.
+ *
+ * So the two entries below now mean different things, and the code says which:
+ * the zone is a DISPLAY fallback for a house that has set none (`isColumnDefault`
+ * then means "unset", and the register prints the caveat), while the currency is
+ * still a live column default and `isColumnDefault` still means "equal to it".
+ */
 export const RESTAURANT_COLUMN_DEFAULTS = {
   timezone: "America/Los_Angeles",
   currency: "USD",
@@ -608,8 +629,14 @@ export class VendorTermsService {
         statedAt: stated.stated_at,
       };
     }
+    // The same inversion `leadTimeCell` explains above: before migration
+    // `20260903170000_a_default_is_not_an_answer.sql` a stored "Net 30" was
+    // indistinguishable from `payment_terms DEFAULT 'Net 30'` and had to be
+    // reported as unknown. The default is gone and every row that carried it was
+    // set to NULL, so a "Net 30" on a vendor record is now a term somebody
+    // wrote down.
     const onRecord = provider.payment_terms;
-    if (onRecord && onRecord !== PROVIDER_COLUMN_DEFAULTS.payment_terms) {
+    if (onRecord) {
       return {
         value: onRecord,
         source: "vendor_record",
@@ -619,10 +646,7 @@ export class VendorTermsService {
     return {
       value: null,
       source: "unknown",
-      reason:
-        onRecord === PROVIDER_COLUMN_DEFAULTS.payment_terms
-          ? `the vendor record reads "${PROVIDER_COLUMN_DEFAULTS.payment_terms}", which is exactly that column's default value (providers.payment_terms), so nobody can tell whether anyone chose it — and ${PAYMENT_TERMS_NOT_INFERABLE}`
-          : PAYMENT_TERMS_NOT_INFERABLE,
+      reason: PAYMENT_TERMS_NOT_INFERABLE,
     };
   }
 
@@ -651,9 +675,15 @@ export class VendorTermsService {
       const row = data as { timezone: string | null; currency: string | null };
       return {
         zone: {
+          // A house that HAS set a zone is now believed, even when it set the
+          // one that used to be the default: after
+          // `20260903170000_a_default_is_not_an_answer.sql` a stored
+          // 'America/Los_Angeles' is a choice, and only NULL is the unasked
+          // question. The displayed value still falls back so the inference has
+          // a zone to work in, and `isColumnDefault` still tells the register to
+          // print the caveat over it.
           zone: row.timezone || RESTAURANT_COLUMN_DEFAULTS.timezone,
-          isColumnDefault:
-            !row.timezone || row.timezone === RESTAURANT_COLUMN_DEFAULTS.timezone,
+          isColumnDefault: !row.timezone,
         },
         currency: {
           code: row.currency || RESTAURANT_COLUMN_DEFAULTS.currency,

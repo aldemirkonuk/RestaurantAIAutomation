@@ -22,7 +22,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
 
 /**
  * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
- * (ADR 0112). `ApprovalThresholdsService` supplies the house's rules and
+ * (ADR 0116). `ApprovalThresholdsService` supplies the house's rules and
  * `OrganizationsService.resolveRestaurantRole` supplies the actor's rank, and
  * `ProcurementService.approveOrder` refuses the seal when the two disagree.
  *

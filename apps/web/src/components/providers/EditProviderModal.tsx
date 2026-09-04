@@ -87,6 +87,21 @@ interface EditProviderModalProps {
   onClose: () => void
   onSave: (provider: EditProviderData) => void
   provider: Provider | null
+  /**
+   * The delivery weekdays this house has RECORDED for the vendor, as names.
+   *
+   * Supplied by the page from `GET /vendor-terms`. It used to be read off
+   * `provider.regionsCovered` — the geography column the form was mistakenly
+   * writing into — which round-tripped the defect: open the dialog, see three
+   * weekday names sitting among the territories, save, and write them back.
+   *
+   * `undefined` means the terms register could not be read. The picker says so
+   * rather than rendering an empty selection, because an empty selection is
+   * itself a statement ("no fixed days") that this dialog would then save.
+   */
+  deliveryWeekdays?: string[]
+  /** Why the terms could not be read. Rendered verbatim when present. */
+  deliveryWeekdaysError?: string | null
 }
 
 const WINE_LIBRARY: Record<string, string[]> = {
@@ -231,7 +246,14 @@ function buildInitialLocations(provider: Provider | null): ProviderLocation[] {
   }]
 }
 
-export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditProviderModalProps) {
+export function EditProviderModal({
+  isOpen,
+  onClose,
+  onSave,
+  provider,
+  deliveryWeekdays,
+  deliveryWeekdaysError,
+}: EditProviderModalProps) {
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -246,7 +268,13 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
     address: '',
     primaryBusinessType: 'Distributor',
     specialties: [],
-    paymentTerms: 'Net 30',
+    // Blank, not 'Net 30'. Seeding the field made every provider saved through
+    // this dialog assert Net 30 whether anybody chose it or not — the same
+    // fabricated answer that `providers.payment_terms DEFAULT 'Net 30'` used to
+    // write, moved into the browser. Migration
+    // `20260903170000_a_default_is_not_an_answer.sql` dropped the column
+    // default; leaving the form default would have refilled it on every save.
+    paymentTerms: '',
     deliveryDays: [],
     minimumOrder: null,
     notes: '',
@@ -320,8 +348,12 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         address: provider.physicalAddress || '',
         primaryBusinessType: provider.primaryBusinessType || (provider as any).type || 'Distributor',
         specialties: (provider as any).specialties || [],
-        paymentTerms: (provider as any).paymentTerms || 'Net 30',
-        deliveryDays: (provider as any).regionsCovered || provider.statesOrRegionsServed || [],
+        // An unrecorded term stays unrecorded; see the initial state above.
+        paymentTerms: (provider as any).paymentTerms || '',
+        // The vendor-terms register, never `regionsCovered` — that column is the
+        // vendor's TERRITORY and reading it here is what round-tripped the
+        // delivery-days defect.
+        deliveryDays: deliveryWeekdays ?? [],
         minimumOrder: (provider as any).minimumOrder ?? null,
         notes: provider.notes || '',
         rating: provider.rating || 0,
@@ -391,7 +423,12 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
       return () => { aborted = true }
     }
-  }, [provider, isOpen])
+    // `deliveryWeekdays` arrives asynchronously (the page fetches
+    // /vendor-terms), so it has to re-seed when it lands or the picker would
+    // stay on whatever it held at mount — which for a freshly opened dialog is
+    // an empty selection, and an empty selection is a statement this dialog
+    // saves.
+  }, [provider, isOpen, deliveryWeekdays])
 
   // Auto-populate admin contact when contacts list is empty
   useEffect(() => {
@@ -721,6 +758,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                       onChange={e => { setFormData(prev => ({ ...prev, paymentTerms: e.target.value })); setEditingLeftField(null) }}
                       onBlur={() => setEditingLeftField(null)}
                     >
+                      <option value="">Not stated</option>
                       {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
                     </select>
                   ) : (
@@ -1197,6 +1235,8 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                             onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
                           >
+                            {/* A vendor nobody has asked has no terms. */}
+                            <option value="">Not stated</option>
                             {PAYMENT_TERMS.map(term => (
                               <option key={term} value={term}>{term}</option>
                             ))}
@@ -1219,6 +1259,19 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                         </div>
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Days</label>
+                          {deliveryWeekdaysError ? (
+                            <p className="text-sm text-amber-700 mb-2" role="status">
+                              The vendor-terms register could not be read ({deliveryWeekdaysError}), so
+                              these days are not shown. Nothing below has been ticked off; saving now
+                              would record whatever this picker shows, so change them in
+                              Settings &rarr; Vendor terms instead.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-500 mb-2">
+                              Recorded as this vendor&rsquo;s terms, with your name and today&rsquo;s date.
+                              Ticking nothing states &ldquo;no fixed days&rdquo;.
+                            </p>
+                          )}
                           <div className="flex flex-wrap gap-2">
                             {DELIVERY_DAYS.map(day => {
                               const isSelected = formData.deliveryDays.includes(day)
@@ -1226,7 +1279,8 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                                 <button
                                   key={day}
                                   onClick={() => toggleDeliveryDay(day)}
-                                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                  disabled={!!deliveryWeekdaysError}
+                                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                                     isSelected ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                   }`}
                                 >

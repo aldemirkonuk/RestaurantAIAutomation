@@ -50,6 +50,15 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 Canonical source with curves: `apps/web/src/pages/orders/next/MOTIONS.md` —
 this list is the note-side index (ADR 0044 §2).
 
@@ -92,7 +101,8 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | GET | `/procurement/orders` (list) | `useOrders` → `services/api/orders.ts:53` |
 | POST | `/procurement/orders` | `pages/Orders.tsx:966` |
 | PATCH / DELETE | `/procurement/orders/:id` | `pages/Orders.tsx:583` / `:532,3323` |
-| POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275` |
+| POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275`; `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`, `pages/dashboard/next/WaitingOnYou.tsx` — all via `services/api/orders.ts`. **Can answer 403** since ADR 0116 |
+| GET | `/procurement/order-approval-gate` | `pages/orders/next/useOrdersNextData.ts` — one call per house, not per row |
 | POST | `/procurement/orders/:id/deliver` | `pages/Orders.tsx:651` |
 | POST | `/inventory/add-from-order` | raw axios, `pages/Orders.tsx:684` |
 | GET/PATCH | `/procurement/orders/:id/draft` | `pages/Orders.tsx:417,1021`; `hooks/queries/useDraftEmailQueries.ts:57,404` |
@@ -131,6 +141,43 @@ outbound mail: `pages/Orders.tsx:430,1039,3457,3535`. Plus shared layout chrome
   (memory: autonomous-email-replies — never auto-send).
 
 ## 9. Gaps
+
+**The awaiting state, added 2026-09-04 — ADR 0116.** Until now
+`POST /procurement/orders/:id/approve` read neither a role nor an amount, so
+anyone who could reach it could seal any figure, and this page rendered
+`HoldToApprove` on every pending row. It now enforces the house's thresholds
+(`/settings` `?tab=thresholds`). What this page does about it:
+
+- **The ceremony is DISABLED, never hidden**, for a row the signed-in person's
+  role cannot seal, with the rule, the number and who may sign printed beneath
+  it. A control that disappears teaches nothing; a control that is visibly shut
+  with the reason beside it teaches who to ask. The column label becomes
+  *"Waiting on an owner"*.
+- **The refusal is printed verbatim.** `services/api/orders.ts` promotes the
+  403 body onto `error.message` — an axios error otherwise carries only
+  "Request failed with status code 403" there, and all four call sites read
+  `.message`. A 403 prints as itself; anything else keeps the old *"The gateway
+  refused (…)"* framing, because a dropped connection is not an explanation.
+- **A gate that has not answered leaves the ceremony ARMED.** An unread gate is
+  not a permissive one and not a restrictive one; the page renders as it did
+  before and lets the gateway decide. A gate that FAILED says so in words.
+- **Rules that could not be tested are stated**, separately from rules that did
+  not fire — "we could not tell whether this was a first order" is a different
+  outcome from "it was not".
+- **The bulk bar prints the distinct reasons**, not just a count: "3 refused"
+  reads as a bug, and a bulk run over one house usually hits the same rule.
+
+Pinned in `pages/orders/next/ApprovalGate.test.tsx` (9 cases). The gateway side
+is `procurement/order-approval-gate.spec.ts` (21 cases) — the page is a
+courtesy, the gateway is the gate, and both are tested as such.
+
+**The legacy desk too.** `pages/Orders.tsx:549,3346` post to the same route
+through `apiClient` directly rather than through `services/api/orders.ts`, so
+they do not get that module's message promotion. Both used to
+`alert('Failed to approve order')` on any failure — which would have replaced a
+written explanation with a shrug. They now call `approvalRefusalText`
+(`Orders.tsx:525`), which reads `response.data.message` on a 403 and keeps the
+generic line for anything else.
 
 - `v3.0-TECH-DEBT.md:495` — UX-catalog claim that `ActiveConversationsPanel` is
   unreachable is **stale**; `Orders.tsx:1512` sets its open state.

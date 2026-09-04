@@ -1528,7 +1528,7 @@ export class ProcurementService {
    * Seal an order — if the house's own policy lets this person seal it.
    *
    * =========================================================================
-   * THE GATE (added 2026-09-03, ADR 0112)
+   * THE GATE (added 2026-09-03, ADR 0116)
    * =========================================================================
    * Until today this method wrote `status/approved_at/approved_by` and read
    * neither a role nor an amount, so anyone who could reach

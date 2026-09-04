@@ -119,11 +119,21 @@ function RuleEditor({
   spec,
   row,
   busy,
+  canManage,
   onSave,
 }: {
   spec: (typeof RULES)[number];
   row: ThresholdRow | undefined;
   busy: boolean;
+  /**
+   * Owner or manager at this restaurant (ADR 0116). The server refuses either
+   * way — `SettingsController.setApprovalThreshold` calls
+   * `assertCanManageRestaurant` — so this is a courtesy, not the rule, and it
+   * is written that way: the controls are DISABLED with the reason beside
+   * them, never removed. A control that disappears leaves a person unable to
+   * tell a missing feature from a permission they do not have.
+   */
+  canManage: boolean;
   onSave: (next: { enabled: boolean; amountLimit: number | null; percentLimit: number | null; requiredRole: 'owner' | 'manager' }) => void;
 }) {
   const [amount, setAmount] = useState(
@@ -158,13 +168,15 @@ function RuleEditor({
             onChange={(e) =>
               spec.kind === 'amount' ? setAmount(e.target.value) : setPercent(e.target.value)
             }
-            style={{ ...fieldStyle, width: 130 }}
+            disabled={!canManage}
+            style={{ ...fieldStyle, width: 130, opacity: canManage ? 1 : 0.5 }}
           />
         </label>
       )}
       <Choice<'owner' | 'manager'>
         value={role}
         onChange={setRole}
+        disabled={!canManage}
         label="Who has to sign"
         options={[
           { value: 'owner', label: 'An owner' },
@@ -172,7 +184,7 @@ function RuleEditor({
         ]}
       />
       <Action
-        disabled={busy || numberMissing}
+        disabled={busy || numberMissing || !canManage}
         onClick={() =>
           onSave({
             enabled: row?.enabled ?? true,
@@ -184,9 +196,16 @@ function RuleEditor({
       >
         {busy ? 'Recording…' : row ? 'Change it' : 'Set it'}
       </Action>
-      {numberMissing && (
+      {numberMissing && canManage && (
         <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
           A rule with no number cannot fire, so it cannot be set.
+        </span>
+      )}
+      {!canManage && (
+        <span style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', maxWidth: 340 }} role="status">
+          Only an owner or a manager of this restaurant may set a threshold. The
+          rule and the number are shown because a limit you cannot see is one you
+          cannot plan around.
         </span>
       )}
     </div>
@@ -274,6 +293,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                     <Toggle
                       checked={row.enabled}
                       label={`${spec.label} — in force`}
+                      disabled={!data.canManage}
                       busy={data.writer.busy === `threshold:${spec.id}`}
                       onChange={(next) =>
                         void data.saveThreshold(spec.id, {
@@ -299,6 +319,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                   spec={spec}
                   row={row}
                   busy={data.writer.busy === `threshold:${spec.id}`}
+                  canManage={data.canManage}
                   onSave={(next) => void data.saveThreshold(spec.id, next)}
                 />
               </Row>
