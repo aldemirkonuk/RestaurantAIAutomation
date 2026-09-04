@@ -118,7 +118,7 @@ class Provider(BaseEntity):
     # below. `BaseRepository.find_many` and `.get_by_id` call
     # `model_validate` and catch **only `APIError`**, so a
     # `pydantic.ValidationError` from a single NULL row escaped the repository
-    # entirely; `RFQAgent._select_vendors` then swallowed it in a bare
+    # entirely; `RFQAgent._select_competitor_vendors` then swallowed it in a bare
     # `except Exception` and returned `[]`. The visible symptom would have been
     # *"this house has no active vendors"* for every restaurant, permanently,
     # with a single ERROR line and nothing else — absence reported as health,
@@ -724,7 +724,7 @@ class BaseRepository(ABC, Generic[ModelT]):
                 # This was a list comprehension calling `model_validate`
                 # directly, and the `except` below catches only `APIError`. A
                 # `pydantic.ValidationError` from ONE row therefore escaped this
-                # method entirely, and `RFQAgent._select_vendors` swallowed it in
+                # method entirely, and `RFQAgent._select_competitor_vendors` swallowed it in
                 # a bare `except Exception` and returned `[]` — so a single bad
                 # row read to the caller as "this house has no vendors at all".
                 # The immediate cause was `Provider.lead_time_days: int = 7`

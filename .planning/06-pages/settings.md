@@ -1424,7 +1424,7 @@ cleared to edit, so each is filed rather than built):
     migration a NULL lead time makes `Provider.model_validate` raise
     `pydantic.ValidationError`; `BaseRepository.find_many` and `.get_by_id`
     catch **only `APIError`**, so it escaped the repository entirely; and
-    `RFQAgent._select_vendors` swallowed it in a bare `except Exception` and
+    `RFQAgent._select_competitor_vendors` swallowed it in a bare `except Exception` and
     returned `[]`. The symptom would have been **"this house has no active
     vendors", for every restaurant, permanently** — one ERROR line and an empty
     list. Proven against a HEAD copy of the model:
@@ -1438,6 +1438,22 @@ cleared to edit, so each is filed rather than built):
     `get_by_id` reports an unvalidatable row as not-found *and says so*. Pinned
     in `services/agent-orchestrator/tests/test_dropped_column_defaults.py`
     (17 cases), which fails against the pre-fix tree.
+
+    **The re-audit found the same funnel's second mouth**, and it is closed:
+    `RFQAgent._select_competitor_vendors` still caught bare `Exception` and
+    returned `[]`, so a dropped connection or an expired service key was logged
+    as *"No vendors found for X"* — a claim about the house, not the request. It
+    raises `VendorSelectionUnavailable` now, carrying the cause and its class;
+    `_build_rfq_plan` still fails closed and now says which of the two happened.
+    6 cases in `tests/test_rfq_vendor_selection_failure.py`, one of which runs
+    the pre-fix shape to prove it still swallows the failure.
+
+    **Test figures, stated in their own scope.** The blocker fix's commit
+    message quoted 1,336 orchestrator tests; that was the marker-filtered run
+    (`-m "not e2e and not prod_e2e and not slow"` — 1,336 passed, 4 skipped, 53
+    deselected) reported as the whole suite. The full run at that commit was
+    **1,339 passed, 54 skipped**. With this pass's six additions it is
+    **1,345 passed, 54 skipped**.
 
     **The lesson, which is the durable part:** a reader sweep that greps for
     COLUMN NAMES cannot see a runtime that reads columns through a schema. The

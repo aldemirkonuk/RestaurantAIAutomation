@@ -135,6 +135,24 @@ ACTION_FAMILY = "communications"
 ACTION_KIND = "communications.rfq.solicit"
 AUTONOMY_TIER = "propose_only"
 
+
+class VendorSelectionUnavailable(RuntimeError):
+    """The vendor register could not be READ. Not the same as holding no vendors.
+
+    A distinct type rather than an empty list, because those two states were
+    indistinguishable here and the difference decides whether the log line
+    *"No vendors found"* is true or a fabrication. `_select_competitor_vendors`
+    used to catch bare `Exception` and return `[]`, so a network blip, an expired
+    service key or a PostgREST 500 all arrived at the caller looking exactly like
+    a house that has not added a vendor yet.
+
+    Raised, not returned, on purpose: a caller cannot forget to check a raise.
+    `_build_rfq_plan` catches it, says which of the two happened, and still
+    returns `None` — this agent is propose-only and fails closed, so the
+    BEHAVIOUR is unchanged. What changes is that the record now distinguishes
+    "this house has no vendors" from "we could not look".
+    """
+
 # one_tap_actions.action_type is a Postgres enum (public.one_tap_action_type,
 # migration 20260805000000_baseline_from_production.sql:173). 'custom' is the
 # interim carrier ACTION-SCHEMA-SPEC §4.1 prescribes until step 6 of its
@@ -394,13 +412,28 @@ class RFQAgent(BaseAgent):
         if urgency == "urgent":
             delivery_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
 
-        vendors = await self._select_competitor_vendors(
-            wine_name=wine_name,
-            count=self.default_vendor_count,
-        )
+        try:
+            vendors = await self._select_competitor_vendors(
+                wine_name=wine_name,
+                count=self.default_vendor_count,
+            )
+        except VendorSelectionUnavailable as exc:
+            # Fail closed, exactly as before — but say which failure it was. The
+            # old code logged "No vendors found" here for a failed read, which is
+            # a claim about the house rather than about the request.
+            self.logger.error(
+                f"RFQ plan NOT built for {wine_name}: {exc} Nothing was proposed. "
+                "Retrying this message once the register is reachable will "
+                "produce a plan; no vendor was contacted and no state changed.",
+                exc_info=True,
+            )
+            return None
 
         if not vendors:
-            self.logger.warning(f"No vendors found for {wine_name}")
+            self.logger.warning(
+                f"No vendors found for {wine_name} — the provider register was read "
+                "and this house has no active vendors."
+            )
             return None
 
         solicitations: List[Dict[str, Any]] = []
@@ -700,30 +733,49 @@ class RFQAgent(BaseAgent):
         1. Match competitor_group if available
         2. Active vendors only
         3. Prefer vendors with good ratings
+
+        Raises:
+            VendorSelectionUnavailable: the register could not be read. An empty
+                LIST means the register was read and this house has no active
+                vendors; the two are different answers and this method no longer
+                gives them the same one.
         """
         try:
             # Get all active providers
             providers = await self.database.providers.get_active_providers()
-
-            if not providers:
-                return []
-
-            # Filter by competitor group if possible
-            # (In real implementation, would match wine category to competitor_group)
-
-            # Sort by rating (if available)
-            sorted_providers = sorted(
-                providers,
-                key=lambda p: p.rating or 0,
-                reverse=True,
-            )
-
-            # Return top N vendors
-            return sorted_providers[:count]
-
         except Exception as e:
-            self.logger.error(f"Error selecting vendors: {e}")
+            # WAS: `except Exception: return []`, which turned every read failure
+            # into "no vendors". The immediate cause of the ADR 0116 blocker — a
+            # `ValidationError` escaping the repository — can no longer reach
+            # here, but a network failure, an expired service key or a PostgREST
+            # 500 still can, and each one would have been reported to the caller
+            # as a house with no vendors and logged as `No vendors found`.
+            #
+            # The cause is logged WITH ITS TYPE, because "Error selecting
+            # vendors: " followed by an empty-ish repr was most of what the old
+            # line said.
+            raise VendorSelectionUnavailable(
+                f"the provider register could not be read "
+                f"({type(e).__name__}: {e}). No vendor list was produced, and "
+                f"this is NOT a house with no vendors."
+            ) from e
+
+        if not providers:
+            # Read fine. There genuinely are none.
             return []
+
+        # Filter by competitor group if possible
+        # (In real implementation, would match wine category to competitor_group)
+
+        # Sort by rating (if available)
+        sorted_providers = sorted(
+            providers,
+            key=lambda p: p.rating or 0,
+            reverse=True,
+        )
+
+        # Return top N vendors
+        return sorted_providers[:count]
 
     # =========================================================================
     # INBOUND HALF — bookkeeping on an RFQ a human already approved

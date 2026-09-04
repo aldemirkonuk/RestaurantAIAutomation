@@ -210,7 +210,7 @@ rather than from the geography column.
   `payment_terms` two lines below — so after this migration a NULL lead time
   raises `ValidationError` in `model_validate`;
   `BaseRepository.find_many`/`get_by_id` catch **only `APIError`**, so it escaped
-  the repository; and `RFQAgent._select_vendors` swallowed it in a bare
+  the repository; and `RFQAgent._select_competitor_vendors` swallowed it in a bare
   `except Exception` and returned `[]`. Symptom: **every restaurant reports no
   active vendors, permanently**, behind one ERROR line. Proven against a HEAD
   copy of the model (`Input should be a valid integer … input_value=None`).
@@ -218,6 +218,32 @@ rather than from the geography column.
   per row and names the row it drops, so the next model/schema disagreement
   costs one row rather than the whole query. 17 tests in
   `services/agent-orchestrator/tests/test_dropped_column_defaults.py`.
+- **The same funnel had a second mouth, and it is closed too** (re-audit,
+  2026-09-04). `RFQAgent._select_competitor_vendors` still caught bare
+  `Exception` and returned `[]`. The `ValidationError` could no longer reach it,
+  but a dropped connection, an expired service key or a PostgREST 500 still
+  could — and each was reported to the caller as an empty vendor list and logged
+  as *"No vendors found for X"*, which is a claim about the HOUSE rather than
+  about the request. It now raises `VendorSelectionUnavailable` (a type, so a
+  caller cannot forget to check it) carrying the cause and its class;
+  `_build_rfq_plan` catches it, fails closed exactly as before — this agent is
+  propose-only and contacts nobody either way — and logs which of the two
+  happened. 6 tests in `tests/test_rfq_vendor_selection_failure.py`, one of
+  which executes the pre-fix shape to show it still swallows the failure, so
+  the fix cannot quietly stop being a fix.
+  **The lesson is the one above, restated:** fixing the loudest way into a
+  funnel is not fixing the funnel.
+
+### The test figures, corrected
+
+The commit message for the blocker fix quoted **1,336** orchestrator tests. That
+was the marker-filtered run (`-m "not e2e and not prod_e2e and not slow"`:
+1,336 passed, 4 skipped, 53 deselected) reported as though it were the whole
+suite. The re-audit's full run was **1,339 passed, 54 skipped**, and it was
+right. With this pass's six additions the full run is **1,345 passed, 54
+skipped** (`python3 -m pytest tests/ -q`, no deselection). Recorded here rather
+than left in a commit message because a number quoted outside its own scope is
+how a true figure becomes a false claim.
   **The durable lesson:** a reader sweep that greps for column names is blind to
   a runtime that reads columns through a schema.
 - **Real answers equal to a default were erased.** Stated in the migration, in
@@ -299,6 +325,7 @@ rather than from the geography column.
 |---|---|---|
 | 2026-09-03 | Aldemir (founder) | Decided all three in session; "do option 1" on enforcement, "only certain high tier like manager or owner can adjust it" on the write gate |
 | 2026-09-04 | — | Written up; migration proven on local Postgres in a rolled-back transaction; production row counts NOT measured |
+| 2026-09-04 | Sonnet re-audit | Two nits: the bare `except Exception -> []` in `_select_competitor_vendors` still turned a network or auth failure into "no vendors"; and the commit message's 1,336 was the marker-filtered run, not the suite. Both taken |
 | 2026-09-04 | Sonnet audit | BLOCKER: the reader sweep missed `services/agent-orchestrator` — `Provider.lead_time_days: int = 7` would have made every restaurant report zero vendors. Fixed at the model AND the repository; proven against a HEAD copy |
 | 2026-09-04 | Aldemir (founder) | Drop both report-timezone defaults and their two Python defaults; make the weekday cleanup a MOVE with provenance |
 | 2026-09-04 | Aldemir (founder) | Asked for a pre-change snapshot before the UPDATE. Added with a per-column assertion; re-proven on local Postgres (3/3/2 cleared, snapshot matched exactly) and the assertion proven to FIRE against a deliberately broken snapshot. Expiry filed as settings.md §13.32 |
