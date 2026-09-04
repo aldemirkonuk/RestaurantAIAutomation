@@ -203,6 +203,11 @@ SCAN_ROOTS = [
     Path("apps/web/src/pages/settings/next"),
     Path("apps/web/src/pages/profile/next"),
     Path("apps/web/src/pages/cellar/next"),
+    # p4g (2026-09-03): `/connections`, a NEW surface rather than a rebuild
+    # (ADR 0114). Added here for the same reason as the seven above — every
+    # figure on it is a count of something the gateway measured, and a seeded
+    # one would be a claim about what can act for the house.
+    Path("apps/web/src/pages/connections/next"),
 ]
 
 # Hooks that back those surfaces. These are data hooks, so a fabricated row set

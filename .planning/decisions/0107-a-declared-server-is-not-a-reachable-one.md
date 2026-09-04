@@ -309,3 +309,47 @@ about a THIRD-PARTY server and still no evidence that the Mudavym server exists.
   each holds a distinct number, and the 0102 double-claim is gone — the payment
   build took 0110.
 - Not yet reviewed by the founder. `OPEN-DECISIONS.md` deliberately untouched.
+
+---
+
+## Addendum — 2026-09-03: the fork this ADR left open is closed (ADR 0114)
+
+This ADR shipped `tools/list` and stopped, with the reason on the wire:
+`invocation.enabled: false`, because *"calling a tool can bind the house, which
+is ADR 0013's subject, and that decision comes before the code"*. The founder
+made the decision the same day, and it is recorded in full in
+[[0114-connections-are-the-houses-profile-is-the-persons]]. Two things change
+here.
+
+**1. Invocation is on, and the flag now states its terms.** The founder's words:
+*"Per-tool grant plus the seal on every write. A manager grants each tool once,
+by name; a tool that changes the world outside the app runs only behind
+HoldToApprove, reads run freely."* `McpConnectionsService.runtimeState()` returns
+`invocation.enabled: true` with that sentence, and
+`McpRuntimeService.callTool` performs the call. The gate is one method,
+`assertCallable`, with a spec per refusal path
+(`mcp-connections.tool-gate.spec.ts`): no consent · a consent the house has
+withdrawn · no grant for that tool · a write to a non-manager · a write with no
+seal. Every call is recorded in `mcp_tool_calls`, failures included.
+
+The runtime deliberately holds **no** policy — a transport that decided whether a
+call was allowed would be a second opinion on a question the grant table
+answers, and two opinions is how one of them drifts. The spec that used to
+assert `callTool` did not exist now asserts that the runtime source contains no
+grant, consent or role vocabulary.
+
+**2. Whose a server is: the house's.** This ADR's table said, in its own column
+comment, *"acts with the user's authority, so it hangs off the user"* while the
+register that renders those rows said *"Servers the house agents may call"*.
+Both were in the tree and both could not be true. The founder settled it —
+*"House declares, each person consents"* — so `user_mcp_connections` is renamed
+`restaurant_mcp_connections`, `user_id` is replaced by `declared_by … ON DELETE
+SET NULL`, and a person's agreement is a row in `mcp_connection_consents`
+(`supabase/migrations/20260903151000_the_house_declares_a_person_consents.sql`).
+Deleting the manager who declared the Toast bridge no longer deletes it.
+
+**What this addendum does not claim.** `sealed: true` is an assertion by an
+authenticated manager, recorded with their id — not cryptographic proof that the
+hold-to-approve gesture happened. What holds is the grant plus the role; the
+seal is the third lock. ADR 0114 states the limitation and what closing it would
+cost.

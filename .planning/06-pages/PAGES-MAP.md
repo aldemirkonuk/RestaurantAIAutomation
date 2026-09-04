@@ -60,6 +60,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/authorize/:integrationId` | [[authorize-integration]] | owner | core | focused | none | 3 |
 | `/calendar` | [[calendar]] | owner | core | calendar | none | 0 |
 | `/communications` | [[communications]] | owner | core | list+detail | none | 3 |
+| `/connections` | [[connections]] | owner | core | list+detail | none | 1 |
 | `/credits` | [[credits]] | owner | core | redirect | none | 0 |
 | `/dev-sandbox` | [[dev-sandbox]] | dev | core | dev | none | 5 |
 | `/distributors` | [[distributors]] | owner | core | redirect | none | 0 |

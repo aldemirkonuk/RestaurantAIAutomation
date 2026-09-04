@@ -12,7 +12,7 @@ rebrand_strings: 2
 maturity: partial
 status: documented
 updated: 2026-09-03
-links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]"]
+links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]", "[[connections]]"]
 ---
 
 # /profile
@@ -1243,10 +1243,36 @@ credentials, which restaurants you belong to, and the exit.
 
 ## 13a. The Connections surface — where the outward connections belong (2026-09-03, fourth pass)
 
-> **Status: a recommendation with sketches, not a build.** No code changed on any page
-> this pass. Per retire-to-write, **no page note was created** for this surface — it is
-> described here, and **the route is the parent's call, not this note's**. `settings.md`
-> is another builder's file and was not touched.
+> **Status: DECIDED and BUILT, 2026-09-03.** The founder chose **"Own route,
+> role-gated"**. `/connections` exists behind `mudavym_design_connections`, its
+> page note is **[[connections]]**, and the decision is
+> [ADR 0114](../decisions/0114-connections-are-the-houses-profile-is-the-persons.md).
+> Retire-to-write is satisfied by that note **superseding the house half of this
+> one**: Registers IV, V and VI are described there from now on, and this section
+> is reduced to what `/profile` itself must do.
+>
+> **What changed on THIS page:** one pointer line above the three house registers,
+> rendered only when the flag is on (`ProfileNext.tsx`, `ConnectionsPointer`).
+> Nothing was moved out. Moving a register before the founder has seen the
+> surface it moves to would build it twice, and with the flag off `/connections`
+> redirects here — so this page remains the only true description of those three
+> registers until the founder says otherwise. `settings.md` is another builder's
+> file and was not touched.
+>
+> **The three defects this section filed are closed.** **G19** — `GET
+> /payment-methods` and `GET /billing/provider` now run
+> `assertCanManageRestaurant`, with a spec each; the existing test asserting the
+> opposite was green and pinned the defect, and its replacement says so. **G21** —
+> `listConnections` takes the restaurant from the token and filters on it, with a
+> two-tenant spec; a grant whose `restaurant_id` is null is listed everywhere
+> carrying `restaurantId: null` rather than dropped. **G20** — `/connections`
+> reads the same catalogue route the other three surfaces read; there is no
+> fourth copy.
+>
+> **One thing this section got wrong.** It described the vendor-facing public
+> page as the house's. `vendor_portal_pages` is keyed by `vendor_catalogue_id` /
+> `provider_id` (`20260805155901_vendor_portal.sql:27-33`) — it is a **vendor's**
+> page, and a house has none. `/connections` states that on the row.
 
 ### The founder's note, and the answer
 
@@ -1335,7 +1361,26 @@ it — but that file belongs to the settings builder, so it is named here and no
 
 ### What was deliberately not done this pass
 
-No page code changed; the founder asked for research and a recommendation, and a page
-built before the route is decided is a page built twice. The sketches carry full example
-data at 1440 (`shots-097/`), no emoji, and every claim about the repo carries its
-`file:line`.
+*(Written when this section was a recommendation. Kept, because it records why the
+build waited.)* No page code changed; the founder asked for research and a
+recommendation, and a page built before the route is decided is a page built
+twice. The sketches carry full example data at 1440 (`shots-097/`), no emoji, and
+every claim about the repo carries its `file:line`.
+
+### What is still not done, now that it is built (2026-09-03)
+
+- **Registers IV, V and VI stay on this page.** They gain a pointer, not a
+  removal — see the status block above.
+- **Declaring a model-context server stays here too.** The form and its secret
+  field are built on this page; `/connections` disables its own "Declare a
+  server" control saying exactly that (`connections.md` §9 G-C8).
+- **The model-context register on this page is now house-scoped.** `GET
+  /mcp-connections` returns the restaurant's servers rather than the reader's
+  (ADR 0114), so this page shows what the house declared and offers the reader's
+  own consent. That is the correct shape for both pages and it means this page's
+  register is no longer strictly personal — the reason it should move once the
+  founder has reviewed `/connections`.
+- **G3 stands.** `listConnections` still returns `[]` on a query error, so this
+  page's workspace rail still infers a failed read from an empty array against a
+  non-empty catalogue. `/connections` does not depend on that inference — its
+  house-grants route throws — but the personal list here still does.

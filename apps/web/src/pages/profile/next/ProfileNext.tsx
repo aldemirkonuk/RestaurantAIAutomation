@@ -81,6 +81,7 @@ import { Btn, Card, Note, PF_CSS, Register, StatusLine } from './pf-ui';
 import { IdentityRegister } from './IdentityRegister';
 import { SecurityRegister } from './SecurityRegister';
 import { ConnectionsRegister } from './ConnectionsRegister';
+import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { McpRegister } from './McpRegister';
 import { PaymentRegister } from './PaymentRegister';
 import { HouseRegister } from './HouseRegister';
@@ -147,6 +148,7 @@ function standingLine(data: ProfileNextData): string {
 
 export default function ProfileNext({ ground }: ProfileNextProps) {
   const data = useProfileNextData();
+  const connectionsOn = useMudavymDesign('connections');
   const headRef = useRef<HTMLElement | null>(null);
 
   const [leaveArmed, setLeaveArmed] = useState(false);
@@ -267,6 +269,18 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
         <IdentityRegister data={data} />
         <SecurityRegister data={data} />
         <ConnectionsRegister data={data} onGoToSecurity={goToSecurity} />
+        {/* Registers IV, V and VI are about the HOUSE, not this person, and
+            that is the whole finding of DESIGN-FOUNDATION §6b. With
+            `mudavym_design_connections` on they gain a one-line pointer to
+            where they now belong; with it off they stay exactly as they were,
+            because the route redirects here and a pointer to a redirect is a
+            loop (ADR 0114). Nothing is moved out of this page in this pass:
+            moving a register before the founder has seen the surface it moves
+            to would be building it twice. */}
+        <ConnectionsPointer
+            on={connectionsOn}
+            what="What the house pays with, and the servers it has declared,"
+        />
         <McpRegister data={data} />
         <PaymentRegister data={data} />
         <HouseRegister data={data} />
@@ -364,5 +378,35 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
         </footer>
       </div>
     </div>
+  );
+}
+
+/**
+ * Where the house's registers now live.
+ *
+ * One line, and only when `/connections` is actually routed. A pointer that
+ * rendered while the flag was off would send the reader to a URL that
+ * redirects straight back here.
+ */
+function ConnectionsPointer({ on, what }: { on: boolean; what: string }) {
+  if (!on) return null;
+  return (
+    <p
+      style={{
+        margin: '26px 0 0',
+        paddingLeft: 13,
+        borderLeft: '2px solid var(--seal)',
+        fontSize: 12.5,
+        lineHeight: 1.65,
+        color: 'var(--ink-2)',
+        maxWidth: 760,
+      }}
+    >
+      {what} are the <strong>house's</strong>, not yours — they are kept for
+      this restaurant and outlive whoever attached them. They are listed, in
+      full, on <a href="/connections">Connections</a>, alongside the till, the
+      address this house's letters leave from, and every personal grant that
+      acts here. They remain below until that surface has been reviewed.
+    </p>
   );
 }

@@ -1,0 +1,390 @@
+/* ============================================================
+   /connections — what acts for this house
+   ============================================================
+
+   Every rule is scoped under `.cx` inside `.mudavym`, and every colour is a
+   token from styles/mudavym.css. No raw hex for a ground, an ink or the seal
+   (ADR 0042). Both grounds must read: the charcoal column comes from the
+   tokens themselves, so there is no second palette in this file and nothing
+   here to keep in sync.
+
+   The whole page is drawn by ONE row (`.cx-row`) with four columns and no
+   fifth. A live POS feed and an unconnected Excel grant get the same amount of
+   design; what separates them is the chip, whether the control is live, and
+   the sentence under it. That is deliberate — a page that draws a rich
+   attachment richer than a poor one flatters itself.
+   ============================================================ */
+
+.mudavym .cx {
+  background: var(--paper-0);
+  color: var(--ink-1);
+  min-height: 100%;
+  padding: 26px 24px 96px;
+  font-size: 13px;
+}
+
+.mudavym .cx-wrap { max-width: 1180px; margin: 0 auto; }
+
+.mudavym .cx-eyebrow {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-title {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.06;
+  margin: 4px 0 0;
+}
+.mudavym .cx-title .cx-dot { color: var(--seal); }
+
+.mudavym .cx-lede {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-2);
+  margin: 7px 0 0;
+}
+
+/* The double rule — the account is ruled off (DESIGN-FOUNDATION §0). */
+.mudavym .cx-rule {
+  border-top: 1px solid var(--ink-1);
+  border-bottom: 1px solid var(--ink-1);
+  height: 3px;
+  opacity: 0.5;
+  margin: 18px 0 0;
+}
+
+/* ── the ledger sentence ─────────────────────────────────────────────── */
+
+.mudavym .cx-ledger {
+  margin: 22px 0 0;
+  padding: 16px 20px 17px;
+  background: var(--paper-1);
+  border-left: 2px solid var(--seal);
+}
+.mudavym .cx-ledger-line {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--ink-1);
+  margin: 0;
+  max-width: 940px;
+}
+.mudavym .cx-ledger-line b { font-weight: 600; color: var(--seal-deep); }
+.mudavym .cx-ledger-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 9px 0 0;
+  max-width: 900px;
+}
+
+.mudavym .cx-tally {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 14px 0 0;
+  border-top: 1px solid var(--paper-2);
+}
+.mudavym .cx-tally > div {
+  padding: 9px 15px 0 0;
+  margin-right: 15px;
+  border-right: 1px solid var(--paper-2);
+}
+.mudavym .cx-tally > div:last-child { border-right: 0; }
+.mudavym .cx-tally-n {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  line-height: 1.1;
+}
+.mudavym .cx-tally-n.is-seal { color: var(--seal-deep); }
+.mudavym .cx-tally-k {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-top: 3px;
+}
+
+/* ── register headings ───────────────────────────────────────────────── */
+
+.mudavym .cx-sec { margin: 36px 0 0; }
+.mudavym .cx-sec-h { display: flex; align-items: baseline; gap: 12px; }
+.mudavym .cx-sec-n {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+  white-space: nowrap;
+}
+.mudavym .cx-sec-h h2 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin: 0;
+}
+.mudavym .cx-sec-d {
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  margin: 6px 0 0;
+  max-width: 840px;
+}
+.mudavym .cx-sec-k {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 5px 0 12px;
+}
+
+/* ── the one row ─────────────────────────────────────────────────────── */
+
+.mudavym .cx-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 200px 156px 180px;
+  gap: 0 16px;
+  padding: 14px 0 15px;
+  border-top: 1px solid var(--paper-2);
+  align-items: start;
+}
+.mudavym .cx-row:hover { background: var(--paper-1); }
+.mudavym .cx-row.is-nested { padding-left: 34px; }
+.mudavym .cx-row-ic { color: var(--ink-3); padding-top: 2px; }
+
+.mudavym .cx-row-ttl {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--ink-1);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.mudavym .cx-row-sub {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 3px;
+  word-break: break-all;
+}
+.mudavym .cx-row-why {
+  font-size: 11.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  margin-top: 7px;
+  max-width: 520px;
+}
+.mudavym .cx-row-why em { font-style: normal; color: var(--ink-1); font-weight: 500; }
+
+.mudavym .cx-col-h {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-bottom: 4px;
+}
+.mudavym .cx-scope, .mudavym .cx-last {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.mudavym .cx-scope ul { margin: 0; padding-left: 13px; }
+.mudavym .cx-scope li { margin: 0 0 2px; }
+.mudavym .cx-scope li.is-not { color: var(--ink-3); }
+.mudavym .cx-last-w {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.mudavym .cx-last-d {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.mudavym .cx-last-em { font-family: inherit; color: var(--ink-3); }
+
+/* Chips carry INK, never the semantic colour — measured for contrast. */
+.mudavym .cx-chip {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: var(--paper-2);
+}
+.mudavym .cx-chip.is-on {
+  color: var(--seal-deep);
+  background: var(--seal-tint);
+  box-shadow: inset 0 0 0 1px var(--seal-ring);
+}
+.mudavym .cx-chip.is-off {
+  color: var(--ink-3);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--paper-2);
+}
+.mudavym .cx-chip.is-warn {
+  color: var(--ink-1);
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1px var(--ink-4);
+}
+.mudavym .cx-owner {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-ctl { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.mudavym .cx-btn {
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 4px;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  color: var(--ink-1);
+  cursor: pointer;
+  white-space: nowrap;
+  /* `ink` — 160ms on the house curve (lib/mudavym/motion.ts:96,106). The only
+     motion on this page: a register of what can act for a house should not
+     move while it is being read. */
+  transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mudavym .cx-btn:hover:not(:disabled) { background: var(--paper-2); }
+.mudavym .cx-btn:disabled {
+  border-color: var(--paper-2);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.mudavym .cx-btn.is-seal { border-color: var(--seal); color: var(--seal-deep); }
+/* The focus ring sits on a PAPER gap: a ring on the seal fill measured 1.00:1. */
+.mudavym .cx-btn:focus-visible,
+.mudavym .cx-linkbtn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.mudavym .cx-ctl-note {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  max-width: 180px;
+}
+
+.mudavym .cx-linkbtn {
+  font-family: inherit;
+  font-size: 11.5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--seal-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ── callouts, states, footer ────────────────────────────────────────── */
+
+.mudavym .cx-callout {
+  border-left: 2px solid var(--seal);
+  padding: 11px 0 11px 15px;
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  background: linear-gradient(90deg, var(--seal-tint), transparent 60%);
+  max-width: 900px;
+}
+.mudavym .cx-callout b { color: var(--ink-1); font-weight: 600; }
+
+/* A register that could not be read says WHICH register, in words. */
+.mudavym .cx-unread {
+  border-top: 1px solid var(--paper-2);
+  padding: 14px 0 15px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  max-width: 760px;
+}
+.mudavym .cx-unread b { color: var(--ink-1); font-weight: 600; }
+.mudavym .cx-unread .cx-gateway-words {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-loading {
+  border-top: 1px solid var(--paper-2);
+  padding: 14px 0 15px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-foot {
+  margin: 44px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--ink-1);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-3);
+  max-width: 900px;
+}
+.mudavym .cx-foot b { color: var(--ink-2); }
+.mudavym .cx-foot p { margin: 0 0 12px; }
+.mudavym .cx-foot p:last-child { margin-bottom: 0; }
+
+/* The refusal a non-manager sees. Words, never an empty page. */
+.mudavym .cx-refused {
+  max-width: 640px;
+  margin: 40px auto;
+  padding: 24px 26px;
+  background: var(--paper-1);
+  border-left: 2px solid var(--seal);
+}
+.mudavym .cx-refused h1 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.mudavym .cx-refused p { font-size: 13px; line-height: 1.7; color: var(--ink-2); margin: 0 0 10px; }
+
+/* Narrow: the four columns stack, and the labels earn their keep. */
+@media (max-width: 900px) {
+  .mudavym .cx-row { grid-template-columns: 24px minmax(0, 1fr); gap: 10px 16px; }
+  .mudavym .cx-row > *:nth-child(n + 3) { grid-column: 2; }
+  .mudavym .cx-ctl-note { max-width: none; }
+}
+
+/* Reduced motion: the one transition is dropped outright. There is nothing to
+   degrade gracefully to, because there is nothing here whose meaning depends
+   on movement. */
+@media (prefers-reduced-motion: reduce) {
+  .mudavym .cx-btn { transition: none; }
+}

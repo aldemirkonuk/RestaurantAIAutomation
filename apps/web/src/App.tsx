@@ -90,6 +90,7 @@ const RecommendationsNext = lazyWithRefresh(() => import('./pages/recommendation
 const CalendarNext = lazyWithRefresh(() => import('./pages/calendar/next/CalendarNext'))
 const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/SettingsNext'))
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
+const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
@@ -363,6 +364,13 @@ function App() {
                   <Route path="/notifications" element={<PageGate page="notifications" legacy={<Notifications />} next={<NotificationsNext />} />} />
                   <Route path="/settings" element={<PageGate page="settings" legacy={<Settings />} next={<SettingsNext />} />} />
                   <Route path="/profile" element={<PageGate page="profile" legacy={<Profile />} next={<ProfileNext />} />} />
+                  {/* `/connections` — what acts for this house (ADR 0114). A NEW
+                      route, not a redesign, so its `legacy` is a redirect: with the
+                      flag off the URL is inert and lands on `/profile`, where the
+                      three house registers still live. The page refuses in words
+                      for a non-manager, and the two registers that would leak are
+                      role-gated at the gateway as well (G19). */}
+                  <Route path="/connections" element={<PageGate page="connections" legacy={<Navigate to="/profile" replace />} next={<ConnectionsNext />} />} />
                   <Route path="/help" element={<Help />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}

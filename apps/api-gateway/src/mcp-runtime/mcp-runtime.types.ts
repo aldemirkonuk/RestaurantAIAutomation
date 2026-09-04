@@ -62,3 +62,33 @@ export interface McpProbeLimits {
   maxTools: number;
   allowPrivateEndpoints: boolean;
 }
+
+/**
+ * What ONE tool call produced.
+ *
+ * The status vocabulary is `McpProbeStatus` and deliberately not a second one:
+ * a call fails in exactly the ways a probe fails, and a parallel enum would let
+ * a "failed" in one place mean something a reader has to look up. `ok` here
+ * means the transport and the protocol worked — it does NOT mean the tool
+ * succeeded, which is `isError`, the server's own verdict on its own work.
+ */
+export interface McpToolCallOutcome {
+  status: McpProbeStatus;
+  detail: string;
+  /** Always set — a call that failed still happened. */
+  calledAt: string;
+  /** Null unless the server answered the call itself. */
+  answeredAt: string | null;
+  /**
+   * The server's text content, flattened and capped. Null when nothing
+   * answered, `""` when the server answered with no content — two different
+   * facts that must not collapse into one.
+   */
+  content: string | null;
+  /**
+   * The server's `isError` flag: the call was delivered and the TOOL says it
+   * failed. Null when nothing answered, so "we never heard" is not recorded as
+   * "it worked".
+   */
+  isError: boolean | null;
+}

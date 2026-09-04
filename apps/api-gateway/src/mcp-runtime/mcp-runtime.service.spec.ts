@@ -24,6 +24,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "http";
 import type { AddressInfo } from "net";
 import { ConfigService } from "@nestjs/config";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { McpRuntimeService } from "./mcp-runtime.service";
 
 type Handler = (
@@ -478,14 +480,31 @@ describe("McpRuntimeService — where it will not go", () => {
     expect(outcome.detail).toMatch(/link-local/);
   });
 
-  it("has no way to call a tool — the guardrail decision comes first", () => {
-    // Structural, and deliberately so: the commitment guardrail (ADR 0013) is
-    // undecided for MCP dispatch, so the absence of an invocation path is a
-    // property of this module and not a habit of its callers.
+  /**
+   * This test used to assert `callTool` did NOT exist — "the guardrail decision
+   * comes first". The decision arrived on 2026-09-03 (ADR 0107 addendum,
+   * ADR 0114): a per-tool grant, and the seal on every write. So the method
+   * exists, and what is asserted instead is where the guardrail actually
+   * lives — one layer up, in `McpConnectionsService.assertCallable`, which is
+   * the only caller and refuses five ways before this runtime is reached.
+   *
+   * The runtime itself deliberately holds NO policy. A transport that decided
+   * whether a call was allowed would be a second opinion on a question the
+   * grant table answers, and two opinions is how one of them drifts.
+   */
+  it("can call a tool, and holds no opinion about whether it may", () => {
     const names = Object.getOwnPropertyNames(McpRuntimeService.prototype);
     expect(names).toContain("probe");
-    expect(names).not.toContain("call");
-    expect(names).not.toContain("callTool");
-    expect(names).not.toContain("invoke");
+    expect(names).toContain("callTool");
+
+    // No grant, consent, role or seal vocabulary in the transport.
+    const source = readFileSync(
+      resolve(__dirname, "mcp-runtime.service.ts"),
+      "utf8",
+    );
+    const policy = source.match(
+      /\b(mcp_tool_grants|mcp_connection_consents|assertCanManageRestaurant)\b/g,
+    );
+    expect(policy).toBeNull();
   });
 });

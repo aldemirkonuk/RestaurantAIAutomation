@@ -523,6 +523,22 @@ RENAME_COLUMN_RE = re.compile(
     r"\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?",
     re.I,
 )
+# `ALTER TABLE x RENAME TO y` -- the whole table, not a column. Added 2026-09-03
+# with 20260903151000, which renames `user_mcp_connections` to
+# `restaurant_mcp_connections`. Without this the replay kept the old name and
+# every read of the new one looked like a read of a table no migration declares,
+# so the guard reported eleven false findings on correct code. A guard that goes
+# blind on a rename is worse than one that fails: it accuses the right code and
+# would wave the wrong code through the moment someone renamed a table by
+# accident. `check_queried_tables_exist.py:652` already carried the same rule;
+# this puts it in the shared parse the three column guards use.
+#
+# Deliberately NOT matched with RENAME_COLUMN_RE: `RENAME COLUMN a TO b` also
+# contains "RENAME ... TO", so this pattern requires TO to follow RENAME
+# directly.
+RENAME_TABLE_RE = re.compile(
+    r"\bRENAME\s+TO\s+\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?", re.I
+)
 # Things inside a CREATE TABLE body that are constraints, not columns.
 NOT_A_COLUMN_RE = re.compile(
     r"^(?:constraint|primary\s+key|unique|check|foreign\s+key|exclude|like)\b", re.I
@@ -680,6 +696,14 @@ def declared_columns(root: Path) -> dict[str, set[str]]:
             for a in RENAME_COLUMN_RE.finditer(rest):
                 bucket.discard(a.group(1).lower())
                 bucket.add(a.group(2).lower())
+            # Replayed in order, so a later ALTER on the NEW name lands on the
+            # same bucket the CREATE filled under the old one.
+            if not RENAME_COLUMN_RE.search(rest):
+                rt = RENAME_TABLE_RE.search(rest)
+                if rt:
+                    new_name = rt.group(1).lower()
+                    moved = cols.pop(name, set())
+                    cols.setdefault(new_name, set()).update(moved)
 
     populated = {t: c for t, c in cols.items() if c}
     if len(populated) < MIN_TABLES_WITH_COLUMNS:

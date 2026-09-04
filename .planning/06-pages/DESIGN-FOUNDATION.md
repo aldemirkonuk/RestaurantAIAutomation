@@ -214,8 +214,17 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    This is the sentence "each page has the same design understanding" made
    mechanical.
 4. **Component vocabulary** — one tab bar, one table spec, one modal/drawer/sheet
-   policy (sketch 010 already picked centered-sheet for providers), filter bar,
-   export, status chips, empty/loading/error triplet.
+   policy, filter bar, export, status chips, empty/loading/error triplet.
+   The **modal/drawer/sheet half is ✅ decided and built** (2026-09-03):
+   [[0112-one-modal-policy-three-shapes-one-primitive]] — three named shapes
+   (`Sheet` a record · `Panel` a question · `Popover` a control's own menu) over
+   one primitive `apps/web/src/components/mudavym/Sheet.tsx`, gated by
+   `lib/mudavym/shellGround.ts` so the nine shell overlays wear the wave only
+   while a rebuilt page is mounted. Sketch 010's centered-sheet-for-providers is
+   **superseded**: providers shipped a right sheet, the calendar copied it, and
+   the ADR ratifies right-sheet-for-a-record on that measured evidence. Status
+   Proposed until the founder ratifies. The rest of item 4 (tab bar, table spec,
+   filter bar, export, status chips, the state triplet) is still open.
 5. **Interaction grammar** — `?tab=`/deep-links, command-palette verbs, one
    keyboard map, realtime-update and offline-outbox presentation, the honesty
    idioms (§2 last bullet).
@@ -650,6 +659,38 @@ And one thing in this comparison **no competitor ships**: applied to a connectio
 page, ADR 0020's rule that a failed read must name the register it could not read.
 Every product above shows an empty list whether nothing is connected or the read
 failed.
+
+#### Decided 2026-09-03 — an own route, and four calls with it
+
+The founder chose **"Own route, role-gated"** (question 1 above). `/connections`
+is built behind `mudavym_design_connections` and documented at
+[[connections]]; the decision, its rejected alternatives and its consequences are
+[ADR 0114](../decisions/0114-connections-are-the-houses-profile-is-the-persons.md).
+Four of the five questions below are answered by it:
+
+- **Q1 route or settings section** — a route. The counter-argument (four
+  `/settings` tabs must collapse into it or the surface count rises) is not
+  waived; it is roadmap item 8 on the page note.
+- **Q2 whose is a model-context server** — the **house's**. "House declares,
+  each person consents." `user_mcp_connections` is renamed
+  `restaurant_mcp_connections`, `user_id` becomes `declared_by … ON DELETE SET
+  NULL`, and consent is its own table.
+- **Q3 may a tool be called** — yes, on terms: a per-tool grant by name, and the
+  seal on anything that writes outside the app. ADR 0107 carries the addendum.
+- **Q4 the house's own sending address** — decided in direction (its own mailbox
+  or a Mudavym subdomain) and **not built**: no sender column, no domain, no DNS.
+  `GET /communications/sender-identity` exists so the page can state the shared
+  mailbox from the server rather than from prose.
+- **Q5 may a manager see or approve a member's connection** — **see, never
+  approve**, and may cut the house off from it while the person keeps their own
+  grant. There is no pending state, and the migration raises if one appears.
+
+**One claim in this section was wrong and is corrected here.** The applied
+inventory above lists the *"Vendor-facing public page"* as **the house's**.
+`vendor_portal_pages` is keyed by `vendor_catalogue_id` / `provider_id`
+(`supabase/migrations/20260805155901_vendor_portal.sql:27-33`) and has no
+restaurant column: it is a page a **vendor** publishes. A house has no public
+page at all, and `/connections` says so on the row rather than drawing one.
 
 #### What only the founder can decide
 

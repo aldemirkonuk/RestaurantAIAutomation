@@ -7,6 +7,7 @@ import { checkEndpoint, type EndpointCheck } from "./mcp-endpoint.guard";
 import type {
   McpProbeLimits,
   McpProbeOutcome,
+  McpToolCallOutcome,
   McpToolSummary,
 } from "./mcp-runtime.types";
 
@@ -269,6 +270,152 @@ export class McpRuntimeService {
         summaries.length === 0
           ? `Connected. ${answered.serverName ?? "The server"} answered the handshake and lists no tools.${more}`
           : `Connected. ${summaries.length} tool${summaries.length === 1 ? "" : "s"} listed${truncated ? `, ${kept.length} kept` : ""}.${more}`,
+    };
+  }
+
+  /* ── the call ───────────────────────────────────────────────────────── */
+
+  /**
+   * Call ONE tool on one server, once.
+   *
+   * ADR 0107 shipped `tools/list` and stopped there, saying invocation waited on
+   * a decision: "calling one could commit this restaurant to money, which is
+   * the subject of the commitment guardrail (ADR 0013)". The founder made that
+   * decision on 2026-09-03 — a per-tool grant, plus the seal on every write —
+   * so this method exists and the guardrail lives one layer up, in
+   * `McpConnectionsService.callTool`, which will not reach here for a tool that
+   * was not granted by name.
+   *
+   * The handshake is repeated per call and no session is kept. A pooled MCP
+   * session would be a credential-bearing socket living between two calls this
+   * gateway makes on different people's behalf; three round trips is the price
+   * of never having one.
+   *
+   * `status: "ok"` means the protocol worked. Whether the TOOL worked is
+   * `isError`, which is the server's own word — the two are separate fields
+   * because a tool that ran and failed is not a call that failed, and reporting
+   * one as the other in either direction is a lie about who is broken.
+   */
+  async callTool(
+    url: string,
+    secret: string | null,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<McpToolCallOutcome> {
+    const limits = this.limits;
+    const calledAt = new Date().toISOString();
+    const base = {
+      calledAt,
+      answeredAt: null,
+      content: null,
+      isError: null,
+    } as const;
+
+    const endpoint = await checkEndpoint(url, limits.allowPrivateEndpoints);
+    if (!endpoint.ok || !endpoint.pinned || !endpoint.url) {
+      return {
+        ...base,
+        status: "refused",
+        detail: `This gateway did not call the endpoint: ${endpoint.reason}`,
+      };
+    }
+
+    const deadline = Date.now() + limits.timeoutMs;
+
+    const init = await this.request(endpoint, deadline, limits, {
+      secret,
+      sessionId: null,
+      protocolVersion: null,
+      body: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: McpRuntimeService.PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: McpRuntimeService.CLIENT_INFO,
+        },
+      },
+      expectId: 1,
+    });
+
+    if (init.kind !== "result") {
+      return { ...base, status: init.status, detail: init.detail };
+    }
+
+    const initResult = asRecord(init.result);
+    const negotiated = asString(initResult?.protocolVersion);
+    const capabilities = asRecord(initResult?.capabilities);
+
+    if (!negotiated) {
+      return {
+        ...base,
+        status: "protocol_error",
+        detail:
+          "The endpoint answered, but its initialize result carried no protocolVersion, so it is not speaking this protocol.",
+      };
+    }
+
+    // Only a negotiated capability may be used — the same rule the probe keeps.
+    if (!capabilities || capabilities.tools === undefined) {
+      return {
+        ...base,
+        status: "protocol_error",
+        detail:
+          "The server declares no tools capability on this connection, so the tool was not called. Probe it again: what it offers has changed since the grant was made.",
+      };
+    }
+
+    const ack = await this.notify(endpoint, deadline, limits, {
+      secret,
+      sessionId: init.sessionId,
+      protocolVersion: negotiated,
+      body: { jsonrpc: "2.0", method: "notifications/initialized" },
+    });
+
+    if (ack.kind !== "accepted") {
+      return {
+        ...base,
+        status: ack.status,
+        detail: `The handshake began but the server would not take the initialized notification: ${ack.detail}`,
+      };
+    }
+
+    const called = await this.request(endpoint, deadline, limits, {
+      secret,
+      sessionId: init.sessionId,
+      protocolVersion: negotiated,
+      body: {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: toolName, arguments: args },
+      },
+      expectId: 2,
+    });
+
+    if (called.kind !== "result") {
+      return {
+        ...base,
+        status: called.status,
+        detail: `The handshake succeeded and the call did not: ${called.detail}`,
+      };
+    }
+
+    const answeredAt = new Date().toISOString();
+    const result = asRecord(called.result);
+    const isError = result?.isError === true;
+    const content = flattenToolContent(result?.content, limits.maxBytes);
+
+    return {
+      status: "ok",
+      calledAt,
+      answeredAt,
+      content,
+      isError,
+      detail: isError
+        ? `${toolName} ran and reported a failure.`
+        : `${toolName} ran and answered.`,
     };
   }
 
@@ -702,6 +849,32 @@ export function firstMessage(
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * The `content` array of a tools/call result, reduced to text.
+ *
+ * Only `text` parts are kept. An image or an embedded resource is named rather
+ * than decoded — a register row is not a file viewer, and base64 in a log line
+ * is the fastest way to make a log unreadable. Capped by the same byte budget
+ * the transport uses, and a cut is SAID rather than silently applied.
+ */
+function flattenToolContent(value: unknown, maxBytes: number): string {
+  if (!Array.isArray(value)) return "";
+  const parts: string[] = [];
+  for (const entry of value) {
+    const record = asRecord(entry);
+    if (!record) continue;
+    const type = asString(record.type);
+    const text = asString(record.text);
+    if (type === "text" && text) parts.push(text);
+    else if (type) parts.push(`[${type} part, not rendered here]`);
+  }
+  const joined = parts.join("\n");
+  const cap = Math.max(512, Math.floor(maxBytes / 8));
+  return joined.length > cap
+    ? `${joined.slice(0, cap)}\n[…truncated at ${cap} characters]`
+    : joined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -49,6 +49,11 @@ export const MUDAVYM_PAGES = [
   'settings',
   'profile',
   'cellar',
+  // Not a redesign of a shipping page: `/connections` is a NEW route (ADR
+  // 0114). With the flag off the route redirects to `/profile` and the nav
+  // entry is absent, so OFF means "this surface does not exist here" rather
+  // than "the old design".
+  'connections',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

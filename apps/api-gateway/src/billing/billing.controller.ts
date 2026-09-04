@@ -33,10 +33,18 @@ interface AuthenticatedUser {
  * `/billing` — the provider path behind `/profile` Register V.
  *
  * Three authenticated routes take their restaurant from the signed JWT and
- * never from a parameter, and the two that touch the provider additionally go
- * through the manager-or-owner rule the restaurant record uses
- * (`organizations.service.ts`, `assertCanManageRestaurant`), so the endpoint's
- * posture and the page's copy say the same thing.
+ * never from a parameter, and ALL THREE go through the manager-or-owner rule
+ * the restaurant record uses (`organizations.service.ts`,
+ * `assertCanManageRestaurant`), so the endpoint's posture and the page's copy
+ * say the same thing.
+ *
+ * `GET /billing/provider` joined them on 2026-09-03 (G19). It had been readable
+ * by any authenticated member, and what it returns is the house's commercial
+ * posture: which secrets this deployment holds, which mode the account is in,
+ * and whether a signed delivery has ever arrived. That is a manager's fact, and
+ * `/payment-methods` — whose rows it explains — is gated the same way in the
+ * same pass. Gating one and not the other would have left the explanation
+ * readable while the thing explained was not.
  *
  * The fourth is public and authenticated by an HMAC instead — see `webhook`.
  */
@@ -73,7 +81,20 @@ export class BillingController {
     description:
       "`webhookLastReceivedAt: null` means no signed delivery has EVER been authenticated here. That is not the same as healthy, and `webhookReason` says so in words.",
   })
-  provider(): Promise<BillingProviderResponse> {
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is a member of the house but not a manager or owner. How the house pays is not a staff read (G19).",
+  })
+  async provider(
+    @Req() req: Request & { user: AuthenticatedUser },
+  ): Promise<BillingProviderResponse> {
+    const { userId, restaurantId } = this.scope(req);
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "see how the house pays",
+    );
     return this.config.stateWithDelivery();
   }
 

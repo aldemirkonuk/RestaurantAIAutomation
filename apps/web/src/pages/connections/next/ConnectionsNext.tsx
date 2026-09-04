@@ -1,0 +1,1032 @@
+/**
+ * `/connections` — what acts for this house.
+ *
+ * THE FOUNDER'S DECISION, 2026-09-03, VERBATIM
+ * -------------------------------------------
+ * Asked where the house-scoped connections belong, the founder chose
+ * **"Own route, role-gated"**. Three of `/profile`'s seven registers were about
+ * the house and not the person, and one of them was the house's cards on file
+ * on a page every member reaches. Four further calls the same day shaped this
+ * page and are each visible on it:
+ *
+ *   1. "House declares, each person consents."  — Register I
+ *   2. "Per-tool grant plus the seal on every write."  — Register I, tool rows
+ *   3. The house gets its own mailbox, or a Mudavym subdomain.  — Register I
+ *   4. "A manager may SEE, not approve, what a member has personally
+ *      connected", and may cut the HOUSE off from it while the person keeps
+ *      their own grant.  — Register III
+ *
+ * The research is `.planning/06-pages/DESIGN-FOUNDATION.md` §6b (ten products,
+ * a placement rule, a 28-item checklist); the surface is sketch 097; the
+ * decision is ADR 0114.
+ *
+ * THE ONE STRUCTURAL IDEA
+ * -----------------------
+ * ONE row component draws every attachment, with four columns and no fifth:
+ * whose it is · what it may do · what it last did · how to stop it. A row that
+ * cannot be stopped here names who can (`stopNote` is a required prop). A live
+ * POS feed and an unconnected Excel grant get the same amount of design, so
+ * the page cannot flatter an empty attachment by drawing it richer than its
+ * evidence — and there is no control on it that can appear to succeed.
+ *
+ * HONESTY, WHERE IT BITES HARDEST
+ * -------------------------------
+ * The ledger sentence at the top is the most dangerous thing on this page:
+ * "Nothing here can spend money today" is enormously reassuring and would be a
+ * lie if any register behind it had failed to load. So every count is `null`
+ * when its register is unread, the sentence says so in words, and each register
+ * that could not be read is NAMED with the gateway's own sentence
+ * (ADR 0020 / ADR 0051).
+ *
+ * Two measured corrections to the sketch, both kept:
+ *   - There is no public page for a HOUSE. `vendor_portal_pages` is keyed by
+ *     `vendor_catalogue_id` / `provider_id` (20260805155901_vendor_portal.sql:
+ *     27-33) — it is a page a VENDOR publishes, not one this restaurant has.
+ *     The row says that rather than drawing a page that does not exist.
+ *   - The POS bridge has no disconnect endpoint of any kind
+ *     (`pos-hub.controller.ts:55-305` has no delete route), so its control is
+ *     disabled and names what actually stops the feed.
+ */
+
+import { useEffect, useMemo, useState } from 'react';
+import {
+  CalendarDays,
+  CreditCard,
+  Cpu,
+  Globe,
+  KeyRound,
+  Link2,
+  Mail,
+  Network,
+  ShieldCheck,
+  Smartphone,
+  Store,
+} from 'lucide-react';
+import { ensureFraunces } from './fonts';
+import {
+  useConnectionsNextData,
+  type ProviderStateVM,
+} from './useConnectionsNextData';
+import {
+  AttachmentRow,
+  LoadingRegister,
+  UnreadRegister,
+  type RowChip,
+} from './AttachmentRow';
+import {
+  DASH,
+  count,
+  expiry,
+  feedUrl,
+  onDate,
+  personName,
+  probeWord,
+  shortUrl,
+  spelled,
+  spelledLower,
+  when,
+} from './cx-format';
+import './connections-next.css';
+
+const ICON = { width: 15, height: 15, strokeWidth: 1.8 } as const;
+
+export interface ConnectionsNextProps {
+  /** Both grounds ship (ADR 0042); the page owns `data-ground`, not the gate. */
+  ground?: 'charcoal';
+}
+
+export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
+  const d = useConnectionsNextData();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    ensureFraunces();
+  }, []);
+
+  const feed = feedUrl(d.ical.data?.token);
+
+  /**
+   * The opening sentence, assembled from measurements rather than written.
+   *
+   * Every clause is dropped — not softened — when the register behind it could
+   * not be read. A sentence with a hole in it is honest; a sentence with a
+   * confident zero in it is not.
+   */
+  const ledger = useMemo(() => {
+    const t = d.tally;
+    const parts: string[] = [];
+    if (t.house !== null) {
+      parts.push(
+        `${spelled(t.house)} thing${t.house === 1 ? '' : 's'} the house has attached`,
+      );
+    }
+    if (t.persons !== null && t.persons > 0) {
+      parts.push(
+        `${spelledLower(t.persons)} belonging to people who work here`,
+      );
+    }
+    return parts;
+  }, [d.tally]);
+
+  if (!d.isManager) {
+    return (
+      <div className="mudavym cx" data-ground={ground}>
+        <div className="cx-refused" role="status">
+          <h1>This page is for managers and owners.</h1>
+          <p>
+            What acts for this house — the till, the payment provider, the
+            address its letters leave from, the model-context servers — is a
+            manager&rsquo;s register, and your account is recorded as{' '}
+            <strong>{d.role ?? 'a member'}</strong> here.
+          </p>
+          <p>
+            This is not only a hidden page: the two registers that would matter
+            most are refused at the server for your role as well, so nothing
+            about them reaches this browser.{' '}
+            <a href="/profile">Your own profile</a> holds what is attached to
+            you.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mudavym cx" data-ground={ground}>
+      <div className="cx-wrap">
+        <div className="cx-eyebrow">Mudavym</div>
+        <h1 className="cx-title">
+          Connections<span className="cx-dot">.</span>
+        </h1>
+        <p className="cx-lede">What acts for this house.</p>
+        <div className="cx-rule" />
+
+        {/* ══ THE LEDGER SENTENCE ═══════════════════════════════════════ */}
+        <div className="cx-ledger">
+          <p className="cx-ledger-line">
+            {ledger.length ? (
+              <>
+                {ledger.join(', ')}.{' '}
+                {d.tally.canSpend === null ? (
+                  <>
+                    <b>Whether anything here can spend is unknown</b> — the
+                    payment register did not answer.
+                  </>
+                ) : d.tally.canSpend === 0 ? (
+                  <>
+                    <b>Nothing here can spend money today.</b>
+                  </>
+                ) : (
+                  <>
+                    <b>
+                      {spelled(d.tally.canSpend)} can spend the house&rsquo;s
+                      money.
+                    </b>
+                  </>
+                )}{' '}
+                {d.tally.mayCallATool === null ? (
+                  <>The model-context register did not answer, so what may call a tool is unknown.</>
+                ) : d.tally.mayCallATool === 0 ? (
+                  <>
+                    <b>None may call a tool.</b>
+                  </>
+                ) : (
+                  <>
+                    <b>
+                      {spelled(d.tally.mayCallATool)} tool
+                      {d.tally.mayCallATool === 1 ? ' is' : 's are'} granted
+                    </b>
+                    , {spelledLower(d.tally.mayWrite)} of them able to change
+                    something outside this app.
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <b>This ledger could not be counted.</b> The registers below say
+                which of them answered and which did not — an unread register is
+                not an empty one.
+              </>
+            )}
+          </p>
+          <p className="cx-ledger-note">
+            Every row below says whose it is, what it may do, what it last did,
+            and how to stop it. A row you cannot stop from here says who can.
+            Nothing is listed twice, and nothing that acts is missing — a
+            connection with no row is a defect, not a feature.
+          </p>
+          <div className="cx-tally">
+            <Tally n={d.tally.house} k="the house's own" />
+            <Tally n={d.tally.persons} k="a person's" />
+            <Tally n={d.tally.publicToAnyone} k="public to anyone" />
+            <Tally n={d.tally.canSpend} k="can spend today" seal />
+            <Tally n={d.tally.mayCallATool} k="may call a tool" seal />
+            <Tally n={d.tally.mayWrite} k="may write outside" seal />
+            <Tally n={d.tally.houseHasLetGoOf} k="the house let go of" />
+          </div>
+        </div>
+
+        {/* ══ REGISTER I ════════════════════════════════════════════════ */}
+        <section className="cx-sec">
+          <div className="cx-sec-h">
+            <span className="cx-sec-n">Register I</span>
+            <h2>What the house has attached</h2>
+          </div>
+          <p className="cx-sec-d">
+            Attachments this restaurant is answerable for. They belong to the
+            house and survive the person who connected them — deleting an
+            account nulls the name on the row and leaves the attachment standing
+            (ADR 0114).
+          </p>
+          <p className="cx-sec-k">
+            kept for this restaurant · managers and owners may change · read by
+            everyone who works here
+          </p>
+
+          {/* — the till — */}
+          {d.pos.loading ? (
+            <LoadingRegister name="the till" />
+          ) : d.pos.error ? (
+            <UnreadRegister
+              name="The point-of-sale bridge"
+              detail={d.pos.error}
+              refused={d.pos.refused}
+            />
+          ) : (
+            <AttachmentRow
+              icon={<Store {...ICON} />}
+              title="Point of sale"
+              owner="the house's"
+              chips={posChips(d.pos.data)}
+              subtitle={`webhook → /api/v1/pos-hub/webhook/<provider>/${d.restaurantId ?? DASH}`}
+              why={
+                <>
+                  The till pushes closed checks here. It is the only attachment
+                  that <em>writes into the ledger without being asked</em>, and
+                  everything on /dashboard is downstream of it.
+                </>
+              }
+              permissions={[
+                { text: 'Send closed checks, voids and comps', can: true },
+                { text: 'Send the menu and its prices', can: true },
+                { text: 'May not read our inventory', can: false },
+                { text: 'May not place an order', can: false },
+              ]}
+              lastLabel="Last 30 days"
+              last={
+                d.pos.data?.unavailable
+                  ? null
+                  : `${count(d.pos.data?.totalChecks ?? null)} checks`
+              }
+              lastDetail={
+                d.pos.data?.unavailable ? (
+                  <>
+                    The check table could not be read, so this is silence rather
+                    than zero.
+                  </>
+                ) : (
+                  posSources(d.pos.data)
+                )
+              }
+              controls={[{ label: 'Disconnect', disabled: true }]}
+              stopNote="No disconnect endpoint exists. The feed stops when the provider's webhook secret is removed from this deployment."
+            />
+          )}
+
+          {/* — the payment provider — */}
+          {d.provider.loading ? (
+            <LoadingRegister name="the payment provider" />
+          ) : d.provider.error ? (
+            <UnreadRegister
+              name="The payment provider"
+              detail={d.provider.error}
+              refused={d.provider.refused}
+            />
+          ) : (
+            <AttachmentRow
+              icon={<CreditCard {...ICON} />}
+              title="Payment provider"
+              owner="the house's"
+              chips={[
+                d.provider.data?.connected
+                  ? { label: d.provider.data.mode ?? 'Connected', tone: 'on' as const }
+                  : { label: 'Key missing', tone: 'warn' as const },
+              ]}
+              subtitle={secretList(d.provider.data)}
+              why={
+                <>
+                  Everything except the credential exists: SetupIntent, Elements
+                  on Stripe&rsquo;s own origin, detach, reconcile and a signed
+                  webhook.{' '}
+                  {d.provider.data?.connected ? null : (
+                    <>
+                      Until the secrets are set, <em>no instrument can be
+                      recorded</em> — which is why the register below is empty
+                      for a stated reason rather than because nobody added a
+                      card.
+                    </>
+                  )}
+                </>
+              }
+              permissionsLabel={d.provider.data?.connected ? 'May do' : 'Will do, once keyed'}
+              permissions={[
+                { text: 'Hold a card for this restaurant', can: true },
+                { text: 'Detach one at the provider', can: true },
+                { text: 'May not charge — pricing is undecided', can: false },
+              ]}
+              lastLabel="Last signed delivery"
+              last={
+                d.provider.data?.webhookLastReceivedAt
+                  ? when(d.provider.data.webhookLastReceivedAt)
+                  : null
+              }
+              lastDetail={
+                d.provider.data?.webhookReason ??
+                'No signed delivery has ever been authenticated here. That is not the same as healthy.'
+              }
+              controls={[
+                { label: 'Connect', disabled: !d.provider.data?.connected },
+              ]}
+              stopNote={
+                d.provider.data?.reason ??
+                'The provider did not say which secrets it holds.'
+              }
+            />
+          )}
+
+          {/* — the sender identity — */}
+          {d.sender.loading ? (
+            <LoadingRegister name="the sender identity" />
+          ) : d.sender.error ? (
+            <UnreadRegister
+              name="The sender identity"
+              detail={d.sender.error}
+              refused={d.sender.refused}
+            />
+          ) : (
+            <AttachmentRow
+              icon={<Mail {...ICON} />}
+              title="Sender identity"
+              owner="the deployment's"
+              chips={[{ label: 'Shared, not yours', tone: 'warn' }]}
+              subtitle={`${d.sender.data?.address ?? DASH} · ${d.sender.data?.configuredBy ?? DASH}`}
+              why={
+                <>
+                  Every vendor letter this house sends leaves from{' '}
+                  <em>one mailbox the whole deployment shares</em>. The sign-off
+                  inside the letter carries this house&rsquo;s name; the
+                  envelope does not. A vendor who replies is replying to a
+                  mailbox other restaurants also send from.
+                </>
+              }
+              permissions={[
+                { text: "Send mail signed with this house's name", can: true },
+                { text: "Receive the vendor's reply", can: true },
+                { text: 'Cannot be changed by this house', can: false },
+              ]}
+              lastLabel="Resolved from"
+              last={
+                d.sender.data?.resolvedFromProfile
+                  ? "the mailbox's own profile"
+                  : 'the deployment variable'
+              }
+              lastDetail="No per-letter send record is kept against this address, so what it last sent is not on this row."
+              controls={[{ label: 'Use our own address', disabled: true }]}
+              stopNote={
+                d.sender.data?.perHouse.reason ??
+                'No per-restaurant sender exists yet.'
+              }
+            />
+          )}
+
+          {/* — the calendar feed — */}
+          {d.ical.loading ? (
+            <LoadingRegister name="the calendar feed" />
+          ) : d.ical.error ? (
+            <UnreadRegister
+              name="The calendar feed"
+              detail={d.ical.error}
+              refused={d.ical.refused}
+            />
+          ) : (
+            <AttachmentRow
+              icon={<CalendarDays {...ICON} />}
+              title="Calendar feed"
+              owner="public to anyone with the link"
+              chips={[{ label: feed ? 'Published' : 'Not published', tone: feed ? 'on' : 'off' }]}
+              subtitle={feed ?? DASH}
+              why={
+                <>
+                  A read-only iCal address. It is{' '}
+                  <em>unauthenticated by design</em> so Outlook and Apple
+                  Calendar can subscribe — which means anyone holding the URL
+                  reads this house&rsquo;s deliveries, deadlines and shifts.
+                </>
+              }
+              permissionsLabel="Grants"
+              permissions={[
+                { text: 'Read every calendar event', can: true },
+                { text: 'Cannot write, cannot see prices', can: false },
+              ]}
+              lastLabel="Last fetched"
+              last={null}
+              lastDetail="Feed fetches are not recorded, so who has subscribed and when they last read is unknown."
+              controls={[
+                {
+                  label: copied ? 'Copied' : 'Copy address',
+                  disabled: !feed,
+                  onClick: () => {
+                    if (!feed) return;
+                    void navigator.clipboard?.writeText(feed);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                  },
+                },
+                {
+                  label: 'Regenerate',
+                  seal: true,
+                  busy: d.regenerateFeed.isPending,
+                  onClick: () => d.regenerateFeed.mutate(),
+                },
+              ]}
+              stopNote="Regenerating revokes every subscription at once, and nothing here can tell you how many that is."
+            />
+          )}
+
+          {/* — the public page that does not exist — */}
+          <AttachmentRow
+            icon={<Globe {...ICON} />}
+            title="Public page for this house"
+            owner="nobody's"
+            chips={[{ label: 'None exists', tone: 'off' }]}
+            subtitle="vendor_portal_pages — keyed by vendor_catalogue_id / provider_id"
+            why={
+              <>
+                The public catalogue page in this product belongs to a{' '}
+                <em>vendor</em>, not to a restaurant: its table has no
+                restaurant column at all. This house therefore publishes
+                nothing, and the row is here so that fact is stated rather than
+                left to be assumed either way.
+              </>
+            }
+            permissionsLabel="Would show"
+            permissions={[{ text: 'Nothing — there is no such page', can: false }]}
+            lastLabel="Last published"
+            last={null}
+            lastDetail="No page has ever existed for a restaurant."
+            controls={[{ label: 'Publish a page', disabled: true }]}
+            stopNote="Nothing to stop. Building this would need a restaurant-scoped page table and a route; neither exists."
+          />
+
+          {/* — model-context servers — */}
+          {d.mcp.loading ? (
+            <LoadingRegister name="the model-context register" />
+          ) : d.mcp.error ? (
+            <UnreadRegister
+              name="The model-context register"
+              detail={d.mcp.error}
+              refused={d.mcp.refused}
+            />
+          ) : (
+            <>
+              <AttachmentRow
+                icon={<Network {...ICON} />}
+                title={`Model-context servers · ${count(d.mcp.data?.length ?? 0)} declared`}
+                owner="the house's"
+                chips={mcpChips(d.mcp.data)}
+                subtitle={
+                  d.mcpRuntime.data
+                    ? `invocation ${d.mcpRuntime.data.invocation.enabled ? 'on' : 'off'} · secrets ${d.mcpRuntime.data.secretStorage.configured ? 'stored' : 'unavailable'}`
+                    : 'the deployment did not report what it can do with one'
+                }
+                why={
+                  <>
+                    Servers this house has declared. The house declares them and{' '}
+                    <em>each person consents</em> to being acted for; a tool is
+                    granted one at a time, by name, and anything that changes
+                    the world outside this app runs only behind the seal.
+                  </>
+                }
+                permissionsLabel="Each row carries"
+                permissions={[
+                  { text: 'URL, scopes, encrypted secret', can: true },
+                  { text: 'The tools it advertises', can: true },
+                  { text: 'Which of them are granted', can: true },
+                ]}
+                lastLabel="Granted tools"
+                last={
+                  d.tally.mayCallATool === null
+                    ? null
+                    : `${count(d.tally.mayCallATool)} of ${count(
+                        (d.mcp.data ?? []).reduce(
+                          (n, s) => n + (s.probe?.toolCount ?? 0),
+                          0,
+                        ),
+                      )} listed`
+                }
+                lastDetail={
+                  d.mcpRuntime.data?.invocation.reason ??
+                  'The deployment did not say whether a tool may be called.'
+                }
+                controls={[{ label: 'Declare a server', disabled: true }]}
+                stopNote="Declaring a server is not built on this page yet; it is on /profile until this register moves fully."
+              />
+
+              {(d.mcp.data ?? []).map((s) => (
+                <AttachmentRow
+                  key={s.id}
+                  nested
+                  icon={<Cpu {...ICON} />}
+                  title={s.name}
+                  owner={
+                    s.declaredBy
+                      ? `declared by ${personName(s.declaredByName)}`
+                      : 'declared by an account since deleted'
+                  }
+                  chips={serverChips(s)}
+                  subtitle={shortUrl(s.url)}
+                  why={
+                    <>
+                      {s.probe?.detail ??
+                        'This server has never been called, so nothing is claimed about it either way.'}{' '}
+                      {s.consent.given ? (
+                        <>
+                          You have consented to it acting in your name;{' '}
+                          <em>{count(s.consent.liveCount)}</em>{' '}
+                          {s.consent.liveCount === 1 ? 'person has' : 'people have'}{' '}
+                          in total.
+                        </>
+                      ) : (
+                        <>
+                          <em>You have not consented</em> to it acting in your
+                          name, so it will not run a tool for you.
+                        </>
+                      )}
+                    </>
+                  }
+                  permissionsLabel="Granted tools"
+                  permissions={
+                    s.toolGrants.length
+                      ? s.toolGrants.map((g) => ({
+                          text: `${g.toolName}${g.writes ? ' — writes' : ''}`,
+                          can: true,
+                        }))
+                      : [{ text: 'None granted — it may list, not call', can: false }]
+                  }
+                  lastLabel="Last answered"
+                  last={s.lastUsedAt ? when(s.lastUsedAt) : null}
+                  lastDetail={
+                    <>
+                      {probeWord(s.probe?.status)}
+                      {s.lastProbeAt ? ` · called ${when(s.lastProbeAt)}` : null}
+                    </>
+                  }
+                  controls={[
+                    {
+                      label: s.consent.given ? 'Withdraw consent' : 'Consent',
+                      busy: d.setConsent.isPending,
+                      onClick: () =>
+                        d.setConsent.mutate({ id: s.id, given: !s.consent.given }),
+                    },
+                    {
+                      label: 'Check again',
+                      busy: d.probeServer.isPending,
+                      onClick: () => d.probeServer.mutate(s.id),
+                    },
+                  ]}
+                  stopNote={
+                    s.status === 'revoked'
+                      ? 'Revoked. It is kept so the register can show what was once trusted.'
+                      : 'Withdrawing your consent stops it acting as you and touches nobody else. Revoking the attachment itself is a manager action on /profile.'
+                  }
+                />
+              ))}
+            </>
+          )}
+        </section>
+
+        {/* ══ REGISTER II ═══════════════════════════════════════════════ */}
+        <section className="cx-sec">
+          <div className="cx-sec-h">
+            <span className="cx-sec-n">Register II</span>
+            <h2>What the house pays with</h2>
+          </div>
+          <p className="cx-sec-d">
+            Instruments on file for this restaurant. Every field is a copy of
+            the provider&rsquo;s answer — the provider stays the system of
+            record.
+          </p>
+          <p className="cx-sec-k">
+            kept for this restaurant · managers and owners may read and change ·
+            the read is role-gated at the server
+          </p>
+
+          {d.payments.loading ? (
+            <LoadingRegister name="the payment register" />
+          ) : d.payments.error ? (
+            <UnreadRegister
+              name="The payment register"
+              detail={d.payments.error}
+              refused={d.payments.refused}
+            />
+          ) : (d.payments.data?.methods.length ?? 0) === 0 ? (
+            <AttachmentRow
+              icon={<CreditCard {...ICON} />}
+              title="No payment method on file"
+              owner="the house's"
+              chips={[
+                d.payments.data?.provider.connected
+                  ? { label: 'None added', tone: 'off' }
+                  : { label: 'Provider not connected', tone: 'warn' },
+              ]}
+              subtitle="payment_methods — 0 rows"
+              why={
+                d.payments.data?.provider.connected ? (
+                  <>Nobody has added one. The provider is connected, so one could be.</>
+                ) : (
+                  <>
+                    Not &ldquo;you have no cards&rdquo;.{' '}
+                    <em>No card could exist</em> — the provider has never been
+                    keyed, so the create path refuses with the same sentence
+                    this row carries.
+                  </>
+                )
+              }
+              permissionsLabel="Will hold"
+              permissions={[
+                { text: 'Brand, last four, printable expiry', can: true },
+                { text: "The provider's own reference", can: true },
+                { text: 'Never a card number, CVC or address', can: false },
+              ]}
+              lastLabel="Last reconciled"
+              last={null}
+              lastDetail="Nothing has ever been synced."
+              controls={[
+                { label: 'Add a card', disabled: !d.payments.data?.provider.connected },
+              ]}
+              stopNote={
+                d.payments.data?.provider.connected
+                  ? 'Adding a card happens on /profile, where the provider element is mounted.'
+                  : 'Disabled because the provider is not connected, not because of your role.'
+              }
+            />
+          ) : (
+            (d.payments.data?.methods ?? []).map((m) => (
+              <AttachmentRow
+                key={m.id}
+                icon={<CreditCard {...ICON} />}
+                title={`${m.brand ?? DASH} ending ${m.last4 ?? DASH}`}
+                owner="the house's"
+                chips={m.isDefault ? [{ label: 'Charged first', tone: 'on' }] : []}
+                subtitle={`expires ${expiry(m.expMonth, m.expYear)}`}
+                why={
+                  <>
+                    An instrument on file for this restaurant. It is the
+                    provider&rsquo;s record; what is stored here is a reference
+                    and four digits, <em>never a card number</em>.
+                  </>
+                }
+                permissions={[
+                  { text: 'Be charged for this restaurant', can: true },
+                  { text: 'Cannot be charged today — pricing is undecided', can: false },
+                ]}
+                lastLabel="Last reconciled"
+                last={null}
+                lastDetail="The register records no reconcile timestamp per instrument."
+                controls={[{ label: 'Remove', disabled: true }]}
+                stopNote="Removal detaches at the provider first and lives on /profile, where the provider client is loaded."
+              />
+            ))
+          )}
+        </section>
+
+        {/* ══ REGISTER III ══════════════════════════════════════════════ */}
+        <section className="cx-sec">
+          <div className="cx-sec-h">
+            <span className="cx-sec-n">Register III</span>
+            <h2>Personal grants that act inside this house</h2>
+          </div>
+          <p className="cx-sec-d">
+            These belong to a person, not to this restaurant. They are listed
+            here because they act here. A manager may <em>see</em> them and may
+            stop the house using one — never approve one, and never take
+            somebody&rsquo;s own credential away.
+          </p>
+          <p className="cx-sec-k">
+            kept on a person&rsquo;s account · the house may let go of one ·
+            only its owner can revoke it
+          </p>
+
+          {d.houseGrants.loading ? (
+            <LoadingRegister name="the personal grants" />
+          ) : d.houseGrants.error ? (
+            <UnreadRegister
+              name="The personal grants recorded against this house"
+              detail={d.houseGrants.error}
+              refused={d.houseGrants.refused}
+            />
+          ) : (
+            <>
+              {(d.houseGrants.data?.grants ?? []).map((g) => (
+                <AttachmentRow
+                  key={g.connectionId}
+                  icon={<Link2 {...ICON} />}
+                  title={`${g.label} · ${g.account ?? DASH}`}
+                  owner={`${personName(g.ownerName)}'s`}
+                  chips={[
+                    g.houseAccess.revoked
+                      ? { label: 'House let go', tone: 'off' }
+                      : { label: 'Connected', tone: 'on' },
+                  ]}
+                  subtitle={`${g.scopes.join(' · ') || DASH} — connected ${onDate(g.connectedAt)}`}
+                  why={
+                    <>
+                      This house&rsquo;s work is written into{' '}
+                      <em>{personName(g.ownerName)}&rsquo;s own account</em>, not
+                      into a folder the restaurant owns. If they leave, the
+                      files leave with them.
+                      {g.houseAccess.revoked ? (
+                        <>
+                          {' '}
+                          The house stopped using it{' '}
+                          {when(g.houseAccess.at)}
+                          {g.houseAccess.byName
+                            ? `, ${g.houseAccess.byName}'s decision`
+                            : null}
+                          {g.houseAccess.reason ? `: ${g.houseAccess.reason}` : '.'}
+                        </>
+                      ) : null}
+                    </>
+                  }
+                  permissions={[
+                    { text: 'Create and edit files it made', can: true },
+                    { text: 'Cannot read their other documents', can: false },
+                    { text: 'Cannot touch their mail', can: false },
+                  ]}
+                  lastLabel="Token expires"
+                  last={g.tokenExpiresAt ? when(g.tokenExpiresAt) : null}
+                  lastDetail="No per-use record is kept, so what this grant last did is not knowable from here."
+                  controls={[
+                    {
+                      label: g.houseAccess.revoked
+                        ? 'Use it again'
+                        : 'Stop the house using it',
+                      busy: d.setHouseGrantAccess.isPending,
+                      onClick: () =>
+                        d.setHouseGrantAccess.mutate({
+                          connectionId: g.connectionId,
+                          houseUses: g.houseAccess.revoked,
+                        }),
+                    },
+                  ]}
+                  stopNote={`Only ${personName(g.ownerName)} can revoke the grant itself, from their own profile. This button stops the house asking for a token — the credential stays theirs.`}
+                />
+              ))}
+
+              {(d.houseGrants.data?.unattributed ?? 0) > 0 ? (
+                <div className="cx-callout">
+                  <b>
+                    {count(d.houseGrants.data?.unattributed ?? 0)} live grant
+                    {(d.houseGrants.data?.unattributed ?? 0) === 1 ? '' : 's'}{' '}
+                    belonging to people who work here carry no recorded
+                    restaurant.
+                  </b>{' '}
+                  They were made before a tenant reached the token, so they are
+                  on nobody&rsquo;s house page and they still work. Counted here
+                  rather than dropped, because a list that quietly omits them is
+                  incomplete in exactly the way this page exists to prevent.
+                </div>
+              ) : null}
+
+              {/* The catalogue — the SAME route the other three surfaces read. */}
+              {(d.catalog.data ?? [])
+                .filter(
+                  (c) =>
+                    !(d.houseGrants.data?.grants ?? []).some(
+                      (g) => g.integrationId === c.id,
+                    ),
+                )
+                .map((c) => (
+                  <AttachmentRow
+                    key={c.id}
+                    icon={<Smartphone {...ICON} />}
+                    title={c.label}
+                    owner="would be a person's"
+                    chips={[{ label: 'Not connected', tone: 'off' }]}
+                    subtitle={c.providerLabel}
+                    why={
+                      <>
+                        {c.description} Drawn at the same weight as the live rows
+                        above on purpose —{' '}
+                        <em>
+                          an attachment nobody has made must not look smaller
+                          than one they have
+                        </em>
+                        , or the page starts flattering itself.
+                      </>
+                    }
+                    permissionsLabel="Would ask for"
+                    permissions={[
+                      { text: 'Create and edit files it made', can: true },
+                      { text: 'Never mail, never other documents', can: false },
+                    ]}
+                    lastLabel="Last action"
+                    last={null}
+                    lastDetail="Never connected by anyone here."
+                    controls={[{ label: 'Connect yours', disabled: !c.available }]}
+                    stopNote={
+                      c.available
+                        ? 'Connecting happens on your own profile: the grant would be yours, not the house’s.'
+                        : (c.unavailableReason ??
+                          'This deployment cannot offer it, and did not say why.')
+                    }
+                  />
+                ))}
+            </>
+          )}
+        </section>
+
+        {/* ══ REGISTER IV ═══════════════════════════════════════════════ */}
+        <section className="cx-sec">
+          <div className="cx-sec-h">
+            <span className="cx-sec-n">Register IV</span>
+            <h2>Set once for every house on this deployment</h2>
+          </div>
+          <p className="cx-sec-d">
+            Keys nobody in this restaurant can change, listed because they act
+            here anyway. A page that shows only what a house controls is not a
+            list of what acts on its behalf.
+          </p>
+          <p className="cx-sec-k">
+            kept in the deployment&rsquo;s environment · read-only here · no
+            value is ever shown
+          </p>
+
+          <AttachmentRow
+            icon={<ShieldCheck {...ICON} />}
+            title="Token encryption"
+            owner="the deployment's"
+            chips={[
+              d.mcpRuntime.data
+                ? d.mcpRuntime.data.secretStorage.configured
+                  ? { label: 'Configured', tone: 'on' }
+                  : { label: 'Not configured', tone: 'warn' }
+                : { label: 'Did not report', tone: 'off' },
+            ]}
+            subtitle="INTEGRATION_TOKEN_ENCRYPTION_KEY · MCP_CONNECTION_SECRET_KEY"
+            why={
+              <>
+                Two keys, not one. The first encrypts Google and Microsoft
+                refresh tokens; the second encrypts model-context secrets.{' '}
+                <em>
+                  Without either, the connections it protects are disabled rather
+                  than stored in the clear
+                </em>{' '}
+                — the failure is a refusal, never a quiet downgrade.
+              </>
+            }
+            permissionsLabel="Protects"
+            permissions={[
+              { text: 'Refresh tokens at rest', can: true },
+              { text: 'Per-server model-context secrets', can: true },
+            ]}
+            lastLabel="Last rotated"
+            last={null}
+            lastDetail="No rotation has ever been recorded — there is no column for one."
+            controls={[{ label: 'Rotate', disabled: true }]}
+            stopNote={
+              d.mcpRuntime.data?.secretStorage.reason ??
+              'A deployment setting. Changing it is an operator action, not a page.'
+            }
+          />
+
+          <AttachmentRow
+            icon={<KeyRound {...ICON} />}
+            title="Model provider"
+            owner="the deployment's"
+            chips={[{ label: 'Not reported', tone: 'off' }]}
+            subtitle="ANTHROPIC_API_KEY"
+            why={
+              <>
+                The engine behind every drafted vendor letter, every extracted
+                invoice line and every insight sentence.{' '}
+                <em>It reads this house&rsquo;s data to write them.</em> No
+                endpoint reports its state, so this row names it and claims
+                nothing about it.
+              </>
+            }
+            permissionsLabel="Sees"
+            permissions={[
+              { text: 'Order and invoice text, catalogue rows', can: true },
+              { text: 'No card, no password, no token', can: false },
+            ]}
+            lastLabel="Last used"
+            last={null}
+            lastDetail="Nothing here reports model calls, so this is unknown rather than zero."
+            controls={[{ label: 'Change', disabled: true }]}
+            stopNote="A deployment setting, and one no route on this gateway exposes."
+          />
+        </section>
+
+        <div className="cx-foot">
+          <p>
+            <b>Everything on this page is drawn by one row component.</b> A live
+            POS feed and an unconnected grant get the same amount of design —
+            what separates them is the chip, whether the control is live, and the
+            sentence under it. The page therefore cannot flatter an empty
+            attachment by drawing it richer than its evidence, and there is no
+            control on it that can appear to succeed.
+          </p>
+          <p>
+            <b>Four things on every row, and no fifth.</b> Whose it is, what it
+            may do, what it last did, and how to stop it. A row that cannot be
+            stopped from here names who can. An unknown is an em dash — never a
+            zero, and never a blank a save could write back.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── small pieces ──────────────────────────────────────────────────────── */
+
+function Tally({ n, k, seal }: { n: number | null; k: string; seal?: boolean }) {
+  return (
+    <div>
+      <span className={seal ? 'cx-tally-n is-seal' : 'cx-tally-n'}>
+        {n === null ? DASH : count(n)}
+      </span>
+      <span className="cx-tally-k">{k}</span>
+    </div>
+  );
+}
+
+function posChips(
+  pos: { unavailable: boolean; totalChecks: number | null } | null,
+): RowChip[] {
+  if (!pos) return [{ label: 'Did not report', tone: 'off' }];
+  if (pos.unavailable) return [{ label: 'Could not be read', tone: 'warn' }];
+  return (pos.totalChecks ?? 0) > 0
+    ? [{ label: 'Sending', tone: 'on' }]
+    : [{ label: 'Nothing in 30 days', tone: 'off' }];
+}
+
+function posSources(
+  pos: {
+    sources: Array<{ source: string; providerName?: string; checks?: number }> | null;
+  } | null,
+) {
+  if (!pos?.sources?.length) return 'No source has sent a check in the window.';
+  return pos.sources
+    .map((s) => `${s.providerName ?? s.source}: ${count(s.checks ?? null)}`)
+    .join(' · ');
+}
+
+/**
+ * Which of the three secrets this deployment holds.
+ *
+ * Two are the gateway's own answer; the third is baked into THIS bundle and the
+ * gateway cannot see it, so it is read from `import.meta.env` here — the same
+ * split `/profile` makes, and for the same reason. A field the gateway did not
+ * send is reported as unknown rather than as unset: "we were not told" and "it
+ * is not set" are different facts about a credential.
+ */
+function secretList(p: ProviderStateVM | null): string {
+  if (!p) return 'the provider did not report its state';
+  const state = (v: boolean | undefined) =>
+    v === undefined ? 'not reported' : v ? 'set' : 'unset';
+  const publishable = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined)
+    ? 'set'
+    : 'unset';
+  return [
+    `STRIPE_SECRET_KEY ${state(p.secretKeyPresent)}`,
+    `STRIPE_WEBHOOK_SECRET ${state(p.webhookSecretPresent)}`,
+    `VITE_STRIPE_PUBLISHABLE_KEY ${publishable}`,
+  ].join(' · ');
+}
+
+function mcpChips(
+  servers: Array<{ status: string; probe: { status: string } | null }> | null,
+): RowChip[] {
+  if (!servers?.length) return [{ label: 'None declared', tone: 'off' }];
+  const answering = servers.filter((s) => s.probe?.status === 'ok').length;
+  return [{ label: `${answering} answering`, tone: answering ? 'on' : 'warn' }];
+}
+
+function serverChips(s: {
+  status: string;
+  probe: { status: string } | null;
+  consent: { given: boolean };
+  toolGrants: Array<{ writes: boolean }>;
+}): RowChip[] {
+  const chips: RowChip[] = [
+    { label: probeWord(s.probe?.status), tone: s.probe?.status === 'ok' ? 'on' : 'off' },
+  ];
+  if (s.status === 'revoked') chips.push({ label: 'Revoked', tone: 'off' });
+  if (s.toolGrants.some((g) => g.writes)) {
+    chips.push({ label: 'Can write outside', tone: 'warn' });
+  }
+  if (!s.consent.given) chips.push({ label: 'No consent from you', tone: 'off' });
+  return chips;
+}

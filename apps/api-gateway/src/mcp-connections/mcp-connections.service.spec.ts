@@ -24,6 +24,7 @@ import {
 } from "@nestjs/common";
 import { McpConnectionsService } from "./mcp-connections.service";
 import { DatabaseService } from "../database/database.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
 import { McpSecretService } from "../mcp-runtime/mcp-secret.service";
 import type { McpProbeOutcome } from "../mcp-runtime/mcp-runtime.types";
@@ -64,6 +65,8 @@ function builder(next: () => Result, rec: Recorder) {
       return self;
     },
     is: () => self,
+    in: () => self,
+    ilike: () => self,
     order: () => self,
     single: () => Promise.resolve(next()),
     maybeSingle: () => Promise.resolve(next()),
@@ -82,7 +85,37 @@ function makeService(
   const queue = Array.isArray(results) ? [...results] : [results];
   const next = () => (queue.length > 1 ? (queue.shift() as Result) : queue[0]);
   const rec: Recorder = { selects: [], updates: [], inserts: [], filters: [] };
-  const db = { supabase: { from: () => builder(next, rec) } };
+  /**
+   * Table-aware, because a row is no longer one query.
+   *
+   * ADR 0114 hung consents and per-tool grants off the connection, so reading a
+   * row now touches four tables. The queued results describe the CONNECTION
+   * table; the side tables answer with empty sets of their own, which is what a
+   * house that has declared a server and granted nothing actually looks like.
+   * Feeding the connection fixture to every table would have made these tests
+   * pass on a shape no database can produce.
+   */
+  const SIDE_TABLES = new Set([
+    "mcp_connection_consents",
+    "mcp_tool_grants",
+    "mcp_tool_calls",
+    "users",
+  ]);
+  const db = {
+    supabase: {
+      from: (table: string) =>
+        SIDE_TABLES.has(table)
+          ? builder(() => ({ data: [], error: null }), {
+              // Side-table filters are not part of the tenancy assertions and
+              // would drown them; recorded nowhere on purpose.
+              selects: [],
+              updates: [],
+              inserts: [],
+              filters: [],
+            })
+          : builder(next, rec),
+    },
+  };
 
   const config = {
     get: (key: string) =>
@@ -97,6 +130,13 @@ function makeService(
   return {
     service: new McpConnectionsService(
       db as unknown as DatabaseService,
+      {
+        // Only consulted on a WRITE tool call; every method in this file is a
+        // read, a declaration or a probe, so a manager check that always passes
+        // proves nothing here and hides nothing either. The gate itself is
+        // pinned in mcp-connections.tool-gate.spec.ts.
+        assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
+      } as unknown as OrganizationsService,
       runtime,
       secrets,
     ),
@@ -146,22 +186,22 @@ describe("McpConnectionsService.list", () => {
       error: { message: "connection reset" },
     });
 
-    await expect(service.list("u1", "r1")).rejects.toBeInstanceOf(
+    await expect(service.list("r1", "u1")).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
-    await expect(service.list("u1", "r1")).rejects.toThrow(
+    await expect(service.list("r1", "u1")).rejects.toThrow(
       "The model-context register could not be read: connection reset",
     );
   });
 
   it("returns a genuinely empty register as an empty list", async () => {
     const { service } = makeService({ data: [], error: null });
-    await expect(service.list("u1", "r1")).resolves.toEqual([]);
+    await expect(service.list("r1", "u1")).resolves.toEqual([]);
   });
 
   it("reports a never-called server's last call as null, not as its creation time", async () => {
     const { service } = makeService({ data: [ROW], error: null });
-    const [row] = await service.list("u1", "r1");
+    const [row] = await service.list("r1", "u1");
 
     expect(row.lastUsedAt).toBeNull();
     expect(row.lastProbeAt).toBeNull();
@@ -172,7 +212,7 @@ describe("McpConnectionsService.list", () => {
 
   it("reports a never-probed server's health as null, not as ok", async () => {
     const { service } = makeService({ data: [ROW], error: null });
-    const [row] = await service.list("u1", "r1");
+    const [row] = await service.list("r1", "u1");
     expect(row.probe).toBeNull();
   });
 
@@ -181,7 +221,7 @@ describe("McpConnectionsService.list", () => {
       data: [{ ...ROW, revoked_at: "2026-09-03T10:00:00.000Z" }],
       error: null,
     });
-    const [row] = await service.list("u1", "r1");
+    const [row] = await service.list("r1", "u1");
 
     expect(row.status).toBe("revoked");
     expect(row.revokedAt).toBe("2026-09-03T10:00:00.000Z");
@@ -195,7 +235,7 @@ describe("McpConnectionsService.list", () => {
     expect(McpConnectionsService.ROW_COLUMNS).toContain("secret_set_at");
 
     const { service, rec } = makeService({ data: [ROW], error: null });
-    await service.list("u1", "r1");
+    await service.list("r1", "u1");
     expect(rec.selects.join(" ")).not.toContain("secret_encrypted");
 
     // The list is a module-level const so `check_read_columns_exist.py` can
@@ -211,7 +251,7 @@ describe("McpConnectionsService.list", () => {
       data: [{ ...ROW, secret_set_at: "2026-09-03T09:30:00.000Z" }],
       error: null,
     });
-    const [row] = await service.list("u1", "r1");
+    const [row] = await service.list("r1", "u1");
 
     expect(row.hasSecret).toBe(true);
     expect(row.secretSetAt).toBe("2026-09-03T09:30:00.000Z");
@@ -301,7 +341,7 @@ describe("McpConnectionsService.create", () => {
 describe("McpConnectionsService.setSecret", () => {
   it("clears the credential when sent null, without needing a key", async () => {
     const { service, rec } = makeService({ data: ROW, error: null });
-    await service.setSecret("u1", "r1", ROW.id, null);
+    await service.setSecret("r1", "u1", ROW.id, null);
 
     expect(rec.updates[0]).toMatchObject({
       secret_encrypted: null,
@@ -312,14 +352,14 @@ describe("McpConnectionsService.setSecret", () => {
   it("refuses to store one when the key is absent, naming the variable", async () => {
     const { service } = makeService({ data: ROW, error: null });
     await expect(
-      service.setSecret("u1", "r1", ROW.id, "tok"),
+      service.setSecret("r1", "u1", ROW.id, "tok"),
     ).rejects.toThrow(/MCP_CONNECTION_SECRET_KEY/);
   });
 
   it("404s rather than reporting success when nothing matched", async () => {
     const { service } = makeService({ data: null, error: null }, { secretKey: KEY_HEX });
     await expect(
-      service.setSecret("u1", "r1", ROW.id, "tok"),
+      service.setSecret("r1", "u1", ROW.id, "tok"),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -331,7 +371,7 @@ describe("McpConnectionsService.revoke", () => {
       error: null,
     });
 
-    await expect(service.revoke("u1", "r1", ROW.id)).resolves.toMatchObject({
+    await expect(service.revoke("r1", "u1", ROW.id)).resolves.toMatchObject({
       status: "revoked",
     });
   });
@@ -341,7 +381,7 @@ describe("McpConnectionsService.revoke", () => {
       data: { ...ROW, revoked_at: "2026-09-03T10:00:00.000Z" },
       error: null,
     });
-    await service.revoke("u1", "r1", ROW.id);
+    await service.revoke("r1", "u1", ROW.id);
 
     expect(rec.updates[0]).toMatchObject({
       secret_encrypted: null,
@@ -356,7 +396,7 @@ describe("McpConnectionsService.revoke", () => {
     // the caller would be told a revoke happened that did not.
     const { service } = makeService({ data: null, error: null });
 
-    await expect(service.revoke("u1", "r1", ROW.id)).rejects.toBeInstanceOf(
+    await expect(service.revoke("r1", "u1", ROW.id)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
@@ -367,7 +407,7 @@ describe("McpConnectionsService.revoke", () => {
       error: { message: "deadlock detected" },
     });
 
-    await expect(service.revoke("u1", "r1", ROW.id)).rejects.toThrow(
+    await expect(service.revoke("r1", "u1", ROW.id)).rejects.toThrow(
       "The model-context server was not revoked: deadlock detected",
     );
   });
@@ -395,7 +435,7 @@ describe("McpConnectionsService.probe", () => {
       { probe: OK_PROBE },
     );
 
-    const row = await service.probe("u1", "r1", ROW.id);
+    const row = await service.probe("r1", "u1", ROW.id);
 
     expect(rec.updates[0]).toMatchObject({
       last_probe_at: OK_PROBE.calledAt,
@@ -423,7 +463,7 @@ describe("McpConnectionsService.probe", () => {
       { probe: failed },
     );
 
-    await service.probe("u1", "r1", ROW.id);
+    await service.probe("r1", "u1", ROW.id);
 
     expect(rec.updates[0]).toHaveProperty("last_probe_at");
     // The whole reason there are two columns.
@@ -448,7 +488,7 @@ describe("McpConnectionsService.probe", () => {
     );
 
     // A broken third-party server must not read as a broken Mudavym.
-    await expect(service.probe("u1", "r1", ROW.id)).resolves.toMatchObject({
+    await expect(service.probe("r1", "u1", ROW.id)).resolves.toMatchObject({
       probe: { status: "refused", detail: "HTTP 500." },
     });
   });
@@ -468,7 +508,7 @@ describe("McpConnectionsService.probe", () => {
     ]);
     const spy = jest.spyOn(runtime, "probe");
 
-    const row = await service.probe("u1", "r1", ROW.id);
+    const row = await service.probe("r1", "u1", ROW.id);
 
     // The fault this prevents: an anonymous call succeeding, and the operator
     // reading "connected" as proof the credential works.
@@ -487,7 +527,7 @@ describe("McpConnectionsService.probe", () => {
     });
     const spy = jest.spyOn(runtime, "probe");
 
-    await expect(service.probe("u1", "r1", ROW.id)).rejects.toBeInstanceOf(
+    await expect(service.probe("r1", "u1", ROW.id)).rejects.toBeInstanceOf(
       ConflictException,
     );
     expect(spy).not.toHaveBeenCalled();
@@ -495,19 +535,27 @@ describe("McpConnectionsService.probe", () => {
 
   it("404s on an id that is not this user's in this restaurant", async () => {
     const { service } = makeService({ data: null, error: null });
-    await expect(service.probe("u1", "r1", ROW.id)).rejects.toBeInstanceOf(
+    await expect(service.probe("r1", "u1", ROW.id)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 });
 
 describe("McpConnectionsService.runtimeState", () => {
-  it("says invocation is off, and says it is a decision rather than a gap", async () => {
+  /**
+   * This test used to assert `enabled: false` "because that decision comes
+   * before the code". The founder made the decision on 2026-09-03 (ADR 0107
+   * addendum): a per-tool grant, and the seal on every write. So the flag is
+   * true and the sentence states the terms — which is the thing the page
+   * prints, and therefore the thing worth pinning.
+   */
+  it("says invocation is on, and states the terms it runs under", async () => {
     const { service } = makeService({ data: [], error: null });
     const state = service.runtimeState();
 
-    expect(state.invocation.enabled).toBe(false);
-    expect(state.invocation.reason).toMatch(/ADR 0013/);
+    expect(state.invocation.enabled).toBe(true);
+    expect(state.invocation.reason).toMatch(/granted it by name/i);
+    expect(state.invocation.reason).toMatch(/seal/i);
     expect(state.probeTimeoutMs).toBeGreaterThan(0);
   });
 
@@ -540,51 +588,66 @@ describe("McpConnectionsService.runtimeState", () => {
  * 37 tests stay green — a dropped tenant filter would have shipped behind a
  * clean suite, which is the fault class this repo keeps a memory file about.
  *
- * The fake builder records every `.eq(column, value)` now, so each method is
- * asserted to scope by BOTH ids. Each of these fails if its filter is removed.
+ * WHAT CHANGED ON 2026-09-03 (ADR 0114)
+ * -------------------------------------
+ * These tests asserted the scope was `user_id` AND `restaurant_id`. The founder
+ * settled the fork the other way — "house declares, each person consents" — so
+ * the scope is the RESTAURANT alone, and asserting a `user_id` filter now would
+ * pin the rejected answer. What replaces it is stronger, not weaker: the house
+ * filter is still asserted on every statement, and `user_id` is asserted to be
+ * ABSENT, because a per-user filter creeping back is exactly how one manager's
+ * server became invisible to the owner of the house.
  */
-describe("every read and write is scoped to the user AND the restaurant", () => {
-  const both = (rec: { filters: Array<[string, unknown]> }) => ({
-    user: rec.filters.find(([c]) => c === "user_id")?.[1],
-    restaurant: rec.filters.find(([c]) => c === "restaurant_id")?.[1],
-  });
+describe("every read and write is scoped to the restaurant, and to nobody's account", () => {
+  const houses = (rec: { filters: Array<[string, unknown]> }) =>
+    rec.filters.filter(([c]) => c === "restaurant_id").map(([, v]) => v);
+  const users = (rec: { filters: Array<[string, unknown]> }) =>
+    rec.filters.filter(([c]) => c === "user_id").map(([, v]) => v);
 
-  it("list()", async () => {
+  it("list() reads the house, not the reader", async () => {
     const { service, rec } = makeService({ data: [ROW], error: null });
-    await service.list("u-mine", "r-mine");
-    expect(both(rec)).toEqual({ user: "u-mine", restaurant: "r-mine" });
+    await service.list("r-mine", "u-mine");
+
+    expect(houses(rec)).toContain("r-mine");
+    // The reader's id reaches the CONSENT lookup, never the connection filter.
+    // A `user_id` on the connections query is the rejected design returning.
+    expect(users(rec)).not.toContain("u-mine");
   });
 
-  it("create()", async () => {
+  it("create() records the house that owns it and the person who declared it", async () => {
     const { service, rec } = makeService({ data: ROW, error: null });
     await service.create("u-mine", "r-mine", {
       name: "n",
       url: "https://x.example",
     });
-    // The insert carries the scope; nothing in the DTO can widen it.
+
     expect(rec.inserts[0]).toMatchObject({
-      user_id: "u-mine",
       restaurant_id: "r-mine",
+      declared_by: "u-mine",
     });
+    // `user_id` is gone from this table: it was the column that made deleting a
+    // manager delete the house's Toast bridge.
+    expect(rec.inserts[0]).not.toHaveProperty("user_id");
   });
 
-  it("revoke()", async () => {
+  it("revoke() is scoped by the house and the id", async () => {
     const { service, rec } = makeService({
       data: { ...ROW, revoked_at: "2026-09-03T10:00:00.000Z" },
       error: null,
     });
-    await service.revoke("u-mine", "r-mine", ROW.id);
-    expect(both(rec)).toEqual({ user: "u-mine", restaurant: "r-mine" });
+    await service.revoke("r-mine", "u-mine", ROW.id);
+
+    expect(houses(rec)).toContain("r-mine");
     expect(rec.filters).toContainEqual(["id", ROW.id]);
   });
 
-  it("setSecret()", async () => {
+  it("setSecret() is scoped by the house", async () => {
     const { service, rec } = makeService({ data: ROW, error: null });
-    await service.setSecret("u-mine", "r-mine", ROW.id, null);
-    expect(both(rec)).toEqual({ user: "u-mine", restaurant: "r-mine" });
+    await service.setSecret("r-mine", "u-mine", ROW.id, null);
+    expect(houses(rec)).toContain("r-mine");
   });
 
-  it("probe() — on the row it reads AND on the row it writes back", async () => {
+  it("probe() scopes the row it READS and the row it writes back", async () => {
     const { service, rec } = makeService(
       [
         {
@@ -595,25 +658,16 @@ describe("every read and write is scoped to the user AND the restaurant", () => 
       ],
       { probe: OK_PROBE },
     );
-    await service.probe("u-mine", "r-mine", ROW.id);
+    await service.probe("r-mine", "u-mine", ROW.id);
 
-    // Two statements, two scopes: reading someone else's row and then stamping
-    // a probe onto it are separate holes, so both are asserted.
-    const users = rec.filters.filter(([c]) => c === "user_id").map(([, v]) => v);
-    const houses = rec.filters
-      .filter(([c]) => c === "restaurant_id")
-      .map(([, v]) => v);
-    expect(users).toEqual(["u-mine", "u-mine"]);
-    expect(houses).toEqual(["r-mine", "r-mine"]);
+    // Two statements, two scopes: reading a row from another house and then
+    // stamping a probe onto it are separate holes, so both are asserted.
+    expect(houses(rec).filter((h) => h === "r-mine").length).toBeGreaterThanOrEqual(2);
   });
 
   it("never filters by a restaurant the caller supplied instead of the token's", async () => {
-    // A belt-and-braces shape check: the only restaurant id that reaches the
-    // query is the argument the controller passed down from `req.user`.
     const { service, rec } = makeService({ data: [ROW], error: null });
-    await service.list("u-mine", "r-from-token");
-    const houses = rec.filters.filter(([c]) => c === "restaurant_id");
-    expect(houses).toHaveLength(1);
-    expect(houses[0][1]).toBe("r-from-token");
+    await service.list("r-from-token", "u-mine");
+    expect(houses(rec)).toEqual(["r-from-token"]);
   });
 });

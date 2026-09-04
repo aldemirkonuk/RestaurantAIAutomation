@@ -87,6 +87,7 @@ describe("McpConnectionsModule", () => {
   it("refuses a session with no active restaurant instead of returning an empty register", async () => {
     const controller = new McpConnectionsController(
       {} as unknown as McpConnectionsService,
+      {} as unknown as OrganizationsService,
     );
 
     await expect(controller.list(req({ userId: "u1" }))).rejects.toBeInstanceOf(
@@ -100,6 +101,7 @@ describe("McpConnectionsModule", () => {
   it("refuses a request with no user identity", async () => {
     const controller = new McpConnectionsController(
       {} as unknown as McpConnectionsService,
+      {} as unknown as OrganizationsService,
     );
 
     await expect(controller.list(req(undefined))).rejects.toBeInstanceOf(
@@ -111,10 +113,63 @@ describe("McpConnectionsModule", () => {
     const service = { list: jest.fn().mockResolvedValue([]) };
     const controller = new McpConnectionsController(
       service as unknown as McpConnectionsService,
+      {} as unknown as OrganizationsService,
     );
 
     await controller.list(req({ userId: "u1", restaurantId: "r-from-token" }));
-    expect(service.list).toHaveBeenCalledWith("u1", "r-from-token");
+    // The HOUSE first, the reader second (ADR 0114): the register belongs to
+    // the restaurant, and the user id only decides whose consent is shown.
+    expect(service.list).toHaveBeenCalledWith("r-from-token", "u1");
+  });
+
+  it("lets any member READ the house register, and only a manager declare", async () => {
+    const organizations = {
+      assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = {
+      list: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({}),
+    };
+    const controller = new McpConnectionsController(
+      service as unknown as McpConnectionsService,
+      organizations as unknown as OrganizationsService,
+    );
+
+    await controller.list(req({ userId: "u-staff", restaurantId: "r1" }));
+    expect(organizations.assertCanManageRestaurant).not.toHaveBeenCalled();
+
+    await controller.create(req({ userId: "u-mgr", restaurantId: "r1" }), {
+      name: "Toast bridge",
+      url: "https://mcp.example.test/toast",
+    });
+    expect(organizations.assertCanManageRestaurant).toHaveBeenCalledWith(
+      "u-mgr",
+      "r1",
+      "declare a model-context server for this house",
+    );
+  });
+
+  it("cannot express recording somebody else's consent", async () => {
+    const service = { setConsent: jest.fn().mockResolvedValue({}) };
+    const controller = new McpConnectionsController(
+      service as unknown as McpConnectionsService,
+      {} as unknown as OrganizationsService,
+    );
+
+    await controller.setConsent(
+      req({ userId: "u-me", restaurantId: "r1" }),
+      "11111111-1111-4111-8111-111111111111",
+      { given: true },
+    );
+
+    // The caller's own id, taken from the token. There is no parameter on this
+    // path that could carry anyone else's.
+    expect(service.setConsent).toHaveBeenCalledWith(
+      "r1",
+      "u-me",
+      "11111111-1111-4111-8111-111111111111",
+      true,
+    );
   });
 });
 
@@ -172,7 +227,18 @@ describe("PaymentMethodsModule", () => {
     expect(service.create).not.toHaveBeenCalled();
   });
 
-  it("leaves the read open to any member with a tenant on their token", async () => {
+  /**
+   * G19, closed 2026-09-03. This test used to assert the OPPOSITE — "leaves the
+   * read open to any member with a tenant on their token" — and it passed,
+   * which is the whole lesson: a green test pinned a defect because the
+   * defect was written down as the intent. `payment_methods` has no `user_id`
+   * column at all; it is a house object, and the day a provider key lands, a
+   * staff member's own page would have shown the house's instruments.
+   */
+  it("gates the READ with the same rule as the write (G19)", async () => {
+    const organizations = {
+      assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
+    };
     const service = {
       list: jest
         .fn()
@@ -180,12 +246,36 @@ describe("PaymentMethodsModule", () => {
     };
     const controller = new PaymentMethodsController(
       service as unknown as PaymentMethodsService,
-      { assertCanManageRestaurant: jest.fn() } as unknown as OrganizationsService,
+      organizations as unknown as OrganizationsService,
+    );
+
+    await expect(
+      controller.list(req({ userId: "u-mgr", restaurantId: "r1" })),
+    ).resolves.toMatchObject({ methods: [] });
+    expect(organizations.assertCanManageRestaurant).toHaveBeenCalledWith(
+      "u-mgr",
+      "r1",
+      "see how the house pays",
+    );
+    expect(service.list).toHaveBeenCalledWith("r1");
+  });
+
+  it("does not read the register at all when the role check refuses", async () => {
+    const organizations = {
+      assertCanManageRestaurant: jest
+        .fn()
+        .mockRejectedValue(new Error("Only managers and owners can see how the house pays")),
+    };
+    const service = { list: jest.fn() };
+    const controller = new PaymentMethodsController(
+      service as unknown as PaymentMethodsService,
+      organizations as unknown as OrganizationsService,
     );
 
     await expect(
       controller.list(req({ userId: "u-staff", restaurantId: "r1" })),
-    ).resolves.toMatchObject({ methods: [] });
-    expect(service.list).toHaveBeenCalledWith("r1");
+    ).rejects.toThrow(/managers and owners/i);
+    // Not "returns an empty list to a staff member". The rows are never read.
+    expect(service.list).not.toHaveBeenCalled();
   });
 });

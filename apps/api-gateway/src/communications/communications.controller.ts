@@ -96,6 +96,67 @@ export class CommunicationsController {
   }
 
   /**
+   * The address this house's letters leave from — `/connections` Register I.
+   *
+   * WHY THIS ROUTE EXISTS (2026-09-03)
+   * ---------------------------------
+   * Every vendor letter this deployment sends leaves from ONE mailbox that
+   * every restaurant on it shares (`gmail.service.ts:78-80`,
+   * `GMAIL_SENDER_EMAIL` falling back to `notifications@wineops.ai`). The
+   * sign-off inside the letter carries the house's name; the envelope does not.
+   * DESIGN-FOUNDATION §6b measured that as the largest gap on the connections
+   * surface, and a page cannot state it without being able to READ it — so
+   * before this route the row would have been page prose about a value only the
+   * server knew.
+   *
+   * It returns the address and its SOURCE, never a credential. `scope:
+   * "deployment"` is the honest word for what this is: not the house's, not
+   * nobody's, but one setting shared by every house here.
+   *
+   * The founder settled the direction on 2026-09-03 — a house gets its own
+   * mailbox, or a Mudavym subdomain — and neither is built: there is no
+   * per-restaurant sender column, no domain, and no DNS. `perHouse.supported`
+   * is therefore `false` with the reason, and the page's control is disabled
+   * carrying that sentence rather than a hopeful one of its own.
+   */
+  @Get("sender-identity")
+  @ApiOperation({
+    summary: "Which address this house's outbound mail actually leaves from",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "`scope: \"deployment\"` means one mailbox shared by every restaurant on this deployment. No credential is returned in any shape.",
+  })
+  senderIdentity(): {
+    address: string | null;
+    scope: "deployment" | "house";
+    configuredBy: string;
+    resolvedFromProfile: boolean;
+    perHouse: { supported: boolean; reason: string };
+  } {
+    // The RESOLVED address where one exists (Gmail reports the profile's own
+    // address at init), falling back to the variable, falling back to the
+    // hardcoded default the service itself uses. Three steps, because a page
+    // that showed the variable while the service used the profile would be
+    // describing a different mailbox from the one that sends.
+    const resolved = this.gmailService.getSenderEmail();
+    const configured =
+      this.configService.get<string>("GMAIL_SENDER_EMAIL") ?? null;
+    return {
+      address: resolved || configured || "notifications@wineops.ai",
+      scope: "deployment",
+      configuredBy: "GMAIL_SENDER_EMAIL",
+      resolvedFromProfile: Boolean(resolved),
+      perHouse: {
+        supported: false,
+        reason:
+          "No per-restaurant sender exists: there is no sender column on any table, no verified domain, and no DNS. The direction is decided (a house's own mailbox, or a Mudavym subdomain) and neither is built, so this house's letters leave from the deployment's shared address.",
+      },
+    };
+  }
+
+  /**
    * Get communication service status
    */
   @Get("status")

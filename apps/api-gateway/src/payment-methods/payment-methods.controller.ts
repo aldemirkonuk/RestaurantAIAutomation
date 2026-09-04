@@ -31,12 +31,24 @@ interface AuthenticatedUser {
 }
 
 /**
- * `/payment-methods` — the Payment register on `/profile`.
+ * `/payment-methods` — the house's cards on file (`/connections` Register II;
+ * `/profile` links here while the Connections flag is on).
  *
- * The restaurant comes from the signed JWT, never from a parameter. Reads are
- * open to any member of the house with a tenant on their token; writes go
- * through the same manager-or-owner rule that guards the restaurant record, so
- * the endpoint's posture and the page's copy say the same thing.
+ * The restaurant comes from the signed JWT, never from a parameter.
+ *
+ * THE READ IS GATED, AND IT WAS NOT (G19, 2026-09-03)
+ * --------------------------------------------------
+ * Until now `GET /payment-methods` took any authenticated member of the house
+ * while every write called `assertCanManageRestaurant`, and the page gated only
+ * the controls (`PaymentRegister.tsx:370-385` rendered the rows for every
+ * role). `payment_methods` has no `user_id` column at all
+ * (`20260903094600_payment_methods.sql:53`) — it is a house object, and the day
+ * `STRIPE_SECRET_KEY` is set a staff member's own page would have shown the
+ * house's instruments. Toast gates this behind `Account Admin > Manage
+ * Integrations`, Square behind `account & settings`. The read now runs the same
+ * check as the write, so "managers and owners" is true of the endpoint and not
+ * only of the button. The refusal is a 403 whose message names the action, and
+ * the page renders it in words rather than as an empty register.
  */
 @ApiTags("payment-methods")
 @Controller("payment-methods")
@@ -71,10 +83,20 @@ export class PaymentMethodsController {
     description:
       "`methods` plus `provider`. An empty `methods` with `provider.connected === false` means no instrument CAN exist, which is not the same as none being on file.",
   })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is a member of the house but not a manager or owner. The house's instruments are not a staff read (G19).",
+  })
   async list(
     @Req() req: Request & { user: AuthenticatedUser },
   ): Promise<PaymentMethodsResponse> {
-    const { restaurantId } = this.scope(req);
+    const { userId, restaurantId } = this.scope(req);
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "see how the house pays",
+    );
     return this.service.list(restaurantId);
   }
 

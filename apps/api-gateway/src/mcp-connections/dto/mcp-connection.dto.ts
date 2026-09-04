@@ -1,6 +1,8 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -107,6 +109,28 @@ export interface McpConnectionResponse {
   /** The GRANT's state. Not the server's health — that is `probe`. */
   status: "active" | "revoked";
   /**
+   * The person who attached it. A fact, not an ownership: the attachment is the
+   * house's and outlives the account (ADR 0114), so this is null once that
+   * account is gone and the register says so rather than inventing a name.
+   */
+  declaredBy: string | null;
+  declaredByName: string | null;
+  /**
+   * The READER's own agreement that this server may act in their name, and how
+   * many people have given theirs. `liveCount: 0` on a live attachment is a
+   * real state — declared by the house, usable by nobody yet.
+   */
+  consent: {
+    given: boolean;
+    at: string | null;
+    liveCount: number;
+  };
+  /**
+   * Tools a manager has granted, by name. A tool the server LISTS is not a tool
+   * that may be called; only a row here is (ADR 0107 addendum).
+   */
+  toolGrants: McpToolGrantRecord[];
+  /**
    * Whether a credential is stored, and since when. The value itself is not on
    * this interface, in any shape, on purpose.
    */
@@ -139,8 +163,10 @@ export interface McpRuntimeStateResponse {
     reason: string | null;
   };
   /**
-   * Always `false` today, and the reason is a decision rather than a build:
-   * calling a tool can bind the restaurant, which is ADR 0013's subject.
+   * TRUE since 2026-09-03 (ADR 0107 addendum), and the reason states the terms:
+   * a per-tool grant, a manager and the seal for anything that writes. It was
+   * `false` while ADR 0013's commitment guardrail had not been extended to
+   * tools; the founder extended it, so the flag follows the decision.
    */
   invocation: {
     enabled: boolean;
@@ -148,4 +174,88 @@ export interface McpRuntimeStateResponse {
   };
   /** So the page can say how long it will wait before it says "unreachable". */
   probeTimeoutMs: number;
+}
+
+/** One granted tool. `writes` is the manager's classification, not the server's. */
+export interface McpToolGrantRecord {
+  toolName: string;
+  /**
+   * TRUE means this tool changes the world outside this app. A write runs only
+   * for a manager and only behind the seal; a read runs for anyone who has
+   * consented to the server.
+   */
+  writes: boolean;
+  grantedBy: string | null;
+  grantedByName: string | null;
+  grantedAt: string;
+}
+
+/**
+ * Grant one tool by name.
+ *
+ * `writes` is REQUIRED and has no default anywhere in the stack — table,
+ * DTO or UI. Classifying a tool is the granting manager's act; a default would
+ * let an unclassified tool be granted as a read, which is the
+ * absence-reported-as-health fault applied to money.
+ */
+export class GrantMcpToolDto {
+  @IsBoolean()
+  writes!: boolean;
+}
+
+/**
+ * Call one granted tool.
+ *
+ * `sealed` is the client's assertion that the hold-to-approve ceremony
+ * completed. It is required for a tool granted as a write and recorded on every
+ * call. What it proves is bounded and stated in ADR 0114: it is an assertion by
+ * an authenticated manager, logged with their id — not a cryptographic proof of
+ * the gesture. The gate that actually holds is the grant plus the role.
+ */
+export class CallMcpToolDto {
+  @IsOptional()
+  @IsObject()
+  args?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsBoolean()
+  sealed?: boolean;
+}
+
+/** Whether the caller agrees this server may act in their name. */
+export class SetMcpConsentDto {
+  @IsBoolean()
+  given!: boolean;
+}
+
+/**
+ * A manager's side of somebody else's consent.
+ *
+ * `houseUses: false` ends the house's use of that person's consent; their own
+ * consent, and their own credential, are untouched. There is no field here that
+ * could create, approve or hold a consent pending — a manager may see, not
+ * approve (founder, 2026-09-03), and the DTO is where that is enforced by not
+ * being expressible.
+ */
+export class SetHouseConsentDto {
+  @IsString()
+  @MinLength(1)
+  userId!: string;
+
+  @IsBoolean()
+  houseUses!: boolean;
+}
+
+/** What one tool call did. `status` is the transport; `isError` is the tool. */
+export interface McpToolCallResponse {
+  connectionId: string;
+  toolName: string;
+  writes: boolean;
+  sealed: boolean;
+  status: McpProbeStatus;
+  detail: string;
+  calledAt: string;
+  answeredAt: string | null;
+  content: string | null;
+  isError: boolean | null;
 }
