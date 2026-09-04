@@ -561,31 +561,27 @@ export class VendorTermsService {
         column: "restaurant_providers.custom_lead_time_days",
       };
     }
-    // THE DEFAULT TRAP. See the class header.
-    if (
-      provider.lead_time_days != null &&
-      provider.lead_time_days !== PROVIDER_COLUMN_DEFAULTS.lead_time_days
-    ) {
+    // THE DEFAULT TRAP, AND WHY IT IS NO LONGER SPRUNG HERE.
+    //
+    // This branch used to compare the stored value against 7 and report a match
+    // as UNKNOWN, because `providers.lead_time_days DEFAULT 7` made a stated
+    // seven and an unasked question indistinguishable. Migration
+    // `20260903170000_a_default_is_not_an_answer.sql` dropped the default and
+    // set every row that carried it to NULL, so the two are no longer the same
+    // value: a NULL is the unasked question and a 7 is a seven somebody typed.
+    // Keeping the comparison would now DISCARD a real answer — the exact
+    // mistake inverted.
+    //
+    // This code is therefore only correct on a database that has taken that
+    // migration. Code and schema move together on merge (migrations auto-apply),
+    // and the migration asserts the dropped default in its own transaction, so
+    // a gateway running against an un-migrated database is a deploy fault that
+    // fails loudly there rather than a case to hedge against here.
+    if (provider.lead_time_days != null) {
       return {
         value: provider.lead_time_days,
         source: "vendor_record",
         column: "providers.lead_time_days",
-      };
-    }
-    if (provider.lead_time_days === PROVIDER_COLUMN_DEFAULTS.lead_time_days) {
-      if (f.known) {
-        return {
-          value: f.medianDays,
-          source: "inferred",
-          n: f.n,
-          confidence: f.confidence,
-          basis: `${f.basis}; median ${f.medianDays}, slowest tenth ${f.p90Days}. The vendor record also reads ${PROVIDER_COLUMN_DEFAULTS.lead_time_days} days, which is that column's default value and so proves nothing.`,
-        };
-      }
-      return {
-        value: null,
-        source: "unknown",
-        reason: `the vendor record reads ${PROVIDER_COLUMN_DEFAULTS.lead_time_days} days, which is exactly the column default (providers.lead_time_days), so nobody can tell whether anyone chose it — and ${unreadable ?? f.reason}`,
       };
     }
     if (unreadable) return { value: null, source: "unknown", reason: unreadable };

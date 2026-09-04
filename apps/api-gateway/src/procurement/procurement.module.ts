@@ -17,7 +17,22 @@ import { DocumentExtractorService } from "./documents/document-extractor.service
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
 import { CreditsController } from "./documents/credits.controller";
+import { SettingsModule } from "../settings/settings.module";
+import { OrganizationsModule } from "../organizations/organizations.module";
 
+/**
+ * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
+ * (ADR 0112). `ApprovalThresholdsService` supplies the house's rules and
+ * `OrganizationsService.resolveRestaurantRole` supplies the actor's rank, and
+ * `ProcurementService.approveOrder` refuses the seal when the two disagree.
+ *
+ * Neither import is circular: `SettingsModule` imports Database, Auth,
+ * SettingsAudit and VendorTerms; `OrganizationsModule` imports Database and
+ * Auth. Nothing in either graph imports procurement, so no `forwardRef` is
+ * needed and Nest resolves both at build time rather than injecting `undefined`
+ * at runtime — which is the failure mode a `forwardRef` on a real cycle would
+ * have produced, and which a gate must never suffer silently.
+ */
 @Module({
   imports: [
     DatabaseModule,
@@ -27,6 +42,8 @@ import { CreditsController } from "./documents/credits.controller";
     OrchestratorModule,
     CommunicationsModule,
     WebsocketModule,
+    SettingsModule,
+    OrganizationsModule,
     forwardRef(() => NotificationsModule),
   ],
   controllers: [

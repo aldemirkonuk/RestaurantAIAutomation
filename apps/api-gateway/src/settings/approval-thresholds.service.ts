@@ -15,25 +15,38 @@ import {
 import type { SetApprovalThresholdDto } from "../vendor-terms/dto/vendor-terms.dto";
 
 /**
- * The house's own ceiling — stored, audited, and honest about not being enforced.
+ * The house's own ceiling — stored, audited, and now enforced.
  *
  * ---------------------------------------------------------------------------
  * THE ONE THING THIS SERVICE MUST NOT DO
  * ---------------------------------------------------------------------------
- * It must not let the register imply that these thresholds stop anything today.
- * They do not. `ProcurementService.approveOrder`
- * (`apps/api-gateway/src/procurement/procurement.service.ts:1438-1460`) reads
- * neither a role nor an amount, and `POST /procurement/orders/:id/approve`
- * (`procurement.controller.ts:283`) is guarded by `JwtAuthGuard` alone. So the
- * readout carries `enforcement.enforcedBy: []` and the exact file:line where
- * enforcement has to land, and the page prints it. A policy page that let a
- * manager believe a ceiling was holding when nothing reads it would be a worse
- * lie than the blank page it replaces — it would be
+ * It must not let the register imply anything about enforcement that is not
+ * true of the code. For two passes that meant carrying `enforcement.enforcedBy:
+ * []` and the exact file where enforcement had to land, because
+ * `ProcurementService.approveOrder` read neither a role nor an amount and a
+ * policy page that let a manager believe a ceiling was holding would have been
  * [[absence-reported-as-health]] pointed at money.
  *
- * What the register CAN do honestly, and does: count how often each threshold
- * WOULD have fired over the orders already in the books, so the number a house
- * chooses is chosen against its own trade rather than guessed.
+ * **Changed 2026-09-03 (ADR 0112).** `approveOrder` now reads the order, reads
+ * these rules through THIS service, resolves the actor's role at the
+ * restaurant, and refuses the seal — with the rule and the number in words —
+ * when the actor ranks below what the rule demands. `enforcedBy` is therefore
+ * non-empty, and the register's opening sentence flips itself. The rule that
+ * matters is unchanged: the array is MEASURED. Remove the gate and it goes back
+ * to `[]`, and the page goes back to admitting it.
+ *
+ * What the register does beside that: count how often each threshold WOULD have
+ * fired over the orders already in the books, so the number a house chooses is
+ * chosen against its own trade rather than guessed.
+ *
+ * WHO MAY WRITE ONE. Owner or manager only, checked server-side in
+ * `SettingsController.setApprovalThreshold` via
+ * `OrganizationsService.assertCanManageRestaurant`. This is the opposite call
+ * from the one vendor terms made (a cutoff is operational knowledge anybody who
+ * phones the vendor should record) and it is opposite on purpose: a threshold is
+ * not knowledge about the world, it is the house's own limit on what may be
+ * spent without a second signature, and a limit anybody may raise is not a
+ * limit.
  */
 
 /** PostgREST / Postgres codes that mean "the relation is not there". */
@@ -41,6 +54,17 @@ const MISSING_RELATION_CODES = new Set(["42P01", "PGRST205", "PGRST202"]);
 
 /** The window the retrospective reads. Matches the vendor-terms inference. */
 export const RETROSPECTIVE_WINDOW_DAYS = 365;
+
+/**
+ * The one place that consults these rows before an order can be sealed.
+ *
+ * A constant, not a literal repeated in two fields, so `enforcedBy` and
+ * `wouldBeEnforcedAt` cannot drift apart and describe two different worlds. If
+ * the gate is ever removed, this constant is deleted and `enforcedBy` becomes
+ * `[]` again — which is what the register renders its opening sentence from.
+ */
+export const ENFORCED_AT =
+  "apps/api-gateway/src/procurement/procurement.service.ts approveOrder → assertApprovalAllowed";
 
 const ORDER_ROW_CAP = 4000;
 
@@ -361,12 +385,15 @@ export class ApprovalThresholdsService {
         caveat: `Counted over the last ${RETROSPECTIVE_WINDOW_DAYS} days only: a vendor last used before that window reads as new here, and a price with no earlier price inside the window has no premium to compare.`,
       },
       enforcement: {
-        // Measured, not assumed. If this array is ever non-empty, something in
-        // the gateway reads these rows before an order can be sealed.
-        enforcedBy: [],
-        wouldBeEnforcedAt:
-          "apps/api-gateway/src/procurement/procurement.service.ts:1438 approveOrder",
-        note: "approveOrder writes status, approved_at and approved_by without consulting a role or an amount, and POST /procurement/orders/:id/approve is guarded by JwtAuthGuard alone.",
+        // Measured, not assumed: every code path that consults these rows
+        // before an order can be sealed. It was EMPTY for two passes and the
+        // register's first sentence said so. It is no longer empty, and the
+        // register now says THAT — from this array, not from a rewritten
+        // string, so the day enforcement is removed the page goes back to
+        // admitting it.
+        enforcedBy: [ENFORCED_AT],
+        wouldBeEnforcedAt: ENFORCED_AT,
+        note: "approveOrder reads the order, reads these rules, resolves the actor's role at this restaurant, and refuses the seal with the rule and the number in words when the actor ranks below what the rule demands. The refused order is parked in APPROVAL_NEEDED and the refusal is filed in system_audit_log as order_approval_refused.",
       },
     };
   }

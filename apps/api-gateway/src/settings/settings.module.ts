@@ -6,6 +6,7 @@ import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
 import { VendorTermsModule } from "../vendor-terms/vendor-terms.module";
+import { OrganizationsModule } from "../organizations/organizations.module";
 
 /**
  * Settings, and the two registers the fourth pass gave it.
@@ -21,9 +22,22 @@ import { VendorTermsModule } from "../vendor-terms/vendor-terms.module";
  * own, because a threshold is a setting on the restaurant in the same sense a
  * feature flag is — `/settings/approval-thresholds` sits beside
  * `/settings/feature-flags`, under the same guards, in the same controller.
+ *
+ * `OrganizationsModule` is imported for `assertCanManageRestaurant`: only an
+ * owner or a manager may write a threshold (ADR 0112, the founder's call). It
+ * exports one service and imports only Database and Auth, so this adds no cycle
+ * — and `ProcurementModule` now imports THIS module for
+ * `ApprovalThresholdsService`, which is why nothing here may ever import
+ * procurement back.
  */
 @Module({
-  imports: [DatabaseModule, AuthModule, SettingsAuditModule, VendorTermsModule],
+  imports: [
+    DatabaseModule,
+    AuthModule,
+    SettingsAuditModule,
+    VendorTermsModule,
+    OrganizationsModule,
+  ],
   controllers: [SettingsController],
   providers: [SettingsService, ApprovalThresholdsService],
   exports: [SettingsService, ApprovalThresholdsService],

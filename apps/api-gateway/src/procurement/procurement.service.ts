@@ -55,6 +55,19 @@ import {
   CalendarEventStatus,
   CalendarEventType,
 } from "../calendar/dto/calendar.dto";
+import { ApprovalThresholdsService } from "../settings/approval-thresholds.service";
+import {
+  decideApproval,
+  type ApprovalDecision,
+  type OrderUnderTest,
+} from "../settings/approval-thresholds";
+import { OrganizationsService } from "../organizations/organizations.service";
+import {
+  policyNote,
+  recordApprovalRefusal,
+  refusalSentence,
+  roleSatisfies,
+} from "./order-approval-gate";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,6 +79,39 @@ const TERMINAL_CALENDAR_STATUSES = [
   CalendarEventStatus.COMPLETED,
   CalendarEventStatus.CANCELLED,
 ] as const;
+
+/**
+ * The statuses an order can be in while it is still waiting for a signature.
+ *
+ * `PENDING` is where an order lands when it is written; `APPROVAL_NEEDED` is
+ * where the gate parks one it refused. Both are "somebody still has to seal
+ * this", and `/orders` buckets both into its `pending` station
+ * (`apps/web/src/pages/orders/next/useOrdersNextData.ts:33-37`).
+ */
+const PENDING_APPROVAL_STATUSES = new Set<string>([
+  ProcurementOrderStatus.PENDING,
+  ProcurementOrderStatus.APPROVAL_NEEDED,
+]);
+
+/**
+ * How far back the approval gate walks the order ledger for first-order-ness
+ * and price history. Matches `RETROSPECTIVE_WINDOW_DAYS` in
+ * `settings/approval-thresholds.service.ts:43` on purpose: the register tells a
+ * house how often a rule WOULD have fired over this window, and a gate that
+ * judged over a different one would make that number a different question.
+ */
+const APPROVAL_GATE_WINDOW_DAYS = 365;
+
+/**
+ * `numeric` comes back from PostgREST as a string. A value that is not a finite
+ * number becomes `null` — never `0`, which `decideApproval` would read as a
+ * genuine total below every ceiling.
+ */
+function toFiniteNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 /**
  * A uuid column takes a uuid or nothing.
@@ -120,6 +166,19 @@ export class ProcurementService {
     @Optional()
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService?: NotificationsService,
+    // ── The approval gate's two halves ──────────────────────────────────────
+    // Declared LAST so the seven specs that build this service positionally
+    // (`new ProcurementService(db, events, ledger)`) keep compiling; none of
+    // them calls `approveOrder`. They are NOT `@Optional()` in the DI graph —
+    // `ProcurementModule` imports `SettingsModule` and `OrganizationsModule`,
+    // so Nest always supplies them — and `approveOrder` REFUSES rather than
+    // seals when either is missing. A gate that opens when its own dependency
+    // is absent is the [[absence-reported-as-health]] fault written into a
+    // constructor.
+    @Optional()
+    private readonly approvalThresholds?: ApprovalThresholdsService,
+    @Optional()
+    private readonly organizations?: OrganizationsService,
   ) {}
 
   /**
@@ -1435,11 +1494,54 @@ export class ProcurementService {
     }
   }
 
+  /**
+   * Seal an order — if the house's own policy lets this person seal it.
+   *
+   * =========================================================================
+   * THE GATE (added 2026-09-03, ADR 0112)
+   * =========================================================================
+   * Until today this method wrote `status/approved_at/approved_by` and read
+   * neither a role nor an amount, so anyone who could reach
+   * `POST /procurement/orders/:id/approve` could seal any figure. The settings
+   * page has carried the house's thresholds since the fourth pass and printed,
+   * as its first sentence, that nothing consulted them. This is the code that
+   * consults them.
+   *
+   * The order of operations is deliberate and each step is load-bearing:
+   *
+   *   1. READ THE ORDER FIRST. It was not read at all before, so a bad id
+   *      became a PostgREST error from an UPDATE that matched nothing. Now a
+   *      missing order is a 404 with a sentence.
+   *   2. READ THE POLICY, and treat an UNREADABLE policy as a refusal, never as
+   *      permission. A house whose thresholds table cannot be read has not said
+   *      "anyone, any amount"; it has said nothing, and sealing on nothing is
+   *      how a ceiling silently stops existing.
+   *   3. BUILD THE FACTS the rules test, and pass `null` — never `false` —
+   *      for a fact that could not be established. `decideApproval` already
+   *      refuses to fire a rule on an unknown, and reports it as `untestable`.
+   *   4. DECIDE with the SAME pure function the settings register renders. Two
+   *      implementations of "does this need an owner" is how a policy page and
+   *      a policy diverge.
+   *   5. COMPARE RANKS. `owner` ⪰ `manager` ⪰ everything else, and an unknown
+   *      role satisfies nothing (`order-approval-gate.ts`).
+   *   6. ON REFUSAL: park the order in `APPROVAL_NEEDED` so the row itself says
+   *      it is waiting, file `order_approval_refused` in `system_audit_log`, and
+   *      throw a `ForbiddenException` whose message is the WHOLE sentence —
+   *      which rule fired, what the number was, and who may sign. A person told
+   *      only "forbidden" learns to split the order in two.
+   *
+   * A house with NO rule at all keeps exactly today's behaviour: `policySet` is
+   * false, `decideApproval` fires nothing, the seal goes through, and the fact
+   * that nothing was consulted is stated in the readout rather than implied by
+   * silence.
+   */
   async approveOrder(
     restaurantId: string,
     orderId: string,
     userId: string,
   ): Promise<OrderResponseDto> {
+    await this.assertApprovalAllowed(restaurantId, orderId, userId);
+
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -1516,6 +1618,399 @@ export class ProcurementService {
     }
 
     return order;
+  }
+
+  /* ── The approval gate ──────────────────────────────────────────────────── */
+
+  /**
+   * Throw unless this person may seal this order under this house's rules.
+   *
+   * Returns quietly when the seal is allowed. Every refusal path throws with a
+   * whole sentence; none of them returns a boolean, because a boolean is a
+   * thing a caller can forget to check.
+   */
+  private async assertApprovalAllowed(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<void> {
+    // The gate cannot open when it cannot see. `ProcurementModule` imports both
+    // modules, so this is unreachable in the running gateway — it exists so a
+    // future wiring mistake refuses loudly instead of sealing silently.
+    if (!this.approvalThresholds || !this.organizations) {
+      throw new InternalServerErrorException(
+        "The approval policy could not be consulted (the thresholds service is not wired into procurement), " +
+          "so nothing was sealed. This is a gateway fault, not a decision about this order.",
+      );
+    }
+
+    const { data: orderRow, error: orderError } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, total_cost, provider_id, inventory_id, final_price, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (orderError) {
+      throw new InternalServerErrorException(
+        `The order could not be read, so its amount could not be tested against this house's rules: ${orderError.message}`,
+      );
+    }
+    if (!orderRow) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to approve.",
+      );
+    }
+
+    const readout = await this.approvalThresholds.read(restaurantId);
+    if (!readout.readable) {
+      // An unreadable policy is NOT an empty policy. See the method header.
+      throw new InternalServerErrorException(
+        `This house's approval rules could not be read (${readout.reason ?? "no reason given"}), ` +
+          "so nothing was sealed. A rule that cannot be read is not a rule that does not exist.",
+      );
+    }
+
+    const row = orderRow as {
+      total_cost: string | number | null;
+      provider_id: string | null;
+      inventory_id: string | null;
+      final_price: string | number | null;
+      status: string | null;
+    };
+
+    const order: OrderUnderTest = {
+      total: toFiniteNumber(row.total_cost),
+      isFirstOrderToVendor: await this.isFirstOrderToVendor(
+        restaurantId,
+        orderId,
+        row.provider_id,
+      ),
+      pricePremiumPct: await this.pricePremiumPct(
+        restaurantId,
+        orderId,
+        row.inventory_id,
+        toFiniteNumber(row.final_price),
+      ),
+    };
+
+    const decision = decideApproval(readout.thresholds, order);
+    if (!decision.requiredRole) return; // No rule fired — seal as before.
+
+    const actorRole = await this.organizations.resolveRestaurantRole(
+      userId,
+      restaurantId,
+    );
+    if (roleSatisfies(actorRole, decision.requiredRole)) return;
+
+    await this.parkOrderAwaitingApproval(restaurantId, orderId, row.status);
+
+    const sentence = refusalSentence(decision, actorRole);
+    const receipt = await recordApprovalRefusal(
+      this.databaseService.supabase as never,
+      this.logger,
+      {
+        restaurantId,
+        orderId,
+        actorUserId: userId,
+        actorRole,
+        requiredRole: decision.requiredRole,
+        firedBy: decision.firedBy,
+        reasons: decision.reasons,
+        untestable: decision.untestable,
+        total: order.total,
+        sentence,
+      },
+    );
+    if (!receipt.audited) {
+      this.logger.error(
+        `ORDER_APPROVAL_REFUSAL_UNRECORDED order=${orderId} restaurant=${restaurantId} — ` +
+          `${receipt.reason}. The refusal stands; the paper did not.`,
+      );
+    }
+
+    throw new ForbiddenException(sentence);
+  }
+
+  /**
+   * What every pending order in this house needs, and whether the caller can
+   * give it — the read behind `/orders`' honest ceremony.
+   *
+   * ONE query set for the whole house rather than one call per row: the facts
+   * the rules test (first-order-ness, the premium over the last price paid) are
+   * a single forward walk through the order ledger, exactly as the settings
+   * register's retrospective computes them. Asking per row would recompute that
+   * walk once per row and still not agree with itself.
+   *
+   * The page uses this to render the ceremony DISABLED with the reason in
+   * words. It is a courtesy, not a gate: `approveOrder` refuses independently,
+   * and the page prints that refusal too.
+   */
+  async approvalGate(
+    restaurantId: string,
+    userId: string,
+  ): Promise<{
+    restaurantId: string;
+    callerRole: string | null;
+    policySet: boolean;
+    policyNote: string;
+    readable: boolean;
+    reason: string | null;
+    orders: Array<{
+      orderId: string;
+      requiredRole: "owner" | "manager" | null;
+      firedBy: string[];
+      reasons: string[];
+      untestable: string[];
+      mayApprove: boolean;
+      sentence: string | null;
+    }>;
+  }> {
+    const base = {
+      restaurantId,
+      callerRole: null as string | null,
+      policySet: false,
+      policyNote: policyNote(false),
+      readable: false,
+      reason: null as string | null,
+      orders: [] as Array<{
+        orderId: string;
+        requiredRole: "owner" | "manager" | null;
+        firedBy: string[];
+        reasons: string[];
+        untestable: string[];
+        mayApprove: boolean;
+        sentence: string | null;
+      }>,
+    };
+
+    if (!this.approvalThresholds || !this.organizations) {
+      return {
+        ...base,
+        reason:
+          "the thresholds service is not wired into procurement, so this house's rules could not be consulted",
+      };
+    }
+
+    const readout = await this.approvalThresholds.read(restaurantId);
+    if (!readout.readable) {
+      return { ...base, reason: readout.reason };
+    }
+
+    const callerRole = await this.organizations.resolveRestaurantRole(
+      userId,
+      restaurantId,
+    );
+
+    const walk = await this.walkOrdersUnderTest(restaurantId);
+    if (!walk.readable) {
+      return {
+        ...base,
+        callerRole,
+        policySet: !readout.policyEmpty,
+        policyNote: policyNote(!readout.policyEmpty),
+        reason: walk.reason,
+      };
+    }
+
+    const orders = walk.rows
+      .filter((r) => PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()))
+      .map((r) => {
+        const decision: ApprovalDecision = decideApproval(readout.thresholds, r.test);
+        const mayApprove =
+          decision.requiredRole === null ||
+          roleSatisfies(callerRole, decision.requiredRole);
+        return {
+          orderId: r.id,
+          requiredRole: decision.requiredRole,
+          firedBy: decision.firedBy,
+          reasons: decision.reasons,
+          untestable: decision.untestable,
+          mayApprove,
+          sentence: mayApprove ? null : refusalSentence(decision, callerRole),
+        };
+      });
+
+    return {
+      restaurantId,
+      callerRole,
+      policySet: !readout.policyEmpty,
+      policyNote: policyNote(!readout.policyEmpty),
+      readable: true,
+      reason: null,
+      orders,
+    };
+  }
+
+  /**
+   * Park a refused order where the row itself says it is waiting.
+   *
+   * `APPROVAL_NEEDED` is an existing member of `ProcurementOrderStatus` and the
+   * column is a plain `varchar(50)` with no CHECK
+   * (`baseline_from_production.sql:4527`), so this introduces no new vocabulary
+   * and no migration. Only a `PENDING` order is moved: an order already in
+   * `APPROVAL_NEEDED`, `NEGOTIATING` or anything further along must not be
+   * rewound by somebody pressing a button they were never going to be allowed
+   * to press.
+   *
+   * A failure here is logged and swallowed. The refusal is the answer; failing
+   * to write the waiting state must not turn a 403 into a 500 and tell the
+   * person something false about why they were stopped.
+   */
+  private async parkOrderAwaitingApproval(
+    restaurantId: string,
+    orderId: string,
+    currentStatus: string | null,
+  ): Promise<void> {
+    if ((currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING) {
+      return;
+    }
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update({ status: ProcurementOrderStatus.APPROVAL_NEEDED })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId);
+      if (error) {
+        this.logger.error(
+          `ORDER_NOT_PARKED order=${orderId} — ${error.message}. The seal was refused; the row still reads PENDING.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `ORDER_NOT_PARKED order=${orderId} — ${err?.message}. The seal was refused; the row still reads PENDING.`,
+      );
+    }
+  }
+
+  /**
+   * Has this house ordered from this vendor before THIS order?
+   *
+   * `null` when it cannot be told — no vendor on the row, or a read that failed.
+   * Never `false`: `decideApproval` treats `null` as untestable and refuses to
+   * fire `new_vendor` on it, which is the difference between a rule and a rule
+   * that fires during a database outage.
+   */
+  private async isFirstOrderToVendor(
+    restaurantId: string,
+    orderId: string,
+    providerId: string | null,
+  ): Promise<boolean | null> {
+    if (!providerId) return null;
+    try {
+      const { count, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId)
+        .eq("provider_id", providerId)
+        .neq("id", orderId);
+      if (error || count === null || count === undefined) return null;
+      return count === 0;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * How far above the last unit price this house paid for the same item.
+   *
+   * `null` when there is no earlier price — a first purchase has no premium, it
+   * has no comparison at all, and `new_vendor` is the rule that covers it.
+   */
+  private async pricePremiumPct(
+    restaurantId: string,
+    orderId: string,
+    inventoryId: string | null,
+    unitPrice: number | null,
+  ): Promise<number | null> {
+    if (!inventoryId || unitPrice === null || unitPrice <= 0) return null;
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("final_price, requested_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .neq("id", orderId)
+        .order("requested_at", { ascending: false })
+        .limit(1);
+      if (error) return null;
+      const prior = toFiniteNumber(
+        (data as Array<{ final_price: string | number | null }> | null)?.[0]
+          ?.final_price ?? null,
+      );
+      if (prior === null || prior <= 0) return null;
+      return ((unitPrice - prior) / prior) * 100;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The order ledger walked forward once, reduced to the facts the rules test.
+   *
+   * Same window and same arithmetic as `ApprovalThresholdsService`'s
+   * retrospective, and the caveat travels with it: a "first order" is first
+   * among the orders inside the window, so a vendor last used two years ago
+   * reads as new here.
+   */
+  private async walkOrdersUnderTest(restaurantId: string): Promise<{
+    rows: Array<{ id: string; status: string | null; test: OrderUnderTest }>;
+    readable: boolean;
+    reason: string | null;
+  }> {
+    const since = new Date(
+      Date.now() - APPROVAL_GATE_WINDOW_DAYS * 86_400_000,
+    ).toISOString();
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("id, status, provider_id, inventory_id, requested_at, total_cost, final_price")
+        .eq("restaurant_id", restaurantId)
+        .gte("requested_at", since)
+        .order("requested_at", { ascending: true })
+        .limit(4000);
+      if (error) {
+        return { rows: [], readable: false, reason: error.message };
+      }
+      const seenVendors = new Set<string>();
+      const lastPriceByItem = new Map<string, number>();
+      const rows: Array<{ id: string; status: string | null; test: OrderUnderTest }> = [];
+      for (const raw of (data ?? []) as Array<{
+        id: string;
+        status: string | null;
+        provider_id: string | null;
+        inventory_id: string | null;
+        total_cost: string | number | null;
+        final_price: string | number | null;
+      }>) {
+        const vendor = raw.provider_id;
+        const isFirst = vendor ? !seenVendors.has(vendor) : null;
+        if (vendor) seenVendors.add(vendor);
+
+        const unit = toFiniteNumber(raw.final_price);
+        let premium: number | null = null;
+        if (raw.inventory_id && unit !== null && unit > 0) {
+          const prior = lastPriceByItem.get(raw.inventory_id);
+          if (prior !== undefined && prior > 0) {
+            premium = ((unit - prior) / prior) * 100;
+          }
+          lastPriceByItem.set(raw.inventory_id, unit);
+        }
+
+        rows.push({
+          id: raw.id,
+          status: raw.status,
+          test: {
+            total: toFiniteNumber(raw.total_cost),
+            isFirstOrderToVendor: isFirst,
+            pricePremiumPct: premium,
+          },
+        });
+      }
+      return { rows, readable: true, reason: null };
+    } catch (err: any) {
+      return { rows: [], readable: false, reason: err?.message ?? String(err) };
+    }
   }
 
   async markDelivered(

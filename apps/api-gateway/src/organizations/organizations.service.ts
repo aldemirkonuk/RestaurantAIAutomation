@@ -126,6 +126,40 @@ export class OrganizationsService {
     restaurantId: string,
     action = "edit restaurant details",
   ): Promise<void> {
+    const role = await this.resolveRestaurantRole(userId, restaurantId);
+
+    if (role !== "owner" && role !== "manager") {
+      throw new ForbiddenException(
+        `Only managers and owners can ${action}`,
+      );
+    }
+  }
+
+  /**
+   * What this person is at this restaurant, or `null` if nothing says.
+   *
+   * The two-step lookup `assertManagerOrOwner` has always done, lifted out and
+   * made public because a second caller now needs the ANSWER rather than the
+   * refusal: `ProcurementService.approveOrder` has to compare the actor's rank
+   * against the rank a threshold rule demands, which is a three-way comparison
+   * (`owner` ⪰ `manager` ⪰ anything else), not a yes/no.
+   *
+   * Lifted rather than copied. A second implementation of "what is this person
+   * here" is how the settings page and the gate that enforces it drift apart —
+   * the same argument `decideApproval`'s header makes about the policy itself.
+   *
+   * `userId` is `public.users.user_id` — the id the JWT carries. `auth.users`
+   * and `public.users` are DISJOINT in this database, so an `auth.users` id
+   * would silently resolve to nobody and every order would read as unroled.
+   *
+   * A read that FAILS is indistinguishable here from a person with no row, and
+   * both return `null`. Callers must therefore treat `null` as "not proven to
+   * outrank anything", never as "staff" and never as permission.
+   */
+  async resolveRestaurantRole(
+    userId: string,
+    restaurantId: string,
+  ): Promise<string | null> {
     const { data: access } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .select("role")
@@ -134,21 +168,17 @@ export class OrganizationsService {
       .eq("is_active", true)
       .maybeSingle();
 
-    let role = access?.role as string | undefined;
-    if (!role) {
-      const { data: user } = await this.databaseService.supabase
-        .from("users")
-        .select("role, restaurant_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (user?.restaurant_id === restaurantId) role = user.role;
-    }
+    const fromAccess = (access as { role?: string } | null)?.role;
+    if (fromAccess) return fromAccess;
 
-    if (role !== "owner" && role !== "manager") {
-      throw new ForbiddenException(
-        `Only managers and owners can ${action}`,
-      );
-    }
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("role, restaurant_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const legacy = user as { role?: string; restaurant_id?: string } | null;
+    if (legacy?.restaurant_id === restaurantId) return legacy.role ?? null;
+    return null;
   }
 
   /**

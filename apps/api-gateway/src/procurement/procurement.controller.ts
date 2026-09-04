@@ -280,9 +280,41 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * What this house's approval rules say about every order still waiting.
+   *
+   * Read-only and one call for the whole house. `/orders` uses it to render the
+   * hold-to-approve ceremony DISABLED, with the rule and the amount in words,
+   * for a person whose role cannot seal that row — never hidden, because a
+   * control that disappears teaches nothing.
+   *
+   * It is a courtesy, not the gate. `POST orders/:id/approve` decides
+   * independently and the page prints its refusal too.
+   *
+   * Declared as `order-approval-gate` rather than `orders/approval-gate` so it
+   * can never be shadowed by, or shadow, a future `orders/:id` route.
+   */
+  @Get("order-approval-gate")
+  @ApiOperation({
+    summary: "Who may seal which pending order, and why not",
+    description:
+      "Per pending order: the role the house's rules demand, which rules fired with the numbers that fired them, which could not be tested, and whether the caller's role satisfies it. `policySet: false` means this house has recorded no rule at all — which is not the same as 'anyone, any amount'.",
+  })
+  @ApiResponse({ status: 200, description: "The gate readout" })
+  async orderApprovalGate(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.approvalGate(user.restaurantId, user.userId);
+  }
+
   @Post("orders/:id/approve")
   @ApiOperation({ summary: "Approve procurement order" })
   @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "This house's approval rules require a role the caller does not hold. The body's `message` is the whole sentence — which rule fired, what the number was, and who may sign — and is rendered verbatim by the page.",
+  })
   async approveOrder(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
@@ -294,6 +326,12 @@ export class ProcurementController {
         user.userId,
       );
     } catch (error) {
+      // A refusal is not a server fault. Before the approval gate existed
+      // (ADR 0112) every throw from this method was re-wrapped as a 500, so a
+      // 403 carrying the reason a person was stopped would have reached the
+      // browser as "Internal Server Error" with the sentence buried in it.
+      // HttpExceptions carry their own status and their own body; pass them.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to approve order",
         HttpStatus.INTERNAL_SERVER_ERROR,

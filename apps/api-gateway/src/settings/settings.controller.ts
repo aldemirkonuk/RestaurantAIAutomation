@@ -26,6 +26,7 @@ import {
   type ThresholdsReadout,
 } from "./approval-thresholds.service";
 import { SetApprovalThresholdDto } from "../vendor-terms/dto/vendor-terms.dto";
+import { OrganizationsService } from "../organizations/organizations.service";
 import {
   FeatureFlagsDto,
   UpdateFeatureFlagsDto,
@@ -41,6 +42,7 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly thresholds: ApprovalThresholdsService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get("feature-flags")
@@ -87,7 +89,7 @@ export class SettingsController {
   @ApiOperation({
     summary: "Who must approve an order above what amount",
     description:
-      "The house's own rules, each with who set it and when, plus how often each WOULD have fired over the orders already in the books. `enforcement.enforcedBy` is empty: nothing in the gateway consults these rows yet, and the payload says exactly where enforcement has to land.",
+      "The house's own rules, each with who set it and when, plus how often each WOULD have fired over the orders already in the books. `enforcement.enforcedBy` names every code path that consults these rows before an order can be sealed — it is measured, not asserted, so an empty array means nothing enforces them.",
   })
   @ApiResponse({ status: 200, description: "The threshold readout" })
   async getApprovalThresholds(
@@ -105,11 +107,16 @@ export class SettingsController {
   @Put("approval-thresholds")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Set one approval rule",
+    summary: "Set one approval rule — owner or manager only",
     description:
-      "`enabled: false` keeps the row and its number, so switching a rule back on does not lose the figure somebody chose. The response carries `audited` and `auditReason` so a change whose audit row failed is visible rather than assumed.",
+      "`enabled: false` keeps the row and its number, so switching a rule back on does not lose the figure somebody chose. The response carries `audited` and `auditReason` so a change whose audit row failed is visible rather than assumed. Only an owner or a manager of this restaurant may write a rule; anyone else is refused with 403.",
   })
   @ApiResponse({ status: 200, description: "The readout after the write" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. A limit anybody may raise is not a limit.",
+  })
   async setApprovalThreshold(
     @CurrentUser("restaurantId") restaurantId: string,
     @Body() dto: SetApprovalThresholdDto,
@@ -121,6 +128,21 @@ export class SettingsController {
         HttpStatus.BAD_REQUEST,
       );
     }
+    // THE ROLE CHECK LIVES HERE, NOT IN THE BROWSER (founder's call,
+    // 2026-09-03: "only certain high tier like manager or owner can adjust
+    // it"). A ceiling that stops an order from being sealed is worth nothing if
+    // the person it stops can raise it; the page also disables the editor, but
+    // the page is a courtesy and this line is the rule.
+    //
+    // `assertCanManageRestaurant` is the existing shape
+    // (`organizations/organizations.service.ts:162`), already used by
+    // `payment-methods` and `mcp-connections`, so there is one implementation of
+    // "may this person manage this house" and one spec behind it.
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "set an approval threshold for this restaurant",
+    );
     try {
       return await this.thresholds.write(restaurantId, dto, userId ?? null);
     } catch (error) {
