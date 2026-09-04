@@ -521,6 +521,37 @@ only the Claude-Code path still writes `.planning/07-reference/pr-audits/`,
 corrected in place above) and the Review-trail table, which had fallen two
 rows behind its own Correction count (fixed by this edit).
 
+## Correction — 2026-09-04, found by PR #291's security audit
+
+Unlike the first six, this correction did not come from a round of the gate
+auditing its own introducing PR — it came from the gate auditing an unrelated
+PR ([PR #291](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/291),
+`fix/deploy-check-path-scoped`, ADR 0097's path-scoped deploy check) whose
+security angle noticed, in passing, that the gap it was about to hit itself
+generalizes: **`_GATE_OWNED_PATHS` covered `.github/workflows/ci.yml` but not
+`.github/workflows/deploy.yml`**, the post-merge production-deploy-verification
+workflow ADR 0097 built. A PR that loosened `check_deployed_sha.py`'s
+`--expect`, dropped a verification stage, or redefined what counts as
+`provenance_verified` would have been evaluated as an ordinary PR and could
+self-merge on three APPROVEs, even though it edits the only thing that proves
+production actually got what merged — the same class of hole `ci.yml` was
+added to close in the fifth Correction, just on the other workflow file. PR
+#291's own report named this explicitly rather than silently working around
+it or bundling the fix into an unrelated PR (which would itself have needed
+this same escalation, for an unrelated reason) — flagged as its own follow-up.
+
+Fixed: `.github/workflows/deploy.yml` added to `_GATE_OWNED_PATHS` in
+`scripts/pr_audit_gate.py`, and to the matching list in
+`.claude/skills/pr-audit-gate/SKILL.md` step 4 (kept in sync per the third
+Correction's own note — they had drifted once before, over `CLAUDE.md`).
+`--self-test` was checked for a case enumerating `_GATE_OWNED_PATHS`'s
+contents; it has none (the escalation tests exercise the generic
+`touches_own_gate` decision against a synthetic reason string, not the tuple
+itself), so no test needed growing. This PR, editing `_GATE_OWNED_PATHS`
+itself, force-escalates under its own new rule — per ADR 0090's design, it is
+not self-merged; the founder reviews and merges it directly, the same path
+PR #261 needed.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -534,3 +565,4 @@ rows behind its own Correction count (fixed by this edit).
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — a GITHUB_TOKEN merge silently removes the post-merge deploy audit (confirmed against GitHub's documented behavior + this repo's own merge history); a repo-wide hook that both over- and under-blocked real git commands (confirmed by execution); a diff-truncation gap the third round's correctness angle didn't reach (confirmed by harness-executing a planted regression past the old cut); 6 fixes landed same day, `--self-test` grown 17 → 24, see fourth Correction above |
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — round 4's own `workflow_dispatch` fix 403'd on every run (missing `actions: write`, self-caught independently before either report landed) and round 4's own `\n`-exclusion regex fix regressed a real backslash-continuation case; both fixed same day, `--self-test` grown 24 → 29, see fifth Correction above |
 | 2026-09-03 | pr-audit-gate skill, combined correctness+security (fresh Opus subagent, final round) | BLOCK — one finding, in the YAML consuming `wait_upstream`'s return value rather than the Python producing it: a confirmed-red required check reported job SUCCESS having audited nothing; fixed same day. Explicitly stated the parsers/hook have converged after five prior rounds' adversarial testing found nothing new, see sixth Correction above |
+| 2026-09-03 | pr-audit-gate skill, security angle, auditing PR #291 (unrelated PR) | Noted in passing, not a BLOCK on PR #291 itself: `_GATE_OWNED_PATHS` doesn't cover `deploy.yml`, flagged as its own follow-up PR rather than bundled in; fixed 2026-09-04, see seventh Correction above |

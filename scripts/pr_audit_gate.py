@@ -413,6 +413,15 @@ def _run_audit_inner(pr_number: str) -> int:
                                        # PR removing that trigger would break the merge step
                                        # with no escalation forcing a human to notice (found by
                                        # the gate's own FIFTH audit, correctness angle's note 1).
+        ".github/workflows/deploy.yml",  # the post-merge production-deploy-verification
+                                           # workflow ADR 0097 built. Without this, a PR that
+                                           # loosens check_deployed_sha.py's --expect, drops a
+                                           # stage, or redefines provenance_verified would be
+                                           # evaluated as an ordinary PR and could self-merge on
+                                           # three APPROVEs -- even though it edits the only thing
+                                           # that verifies production got what main says it got
+                                           # (found by PR #291's security audit, 2026-09-03; see
+                                           # ADR 0090's seventh Correction).
     )
     # CONFIRMED live (gate's own third audit, security angle): the returncode
     # here was unchecked -- a failed `gh` call yields empty stdout exactly
