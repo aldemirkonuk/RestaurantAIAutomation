@@ -116,6 +116,15 @@
   box-shadow: -18px 0 48px rgba(23, 19, 15, 0.14);
 }
 
+/* The one exception ADR 0112 anticipated: a sheet holding a LETTER rather than
+   an object's fields (sketch 100). 440px minus padding is a ~46-character body
+   column, which is too narrow for a writer to judge their own paragraph.
+   `width: 100%` above already collapses it below 640px viewports, so nothing
+   here needs a media query. */
+.mdv-ovl--sheet[data-wide='true'] .mdv-ovl__panel {
+  max-width: 640px;
+}
+
 /* `align-items: flex-start` is load-bearing, not tidiness: the default
    `stretch` makes the panel fill from its 10vh margin to the bottom of the
    viewport, so an overlay holding one sentence rendered as a 700px sheet of

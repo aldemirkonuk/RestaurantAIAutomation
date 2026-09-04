@@ -22,7 +22,16 @@ links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
 ## Surface — buttons → where they go
 
 - **Templates / Send History / Scheduled Reports / Procurement Emails tabs** → (on this page)
-- **New Email / SMS template** → (builder on this page)
+- **New Email / SMS template** → (builder on this page) — legacy only; with the
+  flag ON both builders are retired (ADR 0118) and this rail carries the two
+  controls below instead
+- **Write a letter** (flag ON) → the house composer, a **wide sheet** over this
+  page (`Compose/ComposeSheet.tsx`; ADR 0112's `Sheet` with `wide`)
+- **The house's letter templates** (flag ON) → the house letter library, a wide
+  sheet (`TemplateSheet.tsx`)
+- **Send** (inside the composer) → `POST /communications/letters` — **queues, never
+  sends**; **Pull it back** → `POST /communications/letters/:id/cancel`
+- **Connect a mailbox** (named in the sender line's copy) → `/connections`
 - **Generate report now** → API `POST /reports/generate`; success toast's **Open** → [[documents-reports]] `/documents-reports`
 - **Delete schedule** → API (report-schedule delete)
 
@@ -43,7 +52,29 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 
 ### Redesign feature summary (behind the flag)
 
-- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), template workshops behind a what's-going-on banner, scheduled-reports rail
+- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), scheduled-reports rail
+- **The house email composer** (flag ON, ADR 0118): a wide sheet that writes one
+  letter — the sender line first, a recipient chosen **from the vendor book only**
+  with "add to the book" inline, a house template picker, a body, and a merge
+  picker that inserts **the engine's whole sentence with a provenance chip**
+  (rule key · window · computed-at). Send queues the letter; it never claims a send
+- **The house letter library** (flag ON): house-owned templates under five vendor
+  purposes, each showing its declared merge fields, who last edited it and when it
+  was last used, plus a "start from something the house noticed" flow that opens
+  the editor on an engine sentence. HELD: the four columns behind it arrive with
+  migration `20260904150000`; until it applies the library says **"could not be
+  read — unknown, not empty"** rather than rendering an empty shelf
+- **The undo window** (flag ON): a letter from the house's own mailbox is
+  **queued** for two minutes and can be pulled back; the ledger chip reads
+  "Queued · not yet sent", never "Sent"
+- **The guardrails over a human draft** (flag ON): commitment language and an
+  unfilled `{{merge_field}}` **block** Send with the sentence; the round count on
+  an order is **stated, not blocked**
+- **DARK — nothing can actually be sent today**, and the page says so in the sender
+  line: no `IntegrationDefinition` requests `gmail.send`, so every house resolves
+  to "no house sender" and Send is disabled carrying that reason (§9)
+- **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
+  0118 D7). They are untouched and the legacy page still mounts them
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
 
@@ -63,10 +94,17 @@ Canonical source with curves: `apps/web/src/pages/communications/next/MOTIONS.md
 |---|---|---|
 | `cm-row-settle` | Row settles open | a ledger row's expansion — `settle`, 320ms house curve, 4px drop |
 | `cm-ink` | Ink micro-state | row and rail-button hover/focus — one paper step, nothing translates |
+| `cmp-pick` | Picker ink | a recipient, a template or an engine sentence taking hover/focus inside the composer — `ink`, 160ms; the same paper step as a page row |
+| `mdv-sheet-tuck` | The sheet arrives | the composer and the letter library sliding in from the right — `tuck`, 300ms spring; owned by `components/mudavym/Sheet.tsx` (ADR 0112) |
 
-Deliberate non-motions: glance figures never tally; the template sheet appears
-in place; draft chips never pulse (a draft drawing attention to itself starts
-to look like activity — prc-02).
+Deliberate non-motions: glance figures never tally; draft chips never pulse (a
+draft drawing attention to itself starts to look like activity — prc-02); the
+undo countdown ticks as a number and gets no progress bar (a two-minute window
+is a decision that can still be reversed, not a process being watched); a
+queued letter's chip does not pulse either, for prc-02's reason one step
+further; a refusal appears in place, in words, and never shakes or flashes;
+and **the seal is not on this page's Send** — `HoldToApprove` fires only for the
+Mudavym subdomain sender, which is not provisioned, so nobody sees it today.
 
 **2026-08-31 wave polish (Sorting Office two-Opus review):** the ledger row's
 expand/collapse toggle carried an inline `background: 'transparent'` that
@@ -117,7 +155,67 @@ DRAFT/PENDING_APPROVAL exchange wears a dashed "AI draft · not sent" chip and
 its body renders in a dashed frame. Legacy page untouched; flag defaults OFF;
 override `mudavym.design.communications`.
 
-### Modal shape, 2026-09-03 (ADR 0112)
+### The house writes its own mail, 2026-09-04 (ADR 0118)
+
+**What the founder asked.** Build the composer from sketch 100 and retire both
+legacy builders behind `mudavym_design_communications`; the sender is per house
+and commercial; Send costs the seal on a Mudavym address and a plain button with
+a short undo window on the house's own mailbox; recipients are the book only,
+with "add to the book" inline; the merge unit is the engine's whole sentence with
+its provenance. Two further calls on 2026-09-04: the Mudavym address is a
+**paid-tier** option (a free house sends from its own mailbox, and the row never
+shows a price — OD-23), and a **staff broadcast is not a composer template** at
+all (crew messages stay on `/team`).
+
+**What was built.** `pages/communications/next/Compose/` — `ComposeSheet` (the
+wide sheet), `SenderLine`, `RecipientField`, `InsightPicker`, `useComposeData`,
+`compose-format` — plus `TemplateSheet.tsx` rewritten as the house letter
+library. Gateway: `apps/api-gateway/src/communications/letters/`
+(`house-sender.service.ts`, `house-letters.service.ts`,
+`house-letters.controller.ts`, `house-letters.cron.ts`) and migration
+`20260904150000_the_house_writes_its_own_mail.sql`.
+
+**The structure that enforces the verdict.** The sender line is the FIRST thing
+in the sheet, above To and Subject, because which address a letter leaves from
+decides whether there is a letter at all. Everything below it is disabled or
+enabled by what that line says, and the line's four states are read from a stored
+scope rather than a flag: a Google grant that did not ask for `gmail.send` is
+**not** a sending identity, and saying so is the difference between this page and
+one that lights a button because a connection exists.
+
+**Design used, and why.**
+- **A wide sheet (640px), not the standard 440.** ADR 0112 fixed one width on
+  purpose and named this as the anticipated exception; 440 minus padding is a
+  ~46-character body column, which is too narrow for a writer to judge their own
+  paragraph. `Sheet` gained a `wide` boolean — a boolean, not a number, so it
+  cannot become per-page freedom by increments.
+- **Two alternative directions considered, and not built.** (a) *A full-page
+  composer at `/communications/compose`*: more room, and it would have let the
+  conversation book sit beside the draft. Rejected because a letter is one
+  object's edit, which is exactly what the sheet shape means (ADR 0112) — and
+  because a route is a commitment to a place, while a letter is written from
+  wherever the reason to write it appeared (a recommendation, a vendor row, this
+  page). (b) *An inline composer docked at the foot of the conversation book*,
+  the Gmail idiom. Rejected because the book is a ledger of what happened and a
+  half-written letter is not one of those things; a draft parked inside a record
+  of sent mail is the same category error the "AI draft · not sent" chip exists
+  to prevent.
+- **What was substituted.** The sketch's seven templates became **five** (the
+  staff broadcast is out by decision, and "in-house creation" is a flow rather
+  than a template). The sketch's recommended build order shipped **against a new
+  route rather than `manual-reply`**: that route lives in `procurement/`, which
+  another builder owns this pass, and it derives the subject
+  (`procurement.service.ts:3436`) — a composer whose subject is computed for it is
+  not a composer.
+
+### Modal shape, 2026-09-03 (ADR 0112) — RETIRED 2026-09-04
+
+**Superseded by the section above.** The `.cm-builder-skin` three-selector
+re-skin described below no longer exists: the builders it re-skinned are no
+longer mounted from this page at all, so there is nothing left to re-skin. Kept
+as the record of what was tried and why it was only ever a boundary, not a
+finish.
+
 
 **TemplateSheet re-skins the OUTER SURFACE only, and this is the one place in the
 wave where that is true.** The clarity banner is unchanged. Below it, the wrapper
@@ -150,6 +248,15 @@ charcoal bug PageGate's header documents.
 - `apps/web/src/pages/Communications.tsx` (562 lines).
 - Rendered: `components/documents/{GmailTemplateBuilder, SMSTemplateBuilder, SavedTemplates, SavedSMSTemplates}.tsx`, `components/communications/{ReportScheduler, ClassifiedConversationList}.tsx` (Communications.tsx:13-31; mounts :506,513,544,553).
 
+**Behind the flag (ADR 0118):**
+
+- `apps/web/src/pages/communications/next/CommunicationsNext.tsx` · `useCommsNextData.ts` · `cm-format.ts` · `MOTIONS.md`
+- `apps/web/src/pages/communications/next/TemplateSheet.tsx` — the house letter library (no longer the two legacy builders)
+- `apps/web/src/pages/communications/next/Compose/` — `ComposeSheet.tsx`, `SenderLine.tsx`, `RecipientField.tsx`, `InsightPicker.tsx`, `useComposeData.ts`, `compose-format.ts`
+- `apps/web/src/components/mudavym/Sheet.tsx` — extended with the `wide` prop (640px) this composer is the only user of
+- Gateway: `apps/api-gateway/src/communications/letters/` — `house-sender.service.ts`, `house-letters.service.ts`, `house-letters.controller.ts`, `house-letters.cron.ts`, `house-letters.dto.ts`, `house-letters.spec.ts`
+- Migration: `supabase/migrations/20260904150000_the_house_writes_its_own_mail.sql`
+
 ## 4. Endpoints
 
 Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):495 (`reports`), :180
@@ -164,6 +271,20 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):495 (`reports`), :180
 | GET | `/conversations/threads`, `/conversations/thread/:id`, `/conversations/stats/overview` | `ClassifiedConversationList` → `hooks/queries/useConversationQueries.ts:194,209,225` |
 | POST | `/conversations/:id/summarize` | `useRegenerateSummary` → `useConversationQueries.ts:240` |
 | GET | `/procurement/conversations/history` | `useProcurementConversationHistory` (Communications.tsx:28) → `useConversationQueries.ts:284` |
+
+**Behind the flag (ADR 0118), all JWT-guarded and tenant-scoped from the signed token:**
+
+| Method | Path | Call site | Answers today |
+|---|---|---|---|
+| GET | `/communications/letters/sender` | `Compose/useComposeData.ts` | `kind: "none"` for every house — no `gmail.send` grant exists (§9) |
+| GET | `/communications/letters/book` | `Compose/useComposeData.ts` | the vendor addresses on record; a failed read THROWS rather than answering `[]` |
+| GET | `/communications/letters/templates` | `Compose/useComposeData.ts` | **400 in words** until migration `20260904150000` applies |
+| GET | `/communications/letters/queued` | `Compose/useComposeData.ts` | letters still inside their undo window |
+| POST | `/communications/letters/templates` | `TemplateSheet.tsx` | creates/edits a house letter template; refuses a non-vendor purpose |
+| POST | `/communications/letters` | `Compose/ComposeSheet.tsx` | **202 = queued**, never sent. 422 off-book / guardrail, 409 no sender, 403 the house revoked the grant |
+| POST | `/communications/letters/:id/cancel` | `Compose/ComposeSheet.tsx` | pulls a queued letter back; refuses once the window has closed |
+| GET | `/analytics/insights/:restaurantId` | `Compose/useComposeData.ts` | the engine's sentences with `candidate_key` / window / `computed_at` |
+| POST | `/providers/:id/contacts` | `Compose/RecipientField.tsx` | "add to the book" — the contact is created BEFORE a letter can address it |
 
 Note: the conversation hooks use their **own axios instance** against
 `VITE_API_GATEWAY_URL` (`useConversationQueries.ts:4-7`), not the shared `apiClient`.
@@ -193,6 +314,48 @@ chrome per dashboard.md §7.
   DB CHECK constraint (memory: procurement-conversations-schema-gotchas).
 
 ## 9. Gaps
+
+### The composer's own gaps, 2026-09-04 (ADR 0118)
+
+- **BLOCKING — no house can send a letter today, and the page says so in words.** The
+  sending identity is resolved from `integration_oauth_connections.scopes`
+  containing `https://www.googleapis.com/auth/gmail.send`. `INTEGRATION_DEFINITIONS`
+  declares `google_drive` and `excel` only
+  (`apps/api-gateway/src/integrations/integrations-oauth.constants.ts:36-98`), and
+  `google_drive` lists "Your Gmail messages" under `notRequested` (`:64`).
+  **Why not yet:** widening an existing grant's scopes would change what people
+  already consented to without asking them, and `gmail.send` is a Google-verified
+  sensitive scope. The fix is a **third `IntegrationDefinition`** with its own
+  disclosure — outside this pass's paths (`integrations/` is not this builder's),
+  filed in §13.
+- **HELD — the template library reads 400 until migration `20260904150000` applies.**
+  `category`, `merge_fields`, `updated_by` and `last_used_at` do not exist on
+  `communication_templates` yet. Measured live against `:4000` on 2026-09-04, the
+  route answers `"The house's letter templates could not be read (column
+  communication_templates.category does not exist). This is a failed read — the
+  library is not empty, it is unknown."` and the sheet renders that sentence.
+  **Why not yet:** migrations auto-apply on merge and are never hand-applied
+  first (that produces a version mismatch); the file ships in the same change.
+- **HELD — two writers now touch `communication_templates`.**
+  `restaurant-templates/` writes `type='email'|'sms'|'sender_identity'`; the house
+  letters write `type='letter'` through `communications/letters/`. **Why not yet:**
+  `restaurant-templates/`'s DTO is `whitelist: true, forbidNonWhitelisted: true`
+  and models four columns; growing it to carry the purpose, the merge fields, the
+  author and the last-use was outside this pass's paths. §13.
+- **NOT BUILT — a letter carries no attachment.** There is no attachment path on the
+  manager-written route, and the composer does not pretend there is.
+- **NOT MEASURED LIVE — the guardrail refusal and the no-sender refusal are proved by spec, not by
+  curl, on this deployment.** The demo tenant
+  (`550e8400-e29b-41d4-a716-446655440000`) has **zero** providers, so the
+  book check — which deliberately runs first, so it is reachable at all — answers
+  every request before the other two can. **Why not measured live:** creating a
+  vendor to unblock them would write a fabricated row to the **production**
+  Supabase project the local gateway points at (`SUPABASE_URL=…exzueerziesmczwlhomd…`).
+- **STATED, NOT FIXED — `max_rounds` counts only a letter attached to an order.** The AI path's
+  count is `outbound` rows for `order_id` (`inbound-responder.service.ts:248`), so
+  a letter with no order is not one of its rounds — there is no thread for it to
+  be a round of. Stated on the row rather than papered over.
+
 
 - ReceiptsNext-style parity, deliberate: with the flag ON, three legacy
   surfaces are not carried yet — the saved-templates lists (workshops open,
@@ -340,3 +503,29 @@ lands, this route is open.
 4. Surface read errors instead of empty states (`useTemplates.ts:70-75`).
 5. Rebrand the three template-preview strings (§7).
 6. Resolve the duplication with `/documents-reports` — `ClassifiedConversationList` is mounted on both (retire-to-write, CLAUDE.md §4). No ADR either way.
+7. **A `gmail_send` integration, so a house can actually send** — a third
+   `IntegrationDefinition` in
+   `apps/api-gateway/src/integrations/integrations-oauth.constants.ts` requesting
+   `https://www.googleapis.com/auth/gmail.send` with its own scope disclosure and
+   `notRequested` list, plus Google verification for a sensitive scope. Nothing
+   else in ADR 0118 is blocked on anything else; this is the whole of it. The
+   resolver, the queue, the undo window, the dispatcher and the refusals are
+   built and tested against a stubbed grant already.
+8. **Grow `restaurant-templates` or fold the house letters into it** — the two
+   modules now write one table under different `type` values (§9). Either the
+   existing DTO grows to carry `category`/`merge_fields`/`updated_by`/`last_used_at`
+   and `communications/letters` reads through it, or the letter templates move to
+   their own table. Retire-to-write applies either way.
+9. **The Mudavym sending subdomain** (paid tier; price is OD-23) — an ESP that
+   supports a delegated sending subdomain and inbound parsing, DKIM/SPF CNAMEs and
+   an MX on `mail.mudavym.com`, a DMARC policy on the parent, a parse webhook with
+   its own signature check, and a table for the provisioned address, its owner,
+   its state and its release date. The composer's `mudavym_subdomain` branch (the
+   seal, no undo window) is written and unreachable until `MUDAVYM_SENDING_DOMAIN`
+   is set.
+10. **"Write to the vendor" from a recommendation** — `ComposeSheet` already takes
+    a `prefill` prop (`providerId` / `subject` / `body`); the call site belongs to
+    `pages/recommendations/next/`, another builder's path this pass.
+11. **Attachments on a house letter**, if the founder wants them — a storage
+    path, a size bound, and a decision about whether an attachment may carry a
+    figure the body may not.

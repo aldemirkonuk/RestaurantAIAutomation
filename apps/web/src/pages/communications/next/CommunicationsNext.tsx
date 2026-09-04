@@ -17,9 +17,18 @@
  *
  * Motions (06-pages/communications.md §1b): row expand = settle; glance and
  * hover = ink. Nothing else moves.
+ *
+ * ── 2026-09-04, ADR 0118: the house writes its own mail ────────────────────
+ * The two legacy template workshops are gone from this page. Where they were,
+ * there is now the house composer (sketch 100) and the house's own letter
+ * library. The builders themselves are untouched and the legacy
+ * `/communications` still mounts them, so ADR 0042's byte-for-byte promise for
+ * the flag-off page holds; what changed is that nothing under `next/` imports
+ * them any more.
  */
 
 import { useState } from 'react';
+import { PenLine, Library } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
@@ -35,7 +44,8 @@ import {
   sendState,
   typeLabel,
 } from './cm-format';
-import { TemplateSheet, type TemplateChannel } from './TemplateSheet';
+import { TemplateSheet } from './TemplateSheet';
+import { ComposeSheet } from './Compose/ComposeSheet';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -49,6 +59,8 @@ const TYPE_LABELS: Record<string, string> = {
   ESCALATION: 'Escalation',
   ORDER_CONFIRMATION: 'Order confirmation',
   MANUAL_REPLY: 'Manual reply',
+  // ADR 0118 — a letter the house wrote from nothing, not a reply to anything.
+  HOUSE_LETTER: 'House letter',
 };
 
 function GlanceFigure({
@@ -161,6 +173,16 @@ function StateChip({
   const looks =
     state === 'draft'
       ? { text: draftChipText(status), bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: true }
+      // ADR 0118. A house letter inside its undo window: a person has pressed
+      // Send and it has NOT left. Neither word already on this page would do —
+      // "AI draft" is wrong twice over, and "Sent" would be the exact overclaim
+      // the undo window exists to prevent.
+      : state === 'queued'
+        ? { text: 'Queued · not yet sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: true }
+        : state === 'cancelled'
+          ? { text: 'Pulled back', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
+          : state === 'failed'
+            ? { text: 'Not sent', bg: 'var(--alarm-tint, rgba(155,58,42,.10))', fg: 'var(--alarm-deep, #8C3322)', dashed: false }
       : state === 'sending'
         ? { text: 'Sending…', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: false }
         : state === 'sent'
@@ -288,7 +310,8 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
 
 export default function CommunicationsNext() {
   const data = useCommsNextData();
-  const [sheet, setSheet] = useState<TemplateChannel | null>(null);
+  const [compose, setCompose] = useState(false);
+  const [library, setLibrary] = useState(false);
 
   return (
     <div
@@ -448,30 +471,31 @@ export default function CommunicationsNext() {
                       ? 'Gmail inbound watch: configured — vendor replies reach this page.'
                       : 'Gmail inbound watch: NOT configured — vendor replies will not arrive until it is.'}
               </p>
-              {/* P5. The previous line said SMS templates "stage for the
-                  messaging channel", which implies a channel this page can
-                  reach. It cannot: every recorded conversation is
-                  `channel='email'`. As written this comment added "and while
-                  the gateway does expose `POST /communications/sms`, NO web
-                  client calls it" — ADR 0084 DELETED that route four hours
-                  later, for exactly the reason named here (zero callers, plus
-                  no tenant and no ownership check on the destination number).
-                  There is now no raw SMS route at all. The workshop is kept
-                  because Save genuinely stores an SMS template (type='sms' in
-                  communication_templates); what is removed is the claim about
-                  a downstream sender. */}
+              {/* P5, and its close-out on 2026-09-04. This paragraph used to
+                  explain why the SMS template WORKSHOP was kept even though no
+                  SMS sender is reachable: Save genuinely stored a `type='sms'`
+                  row. ADR 0118 retired both workshops from this page, so the
+                  defence is no longer needed and the fact is. There is no raw
+                  SMS route at all (ADR 0084 deleted it: zero callers, no
+                  tenant, no ownership check on the destination number), every
+                  recorded conversation is `channel='email'`, and the composer
+                  writes email only. A free-text SMS composer would re-open
+                  exactly what that deletion closed — it is a founder question,
+                  filed in §13, not a gap to fill quietly. */}
               <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                SMS: no SMS sender is reachable from this page, and every conversation recorded so
-                far is email. An SMS template saved here is stored and nothing more.
+                SMS: no SMS sender is reachable from anywhere in the app, and every conversation
+                recorded so far is email. The composer writes letters, not messages.
               </p>
               <div className="flex flex-col gap-2">
-                <button type="button" onClick={() => setSheet('gmail')} className="cm-row cm-card rounded-lg px-3 py-2 text-left"
-                  style={{ border: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
-                  Email template workshop
+                <button type="button" onClick={() => setCompose(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
+                  style={{ border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
+                  <PenLine size={13} strokeWidth={1.75} aria-hidden />
+                  Write a letter
                 </button>
-                <button type="button" onClick={() => setSheet('sms')} className="cm-row cm-card rounded-lg px-3 py-2 text-left"
+                <button type="button" onClick={() => setLibrary(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
-                  SMS template workshop
+                  <Library size={13} strokeWidth={1.75} aria-hidden />
+                  The house's letter templates
                 </button>
               </div>
             </div>
@@ -535,7 +559,8 @@ export default function CommunicationsNext() {
         </div>
       </div>
 
-      {sheet && <TemplateSheet channel={sheet} onClose={() => setSheet(null)} />}
+      <ComposeSheet open={compose} onClose={() => setCompose(false)} />
+      {library && <TemplateSheet onClose={() => setLibrary(false)} />}
     </div>
   );
 }

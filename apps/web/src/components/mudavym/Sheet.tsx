@@ -157,6 +157,21 @@ export interface OverlayProps {
   className?: string;
   /** Extra class on the scrolling body. */
   bodyClassName?: string;
+  /**
+   * A wider right sheet — 640px instead of 440px. `Sheet` only.
+   *
+   * ADR 0112 fixed one width on purpose, and this is the one exception it
+   * anticipated: 440px holds an object's FIELDS, and the email composer holds a
+   * letter. A letter is prose that a person reads back as prose, and at 440px
+   * minus padding the body column is roughly 46 characters — narrow enough that
+   * the writer cannot see the paragraph they are judging. Sketch 100 asked for
+   * exactly this and nothing else about the shape ("The one thing this sketch
+   * asks of sketch 099: a `wide` sheet at 640px").
+   *
+   * It is a boolean rather than a number so it cannot become per-page freedom
+   * by increments: there are two widths, and a third needs an ADR.
+   */
+  wide?: boolean;
   /** Stack order. Default 100. */
   zIndex?: number;
   /** Element to focus on open. Defaults to the first focusable in the panel. */
@@ -250,6 +265,7 @@ function OverlayRoot({
   showClose,
   className,
   bodyClassName,
+  wide,
   zIndex = 100,
   initialFocusRef,
   anchorRef,
@@ -401,6 +417,9 @@ function OverlayRoot({
       className={`mdv-ovl mdv-ovl--${shape} mudavym`}
       data-ground={resolved === 'charcoal' ? 'charcoal' : undefined}
       data-shape={shape}
+      // `wide` is a Sheet-only affordance; setting it on a Panel or Popover
+      // would silently do nothing, so it is not carried there at all.
+      data-wide={shape === 'sheet' && wide ? 'true' : undefined}
       data-modal={modal ? 'true' : undefined}
       style={{ zIndex }}
     >
