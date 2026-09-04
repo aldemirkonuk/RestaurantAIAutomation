@@ -139,6 +139,14 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
   },
+  {
+    key: "mudavym_design_document",
+    // OFF by default: the canonical Mudavym document at /documents/:id
+    // (ADR 0104 D12 slice 2, D13's C-led synthesis — the delivery spine, A's
+    // sheet, B's verdict block). Column added by 20260904121000.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+  },
 ];
 
 export const ACTIVE_FEATURE_FLAG_KEYS: readonly string[] =
@@ -179,11 +187,13 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
   },
   {
     key: "enable_check_scanning",
-    capability: "apps/web/src/components/reports/molecules/CheckScannerSection.tsx",
+    capability:
+      "apps/web/src/components/reports/molecules/CheckScannerSection.tsx",
   },
   {
     key: "enable_auto_procurement",
-    capability: "services/agent-orchestrator/agents/procurement_agent.py (reorder path)",
+    capability:
+      "services/agent-orchestrator/agents/procurement_agent.py (reorder path)",
   },
   {
     key: "enable_recurring_orders",
@@ -194,15 +204,18 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
     // Gated, but on an ORCHESTRATOR-PROCESS env var, not per restaurant:
     // agent_registry.py:153 reads FEATURE_SOMMELIER_AI. A per-restaurant flag
     // cannot drive a process-wide switch, so wiring this is not one line.
-    capability: "services/agent-orchestrator/agents/sommelier_agent.py (env FEATURE_SOMMELIER_AI)",
+    capability:
+      "services/agent-orchestrator/agents/sommelier_agent.py (env FEATURE_SOMMELIER_AI)",
   },
   {
     key: "enable_menu_analyzer",
-    capability: "services/agent-orchestrator/agents/menu_analyzer_agent.py (env FEATURE_MENU_ANALYZER)",
+    capability:
+      "services/agent-orchestrator/agents/menu_analyzer_agent.py (env FEATURE_MENU_ANALYZER)",
   },
   {
     key: "enable_visual_verification",
-    capability: "services/agent-orchestrator/agents/visual_verification_agent.py (env FEATURE_VISUAL_VERIFICATION)",
+    capability:
+      "services/agent-orchestrator/agents/visual_verification_agent.py (env FEATURE_VISUAL_VERIFICATION)",
   },
   {
     key: "enable_predictive_analytics",
@@ -220,7 +233,8 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
     // settings.service.ts, and consent capture must begin by a restaurant's
     // own act — that decision should survive the cleanup, not be discarded
     // with the switch.
-    capability: "supabase/migrations/20260819000000_guest_identity_minimal_slice.sql (schema only)",
+    capability:
+      "supabase/migrations/20260819000000_guest_identity_minimal_slice.sql (schema only)",
   },
 ];
 

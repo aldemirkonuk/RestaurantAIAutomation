@@ -218,11 +218,40 @@ export class DocumentIntakeService {
         "No extraction model is configured, so the document was stored unread.",
       );
 
-    return this.extractor.extract(
-      bytes.toString("base64"),
-      input.mimeType,
-      input.restaurantId,
-    );
+    try {
+      return await this.extractor.extract(
+        bytes.toString("base64"),
+        input.mimeType,
+        input.restaurantId,
+      );
+    } catch (err: any) {
+      /**
+       * ADR 0104 D6 — "when extraction runs and FAILS, the template degrades to
+       * original + header fields + an explicit NOT EXTRACTED banner".
+       *
+       * Before this, an extractor that threw took the whole ingest down: the
+       * caller got a 422, no `procurement_documents` row was written, and the
+       * original bytes — already uploaded a few lines earlier — were left in
+       * the bucket with nothing pointing at them. The restaurant had handed us
+       * their paper and we kept neither the paper nor the fact that they had.
+       *
+       * MEASURED, not hypothetical (2026-09-04): three synthetic PDFs pushed at
+       * the local gateway came back
+       * `422 Anthropic 400: Your credit balance is too low`. A billing problem
+       * at the model vendor must not be able to discard a restaurant's invoice.
+       *
+       * The failure is NAMED on the document (it becomes a warning, so the row
+       * lands in `needs_review` with the reason in `notes`) and returned to the
+       * uploader in the same response. It is never silently an empty invoice.
+       */
+      const reason = err?.message ?? "unknown error";
+      this.logger.warn(
+        `extraction failed, storing the document unread: ${reason}`,
+      );
+      return this.unreadable(
+        `The extraction model could not be reached, so the document was stored unread: ${reason}`,
+      );
+    }
   }
 
   private unreadable(reason: string): ParsedDocument {
@@ -274,10 +303,28 @@ export class DocumentIntakeService {
       parsed.warnings.length > 0 ||
       parsed.lines.length === 0;
 
-    const { data, error } = await this.db
+    /**
+     * The columns migration 20260904120000 adds. Held apart so a database that
+     * has not applied it yet is TOLD APART from a document that printed no
+     * price base — the same distinction the read side makes.
+     *
+     * A write fallback is a heavier thing than a read fallback, so it does two
+     * things a silent retry would not: it names the loss in the document's own
+     * `notes` (which the canonical page renders), and it logs at warn level.
+     * This shape exists only for the window between this branch and its merge;
+     * once the migration is on every database the retry can never fire, and
+     * `v3.0-TECH-DEBT.md` carries the note to delete it.
+     */
+    const newColumns = {
+      printed: parsed.printed ?? null,
+    };
+    let schemaLagNote: string | null = null;
+
+    let { data, error } = await this.db
       .getClient()
       .from("procurement_documents")
       .insert({
+        ...newColumns,
         restaurant_id: input.restaurantId,
         provider_id: input.providerId ?? null,
         doc_type: parsed.docType,
@@ -329,6 +376,60 @@ export class DocumentIntakeService {
       .select("id")
       .single();
 
+    // 42703 is Postgres's `undefined_column`; PGRST204 is PostgREST's own answer
+    // when an INSERT payload names a column missing from its schema cache. The
+    // insert path returns the SECOND one — measured 2026-09-04 — so a retry
+    // keyed only on 42703 would never fire.
+    if (error?.code === "42703" || error?.code === "PGRST204") {
+      schemaLagNote =
+        "The price base and the printed literals were read but could not be " +
+        "stored: this database has not applied migration 20260904120000.";
+      this.logger.warn(schemaLagNote);
+      ({ data, error } = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .insert({
+          restaurant_id: input.restaurantId,
+          provider_id: input.providerId ?? null,
+          doc_type: parsed.docType,
+          source_channel: input.source,
+          doc_number: parsed.docNumber,
+          doc_date: parsed.docDate,
+          references_doc_number: parsed.referencesDocNumber,
+          storage_path: input.storagePath ?? null,
+          content_type: input.mimeType ?? null,
+          file_bytes: bytes.length,
+          raw_payload:
+            input.source === "edi" || input.source === "sftp"
+              ? bytes.toString("utf8").slice(0, 500_000)
+              : null,
+          extracted: parsed as unknown as Record<string, unknown>,
+          extraction_confidence: parsed.confidence,
+          extraction_model: parsed.extractionModel ?? null,
+          event_id: parsed.eventId ?? null,
+          currency: parsed.currency,
+          subtotal: parsed.subtotal,
+          freight: parsed.freight,
+          fuel_surcharge: parsed.fuelSurcharge,
+          split_case_fee: parsed.splitCaseFee,
+          delivery_fee: parsed.deliveryFee,
+          deposit_total: parsed.depositTotal,
+          tax: parsed.tax,
+          other_charges: parsed.otherCharges,
+          discount_total: parsed.discountTotal,
+          total: parsed.total,
+          computed_lines_total: parsed.computedLinesTotal,
+          tie_out_delta: parsed.tieOutDelta,
+          ties_out: parsed.tiesOut,
+          status: needsReview ? "needs_review" : "received",
+          source_ref: input.sourceRef ?? null,
+          sha256,
+          notes: [...parsed.warnings, schemaLagNote].join("\n"),
+        })
+        .select("id")
+        .single());
+    }
+
     if (error) {
       // A unique violation means another path won the race on the same bytes.
       // That is the dedupe working, not a failure.
@@ -344,6 +445,14 @@ export class DocumentIntakeService {
       }
       throw new Error(error.message);
     }
+    // `error` null AND `data` null cannot happen through `.single()` (PostgREST
+    // raises PGRST116 instead), but reporting a document id we never received
+    // would be a fabricated success and a TypeError here would surface as a 500
+    // with no mention of the write.
+    if (!data)
+      throw new Error(
+        `procurement_documents insert returned no row and no error for sha256 ${sha256}`,
+      );
 
     const documentId = data.id as string;
 
@@ -369,6 +478,18 @@ export class DocumentIntakeService {
             line_total: l.lineTotal,
             allowance: l.allowance,
             deposit: l.deposit,
+            // BT-149 / BT-150 and the printed literals (ADR 0104 D1,
+            // migration 20260904120000). Before those columns existed the
+            // extractor read all three and threw them away at the end of the
+            // request, so `142,00 / KS(12)` and `142,00` were indistinguishable
+            // the moment the document was read back.
+            ...(schemaLagNote
+              ? {}
+              : {
+                  price_base_qty: l.priceBaseQty ?? null,
+                  price_base_uom: l.priceBaseUom ?? null,
+                  printed: l.printed ?? null,
+                }),
             // order_line_id is left NULL on purpose. Matching lines to a PO is a
             // separate, ranked step, and a low-confidence guess written here
             // silently corrupts cost basis for months before anyone notices.
@@ -565,7 +686,10 @@ export class DocumentIntakeService {
             substitution: m.substitution,
             reason: m.reason,
           })),
-          { onConflict: "document_line_id,order_line_id", ignoreDuplicates: true },
+          {
+            onConflict: "document_line_id,order_line_id",
+            ignoreDuplicates: true,
+          },
         );
       if (error)
         this.logger.warn(
@@ -671,8 +795,10 @@ export class DocumentIntakeService {
     // Was this pairing proposed? Either it is already on the line (the matcher
     // applied it) or it is sitting in the suggestions table.
     const alreadyProposed = before.proposed_method != null;
-    let suggestion: { confidence: number | null; method: string | null } | null =
-      null;
+    let suggestion: {
+      confidence: number | null;
+      method: string | null;
+    } | null = null;
     if (!alreadyProposed) {
       const { data } = await client
         .from("procurement_line_match_suggestions")
@@ -967,7 +1093,11 @@ export class DocumentIntakeService {
     },
   ): Promise<{
     line: Record<string, unknown>;
-    tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null };
+    tieOut: {
+      computedLinesTotal: number;
+      tieOutDelta: number | null;
+      tiesOut: boolean | null;
+    };
   }> {
     const client = this.db.getClient();
 
@@ -982,9 +1112,7 @@ export class DocumentIntakeService {
     if (docErr) throw new Error(docErr.message);
     if (!doc) throw new Error("NOT_FOUND");
     if (doc.status !== "needs_review" && doc.status !== "received")
-      throw new Error(
-        `NOT_EDITABLE:${doc.status}`,
-      );
+      throw new Error(`NOT_EDITABLE:${doc.status}`);
 
     // Whitelisted columns only, with finite-number guards. A NaN is REJECTED,
     // never coerced to NULL — "clear this value" is null in the patch, and
@@ -1052,7 +1180,9 @@ export class DocumentIntakeService {
     ) {
       const beforeRow = before as Record<string, unknown>;
       const effQty = (update.qty ?? beforeRow.qty) as number | null;
-      const effPack = (update.pack_size ?? beforeRow.pack_size) as number | null;
+      const effPack = (update.pack_size ?? beforeRow.pack_size) as
+        | number
+        | null;
       if (finite(effQty) && finite(effPack))
         update.qty_bottles = effQty * effPack;
     }

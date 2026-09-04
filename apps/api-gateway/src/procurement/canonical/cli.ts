@@ -67,12 +67,16 @@ function toParsed(document: Row, lines: Row[]): ParsedDocument {
       qtyBottles: n(l.qty_bottles) ?? 0,
       freeGoodsQty: n(l.free_goods_qty) ?? 0,
       unitPrice: n(l.unit_price),
-      // No BT-149/BT-150 columns on procurement_document_lines yet.
-      priceBaseQty: null,
-      priceBaseUom: null,
+      // BT-149/BT-150, persisted since migration 20260904120000. A row from a
+      // database that predates it simply has neither key, which reads here as
+      // null — the same answer as a document that printed no basis, and the
+      // runner's own report says which of the two it was looking at.
+      priceBaseQty: n(l.price_base_qty),
+      priceBaseUom: normalizeUom(s(l.price_base_uom)),
       lineTotal: n(l.line_total),
       allowance: n(l.allowance),
       deposit: n(l.deposit),
+      ...(l.printed ? { printed: l.printed as Record<string, string> } : {}),
     })),
     computedLinesTotal: null,
     tieOutDelta: null,
@@ -80,6 +84,9 @@ function toParsed(document: Row, lines: Row[]): ParsedDocument {
     confidence: n(document.extraction_confidence) ?? 0,
     warnings: [],
     extractionModel: s(document.extraction_model),
+    ...(document.printed
+      ? { printed: document.printed as Record<string, string> }
+      : {}),
   });
 }
 

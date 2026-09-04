@@ -1,0 +1,146 @@
+{
+  "corpus_is_empty": false,
+  "counts": {
+    "procurement_document_lines": 0,
+    "procurement_documents": 3,
+    "vendor_attachments_objects": 1
+  },
+  "documents": [
+    {
+      "doc_type": "unknown",
+      "document_id": "d0b96d4a-bb8e-4e81-83f5-7664cd14bf8b",
+      "jurisdiction": null,
+      "line_count": 0,
+      "summary": {
+        "fails": 0,
+        "holds": 3,
+        "untestable": 11
+      }
+    },
+    {
+      "doc_type": "unknown",
+      "document_id": "dac9a3e8-de11-4a4f-95a7-799c4fd293e9",
+      "jurisdiction": null,
+      "line_count": 0,
+      "summary": {
+        "fails": 0,
+        "holds": 3,
+        "untestable": 11
+      }
+    },
+    {
+      "doc_type": "unknown",
+      "document_id": "e34a5b9f-9165-44c1-aca0-3bcb8e6be673",
+      "jurisdiction": null,
+      "line_count": 0,
+      "summary": {
+        "fails": 0,
+        "holds": 3,
+        "untestable": 11
+      }
+    }
+  ],
+  "documents_read": 3,
+  "headline": "3 documents read; 0 named invariant failure(s); 11 of 14 invariants UNTESTABLE on every document (0 lines extracted in total)",
+  "intake_statistics": {
+    "bytes_max": 72397,
+    "bytes_median": 71523,
+    "bytes_min": 67790,
+    "content_types": {
+      "application/pdf": 3
+    },
+    "doc_types": {
+      "unknown": 3
+    },
+    "documents": 3,
+    "duplicate_sha256_documents": 0,
+    "duplicate_sha256_groups": 0,
+    "page_count": "not recorded in procurement_documents; needs the stored object",
+    "sha256_present": 3,
+    "sha256_present_share": 1.0,
+    "source_channels": {
+      "upload": 3
+    },
+    "statuses": {
+      "needs_review": 3
+    }
+  },
+  "named_failures": [],
+  "per_invariant": {
+    "amount_due": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "as_printed_not_mutated": {
+      "fails": 0,
+      "holds": 3,
+      "untestable": 0
+    },
+    "credit_memo_references_invoice": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "currency_present_when_money": {
+      "fails": 0,
+      "holds": 3,
+      "untestable": 0
+    },
+    "deposits_coded_and_excluded": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "document_lines_total": {
+      "fails": 0,
+      "holds": 3,
+      "untestable": 0
+    },
+    "free_goods_zero_net": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "received_never_assumed": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "total_with_vat": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "total_without_vat": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "vat_breakdown_present": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "vat_category_tax_amount": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "vat_category_taxable_base": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    },
+    "vat_total_matches_breakdown": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 3
+    }
+  },
+  "price_base_columns_missing": true,
+  "project_ref": "exzueerziesmczwlhomd.supabase.co",
+  "run_date": "2026-09-04",
+  "synthetic_fixture_count": 9,
+  "wrote_to_database": false
+}
