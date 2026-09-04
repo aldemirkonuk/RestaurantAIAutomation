@@ -1515,3 +1515,32 @@ cleared to edit, so each is filed rather than built):
     the class: independent authorization enforcement, never the model's own judgment
     (<https://owasp.org/www-project-top-10-for-large-language-model-applications/2_0_vulns/LLM06_ExcessiveAgency.html>).
     **This gate ships before the assistant does.**
+
+32. **Drop `public.tmp_dropped_column_defaults_20260903` — on or after 2026-10-04.**
+    A dated, bounded chore, filed the day the table was created so it cannot
+    become permanent by inattention.
+
+    **What it is.** Migration `20260903170000_a_default_is_not_an_answer.sql`
+    §2 photographs the pre-change values of the three columns it clears —
+    `(provider id, lead_time_days, payment_terms)` and
+    `(restaurant id, timezone)` — into that table before §3 nulls them, and §3
+    asserts **per column** that the photograph caught exactly the rows the
+    UPDATE went on to clear. The founder asked for it on 2026-09-04 after
+    reading the erasure cost in §13.26.
+
+    **Why it must go, and why the date is not a formality.** It is a record, not
+    a restore path: a value equal to a column default is unattributable, which is
+    the entire premise of the migration, so the snapshot cannot tell a real
+    "7 days" from a fabricated one either. Restoring it wholesale would restore
+    the fault. Left in place indefinitely it becomes a **second copy of the
+    fabricated answers** — one that no reader sweep covers, that no guard checks,
+    and that the next person to find it will reasonably mistake for data. That is
+    strictly worse than never having taken it.
+
+    **The chore.** One migration: `DROP TABLE IF EXISTS
+    public.tmp_dropped_column_defaults_20260903;`. Nothing reads it — RLS is on,
+    `anon` and `authenticated` are revoked, and no application code references
+    the name (grep before dropping; if that grep finds a reader, the reader is the
+    bug). If the founder wants the erasure preserved beyond a month, the answer is
+    an export taken deliberately and stored outside the database, **not** an
+    un-dropped table.

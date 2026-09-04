@@ -9,6 +9,7 @@
   [[0016-ledgers-must-express-unknown]], [[0022-scheduled-jobs-serve-every-tenant]],
   [[0077-accounts-payable-is-a-module-not-a-column]],
   `supabase/migrations/20260903170000_a_default_is_not_an_answer.sql`,
+  `.planning/06-pages/settings.md` §13.32 (drop the snapshot, 2026-10-04),
   `apps/api-gateway/src/procurement/order-approval-gate.ts`,
   `scripts/list_weekdays_in_regions_covered.py`,
   `.planning/06-pages/settings.md` §9.12–9.14 / §13.23 / §13.25 / §13.26,
@@ -126,6 +127,19 @@ have called it was deleted and the note where it stood is
    records who and when, so the second telling is provable in a way the first
    never was); keeping is not.
 
+   **Amended 2026-09-04, at the founder's instruction: take a snapshot first.**
+   The migration now photographs the pre-change values into
+   `public.tmp_dropped_column_defaults_20260903` before the UPDATE, and asserts
+   per column that the photograph caught exactly the rows the UPDATE then
+   cleared. This does **not** weaken the decision and is not a restore path — a
+   value equal to a default is unattributable, so the snapshot cannot separate
+   the real from the fabricated either, and restoring it wholesale would restore
+   the fault. It buys one thing: the erasure becomes **inspectable**. A person
+   can ask "which vendors lost a lead time, and do any look deliberate?" and get
+   an answer, rather than a count in an apply log and no way back to the
+   question. The counter-argument that carried it: the snapshot costs nothing and
+   its absence is irreversible, while its presence is reversible on a date.
+
 ### On delivery days
 
 1. **Delete the control.** Filed as a live option in §13.25. **Rejected**: the
@@ -186,7 +200,18 @@ rather than from the geography column.
 ### What becomes harder, or is given up
 
 - **Real answers equal to a default were erased.** Stated in the migration, in
-  its `NOTICE`, and here. There is no way to recover which were real.
+  its `NOTICE`, and here. There is no way to recover which were real — the
+  snapshot below records WHAT was erased, not WHICH of it was deliberate.
+- **A temporary table now exists and must be dropped on 2026-10-04.**
+  `public.tmp_dropped_column_defaults_20260903` (RLS on, service_role only,
+  `anon`/`authenticated` revoked, no column defaults of its own — all asserted in
+  the migration). Filed as `.planning/06-pages/settings.md` §13.32 with the
+  date and the one-line chore. **Left in place it becomes a second copy of the
+  fabricated answers** — one no reader sweep covers, no guard checks, and the
+  next person to find it will reasonably mistake for data. That is strictly worse
+  than never having taken it, which is why the expiry is a filed item and a date
+  rather than an intention. If the record is wanted beyond a month, the answer is
+  a deliberate export stored outside the database, not an un-dropped table.
 - **A manager can now be stopped at 6pm.** That is the point, and it is also the
   cost. The mitigation is that the refusal names the rule and the approver rather
   than saying "forbidden", and that the register shows a house how often each
@@ -228,3 +253,4 @@ rather than from the geography column.
 |---|---|---|
 | 2026-09-03 | Aldemir (founder) | Decided all three in session; "do option 1" on enforcement, "only certain high tier like manager or owner can adjust it" on the write gate |
 | 2026-09-04 | — | Written up; migration proven on local Postgres in a rolled-back transaction; production row counts NOT measured |
+| 2026-09-04 | Aldemir (founder) | Asked for a pre-change snapshot before the UPDATE. Added with a per-column assertion; re-proven on local Postgres (3/3/2 cleared, snapshot matched exactly) and the assertion proven to FIRE against a deliberately broken snapshot. Expiry filed as settings.md §13.32 |
