@@ -25,8 +25,8 @@
  *  - "standing" is the real first-fired date, and says which clock it read.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent, createEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -104,12 +104,27 @@ function weekdayEntry(over: Record<string, unknown> = {}) {
 }
 
 /**
- * The ribbon's window is relative to "now", so every fixture date is derived
- * rather than written down: a literal would rot out of the window the next day
- * and the test would start asserting nothing.
+ * THE CLOCK IS PINNED, since 2026-09-04.
+ *
+ * The ribbon's window used to be relative to "now", so the fixtures were
+ * derived from `Date.now()` to stop them rotting out of a rolling window. The
+ * window is a CALENDAR MONTH now, and a derived date is the worse of the two
+ * fragilities: run on the 1st, `now − 3 days` lands in the previous month and
+ * every ribbon assertion silently stops testing the strip on screen. So the
+ * clock is fixed to the 17th — a day with a fortnight of past and a fortnight
+ * of future inside the same month — and the fixtures derive from that.
  */
+const NOW = new Date('2026-09-17T12:00:00.000Z');
+beforeAll(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(NOW);
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
+
 const dayKey = (back: number) =>
-  new Date(Date.now() - back * 86_400_000).toISOString().substring(0, 10);
+  new Date(NOW.getTime() - back * 86_400_000).toISOString().substring(0, 10);
 const TODAY = dayKey(0);
 const TILL_FROM = dayKey(21);
 /** A day inside the window that DID carry a record. */
@@ -185,6 +200,7 @@ const base = {
     byDay: { [TILL_DAY]: 612 },
   } as unknown,
   posProblem: null,
+  requestPosBack: vi.fn(),
   note: null,
   undo: null,
   clearUndo: vi.fn(),
@@ -953,7 +969,7 @@ describe('RecommendationsNext — the ribbon', () => {
   it('hatches a day the till window holds no record for, and never draws it as a zero', () => {
     mockData.current = { ...base, entries: [fired()] };
     draw();
-    const blank = screen.getAllByTestId('rc-day').find((d) =>
+    const blank = screen.getAllByTestId('mdv-ds-day').find((d) =>
       (d.getAttribute('aria-label') ?? '').includes('no record at all'),
     );
     expect(blank).toBeTruthy();
@@ -976,7 +992,7 @@ describe('RecommendationsNext — the ribbon', () => {
       /could not be read \(Failed to load POS revenue\)/,
     );
     expect(
-      screen.getAllByTestId('rc-day').filter((d) => d.getAttribute('data-records') === 'none'),
+      screen.getAllByTestId('mdv-ds-day').filter((d) => d.getAttribute('data-records') === 'none'),
     ).toHaveLength(0);
   });
 
@@ -1001,7 +1017,7 @@ describe('RecommendationsNext — the ribbon', () => {
     expect(screen.getAllByTestId('rc-entry')).toHaveLength(2);
 
     const day = screen
-      .getAllByTestId('rc-day')
+      .getAllByTestId('mdv-ds-day')
       .find((d) => (d.getAttribute('aria-label') ?? '').includes('1 first fired'))!;
     fireEvent.click(day);
     expect(screen.getAllByTestId('rc-entry')).toHaveLength(1);
@@ -1014,7 +1030,7 @@ describe('RecommendationsNext — the ribbon', () => {
   it('clears the selection on Escape, and moves the day with the arrow keys', () => {
     mockData.current = { ...base, entries: [fired()] };
     draw();
-    const days = screen.getAllByTestId('rc-day');
+    const days = screen.getAllByTestId('mdv-ds-day');
     fireEvent.click(days[3]);
     expect(screen.getByTestId('rc-dayhead')).toBeInTheDocument();
 
@@ -1023,6 +1039,38 @@ describe('RecommendationsNext — the ribbon', () => {
 
     fireEvent.keyDown(days[4], { key: 'Escape' });
     expect(screen.queryByTestId('rc-dayhead')).not.toBeInTheDocument();
+  });
+
+  it('selects the focused day on Enter and on Space, and toggles it off again', () => {
+    // The strip used to rely on the button's native activation for this, so
+    // "Enter selects" was true only by inheritance and Space scrolled the page
+    // underneath. Both keys are handled in the strip's own onKeyDown now.
+    mockData.current = { ...base, entries: [fired()] };
+    draw();
+    const days = screen.getAllByTestId('mdv-ds-day');
+    // The roving focus starts on today; one ArrowLeft moves it without
+    // selecting anything, so what Enter acts on is unambiguous. (The page
+    // renders a second strip below the ribbon, so index into the ribbon's own
+    // cells by their `data-idx`, never by position in the query.)
+    const todayIdx = days.findIndex((d) => d.getAttribute('data-today') === 'true');
+    expect(todayIdx).toBeGreaterThan(0);
+    const today = days[todayIdx];
+    const yesterday = days[todayIdx - 1];
+    fireEvent.keyDown(today, { key: 'ArrowLeft' });
+    expect(yesterday).toHaveFocus();
+
+    fireEvent.keyDown(yesterday, { key: 'Enter' });
+    expect(screen.getByTestId('rc-dayhead')).toBeInTheDocument();
+    expect(yesterday).toHaveAttribute('aria-pressed', 'true');
+    expect(today).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.keyDown(yesterday, { key: 'Enter' });
+    expect(screen.queryByTestId('rc-dayhead')).not.toBeInTheDocument();
+
+    const space = createEvent.keyDown(yesterday, { key: ' ' });
+    fireEvent(yesterday, space);
+    expect(space.defaultPrevented).toBe(true); // or the page scrolls under it
+    expect(yesterday).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('states its two limits whether or not they bite today', () => {
@@ -1050,7 +1098,7 @@ describe('RecommendationsNext — the ribbon', () => {
     mockData.current = { ...base, entries: [entry({ firstSeenAt: null })] };
     draw();
     const today = screen
-      .getAllByTestId('rc-day')
+      .getAllByTestId('mdv-ds-day')
       .find((d) => d.getAttribute('data-today') === 'true')!;
     expect(today.getAttribute('aria-label')).toContain('0 first fired');
   });
@@ -1059,7 +1107,7 @@ describe('RecommendationsNext — the ribbon', () => {
     mockData.current = { ...base, entries: [fired()] };
     draw();
     const day = screen
-      .getAllByTestId('rc-day')
+      .getAllByTestId('mdv-ds-day')
       .find((d) => (d.getAttribute('aria-label') ?? '').includes('1 first fired'))!;
     fireEvent.click(day);
     fireEvent.click(screen.getByRole('button', { name: /Rule this day out of the analysis/ }));
@@ -1079,7 +1127,7 @@ describe('RecommendationsNext — the ribbon', () => {
     };
     draw();
     const day = screen
-      .getAllByTestId('rc-day')
+      .getAllByTestId('mdv-ds-day')
       .find((d) => (d.getAttribute('aria-label') ?? '').includes('1 first fired'))!;
     fireEvent.click(day);
     const panel = screen.getByTestId('rc-dayhead');
@@ -1101,8 +1149,8 @@ describe('RecommendationsNext — the ribbon', () => {
     };
     draw();
     const day = screen
-      .getAllByTestId('rc-day')
-      .find((d) => d.getAttribute('data-excluded') === 'true')!;
+      .getAllByTestId('mdv-ds-day')
+      .find((d) => d.getAttribute('data-struck') === 'true')!;
     expect(day.getAttribute('aria-label')).toContain('out of the analysis');
     fireEvent.click(day);
     // the strip's own control, not the rail's list of every excluded day
@@ -1167,5 +1215,187 @@ describe('RecommendationsNext — a goal remembers the entry it came from', () =
       /already being watched/,
     );
     expect(screen.queryByTestId('rc-goal-duplicate')).not.toBeInTheDocument();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The founder's four decisions of 2026-09-04.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe('RecommendationsNext — Schedule it, and the day-book', () => {
+  const gap = () =>
+    entry({
+      ruleKey: 'weekday_gap',
+      category: 'sales',
+      observation: 'Friday is reliably your strongest day; Tuesday the weakest.',
+      urgency: 'this_week',
+    });
+
+  it('gives the calendar acts a heading of their own, out of Price it', () => {
+    mockData.current = {
+      ...base,
+      entries: [gap(), entry({ ruleKey: 'weekly_demand_slide', category: 'sales' })],
+    };
+    draw();
+    expect(screen.getByRole('heading', { name: 'Schedule it' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Price it' })).not.toBeInTheDocument();
+    const section = screen.getByRole('heading', { name: 'Schedule it' }).closest('.rc-section')!;
+    expect(within(section as HTMLElement).getAllByTestId('rc-entry')).toHaveLength(2);
+  });
+
+  it('carries a day-book control on every entry there, and on no other entry', () => {
+    mockData.current = { ...base, entries: [gap(), entry({ ruleKey: 'stockout_imminent' })] };
+    draw();
+    expect(screen.getAllByRole('button', { name: 'Put it on the day-book' })).toHaveLength(1);
+  });
+
+  it('never claims the calendar is prefilled — it prints the details to fill', () => {
+    mockData.current = { ...base, entries: [gap()] };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Put it on the day-book' }));
+    const panel = screen.getByRole('group', { name: 'Put it on the day-book' });
+    expect(panel).toHaveTextContent(/does not read this link’s draft yet/);
+    expect(panel).not.toHaveTextContent(/prefilled/i);
+    // and the fields are printed, so the manager can copy them across
+    expect(panel).toHaveTextContent('Move training, deliveries and counts into the quiet day');
+    expect(panel).toHaveTextContent('custom');
+    expect(panel).toHaveTextContent('weekday_gap');
+  });
+
+  it('opens the calendar on the day the strip has selected, and says so', () => {
+    mockData.current = { ...base, entries: [gap()] };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Put it on the day-book' }));
+    const panel = screen.getByRole('group', { name: 'Put it on the day-book' });
+    expect(panel).toHaveTextContent(dayKey(0));
+    expect(panel).toHaveTextContent(/does not read a weekday out of the rule’s sentence/);
+    fireEvent.click(screen.getByRole('button', { name: 'Open the calendar →' }));
+    const href = navigate.mock.calls.at(-1)![0] as string;
+    expect(href.startsWith('/calendar?new=')).toBe(true);
+    const draft = JSON.parse(decodeURIComponent(href.slice('/calendar?new='.length)));
+    expect(draft).toMatchObject({ date: dayKey(0), type: 'custom' });
+    expect(draft.note).toContain('weekday_gap');
+  });
+});
+
+describe('RecommendationsNext — Goals slipping', () => {
+  const slipping = () =>
+    entry({
+      ruleKey: 'goal_behind_g-77',
+      category: 'goals',
+      observation: 'Goal "Lift wine revenue" is behind its linear pace (22% done).',
+      recommendation:
+        "Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.",
+    });
+  const theGoal = {
+    id: 'g-77',
+    name: 'Lift wine revenue',
+    metricKey: 'wine_revenue',
+    targetValue: 9000,
+    currentValue: 2000,
+    deadline: dayKey(-6),
+    status: 'active',
+    sourceRuleKey: null,
+  };
+
+  it('gives a behind-pace goal its own heading rather than “not yet filed”', () => {
+    mockData.current = { ...base, entries: [slipping()], goals: [theGoal] };
+    draw();
+    expect(screen.getByRole('heading', { name: 'Goals slipping' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Not yet filed' })).not.toBeInTheDocument();
+  });
+
+  it('reads the goal list on arrival, because the section cannot say anything without it', () => {
+    mockData.current = { ...base, entries: [slipping()], goals: [theGoal] };
+    draw();
+    expect(loadGoals).toHaveBeenCalled();
+  });
+
+  it('deep-links to the reports desk and NAMES the goal, because /reports reads no query', () => {
+    mockData.current = { ...base, entries: [slipping()], goals: [theGoal] };
+    draw();
+    const slip = screen.getByTestId('rc-goal-slip');
+    expect(slip).toHaveTextContent(/does not read this link’s query yet/);
+    expect(slip).toHaveTextContent('Lift wine revenue');
+    fireEvent.click(screen.getByRole('button', { name: 'See where the goal stands' }));
+    const href = navigate.mock.calls.at(-1)![0] as string;
+    expect(href).toContain('/reports?');
+    expect(href).toContain('goal=g-77');
+    expect(href).toContain('rec=goal_behind_g-77');
+  });
+
+  it('lists the levers the rule names, by the gateway’s own metric→category table', () => {
+    mockData.current = {
+      ...base,
+      goals: [theGoal],
+      entries: [
+        slipping(),
+        entry({ ruleKey: 'weekday_gap', category: 'sales' }),
+        entry({ ruleKey: 'vendor_concentration', category: 'risk' }),
+      ],
+    };
+    draw();
+    const slip = screen.getByTestId('rc-goal-slip');
+    expect(slip).toHaveTextContent(/sales and efficiency categories/);
+    expect(slip).toHaveTextContent('weekday_gap');
+    expect(slip).not.toHaveTextContent('vendor_concentration');
+  });
+
+  it('names NO lever when the goal list could not be read — not every lever', () => {
+    mockData.current = { ...base, entries: [slipping()], goals: null };
+    draw();
+    const slip = screen.getByTestId('rc-goal-slip');
+    expect(slip).toHaveTextContent(/could not read your goal list/);
+    expect(slip).toHaveTextContent(/cannot say which category that is/);
+  });
+
+  it('keeps the refusal: no goal is ever made from a goal', () => {
+    mockData.current = { ...base, entries: [slipping()], goals: [theGoal] };
+    draw();
+    const dark = screen.getByTestId('rc-goal-dark');
+    expect(dark).toBeDisabled();
+    expect(dark).toHaveAttribute('title', expect.stringContaining('double-count the same target'));
+    expect(screen.getByTestId('rc-goal-slip')).toHaveTextContent(/No goal is made from a goal/);
+  });
+});
+
+describe('RecommendationsNext — the month window', () => {
+  it('shows the month containing today, drawn end to end', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    expect(screen.getByTestId('mdv-ds-month')).toHaveTextContent('September 2026');
+    expect(screen.getAllByTestId('mdv-ds-day')).toHaveLength(30);
+  });
+
+  it('draws the future half of the month EMPTY, never hatched', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    const future = screen
+      .getAllByTestId('mdv-ds-day')
+      .filter((d) => d.getAttribute('data-records') === 'future');
+    // the 18th to the 30th, with the clock pinned to the 17th
+    expect(future).toHaveLength(13);
+    expect(future[0]).toHaveAccessibleName(/neither a record nor an absence/);
+    expect(future.some((d) => d.getAttribute('data-records') === 'none')).toBe(false);
+  });
+
+  it('walks to another month, asks the till for a window that reaches it, and clears the day', () => {
+    const requestPosBack = vi.fn();
+    mockData.current = { ...base, entries: [entry()], requestPosBack };
+    draw();
+    // the current month asks back to its own 1st
+    expect(requestPosBack).toHaveBeenLastCalledWith(17);
+    fireEvent.click(
+      screen.getAllByTestId('mdv-ds-day').find((d) => d.getAttribute('data-today') === 'true')!,
+    );
+    expect(screen.getByTestId('rc-dayhead')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show August 2026' }));
+    expect(screen.getByTestId('mdv-ds-month')).toHaveTextContent('August 2026');
+    expect(screen.getAllByTestId('mdv-ds-day')).toHaveLength(31);
+    // a day selected in September is not a day in August
+    expect(screen.queryByTestId('rc-dayhead')).not.toBeInTheDocument();
+    // and the till window is asked back far enough to answer for August
+    expect(requestPosBack).toHaveBeenLastCalledWith(48);
   });
 });

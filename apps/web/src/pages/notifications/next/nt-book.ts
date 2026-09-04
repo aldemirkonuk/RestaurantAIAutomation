@@ -21,6 +21,7 @@
  * then prints the fold's NEWEST stamp beside the winner's own.
  */
 
+import { monthDays } from '@/components/mudavym';
 import { collapseStackedNotifications } from '@/lib/notificationStack';
 import type { Notification } from '@/services/api/notifications';
 import { kindOf, plainText } from './nt-format';
@@ -71,15 +72,16 @@ export function foldFreshness(
 export interface DayCell {
   /** `YYYY-MM-DD` in the reader's own timezone — the key the rail selects. */
   key: string;
-  /** Sun…Sat, one letter, for the rail's head. */
-  weekday: string;
-  /** The day of the month, drawn as the cell's figure. */
-  day: number;
   /** Lines of that day among the rows actually loaded. Never a server total. */
   onScreen: number;
   /** How many of those are still unread. */
   open: number;
-  isToday: boolean;
+  /**
+   * Whether the REGISTER wrote anything that day, as far as this screen can
+   * honestly tell. See `dayCells` — `none` is only ever claimed for a day the
+   * loaded rows actually cover.
+   */
+  records: 'yes' | 'none' | 'unknown';
 }
 
 /** `YYYY-MM-DD` in local time — the same day the reader would name. */
@@ -109,43 +111,70 @@ export function daySpan(key: string): { dateFrom: string; dateTo: string } | nul
   return { dateFrom: from.toISOString(), dateTo: to.toISOString() };
 }
 
-const WEEKDAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+export interface DayCellsInput {
+  rows: Notification[];
+  /** The calendar month on screen, `YYYY-MM`. */
+  month: string;
+  /** Today, as a local day key — the reader's own today. */
+  today: string;
+  /**
+   * True when the register is being read under a narrowing this screen did not
+   * apply itself. A `day` filter makes every OTHER day unreadable from these
+   * rows, so nothing may be claimed about them.
+   */
+  dayFiltered: boolean;
+}
 
 /**
- * The last `span` days, newest last, counted from the rows on screen.
+ * One calendar month of cells — and the one honest claim this page can make
+ * about a blank day.
  *
- * The counts are deliberately NOT a server total: only the pages that have
- * actually been read are in `rows`, so the rail says "on this screen" and the
- * register's own total appears only once a day is selected and read back.
+ * THE COUNTS ARE "ON THIS SCREEN", AND ALWAYS WERE. Only the pages actually
+ * read are in `rows`, so `onScreen` is never dressed up as a register total;
+ * the register's own figure appears only once a day is selected and read back.
+ *
+ * THE HATCH IS NEW, AND IT IS EARNED. The gateway returns notifications
+ * `order("created_at", { ascending: false })` (`notifications.service.ts:824`)
+ * and this page reads pages 1..N contiguously, so the rows on screen are a
+ * newest-first PREFIX of the register. That makes one negative claim safe: for
+ * any day strictly newer than the oldest loaded row's day, "no rows on screen"
+ * means "no rows in the register" — the register cannot be hiding a line
+ * between two lines this screen already holds. Those days are `none`, and they
+ * hatch.
+ *
+ * Everything else is `unknown`, and this is the list of everything else:
+ *  - days at or older than the oldest loaded row's day (the page boundary can
+ *    fall inside a day, so even the oldest day itself is not fully read);
+ *  - every day but one while a `day` filter is applied;
+ *  - every day when nothing has been loaded at all.
+ *
+ * A type or status filter does NOT force `unknown`: "no line of this kind that
+ * day" is a true statement about a narrower thing, and the strip's own note
+ * says which narrowing is in force. Calling that `unknown` would be the
+ * opposite error — an absence the page CAN prove, reported as ignorance.
  */
-export function dayCells(rows: Notification[], span = 14, now: Date = new Date()): DayCell[] {
+export function dayCells(input: DayCellsInput): DayCell[] {
   const counted = new Map<string, { onScreen: number; open: number }>();
-  for (const r of rows) {
+  let oldest: string | null = null;
+  for (const r of input.rows) {
     const key = dayKeyOf(r.timestamp ?? r.createdAt);
     if (!key) continue;
+    if (oldest === null || key < oldest) oldest = key;
     const cur = counted.get(key) ?? { onScreen: 0, open: 0 };
     cur.onScreen += 1;
     if (String(r.status) === 'unread') cur.open += 1;
     counted.set(key, cur);
   }
 
-  const todayKey = dayKeyOf(now.toISOString());
-  const cells: DayCell[] = [];
-  for (let i = span - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const key = dayKeyOf(d.toISOString());
-    if (!key) continue;
+  return monthDays(input.month).map((key) => {
     const c = counted.get(key) ?? { onScreen: 0, open: 0 };
-    cells.push({
-      key,
-      weekday: WEEKDAY[d.getDay()],
-      day: d.getDate(),
-      onScreen: c.onScreen,
-      open: c.open,
-      isToday: key === todayKey,
-    });
-  }
-  return cells;
+    let records: DayCell['records'];
+    if (c.onScreen > 0) records = 'yes';
+    else if (input.dayFiltered || oldest === null) records = 'unknown';
+    else if (key > oldest && key <= input.today) records = 'none';
+    else records = 'unknown';
+    return { key, onScreen: c.onScreen, open: c.open, records };
+  });
 }
 
 /* ── quick search ──────────────────────────────────────────────────────── */

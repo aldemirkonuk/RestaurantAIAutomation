@@ -7,19 +7,18 @@ export { PageGate, type PageGateProps } from './PageGate';
 export { HouseHeader, type HouseHeaderProps } from './HouseHeader';
 export { HouseBell } from './HouseBell';
 export { HouseUserMenu } from './HouseUserMenu';
+export { DayStrip, type DayStripProps, type DayStripDay } from './DayStrip';
 export {
-  DayStrip,
-  monthOf,
+  DAY_LETTER,
+  fmtLongDay,
+  localToday,
   monthDays,
   monthLabel,
-  shiftMonth,
-  localToday,
-  fmtLongDay,
+  monthOf,
   recordWords,
-  type DayStripProps,
-  type DayStripDay,
+  shiftMonth,
   type DayRecords,
-} from './DayStrip';
+} from './dayStripDates';
 export {
   Sheet,
   Panel,

@@ -80,3 +80,23 @@ and the table above is unchanged. That is the intended result, not an oversight:
   cursor into view uses the browser's own `scrollIntoView`, which honours the
   reader's `prefers-reduced-motion` setting without this page mediating it, and
   is skipped entirely where it is not implemented.
+
+---
+
+## 2026-09-04 — the day rail became the house day strip
+
+`DayRail.tsx` is deleted. The page now renders
+`components/mudavym/DayStrip.tsx` through its own slot file `NoteDays.tsx`, so
+the strip's motion is the house's (`components/mudavym/MOTIONS.md`, *The house
+day strip*): `ink` on hover and selection, and nothing else — no month
+transition, no tally, no animated hatch.
+
+What this page gained by the merge, motion-wise: nothing moves that did not
+move before. What it gained otherwise is the whole keyboard map (arrows,
+Home/End, Enter/Space, Escape) and a visible focus ring, neither of which the
+rail had.
+
+The one motion this page still owns on the strip is **none**: the bar drawn in
+a cell's mark slot is a proportion of the busiest day on screen, painted at its
+height. A bar that grew would make a count of lines already loaded look like a
+measurement being taken.

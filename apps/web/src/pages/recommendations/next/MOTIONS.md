@@ -129,3 +129,28 @@ show that were considered and two rejected:
   moves while someone decides is asking them to hurry.
 - **Keyboard motion is focus only.** Arrow keys move the roving focus ring;
   nothing scrolls, tilts or eases as the selection walks the strip.
+
+---
+
+## Fifth pass, 2026-09-04 — the strip is the house's now
+
+The ribbon's cells, and every motion listed under "Deliberate non-motions on
+the ribbon" above, moved to `components/mudavym/DayStrip.tsx` when the founder
+made one shared day strip. The rules did not change — they are now enforced in
+one file for two pages instead of asserted twice — and the house component's
+own `MOTIONS.md` carries them under *The house day strip*.
+
+What this page still owns:
+
+| id | token | curve / ms | fires |
+|---|---|---|---|
+| `rc-docket-tuck` | `tuck` | spring 380/32, 300ms | the docket re-lays out when the strip's day, the register, **or the month** changes what it holds. The month is new: walking to August replaces every row, which is exactly the "this is a different set of rows" the `tuck` was chosen to say. |
+| the day marks | — | none | the fired/due bars this page draws into the strip's cell slot. They appear at their height; nothing tallies. |
+
+Two more non-motions, both new with the two doors:
+
+- **The day-book draft does not slide in.** It is a record you are about to
+  copy into another page; a panel that moves while you read four fields off it
+  is asking you to hurry.
+- **The slipping-goal block never animates its levers.** A list of other
+  entries is not a result arriving.

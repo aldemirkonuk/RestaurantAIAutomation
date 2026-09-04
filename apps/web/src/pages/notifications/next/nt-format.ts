@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Mail,
   Package,
+  Plug,
   Receipt,
   Settings,
   Tag,
@@ -111,6 +112,11 @@ const KIND_BY_TYPE: Record<string, string> = {
   service_closed: 'Sales',
   goal_reached: 'Goals',
   price_change: 'Market',
+  // The seventh producer (2026-09-04): a model-context server changed or
+  // withdrew a tool a manager had granted, so the grant is suspended until
+  // someone re-consents.
+  // notifications/producers/grant-suspended.producer.ts
+  grant_suspended: 'Connections',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',
@@ -162,6 +168,10 @@ const ICON_BY_KIND: Record<string, LucideIcon> = {
   Sales: Coins,
   Goals: Target,
   Market: Tag,
+  // The seventh producer's register (2026-09-04). Without this row it would
+  // draw the *Other* inbox mark, which is the same absence-as-health shape as
+  // falling to *Other* in `KIND_BY_TYPE`.
+  Connections: Plug,
   System: Settings,
   Other: Inbox,
 };

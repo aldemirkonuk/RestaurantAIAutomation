@@ -1,5 +1,19 @@
 /**
- * The ribbon's day model — the month in one line, and what is NOT known about it.
+ * The ribbon's day model — one calendar month in a line, and what is NOT known
+ * about it.
+ *
+ * ── The window is a MONTH, since 2026-09-04 ────────────────────────────────
+ * It was 21 days behind and 7 ahead. The founder replaced it with a full
+ * calendar month — the one containing today by default, with previous/next
+ * controls — and the reason is that a rolling window has no name: nobody says
+ * "the last twenty-one days" to a colleague, and every other record in the
+ * house is kept by month. The future half of the current month is drawn as
+ * EMPTY days, never hatched: a day that has not happened is neither a record
+ * nor an absence, and the cell's own title says so.
+ *
+ * The drawing of all this now lives in `components/mudavym/DayStrip.tsx` — the
+ * house strip, shared with `/notifications`. This module is what is left: the
+ * page's own answer to *what does each day of this month carry*.
  *
  * The founder, fourth pass (2026-09-03): *"a calendar strip that we can select
  * and see that is highly advanced and elegant looking"*. Sketch 094a drew it;
@@ -41,6 +55,7 @@
  *    and the two are never shown as the same quantity.
  */
 
+import { monthDays, recordWords as houseRecordWords } from '@/components/mudavym/dayStripDates';
 import type { EntryVM, GoalRow } from './useRecommendationsNextData';
 
 /** The POS window, as the ribbon needs it. */
@@ -72,8 +87,6 @@ export interface DayCell {
   /** One letter, the house's own abbreviation (never Intl — see `fmtDay`). */
   weekday: string;
   dayNum: number;
-  /** Set only on the first of a month, so the strip can label the turn. */
-  monthLabel: string | null;
   isToday: boolean;
   isFuture: boolean;
   /** Rule keys whose first impression landed on this day. */
@@ -87,14 +100,24 @@ export interface DayCell {
 }
 
 const DAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-/** The window: 21 days behind, today, and the 7 ahead that can carry a deadline. */
-export const DAYS_BEHIND = 21;
-export const DAYS_AHEAD = 7;
+/**
+ * How far back the till window must be asked for, to cover a whole month.
+ *
+ * `GET /analytics/pos-revenue/:rid?days=N` counts back from today and the
+ * gateway clamps N to 1–365 (`analytics.controller.ts:757-760`). Reading a
+ * month that ended in March therefore needs a longer window than one that ends
+ * today — and a month more than 365 days back cannot be covered at all, which
+ * is why every day of it comes back `unknown` rather than `none`. Nothing here
+ * pretends otherwise.
+ */
+export function posDaysFor(month: string, todayKey: string): number {
+  const first = `${month}-01`;
+  const a = Date.parse(`${first}T00:00:00Z`);
+  const b = Date.parse(`${todayKey}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 31;
+  const span = Math.ceil((b - a) / 86_400_000) + 1;
+  return Math.min(365, Math.max(1, span));
+}
 
 /** A UTC business date from a timestamp. Null when it will not parse. */
 export function businessDate(iso: string | null | undefined): string | null {
@@ -104,13 +127,9 @@ export function businessDate(iso: string | null | undefined): string | null {
   return t.toISOString().substring(0, 10);
 }
 
-function addDays(date: Date, n: number): Date {
-  const d = new Date(date.getTime());
-  d.setUTCDate(d.getUTCDate() + n);
-  return d;
-}
-
 export interface BuildDaysInput {
+  /** The calendar month on screen, `YYYY-MM`. */
+  month: string;
   entries: EntryVM[];
   goals: GoalRow[] | null | undefined;
   pos: PosVM;
@@ -120,13 +139,15 @@ export interface BuildDaysInput {
 }
 
 /**
- * The strip, left to right. Always the same length, so the ribbon never
- * silently shortens itself when a tenant has fewer records.
+ * One calendar month of cells, the 1st to the last, in order.
+ *
+ * The length is the month's own length — 28, 29, 30 or 31 — and never a
+ * rolling count, so the strip's left edge is always the 1st and a reader can
+ * point at "the 14th" and be understood.
  */
 export function buildDays(input: BuildDaysInput): DayCell[] {
   const now = input.now ?? new Date();
   const todayKey = now.toISOString().substring(0, 10);
-  const start = addDays(now, -DAYS_BEHIND);
 
   const firedByDay = new Map<string, string[]>();
   const dueByDay = new Map<string, DueMark[]>();
@@ -168,9 +189,8 @@ export function buildDays(input: BuildDaysInput): DayCell[] {
   for (const x of input.exclusions ?? []) excluded.set(x.businessDate, x.reason);
 
   const cells: DayCell[] = [];
-  for (let i = 0; i <= DAYS_BEHIND + DAYS_AHEAD; i++) {
-    const d = addDays(start, i);
-    const date = d.toISOString().substring(0, 10);
+  for (const date of monthDays(input.month)) {
+    const d = new Date(`${date}T12:00:00Z`);
     const isFuture = date > todayKey;
     let records: RecordState;
     let revenue: number | null = null;
@@ -186,7 +206,6 @@ export function buildDays(input: BuildDaysInput): DayCell[] {
       date,
       weekday: DAY_LETTER[d.getUTCDay()],
       dayNum: d.getUTCDate(),
-      monthLabel: d.getUTCDate() === 1 ? MONTHS[d.getUTCMonth()] : null,
       isToday: date === todayKey,
       isFuture,
       fired: firedByDay.get(date) ?? [],
@@ -230,33 +249,17 @@ export function barHeight(count: number): number {
   return Math.min(BAR_MAX, 5 + (count - 1) * BAR_UNIT);
 }
 
-/** "Wednesday 2 September" — written out, for the same reason `fmtDay` is. */
-const LONG_DAYS = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-];
-const LONG_MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+/**
+ * The house strip's own words, re-exported so nothing on this page can drift
+ * from what the strip's cell titles say. `fmtLongDay` and the four record
+ * sentences live in `components/mudavym/DayStrip.tsx`.
+ */
+export { fmtLongDay } from '@/components/mudavym/dayStripDates';
 
-export function fmtLongDay(date: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!m) return date;
-  const t = new Date(`${date}T12:00:00Z`);
-  if (Number.isNaN(t.getTime())) return date;
-  return `${LONG_DAYS[t.getUTCDay()]} ${t.getUTCDate()} ${LONG_MONTHS[t.getUTCMonth()]}`;
-}
-
-/** What the strip says about a day's records, in words. Never a zero. */
+/** What this page says about a day's records, in words. Never a zero. */
 export function recordWords(cell: DayCell): string {
-  switch (cell.records) {
-    case 'yes':
-      return 'a record landed on this day';
-    case 'none':
-      return 'no record at all on this day — not a zero, nothing was written';
-    case 'future':
-      return 'this day has not happened yet';
-    default:
-      return 'whether this day carries records is not known';
-  }
+  return houseRecordWords(
+    cell.records === 'future' ? 'unknown' : cell.records,
+    cell.isFuture,
+  );
 }

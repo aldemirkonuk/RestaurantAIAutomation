@@ -324,7 +324,10 @@ describe('useRecommendationsNextData — goals', () => {
     });
     const { result } = renderHook(() => useRecommendationsNextData());
     await waitFor(() => expect(result.current.pos).toBeTruthy());
-    expect(api.get).toHaveBeenCalledWith('/analytics/pos-revenue/r1?days=22');
+    // 31 on arrival — the longest a calendar month can be, so the first
+    // render of the current month never has to ask twice. The page raises it
+    // when the ribbon is walked back to an earlier month (`posDaysFor`).
+    expect(api.get).toHaveBeenCalledWith('/analytics/pos-revenue/r1?days=31');
     expect(result.current.pos?.connected).toBe(true);
     // Exactly one key. Every other day in the window is ABSENT from the map,
     // which is how the ribbon can hatch it instead of drawing a bar of zero.

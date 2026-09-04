@@ -301,66 +301,15 @@
 .rc-ribbon-title { display: inline-flex; align-items: center; gap: 5px; }
 .rc-ribbon-title svg { color: var(--ink-3, #7c7365); }
 
-.rc-strip {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 2px;
-  border: 1px solid var(--paper-2, #eae4d8);
-  border-radius: 10px;
-  padding: 5px;
-  background: var(--paper-1, #f3eee4);
-  overflow-x: auto;
-}
-.rc-day {
-  font: inherit;
-  display: grid;
-  justify-items: center;
-  align-content: start;
-  gap: 1px;
-  min-width: 26px;
-  padding: 5px 2px 4px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--paper-0, #faf7f1);
-  color: var(--ink-2, #4f473c);
-  cursor: pointer;
-}
-.rc-day-wd { font-size: 8.5px; letter-spacing: 0.08em; color: var(--ink-4, #665d50); }
-.rc-day-n { font-size: 11.5px; line-height: 1.1; }
-.rc-day-mo { font-size: 7.5px; letter-spacing: 0.1em; color: var(--seal-deep, #14515c); }
-.rc-day-bars { display: flex; align-items: flex-end; gap: 2px; height: 20px; margin-top: 3px; }
+/* The strip itself is `components/mudavym/day-strip.css` since 2026-09-04 —
+   the cell, the hatch, the strike, the today ring and the selected state are
+   the house's. What stays here is what only this page draws: the two MARKS
+   inside a cell, and the legend that names them. */
 .rc-bar { display: block; width: 3px; border-radius: 1px; }
 .rc-bar-fired { background: var(--seal, #1a5e6b); }
 .rc-bar-due { background: transparent; border: 1px dashed var(--seal-ring, rgba(26, 94, 107, 0.32)); }
-
-/* a day with NO RECORD at all — hatched, never a bar of zero */
-.rc-day[data-records='none'] {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--paper-1, #f3eee4),
-    var(--paper-1, #f3eee4) 3px,
-    var(--paper-2, #eae4d8) 3px,
-    var(--paper-2, #eae4d8) 6px
-  );
-}
-/* a day that has not happened, and a day nothing is known about, are quiet —
-   neither is hatched, because neither is a statement about the house */
-.rc-day[data-records='future'] { opacity: 0.55; }
-.rc-day[data-records='unknown'] { background: var(--paper-0, #faf7f1); }
-.rc-day[data-today='true'] { box-shadow: inset 0 0 0 1px var(--seal-ring, rgba(26, 94, 107, 0.32)); }
-.rc-day[data-excluded='true'] .rc-day-n { text-decoration: line-through; }
-.rc-day[data-excluded='true'] { border-color: var(--ink-4, #665d50); border-style: dashed; }
-.rc-day:hover { border-color: var(--seal-ring, rgba(26, 94, 107, 0.32)); }
-.rc-day[aria-pressed='true'] {
-  background: var(--seal, #1a5e6b);
-  border-color: var(--seal, #1a5e6b);
-  color: var(--paper-0, #faf7f1);
-}
-.rc-day[aria-pressed='true'] .rc-day-wd,
-.rc-day[aria-pressed='true'] .rc-day-mo { color: var(--paper-1, #f3eee4); }
-.rc-day[aria-pressed='true'] .rc-bar-fired { background: var(--paper-0, #faf7f1); }
-.rc-day[aria-pressed='true'] .rc-bar-due { border-color: var(--paper-1, #f3eee4); }
+.mdv-ds-day[aria-pressed='true'] .rc-bar-fired { background: var(--paper-0, #faf7f1); }
+.mdv-ds-day[aria-pressed='true'] .rc-bar-due { border-color: var(--paper-1, #f3efe6); }
 
 .rc-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 10px; color: var(--ink-4, #665d50); }
 .rc-legend i { font-style: normal; display: inline-flex; align-items: center; gap: 5px; }
@@ -370,14 +319,15 @@
 .rc-sw-none {
   background: repeating-linear-gradient(
     135deg,
-    var(--paper-1, #f3eee4),
-    var(--paper-1, #f3eee4) 3px,
+    var(--paper-1, #f3efe6),
+    var(--paper-1, #f3efe6) 3px,
     var(--paper-2, #eae4d8) 3px,
     var(--paper-2, #eae4d8) 6px
   );
 }
 .rc-sw-out { border: 1px dashed var(--ink-4, #665d50); }
 .rc-sw-today { box-shadow: inset 0 0 0 1px var(--seal-ring, rgba(26, 94, 107, 0.32)); }
+.rc-sw-future { border: 1px solid var(--paper-2, #eae4d8); opacity: 0.5; }
 
 .rc-ribbon-note { display: flex; align-items: flex-start; gap: 5px; max-width: 780px; }
 .rc-ribbon-note svg { flex: none; margin-top: 2px; color: var(--ink-4, #665d50); }
@@ -387,7 +337,7 @@
   padding: 10px 12px;
   border: 1px solid var(--paper-2, #eae4d8);
   border-radius: 10px;
-  background: var(--paper-1, #f3eee4);
+  background: var(--paper-1, #f3efe6);
 }
 .rc-dayhead h2 { font-size: 16px; font-weight: 500; margin: 0; }
 .rc-dayhead .rc-micro { display: block; margin-top: 3px; }
@@ -421,7 +371,7 @@
 /* rc-ink · ink · 160ms — micro-states only, nothing moves.
    The ribbon's selection is on this token: a day fills and empties, it never
    grows, slides or bounces — the strip is a selector, not a performance. */
-.rc-entry, .rc-quiet, .rc-act, .rc-leaf, .rc-reg, .rc-day {
+.rc-entry, .rc-quiet, .rc-act, .rc-leaf, .rc-reg {
   transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
     background 160ms cubic-bezier(0.16, 1, 0.3, 1), color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -432,6 +382,33 @@
    has one place it is written down. */
 
 @media (prefers-reduced-motion: reduce) {
-  .rc-work, .rc-entry, .rc-quiet, .rc-act, .rc-leaf, .rc-reg, .rc-day { transition: none !important; }
+  .rc-work, .rc-entry, .rc-quiet, .rc-act, .rc-leaf, .rc-reg { transition: none !important; }
   .rc-leaf-body { animation: none !important; }
 }
+
+/* ── the two doors added 2026-09-04 ─────────────────────────────────────── */
+
+/* the day-book draft, printed before you leave for the calendar */
+.rc-draft {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 8px 0;
+  align-items: baseline;
+}
+.rc-draft dd { margin: 0; font-size: 12px; color: var(--ink-2, #4f473c); }
+.rc-draft dt { margin: 0; }
+
+/* the slipping goal's landing note and the levers the rule names */
+.rc-slip {
+  margin-top: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--paper-2, #eae4d8);
+  border-left: 2px solid var(--seal-ring, rgba(26, 94, 107, 0.32));
+  border-radius: 8px;
+  background: var(--paper-1, #f3efe6);
+}
+.rc-slip .rc-said + .rc-said { margin-top: 5px; }
+.rc-levers { margin: 7px 0 0; padding-left: 16px; }
+.rc-levers li { font-size: 12px; color: var(--ink-2, #4f473c); margin-bottom: 4px; }
+.rc-levers .rc-num { font-size: 10.5px; color: var(--ink-4, #665d50); }

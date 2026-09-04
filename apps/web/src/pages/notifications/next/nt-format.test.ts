@@ -132,6 +132,12 @@ describe('the mark drawn in the emoji’s place', () => {
       ['service_closed', 'Sales'],
       ['goal_reached', 'Goals'],
       ['price_change', 'Market'],
+      // The seventh producer, committed 2026-09-04 as `5962901a`
+      // (`notifications/producers/grant-suspended.producer.ts`): a
+      // model-context server changed or withdrew a tool a manager had granted.
+      // Its rows landed under *Other* until this row existed, which is exactly
+      // how a new register goes invisible.
+      ['grant_suspended', 'Connections'],
       ['overdue_order', 'Orders'],
       ['order_inquiry', 'Orders'],
       ['custom_reminder', 'Calendar'],
@@ -150,6 +156,13 @@ describe('the mark drawn in the emoji’s place', () => {
     ] as const) {
       expect(kindOf(type), `${type} must not fall to Other`).toBe(register);
     }
+  });
+
+  it('gives the seventh producer’s register its own mark, not the Other inbox', () => {
+    // A register that draws the fallback mark is a register nobody can pick
+    // out of a list — the same absence-as-health shape as falling to *Other*.
+    expect(iconForType('grant_suspended')).toBe(iconForKind('Connections'));
+    expect(iconForType('grant_suspended')).not.toBe(iconForKind('Other'));
   });
 
   it('still gives an unknown type a real mark rather than nothing', () => {

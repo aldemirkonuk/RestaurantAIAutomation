@@ -63,7 +63,7 @@ import { animate, ink, settle, springs, tally, useReducedMotion } from '@/lib/mu
 import type { Notification } from '@/services/api/notifications';
 import BookRow from './BookRow';
 import BookFilterBar from './BookFilterBar';
-import DayRail from './DayRail';
+import { NoteDays } from './NoteDays';
 import MarketPricePanel from './MarketPricePanel';
 import { HouseBand } from './HouseBand';
 import { matchesQuery } from './nt-book';
@@ -455,12 +455,15 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
           </p>
         )}
 
-        <DayRail
+        <NoteDays
           cells={data.days}
+          month={data.month}
+          onMonth={data.setMonth}
           selected={data.filters.day}
           onSelect={(day) => data.setFilters({ ...data.filters, day })}
           selectedTotal={data.book.total}
           busy={data.refreshing}
+          filtered={data.filters.type !== null || data.filters.status !== null}
         />
 
         <BookFilterBar

@@ -184,6 +184,17 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   edited in this shared worktree while this page was written, and two of the
   line numbers had already moved by the time they were re-checked. Pinned by `nt-format.test.ts`
   and by `nt-book.test.ts` ("cannot disagree with the register a line lands in").
+- **A sixth register, 2026-09-04: *Connections* (`grant_suspended`).** The
+  seventh producer (`notifications/producers/grant-suspended.producer.ts`,
+  committed `5962901a`) writes a line when a model-context server changed or
+  withdrew a tool a manager had granted, so the grant is suspended until someone
+  re-consents. Its rows were landing under *Other* until this row existed —
+  the same absence-as-health shape the five above were added to fix — so it now
+  has its own `KIND_BY_TYPE` entry and its own lucide mark (`Plug`) in
+  `ICON_BY_KIND`, both pinned in `nt-format.test.ts`. **Not yet in
+  `TYPE_CHOICES`:** the filter pills were left alone this pass (the coordinator's
+  instruction was the register line only), so a *Connections* row is drawn and
+  tallied correctly but cannot be filtered for. Filed, not built.
 - **The filter offers no control that can only return nothing.** Every entry in
   `TYPE_CHOICES` was checked against a real write site on 2026-09-03 and each is
   cited in `nt-book.ts`. `ai_suggestion` is deliberately absent: it is a member
@@ -1365,6 +1376,39 @@ sibling's implementation differs, the sibling's file is the truth.
        parses this note names as the dangerous ones, so the gap that matters
        most is the one still open.
 
+       **The scrape half is now CLOSED too, 2026-09-04, and the box gained a
+       second line.** The founder answered ADR 0117's Q1 — *"Run it, labelled
+       tier 4, never beside a quote"* — and three things followed, all on
+       `feat/mudavym-design-p4`:
+
+       * `apps/api-gateway/src/vendor-intel/vendor-site-sweep.service.ts` is a
+         daily sweep of every active provider with a website, per restaurant,
+         **OFF by default** behind `VENDOR_SITE_SWEEP_ENABLED`, honouring
+         robots.txt and each host's own `Crawl-delay` above a stated 10-second
+         floor. One vendor's failure never ends it.
+       * The scrape writer now judges `is_outlier` with the **same**
+         `isOutlierAgainstPriors` at the **same** five-value floor as the
+         own-paper mirror, imported rather than reimplemented
+         (`vendor-site-sighting.ts`). It also refuses what it cannot name: no
+         bottle volume is a refusal, not a 750, and every refusal is counted by
+         reason. Expect most scraped rows to be refused — shop pages rarely
+         print a size beside the price — and the count says so rather than
+         letting a thin register look like a quiet market.
+       * **This box's endpoint changed shape.** `priceBelowAverage` now
+         partitions each product's sightings by class before comparing
+         (`comparisonClassOf`), so a tier-4 page price is never averaged
+         against, or ranked beside, a quote. `items` carries only quoted
+         comparisons; the new **`publicSiteItems`** carries the tier-4 ones, and
+         `scanned.comparisons`, `byClass` and `skipped.unrecognisedClass` are new
+         alongside it. Measured against a copy of HEAD's file, the pre-fix
+         function reported a $50 scrape as a **50% saving** against a $100
+         invoice average. **The UI has not been changed** — `MarketPricePanel.tsx`
+         and `useMarketPrice.ts` were off-limits this pass; a ready patch adding
+         the second line sits in the build report, unapplied.
+       * The remaining unscreened writer is the **manual observation**
+         (`vendor-comparison.service.ts:260`), which still writes `is_outlier`
+         at its `false` default.
+
     b3. **The register's first fill is BUILT, 2026-09-04.** The mirror b2 below
        calls "the whole of step one" now exists. Both `price_history` writers
        (`procurement.service.ts` receipt verification and order confirmation)
@@ -1440,6 +1484,25 @@ sibling's implementation differs, the sibling's file is the truth.
        [`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md).
        Dry-run proof (writes nothing; `--apply` refused with its three blockers):
        `scripts/fetch_price_sightings.py`.
+
+       **Update 2026-09-04 — steps 2 and 3 are BUILT, as a SEPARATE register.**
+       The migration ADR 0117 called a precondition now exists
+       (`supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`,
+       `price_index_postings`, keyed by state not restaurant), and the gateway
+       `price-index/` module parses **California live** (class B beer posting, the
+       app's own anonymous JWT path) plus **Iowa/Oregon** control-state shelf lines
+       (class D); **Michigan is withheld** (403, no honest sample, no parser). This
+       is the index line the founder asked for — *"show control-state shelf prices as
+       a labelled index line in their own register, state-scoped"* — and it is
+       **not** the market box: `GET /price-index/:state?product=` returns it for a
+       house's own state, each line carrying its class/issuer/date so it draws as its
+       own line and never beside a vendor quote (ADR 0111). The market box
+       (`MarketPricePanel.tsx`) stays exactly as it is (own-paper class-A only); the
+       index line is a NEW panel beside it, and the ready patch to add it lives in
+       ADR 0117's build report — it is **not applied here** because this file's owner
+       is editing `notifications/next/` concurrently. The scheduled fetch defaults
+       **OFF** (`PRICE_INDEX_FETCH_ENABLED`); `GET /price-index/status` says per
+       source when it last fetched, how many rows, and why it is silent.
 
     c. **A subject on every row (§13.21) is what the producers want next.** All
        five write rich `metadata` (`goalId`, `receiptEventId`, `documentId`,

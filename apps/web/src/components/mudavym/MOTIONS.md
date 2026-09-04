@@ -48,3 +48,31 @@ Deliberate non-motions:
 `prefers-reduced-motion` drops every transition in `house-header.css` (the
 `@media (prefers-reduced-motion: reduce)` block sets `transition: none`), and
 the popovers' own reduced-motion behaviour is the primitive's, unchanged.
+
+---
+
+## The house day strip (2026-09-04)
+
+`DayStrip` adds no new curve either, and it deliberately adds no movement at
+all: a month of thirty-one cells that shifts under the pointer is a month you
+cannot read. Everything is a colour or a border crossing `ink`
+(`cubic-bezier(0.16, 1, 0.3, 1)`, 160ms).
+
+| id | token | curve / ms | fires |
+|---|---|---|---|
+| `mdv-ds-ink` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)`, 160ms | hover and selection on a day, and hover on the two month controls — background, border and colour only, no movement. |
+
+Deliberate non-motions:
+
+- **Nothing tallies.** A day's mark is a count, and a count that counts itself
+  up asks to be watched rather than read. The bars appear at their height.
+- **No month transition.** Walking to the previous month replaces the cells; it
+  does not slide them. A strip that animates its own contents makes the reader
+  wait to find out what changed, and what changed is *everything*.
+- **No hatch animation.** The hatch is the component's one load-bearing claim
+  ("this day was read and held nothing"); drawing attention to it with motion
+  would make an honest absence look like an alert.
+
+The page that owns a mark owns that mark's motion — `/recommendations` draws
+bars into the cell slot and gives them none either.
+`prefers-reduced-motion` drops every transition in `day-strip.css`.

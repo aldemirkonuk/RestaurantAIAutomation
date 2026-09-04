@@ -1,0 +1,211 @@
+/* ============================================================
+   The house day strip — one calendar month, as a selector
+   ============================================================
+
+   Tokens only. Every colour is a `.mudavym` custom property
+   (styles/mudavym.css:28-60), so the strip turns with the page under it: warm
+   paper by default, Warm Charcoal under `.dark .mudavym` or an explicit
+   `data-ground="charcoal"`.
+
+   WIDTH. A month is up to 31 cells on one line. `--mdv-ds-min` is the floor a
+   cell may not go under; above it the cells share the line equally
+   (`minmax(var(--mdv-ds-min), 1fr)`), and below it the strip scrolls
+   horizontally instead of shrinking the day number out of legibility.
+
+   Measured 2026-09-04 against the two shells this strip is mounted in:
+
+     /recommendations  `.rc-wrap` is max-width 1120 + 16px padding, so the
+                       content line is 1088px at BOTH 1440 and 1280 (the wrap
+                       caps first). Strip inner = 1088 − 2 (border) − 10
+                       (padding) = 1076px; 31 cells with 30 gaps of 2px leave
+                       1016px, i.e. 32.7px a cell — over the 30px floor.
+     /notifications    the shell is max-w-[1180px] with 24px padding at ≥640,
+                       so the line is 1132px and a cell is 34.2px.
+
+   The floor bites at a viewport of about 1034px on /recommendations
+   (990px of cells + 60px of gaps + 22px of chrome + 32px of page padding);
+   under that the strip scrolls. That is the deliberate trade: a legible 30px
+   number behind a scrollbar beats an illegible 24px one that fits.
+
+   MOTION. `ink` only — cubic-bezier(0.16, 1, 0.3, 1) at 160ms, the micro-state
+   token from lib/mudavym/motion.ts:106. Selecting a day is a colour crossing;
+   nothing on this strip moves, and nothing tallies. */
+
+.mdv-ds {
+  --mdv-ds-min: 30px;
+  margin: 0 0 14px;
+}
+
+.mdv-ds-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 7px;
+}
+
+.mdv-ds-months {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mdv-ds-mo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  background: var(--paper-0);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-ds-mo:hover {
+  border-color: var(--seal-ring);
+  color: var(--seal-deep);
+}
+
+.mdv-ds-mo-label {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 14px;
+  color: var(--ink-1);
+  min-width: 116px;
+}
+
+.mdv-ds-quiet {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-ds-quiet:hover {
+  border-color: var(--seal-ring);
+  color: var(--seal-deep);
+}
+
+.mdv-ds-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(var(--mdv-ds-min), 1fr);
+  gap: 2px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  padding: 5px;
+  background: var(--paper-1);
+  overflow-x: auto;
+}
+
+.mdv-ds-day {
+  font: inherit;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 1px;
+  min-width: var(--mdv-ds-min);
+  padding: 5px 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--paper-0);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-ds-wd {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-4);
+}
+.mdv-ds-n {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  line-height: 1.1;
+}
+.mdv-ds-mark {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 20px;
+  margin-top: 3px;
+}
+
+/* A day the source was READ for and that held nothing — hatched, never a bar
+   of zero. This is the rule the whole component exists to keep. */
+.mdv-ds-day[data-records='none'] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--paper-1),
+    var(--paper-1) 3px,
+    var(--paper-2) 3px,
+    var(--paper-2) 6px
+  );
+}
+
+/* A day that has not happened is EMPTY, not hatched: an absence of records is
+   not a fact about a day nobody has reached yet. */
+.mdv-ds-day[data-records='future'] {
+  background: transparent;
+  opacity: 0.5;
+}
+/* Nothing is known about this day. Also not hatched. */
+.mdv-ds-day[data-records='unknown'] {
+  background: var(--paper-0);
+}
+
+.mdv-ds-day[data-today='true'] {
+  box-shadow: inset 0 0 0 1px var(--seal-ring);
+}
+.mdv-ds-day[data-struck='true'] {
+  border-color: var(--ink-4);
+  border-style: dashed;
+}
+.mdv-ds-day[data-struck='true'] .mdv-ds-n {
+  text-decoration: line-through;
+}
+.mdv-ds-day:hover {
+  border-color: var(--seal-ring);
+}
+.mdv-ds-day[aria-pressed='true'] {
+  background: var(--seal);
+  border-color: var(--seal);
+  color: var(--paper-0);
+}
+.mdv-ds-day[aria-pressed='true'] .mdv-ds-wd {
+  color: var(--paper-1);
+}
+.mdv-ds-day:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-ds-day,
+  .mdv-ds-mo,
+  .mdv-ds-quiet {
+    transition: none !important;
+  }
+}

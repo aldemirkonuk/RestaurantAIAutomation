@@ -53,6 +53,19 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   leaves for standing / snoozed / dismissed / ruled-off / history; act · dismiss with a
   reason · snooze · pin · assign · feedback · bulk all kept, and **ruling an entry off
   is the one hold-to-seal act** on the page
+- **The docket has seven headings, since 2026-09-04** — *Order it · Price it · Move
+  stock · Call a vendor · Brief the floor · **Schedule it** · **Goals slipping***, plus
+  *Not yet filed* for a rule this page does not recognise and the dark *Change a rule*.
+  Every entry under **Schedule it** carries *Put it on the day-book*, which prints the
+  drafted calendar line (title · date · type · note naming the rule) and opens
+  `/calendar?new=<json>`. Every entry under **Goals slipping** carries *See where the
+  goal stands* — a deep link to the reports desk, naming the goal in words — plus the
+  levers the rule points at, taken from the gateway's own metric→category table.
+- **The day strip is the house's, and shows a full calendar month** (2026-09-04):
+  `components/mudavym/DayStrip.tsx`, shared with `/notifications`. Previous/next month
+  controls, the month containing today by default, the future half drawn empty rather
+  than hatched, and the keyboard map (arrows · Home/End · Enter/Space · Escape) in one
+  place for both pages.
 - The redesign authenticates **by construction and is held there by a test** — the only
   build of this page whose transport is asserted: `useRecommendationsNextData.test.tsx`
   proves the read goes through `apiClient` and that `fetch` is never called. (The
@@ -588,6 +601,132 @@ absorbed into the first heading, the money line made `$0`, the watched state mat
 metric instead of the source): **8 of 117 fail** on it, in the three files that carry the new
 claims.
 
+### Fifth pass, 2026-09-04 — six headings became eight, and the strip left the page
+
+Four decisions, all the founder's, all binding.
+
+**1 · A sixth heading, "Schedule it", for calendar acts.** The founder named
+`weekday_gap` and asked for a sweep of the rest. All twelve static rules were re-read
+(`apps/api-gateway/src/analytics/recommendations.service.ts:150-330`) against one test —
+*does the sentence's LEADING clause put a thing on a day?* Two pass, and the working is
+on each entry:
+
+| rule | verdict | the clause it was read from |
+|---|---|---|
+| `weekday_gap` | **Schedule it** (the founder's own call) | "Move staff training, deliveries, and inventory counts to `<worstDay>`" — three things put on a named day. Its second half is a day-only offer, which is why it used to sit under *Price it*. |
+| `weekly_demand_slide` | **Schedule it** (the sweep's call, not the founder's — said so on the entry) | "**Schedule** a staff tasting on the two highest-margin slow movers this week". The verb is literally the heading. Its second half, a pairing prompt in the specials script, is a floor act and is named. |
+| `staff_spread` | stays *Brief the floor* | "Have the top seller run a 15-minute pre-shift" — a pre-shift IS the briefing. Arranging one is not the act; delivering it is. |
+| `puzzle_activation` | stays *Move stock* | "rotate weekly" is a cadence attached to an act of moving stock. |
+| `dead_stock_capital` | stays *Move stock* | "if untouched after two weeks, discount to cost" is a review date attached to an act of moving stock. Real, named on the entry, and not the act. |
+| `sales_below_weekday_baseline` | stays *Brief the floor* | "Tonight: brief the floor…" names a time; nothing in it goes on a day-book. |
+
+Each entry there carries **Put it on the day-book** (`rec-daybook.ts`). It prints the
+drafted line in full — title, date, type, note naming the rule — and then opens
+`/calendar?new=<url-safe JSON>`. **Two things it does not claim.** First, the calendar
+does not read that link yet: `pages/calendar/next/CalendarNext.tsx:190-214` reads
+`openModal` and `date` and nothing else, and `SheetTarget`'s create arm
+(`EventSheet.tsx:63-65`) is `{ mode; date; startTime }` with no title, type or note. So
+the copy says the calendar *opens on the date with the details to fill*, never that it
+is prefilled; the ready patch for the calendar builder is in this pass's report, and
+when it lands only `DAYBOOK_LANDING` changes. Second, the date is the day the strip has
+selected, or today — **not** the weekday named inside `weekday_gap`'s observation.
+Reading "Tuesday" back out of "Friday is reliably your strongest day; Tuesday the
+weakest" would be parsing a sentence written for a reader as if it were a field, which
+is the move `rec-forward.ts` already refuses for targets. The entry says so.
+
+The `eventType` is a member of the gateway's `CalendarEventType` (`calendar.dto.ts:44-59`).
+`weekly_demand_slide` gets `tasting` because its sentence names exactly one calendar
+object; `weekday_gap` gets `custom` because it names three (training, deliveries,
+counts) and picking one would be this page choosing the manager's evening for them.
+
+**2 · Goal-behind entries get "Goals slipping".** They were parked under *Not yet filed*
+on the argument that "pick the single biggest lever" is a choice rather than an act. That
+was a mis-filing: *not yet filed* means **this page does not recognise the rule**, and
+this page recognises this family exactly. A heading whose meaning is "unknown to us"
+cannot also hold the one family we understand best. `unfiled` is now reachable only by a
+rule that did not exist when `rec-docket.ts` was written — asserted.
+
+Each entry links to the goal's progress in the reports desk. **There is no query
+parameter to address one goal**: re-grepped 2026-09-04, `apps/web/src/pages/reports/`
+contains no `useSearchParams`, no `URLSearchParams` and no `location.search` — the sheet
+reads nothing off the URL. So the link is `/reports?cutting=goals&goal=<id>&rec=<key>&from=recommendations`
+(the ids ride along for the day the sheet learns to read them) and **the control names
+the goal in words**, because that is how a person actually finds the row. The desk it
+lands on is real: `rp-sheet.ts` `ANALYSIS_IDS` holds `goals`, `rp-registers-goals.tsx:456-460`
+reads `GET /analytics/goals/:rid/progress`, and `goals` is on `DEFAULT_ON`, so it is
+standing on an unarranged sheet. The per-goal route the founder named,
+`GET /analytics/goals/:rid/:goalId/progress` (`analytics.controller.ts:583`), is what
+that desk's *Ask the book* control calls per row.
+
+The levers are not a list this page wrote. The rule says *"the insight feed for this
+goal's category"* — and a goal row carries a `metric_type`, never a category. The join
+exists in exactly one place, the gateway's `GoalsService.SUPPORTED_METRICS`
+`insightCategories` (`analytics/goals.service.ts`), copied verbatim into
+`rec-daybook.ts` `METRIC_CATEGORIES`. The levers are the standing entries in those
+categories. When the goal list cannot be read, the section names **no** lever and says
+why — "we could not look" and "there are none" are different facts.
+
+**The refusal stays**: no goal is ever made from a goal. *Make this a goal* is dark on
+these entries with `rec-forward.ts`'s own reason, and the slip block repeats it in words.
+
+**3 · One shared day strip.** `components/mudavym/DayStrip.tsx` (+ `dayStripDates.ts`,
+`day-strip.css`, `DayStrip.test.tsx`), extracted from this page's `rec-days.ts`/`Ribbon.tsx`
+and `/notifications`'s `DayRail.tsx`. **Deleted:** `apps/web/src/pages/notifications/next/DayRail.tsx`
+(152 lines) — its tests moved into `DayStrip.test.tsx` and the page's own
+`NotificationsNext.test.tsx`. The measured cause for making it house-level: the two
+strips had already drifted. This page's carried four record states, the hatched-not-zero
+rule and a full keyboard map; the rail carried none of the three. Same object, two
+contracts, one missing the rule the other exists to enforce.
+`DESIGN-FOUNDATION.md` §3 item 4 is amended with the dated line.
+
+What the strip owns: the month, the cells, the four states, the hatch, the strike, the
+today ring, selection as a controlled prop, and the keyboard. What a page owns: the
+marks inside a cell, the clause added to its title, and everything above and below.
+**One rule a page cannot override** — `records` supplied for a day after `today` is
+ignored and the cell is drawn `future`, because the one way this component fails is a
+page deciding that tomorrow held nothing.
+
+**4 · The window is a full calendar month.** Replacing 21-behind/7-ahead. A rolling
+window has no name; nobody says "the last twenty-one days" to a colleague, and every
+other record in the house is kept by month. The future half is drawn **empty, not
+hatched**, and the cell's title says *"this day has not happened yet — that is neither a
+record nor an absence"*.
+
+**Width, measured in the live browser 2026-09-04** (`$SP/shoot-daystrip.mjs`, which
+reads `getBoundingClientRect` off the rendered cells):
+
+| viewport | `/recommendations` strip | cell | `/notifications` strip | cell |
+|---|---|---|---|---|
+| 1440 | 1088px | **33.9px** | 1132px | **35.4px** |
+| 1280 | 988px | **30.6px** | 972px | **30.1px** |
+
+Neither scrolls (`scrollWidth === clientWidth`), and the day number stays 11.5px at
+both. The floor enforced is `--mdv-ds-min: 30px` (`day-strip.css`). Below it the strip
+scrolls horizontally rather than shrinking the number: 31 cells at 30px plus 30 gaps of
+2px plus 12px of strip chrome needs 1002px, so on this page's shell (`.rc-wrap`,
+max-width 1120 + 16px padding) the floor bites at a viewport of about **1034px** and the
+strip gains a horizontal scrollbar under that. A legible 30px number behind a scrollbar
+beats an illegible 24px one that fits.
+
+Walking the month re-asks the till: `posDaysFor(month, today)` sends
+`GET /analytics/pos-revenue/:rid?days=N` back to the 1st of the month on screen (the
+gateway clamps N to 1–365, `analytics.controller.ts:757-760`), so a month more than a
+year back comes back **entirely `unknown`, never `none`**. Selecting a day does not
+survive a month change — a day selected in September is not a day in August.
+
+**Verified in the live browser, 2026-09-04** (gateway :4000, web :5274, tenant
+`Meyhouse Palo Alto`, captures in `$SP/shots-daystrip/`):
+
+| Checked | Result |
+|---|---|
+| the strip on both pages, both grounds | 30 cells (September), month label "September 2026", month controls live |
+| the hatch | `/recommendations`: **4 hatched** (Sep 1–4, the days the till window covers and holds nothing), **26 future**, 0 unknown, 0 with a record |
+| the future half | 26 cells `data-records="future"`, drawn empty; title reads *"neither a record nor an absence"* |
+| a day selected | *"Wednesday 2 September — 3 first fired · 0 falls due — no record at all on this day — not a zero, nothing was written"* |
+| **Goals slipping, on live data** | two real `goal_behind_*` entries ("P3PROOF checks served", "P3PROOF average check"); the levers block named the gateway's own categories (*sales and tables* / *efficiency, staff and basket*) and listed `weekday_gap`, `weekly_demand_slide`, `staff_spread` |
+| **Schedule it** | the live tenant fires **neither** calendar rule today, so it cannot appear in a live capture. Captured with the two rules injected into the `/analytics/recommendations/:rid` response (`$SP/shoot-daystrip2.mjs`), the strings copied verbatim from the gateway. **Filed as a fixture**, both grounds: `whole-book-recommendations-fixture-{paper,charcoal}.png` |
+| `/notifications` | day 1 selected, cell title *"1 line on this screen, 1 still open — a record landed on this day"*; the note names the day filter as the reason every other day is blank |
+
 ## 2. Entry
 
 **Not in the sidebar.** Entries are:
@@ -752,6 +891,36 @@ dashboard.md §7.
   far as any record shows (no ADR either way). **The Mudavym build does not add a nav
   entry** — that is a founder decision, not a page-agent one (§13.4); the redesign is
   reached the same two ways, plus the per-browser override in §8.
+
+**Filed 2026-09-04, with the fifth pass (§1b), and why each is not yet closed:**
+
+- **The calendar cannot be prefilled from a link.** `CalendarNext.tsx:190-214` reads
+  `openModal` and `date` only, and `SheetTarget`'s create arm carries no title, type or
+  note. *Why not yet:* `pages/calendar/next/**` is another builder's this wave; the
+  ready patch is in the pass's report and is four small hunks. Until it lands the
+  control says the calendar opens with the details to fill, and prints them.
+- **`/reports` reads nothing off the URL.** No `useSearchParams`, no `URLSearchParams`,
+  no `location.search` anywhere under `apps/web/src/pages/reports/` (re-grepped
+  2026-09-04). Both forward doors — the cutting link and now the goal link — therefore
+  name their destination in words instead of scrolling to it. *Why not yet:* same
+  reason; the reports desk is being edited by its own builder, and the ids already ride
+  in the query for the day it reads them.
+- **The day-book draft cannot name the day the rule means.** `weekday_gap` states the
+  weakest weekday inside its observation sentence and nowhere else — there is no
+  `subject` on that rule. *Why not:* this is a refusal, not a gap. Parsing a weekday out
+  of a sentence the gateway can reword would be the same class of error as scraping a
+  target out of prose, and the entry says which day it will actually open on.
+- **A month more than 365 days back cannot be read at all.** The till window is
+  `?days=N` counting back from today, clamped to 365. Every day of such a month comes
+  back `unknown`, never `none` — correct, and a real limit on how far the strip is
+  worth walking. *Why not yet:* closing it needs a from/to window on
+  `GET /analytics/pos-revenue/:rid`, which is a gateway change outside this pass.
+- **`/notifications` can only hatch what its loaded pages cover.** The strip's negative
+  claim there rests on the register being read newest-first and contiguously
+  (`notifications.service.ts:824`), so a day older than the oldest loaded row is
+  `unknown`, and every day but one is `unknown` while a day filter is on. Said on the
+  page. *Why not yet:* a real per-day count would need a `GET /notifications/counts`
+  the gateway does not have.
 
 Outside the page's own paths, and therefore filed rather than built (2026-09-02):
 
@@ -996,60 +1165,68 @@ execution, no first-fired timestamp — in the same way.
    surface reachable only via the command palette. *Blocker: founder decision — no ADR
    exists either way; add to `OPEN-DECISIONS.md`.* The redesign deliberately adds no
    nav entry.
-5. Correct the stale `v3.0-TECH-DEBT.md:493` line ("Recommendations entirely read-only")
+5. **Teach the calendar to read `?new=`.** The patch is specified in the 2026-09-04
+   report: extend `SheetTarget`'s create arm with an optional `prefill`, seed
+   `EventSheet`'s `title` / `typeName` / `description` from it, and parse the param in
+   `CalendarNext`'s existing deep-link effect. Owned by the calendar builder; when it
+   lands, `rec-daybook.ts` `DAYBOOK_LANDING` is the one string that changes here.
+6. Correct the stale `v3.0-TECH-DEBT.md:493` line ("Recommendations entirely read-only")
    — actions shipped; the page's real problem was auth, and that is now fixed.
-6. **Build the digest sender, or retire the preference.** `recommendation_digest_prefs`
+7. **Build the digest sender, or retire the preference.** `recommendation_digest_prefs`
    is written and read by nothing else (§9); the redesign shows the control disabled
    with that reason. Either a job in
    `analytics/insights/insight-scheduler.service.ts` reads `digest_enabled` /
    `digest_hour` / `digest_min_urgency` and sends (writing `last_sent_at`), or the
    endpoints and the table go. *Blocker: founder call on whether the product mails.*
-7. ~~**Expose first-fired time so "standing" stops being an em dash.**~~ **Done
+8. ~~**Expose first-fired time so "standing" stops being an em dash.**~~ **Done
    2026-09-03** — `attachFirstSeen` in `recommendations.service.ts`, rendered by
    `standingOf()` with the clock it read named on the row (§1b second pass).
-8. **Decide whether the platform may ever act on a recommendation itself** — the
+9. **Decide whether the platform may ever act on a recommendation itself** — the
    founder's own third axis, and today the honest answer on every entry is "not built"
    (§9). It is an ADR, not a ticket: what may be done unattended, under whose
    permission, with what audit trail. `enable_ai_autonomous_send` is the precedent for
    the shape of the switch.
-9. **Add `apps/web/src/pages/recommendations/next` to `SCAN_ROOTS` in
+10. **Add `apps/web/src/pages/recommendations/next` to `SCAN_ROOTS` in
    `scripts/check_no_seeded_defaults.py`** (§9) — measured to pass with it added.
-10. **Point the legacy page's path param at `activeRestaurantId`**
+11. **Point the legacy page's path param at `activeRestaurantId`**
     (`Recommendations.tsx:153`) so it agrees with the JWT and the `X-Restaurant-Id`
     header after a restaurant switch (§9).
-11. Emit signals — dispositions are operational state, but *which rules get dismissed*
+12. Emit signals — dispositions are operational state, but *which rules get dismissed*
     is the highest-value UX signal in the product and nothing records it (§5). The
     impressions log now covers what was *shown*; what is missing is the reporter.
-12. **Give the page a way to mint a link.** It reads `?insight=<ruleKey>` but has no
+13. **Give the page a way to mint a link.** It reads `?insight=<ruleKey>` but has no
     `Copy link` control, so the deep links it honours can only come from elsewhere.
-13. If the book ever grows past a screen, restore search / sort / category filters
+14. If the book ever grows past a screen, restore search / sort / category filters
     (§1b names them as deliberately dropped) — they are cheap, and the register alone
     stops scaling somewhere around twenty entries.
-14. **Show the standing silences in Settings** (§9). A panel listing every stored
+15. **Show the standing silences in Settings** (§9). A panel listing every stored
     suppression key with its scope in words and a Return control — the founder asked for it
     if the hook were trivial; it is not, from this page's paths.
-15. **Apply the observed-day distinction to the per-wine demand series** (§9), so a closure
+16. **Apply the observed-day distinction to the per-wine demand series** (§9), so a closure
     stops counting as zero demand for a stockout probability the way it used to count as
     zero revenue for a baseline.
-16. **Make the generator version un-forgettable.** `INSIGHT_GENERATOR_VERSION`
+17. **Make the generator version un-forgettable.** `INSIGHT_GENERATOR_VERSION`
     (`insight-generator.service.ts`) is bumped by hand; a change to the arithmetic that forgets
     it reintroduces the retracted-sentence bug with no symptom. The shape that would close it is
     a checksum test over the files that decide what a sentence claims
     (`insight-verbalizer.ts`, `timeSeriesInsights`, `engine/comparisons.ts`) that fails until the
     constant moves. §9.
-17. **Two directions drawn out for the founder's choice** —
+18. **Two directions drawn out for the founder's choice** —
     `.planning/sketches/090-recommendations-directions/`: `run-sheet.html` (banded
     Tonight / This week / This month, register demoted to a filter strip) and
     `two-pane-docket.html` (register · list · the working pinned open). Both carry the new
     dismissal dialogue so its weight can be judged in place. The shipped build is neither;
     the fork is the founder's.
-18. **Make the reports sheet read `?cutting=<id>`** (§9). *See it in reports* mints
+19. **Make the reports sheet read `?cutting=<id>`** (§9). *See it in reports* mints
     `/reports?cutting=…&rec=…&from=recommendations`; the reports page reads no query parameter at
     all, so the link opens the sheet and the entry says the cutting's name instead of landing on it.
     The honest full version also *adds* the cutting when it is not on the reader's sheet — which is a
     write to another page's stored arrangement (`reportsSheet` in user preferences), and therefore a
-    founder's call before it is a ticket.
-19. ~~**Give a goal its provenance.**~~ **Done 2026-09-03** — `analytics_goals.source_rule_key`,
+    founder's call before it is a ticket. **Extended 2026-09-04:** the *Goals slipping*
+    heading mints `/reports?cutting=goals&goal=<id>&rec=<key>&from=recommendations` for
+    the same unread query, so the same one change would land both doors. Owned by the
+    reports builder.
+20. ~~**Give a goal its provenance.**~~ **Done 2026-09-03** — `analytics_goals.source_rule_key`,
     migration `20260903161000`, validated in `GoalsService.createGoal` against the rule catalogue;
     the entry now says "this entry is being watched — goal X, due …" (§1b rework). *Still open:*
     the `goal_behind_*` family should link to `GET /analytics/goals/:rid/:goalId/progress` rather
@@ -1057,34 +1234,45 @@ execution, no first-fired timestamp — in the same way.
     and it is also the family the docket has to file as **Not yet filed**. *Also still open:* the
     column is not yet applied to any database — the write was measured 400ing on the schema cache
     locally, and applies on merge.
-20. **Return a structured `moneyAtStake` on each recommendation** (§9) — the one field the docket
+21. **Return a structured `moneyAtStake` on each recommendation** (§9) — the one field the docket
     still needs and cannot compute. Additive on `recommendations.service.ts`; it changes no
     sentence. The *act key*, the other half of this item, is now built page-side in
     `rec-docket.ts` rather than in the gateway, deliberately: the act is a reading of the rule's
     prescription for a human, not a property of the rule's arithmetic, and a page that files by it
     should be able to change its mind without a deploy. If a second surface ever needs the same
     filing, that judgement is worth revisiting.
-21. **Decide whether a rule can be retuned, and by whom** (§9). The dismissal reasons are already a
+22. **Decide whether a rule can be retuned, and by whom** (§9). The dismissal reasons are already a
     taxonomy and nothing reads them as one. DESIGN-FOUNDATION §6 rates this need-it-now for this
     page; it is an ADR (what may be tuned, under whose hand, with what threshold history), not a
     ticket.
-22. **Make `GoalsService.computeMetricWithSeries` distinguish a measured zero from an unread table**
+23. **Make `GoalsService.computeMetricWithSeries` distinguish a measured zero from an unread table**
     (§9) — the same fault the second pass removed from `toDaily`, still live one module over. A goal
     whose baseline could not be read should say so, not report 0.
-23. ~~**Sketch set 094 is the shape fork.**~~ **Decided and built 2026-09-03** — the founder chose
+24. ~~**Sketch set 094 is the shape fork.**~~ **Decided and built 2026-09-03** — the founder chose
     **094b (the action docket) as the spine with 094a (the calendar strip) above it as a selector
     ribbon**; both are shipped behind the flag (§1b "The rework"). The register-as-spine layout is
     retired. **094c (the case ledger) remains the roadmap:** opened → acted → watching → closed,
     with *refused* as a state that keeps its reason. `source_rule_key` was its first prerequisite
     and is now in place; what it still needs is a stored `acted_at`-to-outcome link and a way to
     close a case with a result rather than only with a seal.
-24. **Let the ribbon draw a range, and a lineage hairline.** Sketch 094a drew shift-click for a
+25. **Let the ribbon draw a range, and a lineage hairline.** Sketch 094a drew shift-click for a
     range (Fri to Sun) and a hairline from an entry back to the day it was first shown. Neither is
     built: the range needs the docket's filter to take an interval rather than a day, and the
     hairline needs per-entry hover state on a strip that is deliberately a plain selector. Both are
     cheap and neither is load-bearing; they were left out to keep the ribbon a selector rather than
     a second page.
-25. **Decide whether the day strip belongs on other pages** — the founder liked it on
-    `/notifications` too, and the model (`rec-days.ts`) is a pure function of entries, goals,
-    exclusions and a till window. Sharing it means a component outside a page's own directory,
-    which the page brief forbids by default; it is a founder/ADR call, not a ticket.
+26. ~~**Decide whether the day strip belongs on other pages.**~~ **Decided 2026-09-04**
+    — one shared `components/mudavym/DayStrip.tsx`, rendered by `/recommendations` and
+    `/notifications`; `pages/notifications/next/DayRail.tsx` deleted. The page brief's
+    one-directory rule is amended in `DESIGN-FOUNDATION.md` §3 item 4. *Still open as a
+    class:* nothing decides which of the remaining 45 page notes should adopt it, and
+    nothing stops a third page growing its own again — a guard ("no `data-testid` ending
+    `-day` outside `components/mudavym`") is the shape that would, and is not built.
+27. **Give the till window a from/to.** `GET /analytics/pos-revenue/:rid` takes `?days=N`
+    counting back from today, clamped 1–365, so the strip cannot read a month more than a
+    year back at all — every day of it is `unknown`, correctly and uselessly. A
+    `from`/`to` pair on that route would close it. Gateway change, outside this pass.
+28. **Give `/notifications` a per-day count from the register.** The strip there can only
+    hatch what its loaded pages cover, because there is no `GET /notifications/counts`;
+    a day older than the oldest loaded row is `unknown`, and while a day filter is on
+    every other day is. Said on the page; closing it is a gateway route.

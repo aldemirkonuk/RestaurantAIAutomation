@@ -8,6 +8,18 @@
  * docket to the entries that touch it, and selecting nothing leaves the whole
  * book standing. The docket never disappears behind the calendar.
  *
+ * THE STRIP ITSELF IS NO LONGER THIS FILE'S. Since 2026-09-04 the drawing, the
+ * keyboard map, the hatch rule and the month window live in the house
+ * component `components/mudavym/DayStrip.tsx`, shared with `/notifications`
+ * (whose own `DayRail.tsx` was deleted for it). What is left here is what is
+ * genuinely this page's: which marks a day carries, what the strip may claim
+ * about records, and the day-exclusion control.
+ *
+ * THE WINDOW IS A CALENDAR MONTH (founder, 2026-09-04), replacing 21-behind
+ * and 7-ahead. The future half of the current month is drawn EMPTY, never
+ * hatched — a day that has not happened is neither a record nor an absence,
+ * and the cell's title says exactly that.
+ *
  * Three marks, and one absence:
  *   a solid bar     entries whose first impression landed on that day
  *   an outlined bar something that falls due on it (a goal deadline, a wake)
@@ -20,15 +32,11 @@
  * (`POST /analytics/exclusions/:rid`), and it still asks for a reason before
  * it acts — a standing instruction about the house's own averages is not a
  * thing to store from a single click.
- *
- * Keyboard: ← → move a day, ↑ ↓ move a week, Home/End the ends of the strip,
- * Enter or Space selects the focused day, Escape clears the selection. Roving
- * tabindex, so the strip is one stop on the page's tab order and the focus
- * ring is always visible on a paper gap.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarRange, CircleSlash, Info } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CircleSlash, Info } from 'lucide-react';
+import { DayStrip, type DayStripDay } from '@/components/mudavym';
 import { EM } from './rec-format';
 import {
   barHeight,
@@ -48,6 +56,11 @@ const EXCLUSION_REASONS: Array<{ id: string; label: string }> = [
 
 export interface RibbonProps {
   days: DayCell[];
+  /** The calendar month on screen, `YYYY-MM`. Controlled by the page. */
+  month: string;
+  onMonth: (month: string) => void;
+  /** Today, as the gateway's UTC business date — the key this page files by. */
+  today: string;
   selected: string | null;
   onSelect: (date: string | null) => void;
   /** The POS window behind the record marks — undefined asked, null unreadable. */
@@ -66,68 +79,47 @@ export interface RibbonProps {
 
 export default function Ribbon(props: RibbonProps) {
   const { days, selected, onSelect } = props;
-  const todayIdx = useMemo(() => Math.max(0, days.findIndex((d) => d.isToday)), [days]);
-  const [focusIdx, setFocusIdx] = useState(todayIdx);
   const [askExclude, setAskExclude] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
-  const stripRef = useRef<HTMLDivElement | null>(null);
-
-  // A selection made elsewhere (a link, a clear) moves the roving focus with
-  // it, so the keyboard never starts from a day the eye is not on.
-  useEffect(() => {
-    if (!selected) return;
-    const i = days.findIndex((d) => d.date === selected);
-    if (i >= 0) setFocusIdx(i);
-  }, [selected, days]);
 
   useEffect(() => {
     setAskExclude(false);
     setReason(null);
   }, [selected]);
 
-  const cell = selected ? days.find((d) => d.date === selected) ?? null : null;
+  const cell = selected ? (days.find((d) => d.date === selected) ?? null) : null;
 
-  const move = (next: number) => {
-    const i = Math.max(0, Math.min(days.length - 1, next));
-    setFocusIdx(i);
-    const node = stripRef.current?.querySelector<HTMLButtonElement>(`[data-idx="${i}"]`);
-    node?.focus();
-  };
-
-  const onKey = (ev: React.KeyboardEvent<HTMLDivElement>) => {
-    switch (ev.key) {
-      case 'ArrowRight':
-        ev.preventDefault();
-        move(focusIdx + 1);
-        break;
-      case 'ArrowLeft':
-        ev.preventDefault();
-        move(focusIdx - 1);
-        break;
-      case 'ArrowDown':
-        ev.preventDefault();
-        move(focusIdx + 7);
-        break;
-      case 'ArrowUp':
-        ev.preventDefault();
-        move(focusIdx - 7);
-        break;
-      case 'Home':
-        ev.preventDefault();
-        move(0);
-        break;
-      case 'End':
-        ev.preventDefault();
-        move(days.length - 1);
-        break;
-      case 'Escape':
-        if (selected) {
-          ev.preventDefault();
-          onSelect(null);
-        }
-        break;
-    }
-  };
+  /**
+   * What each day of the month carries, for the house strip.
+   *
+   * The strip owns the four states and the hatch; this owns the MARKS — a
+   * solid bar per entry that first fired, an outlined one per thing falling
+   * due. `records: 'future'` is never passed: the strip decides that from
+   * `today`, so a page can never claim a day that has not happened held
+   * nothing.
+   */
+  const strip: Record<string, DayStripDay> = {};
+  for (const d of days) {
+    const fired = d.fired.length;
+    const due = d.due.length;
+    strip[d.date] = {
+      records: d.records === 'future' ? 'unknown' : d.records,
+      struck: d.excluded,
+      says: `${fired} first fired · ${due} falls due${
+        d.excluded ? ` · ruled out (${d.excludedReason ?? 'no reason given'})` : ''
+      }`,
+      mark: (
+        <>
+          {fired > 0 && (
+            <i className="rc-bar rc-bar-fired" style={{ height: `${barHeight(fired)}px` }} />
+          )}
+          {due > 0 && (
+            <i className="rc-bar rc-bar-due" style={{ height: `${barHeight(due)}px` }} />
+          )}
+        </>
+      ),
+    };
+  }
 
   /** What the strip is allowed to claim about records at all. */
   const recordsNote =
@@ -143,70 +135,34 @@ export default function Ribbon(props: RibbonProps) {
 
   return (
     <section className="rc-ribbon" aria-labelledby="rc-ribbon-h">
-      <div className="rc-ribbon-head">
-        <span className="rc-micro rc-ribbon-title" id="rc-ribbon-h">
-          <CalendarRange size={12} aria-hidden="true" /> The days behind this book
-        </span>
-        {selected && (
-          <button type="button" className="rc-quiet" onClick={() => onSelect(null)}>
-            Show the whole book
-          </button>
-        )}
-      </div>
+      <span className="rc-micro rc-ribbon-title" id="rc-ribbon-h">
+        The days behind this book
+      </span>
 
-      <div
-        className="rc-strip"
-        role="group"
-        aria-label="Select a day to narrow the docket"
-        ref={stripRef}
-        onKeyDown={onKey}
-      >
-        {days.map((d, i) => {
-          const fired = d.fired.length;
-          const due = d.due.length;
-          const title = `${fmtLongDay(d.date)} — ${fired} first fired · ${due} falls due · ${recordWords(d)}${
-            d.excluded ? ` · out of the analysis (${d.excludedReason ?? 'no reason given'})` : ''
-          }`;
-          return (
-            <button
-              key={d.date}
-              type="button"
-              data-idx={i}
-              data-testid="rc-day"
-              className="rc-day"
-              data-records={d.records}
-              data-excluded={d.excluded ? 'true' : undefined}
-              data-today={d.isToday ? 'true' : undefined}
-              aria-pressed={selected === d.date}
-              tabIndex={i === focusIdx ? 0 : -1}
-              title={title}
-              aria-label={title}
-              onFocus={() => setFocusIdx(i)}
-              onClick={() => onSelect(selected === d.date ? null : d.date)}
-            >
-              <span className="rc-day-wd" aria-hidden="true">{d.weekday}</span>
-              <span className="rc-num rc-day-n" aria-hidden="true">{d.dayNum}</span>
-              {d.monthLabel && <span className="rc-micro rc-day-mo" aria-hidden="true">{d.monthLabel}</span>}
-              <span className="rc-day-bars" aria-hidden="true">
-                {fired > 0 && (
-                  <i className="rc-bar rc-bar-fired" style={{ height: `${barHeight(fired)}px` }} />
-                )}
-                {due > 0 && (
-                  <i className="rc-bar rc-bar-due" style={{ height: `${barHeight(due)}px` }} />
-                )}
-              </span>
+      <DayStrip
+        month={props.month}
+        onMonth={props.onMonth}
+        today={props.today}
+        days={strip}
+        selected={selected}
+        onSelect={onSelect}
+        label="Select a day to narrow the docket"
+        aside={
+          selected ? (
+            <button type="button" className="rc-quiet" onClick={() => onSelect(null)}>
+              Show the whole book
             </button>
-          );
-        })}
-      </div>
-
-      <div className="rc-legend" aria-hidden="true">
-        <i><span className="rc-sw rc-sw-fired" />first fired</i>
-        <i><span className="rc-sw rc-sw-due" />falls due</i>
-        <i><span className="rc-sw rc-sw-none" />no records — not a zero</i>
-        <i><span className="rc-sw rc-sw-out" />out of the analysis</i>
-        <i><span className="rc-sw rc-sw-today" />today</i>
-      </div>
+          ) : null
+        }
+      >
+        <div className="rc-legend" aria-hidden="true">
+          <i><span className="rc-sw rc-sw-fired" />first fired</i>
+          <i><span className="rc-sw rc-sw-due" />falls due</i>
+          <i><span className="rc-sw rc-sw-none" />no records — not a zero</i>
+          <i><span className="rc-sw rc-sw-out" />out of the analysis</i>
+          <i><span className="rc-sw rc-sw-today" />today</i>
+          <i><span className="rc-sw rc-sw-future" />not happened yet</i>
+        </div>
 
       <p className="rc-why rc-ribbon-note" data-testid="rc-records-note">
         <Info size={11} aria-hidden="true" /> {recordsNote}
@@ -222,7 +178,9 @@ export default function Ribbon(props: RibbonProps) {
         What this strip cannot draw: first-fired dates are recorded for at most forty rule
         keys and are absent for any rule with no impression row, so an entry without one sits
         on no day rather than on today; and no vendor cutoff exists anywhere in the product,
-        so “falls due” is only ever a goal’s deadline or a snoozed entry waking.
+        so “falls due” is only ever a goal’s deadline or a snoozed entry waking. A day still
+        ahead is drawn empty rather than hatched: it has not happened, which is neither a
+        record nor an absence.
       </p>
 
       {props.undated > 0 && (
@@ -332,6 +290,7 @@ export default function Ribbon(props: RibbonProps) {
           )}
         </div>
       )}
+      </DayStrip>
     </section>
   );
 }

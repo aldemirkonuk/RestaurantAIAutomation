@@ -48,6 +48,7 @@ import {
 } from './rec-format';
 import {
   CUTTING_BASIS_WORDS,
+  METRICS,
   PERIOD_LABEL,
   UNIT_SUFFIX,
   cuttingFor,
@@ -57,7 +58,16 @@ import {
   toStored,
   type GoalPeriod,
   type GoalPlan,
+  type MetricKey,
+  type MetricUnit,
 } from './rec-forward';
+import type { GoalScenario, GoalScenarioBook } from '@/hooks/useGoalScenarios';
+import {
+  DAYBOOK_LANDING,
+  daybookHref,
+  type DayBookDraft,
+  type GoalSlip,
+} from './rec-daybook';
 import { ACT_LABEL, actOf } from './rec-docket';
 import type {
   DismissChoice,
@@ -115,6 +125,12 @@ export interface EntryProps {
   onWantTeam: () => void;
   /** The tenant's live goals — undefined not asked, null unreadable, [] none. */
   goals: GoalsVM;
+  /**
+   * The book of goal scenarios (ADR 0120) — undefined not read yet, null
+   * unreadable. It carries no tenant data, so a failure here costs the manager
+   * a browsing aid and nothing else; the sheet says so in one line.
+   */
+  scenarios: GoalScenarioBook | null | undefined;
   onWantGoals: () => void;
   onMakeGoal: (input: {
     name: string;
@@ -126,6 +142,23 @@ export interface EntryProps {
     sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
   onSeeInReports: (href: string) => void;
+  /**
+   * *Schedule it* only — the day-book draft for this entry, or null.
+   *
+   * Built by the page (`rec-daybook.ts`) because the date it opens on is the
+   * ribbon's selection, which the entry cannot see. Null on every entry that
+   * is not a calendar act; the control does not exist rather than being drawn
+   * dark, because "you could put this on a day" is true of nothing in the
+   * other sections.
+   */
+  daybook?: { draft: DayBookDraft; basis: string | null } | null;
+  onDayBook?: (href: string) => void;
+  /**
+   * *Goals slipping* only — where the goal is read, and the levers the rule
+   * names. `levers: null` means the goal list could not be read, which is not
+   * the same as "no levers" and is said in `words`.
+   */
+  goalSlip?: { slip: GoalSlip; levers: EntryVM[] | null; words: string } | null;
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -197,6 +230,7 @@ function scopesFor(e: EntryVM): SuppressionScope[] {
 function GoalSheet({
   plan,
   goals,
+  scenarios,
   ruleKey,
   watching,
   onCancel,
@@ -204,6 +238,7 @@ function GoalSheet({
 }: {
   plan: GoalPlan;
   goals: GoalsVM;
+  scenarios: GoalScenarioBook | null | undefined;
   /** The rule this goal will record as its source. */
   ruleKey: string;
   /** Live goals that already name THIS rule as their source. */
@@ -224,10 +259,77 @@ function GoalSheet({
   const [period, setPeriod] = useState<GoalPeriod>(plan.period);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * A scenario chosen from the book INSTEAD of this rule's own measure
+   * (ADR 0120). `null` is the default and the common case: the rule already
+   * knows which figure its prescription moves, and the book is here for the
+   * manager who wants to be held to something else.
+   */
+  const [swap, setSwap] = useState<GoalScenario | null>(null);
+
+  /**
+   * What this sheet is about to write, after the swap.
+   *
+   * `held` is deliberately derived rather than stored in state: a scenario and
+   * a plan disagree about four fields at once, and two sources of truth for
+   * "which metric" is how a sheet ends up writing one figure while promising
+   * another.
+   *
+   * A scenario naming a metric this page does not carry is REFUSED rather than
+   * coerced — that is the two catalogues having drifted, and the honest
+   * rendering of a drift is a sentence, never a silently different write.
+   */
+  const held = useMemo(() => {
+    if (!swap || swap.metricKey === null) return { plan, drift: null as string | null };
+    const key = swap.metricKey as MetricKey;
+    const metric = METRICS[key];
+    if (!metric)
+      return {
+        plan,
+        drift: `The book named the measure “${swap.metricKey}”, which this page does not carry. Nothing was swapped — the two catalogues have drifted, which is worth reporting.`,
+      };
+    return {
+      plan: {
+        ...plan,
+        metricKey: key,
+        metricLabel: metric.label,
+        unit: metric.unit as MetricUnit,
+        direction: swap.direction,
+        basis: swap.question,
+      },
+      drift: null,
+    };
+  }, [swap, plan]);
+
+  const effective = held.plan;
+  /**
+   * A goal made from an entry records the rule it came from. Swapped onto a
+   * different figure, it no longer does: `source_rule_key` is what makes the
+   * "this entry is being watched" line trustworthy, and a goal on wine revenue
+   * claiming to watch a purchasing rule would make that line a guess. So the
+   * provenance is dropped, and the sheet says it is being dropped.
+   */
+  const keepsProvenance = effective.metricKey === plan.metricKey;
 
   const deadline = useMemo(() => deadlineFor(period), [period]);
   const value = Number(typed);
   const usable = typed.trim() !== '' && Number.isFinite(value) && value > 0;
+
+  /** Choosing from the book fills three fields and never the target. */
+  const chooseScenario = (s: GoalScenario | null) => {
+    setSwap(s);
+    setRefusal(null);
+    if (!s || s.metricKey === null) {
+      setName(plan.name);
+      setPeriod(plan.period);
+      return;
+    }
+    setName(s.name);
+    // The book offers quarters; this sheet offers a week or a month, because
+    // `deadlineFor` only mints those two. A quarter scenario keeps the period
+    // the manager already has, and the reading below says so.
+    if (s.period === 'week' || s.period === 'month') setPeriod(s.period);
+  };
 
   /**
    * Two different warnings, because they are two different facts.
@@ -242,20 +344,108 @@ function GoalSheet({
    * saying, and it is still only a match on the figure.
    */
   const sameMetric = Array.isArray(goals)
-    ? goals.filter((g) => g.metricKey === plan.metricKey && g.sourceRuleKey !== ruleKey)
+    ? goals.filter((g) => g.metricKey === effective.metricKey && g.sourceRuleKey !== ruleKey)
     : [];
 
   return (
     <div className="rc-menu rc-sheet" role="group" aria-label="Make this a goal">
       <p className="rc-serif rc-sheet-title">Make this a goal</p>
 
+      {/*
+        THE BOOK, above the measure. The founder, 2026-09-04: "we're going to
+        create possible analytic scenarios a restaurant might set as a goal."
+        On this page the measure is already chosen — the rule knows what its own
+        prescription moves — so the book is an override, not the starting point,
+        and it says what it costs: a goal held on a different figure stops
+        recording which entry it came from.
+      */}
+      <div className="rc-sheet-block">
+        <label className="rc-field">
+          <span className="rc-micro">Start from a scenario</span>
+          {scenarios === undefined ? (
+            <p className="rc-why">Reading the book of scenarios{EM}</p>
+          ) : scenarios === null ? (
+            <p className="rc-why" role="status" data-testid="rc-scenarios-unread">
+              The book of scenarios could not be read, so this entry&rsquo;s own measure is the
+              only one offered. Nothing about the goal below is affected.
+            </p>
+          ) : (
+            <select
+              value={swap?.id ?? ''}
+              aria-label="Start from a scenario"
+              onChange={(ev) =>
+                chooseScenario(
+                  scenarios.scenarios.find((sc) => sc.id === ev.target.value) ?? null,
+                )
+              }
+            >
+              <option value="">This entry&rsquo;s own measure: {plan.metricLabel}</option>
+              <optgroup label="Held on the figures this engine scores">
+                {scenarios.scenarios
+                  .filter((sc) => sc.servable)
+                  .map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.name}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Not held yet — the measure does not exist">
+                {scenarios.scenarios
+                  .filter((sc) => !sc.servable)
+                  .map((sc) => (
+                    <option key={sc.id} value={sc.id} disabled>
+                      {sc.name}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+          )}
+        </label>
+        {held.drift && (
+          <p className="rc-said" role="alert" data-testid="rc-scenario-drift">
+            {held.drift}
+          </p>
+        )}
+        {swap && scenarios && (
+          <div data-testid="rc-scenario-reading">
+            {swap.range.kind === 'published' ? (
+              <p className="rc-why">
+                What operators publish: {swap.range.words}{' '}
+                <a href={swap.range.url} target="_blank" rel="noreferrer noopener">
+                  {swap.range.source}
+                </a>
+                , {swap.range.published}. {swap.range.caveat}
+              </p>
+            ) : (
+              <p className="rc-why">
+                No operator source publishes a range for this. {swap.range.why}
+              </p>
+            )}
+            <p className="rc-why">{scenarios.caveat}</p>
+            {swap.period === 'quarter' && (
+              <p className="rc-why">
+                The book reads this one over a quarter. This sheet only mints a week or a
+                month, so the period below is the one you choose.
+              </p>
+            )}
+            {!keepsProvenance && (
+              <p className="rc-said" data-testid="rc-scenario-drops-source">
+                Held on {effective.metricLabel} instead of {plan.metricLabel}, this goal will
+                not record which entry it came from {EM} so this entry will not show as
+                watched, and the duplicate warnings below are about the new figure.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="rc-sheet-block">
         <span className="rc-micro">Held on</span>
         <p className="rc-plain">
-          <span className="rc-num">{plan.metricLabel}</span> ·{' '}
-          {plan.direction === 'at_most' ? 'at most' : 'at least'} your target
+          <span className="rc-num">{effective.metricLabel}</span> ·{' '}
+          {effective.direction === 'at_most' ? 'at most' : 'at least'} your target
         </p>
-        <p className="rc-why">{plan.basis}</p>
+        <p className="rc-why">{effective.basis}</p>
       </div>
 
       <div className="rc-sheet-block">
@@ -273,7 +463,7 @@ function GoalSheet({
       <div className="rc-sheet-block">
         <label className="rc-field">
           <span className="rc-micro">
-            The target ({UNIT_SUFFIX[plan.unit]})
+            The target ({UNIT_SUFFIX[effective.unit]})
           </span>
           <input
             type="number"
@@ -281,7 +471,7 @@ function GoalSheet({
             min="0"
             step="any"
             value={typed}
-            aria-label={`Target in ${UNIT_SUFFIX[plan.unit]}`}
+            aria-label={`Target in ${UNIT_SUFFIX[effective.unit]}`}
             onChange={(ev) => {
               setTyped(ev.target.value);
               setRefusal(null);
@@ -291,7 +481,7 @@ function GoalSheet({
         <p className="rc-why">
           The rule states a gap, not a target {EM} Mudavym will not invent the
           number your house is held to.
-          {plan.unit === 'percent' && usable
+          {effective.unit === 'percent' && usable
             ? ` Stored as ${toStored('percent', value)}, because the engine keeps a rate as a fraction.`
             : ''}
         </p>
@@ -304,7 +494,7 @@ function GoalSheet({
             <label key={p} className="rc-scope">
               <input
                 type="radio"
-                name={`period-${plan.metricKey}`}
+                name={`period-${effective.metricKey}`}
                 value={p}
                 checked={period === p}
                 onChange={() => setPeriod(p)}
@@ -342,12 +532,12 @@ function GoalSheet({
             {sameMetric.length > 0 ? (
               <p className="rc-why" data-testid="rc-goal-duplicate">
                 You also hold {sameMetric.length === 1 ? 'a goal' : `${sameMetric.length} goals`}{' '}
-                on {plan.metricLabel}: {sameMetric.map((g) => `“${g.name}”`).join(', ')}. That is
-                a match on the figure, not on this entry.
+                on {effective.metricLabel}: {sameMetric.map((g) => `“${g.name}”`).join(', ')}. That
+                is a match on the figure, not on this entry.
               </p>
             ) : (
               watching.length === 0 && (
-                <p className="rc-why">No live goal is held on {plan.metricLabel} today.</p>
+                <p className="rc-why">No live goal is held on {effective.metricLabel} today.</p>
               )
             )}
           </>
@@ -369,17 +559,22 @@ function GoalSheet({
             if (!usable) return;
             setBusy(true);
             const res = await onWrite({
-              name: name.trim() || plan.name,
-              metricKey: plan.metricKey,
-              targetValue: toStored(plan.unit, value),
-              direction: plan.direction,
+              name: name.trim() || effective.name,
+              metricKey: effective.metricKey,
+              targetValue: toStored(effective.unit, value),
+              direction: effective.direction,
               period,
               deadline,
               // The provenance the goal keeps. It is the entry's own rule key,
               // never a suppression key — the gateway refuses anything that is
               // not a rule it evaluates, which is what makes the watched state
               // below trustworthy rather than a hopeful string match.
-              sourceRuleKey: ruleKey,
+              //
+              // Dropped when the manager swapped the measure from the book: a
+              // goal on a different figure is not this rule's goal, and saying
+              // it is would make the "being watched" line above a guess. The
+              // sheet states the loss before the button is pressed.
+              ...(keepsProvenance ? { sourceRuleKey: ruleKey } : {}),
             });
             setBusy(false);
             if (!res.ok) setRefusal(res.message);
@@ -400,7 +595,9 @@ function GoalSheet({
 
 export default function Entry(props: EntryProps) {
   const { entry: e, leaf, focused, selected, expanded, team } = props;
-  const [menu, setMenu] = useState<'dismiss' | 'snooze' | 'assign' | 'goal' | null>(null);
+  const [menu, setMenu] = useState<
+    'dismiss' | 'snooze' | 'assign' | 'goal' | 'daybook' | null
+  >(null);
   const rootRef = useRef<HTMLElement | null>(null);
 
   /* ── the two forward doors, resolved from the rule alone ──────────────── */
@@ -559,6 +756,19 @@ export default function Entry(props: EntryProps) {
               <button type="button" className="rc-act" onClick={props.onAct}>
                 {e.hand.label} →
               </button>
+              {props.daybook && (
+                <Quiet
+                  onClick={() => setMenu(menu === 'daybook' ? null : 'daybook')}
+                  pressed={menu === 'daybook'}
+                >
+                  Put it on the day-book
+                </Quiet>
+              )}
+              {props.goalSlip && (
+                <Quiet onClick={() => props.onSeeInReports(props.goalSlip!.slip.href)}>
+                  See where the goal stands
+                </Quiet>
+              )}
               {goalOffer.kind === 'plan' ? (
                 <Quiet
                   onClick={() => {
@@ -656,10 +866,80 @@ export default function Entry(props: EntryProps) {
           </p>
         )}
 
+        {/*
+          THE GOAL THAT IS SLIPPING — where it is read, and the levers named.
+          The rule's own sentence points at "the insight feed for this goal's
+          category". That phrase is only meaningful because the gateway's
+          `SUPPORTED_METRICS` table joins a goal's metric to insight categories
+          (`goals.service.ts`); the levers below are ITS mapping applied to the
+          entries actually standing, never a list this page wrote.
+        */}
+        {props.goalSlip && (
+          <div className="rc-slip" data-testid="rc-goal-slip">
+            <p className="rc-said">{props.goalSlip.slip.landing}</p>
+            <p className="rc-said">{props.goalSlip.words}</p>
+            {props.goalSlip.levers && props.goalSlip.levers.length > 0 && (
+              <ul className="rc-levers">
+                {props.goalSlip.levers.map((l) => (
+                  <li key={l.ruleKey}>
+                    <span className="rc-num">{l.ruleKey}</span> {l.recommendation}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="rc-said">
+              No goal is made from a goal: this entry fired BECAUSE a goal is behind, and a
+              second goal on the same target would double-count it. That refusal is the one
+              under “Make this a goal” above.
+            </p>
+          </div>
+        )}
+
+        {/*
+          THE DAY-BOOK DRAFT. Printed in full before you leave, because the
+          calendar cannot yet read the link that carries it — see
+          `rec-daybook.ts`. Everything here is a field, not prose: a title, a
+          date, a type from the gateway's own enum, and a note naming the rule.
+        */}
+        {menu === 'daybook' && props.daybook && (
+          <div className="rc-menu rc-sheet" role="group" aria-label="Put it on the day-book">
+            <p className="rc-serif rc-sheet-title">Put it on the day-book</p>
+            <dl className="rc-draft">
+              <dt className="rc-micro">Title</dt>
+              <dd>{props.daybook.draft.title}</dd>
+              <dt className="rc-micro">Date</dt>
+              <dd className="rc-num">{props.daybook.draft.date}</dd>
+              <dt className="rc-micro">Type</dt>
+              <dd className="rc-num">{props.daybook.draft.type}</dd>
+              <dt className="rc-micro">Note</dt>
+              <dd>{props.daybook.draft.note}</dd>
+            </dl>
+            {props.daybook.basis && <p className="rc-said">{props.daybook.basis}</p>}
+            <p className="rc-said rc-sheet-promise">{DAYBOOK_LANDING}</p>
+            <p className="rc-said">
+              The date is the day the strip has selected, or today when nothing is selected.
+              This page does not read a weekday out of the rule’s sentence — a value written
+              for a reader is not a field — so move it in the calendar if the rule names a
+              different day.
+            </p>
+            <div className="rc-row">
+              <button
+                type="button"
+                className="rc-act"
+                onClick={() => props.onDayBook?.(daybookHref(props.daybook!.draft))}
+              >
+                Open the calendar →
+              </button>
+              <Quiet onClick={() => setMenu(null)}>Not now</Quiet>
+            </div>
+          </div>
+        )}
+
         {menu === 'goal' && goalOffer.kind === 'plan' && (
           <GoalSheet
             plan={goalOffer.plan}
             goals={props.goals}
+            scenarios={props.scenarios}
             ruleKey={e.ruleKey}
             watching={watching}
             onCancel={() => setMenu(null)}

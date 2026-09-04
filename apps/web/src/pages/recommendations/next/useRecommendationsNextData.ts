@@ -33,6 +33,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
+import { decodeBook, type GoalScenarioBook } from '@/hooks/useGoalScenarios';
 import { getTeamMembers } from '@/services/api/team';
 import {
   failureOf,
@@ -45,7 +46,7 @@ import {
   type SuppressionScope,
   type SuppressionVM,
 } from './rec-format';
-import { DAYS_BEHIND, type PosVM } from './rec-days';
+import { type PosVM } from './rec-days';
 
 const BASE = '/analytics/recommendations';
 
@@ -278,6 +279,11 @@ export interface RecommendationsData {
   /** undefined = not asked yet; null = the read failed; [] = none set. */
   goals: GoalsVM;
   loadGoals: () => void;
+  /**
+   * The book of goal scenarios (ADR 0120). `undefined` not read yet, `null`
+   * unreadable, otherwise the book. Carries no tenant data.
+   */
+  scenarios: GoalScenarioBook | null | undefined;
   /** Writes one goal. Resolves with the gateway's own refusal on a 400. */
   createGoal: (input: {
     name: string;
@@ -293,6 +299,12 @@ export interface RecommendationsData {
   pos: PosVM;
   /** Why the till window could not be read, when it could not. */
   posProblem: string | null;
+  /**
+   * Ask for a till window `days` back from today. The ribbon calls it when the
+   * month on screen changes; the gateway clamps to 1–365, so a month further
+   * back than a year comes back with every day `unknown`, never `none`.
+   */
+  requestPosBack: (days: number) => void;
   /** The last write the page performed, said in words. */
   note: string | null;
   undo: { ruleKey: string; label: string } | null;
@@ -329,6 +341,16 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [exclusions, setExclusions] = useState<ExclusionsVM | undefined>(undefined);
   const [team, setTeam] = useState<TeamOption[] | null | undefined>(undefined);
   const [goals, setGoals] = useState<GoalsVM>(undefined);
+  /**
+   * The book of goal scenarios (ADR 0120) — `undefined` not read yet, `null`
+   * unreadable, otherwise the book.
+   *
+   * NOT keyed on `rid`, and that is the point: `GET /analytics/goal-scenarios`
+   * takes no restaurant and reads none, so re-fetching it on a restaurant
+   * switch would imply it is a reading of that house's books. Every other read
+   * in this file is keyed on `rid`; this one deliberately is not.
+   */
+  const [scenarios, setScenarios] = useState<GoalScenarioBook | null | undefined>(undefined);
   const [pos, setPos] = useState<PosVM>(undefined);
   const [posProblem, setPosProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -528,6 +550,28 @@ export function useRecommendationsNextData(): RecommendationsData {
       .catch(() => setTeam(null));
   }, [rid, team]);
 
+  /* ── the book of scenarios (2026-09-04) ──────────────────────────────── */
+
+  /**
+   * Read once for the session. A failure is `null`, which the goal sheet
+   * renders as one line saying the browsing aid is down — the metric the rule
+   * chose is still there, so nothing a manager needs is blocked by it.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get('/analytics/goal-scenarios')
+      .then(({ data }) => {
+        if (!cancelled) setScenarios(decodeBook(data));
+      })
+      .catch(() => {
+        if (!cancelled) setScenarios(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /* ── goals (fourth pass; eager since the rework) ─────────────────────── */
 
   /**
@@ -589,13 +633,26 @@ export function useRecommendationsNextData(): RecommendationsData {
    * Read separately from the book so a till failure never takes the entries
    * down with it, and keyed by tenant like every other read on this page.
    */
+  /**
+   * How far back the till window is asked for.
+   *
+   * The ribbon shows a calendar month and the month is walkable, so this is not
+   * a constant: the page calls `requestPosBack` with the distance from the 1st
+   * of the month on screen to today. Starts at 31, which covers the current
+   * month on its longest day, so the first render never asks twice.
+   */
+  const [posDays, setPosDays] = useState(31);
+  const requestPosBack = useCallback((days: number) => {
+    setPosDays((prev) => (prev === days ? prev : days));
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setPos(undefined);
     setPosProblem(null);
     if (!rid) return;
     apiClient
-      .get<Record<string, unknown>>(`/analytics/pos-revenue/${rid}?days=${DAYS_BEHIND + 1}`)
+      .get<Record<string, unknown>>(`/analytics/pos-revenue/${rid}?days=${posDays}`)
       .then(({ data }) => {
         if (cancelled) return;
         const series = Array.isArray(data?.dailySeries)
@@ -622,7 +679,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid]);
+  }, [rid, posDays]);
 
   /**
    * Write one goal.
@@ -856,8 +913,10 @@ export function useRecommendationsNextData(): RecommendationsData {
     goals,
     loadGoals,
     createGoal,
+    scenarios,
     pos,
     posProblem,
+    requestPosBack,
     note,
     undo,
     clearUndo: () => setUndo(null),

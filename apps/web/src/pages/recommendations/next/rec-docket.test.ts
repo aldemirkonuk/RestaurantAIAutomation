@@ -48,10 +48,46 @@ describe('the docket — filing by the act', () => {
     expect(pairing.why).toMatch(/judgement, stated/);
   });
 
-  it('leaves a goal_behind entry unfiled rather than pushing it under a heading', () => {
+  it('gives a goal_behind entry its own heading — not “not yet filed”', () => {
+    // Founder, 2026-09-04. "Not yet filed" means *this page does not recognise
+    // the rule*, and this page recognises this family exactly; a heading whose
+    // meaning is "unknown to us" cannot also hold the one family we know best.
     const filed = actOf('goal_behind_550e8400-e29b-41d4-a716-446655440000');
-    expect(filed.act).toBe('unfiled');
-    expect(filed.why).toMatch(/a choice, not an act/);
+    expect(filed.act).toBe('goal');
+    expect(ACT_LABEL.goal).toBe('Goals slipping');
+    expect(filed.why).toMatch(/behind its own pace/);
+  });
+
+  it('files the two calendar acts under Schedule it, quoting the clause that put them there', () => {
+    // The founder named `weekday_gap` himself and asked for a sweep of the
+    // rest; `weekly_demand_slide`'s verb is literally "Schedule".
+    const gap = actOf('weekday_gap');
+    expect(gap.act).toBe('schedule');
+    expect(gap.why).toMatch(/Move staff training, deliveries, and inventory counts/);
+    const slide = actOf('weekly_demand_slide');
+    expect(slide.act).toBe('schedule');
+    expect(slide.why).toMatch(/Schedule a staff tasting/);
+    // and it says whose call it was, because only one of the two was the founder's
+    expect(slide.why).toMatch(/not by the founder’s hand/);
+    expect(ACT_LABEL.schedule).toBe('Schedule it');
+  });
+
+  it('refuses the near misses: a date inside a sentence is not a calendar act', () => {
+    // A review date and a cadence are attached to acts of another kind; a
+    // pre-shift IS the briefing, not the arranging of one.
+    expect(actOf('dead_stock_capital').act).toBe('stock');
+    expect(actOf('dead_stock_capital').why).toMatch(/a date inside a sentence is not a calendar act/);
+    expect(actOf('puzzle_activation').act).toBe('stock');
+    expect(actOf('staff_spread').act).toBe('floor');
+    expect(actOf('sales_below_weekday_baseline').act).toBe('floor');
+  });
+
+  it('keeps “not yet filed” for what it means — a rule this page does not know', () => {
+    // Nothing the engine fires may land here any more: the goal family moved
+    // out on 2026-09-04, so `unfiled` is once again reachable only by a rule
+    // that did not exist when this file was written.
+    for (const key of RULES) expect(actOf(key).act, key).not.toBe('unfiled');
+    expect(actOf('goal_behind_x').act).not.toBe('unfiled');
   });
 
   it('files an unrecognised rule as unfiled, and names it', () => {
@@ -66,7 +102,7 @@ describe('the docket — filing by the act', () => {
       expect(filed.act, key).not.toBe('unfiled');
       expect(ACT_ORDER, key).toContain(filed.act);
       // the basis quotes the rule's own recommendation sentence
-      expect(filed.why, key).toMatch(/The rule says/);
+      expect(filed.why, key).toMatch(/The rule( says| LEADS|’s verb)/);
     }
   });
 

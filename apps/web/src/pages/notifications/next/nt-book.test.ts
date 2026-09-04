@@ -106,28 +106,58 @@ describe('daySpan / dayKeyOf', () => {
   });
 });
 
-describe('dayCells', () => {
-  it('counts only the rows on screen, and marks today', () => {
-    const now = new Date(2026, 8, 3, 12, 0, 0);
-    const today = new Date(2026, 8, 3, 9, 0, 0).toISOString();
-    const yesterday = new Date(2026, 8, 2, 9, 0, 0).toISOString();
-    const cells = dayCells(
-      [
-        n({ id: '1', timestamp: today, createdAt: today }),
-        n({ id: '2', timestamp: today, createdAt: today, status: 'read' }),
-        n({ id: '3', timestamp: yesterday, createdAt: yesterday }),
-      ],
-      14,
-      now,
+describe('dayCells — the month, and the one negative claim this page may make', () => {
+  const at = (d: number, h = 9) => new Date(2026, 8, d, h, 0, 0).toISOString();
+  const base = { month: '2026-09', today: '2026-09-03', dayFiltered: false };
+  const rows = [
+    n({ id: '1', timestamp: at(3), createdAt: at(3) }),
+    n({ id: '2', timestamp: at(3), createdAt: at(3), status: 'read' }),
+    n({ id: '3', timestamp: at(1), createdAt: at(1) }),
+  ];
+
+  it('draws the whole month and counts only the rows on screen', () => {
+    const cells = dayCells({ ...base, rows });
+    expect(cells).toHaveLength(30);
+    const third = cells.find((c) => c.key === '2026-09-03')!;
+    expect(third.onScreen).toBe(2);
+    expect(third.open).toBe(1);
+    expect(cells.find((c) => c.key === '2026-09-01')!.onScreen).toBe(1);
+  });
+
+  it('HATCHES a day the loaded pages cover and the register wrote nothing on', () => {
+    // The register is read newest-first and contiguously, so a gap between two
+    // loaded rows cannot be hiding a line. The 2nd is such a gap.
+    const cells = dayCells({ ...base, rows });
+    expect(cells.find((c) => c.key === '2026-09-02')!.records).toBe('none');
+    expect(cells.find((c) => c.key === '2026-09-03')!.records).toBe('yes');
+  });
+
+  it('claims nothing about a day older than the oldest row loaded', () => {
+    // The page boundary can fall inside a day, so even the oldest day is only
+    // safe because it HAS a row; everything before it was never read.
+    const cells = dayCells({ ...base, rows });
+    expect(cells.find((c) => c.key === '2026-08-31' || c.key === '2026-09-01')!.records).toBe(
+      'yes',
     );
-    expect(cells).toHaveLength(14);
-    const last = cells[cells.length - 1];
-    expect(last.isToday).toBe(true);
-    expect(last.onScreen).toBe(2);
-    expect(last.open).toBe(1);
-    expect(cells[cells.length - 2].onScreen).toBe(1);
-    // a day with nothing loaded is zero, never a guess
-    expect(cells[0].onScreen).toBe(0);
+    const august = dayCells({ ...base, month: '2026-08', rows });
+    expect(august.every((c) => c.records === 'unknown')).toBe(true);
+  });
+
+  it('claims nothing about any day when nothing has been loaded', () => {
+    expect(dayCells({ ...base, rows: [] }).every((c) => c.records === 'unknown')).toBe(true);
+  });
+
+  it('claims nothing about the other days while a DAY filter is on', () => {
+    const cells = dayCells({ ...base, rows, dayFiltered: true });
+    expect(cells.find((c) => c.key === '2026-09-02')!.records).toBe('unknown');
+    expect(cells.find((c) => c.key === '2026-09-03')!.records).toBe('yes');
+  });
+
+  it('never hatches a day that has not happened', () => {
+    const cells = dayCells({ ...base, rows });
+    expect(cells.filter((c) => c.key > '2026-09-03').every((c) => c.records === 'unknown')).toBe(
+      true,
+    );
   });
 });
 

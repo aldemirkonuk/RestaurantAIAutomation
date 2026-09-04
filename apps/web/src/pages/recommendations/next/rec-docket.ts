@@ -41,18 +41,37 @@
 
 import { EM } from './rec-format';
 
-export type ActId = 'order' | 'price' | 'stock' | 'vendor' | 'floor' | 'unfiled';
+export type ActId =
+  | 'order'
+  | 'price'
+  | 'stock'
+  | 'vendor'
+  | 'floor'
+  | 'schedule'
+  | 'goal'
+  | 'unfiled';
 
 /** The docket's sections, top to bottom. Tonight's work first, slowest last. */
-export const ACT_ORDER: ActId[] = ['order', 'price', 'stock', 'vendor', 'floor', 'unfiled'];
+export const ACT_ORDER: ActId[] = [
+  'order',
+  'price',
+  'stock',
+  'vendor',
+  'floor',
+  'schedule',
+  'goal',
+  'unfiled',
+];
 
-/** The headings, verbatim from sketch 094b. */
+/** The headings. Five from sketch 094b, two added by the founder 2026-09-04. */
 export const ACT_LABEL: Record<ActId, string> = {
   order: 'Order it',
   price: 'Price it',
   stock: 'Move stock',
   vendor: 'Call a vendor',
   floor: 'Brief the floor',
+  schedule: 'Schedule it',
+  goal: 'Goals slipping',
   unfiled: 'Not yet filed',
 };
 
@@ -68,8 +87,12 @@ export const ACT_SAY: Record<ActId, string> = {
     'These need a supplier on the phone, not a screen. It is the slowest act on this page and the one most often postponed, which is why it gets its own heading rather than a chip.',
   floor:
     'These are things people are told before service. A third of what this engine produces is a sentence for a pre-shift, and it was previously scattered across every other section.',
+  schedule:
+    'These do not ask you to buy, price or say anything. They ask you to put something on a day — a tasting, a count, a delivery window, an offer that only runs on the quiet night. Nothing here is done until it is on the day-book, which is why every entry carries a control that opens the calendar.',
+  goal:
+    'A goal you set is behind its own pace. The entry is not a new act — it is a warning about one you already chose — so it sends you to the goal’s progress in the reports desk and lists the levers the rule names, rather than offering to make a second goal out of the first.',
   unfiled:
-    'A rule whose prescription is not one of the five acts. Shown here rather than absorbed into a heading it was never sorted into.',
+    'A rule whose prescription is not one of the acts above. Shown here rather than absorbed into a heading it was never sorted into.',
 };
 
 interface ActFiling {
@@ -84,6 +107,38 @@ interface ActFiling {
  * The quoted fragment in each `why` is the rule's own `recommendation` string
  * in `recommendations.service.ts`; that sentence, not the category, is what a
  * person's hands would follow.
+ *
+ * ── The calendar sweep, 2026-09-04 ─────────────────────────────────────────
+ * The founder added a sixth heading, "Schedule it", and asked for every
+ * calendar act to be filed under it. All twelve static rules were re-read
+ * (`recommendations.service.ts:150-330`) and the test applied was: *does the
+ * sentence's LEADING clause put a thing on a day?* Two pass:
+ *
+ *   weekday_gap           "Move staff training, deliveries, and inventory
+ *                          counts to <worstDay>" — the leading clause is three
+ *                          things being moved onto a named weekday. The
+ *                          founder named this one himself.
+ *   weekly_demand_slide   "Schedule a staff tasting on the two highest-margin
+ *                          slow movers this week" — the verb is literally
+ *                          "Schedule". The founder did NOT name this rule; it
+ *                          is filed here by the sweep he asked for, and the
+ *                          reason is on the entry so the call is checkable.
+ *
+ * Four were considered and REFUSED, because a date inside a sentence is not
+ * the same thing as a calendar act:
+ *
+ *   staff_spread          "Have the top seller run a 15-minute pre-shift" — a
+ *                         pre-shift is the briefing itself, which is what
+ *                         "Brief the floor" already means. Arranging one is
+ *                         not the act; delivering it is.
+ *   puzzle_activation     "…rotate weekly" is a cadence attached to an act of
+ *                         moving stock, not an act of its own.
+ *   dead_stock_capital    "if untouched after two weeks, discount to cost" is
+ *                         a review date attached to an act of moving stock.
+ *                         Real, and named on the entry — but the act is stock.
+ *   sales_below_weekday   "Tonight: brief the floor …" names a time, and its
+ *                         third clause pairs a server with a section. Both sit
+ *                         inside a pre-shift; nothing here goes on a day-book.
  */
 const RULE_ACT: Record<string, ActFiling> = {
   stockout_imminent: {
@@ -107,12 +162,12 @@ const RULE_ACT: Record<string, ActFiling> = {
     why: 'The rule says “Print that pairing on the menu insert”. A menu insert is a pricing decision, though this rule’s hand is Promotions — a judgement, stated, rather than a rule.',
   },
   weekday_gap: {
-    act: 'price',
-    why: 'The rule says “test a <weakest day>-only offer (corkage-free, flight special)”. The lever it prescribes is a day-specific offer; its other half — moving training, deliveries and counts into the trough — is a calendar act this docket has no heading for.',
+    act: 'schedule',
+    why: 'The rule LEADS with “Move staff training, deliveries, and inventory counts to <weakest day>” — three things put on a named day. Its second half, a day-only offer, is a pricing decision; the founder’s call (2026-09-04) is that the calendar act is the one that files it, because nothing in the second half happens until the day is chosen.',
   },
   dead_stock_capital: {
     act: 'stock',
-    why: 'The rule says “Build a weekend flight or staff-pick feature from the top three idle wines”. The act is moving bottles that are standing still.',
+    why: 'The rule says “Build a weekend flight or staff-pick feature from the top three idle wines”. The act is moving bottles that are standing still. Its tail — “if untouched after two weeks, discount to cost” — is a review date, and a date inside a sentence is not a calendar act; put the review on the day-book yourself if you want one.',
   },
   puzzle_activation: {
     act: 'stock',
@@ -127,8 +182,8 @@ const RULE_ACT: Record<string, ActFiling> = {
     why: 'The rule says “brief the floor on top-margin picks … pair your strongest server with the weakest section”. The act happens at a pre-shift, though this rule’s hand is Reports — the hand keys on the rule’s category (sales), not on what a person does.',
   },
   weekly_demand_slide: {
-    act: 'floor',
-    why: 'The rule says “Schedule a staff tasting … and add a pairing prompt to the specials script”. Both halves are things people are told.',
+    act: 'schedule',
+    why: 'The rule’s verb is “Schedule a staff tasting on the two highest-margin slow movers this week”. A tasting is an event with a date; until it has one, nothing has been done. Its second half — a pairing prompt in the specials script — is a floor act, and it is named on the entry. Filed here by the 2026-09-04 sweep, not by the founder’s hand: he named only weekday_gap.',
   },
   staff_spread: {
     act: 'floor',
@@ -139,9 +194,20 @@ const RULE_ACT: Record<string, ActFiling> = {
 /** The prefix the goal-behind family uses — one rule per goal already set. */
 const GOAL_RULE_PREFIX = 'goal_behind';
 
+/**
+ * The goal-behind family, 2026-09-04 — its own heading, not `unfiled`.
+ *
+ * The founder: goal-behind entries get "Goals slipping", deep-linked to the
+ * goal's progress in the reports desk. That corrects a real mis-filing. These
+ * entries were parked under "Not yet filed" on the argument that "pick the
+ * single biggest lever" is a choice rather than an act — true, but "not yet
+ * filed" means *this page does not recognise the rule*, and this page
+ * recognises this rule exactly. A heading whose meaning is "unknown to us"
+ * cannot also hold the one family we understand best.
+ */
 const GOAL_BEHIND_FILING: ActFiling = {
-  act: 'unfiled',
-  why: `This entry asks you to “pick the single biggest lever from the insight feed” — a choice, not an act. It is left unfiled rather than pushed under a heading, because none of the five is what your hands would do next ${EM} the lever it points at will have its own entry, under its own act.`,
+  act: 'goal',
+  why: `The rule says “Pick the single biggest lever from the insight feed for this goal’s category and commit to it for 7 days”. That is not one of the acts above ${EM} it is a warning that a target you already set is behind its own pace. So this section sends you to the goal’s progress rather than offering an act, and the levers the rule points at are the other entries standing on this page.`,
 };
 
 const UNKNOWN_FILING = (ruleKey: string): ActFiling => ({

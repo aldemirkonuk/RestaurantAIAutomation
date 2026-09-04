@@ -78,15 +78,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  CalendarPlus,
   Megaphone,
   PhoneCall,
   SlidersHorizontal,
   Tag,
+  Target,
   Truck,
   Wine,
   type LucideIcon,
 } from 'lucide-react';
-import { Wordmark } from '@/components/mudavym';
+import { Wordmark, monthOf } from '@/components/mudavym';
 import { animate, tuck } from '@/lib/mudavym/motion';
 import Entry from './Entry';
 import Ribbon from './Ribbon';
@@ -100,7 +102,14 @@ import {
   actOf,
   type ActId,
 } from './rec-docket';
-import { buildDays, touchesDay } from './rec-days';
+import { buildDays, posDaysFor, touchesDay } from './rec-days';
+import {
+  daybookBasis,
+  daybookDraftFor,
+  goalSlipFor,
+  leverWords,
+  leversFor,
+} from './rec-daybook';
 import {
   EM,
   STAKE_BLURB,
@@ -137,6 +146,8 @@ const ACT_ICON: Record<ActId, LucideIcon> = {
   stock: Wine,
   vendor: PhoneCall,
   floor: Megaphone,
+  schedule: CalendarPlus,
+  goal: Target,
   unfiled: SlidersHorizontal,
 };
 
@@ -171,6 +182,17 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const [stake, setStake] = useState<StakeId | 'all'>('all');
   /** The day the ribbon has selected. Null = the whole book. */
   const [day, setDay] = useState<string | null>(null);
+  /**
+   * The calendar month the ribbon shows, `YYYY-MM`.
+   *
+   * Today's, on arrival. Keyed by the gateway's UTC business date rather than
+   * the reader's local one, because every date this page files by — a first
+   * impression, a goal deadline, an excluded day — is written in UTC by the
+   * gateway. Using the browser's month would put a 1st-of-the-month entry in
+   * the wrong month for every reader west of Greenwich after 19:00.
+   */
+  const utcToday = new Date().toISOString().substring(0, 10);
+  const [month, setMonth] = useState<string>(() => monthOf(utcToday));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedIdx, setFocusedIdx] = useState(-1);
@@ -193,11 +215,16 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     setDay(null);
   }, [leaf]);
 
+  // A day selected in September is not a day in August. Changing month clears
+  // the selection rather than leaving the docket narrowed by a day off screen.
+  useEffect(() => setDay(null), [month]);
+
   /* ── the ribbon's days ─────────────────────────────────────────────────── */
 
   const days = useMemo(
     () =>
       buildDays({
+        month,
         entries: data.entries,
         goals: data.goals,
         pos: data.pos,
@@ -206,8 +233,35 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
         // strikes from it would claim every day is counted.
         exclusions: data.exclusions?.readable ? data.exclusions.items : null,
       }),
-    [data.entries, data.goals, data.pos, data.exclusions],
+    [month, data.entries, data.goals, data.pos, data.exclusions],
   );
+
+  /*
+   * The till window has to reach the month on screen. `?days=N` counts back
+   * from today and the gateway clamps it to 365, so walking back a month asks
+   * for a longer window rather than silently drawing `unknown` over a month
+   * the endpoint was never asked about.
+   */
+  const posBack = data.requestPosBack;
+  useEffect(() => {
+    posBack(posDaysFor(month, utcToday));
+  }, [month, utcToday, posBack]);
+
+  /*
+   * The goal list is normally read lazily, when someone opens the goal sheet.
+   * A "Goals slipping" section cannot wait for that: it has to name the goal
+   * and its metric to say anything at all, so a standing `goal_behind_…` entry
+   * asks for the list on arrival. When the read fails the section says so and
+   * names no lever — it does not fall back to naming all of them.
+   */
+  const wantGoals = data.loadGoals;
+  const hasSlipping = useMemo(
+    () => data.entries.some((e) => e.ruleKey.startsWith('goal_behind_')),
+    [data.entries],
+  );
+  useEffect(() => {
+    if (hasSlipping) wantGoals();
+  }, [hasSlipping, wantGoals]);
 
   /** Entries no day can hold — no impression row ever recorded them. */
   const undated = useMemo(() => data.entries.filter((e) => !e.firstSeenAt).length, [data.entries]);
@@ -444,6 +498,19 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
 
   const picked = shown.filter((e) => selected.has(e.ruleKey));
 
+  /**
+   * Where one slipping goal is read, and which standing entries are the levers
+   * the rule points at. Built here rather than in `Entry` because it needs the
+   * WHOLE standing book: "the insight feed for this goal's category" is a set
+   * of other entries, and an entry cannot see its siblings.
+   */
+  const slipFor = (e: EntryVM) => {
+    const slip = goalSlipFor(e, data.goals);
+    if (!slip) return null;
+    const levers = leversFor(slip, data.entries);
+    return { slip, levers, words: leverWords(slip, levers) };
+  };
+
   return (
     <div className="mudavym rc-page" data-ground={ground}>
       <div className="rc-wrap">
@@ -519,6 +586,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
         {leaf === 'standing' && data.phase === 'ready' && (
           <Ribbon
             days={days}
+            month={month}
+            onMonth={setMonth}
+            today={utcToday}
             selected={day}
             onSelect={setDay}
             pos={data.pos}
@@ -720,9 +790,20 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         onAssign={(m) => assign(e, m)}
                         onWantTeam={data.loadTeam}
                         goals={data.goals}
+                        scenarios={data.scenarios}
                         onWantGoals={data.loadGoals}
                         onMakeGoal={data.createGoal}
                         onSeeInReports={(href) => navigate(href)}
+                        daybook={
+                          a === 'schedule' && leaf === 'standing'
+                            ? {
+                                draft: daybookDraftFor(e, day ?? utcToday),
+                                basis: daybookBasis(e.ruleKey),
+                              }
+                            : null
+                        }
+                        onDayBook={(href) => navigate(href)}
+                        goalSlip={a === 'goal' ? (slipFor(e) ?? null) : null}
                       />
                     ))}
                   </div>

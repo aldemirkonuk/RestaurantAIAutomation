@@ -31,6 +31,7 @@ import { apiClient, getErrorMessage } from '@/services/api/client';
 import type { Notification } from '@/services/api/notifications';
 import { collapseStackedNotifications } from '@/lib/notificationStack';
 import { num } from './nt-format';
+import { localToday, monthOf } from '@/components/mudavym';
 import { DayCell, FoldFreshness, dayCells, daySpan, foldFreshness } from './nt-book';
 import {
   SnoozeRecord,
@@ -174,8 +175,11 @@ export interface NotificationsNextData {
   woke: Array<{ id: string; reason: WakeReason }>;
   /** Per folded line: the newest stamp in its fold, and whether it is stale. */
   folds: Record<string, FoldFreshness>;
-  /** The last 14 days, counted from the rows on screen. */
+  /** The month on screen, counted from the rows actually loaded. */
   days: DayCell[];
+  /** The strip's month, `YYYY-MM`. */
+  month: string;
+  setMonth: (month: string) => void;
   filters: BookFilters;
   setFilters: (next: BookFilters) => void;
   /** The last thing that did not happen, in words. Cleared on the next try. */
@@ -500,9 +504,25 @@ export function useNotificationsNextData(): NotificationsNextData {
     [book.register, stack],
   );
 
+  /**
+   * The day strip's month, `YYYY-MM`, and the cells for it.
+   *
+   * The month is state here rather than on the page because the cells are
+   * built from the rows this hook holds, and a month with no state to change
+   * it would be a strip that could only ever show today's.
+   */
+  const [month, setMonth] = useState(() => monthOf(localToday()));
   const days = useMemo(
-    () => (book.register.state === 'ready' ? dayCells(book.register.rows) : []),
-    [book.register],
+    () =>
+      book.register.state === 'ready'
+        ? dayCells({
+            rows: book.register.rows,
+            month,
+            today: localToday(),
+            dayFiltered: filters.day !== null,
+          })
+        : [],
+    [book.register, month, filters.day],
   );
 
   /**
@@ -541,6 +561,8 @@ export function useNotificationsNextData(): NotificationsNextData {
     woke: verdict.woke,
     folds,
     days,
+    month,
+    setMonth,
     filters,
     setFilters,
     failureNote,

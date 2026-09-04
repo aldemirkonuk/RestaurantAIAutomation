@@ -80,6 +80,7 @@ const spies = {
   wake: vi.fn(),
   wakeAll: vi.fn(),
   setFilters: vi.fn(),
+  setMonth: vi.fn(),
   refresh: vi.fn(),
   readFurtherBack: vi.fn(),
 };
@@ -114,6 +115,7 @@ function base(rows: Notification[]) {
     woke: [] as Array<{ id: string; reason: string }>,
     folds: {} as Record<string, { newestAt: number | null; winnerIsStale: boolean }>,
     days: [] as Array<Record<string, unknown>>,
+    month: '2026-09',
     filters: { type: null, status: null, day: null },
     failureNote: null,
     ...spies,
@@ -471,19 +473,45 @@ describe('NotificationsNext — what the inbox lens asked for', () => {
     mockData.current = {
       ...base(two()),
       days: [
-        { key: '2026-09-02', weekday: 'W', day: 2, onScreen: 3, open: 1, isToday: false },
-        { key: '2026-09-03', weekday: 'T', day: 3, onScreen: 2, open: 2, isToday: true },
+        { key: '2026-09-02', onScreen: 3, open: 1, records: 'yes' },
+        { key: '2026-09-03', onScreen: 2, open: 2, records: 'yes' },
       ],
     };
     draw();
     expect(screen.getByText(/count the lines on this screen, not the register/))
       .toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(/2026-09-02: 3 lines on this screen, 1 still open/));
+    fireEvent.click(
+      screen.getByLabelText(/Wednesday 2 September — 3 lines on this screen, 1 still open/),
+    );
     expect(spies.setFilters).toHaveBeenCalledWith({
       type: null,
       status: null,
       day: '2026-09-02',
     });
+  });
+
+  it('shares the house day strip — a month, a keyboard, and the hatch rule', () => {
+    // `DayRail.tsx` is deleted; this page now renders
+    // `components/mudavym/DayStrip.tsx`, which is where those behaviours are
+    // asserted in full (`DayStrip.test.tsx`). What is asserted HERE is that
+    // this page reaches them at all — it had no keyboard map of its own.
+    mockData.current = {
+      ...base(two()),
+      days: [
+        { key: '2026-09-02', onScreen: 0, open: 0, records: 'none' },
+        { key: '2026-09-03', onScreen: 2, open: 2, records: 'yes' },
+      ],
+    };
+    draw();
+    expect(screen.getByTestId('mdv-ds-month')).toHaveTextContent('September 2026');
+    // a whole month of cells, not a fortnight
+    expect(screen.getAllByTestId('mdv-ds-day')).toHaveLength(30);
+    const hatched = screen.getByLabelText(/Wednesday 2 September/);
+    expect(hatched).toHaveAttribute('data-records', 'none');
+    expect(hatched).toHaveAccessibleName(/not a zero, nothing was written/);
+    // and the month is walkable
+    fireEvent.click(screen.getByRole('button', { name: 'Show August 2026' }));
+    expect(spies.setMonth).toHaveBeenCalledWith('2026-08');
   });
 
   it('prints the register’s own total for the day it is reading', () => {
@@ -493,10 +521,13 @@ describe('NotificationsNext — what the inbox lens asked for', () => {
       book: { register: { state: 'ready', rows: two() }, total: 6, hasMore: false, pages: 1 },
     };
     draw();
-    const rail = screen.getByRole('region', { name: 'The last fortnight' });
-    expect(within(rail).getByText(/the register holds/)).toBeInTheDocument();
-    expect(within(rail).getByText('6')).toBeInTheDocument();
-    expect(within(rail).getByText('2026-09-03')).toBeInTheDocument();
+    const rail = screen.getByRole('region', { name: 'The day-book, by the month' });
+    // The whole sentence, not the digit on its own: a month of cells now
+    // carries a "6" of its own, and asserting on a bare figure would pass on
+    // the sixth of the month.
+    const line = within(rail).getByText(/the register holds/).textContent ?? '';
+    expect(line).toContain('Reading 2026-09-03');
+    expect(line).toContain('the register holds 6 lines for that day');
   });
 
   it('shows a folded line’s NEWEST stamp when the surviving line is older', () => {
