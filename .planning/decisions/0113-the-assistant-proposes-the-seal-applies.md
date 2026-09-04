@@ -2,10 +2,11 @@
 
 - **Status:** **Proposed — research and design only, nothing built.** The founder asked for
   the approach, not the build: *"research this and understand how should we approach this."*
-  **Three of the five open questions were answered by the founder on 2026-09-04 and are now
-  binding on this ADR** — Q2, a sealed batch is revocable as one unit for seven days
-  (rule 4a); Q3, **features stay outside the line** (rule 2); and Q5, what the assistant may
-  read (rule 6). Q1 and Q4 remain open.
+  **Four of the five open questions were answered by the founder on 2026-09-04 and are now
+  binding on this ADR** — Q1, *"talk with you"* means **both voice and typing, on both
+  surfaces**; Q2, a sealed batch is revocable as one unit for seven days (rule 4a); Q3,
+  **features stay outside the line** (rule 2); and Q5, what the assistant may read (rule 6).
+  Q4 remains open, and **Q1's answer opened two new questions of its own** (Q6, Q7).
 - **Date:** 2026-09-03 (drafted) &middot; 2026-09-04 (survey verified, sketch 101 drawn)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** configuration assistant, settings, onboarding, propose, confirm, seal,
@@ -443,9 +444,13 @@ scope (<https://owasp.org/www-project-top-10-for-large-language-model-applicatio
 
 ## Questions only the founder can answer
 
-1. **Voice, or typing?** *"let AI assistant talk with you"* — literally talk? On the phone
-   (`apps/mobile`) a voice-first setup is plausible; on desktop it is a novelty. The sketch
-   draws typing.
+1. ~~**Voice, or typing?**~~ **ANSWERED 2026-09-04 — BOTH, on both surfaces.** *"Talk with
+   you"* is meant literally as well as figuratively: voice **and** typing, on desktop **and**
+   on the phone, neither one the fallback for the other. The sketch draws typing because that
+   is the harder case to get right on a page of registers, not because voice is secondary.
+   **This answer forces two questions that were not open before — Q6 and Q7 below** — and
+   both must be settled before a microphone is built, because each decides something that
+   cannot be retrofitted once people have spoken into it.
 2. ~~**Does the batch belong to the house or to the person?**~~ **ANSWERED 2026-09-04 —
    revocable as one unit for seven days, then ordinary settings.** See rule 4a. The
    `correlation_id` the audit trail already carries is what makes it one unit.
@@ -457,15 +462,42 @@ scope (<https://owasp.org/www-project-top-10-for-large-language-model-applicatio
    rather than a session's reading of it.
 4. **The market drop threshold** is per-deployment today. Is per-house worth a column and a
    migration, or is one number for every house correct for now?
+6. **The speech provider — what leaves the device?** *(opened by Q1's answer.)* Two shapes,
+   and they are not interchangeable. **On-device dictation** (the platform's own recogniser —
+   `SFSpeechRecognizer` on iOS, the Web Speech API in the browser) means the audio may never
+   leave the device at all, at the cost of accuracy on Turkish vendor names, prices and the
+   product's own vocabulary — which is most of what an owner would say. **A hosted speech
+   model** is markedly better at exactly those, and means **the owner's voice, saying their
+   own margins and their staff's names, is sent to a third party** — a new outward flow this
+   product does not have today, and one that would need a row on the connections page and a
+   line in whatever the house tells its staff. The honest framing is not "which is more
+   accurate": it is *whose infrastructure hears the owner speak*, which is the same question
+   rule 6 answers for reads and §6b answers for connections, arriving a third time.
+7. **Is a spoken configuration a record?** *(opened by Q1's answer.)* Typing leaves an
+   utterance the ADR already stores — rule 1 puts it in `system_audit_log.reason`, and that is
+   the point of it. **Speech leaves an audio file and a transcript, and a transcript of a
+   setup conversation is not a settings value: it is a recording of a person talking about
+   their business, their vendors and their staff.** Three options, and the founder's call
+   decides which: (a) **the transcript is stored with the batch**, exactly as the typed
+   utterance is — most useful, most legible on `/logs`, and the largest new store of personal
+   speech this product would hold; (b) **only the extracted value's one-sentence reason is
+   stored** and the transcript is discarded on seal — the smallest footprint and the closest
+   to what typing already produces; (c) **the audio is never retained and the transcript is
+   held only for the length of the conversation.** This is not a storage question dressed up
+   as a privacy one. It decides whether the house ends up holding recordings of its people,
+   and it must be settled **before** a microphone ships, because there is no retroactive
+   consent for a recording already made.
 5. ~~**How much may the assistant read to make a good proposal?**~~ **ANSWERED 2026-09-04 —
    everything the house exposes, with every source named; a person's mailbox only through
    that person's own consent row.** See rule 6.
 
-**Still open after the 2026-09-04 calls: 1 and 4.** On 1, the working assumption is **typing
-first** and voice on mobile **left undecided** — the sketch draws typing and nothing in this
-ADR depends on the answer. 4 is a product question with a migration behind it and nothing in
-this ADR is blocked on it; until it is answered the market threshold is **named and not
-offered**.
+**Still open after the 2026-09-04 calls: 4, and the two that Q1's answer opened — 6 and 7.**
+4 is a product question with a migration behind it and nothing in this ADR is blocked on it;
+until it is answered the market threshold is **named and not offered**. **6 and 7 are
+different in kind: they block the voice half of Q1's answer**, and nothing else. Typing works
+today and needs neither. A microphone ships only after both are settled, because each decides
+something no later decision can undo — where a person's voice goes, and whether a recording
+of them is kept.
 
 ## Review trail
 
@@ -488,6 +520,13 @@ offered**.
 - 2026-09-04 — **third founder call: Q3 closed.** *Features stay outside the line* — the
   assistant may point at an autonomy switch on `/settings`, **never propose flipping it,
   sealed or not**; blast radius draws the line, not the word "settings". Rule 2 already read
-  that way as a session's inference and is now the founder's decision. **Q1 (voice) and Q4
-  (a per-house market threshold) remain the only open questions.**
+  that way as a session's inference and is now the founder's decision.
+- 2026-09-04 — **fourth founder call: Q1 closed, and it opened two.** *"Talk with you"* means
+  **both** — voice and typing, on desktop and on the phone, neither the fallback for the
+  other. Recorded with the two questions the answer forces and which were not open before:
+  **Q6, the speech provider** (on-device dictation versus a hosted model — what leaves the
+  device), and **Q7, whether a spoken configuration is a record** (transcript stored with the
+  batch, reason only, or nothing retained). Both **block the voice half and only the voice
+  half**; typing needs neither, and neither can be retrofitted once someone has spoken into a
+  microphone. **Open: Q4, Q6, Q7.**
   **Nothing built** — no file under `apps/`, `supabase/` or `services/` was changed.
