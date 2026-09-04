@@ -31,7 +31,8 @@
  */
 
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wordmark } from '@/components/mudavym';
 import {
@@ -451,6 +452,9 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   const shownDoc: ProcurementDocument = detailDoc ? { ...doc, ...detailDoc } : doc;
 
   const editable = doc.status === 'needs_review' || doc.status === 'received';
+  // The canonical page's own gate, read here so the affordance and the route
+  // can never disagree about who may see it.
+  const canonicalOn = useMudavymDesign('document');
 
   const edit = useMutation({
     mutationFn: (p: { lineId: string; field: EditableKey; patch: Record<string, number | null> }) =>
@@ -590,6 +594,23 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             extraction confidence {fmtConfidence(shownDoc.extraction_confidence)}
             {shownDoc.extraction_confidence == null ? ' (none recorded for this document)' : ''}
           </p>
+          {/*
+            ADR 0104 D12 slice 2. The canonical view is the SECOND FACE of this
+            page, not a replacement for it — so the way in is one link, and it
+            exists only where the `document` gate is on. A tenant with the gate
+            off sees this page byte-for-byte as it was: no link, and the route
+            itself redirects back here.
+          */}
+          {canonicalOn && (
+            <p style={{ margin: '4px 0 0' }}>
+              <Link
+                to={`/documents/${doc.id}`}
+                style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+              >
+                Open as the canonical document →
+              </Link>
+            </p>
+          )}
           {doc.order_id ? (
             orderQ.data ? (
               <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>

@@ -151,6 +151,8 @@ more defects the harness surfaced (the POS consumption mirror had written zero r
 2026-08-24; the sim seed could not insert its wines; personas could not sign in or reach
 their tenant; two harness faults). Details in ADR 0093, "The live day, on the record".
 
+**Canonical document, slice 2 (ADR 0104 D12/D13, 2026-09-04, branch `feat/canonical-document-slice-2`):** the canonical document is on screen at `/documents/:id` behind `mudavym_design_document` (OFF) — B's verdict block, C's delivery spine, A's sheet — served by `GET /procurement/documents/:id/canonical`; three synthetic PDFs went through the real intake door on the sim tenant and NONE was extracted (the model account has no credit), so every screenshot is of the degraded state and the four-way table has still never rendered real lines.
+
 **Canonical document, slice 1 (ADR 0104 D12, 2026-09-03, branch
 - **2026-09-03 — lens phase closed by the founder ("stop here, document it").** POS → inventory → alerts lens and customer + intelligence lens run on a real venue's menu (Sim Meyhouse) and filed (#292, #293; founder page linked from `06-pages/simpos-terminal.md` §10); ADRs 0103/0104/0105 recorded and locked where the founder answered (#288, #294); the Square day measured 0/42 vs 42/42 (0105); canonical document slice 1 merged and verified in production (#295, gaps filed in #296). **Next session starts from:** close the two data-shape gaps (`coerceDocType`, BT-149 + per-field confidence), then ADR 0104 slice 2 (C-led template + door view); the Antalya venue after that; the YMM clock question (0103 A8) still open.
 `feat/canonical-document-slice-1`):** the delivery is now a table — `deliveries`,
