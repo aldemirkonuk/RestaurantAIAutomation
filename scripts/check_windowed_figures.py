@@ -351,8 +351,19 @@ PAGES = (
         # replaces it shipped three bare keys. Listing only the half being
         # rebuilt would have made a green run mean "the half that was already
         # right is still right".
+        # The parity build (2026-09-04) split the redesigned half into files;
+        # every one of them is listed, because W6 can only see the files this
+        # tuple names and a query in an unlisted renderer would be a bucket
+        # nobody checks while the run still prints "clean".
         renderers=(
             _TEAM_NEXT / "TeamNext.tsx",
+            _TEAM_NEXT / "WeekGrid.tsx",
+            _TEAM_NEXT / "RosterSheet.tsx",
+            _TEAM_NEXT / "ShiftSheet.tsx",
+            _TEAM_NEXT / "TeamOverlays.tsx",
+            _TEAM_NEXT / "TeamRecord.tsx",
+            _TEAM_NEXT / "PerformanceCard.tsx",
+            _TEAM_NEXT / "MyShiftsNext.tsx",
             _TEAM_CMD / "ManagerShiftDesk.tsx",
             _TEAM_CMD / "MyShifts.tsx",
             _TEAM_CMD / "OpsRulesPanel.tsx",

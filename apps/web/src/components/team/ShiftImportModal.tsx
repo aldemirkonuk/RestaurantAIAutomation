@@ -1,7 +1,28 @@
+/**
+ * Import shift configurations — the picker, without the pretence.
+ *
+ * WHAT THIS USED TO DO (measured 2026-09-04, founder's call the same day).
+ * `handleUploadAndApply` was `await new Promise(r => setTimeout(r, 1200))`
+ * followed by `toast.success("Successfully imported N shifts…")` and a call to
+ * `onImportComplete(N)`. No request was made, no shift was written, and N was
+ * `Math.floor(file.size / 80)` — a row count invented from the file's BYTE
+ * SIZE. A manager who used it was told their week had been imported, watched
+ * the desk refetch, and saw nothing; the only honest reading of the screen was
+ * that the import had silently failed.
+ *
+ * There is no import route in the gateway to call — grep `team.controller.ts`:
+ * shifts are created one at a time through `POST …/team/shifts`. So the apply
+ * control is DISABLED with the reason on the modal, and the file list says the
+ * files were read but not parsed. The picker stays: seeing what a house would
+ * hand over is the useful half, and it is the half that was real.
+ *
+ * `/team`'s page note §13 carries the request to build the real import as a
+ * house Sheet on the Mudavym page.
+ */
 import { useState, useRef, ChangeEvent, DragEvent } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion, AnimatePresence } from 'framer-motion'
-import { UploadCloud, FileSpreadsheet, X, CheckCircle, Trash2, FileText } from 'lucide-react'
+import { UploadCloud, FileSpreadsheet, X, Trash2, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
 
@@ -21,10 +42,11 @@ interface ShiftImportModalProps {
   onImportComplete?: (importedShiftsCount: number) => void
 }
 
-export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImportModalProps) {
+// `onImportComplete` stays in the props (callers pass it) and is deliberately
+// not destructured: there is nothing to complete.
+export function ShiftImportModal({ open, onClose }: ShiftImportModalProps) {
   const [files, setFiles] = useState<ImportedFileItem[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFiles = (newFiles: FileList | File[]) => {
@@ -42,16 +64,16 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1)
       const sizeStr = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`
 
-      // Simulated row parsing estimate based on file size
-      const estimatedRows = Math.max(5, Math.floor(file.size / 80))
-
+      // No row count. The previous line here was
+      // `Math.max(5, Math.floor(file.size / 80))` — a shift count derived from
+      // the file's byte size and rendered as "N shifts" beside a green tick.
+      // Nothing parses these files, so the honest status is `pending`.
       addedItems.push({
         id: Math.random().toString(36).substring(2, 9),
         file,
         name: file.name,
         size: sizeStr,
-        status: 'parsed',
-        parsedRowsCount: estimatedRows,
+        status: 'pending',
       })
     })
 
@@ -92,32 +114,18 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
     setFiles((prev) => prev.filter((f) => f.id !== id))
   }
 
-  const handleUploadAndApply = async () => {
-    if (files.length === 0) return
-    setIsUploading(true)
-
-    try {
-      // Simulate processing & importing config files
-      await new Promise((resolve) => setTimeout(resolve, 1200))
-
-      const totalShifts = files.reduce((acc, f) => acc + (f.parsedRowsCount ?? 0), 0)
-      toast.success(`Successfully imported ${totalShifts} shifts from ${files.length} file(s)!`)
-
-      if (onImportComplete) {
-        onImportComplete(totalShifts)
-      }
-      handleClose()
-    } catch (err: unknown) {
-      toast.error('Failed to import shift configurations.')
-    } finally {
-      setIsUploading(false)
-    }
-  }
+  /**
+   * Deliberately absent. There is no endpoint to send these files to, so there
+   * is no success to report; the control that used to call this is disabled
+   * with the reason printed on the modal. `onImportComplete` is kept in the
+   * props so the caller does not have to change, and is never called — a
+   * refetch after nothing happened is how the old version made the failure
+   * look like a slow save.
+   */
 
   const handleClose = () => {
     setFiles([])
     setIsDragging(false)
-    setIsUploading(false)
     onClose()
   }
 
@@ -189,7 +197,7 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
               <div className="mt-5 space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider px-1">
                   <span>Selected files ({files.length})</span>
-                  <span>Estimated Shifts</span>
+                  <span>Not parsed</span>
                 </div>
                 <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                   <AnimatePresence>
@@ -209,9 +217,8 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
-                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            {item.parsedRowsCount} shifts
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium bg-gray-50 text-gray-600 border border-gray-200">
+                            Read, not parsed
                           </span>
                           <button
                             type="button"
@@ -232,24 +239,26 @@ export function ShiftImportModal({ open, onClose, onImportComplete }: ShiftImpor
             )}
 
             {/* Action buttons */}
-            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <Button variant="ghost" onClick={handleClose} disabled={isUploading}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleUploadAndApply}
-                disabled={files.length === 0 || isUploading}
-                className="bg-wine-600 hover:bg-wine-700 text-white gap-2 font-medium px-5"
-              >
-                {isUploading ? (
-                  'Importing shifts...'
-                ) : (
-                  <>
-                    <UploadCloud className="w-4 h-4" />
-                    Import {files.length ? `(${files.length} file${files.length > 1 ? 's' : ''})` : ''}
-                  </>
-                )}
-              </Button>
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              <p role="note" className="text-xs text-gray-600 mb-3">
+                Importing a sheet is not built yet: there is no route to send these
+                files to, so nothing here writes a shift. Choosing files shows what a
+                sheet would hand over; the import itself has to be added first. Add
+                shifts from the week grid in the meantime.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <Button variant="ghost" onClick={handleClose}>
+                  Close
+                </Button>
+                <Button
+                  disabled
+                  title="No import route exists yet"
+                  className="bg-wine-600 text-white gap-2 font-medium px-5"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  Import {files.length ? `(${files.length} file${files.length > 1 ? 's' : ''})` : ''}
+                </Button>
+              </div>
             </div>
           </motion.div>
         </Dialog.Content>

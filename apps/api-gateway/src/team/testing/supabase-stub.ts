@@ -20,6 +20,8 @@ export interface RecordedOp {
   op: "select" | "insert" | "update" | "delete" | "upsert";
   filters: Filter[];
   payload?: any;
+  /** The column list as written, so a spec can assert what was asked for. */
+  columns?: string;
 }
 
 export interface StubDb {
@@ -29,6 +31,12 @@ export interface StubDb {
   ops: RecordedOp[];
   /** Force an error: key is `"<table>:<op>"`. */
   errors: Record<string, { message: string }>;
+  /**
+   * Optional real column list per table, cited to its migration. A table named
+   * here answers 42703 to a select naming a column it does not have, the way
+   * PostgREST does. A table not named here is not column-checked.
+   */
+  schema?: Record<string, string[]>;
   supabase: { from: (table: string) => any };
   /** Convenience: the ops that touched `table` with operation `op`. */
   opsOn(table: string, op?: RecordedOp["op"]): RecordedOp[];
@@ -68,11 +76,13 @@ function matches(row: Row, filters: Filter[]): boolean {
 export function makeStubDb(
   tables: Record<string, Row[]> = {},
   errors: Record<string, { message: string }> = {},
+  schema?: Record<string, string[]>,
 ): StubDb {
   const db: StubDb = {
     tables,
     ops: [],
     errors,
+    schema,
     supabase: { from: (table: string) => new Builder(db, table) },
     opsOn(table, op) {
       return db.ops.filter((o) => o.table === table && (!op || o.op === op));
@@ -85,6 +95,7 @@ class Builder implements PromiseLike<any> {
   private op: RecordedOp["op"] | null = null;
   private filters: Filter[] = [];
   private payload: any;
+  private columns: string | undefined;
   private wantCount = false;
   private headOnly = false;
   private orderBy: { column: string; ascending: boolean } | null = null;
@@ -107,18 +118,21 @@ class Builder implements PromiseLike<any> {
         op: this.op ?? "select",
         filters: this.filters,
         payload: this.payload,
+        columns: this.columns,
       };
       this.db.ops.push(this.recorded);
     } else {
       this.recorded.op = this.op ?? "select";
       this.recorded.filters = this.filters;
       this.recorded.payload = this.payload;
+      this.recorded.columns = this.columns;
     }
     return this.recorded;
   }
 
-  select(_columns?: string, opts?: { count?: string; head?: boolean }) {
+  select(columns?: string, opts?: { count?: string; head?: boolean }) {
     this.op ??= "select";
+    this.columns = columns;
     if (opts?.count) this.wantCount = true;
     if (opts?.head) this.headOnly = true;
     return this;
@@ -190,6 +204,33 @@ class Builder implements PromiseLike<any> {
     return this;
   }
 
+  /**
+   * The first named column this table does not have, or null.
+   *
+   * Judged against a DECLARED schema, never against the seeded rows. A fixture
+   * row is allowed to be sparse — omitting `position` from a `team_members`
+   * fixture says nothing about the column existing — so inferring the schema
+   * from the rows would fail specs for a reason that is about the stub. A
+   * table with no declaration is not checked at all, and the check says so on
+   * its own terms: opt in by naming the table's real columns, cited to the
+   * migration that creates them.
+   *
+   * `*`, embedded resources (`orders(*)`), aliases (`a:b`) and `!inner` hints
+   * are skipped rather than guessed at.
+   */
+  private unknownColumn(): string | null {
+    const cols = this.columns;
+    const declared = this.db.schema?.[this.table];
+    if (!cols || !declared) return null;
+    if (/[*():!]/.test(cols)) return null;
+    for (const raw of cols.split(",")) {
+      const name = raw.trim();
+      if (!name || !/^[a-z_][a-z0-9_]*$/i.test(name)) return null;
+      if (!declared.includes(name)) return name;
+    }
+    return null;
+  }
+
   private resolve(): { data: any; error: any; count?: number } {
     this.record();
     const key = `${this.table}:${this.op ?? "select"}`;
@@ -197,6 +238,26 @@ class Builder implements PromiseLike<any> {
     if (forced) return { data: null, error: forced };
 
     const store = this.rows();
+
+    // PostgREST answers 42703 for a SELECT that names a column the table does
+    // not have, exactly as it does for an unknown sort column below — and the
+    // caller, if it destructures only `data`, then sees `null` and reads it as
+    // "no rows". That is not hypothetical here: `team.service.ts` asked
+    // `users` for `avatar_url` (a column `public.users` has never had), so
+    // every roster row came back with `linkedUser: null` and the backfill wrote
+    // the literal "Team member" into `display_name`. Measured on the demo
+    // tenant 2026-09-04, 3 of 3 rows. A stub that ignores the column list
+    // cannot fail that test, so it no longer ignores it.
+    const unknown = this.unknownColumn();
+    if (this.op === "select" && unknown) {
+      return {
+        data: null,
+        error: {
+          code: "42703",
+          message: `column ${this.table}.${unknown} does not exist`,
+        },
+      };
+    }
 
     if (this.op === "insert" || this.op === "upsert") {
       const incoming: Row[] = Array.isArray(this.payload)

@@ -7,11 +7,24 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen , configure } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
+// The parity build mounts five queries and eight components on first paint, so
+// a settled assertion can take longer than RTL's 1s default — measured at
+// ~1.5s for the gap panel. Raised deliberately: the assertions below are
+// unchanged, and a flaky timeout would read as a broken page.
+configure({ asyncUtilTimeout: 5000 });
+
+
 const api = vi.hoisted(() => ({
+  timeOff: [] as unknown[],
+  myWeek: {} as Record<string, unknown>,
+  publishSchedule: vi.fn(() => Promise.resolve({})),
+  copyWeek: vi.fn(() => Promise.resolve({})),
+  offerCover: vi.fn(() => Promise.resolve({})),
+  updateTeamMember: vi.fn(() => Promise.resolve({})),
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
@@ -22,6 +35,25 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/api/team', () => ({
+  getTimeOff: () => Promise.resolve(api.timeOff),
+  getMyWeek: () => Promise.resolve(api.myWeek),
+  getMemberPerformance: () => Promise.resolve({ hasData: false }),
+  createSchedule: vi.fn(() => Promise.resolve({ id: 'sch1' })),
+  publishSchedule: api.publishSchedule,
+  copyWeek: api.copyWeek,
+  acknowledgeSchedule: vi.fn(() => Promise.resolve({})),
+  assignCover: vi.fn(() => Promise.resolve({})),
+  createTimeOff: vi.fn(() => Promise.resolve({})),
+  reviewTimeOff: vi.fn(() => Promise.resolve({})),
+  updateShift: vi.fn(() => Promise.resolve({})),
+  deleteShift: vi.fn(() => Promise.resolve(undefined)),
+  reportCallout: vi.fn(() => Promise.resolve({})),
+  offerCover: api.offerCover,
+  createTeamMember: vi.fn(() => Promise.resolve({})),
+  updateTeamMember: api.updateTeamMember,
+  deleteTeamMember: vi.fn(() => Promise.resolve(undefined)),
+  ingestSales: vi.fn(() => Promise.resolve({})),
+  ingestSalesBatch: vi.fn(() => Promise.resolve({})),
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve(api.certs),
@@ -33,6 +65,24 @@ vi.mock('../../../services/api/team', () => ({
 
 const auth = vi.hoisted(() => ({ role: 'owner' as string | null }));
 
+// `/settings-audit` is read through the shared client, so the trail query would
+// otherwise reach the network from a unit test. `readable: true` with no rows
+// is the state a fresh restaurant is actually in.
+vi.mock('../../../services/api/client', () => ({
+  apiClient: {
+    get: () =>
+      Promise.resolve({
+        data: {
+          entries: [],
+          readable: true,
+          reason: null,
+          oldestAt: null,
+          recordingSince: '2026-09-03',
+        },
+      }),
+  },
+}));
+
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({
     activeRestaurantId: 'r-alpha',
@@ -43,7 +93,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 // The staff fallback is the legacy My Shifts view; its own network calls are
 // not what this file is about.
-vi.mock('../command/MyShifts', () => ({ MyShifts: () => <div>My Shifts</div> }));
+vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
 
@@ -146,9 +196,11 @@ describe('the day chips agree with the coverage status', () => {
       },
     });
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/5 Sep/);
+    // The day heads render from the calendar, so wait for the COVERAGE to
+    // arrive rather than for the date: before the week answers the status line
+    // says "reading…", which is a third state and not a claim either way.
+    expect(await screen.findByText(/1 rule unmet/)).toBeInTheDocument();
     expect(screen.queryByText('covered')).not.toBeInTheDocument();
-    expect(screen.getByText(/1 rule unmet/)).toBeInTheDocument();
   });
 });
 
@@ -182,7 +234,7 @@ describe('the credential file says whether it holds anything', () => {
 describe('every query key carries the restaurant', () => {
   it('keys the week, roster, credentials and coverage rules by tenant', async () => {
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/week of/i);
+    await screen.findByText(/members/i);
     const keys = client.getQueryCache().getAll().map((q) => JSON.stringify(q.queryKey));
     expect(keys.length).toBeGreaterThanOrEqual(4);
     for (const k of keys) expect(k).toContain('r-alpha');
@@ -228,7 +280,8 @@ describe('the blocker sentence claims only what the schema supports', () => {
       },
     ];
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/Ayşe/);
+    // The name is on the credential row AND on the grid's member row now.
+    await screen.findAllByText(/Ayşe/);
     expect(screen.queryByText(/held by an expired credential/)).not.toBeInTheDocument();
     expect(screen.queryByText(/blocks 2 shifts/)).not.toBeInTheDocument();
     // What IS known: whose credential expired, and how much of their week is

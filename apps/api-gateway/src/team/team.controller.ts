@@ -391,6 +391,19 @@ export class TeamController {
       );
     }
 
+    /**
+     * Which channels this send may use. An omitted `channels` is today's
+     * behaviour, byte for byte — the legacy desk names none. `/team`'s inline
+     * crew message names `["inbox", "push"]`, so its email leg (which would
+     * leave through the house's single configured mailbox, the same one
+     * procurement writes to vendors from) is never reached. What a caller
+     * declined is reported, so a smaller number is never mistaken for a
+     * smaller audience.
+     */
+    const allowed = dto.channels;
+    const may = (channel: "inbox" | "push" | "email" | "sms"): boolean =>
+      !allowed || allowed.includes(channel);
+
     const roster = await this.team.listMembers(userId, rid);
     const targets = named
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
@@ -400,7 +413,8 @@ export class TeamController {
     // Always land in the in-app inbox — but ONLY the addressed members' inboxes
     // when the caller named targets. A renewal request addressed to one person
     // must never read as a restaurant-wide announcement (team-audit.md).
-    await this.notifications.persistForRestaurant(
+    if (may("inbox"))
+      await this.notifications.persistForRestaurant(
       rid,
       {
         type: "system",
@@ -416,7 +430,7 @@ export class TeamController {
     );
 
     const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
-    if (userIds.length) {
+    if (userIds.length && may("push")) {
       await this.push.sendToUsers(userIds, {
         title: dto.title ?? "Message from your manager",
         body: dto.message,
@@ -447,13 +461,22 @@ export class TeamController {
       .map((m: any) => [m, m.phone] as const)
       .filter((pair): pair is readonly [any, string] => !!pair[1]);
 
-    const emails = allEmails
-      .filter(([m]) => wants(m, "email"))
-      .map(([, e]) => e);
-    const phones = allPhones.filter(([m]) => wants(m, "sms")).map(([, p]) => p);
+    const emails = may("email")
+      ? allEmails.filter(([m]) => wants(m, "email")).map(([, e]) => e)
+      : [];
+    const phones = may("sms")
+      ? allPhones.filter(([m]) => wants(m, "sms")).map(([, p]) => p)
+      : [];
+    // What the RECIPIENTS declined, separately from what the CALLER declined.
+    // Folding the two together would let "the manager chose not to email" read
+    // as "nobody wanted an email", which is a different fact about the house.
     const suppressed = {
-      email: allEmails.length - emails.length,
-      sms: allPhones.length - phones.length,
+      email: may("email") ? allEmails.length - emails.length : 0,
+      sms: may("sms") ? allPhones.length - phones.length : 0,
+    };
+    const withheldByCaller = {
+      email: may("email") ? 0 : allEmails.length,
+      sms: may("sms") ? 0 : allPhones.length,
     };
 
     let emailed = 0;
@@ -487,13 +510,18 @@ export class TeamController {
 
     return {
       audience,
-      recipients: { targeted: targets.length, notified: userIds.length },
+      recipients: {
+        targeted: targets.length,
+        notified: may("push") ? userIds.length : 0,
+      },
       suppressed,
+      withheldByCaller,
+      channels: allowed ?? ["inbox", "push", "email", "sms"],
       preferencesUnavailable,
-      notified: userIds.length,
+      notified: may("push") ? userIds.length : 0,
       emailed,
       texted,
-      inbox: true,
+      inbox: may("inbox"),
     };
   }
 

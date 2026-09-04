@@ -185,6 +185,25 @@ export class BroadcastDto {
   /** Say it out loud. The only accepted value is `"everyone"`. */
   @IsOptional() @IsIn(["everyone"]) audience?: "everyone";
   @IsOptional() @IsString() title?: string;
+  /**
+   * Which channels this message may leave by. OMITTED means today's behaviour,
+   * unchanged — inbox, push, and email/SMS to anyone who has an address and has
+   * not opted out — so the legacy desk sends exactly as it always has.
+   *
+   * It exists because `/team`'s inline crew message is a note ON THE SCHEDULE,
+   * not correspondence: its email leg would go out through `GmailService`,
+   * which is the house's single configured mailbox
+   * (`GMAIL_SENDER_EMAIL`, `communications/gmail.service.ts:78-80`) — the same
+   * address procurement writes to vendors from. The founder's rule for this
+   * surface is that nothing leaves through that mailbox, so the Mudavym
+   * composer names `["inbox", "push"]` and the two outbound legs are never
+   * reached. Naming the channels is how a caller declines a send instead of
+   * hoping nobody has an address on file.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsIn(["inbox", "push", "email", "sms"], { each: true })
+  channels?: Array<"inbox" | "push" | "email" | "sms">;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────

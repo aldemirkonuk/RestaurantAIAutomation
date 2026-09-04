@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: live
 status: documented
-updated: 2026-09-02
+updated: 2026-09-04
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -25,7 +25,13 @@ links: ["[[PAGE-CONTRACT]]"]
 - **Publish week / Re-publish** (manager) → API `POST /restaurants/:rid/team/schedules/:scheduleId/publish`
 - **Copy last week** (manager) → API `POST /restaurants/:rid/team/schedules/copy-week`
 - **Broadcast crew** (manager) → API `POST /restaurants/:rid/team/broadcast`
-- **Import sheet** (manager) → (modal — ShiftImportModal; **still legacy, deliberately**: it opens only from the legacy desk `pages/team/command/ManagerShiftDesk.tsx:594`, so a house branch could never render, and its apply path is simulated at `ShiftImportModal.tsx:100-101` — ADR 0112)
+- **Import sheet** (manager) → **nothing. The control is DISABLED on both halves** (2026-09-04): `ShiftImportModal`'s apply path was a 1200ms `setTimeout` + `toast.success("Successfully imported N shifts")`, with N computed as `Math.floor(file.size / 80)` — no request, no shift written, a row count derived from a file's byte size. There is no import route in the gateway to call. The picker stays (seeing what a house would hand over was the half that was real) and the modal says the import is not built; held by `components/team/ShiftImportModal.test.tsx` (§13.6)
+- **People · N** (manager, Mudavym) → `Sheet` — the roster, one row per member, expanding in place
+- **Write a note** (manager, Mudavym) → `Sheet` — the crew note, always targeted, inbox + push only (§1a)
+- **Time off** (manager, Mudavym) → `Sheet` — the request file, approve/deny/file
+- **What changed here** (manager, Mudavym) → `Sheet` — the trail, read from `GET /settings-audit`
+- **Export** (manager, Mudavym) → `Popover` — CSV/Excel/JSON/Markdown/PDF/clipboard/print
+- **Right-click a shift chip** (manager, Mudavym) → `Popover` — edit · duplicate · call-out · offer cover · delete
 - **Print week** (manager) → (new browser window — printable schedule sheet)
 - **Got it** (staff, acknowledge schedule) → API `POST /restaurants/:rid/team/schedules/:scheduleId/acknowledge`
 - **Claim** (staff, cover offer) → API `POST /restaurants/:rid/team/shifts/:shiftId/assign`
@@ -60,8 +66,64 @@ Mudavym redesign behind `mudavym_design_team` (OFF):
 - **Role split on the redesigned half too** — a non-manager gets My Shifts, not the manager desk; previously `App.tsx:305` gated the whole route and `GET certifications` has no server-side role requirement (`team.service.ts:397`), so the credential file rendered to any member
 - **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off
 - **Credentials as exposure** — an expired card names the member, how many shifts they hold this week, and that *which* shifts require it is not recorded, with a one-tap renewal request (ADR 0089; `team_certifications` has no role or applies-to column, baseline `:5609-5620`, so the old "blocks N shifts / should not be published" line asserted a link the schema does not have)
-- Week-at-a-glance day chips (staffed / open / status)
-- 🚧 Parity gap, deliberate: the full desk (editors, publish, time-off, performance, my-shifts) still lives on the legacy page while the flag is off — flip to judge the new layer, flip back to operate (§9)
+- Week-at-a-glance day chips (staffed / open / status) — now the week grid's own column headers
+
+**Parity closed, 2026-09-04.** The desk's operating half was legacy-only, so
+flipping the flag handed a manager a page that could not schedule. Every
+function below now lives on the Mudavym layer, and each one names the house
+overlay shape it uses (ADR 0112: a record arrives from the right, a decision
+arrives in the middle, a menu hangs off its own control):
+
+| function | shape | file |
+|---|---|---|
+| The roster, one row per member, expanding **in place** (the /inventory anatomy: fact strip → cards → action bar) | `Sheet` + row expander | `RosterSheet.tsx` |
+| Add / edit a member; remove, guarded, with the sole-owner refusal **in words** rather than a hidden control | `Sheet` | `RosterSheet.tsx` (`MemberSheet`) |
+| The week grid: day columns, member rows, shift chips, an open-shift control in every empty cell, open shifts gathered below | — | `WeekGrid.tsx` |
+| Four lenses — coverage · labour · fairness · compliance. **The lens changes the chip's words, never its colour**: this house has one chromatic colour and it marks the selected chip | — | `WeekGrid.tsx` |
+| Add / edit / delete a shift (member · date · start · end · station · kind · note) | `Sheet` | `ShiftSheet.tsx` |
+| Right-click a chip: edit · duplicate · report a call-out · offer cover · delete | `Popover` | `WeekGrid.tsx` |
+| The inspector — who, when, station, kind, state, cost, the three real cover candidates, and that member's performance — **as a row expander under the selected shift**, not a rail | row expander | `WeekGrid.tsx` |
+| Publish the week (destroys nothing → a plain confirm) | `Panel` | `TeamOverlays.tsx` |
+| Re-publish (**deletes every read receipt**) and copy last week (**deletes the whole target week**) — both sealed with `HoldToApprove` and both saying what they destroy, with the receipt count | `Panel` + seal | `TeamOverlays.tsx` |
+| Time off: the file, approve, deny, and file a request for someone | `Sheet` | `TeamOverlays.tsx` |
+| Export the week (CSV · Excel · JSON · Markdown · PDF · clipboard) and print the floor sheet | `Popover` | `TeamOverlays.tsx` |
+| Per-member performance, read-only, in house tokens, with the benchmark's ceiling stated | card | `PerformanceCard.tsx` |
+| My Shifts (staff): my week, acknowledge, take a cover, ask for the week off | — | `MyShiftsNext.tsx` |
+| **How this desk is configured** — five stated values, each a record with where it is kept, when it was written and why there is no author | section | `TeamRecord.tsx` |
+| **What changed here** — the trail, read through `GET /settings-audit` | `Sheet` | `TeamRecord.tsx` |
+
+**Inline comms — the crew note (founder, 2026-09-04).** A crew message on
+`/team` is a note ON THE SCHEDULE, not correspondence and not a template:
+
+- A **strip above the week** carries it. Left: the note this page last sent, who
+  it went to and through which channels. Right: **who has opened the published
+  week, by name**, read from `schedule_receipts` (baseline `:5293-5298`, written
+  by `POST …/schedules/:id/acknowledge`) — the one durable read-receipt store on
+  this page. The two are never blended: `schedule_receipts` records opening the
+  SCHEDULE, not reading a note.
+- The composer is a small `Sheet` and is **always targeted** — named members, or
+  the published week's active linked crew — never an unnamed fan-out (ADR 0089).
+- **Nothing leaves through the house mailbox.** The composer sends
+  `channels: ['inbox', 'push']`, and the gateway's new channel gate
+  (`team/dto/team.dto.ts` + `team.controller.ts`) never reaches the email leg,
+  which would otherwise go out through `GmailService` — the single configured
+  `GMAIL_SENDER_EMAIL` (`communications/gmail.service.ts:78-80`) that
+  procurement writes to vendors from. Omitting `channels` is today's behaviour
+  unchanged, so the legacy desk still sends exactly as it always has.
+- **Nothing records a sent note.** `broadcast` writes a notification row per
+  recipient and no route reads them back for a manager, so an empty strip says
+  "not from here, this session" and never "nobody has said anything" (§13.7).
+
+**Roster names, and why they were all the same.** Every roster row in the demo
+tenant read "Team member" (3 of 3, measured 2026-09-04) because the gateway's
+identity read asked `public.users` for an `avatar_url` it has never had; the
+42703 arrived as `data: null` through a destructure that dropped `error`, so
+`linkedUser` was null for everyone AND the backfill wrote the literal into
+`display_name`, a NOT NULL column. Those rows are durable. The page now resolves
+a name it can stand behind — a stored name, then the linked account, then "No
+name on file" with the reason — and never prints the placeholder. The gateway
+half is §9; the Edit sheet prefills the account's name so one save repairs a row
+for good.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_team`)
 
@@ -70,11 +132,18 @@ list is the note-side index (ADR 0044 §2).
 
 | id | name | fires |
 |---|---|---|
-| `tm-ink` | Ink micro-state | day-chip borders and control hover/focus — colour only, nothing translates |
+| `tm-ink` | Ink micro-state | control hover/focus, chip border and background, member-row and roster-row hover — colour only, nothing translates |
+| `mdv-sheet-tuck` | Tuck | a `Sheet` opens: the roster, a member, a shift, the crew note, time off, the trail |
+| `mdv-panel-settle` | Settle | a `Panel` opens: publish, re-publish, copy last week |
+| `mdv-popover-ink` | Ink | a `Popover` opens: the shift menu, export |
+| `pour` → `stamp` | Hold, then the seal | `HoldToApprove` on the two acts that DELETE before they write — re-publish and copy-week |
 
 Deliberate non-motions: gap rows never animate in (an unfilled shift is a
 standing fact, not an arrival); the labour figure never tallies; "assigned" /
-"requested" confirmations are a change of words, in place.
+"requested" confirmations are a change of words, in place; **the row expander
+does not slide** (a table whose rows change height under the cursor is a table
+you lose your place in); and a **first** publish destroys nothing, so it gets a
+plain confirm — the die pressed dry, not the wax.
 
 **2026-08-31 wave polish (Sorting Office two-Opus review):** the Assign,
 "Request renewal" and error-banner "Try again" controls carried an inline
@@ -114,6 +183,55 @@ on screen (the Radix branch still renders byte-for-byte otherwise). A **second**
 anchored surface needing `modal` is the recorded signal to collapse the policy to
 two shapes.
 
+### The parity pass, 2026-09-04
+
+**What the founder asked.** Finish the desk's operating half on the same design
+— a parity build, not a new design — with the in-place row expander as the house
+shape for a ledger table, roster included; then three additions: the three cheap
+honesty pieces §13.5 proposed, an import control that does not lie, and a crew
+message that is inline comms on the week rather than a composer.
+
+**What was built.** Everything in the §1a table. The structural idea is one
+sentence: *the page holds the week, and every act on it opens the house overlay
+whose shape says what kind of act it is.* Nothing on the page is a rail of
+controls whose consequences you learn by pressing them.
+
+**What was fixed in the gateway** (additive, each with a spec):
+
+- `team.service.ts:158-198` — the roster's identity read asked `public.users`
+  for `avatar_url`, a column that table has never had (baseline
+  `20260805000000_baseline_from_production.sql:5848-5861`). PostgREST answered
+  42703, the destructure dropped `error`, and every member came back
+  `linkedUser: null`. `restaurants/members.service.ts:101-117` had the identical
+  bug and fixed it; this module had not. Both errors are now bound and a failed
+  identity read throws rather than returning anonymous rows.
+- `team.service.ts:238-260` — the same 42703 in `ensureRosterFromAccess`, where
+  it did not merely blank a field: the name expression fell through and WROTE
+  "Team member" into `display_name`. A failed identity read now aborts the
+  backfill; `avatar_url` is taken from `team_members`, where avatars live.
+- `team/testing/supabase-stub.ts` — the stub now models PostgREST's 42703 for a
+  SELECT naming a column a table does not have, against a DECLARED schema
+  (opt-in per table, cited to its migration) rather than against the shape of a
+  fixture. Without it no spec could have failed on the defect above. Proven
+  against the pre-fix tree: 4 of the 6 new assertions go red.
+- `team/dto/team.dto.ts` + `team.controller.ts` — `BroadcastDto.channels`, an
+  optional allow-list. Omitting it is today's behaviour byte for byte (the
+  legacy desk names none); `/team`'s crew note names `['inbox', 'push']` so its
+  email leg never reaches the house mailbox. What the CALLER declined is
+  reported separately from what the RECIPIENTS declined — folding them together
+  would let "the manager chose not to email" read as "nobody wanted an email".
+
+**What stays open, and why** — §9.
+
+**The two directions not built.** (1) *A messages register*: a `team_notes`
+table so the crew note becomes a record with its own read receipts, rather than
+a line that goes when the page reloads. It is the right shape and it needs a
+migration, which this branch does not own — §13.7. (2) *The performance panel
+whole*: the legacy panel carries a "log a service" form and a CSV import, and
+both were left on the legacy desk. Putting a data-entry form inside a schedule
+expander would make the manager's fastest path to a performance number "type one
+in", which is how a page starts measuring itself — §13.8.
+
 ## 2. Entry
 
 - Sidebar "Team" (`components/layout/Sidebar.tsx:114`); command palette `g t`
@@ -124,7 +242,10 @@ two shapes.
 ## 3. Files
 
 - Route binding: `apps/web/src/App.tsx:276` (eagerly imported :74).
-- Tree: `pages/team/command/{TeamCommandPage.tsx, ManagerShiftDesk.tsx, MyShifts.tsx, PerformancePanel.tsx, OpsRulesPanel.tsx, editors.tsx, bits.tsx}`.
+- Tree (legacy): `pages/team/command/{TeamCommandPage.tsx, ManagerShiftDesk.tsx, MyShifts.tsx, PerformancePanel.tsx, OpsRulesPanel.tsx, editors.tsx, bits.tsx}`.
+- Tree (Mudavym): `pages/team/next/{TeamNext.tsx, WeekGrid.tsx, RosterSheet.tsx, ShiftSheet.tsx, TeamOverlays.tsx, TeamRecord.tsx, PerformanceCard.tsx, MyShiftsNext.tsx, tm-bits.tsx, tm-format.ts, useTeamNextData.ts, team-next.css, MOTIONS.md}` + `TeamNext.test.tsx`, `TeamNext.honesty.test.tsx`, `TeamParity.test.tsx`.
+- **Retire-to-write.** With the flag on, these legacy components are redundant and nothing renders them: `ManagerShiftDesk.tsx` (whole), `MyShifts.tsx`, `editors.tsx` (`ShiftEditor`, `MemberEditor`), `PerformancePanel.tsx`'s read half, and `bits.tsx`'s `Avatar`/`Pill`/`PulseCell`. **They are not deleted**: the flag is off in production, and `check_windowed_figures.py` still holds all five legacy files as declared renderers. They retire when the flag is removed, not before.
+- The eight `pages/team/next/**` renderers are declared in `scripts/check_windowed_figures.py`'s `/team` PageSpec — W6 can only see the files that tuple names, so a query in an unlisted renderer would be a bucket nobody checks while the run still printed "clean".
 - Shared renders: `components/team/{InviteTeamDialog, ShiftImportModal}.tsx`,
   `components/layout/RestaurantBranchSwitcher.tsx` (ManagerShiftDesk.tsx:16-18).
 
@@ -149,7 +270,8 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 | POST | `…/sales`, `…/sales/batch` | PerformancePanel → `team.ts:279-286` |
 | POST | `…/broadcast` | ManagerShiftDesk → `team.ts:289-305` |
 | GET/PATCH | `…/settings` | `team.ts:308-315` |
-| GET | `/calendar/events` | desk overlays events — `ManagerShiftDesk.tsx:17` → `services/api/calendar.ts:221` |
+| GET | `/calendar/events` | desk overlays events — `ManagerShiftDesk.tsx:17` → `services/api/calendar.ts:221` (legacy half only; the Mudavym grid does not overlay calendar events — §13.9) |
+| GET | `/settings-audit?limit=100` | the trail, read through the ONE reader `/settings` uses (`apps/api-gateway/src/settings-audit/`) — `useTeamNextData.ts` → `TeamRecord.tsx`. No new table and no second reader: `settings-audit.service.ts:80-84` already reads back the two actions `team/access-audit.ts:73` files |
 
 ## 5. Signals
 
@@ -174,6 +296,12 @@ dashboard.md §7.
   (`TeamCommandPage.tsx:1-4`, via `useAuth` :5).
 - Multi-branch via RestaurantBranchSwitcher; labor/goal settings edited from
   `/settings` (`components/team/TeamLaborSettings.tsx`, mounted by Settings).
+- **Flag: `mudavym_design_team`** (registry-gated), with the per-browser
+  override `localStorage['mudavym.design.team'] = '1'`
+  (`lib/mudavym/useMudavymDesign.ts`). With it off the shipping desk renders
+  byte-for-byte; the Mudavym half is behind `PageGate` (`App.tsx:353`).
+- The role split holds on BOTH halves: owner/manager get the desk,
+  everyone else gets My Shifts (`TeamNext.tsx`, `TeamCommandPage.tsx:36-37`).
 
 ## 9. Gaps
 
@@ -211,6 +339,50 @@ dashboard.md §7.
   unconfirmed path rather than becoming a formality. Held by
   `services/api/team.destructive.test.ts` on the request body — a component test
   can only prove the module was called, and the fields were what was missing.
+
+### Filed by the parity pass, 2026-09-04
+
+- **The three roster rows still read "Team member" in the database.** The read
+  is fixed and the page now shows the linked account's real name ("Demo User",
+  "Sarah Johnson", "David Chen" — measured through
+  `GET /restaurants/:rid/members`, which never had the bug), but a repair to a
+  read does not rename rows already written. `display_name` stays the
+  placeholder until someone saves the Edit sheet, which prefills the account's
+  name for exactly that reason. **No data migration was run**: renaming
+  production rows is not this branch's, and the page does not need it.
+- **Nothing records a sent crew note.** `POST …/broadcast` writes one
+  notification row per recipient and no route reads them back for a manager, so
+  the strip can only report the send this page just made. Not yet built because
+  it needs a table (§13.7).
+- **Nothing records that a renewal was requested**, so *Request renewal* reports
+  a moment and never a state (unchanged; §13.2b).
+- **Nothing records that cover was offered**, for the same reason — the
+  expander says so after an offer rather than latching.
+- **Nothing files an audit row for a labour setting or a coverage rule.**
+  `recordAccessChange` covers role changes and removals only, so the
+  configuration register shows a date and never an author, and says which
+  column it checked. §13.10.
+- **`GET certifications` still requires no role** (`team.service.ts:397`), so
+  the client-side split is defence in depth, not access control (§13.2c,
+  unchanged).
+- **The Mudavym grid does not overlay calendar events.** The legacy desk reads
+  `/calendar/events` and prints the day's first event in the column header;
+  the rebuilt header carries coverage instead. Deliberate — two different facts
+  competing for one line — and filed as §13.9 rather than dropped silently.
+- **`WeekPayload` on the web side does not name three fields the gateway
+  sends**: `labor.costComplete`, `labor.pricedShifts`, `labor.unpricedShifts`
+  (`schedule.service.ts:879-881`) and `settings.configured` /
+  `settings.updated_at`. They are read through one narrowing in
+  `useTeamNextData.ts`, every one of them nullable, so an older gateway that
+  omits them reads as "unknown" rather than "complete". §13.11 asks for the
+  shared type to be widened.
+- **The import is not built.** See the Surface note and §13.6.
+- **The local gateway was down when the browser captures were attempted**
+  (2026-09-04, `ReferenceError: Cannot access 'AuthModule' before
+  initialization` — a circular import from a concurrent branch's
+  `organizations.module.ts`, not from this work). Recorded because a capture
+  taken against a dead gateway is a capture of the error banner, not of the
+  page.
 
 ## 10. Maturity
 
@@ -376,6 +548,41 @@ configuration."*
 Nothing below is built. This is the proposal and its cost, written by the
 `/settings` session so `/team`'s own session inherits the measurement rather than
 re-deriving it.
+
+6. **A real shift import.** `components/team/ShiftImportModal.tsx`'s apply path
+   was a simulation and is now disabled with the reason on the modal
+   (`ShiftImportModal.test.tsx` pins "no success without an import"). Building
+   it means a gateway route that takes a CSV/XLSX and returns what it parsed
+   BEFORE writing anything, and a house `Sheet` on the parity page that shows
+   that parse for confirmation. The picker is already real; only the two ends
+   are missing.
+7. **A `team_notes` store, so a crew note is a record.** One table
+   (`restaurant_id`, `schedule_id`, `body`, `author_id`, `created_at`, plus
+   recipients) and one read route would turn the week's note strip from "what
+   this page just sent" into "what has been said about this week", with its own
+   read receipts instead of borrowing the schedule's. One migration; not this
+   branch's.
+8. **Move sales ingest off the schedule.** The legacy `PerformancePanel`'s "log
+   a service" form and CSV import were deliberately not carried onto the
+   expander (§1b, "the two directions not built"). They need a surface of their
+   own before the legacy desk retires.
+9. **Calendar events on the Mudavym grid.** The legacy header printed the day's
+   first event; the rebuilt one prints coverage. Both are worth having and they
+   need two lines, not one.
+10. **`record()` calls for labour settings and coverage rules.**
+   `TeamService.updateSettings` and the coverage-template writers file nothing
+   into `system_audit_log`, so the configuration register shows a date and never
+   an author. `SettingsAuditService` is already exported and already read back
+   by this page — this is one caller each, no migration.
+11. **Widen the shared `WeekPayload` type** (`services/api/team.ts:75-88`) to
+   name `labor.costComplete` / `pricedShifts` / `unpricedShifts` and
+   `settings.configured` / `updated_at`, which the gateway already sends
+   (measured 2026-09-04). Read through a local narrowing today, §9.
+12. **Drop `team_settings.labor_target_pct`'s `DEFAULT 28`** so a stored value
+   is always a chosen one. The page already reads a defaulted 28 as unknown and
+   never measures the week against it, but that is a reading, not a fix. The
+   defaults migration belongs to the settings-consequences branch, not this one;
+   the table has 0 rows in production, so it is the cheapest it will ever be.
 
 5. **A team-configuration register set, in the `/settings` idiom.**
 

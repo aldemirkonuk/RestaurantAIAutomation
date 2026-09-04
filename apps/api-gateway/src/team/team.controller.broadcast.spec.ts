@@ -296,3 +296,86 @@ describe("TeamController.broadcast — T5: the house's default title is plain", 
     );
   });
 });
+
+/**
+ * The channel gate — /team's inline crew message (2026-09-04).
+ *
+ * A crew message on the schedule is a note ON THE WEEK, not correspondence. Its
+ * email leg would leave through `GmailService`, the house's single configured
+ * mailbox (`GMAIL_SENDER_EMAIL`, `communications/gmail.service.ts:78-80`) —
+ * the same address procurement writes to vendors from. The founder's rule for
+ * this surface is that nothing leaves that way, so the Mudavym composer names
+ * its channels and the two outbound legs are never reached.
+ *
+ * The default is unchanged on purpose: the legacy desk names no channels, so
+ * every assertion above still describes exactly what it sends.
+ */
+describe("TeamController.broadcast — the channel gate", () => {
+  it("sends nothing outbound when the caller names inbox and push", async () => {
+    const db = seed();
+    const { controller, gmail, sms, notifications, push } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Saturday's line-up changed — check the grid.",
+      audience: "everyone",
+      channels: ["inbox", "push"],
+    } as any);
+
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(sms.sendSms).not.toHaveBeenCalled();
+    expect(notifications.persistForRestaurant).toHaveBeenCalled();
+    expect(push.sendToUsers).toHaveBeenCalled();
+    expect(res.emailed).toBe(0);
+    expect(res.texted).toBe(0);
+    expect(res.channels).toEqual(["inbox", "push"]);
+  });
+
+  it("separates what the caller declined from what the recipients declined", async () => {
+    const db = seed();
+    const { controller } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Kitchen meeting at four.",
+      audience: "everyone",
+      channels: ["inbox", "push"],
+    } as any);
+
+    // Three people have an address and a phone on file and none of them opted
+    // out. Folding this into `suppressed` would let "the manager chose not to
+    // email" read as "nobody wanted an email".
+    expect(res.withheldByCaller).toEqual({ email: 3, sms: 3 });
+    expect(res.suppressed).toEqual({ email: 0, sms: 0 });
+  });
+
+  it("still sends on every channel when the caller names none", async () => {
+    const db = seed();
+    const { controller, gmail, sms } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    expect(gmail.sendEmail).toHaveBeenCalled();
+    expect(sms.sendSms).toHaveBeenCalled();
+    expect(res.withheldByCaller).toEqual({ email: 0, sms: 0 });
+    expect(res.channels).toEqual(["inbox", "push", "email", "sms"]);
+  });
+
+  it("an inbox-only message reaches no push either", async () => {
+    const db = seed();
+    const { controller, push, notifications } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "For the record.",
+      audience: "everyone",
+      channels: ["inbox"],
+    } as any);
+
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+    expect(notifications.persistForRestaurant).toHaveBeenCalled();
+    // `notified` counts pushes, so it must not report three when none was sent.
+    expect(res.notified).toBe(0);
+    expect(res.inbox).toBe(true);
+  });
+});

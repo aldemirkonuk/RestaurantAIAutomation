@@ -293,14 +293,38 @@ export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string
  * control labelled "Message {name}" reached the whole restaurant; saying it
  * out loud is the fix, so this signature will not let a caller stay silent.
  */
+/**
+ * `channels` (added 2026-09-04 for /team's inline crew note) is OPTIONAL and
+ * omitting it is today's behaviour, unchanged — the legacy desk names none and
+ * still sends on all four. The Mudavym page names `['inbox', 'push']` because a
+ * note on the schedule is not correspondence: its email leg would leave through
+ * the house's single configured mailbox (`GMAIL_SENDER_EMAIL`), the same
+ * address procurement writes to vendors from. Gateway half:
+ * `apps/api-gateway/src/team/dto/team.dto.ts` + `team.controller.ts`.
+ */
+export type BroadcastChannel = 'inbox' | 'push' | 'email' | 'sms'
+
+export interface BroadcastReceipt {
+  audience: 'everyone' | 'selected'
+  recipients: { targeted: number; notified: number }
+  suppressed: { email: number; sms: number }
+  withheldByCaller?: { email: number; sms: number }
+  channels?: BroadcastChannel[]
+  preferencesUnavailable: boolean
+  notified: number
+  emailed: number
+  texted: number
+  inbox: boolean
+}
+
 export async function broadcast(
-  body: { message: string; title?: string } & (
+  body: { message: string; title?: string; channels?: BroadcastChannel[] } & (
     | { memberIds: string[]; audience?: never }
     | { audience: 'everyone'; memberIds?: never }
   ),
   rid?: string,
 ) {
-  const { data } = await apiClient.post(`${base(rid)}/broadcast`, body)
+  const { data } = await apiClient.post<BroadcastReceipt>(`${base(rid)}/broadcast`, body)
   return data
 }
 

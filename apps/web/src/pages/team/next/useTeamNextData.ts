@@ -41,29 +41,145 @@ import {
   getCertifications,
   getCoverageTemplates,
   getTeamMembers,
+  getTimeOff,
   getWeek,
   type Certification,
   type Shift,
   type TeamMember,
   type WeekPayload,
 } from '../../../services/api/team';
-import { mondayOf, parsePeriod } from './tm-format';
+import { apiClient } from '../../../services/api/client';
+import { mondayOf, parsePeriod, resolveName } from './tm-format';
 
 /**
  * /team's server-side windows.
  *
- * There is exactly ONE, and it is not on this half of the page: the per-member
- * performance benchmark reads the most recent 200 `server_sales` rows across
- * the whole restaurant and renders a median and an inter-quartile band from
- * them. Every read this hook makes — the week, the roster, the credential file,
- * the coverage rules — is uncapped, so no figure on the redesigned surface is a
- * window dressed as a total. The register is page-wide rather than half-wide so
- * the one real window is declared where a guard can hold it.
+ * There is exactly ONE: the per-member performance benchmark reads the most
+ * recent 200 `server_sales` rows across the whole restaurant and renders a
+ * median and an inter-quartile band from them. Every read this hook makes — the
+ * week, the roster, the credential file, the coverage rules, the time-off file
+ * — is uncapped, so the only windowed figure on either half is that benchmark.
+ *
+ * It used to be reachable only from the legacy desk's inspector. Since the
+ * parity build (2026-09-04) the redesigned half renders it too, in the roster
+ * expander and under the selected shift (`PerformanceCard.tsx`), which is why
+ * that file carries the `LE` marker: a ceiling on the SAMPLE a statistic was
+ * computed over, never a floor on a count (ADR 0051 clause 2).
  */
 export const TEAM_SERVER_WINDOWS = {
   /** performance.service.ts:139 — the team benchmark ends `.limit(200)`. */
   BENCHMARK_SERVICES: 200,
+  /**
+   * settings-audit.service.ts:252,270 — the trail read is
+   * `Math.min(200, limit)` then `.limit(capped)`. `/team` asks for 100, so the
+   * sheet holds at most that many rows and says so: "the last ≤100 changes",
+   * never "everything that has happened here". The server offers no total to
+   * read back, which is exactly why the cap has to be declared instead.
+   */
+  TRAIL_ROWS: 100,
 } as const;
+
+
+/**
+ * The settings trail, read through the ONE reader that already exists.
+ *
+ * `GET /settings-audit` (`apps/api-gateway/src/settings-audit/`) reads
+ * `system_audit_log` for this restaurant and already reads back the two actions
+ * `recordAccessChange` files — `member_role_changed` and `team_member_removed`
+ * (`settings-audit.service.ts:80-84`, written at
+ * `apps/api-gateway/src/team/access-audit.ts:73`). So `/team` gets a trail by
+ * calling that route and nothing else: no new table, no second reader, no fork.
+ *
+ * The types mirror `SettingsAuditReadout` (`settings-audit.service.ts:121-151`)
+ * and are declared here rather than imported from `pages/settings/next`,
+ * because a `next` directory stands alone (p4 rule). The gateway's own spec is
+ * what holds the shape.
+ */
+export interface TeamTrailEntry {
+  id: string;
+  occurredAt: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  subject: string | null;
+  actor: { userId: string | null; name: string | null; email: string | null };
+  fields: Record<string, { from: unknown; to: unknown }>;
+}
+
+export interface TeamTrail {
+  entries: TeamTrailEntry[];
+  /** `false` renders as words. An unreadable log is never an empty one. */
+  readable: boolean;
+  reason: string | null;
+  oldestAt: string | null;
+  /** Before this instant nothing was recorded at all, and the sheet says so. */
+  recordingSince: string;
+}
+
+/** The two actions on that trail that are about people, not about settings. */
+export const TEAM_TRAIL_ACTIONS = ['member_role_changed', 'team_member_removed'] as const;
+
+/**
+ * What `/team` can and cannot say about where a value came from.
+ *
+ * `team_settings` carries `updated_at` and NO author column (baseline
+ * `:5653-5658`), and `TeamService.updateSettings` files nothing into
+ * `system_audit_log` today — so a labour setting has a date and never a name.
+ * The register prints the date and says the author is unrecorded, rather than
+ * leaving the line off and letting the value look self-evident.
+ */
+export interface TeamProvenance {
+  /** ISO instant of the last write, or null when nothing records one. */
+  when: string | null;
+  /** Why there is no date. Required when `when` is null. */
+  whenUnknown?: string;
+  /** Who wrote it, or null. Nothing on this page records an author yet. */
+  who: string | null;
+  /** Where the value is kept, named by table. */
+  kept: string;
+}
+
+/**
+ * `team_settings.labor_target_pct` is `numeric(5,2) DEFAULT 28 NOT NULL`
+ * (baseline `:5656`). A row that exists therefore ALWAYS carries a number, and
+ * 28 is indistinguishable from "nobody chose one" — the same shape as
+ * `providers.lead_time_days DEFAULT 7`, which the vendor-terms register exists
+ * to catch. Nothing files an audit row when this column is written, so there is
+ * no provenance that could tell the two apart.
+ *
+ * So: 28 with no provenance is NOT a target. It is rendered as unknown, with
+ * the default named, and the week is never measured against it.
+ */
+export const LABOR_TARGET_COLUMN_DEFAULT = 28;
+
+export interface TargetReading {
+  /** The percentage to render, or null when there is no target to speak of. */
+  pct: number | null;
+  /** One sentence saying what the value is, and why. Always rendered. */
+  why: string;
+}
+
+export function readLabourTarget(
+  targetPct: number | null,
+  hasProvenance: boolean,
+): TargetReading {
+  if (targetPct === null) {
+    return {
+      pct: null,
+      why: 'No labour target is on file, so the week is not measured against one.',
+    };
+  }
+  if (targetPct === LABOR_TARGET_COLUMN_DEFAULT && !hasProvenance) {
+    return {
+      pct: null,
+      why: `No target set. The stored value is ${LABOR_TARGET_COLUMN_DEFAULT}%, which is the column's own default (\`team_settings.labor_target_pct numeric(5,2) DEFAULT 28 NOT NULL\`), and nothing records anyone choosing it — so it is read as unknown rather than as a target this house set.`,
+    };
+  }
+  return {
+    pct: targetPct,
+    why: 'Kept on the restaurant, in `team_settings`. No column records who set it.',
+  };
+}
 
 export interface GapVM {
   date: string;
@@ -105,6 +221,39 @@ export interface CoverageRule {
   min_staff: number;
 }
 
+/** `time_off_requests` as the gateway returns it (baseline `:5666-5677`). */
+export interface TimeOffRow {
+  id: string;
+  member_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: string;
+  reviewed_by: string | null;
+  created_at: string;
+}
+
+/**
+ * The labour block, including the three fields the gateway added with ADR 0088
+ * that `services/api/team.ts`'s `WeekPayload` does not yet name. They are read
+ * here rather than typed there because the shared service module belongs to
+ * both halves of this page and this branch owns only the redesigned one; §13 of
+ * the page note carries the one-line request to widen the shared type.
+ *
+ * `totalCost` is `null` — never a partial and never 0 — until every
+ * member-assigned shift carries a cost (`schedule.service.ts:854-860`), and
+ * `unpricedShifts` is how the page says WHY it is unknown.
+ */
+export interface LaborVM {
+  enabled: boolean;
+  totalHours: number;
+  totalCost: number | null;
+  targetPct: number | null;
+  costComplete: boolean | null;
+  pricedShifts: number | null;
+  unpricedShifts: number | null;
+}
+
 /**
  * The page's view model. Every field whose job is to say "the query has not
  * answered" is nullable, and none of them falls back to an empty list: an
@@ -130,6 +279,31 @@ export interface TeamNextData {
   /** The coverage rules themselves — `null` until they answer, never `[]`. */
   coverageRules: CoverageRule[] | null;
   overtimeNamed: { name: string; hours: number }[];
+  /** The roster itself. `null` until it answers — an empty team is not a silence. */
+  members: TeamMember[] | null;
+  /** The whole credential file. `null` until it answers; `[]` means none exist. */
+  certs: Certification[] | null;
+  /** Who changed what on this team. `null` until the trail answers. */
+  trail: TeamTrail | null;
+  trailFailed: boolean;
+  /** The labour target, read against the column default. Never a bare number. */
+  target: TargetReading;
+  /** When `team_settings` was last written, or null when no row exists. */
+  settingsUpdatedAt: string | null;
+  /** False when no `team_settings` row exists — every value is then a code default. */
+  settingsConfigured: boolean;
+  /** The week's shifts. `null` until the week answers. */
+  shifts: Shift[] | null;
+  /** Time-off requests. `null` until they answer; `[]` means none are on file. */
+  timeOff: TimeOffRow[] | null;
+  timeOffFailed: boolean;
+  /** Labour, with the reason a cost is unknown. `null` until the week answers. */
+  labor: LaborVM | null;
+  /** Wage columns are hidden when the restaurant says so (`team_settings`). */
+  wageVisible: boolean;
+  /** How many people have opened the published week; `null` when unknown. */
+  receiptsSeen: number | null;
+  published: boolean;
   hasData: boolean;
   isError: boolean;
   errorMessage: string;
@@ -155,8 +329,13 @@ export function useActiveRestaurantId(): string | null {
   return activeRestaurantId || user?.restaurantId || null;
 }
 
-export function useTeamNextData(now = new Date()): TeamNextData {
-  const weekStart = mondayOf(now);
+/**
+ * `anchor` is either a Date (the week containing it) or an explicit week-start
+ * string, which is how the grid's back/forward controls move without the hook
+ * having to own the navigation state.
+ */
+export function useTeamNextData(anchor: Date | string = new Date()): TeamNextData {
+  const weekStart = typeof anchor === 'string' ? anchor : mondayOf(anchor);
   const rid = useActiveRestaurantId();
   const enabled = rid !== null;
 
@@ -181,6 +360,29 @@ export function useTeamNextData(now = new Date()): TeamNextData {
   const rulesQ = useQuery({
     queryKey: ['team-next-coverage-rules', rid],
     queryFn: () => getCoverageTemplates() as Promise<CoverageRule[]>,
+    enabled,
+    staleTime: 60_000,
+  });
+  /**
+   * Limit 100 like `/settings` — the same route, the same page size. It is not
+   * declared in TEAM_SERVER_WINDOWS because it caps a LIST being displayed, not
+   * the sample of a statistic; the sheet says how far back the rows reach with
+   * `oldestAt`, which is the honest mark for a paged list.
+   */
+  const trailQ = useQuery({
+    queryKey: ['team-next-trail', rid],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TeamTrail>(
+        `/settings-audit?limit=${TEAM_SERVER_WINDOWS.TRAIL_ROWS}`,
+      );
+      return data;
+    },
+    enabled,
+    staleTime: 60_000,
+  });
+  const timeOffQ = useQuery({
+    queryKey: ['team-next-time-off', rid],
+    queryFn: () => getTimeOff() as Promise<TimeOffRow[]>,
     enabled,
     staleTime: 60_000,
   });
@@ -271,7 +473,10 @@ export function useTeamNextData(now = new Date()): TeamNextData {
           suggested: pick
             ? {
                 memberId: pick.id,
-                name: pick.display_name,
+                // `resolveName`, never `display_name`: the stored value is the
+                // gateway's placeholder on any row backfilled before the 2026-09-04
+                // fix, and "suggest Team member" is not a suggestion.
+                name: resolveName(pick).text,
                 hoursThisWeek: Math.round((hoursByMember.get(pick.id) ?? 0) * 10) / 10,
               }
             : null,
@@ -284,7 +489,7 @@ export function useTeamNextData(now = new Date()): TeamNextData {
 
   const certExposures: CertExposureVM[] = useMemo(() => {
     if (certsQ.data === undefined || membersQ.data === undefined || !weekQ.data) return [];
-    const nameOf = new Map(members.map((m) => [m.id, m.display_name]));
+    const nameOf = new Map(members.map((m) => [m.id, resolveName(m).text]));
     const linkedOf = new Map(members.map((m) => [m.id, Boolean(m.accountLinked && m.user_id)]));
     const shiftCount = new Map<string, number>();
     for (const s of shifts) {
@@ -313,17 +518,72 @@ export function useTeamNextData(now = new Date()): TeamNextData {
   ).length;
 
   const overtimeNamed = useMemo(() => {
-    const nameOf = new Map(members.map((m) => [m.id, m.display_name]));
+    const nameOf = new Map(members.map((m) => [m.id, resolveName(m).text]));
     return (weekQ.data?.labor.overtime ?? []).map((o) => ({
       name: nameOf.get(o.memberId) ?? 'unknown member',
       hours: o.hours,
     }));
   }, [weekQ.data, members]);
 
+  /**
+   * The gateway sends three fields the shared `WeekPayload` type does not name
+   * yet (see LaborVM). Read through one narrowing here rather than sprinkling
+   * casts through the renderers, and every one of them stays nullable so an
+   * older gateway that omits them reads as "unknown" rather than "complete".
+   */
+  const laborRaw = weekQ.data?.labor as
+    | (WeekPayload['labor'] & {
+        costComplete?: boolean;
+        pricedShifts?: number;
+        unpricedShifts?: number;
+      })
+    | undefined;
+  /** `configured` and `updated_at` are on the wire (measured 2026-09-04) but not
+      on the shared `TeamSettings` type; §13 asks for the type to be widened. */
+  const settingsRaw = weekQ.data?.settings as
+    | (WeekPayload['settings'] & { configured?: boolean; updated_at?: string })
+    | undefined;
+  const labor: LaborVM | null = laborRaw
+    ? {
+        enabled: laborRaw.enabled,
+        totalHours: laborRaw.totalHours,
+        totalCost: typeof laborRaw.totalCost === 'number' ? laborRaw.totalCost : null,
+        targetPct: typeof laborRaw.targetPct === 'number' ? laborRaw.targetPct : null,
+        costComplete:
+          typeof laborRaw.costComplete === 'boolean' ? laborRaw.costComplete : null,
+        pricedShifts:
+          typeof laborRaw.pricedShifts === 'number' ? laborRaw.pricedShifts : null,
+        unpricedShifts:
+          typeof laborRaw.unpricedShifts === 'number' ? laborRaw.unpricedShifts : null,
+      }
+    : null;
+
   return {
     overtimeNamed,
     weekStart,
     week: weekQ.data ?? null,
+    members: membersQ.data === undefined ? null : members,
+    certs: certsQ.data === undefined ? null : certsQ.data,
+    trail: trailQ.data === undefined ? null : trailQ.data,
+    trailFailed: trailQ.isError,
+    target: readLabourTarget(
+      laborRaw && typeof laborRaw.targetPct === 'number' ? laborRaw.targetPct : null,
+      // Nothing files an audit row for a labour setting yet, so this is FALSE
+      // by measurement, not by omission: `TeamService.updateSettings` has no
+      // `record()` call (page note §13.5).
+      false,
+    ),
+    settingsUpdatedAt: settingsRaw?.updated_at ?? null,
+    settingsConfigured: settingsRaw?.configured === true,
+    shifts: weekQ.data === undefined ? null : shifts,
+    timeOff: timeOffQ.data === undefined ? null : timeOffQ.data,
+    timeOffFailed: timeOffQ.isError,
+    labor,
+    // A restaurant with no settings row is `wage_visible: true`
+    // (`team.service.ts` getSettings) — the gateway's answer, not a guess here.
+    wageVisible: weekQ.data?.settings?.wage_visible !== false,
+    receiptsSeen: weekQ.data === undefined ? null : weekQ.data.receipts.length,
+    published: weekQ.data?.schedule?.status === 'published',
     gaps,
     gapsKnown: weekQ.data !== undefined && membersQ.data !== undefined,
     membersFailed: membersQ.isError,
@@ -345,6 +605,8 @@ export function useTeamNextData(now = new Date()): TeamNextData {
       void membersQ.refetch();
       void certsQ.refetch();
       void rulesQ.refetch();
+      void timeOffQ.refetch();
+      void trailQ.refetch();
     },
   };
 }
