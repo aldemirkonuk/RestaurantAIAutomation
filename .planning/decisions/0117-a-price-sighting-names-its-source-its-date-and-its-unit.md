@@ -1,6 +1,34 @@
 # 0117 — A price sighting names its source, its date and its unit
 
-- **Status:** Proposed
+- **Status:** Proposed — **step 1 of "The order of filling" is BUILT, 2026-09-04.**
+  The founder's call the same day: the register's first fill is the house's own
+  paper. Both `price_history` writers now mirror into `vendor_price_observations`
+  as tenant-scoped class-A rows —
+  `apps/api-gateway/src/procurement/own-paper-sighting.ts` (the judgement and
+  every refusal, pure) and `procurement.service.ts` `recordOwnPaperSighting`
+  (the write), reached from `recordPriceHistory` so both call sites are covered:
+  a verified receipt writes `invoice`/tier 1 in the INVOICE's own unit and pack
+  (`bottles.units.invoice`, resolved by `toBottleOperands`), a confirmed order
+  writes `quote`/tier 2. Idempotent on the table's existing UNIQUE
+  `(source_ref, content_hash)` index, so **no migration was added**. 14 tests in
+  `own-paper-sighting.spec.ts`, including the real `priceBelowAverage` run over
+  the rows the real writer produces. Steps 2 and 3 (class B/C, class D/E) are
+  untouched and still need the migration this ADR calls a precondition.
+
+  **One deliberate divergence, on the founder's instruction of 2026-09-04:**
+  `is_outlier` is written **at write time**, not by a batch pass over the group
+  as §"The `is_outlier` writer" above specifies. The test itself is unchanged —
+  `flagOutliers` (`analytics/engine/vendor-price-consensus.ts:188`), already an
+  exported pure function, run over this product's existing sightings plus the
+  candidate — and it is still never a bound: no value is clamped or rejected,
+  and a flagged row is still written and still visible. The write-time form has
+  one property the batch form does not: a sighting is judged only against the
+  rows that existed **before** it, so it can never retroactively re-flag its
+  own neighbours. It also has one the batch form does not lose: a `MIN_OUTLIER_
+  SAMPLE` of 5, because `flagOutliers`' MAD-is-zero branch flags BOTH values of
+  a two-row group and `belowTrailingAverage` filters flagged rows out. Whether
+  the batch pass should replace or supplement this is the founder's call
+  (Q6 below).
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** price sightings, vendor_price_observations, price register, market price, posted wholesale list, public index, provenance, is_outlier, Iowa, Oregon, OLCC, USDA, robots.txt, rate limit, attribution
@@ -280,9 +308,24 @@ and not an implementation detail.
 5. **Pay for anything?** Wine-Searcher's trade API is the only broad wine-price source
    found; its pricing page refused this environment (403) so the cost is unmeasured. Worth
    a quote request?
+6. **A case-priced agreement has no unit to state it in.** Added 2026-09-04 while
+   building step 1. `price_history` hardcodes `unit: 'BOTTLE'` and its docblock
+   (`procurement.service.ts:925`) records that all three callers pass a per-bottle
+   figure — but nothing on `procurement_orders` states the unit of `final_price`
+   separately from the order's own `unit_type`. On an order placed in cases the
+   two readings differ by the pack size, and a case price filed as a bottle price
+   makes a whole ladder wrong. So the mirror **refuses** an `order_confirmed`
+   sighting whose order unit holds more than one bottle, and logs why. The receipt
+   path has no such gap: the invoice states its own unit. Options: add a stated
+   unit to the agreed price, treat `final_price` as per-bottle by decree, or leave
+   case-priced agreements out of the register. Not guessed at.
+7. **Should the batch outlier pass still be built** alongside the write-time one
+   (see the Status note)? A batch pass can re-judge a row after later evidence
+   arrives; the write-time writer cannot.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-04 | Claude (research) | Created. Sources fetched and measured the same day; the leading candidate attacked and demoted from class B to class D before being recorded. Registry: `.planning/07-reference/price-sources.md`. Proof: `scripts/fetch_price_sightings.py` |
+| 2026-09-04 | Claude (build) | Step 1 BUILT on `feat/mudavym-design-p4`: `own-paper-sighting.ts` + `recordOwnPaperSighting`, both `price_history` call sites mirrored, idempotent on the existing `(source_ref, content_hash)` index, `is_outlier` written by `flagOutliers` at write time (founder's instruction; the divergence from this ADR's own batch-pass wording is recorded in the Status). 14 tests pass; `GET /vendor-intel/below-average` still 200 with `scanned.observations` 0 locally, the register being empty in this environment. Two new founder questions (Q6, Q7). |

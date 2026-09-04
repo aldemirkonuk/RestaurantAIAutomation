@@ -1253,6 +1253,60 @@ sibling's implementation differs, the sibling's file is the truth.
        already says so. A flagged row stays in the ladder so a bad parse is visible
        and fixable at source. Still unbuilt; the ADR is Proposed.
 
+       **BUILT 2026-09-04, and the founder moved it to write time.** `is_outlier`
+       now has a writer: `recordOwnPaperSighting`
+       (`apps/api-gateway/src/procurement/procurement.service.ts`) calls
+       `isOutlierAgainstPriors`
+       (`apps/api-gateway/src/procurement/own-paper-sighting.ts`), which is
+       `flagOutliers` (`vendor-price-consensus.ts:188`) run over this product's
+       existing sightings plus the candidate, at the moment the sighting is
+       written rather than as a later pass over the group. That is a deliberate
+       divergence from the ADR's own wording, recorded in its Status line; it is
+       still the MAD test and still never a bound — nothing is clamped, nothing
+       is rejected for being extreme, and a flagged row is written and stays
+       visible. It carries a five-value sample floor, because `flagOutliers`'
+       MAD-is-zero branch flags BOTH values of a two-row group and
+       `belowTrailingAverage` filters flagged rows out — a house's second-ever
+       invoice would otherwise erase its first.
+
+       **Scope, stated plainly:** this covers rows the OWN-PAPER mirror writes.
+       The other two writers — the website scrape
+       (`vendor-page-extractor.service.ts:331`) and the manual observation
+       (`vendor-comparison.service.ts:260`) — still write `is_outlier` at its
+       `false` default and are still unscreened. The scrape is the writer whose
+       parses this note names as the dangerous ones, so the gap that matters
+       most is the one still open.
+
+    b3. **The register's first fill is BUILT, 2026-09-04.** The mirror b2 below
+       calls "the whole of step one" now exists. Both `price_history` writers
+       (`procurement.service.ts` receipt verification and order confirmation)
+       write a tenant-scoped row into `vendor_price_observations` beside the
+       `price_history` row: `invoice`/trust tier 1 for a verified receipt, in the
+       INVOICE's own unit and pack as `toBottleOperands` already resolved them,
+       and `quote`/trust tier 2 for a confirmed order. `restaurant_id` is never
+       null. Idempotent on the table's existing UNIQUE `(source_ref,
+       content_hash)` index, so no migration was added and RLS is unchanged.
+       Every leg of ADR 0117's five is a REFUSAL when absent, logged as a
+       sentence rather than defaulted — in particular a missing
+       `restaurant_inventory.bottle_size_ml` writes nothing rather than assuming
+       750ml. Proof: `apps/api-gateway/src/procurement/own-paper-sighting.spec.ts`
+       (14 tests, including the real `priceBelowAverage` run over the rows the
+       real writer produces).
+
+       **This does not light the market box, and was never going to.** The bar
+       is four sightings for one product inside thirty days (b2 below); own paper
+       produces one per confirmation and one per verification. Measured locally
+       2026-09-04 after the build, `GET /vendor-intel/below-average` answers 200
+       with `scanned.observations` **0** — this environment's register is empty
+       and nothing has been received or confirmed in it. The honest sentence on
+       the page stands; what changed is that receiving a delivery now moves it.
+
+       Two things stayed unbuilt and are the founder's call, filed as ADR 0117
+       Q6 and Q7: an `order_confirmed` sighting on an order priced by the CASE is
+       refused, because nothing states the unit of `final_price` separately from
+       the order's own `unit_type`; and whether a batch outlier pass should still
+       be built alongside the write-time one.
+
     b2. **What would fill the register first — decided in
        [ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md),
        2026-09-04.** The market box's honest sentence ("the register holds no

@@ -47,6 +47,12 @@ import {
   PriceHistorySource,
   resolveOrderUnits,
 } from "./order-units";
+import {
+  decideOwnPaperSighting,
+  isOutlierAgainstPriors,
+  isOwnPaperSource,
+} from "./own-paper-sighting";
+import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
 // of a row nothing can read (see ADR 0066).
@@ -907,7 +913,35 @@ export class ProcurementService {
     source: PriceHistorySource;
     quantity?: number | null;
     notes?: string | null;
+    /**
+     * The same event as a row in the PRICE REGISTER — `vendor_price_observations`
+     * — which is the table every price reader actually joins on (ADR 0117 class
+     * A, "own paper"). Carried separately from the `price` above because the two
+     * tables mean different things by a number: `price_history.unit` is
+     * hardcoded `'BOTTLE'` and its `price` is per bottle, while a sighting must
+     * carry the DOCUMENT's own figure in the DOCUMENT's own unit, with the pack
+     * size and bottle volume beside it, so that `normalizeUnitPrice` — and only
+     * it — does the conversion.
+     *
+     * Absent means no sighting, and `recordOwnPaperSighting` says so in a
+     * sentence rather than defaulting one into existence.
+     */
+    sighting?: {
+      vendorName?: string | null;
+      productName?: string | null;
+      unitPrice?: number | null;
+      unitLabel?: string | null;
+      packSize?: number | null;
+      unitVolumeMl?: number | null;
+      observedAt?: string | null;
+      currency?: string | null;
+    };
   }): Promise<void> {
+    // The register mirror runs first and on its own operands: a price_history
+    // row that cannot be written must not silently take the sighting down with
+    // it, and the sighting's refusals are different refusals.
+    await this.recordOwnPaperSighting(args);
+
     const price = Number(args.price);
     // A zero or absent price is not an observation. Writing one would put a
     // fabricated $0 into the series and drag every average through it.
@@ -962,6 +996,259 @@ export class ProcurementService {
         source: args.source,
         error: e?.message,
       });
+    }
+  }
+
+  /**
+   * Mirror the house's own paper into the price register.
+   *
+   * `vendor_price_observations` is the table the price READERS join on — the
+   * market box (`vendor-comparison.service.ts:333`), the beverage register's
+   * quote line, the market producer — and measured 2026-09-04 it held 0 rows
+   * with no writer for a class-A price anywhere in the repository. ADR 0117
+   * decided this mirror is the register's first fill: no vendor, no fetch, no
+   * terms, no rate limit, and the best provenance the platform will ever have.
+   *
+   * THREE PROPERTIES, EACH BOUGHT DELIBERATELY
+   *
+   * 1. **Tenant-scoped, always.** `restaurant_id` is never null here.
+   *    `belowTrailingAverage` reads `restaurant_id.is.null OR
+   *    restaurant_id.eq.<tenant>` (`vendor-comparison.service.ts:341`), so a
+   *    null would publish this house's invoice price into every other house's
+   *    market box — the fifth of the six counts ADR 0117's rejected candidate
+   *    lost on.
+   * 2. **Idempotent.** The table's UNIQUE `(source_ref, content_hash)` index
+   *    (`20260805154027_vendor_price_observations.sql:141`) already exists for
+   *    exactly this, so no migration is added. The pre-check below turns the
+   *    ordinary case into a silent skip; the 23505 catch covers the race the
+   *    pre-check cannot, because two verifications of one receipt landing
+   *    together must still produce one row.
+   * 3. **`is_outlier` written, by the MAD test, at write time.** The column has
+   *    been `DEFAULT false NOT NULL` with no writer anywhere, so
+   *    `belowTrailingAverage`'s `.eq("is_outlier", false)` has been excluding
+   *    nothing and certifying every row — including a catastrophic parse — as
+   *    clean (`notifications.md` §13.25(b)). The test is `flagOutliers`
+   *    (`analytics/engine/vendor-price-consensus.ts:188`), already an exported
+   *    pure function, run over this product's existing sightings plus the
+   *    candidate. NOTE the deliberate divergence: ADR 0117 specifies this
+   *    writer as a pass over the GROUP after a batch lands, not at write time.
+   *    Write time is the founder's instruction of 2026-09-04 and is recorded as
+   *    such in the ADR and in `notifications.md` §13.25(b). It is never a bound:
+   *    no value is clamped or rejected for being extreme, a flagged row is still
+   *    written and still visible, and a row flagged against a thin history is
+   *    never flagged at all (`MIN_OUTLIER_SAMPLE`).
+   *
+   * Best-effort, like the price history beside it. A delivery that has been
+   * counted is a fact; failing it because an analytics row would not write is
+   * the wrong trade.
+   */
+  private async recordOwnPaperSighting(args: {
+    restaurantId: string;
+    orderId: string;
+    providerId: string | null;
+    masterWineId: string | null;
+    source: PriceHistorySource;
+    notes?: string | null;
+    sighting?: {
+      vendorName?: string | null;
+      productName?: string | null;
+      unitPrice?: number | null;
+      unitLabel?: string | null;
+      packSize?: number | null;
+      unitVolumeMl?: number | null;
+      observedAt?: string | null;
+      currency?: string | null;
+    };
+  }): Promise<void> {
+    if (!isOwnPaperSource(args.source)) return;
+
+    const s = args.sighting;
+    if (!s) {
+      this.logger.warn(
+        `No price sighting written for ${args.source} on order ${args.orderId}: ` +
+          `the caller supplied no document figures, so there is no unit, no ` +
+          `pack and no date to put on the row. ADR 0117 refuses a sighting ` +
+          `that cannot name all five.`,
+      );
+      return;
+    }
+
+    const provisional = decideOwnPaperSighting({
+      restaurantId: args.restaurantId,
+      orderId: args.orderId,
+      providerId: args.providerId,
+      vendorName: s.vendorName ?? null,
+      masterWineId: args.masterWineId,
+      productName: s.productName ?? null,
+      source: args.source,
+      unitPrice: s.unitPrice,
+      unitLabel: s.unitLabel,
+      packSize: s.packSize,
+      unitVolumeMl: s.unitVolumeMl,
+      observedAt: s.observedAt,
+      currency: s.currency ?? null,
+      notes: args.notes ?? null,
+    });
+
+    // The refusal is a logged SENTENCE, not a silent return. A register that
+    // stays empty because every write quietly declined itself is the
+    // absence-reported-as-health fault this whole build exists to end.
+    if (!provisional.write) {
+      this.logger.warn(provisional.reason);
+      return;
+    }
+
+    try {
+      const { data: existing } = await this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select("id")
+        .eq("source_ref", provisional.sourceRef)
+        .eq("content_hash", provisional.contentHash)
+        .maybeSingle();
+      if (existing) {
+        this.logger.log(
+          `Price sighting already on the register for ${provisional.sourceRef}; ` +
+            `the figures are unchanged, so this is not new evidence.`,
+        );
+        return;
+      }
+
+      const isOutlier = isOutlierAgainstPriors(
+        await this.priorSightingUnitPrices(
+          args.restaurantId,
+          args.masterWineId,
+        ),
+        provisional.normalizedUnitPrice,
+      );
+
+      const decision = decideOwnPaperSighting(
+        {
+          restaurantId: args.restaurantId,
+          orderId: args.orderId,
+          providerId: args.providerId,
+          vendorName: s.vendorName ?? null,
+          masterWineId: args.masterWineId,
+          productName: s.productName ?? null,
+          source: args.source,
+          unitPrice: s.unitPrice,
+          unitLabel: s.unitLabel,
+          packSize: s.packSize,
+          unitVolumeMl: s.unitVolumeMl,
+          observedAt: s.observedAt,
+          currency: s.currency ?? null,
+          notes: args.notes ?? null,
+        },
+        { isOutlier },
+      );
+      if (!decision.write) {
+        this.logger.warn(decision.reason);
+        return;
+      }
+
+      const row = decision.row;
+      const { error } = await this.databaseService.supabase
+        .from("vendor_price_observations")
+        // Explicit keys, one per column, so `check_order_capture_contract.py`
+        // and any future guard can read what this write actually claims
+        // without executing it.
+        .insert({
+          restaurant_id: row.restaurant_id,
+          provider_id: row.provider_id,
+          vendor_name_raw: row.vendor_name_raw,
+          master_wine_id: row.master_wine_id,
+          product_name_raw: row.product_name_raw,
+          source_type: row.source_type,
+          trust_tier: row.trust_tier,
+          source_ref: row.source_ref,
+          observed_at: row.observed_at,
+          effective_date: row.effective_date,
+          raw_price: row.raw_price,
+          currency: row.currency,
+          pack_size: row.pack_size,
+          unit_volume_ml: row.unit_volume_ml,
+          normalized_unit_price: row.normalized_unit_price,
+          normalization_note: row.normalization_note,
+          content_hash: row.content_hash,
+          is_outlier: row.is_outlier,
+          raw: row.raw,
+        });
+
+      if (error) {
+        // 23505 is the dedup index doing its job against a concurrent twin.
+        // Not a failure: the row it collided with is the row we wanted.
+        if ((error as any).code === "23505") {
+          this.logger.log(
+            `Price sighting for ${row.source_ref} was already written concurrently.`,
+          );
+          return;
+        }
+        throw new Error(error.message);
+      }
+
+      this.logger.log("Price sighting written to the register", {
+        orderId: args.orderId,
+        sourceRef: row.source_ref,
+        sourceType: row.source_type,
+        trustTier: row.trust_tier,
+        packSize: row.pack_size,
+        unitVolumeMl: row.unit_volume_ml,
+        isOutlier: row.is_outlier,
+      });
+    } catch (e: any) {
+      this.logger.warn("Could not record the price sighting", {
+        orderId: args.orderId,
+        source: args.source,
+        error: e?.message,
+      });
+    }
+  }
+
+  /**
+   * The per-750ml prices already on the register for this product and house.
+   *
+   * The scope matches `belowTrailingAverage` exactly (`restaurant_id IS NULL OR
+   * = this tenant`, `vendor-comparison.service.ts:341`) so the MAD test is run
+   * over the same population the ladder will later read. `master_wine_id` is
+   * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`);
+   * with no identity there is no group, so there is nothing to be an outlier
+   * against and the answer is an empty list.
+   */
+  private async priorSightingUnitPrices(
+    restaurantId: string,
+    masterWineId: string | null,
+  ): Promise<number[]> {
+    if (!masterWineId) return [];
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select("raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor")
+        .eq("master_wine_id", masterWineId)
+        .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
+        .order("observed_at", { ascending: false })
+        .limit(200);
+      if (error) throw new Error(error.message);
+
+      const out: number[] = [];
+      for (const r of (data ?? []) as any[]) {
+        const { unitPrice } = normalizeUnitPrice({
+          price: Number(r.raw_price),
+          sourceType: r.source_type,
+          observedAt: r.observed_at,
+          packSize: Number(r.pack_size) || 1,
+          unitVolumeMl: r.unit_volume_ml ?? undefined,
+          yieldFactor: Number(r.yield_factor) || 1,
+        });
+        if (unitPrice !== null && Number.isFinite(unitPrice))
+          out.push(unitPrice);
+      }
+      return out;
+    } catch (e: any) {
+      // A register we could not read is not a register with nothing in it. Say
+      // so, and decline to flag rather than flagging against an empty list.
+      this.logger.warn(
+        `Could not read the price register to screen for outliers: ${e?.message}`,
+      );
+      return [];
     }
   }
 
@@ -1027,23 +1314,51 @@ export class ProcurementService {
     return { unitType, bottlesPerUnit: null };
   }
 
+  /**
+   * The shelf slot this order is for: its wine identity, its bottle volume and
+   * its name.
+   *
+   * `bottleSizeMl` is nullable and stays nullable all the way to the register,
+   * where its absence is a REFUSAL rather than a 750 — the defect
+   * `20260903171000_the_house_item_is_the_ledgers_key.sql:61` names, and the
+   * "what unit is it in" leg of ADR 0117's five.
+   */
+  private async resolveOrderShelfItem(
+    restaurantId: string,
+    inventoryId: string | null | undefined,
+  ): Promise<{
+    masterWineId: string | null;
+    bottleSizeMl: number | null;
+    wineName: string | null;
+  }> {
+    const empty = { masterWineId: null, bottleSizeMl: null, wineName: null };
+    if (!inventoryId) return empty;
+    try {
+      const { data } = await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("master_wine_id, bottle_size_ml, wine_name")
+        .eq("id", inventoryId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      const row = data as any;
+      const ml = Number(row?.bottle_size_ml);
+      return {
+        masterWineId: asUuid(row?.master_wine_id),
+        bottleSizeMl: Number.isFinite(ml) && ml > 0 ? ml : null,
+        wineName: row?.wine_name ?? null,
+      };
+    } catch {
+      return empty;
+    }
+  }
+
   /** The wine this order is for, as the price series needs to key it. */
   private async resolveOrderMasterWineId(
     restaurantId: string,
     inventoryId: string | null | undefined,
   ): Promise<string | null> {
-    if (!inventoryId) return null;
-    try {
-      const { data } = await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .select("master_wine_id")
-        .eq("id", inventoryId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
-      return asUuid((data as any)?.master_wine_id);
-    } catch {
-      return null;
-    }
+    return (await this.resolveOrderShelfItem(restaurantId, inventoryId))
+      .masterWineId;
   }
 
   async listOrders(
@@ -2899,14 +3214,15 @@ export class ProcurementService {
     // nobody has seen a document, and recording the PO price as an observation
     // of what was charged would manufacture a confirmation that never happened.
     if (match && hasInvoice) {
+      const shelfItem = await this.resolveOrderShelfItem(
+        restaurantId,
+        (orderRow as any).inventory_id,
+      );
       await this.recordPriceHistory({
         restaurantId,
         orderId,
         providerId: (orderRow as any).provider_id ?? null,
-        masterWineId: await this.resolveOrderMasterWineId(
-          restaurantId,
-          (orderRow as any).inventory_id,
-        ),
+        masterWineId: shelfItem.masterWineId,
         price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
         source: "receipt_verified",
         // BOTTLES, which is what the `unit: 'BOTTLE'` this table hardcodes has
@@ -2917,6 +3233,28 @@ export class ProcurementService {
         // hardcoded label is true rather than merely constant.
         quantity: bottles?.invoiceQty ?? null,
         notes: `Verified against the invoice: ${match.verdict}.`,
+        // The register row, in the INVOICE's own unit — the whole point of ADR
+        // 0117's class A. `bottles.units.invoice` is the unit `toBottleOperands`
+        // already resolved and already refused if it could not read
+        // (`invoice-match.ts:438`), so the pack size here is the one the verdict
+        // itself was computed from rather than a second reading of the same
+        // document. `body.invoiceUnitPrice` is the number PRINTED on the paper;
+        // `effectiveUnitCost` above is that number landed and per-bottle, and
+        // putting a converted figure on a sighting is exactly what the register
+        // must not hold — `normalizeUnitPrice` converts, once, at read time.
+        sighting: {
+          vendorName: null,
+          productName: shelfItem.wineName,
+          unitPrice: body.invoiceUnitPrice ?? null,
+          unitLabel: bottles?.units.invoice.uom ?? null,
+          packSize: bottles?.units.invoice.bottlesPerUnit ?? null,
+          unitVolumeMl: shelfItem.bottleSizeMl,
+          // The receipt's own moment. `procurement_documents` carries no
+          // issued-date column this path can read, so the date recorded is the
+          // one this event actually has: when a person checked the paper. It is
+          // an event date, never `now()` stamped onto an undated number.
+          observedAt: update.match_verified_at ?? new Date().toISOString(),
+        },
       });
     }
 
@@ -4390,22 +4728,59 @@ export class ProcurementService {
     // first of the two writers `price_history` has ever had; before this the
     // table was correctly designed, correctly indexed and permanently empty, so
     // no price series could exist for any wine from any vendor.
+    const shelfItem = await this.resolveOrderShelfItem(
+      restaurantId,
+      (order as any).inventory_id,
+    );
+    const agreedPrice =
+      finalPrice ??
+      (order as any).final_price ??
+      (order as any).negotiated_price ??
+      (order as any).quoted_price;
+
+    // The unit the agreed price is stated in. `price_history` hardcodes
+    // `unit: 'BOTTLE'` and its docblock (:925) records that all three of its
+    // callers pass a per-bottle figure — an assertion this mirror INHERITS
+    // rather than re-derives, because nothing on `procurement_orders` states
+    // the unit of `final_price` separately from the order's own unit.
+    //
+    // So the register only accepts this price when the order's unit holds
+    // exactly one bottle. On an order placed in cases the two readings diverge
+    // by the pack size, and a case price filed as a bottle price — or the
+    // reverse — is the single error that makes a whole ladder wrong. Refusing
+    // is the ADR 0117 answer; the founder's call on how to state a case-priced
+    // agreement is a question, not a default.
+    const confirmUnits = await this.resolveOrderMatchUnits(
+      restaurantId,
+      orderId,
+      order as any,
+    );
+    const bottlesPerConfirmedUnit =
+      confirmUnits.bottlesPerUnit ??
+      (confirmUnits.unitType == null || confirmUnits.unitType === "bottle"
+        ? 1
+        : null);
+
     await this.recordPriceHistory({
       restaurantId,
       orderId,
       providerId: (order as any).provider_id ?? null,
-      masterWineId: await this.resolveOrderMasterWineId(
-        restaurantId,
-        (order as any).inventory_id,
-      ),
-      price:
-        finalPrice ??
-        (order as any).final_price ??
-        (order as any).negotiated_price ??
-        (order as any).quoted_price,
+      masterWineId: shelfItem.masterWineId,
+      price: agreedPrice,
       source: "order_confirmed",
       quantity: (order as any).bottles_total ?? quantity ?? 1,
       notes: `Agreed on order confirmation${finalPrice != null ? "" : " (price unchanged from the order)"}.`,
+      sighting: {
+        vendorName: (order as any)?.providers?.name ?? null,
+        productName: shelfItem.wineName ?? wineName ?? null,
+        unitPrice: agreedPrice ?? null,
+        unitLabel: confirmUnits.unitType ?? "bottle",
+        packSize: bottlesPerConfirmedUnit === 1 ? 1 : null,
+        unitVolumeMl: shelfItem.bottleSizeMl,
+        // `confirmed_at` was just written onto the order above: the moment the
+        // house committed to these terms. That is the date this quote carries.
+        observedAt: update.confirmed_at ?? new Date().toISOString(),
+      },
     });
 
     // Send the vendor a confirmation (manager-authorized, so commitment language is fine).
