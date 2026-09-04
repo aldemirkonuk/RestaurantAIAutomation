@@ -34,18 +34,25 @@ import {
  *     source; the default is the pessimistic one, since claiming `edi` for an
  *     OCR read would be the exact `learned_from_vendor` masquerade ADR 0104 D1
  *     names.
- *   * `confidence` is the DOCUMENT's `extraction_confidence`, applied to every
- *     field. `ParsedDocument` carries no per-field confidence — the parser has
- *     it and it is thrown away one layer earlier. That is a real loss and it is
- *     recorded here rather than papered over: until the extractor keeps
- *     per-field confidence, hover-to-source in slice 2 can only show a
- *     document-level number.
- *   * `as_printed` is NULL for every numeric field, because `ParsedDocument`
- *     keeps no raw strings — it is already parsed. Descriptions, document
- *     numbers, dates and units keep their strings, which ARE what was printed.
- *     A null `as_printed` means "we did not keep it", never "the paper was
+ *   * `confidence` is NULL on every field, and that is the honest answer rather
+ *     than a missing one. The extractor's number is `0.8 − 0.1 × warnings` — a
+ *     DOCUMENT-level heuristic counting how many things looked odd overall, not
+ *     a probability about any one field. ADR 0104 D1 makes the envelope's
+ *     `confidence` null when the source has no per-field notion of one, and
+ *     stamping the document heuristic onto forty fields would render as though
+ *     the model had graded each number individually. The heuristic still exists
+ *     where it always did (`ParsedDocument.confidence`, and
+ *     `procurement_documents.extraction_confidence`) and still decides what a
+ *     human sees first. Until the extractor returns a real per-field signal,
+ *     null is what the envelope says.
+ *   * `as_printed` carries the literal glyphs for every field the parse KEPT one
+ *     for: descriptions, document numbers, dates and units keep their strings,
+ *     and money and quantity fields now carry `ParsedLine.printed` /
+ *     `ParsedDocument.printed` when the extractor read them. Nothing here is
+ *     reformatted — `1.704,00` reaches the envelope as `1.704,00`. A null
+ *     `as_printed` still means "we did not keep it", never "the paper was
  *     blank"; the `as_printed_not_mutated` invariant reports exactly that.
- *   * `page` and `bbox` are NULL throughout for the same reason.
+ *   * `page` and `bbox` are NULL throughout: the extractor returns no geometry.
  *
  * Layer 2 is filled only from what the caller already resolved (match rows);
  * this function does not go looking. Layer 3 is computed: the invariants plus
@@ -135,8 +142,15 @@ function documentCharges(
     reason: string;
     code: string | null;
     isCharge: boolean;
+    printed?: string | null;
   }[] = [
-    { amount: doc.freight, reason: "Freight", code: "FC", isCharge: true },
+    {
+      amount: doc.freight,
+      reason: "Freight",
+      code: "FC",
+      isCharge: true,
+      printed: doc.printed?.freight ?? null,
+    },
     {
       amount: doc.fuelSurcharge,
       reason: "Fuel surcharge",
@@ -179,7 +193,13 @@ function documentCharges(
     .filter((r) => typeof r.amount === "number" && r.amount !== 0)
     .map((r) => ({
       isCharge: env(r.isCharge, source, revision, confidence),
-      amount: env(r.amount as number, source, revision, confidence),
+      amount: env(
+        r.amount as number,
+        source,
+        revision,
+        confidence,
+        r.printed ?? null,
+      ),
       reasonCode: env(r.code, source, revision, confidence),
       reason: env(r.reason, source, revision, confidence, r.reason),
     }));
@@ -195,7 +215,13 @@ function mapLine(
   if (typeof l.allowance === "number" && l.allowance !== 0) {
     lineAllowances.push({
       isCharge: env(false, source, revision, confidence),
-      amount: env(l.allowance, source, revision, confidence),
+      amount: env(
+        l.allowance,
+        source,
+        revision,
+        confidence,
+        l.printed?.allowance ?? null,
+      ),
       reasonCode: env<string>(null, source, revision, confidence),
       reason: env(
         "Line allowance",
@@ -209,7 +235,13 @@ function mapLine(
   if (typeof l.deposit === "number" && l.deposit !== 0) {
     lineAllowances.push({
       isCharge: env(true, source, revision, confidence),
-      amount: env(l.deposit, source, revision, confidence),
+      amount: env(
+        l.deposit,
+        source,
+        revision,
+        confidence,
+        l.printed?.deposit ?? null,
+      ),
       reasonCode: env<string>(null, source, revision, confidence),
       reason: env("Deposit", source, revision, confidence, "Deposit"),
     });
@@ -237,27 +269,45 @@ function mapLine(
       confidence,
       l.vendorSku ?? null,
     ),
-    quantity: env(l.qty, source, revision, confidence),
+    quantity: env(l.qty, source, revision, confidence, l.printed?.qty ?? null),
     unit: env(l.uom, source, revision, confidence, l.uom),
-    netPrice: env(l.unitPrice ?? null, source, revision, confidence),
-    // BT-149 IS 1 HERE, AND packSize IS NOT IT.
+    netPrice: env(
+      l.unitPrice ?? null,
+      source,
+      revision,
+      confidence,
+      l.printed?.unitPrice ?? null,
+    ),
+    // BT-149/BT-150 — WHAT THE PAPER PRINTED, or one invoiced unit when it
+    // printed nothing.
     //
-    // In `ParsedDocument`, `unitPrice` is per `uom` — 2 cases at 264 per case,
-    // 24 bottles at 22 per bottle — so the price base quantity is always one
-    // invoiced unit. `packSize` is bottles-per-case, a CONVERSION, and it lands
-    // in layer 2 (`packSize`, `qtyBottles`) where it belongs.
+    // `packSize` is still NOT this: it is bottles-per-case, a CONVERSION, and it
+    // lands in layer 2 where it belongs. The price base is a different fact —
+    // the quantity the price is stated FOR — and `142,00 / KS(12)` states it
+    // explicitly. It now round-trips through `ParsedLine.priceBaseQty` /
+    // `priceBaseUom`, so a line whose quantity is in cases and whose price is
+    // per twelve bottles arrives here intact instead of being normalised away.
     //
-    // The real `1 cs × 12 şişe` case — quantity stated in bottles, price stated
-    // per case — cannot survive a round trip through `ParsedDocument` at all:
-    // the extractor normalises it away before this function sees it. That is a
-    // genuine gap, not a modelling choice, and it is why the canonical type
-    // carries BT-149/BT-150 even though today's mapper can only ever write 1.
-    // Filling it needs the extractor to keep the printed price basis; until it
-    // does, a case-priced line's arithmetic is checkable only in the unit the
-    // parser chose.
-    priceBaseQuantity: env(1, source, revision, confidence),
-    priceBaseUnit: env(l.uom, source, revision, confidence),
-    netAmount: env(l.lineTotal ?? null, source, revision, confidence),
+    // The fallback of `1` in the invoiced unit is the pre-existing assumption,
+    // now stated rather than implied: with no printed basis, `unitPrice` is per
+    // one `uom`. It is a claim about OUR reading, not about the page, which is
+    // why the envelope's `as_printed` stays null on both fields unless the
+    // extractor kept the literal.
+    priceBaseQuantity: env(
+      l.priceBaseQty ?? 1,
+      source,
+      revision,
+      confidence,
+      l.printed?.priceBaseQty ?? null,
+    ),
+    priceBaseUnit: env(l.priceBaseUom ?? l.uom, source, revision, confidence),
+    netAmount: env(
+      l.lineTotal ?? null,
+      source,
+      revision,
+      confidence,
+      l.printed?.lineTotal ?? null,
+    ),
     allowancesCharges: lineAllowances,
     vatCategory: env<string>(null, source, revision, confidence),
     vatRate: env<number>(null, source, revision, confidence),
@@ -287,8 +337,10 @@ export function canonicalFromParsedDocument(
 ): CanonicalDocument {
   const source: Source = opts.source ?? "extracted";
   const revision = opts.revision ?? 1;
-  const confidence =
-    typeof parsed.confidence === "number" ? parsed.confidence : null;
+  // ADR 0104 D1: NULL, not the document heuristic. `parsed.confidence` is
+  // `0.8 − 0.1 × warnings` about the whole document; copying it per field would
+  // present a count of warnings as a per-number probability.
+  const confidence: number | null = null;
 
   const layer1: Extracted = {
     documentNumber: env(
@@ -360,7 +412,11 @@ export function canonicalFromParsedDocument(
         parsed.subtotal ?? parsed.computedLinesTotal ?? null,
         parsed.subtotal != null ? source : "computed",
         revision,
-        parsed.subtotal != null ? confidence : null,
+        confidence,
+        // Only the SUBTOTAL was printed. `computedLinesTotal` is ours, so it
+        // gets no `as_printed` — a computed number must never borrow the paper's
+        // authority.
+        parsed.subtotal != null ? (parsed.printed?.subtotal ?? null) : null,
       ),
       allowancesTotal: env(
         parsed.discountTotal ?? null,
@@ -370,16 +426,29 @@ export function canonicalFromParsedDocument(
       ),
       chargesTotal: env<number>(null, source, revision, confidence),
       taxExclusiveAmount: env<number>(null, source, revision, confidence),
-      taxAmount: env(parsed.tax ?? null, source, revision, confidence),
+      taxAmount: env(
+        parsed.tax ?? null,
+        source,
+        revision,
+        confidence,
+        parsed.printed?.tax ?? null,
+      ),
       taxInclusiveAmount: env(
         parsed.total ?? null,
         source,
         revision,
         confidence,
+        parsed.printed?.total ?? null,
       ),
       paidAmount: env<number>(null, source, revision, confidence),
       roundingAmount: env<number>(null, source, revision, confidence),
-      amountDue: env(parsed.total ?? null, source, revision, confidence),
+      amountDue: env(
+        parsed.total ?? null,
+        source,
+        revision,
+        confidence,
+        parsed.printed?.total ?? null,
+      ),
     },
     // A parse produces no VAT breakdown: `ParsedDocument` has one `tax` scalar.
     // An EMPTY breakdown is the honest answer and makes BR-CO-14 / BR-S-08

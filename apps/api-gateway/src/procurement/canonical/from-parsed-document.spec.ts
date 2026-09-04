@@ -1,6 +1,10 @@
 import { ConfigService } from "@nestjs/config";
 import { DocumentExtractorService } from "../documents/document-extractor.service";
-import { runInvariants, summarise } from "./canonical-invariants";
+import {
+  asPrintedNotMutated,
+  runInvariants,
+  summarise,
+} from "./canonical-invariants";
 import { canonicalFromParsedDocument } from "./from-parsed-document";
 
 /**
@@ -77,10 +81,17 @@ describe("canonicalFromParsedDocument", () => {
     }
   });
 
-  it("carries the document's extraction confidence onto the fields", () => {
-    expect(canonical.layer1.lines[0].quantity.confidence).toBe(
-      parsed.confidence,
-    );
+  it("leaves per-field confidence NULL rather than restating a document heuristic", () => {
+    // ADR 0104 D1: `confidence` is null when the source has no per-field notion
+    // of one. The extractor's number is `0.8 − 0.1 × warnings` — a
+    // DOCUMENT-level heuristic about how many things looked odd overall. Copying
+    // it onto every field would render as though the model had graded each
+    // number individually, which is the fabrication D1 exists to prevent.
+    expect(canonical.layer1.lines[0].quantity.confidence).toBeNull();
+    expect(canonical.layer1.documentNumber.confidence).toBeNull();
+    expect(canonical.layer1.totals.amountDue.confidence).toBeNull();
+    // The document-level heuristic still exists, where it always did.
+    expect(parsed.confidence).toBeGreaterThan(0);
   });
 
   it("preserves as_printed for the values the parser kept as text", () => {
@@ -199,5 +210,91 @@ describe("canonicalFromParsedDocument", () => {
     });
     expect(edi.layer1.documentNumber.source).toBe("edi");
     expect(canonical.layer1.documentNumber.source).toBe("extracted");
+  });
+});
+
+/**
+ * Gaps 2 and 3 of the slice-1 tech-debt list, at the mapper.
+ */
+
+const RAW_TR_CASE_PRICED = {
+  docType: "invoice",
+  docNumber: "SYN2026000000456",
+  docDate: "2026-08-30",
+  currency: "TRY",
+  total: 142,
+  printed: { total: "142,00" },
+  lines: [
+    {
+      description: "SYNTHETIC Öküzgözü 2022",
+      qty: 1,
+      // The prompt asks for the seven canonical unit literals, not the vendor's
+      // own words — `KS` and `şişe` survive in `printed`, where they belong.
+      uom: "case",
+      packSize: 12,
+      unitPrice: 142,
+      lineTotal: 142,
+      priceBaseQty: 12,
+      priceBaseUom: "bottle",
+      printed: {
+        qty: "1 KS",
+        unitPrice: "142,00 / KS(12)",
+        lineTotal: "142,00",
+      },
+    },
+  ],
+};
+
+describe("canonicalFromParsedDocument — BT-149/BT-150 from a real extraction", () => {
+  const trParsed = svc.normalize(JSON.stringify(RAW_TR_CASE_PRICED), "test");
+  const tr = canonicalFromParsedDocument(trParsed, {
+    documentId: "doc-tr",
+    restaurantId: "rest-1",
+  });
+
+  it("populates BT-149 and BT-150 from what the document printed", () => {
+    expect(tr.layer1.lines[0].priceBaseQuantity.value).toBe(12);
+    expect(tr.layer1.lines[0].priceBaseUnit.value).toBe("bottle");
+  });
+
+  it("still writes a base of 1 in the invoiced unit when none was printed", () => {
+    // The pre-existing behaviour, now stated rather than assumed: `unitPrice` is
+    // per invoiced unit unless the paper said otherwise.
+    expect(canonical.layer1.lines[1].priceBaseQuantity.value).toBe(1);
+    expect(canonical.layer1.lines[1].priceBaseUnit.value).toBe("case");
+  });
+
+  it("makes the line arithmetic hold across the case/bottle boundary", () => {
+    const lineResults = runInvariants(tr).filter(
+      (r) => r.id === "line_net_amount",
+    );
+    expect(lineResults.map((r) => r.holds)).toEqual([true]);
+    expect(lineResults[0].expected).toBe(142);
+  });
+});
+
+describe("canonicalFromParsedDocument — as_printed on numbers", () => {
+  const trParsed = svc.normalize(JSON.stringify(RAW_TR_CASE_PRICED), "test");
+  const tr = canonicalFromParsedDocument(trParsed, {
+    documentId: "doc-tr",
+    restaurantId: "rest-1",
+  });
+
+  it("threads the printed money and quantity literals into the envelopes", () => {
+    expect(tr.layer1.lines[0].netPrice.as_printed).toBe("142,00 / KS(12)");
+    expect(tr.layer1.lines[0].netAmount.as_printed).toBe("142,00");
+    expect(tr.layer1.lines[0].quantity.as_printed).toBe("1 KS");
+    expect(tr.layer1.totals.taxInclusiveAmount.as_printed).toBe("142,00");
+  });
+
+  it("never reformats them — the Turkish grouping survives untouched", () => {
+    expect(tr.layer1.lines[0].netAmount.as_printed).not.toContain(".0");
+    expect(tr.layer1.lines[0].netAmount.value).toBe(142);
+    expect(asPrintedNotMutated(tr)[0].holds).toBe(true);
+  });
+
+  it("keeps as_printed NULL when the parse kept no literal, never an empty string", () => {
+    // Null means "we did not keep it"; "" would read as "the paper was blank".
+    expect(canonical.layer1.lines[0].netAmount.as_printed).toBeNull();
   });
 });

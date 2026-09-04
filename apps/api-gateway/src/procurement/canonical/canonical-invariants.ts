@@ -1,4 +1,10 @@
 import {
+  comparableUnits,
+  normalizeUom,
+  toBottles,
+  Uom,
+} from "../documents/document-types";
+import {
   moneyEquals,
   tieOutToleranceCents,
 } from "../documents/parsed-document";
@@ -96,7 +102,72 @@ const money = (n: number) => Math.round(n * 100) / 100;
 //    missing base quantity and you are wrong by a factor of twelve on every
 //    case-priced line, which is the single most expensive silent error in
 //    beverage receiving.
+//
+//    AND BT-130 IS NOT ALWAYS BT-150. A Turkish invoice states `1 KS` against
+//    `142,00 / KS(12)`: the quantity is in cases, the price base is in bottles.
+//    Dividing 1 by 12 there gives 11,83 — a confident wrong number, and the
+//    failing direction is worse than the missing one, because it sends a
+//    bookkeeper to argue a line that is correct. So the quantity is first
+//    expressed in the price base's OWN unit, and the only conversion available
+//    for that is layer 2's `packSize`. When it is absent the invariant reports
+//    UNTESTABLE, never a verdict.
 // ---------------------------------------------------------------------------
+
+/**
+ * The invoiced quantity restated in the price base's unit.
+ *
+ * Returns `problem` instead of a number whenever the restatement cannot be
+ * made honestly — an unreadable unit, a keg against a bottle price, or a
+ * case/bottle pair with no pack size to convert through.
+ */
+function quantityInPriceBaseUnit(
+  doc: CanonicalDocument,
+  line: ExtractedLine,
+  index: number,
+  qty: number,
+): { qty: number | null; problem: string | null } {
+  const rawUnit = (str(line.unit) ?? "").trim();
+  const rawBase = (str(line.priceBaseUnit) ?? "").trim();
+  // No stated base unit, or the same one: the base is already in the invoiced
+  // unit and there is nothing to convert.
+  if (!rawBase || rawUnit.toLowerCase() === rawBase.toLowerCase())
+    return { qty, problem: null };
+
+  const unit = normalizeUom(rawUnit);
+  const baseUnit = normalizeUom(rawBase);
+  if (!unit || !baseUnit)
+    return {
+      qty: null,
+      problem: `the line is invoiced in "${rawUnit || "(none)"}" and priced per "${rawBase}", and at least one of those units is not one we recognise`,
+    };
+  if (!comparableUnits(unit, baseUnit))
+    return {
+      qty: null,
+      problem: `a price per ${baseUnit} cannot be reconciled with a quantity in ${unit}`,
+    };
+
+  const packSize =
+    doc.layer2.lines.find((rl) => rl.lineIndex === index)?.packSize ?? null;
+  const packed = (u: Uom) => u === "case" || u === "pack" || u === "split_case";
+  if (
+    (packed(unit) || packed(baseUnit)) &&
+    (packSize === null || packSize <= 1)
+  )
+    return {
+      qty: null,
+      problem: `the pack size is not resolved, so a price per ${baseUnit} cannot be reconciled with a quantity in ${unit}`,
+    };
+
+  const pack = packSize ?? 1;
+  const perBaseUnit = toBottles(1, baseUnit, pack);
+  if (!perBaseUnit)
+    return {
+      qty: null,
+      problem: `one ${baseUnit} resolves to zero of the invoiced unit`,
+    };
+  return { qty: toBottles(qty, unit, pack) / perBaseUnit, problem: null };
+}
+
 export function lineNetAmount(doc: CanonicalDocument): InvariantResult[] {
   const tolerance = tieOutToleranceCents(doc.layer1.lines.length || 1);
   return doc.layer1.lines.map((line, i) => {
@@ -129,10 +200,24 @@ export function lineNetAmount(doc: CanonicalDocument): InvariantResult[] {
       );
     }
 
+    const restated = quantityInPriceBaseUnit(doc, line, i, qty);
+    if (restated.qty === null)
+      return result(
+        "line_net_amount",
+        "PEPPOL-EN16931-R120",
+        path,
+        null,
+        "a quantity and a price base stated in reconcilable units",
+        { unit: line.unit.value, priceBaseUnit: line.priceBaseUnit.value },
+        `Not testable: on line ${i + 1}, ${restated.problem}.`,
+      );
+
     const { allowances, charges } = sumAllowancesCharges(
       line.allowancesCharges,
     );
-    const expected = money((qty * price) / base + charges - allowances);
+    const expected = money(
+      (restated.qty * price) / base + charges - allowances,
+    );
     const holds = moneyEquals(expected, stated, tolerance);
     return result(
       "line_net_amount",
@@ -143,7 +228,7 @@ export function lineNetAmount(doc: CanonicalDocument): InvariantResult[] {
       stated,
       holds
         ? `Line ${i + 1} nets to ${expected.toFixed(2)} as stated.`
-        : `Line ${i + 1}: ${qty} × ${price} ÷ ${base} with charges ${charges.toFixed(2)} and allowances ${allowances.toFixed(2)} comes to ${expected.toFixed(2)}, but the line states ${stated.toFixed(2)}.`,
+        : `Line ${i + 1}: ${restated.qty} × ${price} ÷ ${base} with charges ${charges.toFixed(2)} and allowances ${allowances.toFixed(2)} comes to ${expected.toFixed(2)}, but the line states ${stated.toFixed(2)}.`,
     );
   });
 }

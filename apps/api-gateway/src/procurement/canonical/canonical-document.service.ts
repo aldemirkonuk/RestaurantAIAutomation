@@ -363,6 +363,11 @@ export class CanonicalDocumentService {
       qtyBottles: n(l.qty_bottles) ?? 0,
       freeGoodsQty: n(l.free_goods_qty) ?? 0,
       unitPrice: n(l.unit_price),
+      // `procurement_document_lines` has no BT-149/BT-150 columns yet, so a
+      // document read back from the database genuinely does not carry a printed
+      // price basis — null is the true answer, not a placeholder.
+      priceBaseQty: null,
+      priceBaseUom: null,
       lineTotal: n(l.line_total),
       allowance: n(l.allowance),
       deposit: n(l.deposit),
