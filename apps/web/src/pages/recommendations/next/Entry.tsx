@@ -58,10 +58,12 @@ import {
   type GoalPeriod,
   type GoalPlan,
 } from './rec-forward';
+import { ACT_LABEL, actOf } from './rec-docket';
 import type {
   DismissChoice,
   EntryVM,
   ExclusionsVM,
+  GoalRow,
   GoalWrite,
   GoalsVM,
   Leaf,
@@ -121,6 +123,7 @@ export interface EntryProps {
     direction: 'at_least' | 'at_most';
     period: string;
     deadline: string;
+    sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
   onSeeInReports: (href: string) => void;
 }
@@ -194,11 +197,17 @@ function scopesFor(e: EntryVM): SuppressionScope[] {
 function GoalSheet({
   plan,
   goals,
+  ruleKey,
+  watching,
   onCancel,
   onWrite,
 }: {
   plan: GoalPlan;
   goals: GoalsVM;
+  /** The rule this goal will record as its source. */
+  ruleKey: string;
+  /** Live goals that already name THIS rule as their source. */
+  watching: GoalRow[];
   onCancel: () => void;
   onWrite: (input: {
     name: string;
@@ -207,6 +216,7 @@ function GoalSheet({
     direction: 'at_least' | 'at_most';
     period: string;
     deadline: string;
+    sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
 }) {
   const [name, setName] = useState(plan.name);
@@ -220,13 +230,19 @@ function GoalSheet({
   const usable = typed.trim() !== '' && Number.isFinite(value) && value > 0;
 
   /**
-   * "You already track this figure" — the strongest true statement available.
-   * `analytics_goals` records no provenance, so the page can never say "this
-   * recommendation is already a goal"; it can say the house has a live target
-   * on the same metric, which is what stops a duplicate.
+   * Two different warnings, because they are two different facts.
+   *
+   * `watching` is a goal that names THIS RULE as its source — the exact
+   * duplicate, and now sayable: until migration `20260903161000`
+   * `analytics_goals` recorded no provenance at all, so the strongest true
+   * statement was the weaker one below.
+   *
+   * `sameMetric` is a live target on the same FIGURE from anywhere — a hand-set
+   * goal, or another rule that lands on the same metric. It is still worth
+   * saying, and it is still only a match on the figure.
    */
   const sameMetric = Array.isArray(goals)
-    ? goals.filter((g) => g.metricKey === plan.metricKey)
+    ? goals.filter((g) => g.metricKey === plan.metricKey && g.sourceRuleKey !== ruleKey)
     : [];
 
   return (
@@ -313,17 +329,28 @@ function GoalSheet({
             Your goals could not be read, so this may duplicate one you already have.
             The write below still works.
           </p>
-        ) : sameMetric.length === 0 ? (
-          <p className="rc-why">
-            No live goal is held on {plan.metricLabel} today.
-          </p>
         ) : (
-          <p className="rc-why" data-testid="rc-goal-duplicate">
-            You already hold {sameMetric.length === 1 ? 'a goal' : `${sameMetric.length} goals`} on{' '}
-            {plan.metricLabel}: {sameMetric.map((g) => `“${g.name}”`).join(', ')}. Nothing
-            records which recommendation a goal came from, so this is a match on the
-            figure, not on this entry.
-          </p>
+          <>
+            {watching.length > 0 && (
+              <p className="rc-why" data-testid="rc-goal-watching">
+                This entry is already being watched:{' '}
+                {watching.map((g) => `“${g.name}”`).join(', ')}
+                {watching[0].deadline ? `, due ${fmtDay(watching[0].deadline)}` : ''}. A second
+                goal from the same rule would hold your house to the same thing twice.
+              </p>
+            )}
+            {sameMetric.length > 0 ? (
+              <p className="rc-why" data-testid="rc-goal-duplicate">
+                You also hold {sameMetric.length === 1 ? 'a goal' : `${sameMetric.length} goals`}{' '}
+                on {plan.metricLabel}: {sameMetric.map((g) => `“${g.name}”`).join(', ')}. That is
+                a match on the figure, not on this entry.
+              </p>
+            ) : (
+              watching.length === 0 && (
+                <p className="rc-why">No live goal is held on {plan.metricLabel} today.</p>
+              )
+            )}
+          </>
         )}
       </div>
 
@@ -348,6 +375,11 @@ function GoalSheet({
               direction: plan.direction,
               period,
               deadline,
+              // The provenance the goal keeps. It is the entry's own rule key,
+              // never a suppression key — the gateway refuses anything that is
+              // not a rule it evaluates, which is what makes the watched state
+              // below trustworthy rather than a hopeful string match.
+              sourceRuleKey: ruleKey,
             });
             setBusy(false);
             if (!res.ok) setRefusal(res.message);
@@ -375,6 +407,24 @@ export default function Entry(props: EntryProps) {
   const forward = { ruleKey: e.ruleKey, category: e.category, urgency: e.urgency, subject: e.subject };
   const goalOffer = useMemo(() => goalOfferFor(forward), [e.ruleKey, e.urgency, e.subject]); // eslint-disable-line react-hooks/exhaustive-deps
   const cutting = useMemo(() => cuttingFor(forward), [e.ruleKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Where the docket files this entry, and the sentence it was read from. */
+  const filing = useMemo(() => actOf(e.ruleKey), [e.ruleKey]);
+
+  /**
+   * Live goals that name THIS rule as their source — the watched state.
+   *
+   * A goal with `source_rule_key = null` was set by hand and watches nothing;
+   * matching on the metric instead would call an owner's own typed target a
+   * watch on a rule they never saw.
+   */
+  const watching = useMemo(
+    () =>
+      Array.isArray(props.goals)
+        ? props.goals.filter((g) => g.sourceRuleKey === e.ruleKey)
+        : [],
+    [props.goals, e.ruleKey],
+  );
 
   /* ── the dismissal sheet's own state ──────────────────────────────────── */
   const scopes = useMemo(() => scopesFor(e), [e]);
@@ -447,6 +497,11 @@ export default function Entry(props: EntryProps) {
           <span className="rc-micro">{urgencyLabel(e.urgency)}</span>
           <span className="rc-micro rc-micro-dim">{e.category || 'uncategorised'}</span>
           {e.acted && <span className="rc-micro">acted</span>}
+          {watching.length > 0 && (
+            <span className="rc-micro rc-micro-seal" data-testid="rc-watched-stamp">
+              watched
+            </span>
+          )}
           {e.assignedName && <span className="rc-micro rc-micro-seal">{e.assignedName}</span>}
         </div>
 
@@ -565,6 +620,26 @@ export default function Entry(props: EntryProps) {
           </div>
         )}
 
+        {/*
+          The watched state — the thing `source_rule_key` bought.
+          Before migration `20260903161000` a goal recorded nothing about where
+          it came from, so an entry that had ALREADY been turned into a goal
+          looked exactly like one that had not. That is an absence read as
+          "nothing has been done about this", which is the fault ADR 0051 names.
+        */}
+        {watching.length > 0 && (
+          <p className="rc-said rc-watched" data-testid="rc-watched">
+            This entry is being watched —{' '}
+            {watching
+              .map(
+                (g) =>
+                  `goal “${g.name}”${g.deadline ? `, due ${fmtDay(g.deadline)}` : `, with no deadline ${EM} nothing sets a date on it`}`,
+              )
+              .join('; ')}
+            . Progress is read in Reports, against your own numbers.
+          </p>
+        )}
+
         {/* the two forward doors, said in words under the controls */}
         {live && (
           <p className="rc-said rc-forward-note">
@@ -585,6 +660,8 @@ export default function Entry(props: EntryProps) {
           <GoalSheet
             plan={goalOffer.plan}
             goals={props.goals}
+            ruleKey={e.ruleKey}
+            watching={watching}
             onCancel={() => setMenu(null)}
             onWrite={async (input) => {
               const res = await props.onMakeGoal(input);
@@ -734,6 +811,16 @@ export default function Entry(props: EntryProps) {
                 {e.rationale ??
                   `No rationale was stored with this entry ${EM} the snapshot in the actions table keeps the observation and the action only.`}
               </p>
+
+              {/*
+                The docket's filing, and the sentence it was read from. The act
+                is a third axis — it agrees with neither the register nor the
+                hand on every rule — so the basis is stated rather than assumed.
+              */}
+              <div className="rc-workblock">
+                <span className="rc-micro">Why it is filed under {ACT_LABEL[filing.act]}</span>
+                <p className="rc-prose" data-testid="rc-filing-why">{filing.why}</p>
+              </div>
 
               <div className="rc-workblock">
                 <span className="rc-micro">The rule that fired</span>

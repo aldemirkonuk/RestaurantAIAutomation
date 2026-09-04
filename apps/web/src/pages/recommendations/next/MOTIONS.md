@@ -86,3 +86,46 @@ it**). Nothing here animates, deliberately:
   stays open so the mistake is fixable in place.
 - **`See it in reports` navigates without a transition of its own.** It is a
   route change, and the page it lands on owns whatever motion happens there.
+
+## The rework, 2026-09-03 — the docket, and the ribbon's one motion
+
+The page's spine changed (the register became the act) and a day strip arrived
+above it. That is a large structural change and it added exactly **one** motion.
+
+| id | token | curve · ms | fires |
+|---|---|---|---|
+| `rc-ribbon-ink` | `ink` | HOUSE `cubic-bezier(.16,1,.3,1)` · 160ms | a day cell's border, fill and text as it is hovered, focused or selected. A day **fills**; it never grows, slides or bounces. Written at the bottom of `rec-next.css` on the same rule as every other `rc-ink` micro-state |
+| `rc-docket-tuck` | `tuck` | sampled spring 380/32, ~1% overshoot · 300ms | the docket settling once when the ribbon selects or clears a day, or the register rail changes what it holds. Applied through `animate()` in `RecommendationsNext.tsx` (opacity 0.55 → 1, translateY 4px → 0), which is also where `prefers-reduced-motion` collapses it to its end state |
+
+### Why `tuck` on the docket, and why only on the whole thing
+
+The docket is re-laid-out by two controls: the ribbon and the register. Both can
+change which sections exist, not just which rows are inside them. Three ways to
+show that were considered and two rejected:
+
+- **Rows fly between sections (FLIP).** Rejected. It says "this row moved", and
+  in a day selection no row moved — the set of rows on screen is a different
+  set. A convincing animation of a false claim is worse than no animation.
+- **Each section staggers in.** Rejected. It reads as loading, and nothing is
+  loading; the entries were already in memory. It would also make a two-section
+  docket feel slower than a five-section one, which is backwards.
+- **The whole docket settles once, on `tuck`.** Chosen. One object, one motion,
+  ~300ms: the eye is told "this is a different set of rows" without any row
+  pretending to have travelled.
+
+### Deliberate non-motions on the ribbon
+
+- **A hatched day does not shimmer, pulse or fade in.** "No record at all" is a
+  statement of fact about the house's own books, and the page's oldest rule is
+  that unknowns and absences never animate — a moving skeleton and a hatch are
+  different claims and must not look alike.
+- **A bar never grows from zero.** The bars are counts of record, drawn at their
+  height on first paint. `tally` exists for figures that arrive; nothing on this
+  strip arrives, and a bar that counted up would make a count of two entries
+  look like a measurement being taken.
+- **The day panel appears at once**, like both sheets before it. It carries the
+  control that rules a day out of every average in the product — the third
+  standing instruction on this page — and the same rule applies: a panel that
+  moves while someone decides is asking them to hurry.
+- **Keyboard motion is focus only.** Arrow keys move the roving focus ring;
+  nothing scrolls, tilts or eases as the selection walks the strip.

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -497,7 +498,8 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Create a metric-linked goal",
     description:
-      "Body: { name, metricKey (wine_revenue|bottles_sold|purchase_spend|checks|avg_check|wine_attach_rate), targetValue, deadline?, period?, direction? }",
+      "Body: { name, metricKey (wine_revenue|bottles_sold|purchase_spend|checks|avg_check|wine_attach_rate), targetValue, deadline?, period?, direction?, sourceRuleKey? }. " +
+      "`sourceRuleKey` records which recommendation the goal came from; it is validated against the rule catalogue and an unknown key is a 400, never a stored string nothing resolves. Absent means a person typed it.",
   })
   async createGoal(
     @Param("restaurantId") restaurantId: string,
@@ -508,6 +510,71 @@ export class AnalyticsController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to create goal",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("goals/:restaurantId/progress")
+  @ApiOperation({
+    summary: "Progress for every goal of one status, in one call",
+    description:
+      "listGoals alone cannot drive a progress bar: `current_value` is a stored column refreshed only when one goal's progress is opened, so a bar drawn off the list reads 0% for a goal that is half done. This recomputes each one. Capped at 6 goals and it reports the cap rather than applying it silently.",
+  })
+  @ApiQuery({ name: "status", required: false })
+  async listGoalsWithProgress(
+    @Param("restaurantId") restaurantId: string,
+    @Query("status") status?: string,
+  ) {
+    try {
+      return await this.goalsService.listGoalsWithProgress(
+        restaurantId,
+        status || "active",
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to compute goal progress",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch("goals/:restaurantId/:goalId")
+  @ApiOperation({
+    summary: "Edit a goal (name, targetValue, deadline, direction, period)",
+    description:
+      "metricKey is deliberately not editable: baseline_value was measured against the old metric and every progress figure is computed against that baseline. Archive and set a new goal instead.",
+  })
+  async updateGoal(
+    @Param("restaurantId") restaurantId: string,
+    @Param("goalId") goalId: string,
+    @Body() body: any,
+  ) {
+    try {
+      return await this.goalsService.updateGoal(restaurantId, goalId, body || {});
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to update goal",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post("goals/:restaurantId/:goalId/cutting-spec")
+  @ApiOperation({
+    summary: "Ask the assistant which catalogued analysis shows this goal",
+    description:
+      "The model CONFIGURES the deterministic engine — it returns an analysis id, a drawing and a window, every one of them validated against a closed catalogue server-side (report-cuttings.ts). It never writes a figure, a sentence on a chart, or a new analysis. Without ANTHROPIC_API_KEY the route answers `available:false` with the reason and proposes nothing.",
+  })
+  async proposeGoalCuttingSpec(
+    @Param("restaurantId") restaurantId: string,
+    @Param("goalId") goalId: string,
+  ) {
+    try {
+      return await this.goalsService.proposeCuttingSpec(restaurantId, goalId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to propose a cutting",
         HttpStatus.BAD_REQUEST,
       );
     }

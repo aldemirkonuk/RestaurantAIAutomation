@@ -97,6 +97,48 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 - **The controls are themselves classified** into two labelled rows — **Carry it out** (act · make
   a goal · see it in reports) and **File it** (the working · snooze · dismiss · pin · select) —
   the control-side half of the founder's "everything in a categorized classified section".
+- **THE DOCKET — the page is filed by the act your hands perform** (rework, 2026-09-03).
+  Top level is now **Order it · Price it · Move stock · Call a vendor · Brief the floor**, plus a
+  **Not yet filed** heading for any rule whose prescription is none of the five (the
+  `goal_behind_*` family asks you to *choose* a lever, not perform one) and for any rule this
+  page does not recognise. Each section carries its **count**, a line on what doing the whole
+  section looks like, and a **money-at-stake line that is withheld in words** — the register
+  (Money · Stock · Vendors · The floor) survives as the ordering *inside* a section and as the
+  rail that cuts across all of them. One spine, one cross-cut. Mapping and the sentence each
+  filing was read from: `apps/web/src/pages/recommendations/next/rec-docket.ts`.
+- 🚧 **No section can say what it is worth.** The engine states each entry's money inside its
+  sentence, not as a field, and the figures are not the same quantity from rule to rule (spend
+  accelerating is not exposure; capital locked in idle stock is not margin foregone). Every
+  heading shows an em dash and the page says why, once, above the docket. §9 files the gateway
+  field that would fix it.
+- 🚧 **"Change a rule" is drawn dark** — the founder's own fifth heading, rendered with the
+  reason rather than left out: no rule threshold can be tuned from anywhere in the product
+  (they are constants in `recommendations.service.ts`), and the only feedback the engine takes
+  from a manager is a dismissal, which silences a finding rather than moving a threshold.
+- **THE RIBBON — the day strip, as a selector above the docket** (rework). 29 cells: 21 days
+  behind, today, and the 7 ahead a deadline can fall in. It draws **when an entry first fired**
+  (`firstSeenAt`), **what falls due** (a goal's deadline, a snoozed entry's wake date) and
+  **which days carry no record at all — hatched, never a bar of zero**. Selecting a day narrows
+  the docket to the entries that touch it (first fired on it, waking on it, or watched by a goal
+  falling due on it); selecting nothing leaves the whole book. Keyboard: ← → a day, ↑ ↓ a week,
+  Home/End the ends, Enter selects, Esc clears, roving tabindex and a visible focus ring.
+- **"No records" comes from the till, and has four states, not two.** The ribbon reads
+  `GET /analytics/pos-revenue/:rid?days=22`, whose `dailySeries` is **sparse** — only days that
+  carried a non-voided check appear (`goals.service.ts` `computeMetricWithSeries`). A day inside
+  the answered window that is absent is `none` (hatched); a window that could not be read, or a
+  house with no till at all, is `unknown` (nothing hatched, and the page says so); a day that has
+  not happened is `future`. Measured on the local tenant 2026-09-03: 12 of 22 days carried a
+  record, so ten drew hatched.
+- **The day-exclusion control lives on the strip.** Striking a day rules it out of every baseline
+  (the existing `POST /analytics/exclusions/:rid` write) and still asks for a reason first; an
+  excluded day is struck through on the strip and can be counted again from there. When the
+  exclusion store cannot be read, the control is not offered and the page says why.
+- **A goal records the recommendation it came from** (rework) — one nullable column,
+  `analytics_goals.source_rule_key` (migration `20260903161000`), validated in the gateway
+  against the rule catalogue. An entry whose rule a live goal names now says **"this entry is
+  being watched — goal X, due …"** and carries a `watched` stamp; the goal sheet warns about the
+  exact duplicate rather than only about the figure. A goal with a NULL source was set by hand
+  and watches nothing — the page never infers a watch from a shared metric.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_recommendations`)
 
@@ -110,6 +152,8 @@ this list is the note-side index (ADR 0044 §2).
 | `rc-ink` | Ink micro-state | entry left-rule warming to the seal ring on hover/focus, quiet-button borders — `ink`, 160ms; nothing moves |
 | `rc-hold-pour` | The hold fills | `HoldToApprove` on **Hold to rule off** — `pour`, linear 620ms; an early release retreats on `tuck` and says what did not happen |
 | `rc-seal-stamp` | The seal lands | the hold completing and the entry being ruled off — `stamp`, ~11% overshoot, the only wax on the page |
+| `rc-ribbon-ink` | A day fills | a ribbon cell hovered, focused or selected — `ink`, 160ms. A day fills; it never grows, slides or bounces |
+| `rc-docket-tuck` | The docket settles | the ribbon selecting or clearing a day, or the register changing what the docket holds — `tuck`, sampled spring 380/32, 300ms, once for the whole docket. Rows never fly between sections: in a day selection no row moved, the set of rows is a different set |
 
 (Second pass, 2026-09-03: the dismissal sheet adds **no** motion — it is the one
 control that stores a standing instruction, and a panel that slides while someone
@@ -119,6 +163,10 @@ decides what to silence is asking them to hurry. See MOTIONS.md §"Second pass".
 it is the page's second standing instruction, and a target is a number a house is judged
 against afterwards. The two classified control rows add none: they are a layout, and a
 label that animates into place is a label that was not there when the eye arrived.)
+
+(The rework, 2026-09-03: the whole change of spine added **one** motion, `rc-docket-tuck`.
+A hatched day does not shimmer, a bar never grows from zero, and the day panel appears at
+once like both sheets before it. See MOTIONS.md §"The rework".)
 
 Deliberate non-motions: the seal is rationed to ruling off (every other action is the
 same die pressed dry); a dismissed entry leaves at once and the undo line — not an
@@ -427,6 +475,108 @@ The recommendation is **094b as the spine, 094a above it as a ribbon rather than
 the roadmap** — the argument and its strongest counter are on the sketch index. Nothing of it is
 built: the founder decides.
 
+### The rework, 2026-09-03 — the docket, with the day strip as a ribbon
+
+**What the founder decided.** Shown three shapes (sketch 094 a/b/c), the founder chose
+**094b, the action docket, as the spine, and 094a's calendar strip above it as a selector
+ribbon rather than the axis.** His words for the need, verbatim: *"we need everything in a
+categorized classified section in order for people to understand what to do as action"*, and
+*"a calendar strip that we can select and see that is highly advanced and elegant looking"*.
+094c (the case ledger) stays the roadmap — §13.
+
+**Why 094b won.** The page already carried two classifications, and the act was neither:
+
+| axis | question it answers | where it lives |
+|---|---|---|
+| the register (`stakeOf`) | what acting on it would CHANGE | now the ordering inside a section, and the rail |
+| the hand (`handOf`) | which SURFACE the work lands on | unchanged, on every entry |
+| **the act** (`rec-docket.ts`) | **what the person DOES** | **the docket's sections** |
+
+They disagree, and the disagreement is the argument. The Wednesday shortfall changes *money*
+and is sent to `/reports`, but what a manager does with it is stand in front of the floor
+before service; `staff_spread` changes *the floor* and is sent to `/team`, and it is the same
+job. Filing by either older axis puts two identical jobs in two sections and one section's
+worth of jobs in four. Nine entries collapse to five sittings.
+
+**Retire-to-write.** This retires **the standing book's register-as-spine layout** — the page's
+sections were `Money · Stock · Vendors · The floor · Unfiled` from the first pass to the fourth.
+The register is not deleted: it is demoted to the in-section ordering and the cross-cutting
+rail, which is what sketch 094b's own note proposed ("one spine, one cross-cut — not two
+tables of contents").
+
+**The act mapping, and its basis.** Each row was read off that rule's own `recommendation`
+sentence in `recommendations.service.ts:150-372`, and the sentence fragment is carried in the
+code and shown in the entry's working under "Why it is filed under …":
+
+| rule | act | read from |
+|---|---|---|
+| `stockout_imminent` | Order it | "Place the order today — reorder point is N bottles" |
+| `spend_acceleration` | Order it | "Audit open orders against days-of-cover before the next PO run" |
+| `revenue_concentration` | Order it | "Protect the top sellers' stock first (raise their service level to 98%)" — buying deeper cover; its second half (pairing prompts) is a floor act, and the filing says so |
+| `plowhorse_repricing` | Price it | "Raise those prices 5–8% or renegotiate cost on the next PO" |
+| `pairing_promotion` | Price it | "Print that pairing on the menu insert" — a menu insert is a pricing decision, though its hand is Promotions. Judgement, stated |
+| `weekday_gap` | Price it | "test a `<weakest day>`-only offer (corkage-free, flight special)"; its scheduling half is a calendar act the docket has no heading for |
+| `dead_stock_capital` | Move stock | "Build a weekend flight or staff-pick feature from the top three idle wines" |
+| `puzzle_activation` | Move stock | "Put one puzzle wine by-the-glass this week" |
+| `vendor_concentration` | Call a vendor | "Request quotes from one alternative vendor … move 10–20% of volume" |
+| `sales_below_weekday_baseline` | Brief the floor | "brief the floor on top-margin picks … pair your strongest server with the weakest section" — its hand is Reports, because the hand keys on the rule's *category* |
+| `weekly_demand_slide` | Brief the floor | "Schedule a staff tasting … add a pairing prompt to the specials script" |
+| `staff_spread` | Brief the floor | "Have the top seller run a 15-minute pre-shift on their pitch" |
+| `goal_behind_<id>` | **Not yet filed** | "Pick the single biggest lever from the insight feed" — a choice, not an act |
+| anything else | **Not yet filed** | a rule this page does not recognise is shown, never absorbed |
+
+**The money a section is worth is withheld, in words.** Seven of the twelve rules state a
+figure inside their sentence; none states one as a field. The figures are also not the same
+quantity — `spend_acceleration`'s `$14,820` is spend, `dead_stock_capital`'s is capital locked
+— so a column of them cannot be added. Every heading shows an em dash and the docket says why
+once, above the sections. The founder was told this is the cost of the shape and chose it; a
+section with one entry still carries its count and its money line. §9 files the fix.
+
+**The ribbon, and what it cannot show.** It draws three things and refuses the rest:
+
+- **first fired** — `firstSeenAt`, attached by the gateway from `recommendation_impressions`.
+  It is **capped at forty rule keys** and **null for any rule with no impression row**; an
+  entry with no first-fired date is on **no day of the strip**, and the page says how many are
+  in that state rather than drawing them on today. Today is exactly the wrong answer.
+- **falls due** — a goal's `deadline` and a snoozed entry's `snooze_until`. **Vendor cutoffs do
+  not exist anywhere in the gateway**, so nothing draws one.
+- **no records** — from the till window's sparse `dailySeries`, in four states (`yes` · `none` ·
+  `unknown` · `future`), never as a zero. When `posConnected` is false, or the window could not
+  be read, **nothing is hatched at all**: an absence of a POS is not an absence of trade.
+  One measured limit stated on the page: if a connected till returns an empty series, the
+  gateway's own `computeMetricWithSeries` swallows a query error into the same empty map
+  (`goals.service.ts` — the `catch` logs and returns), so "the house was shut throughout" and
+  "the till read failed" are indistinguishable. The page claims neither.
+- **money per day** is money **through the till**, from the POS window. It is never shown as
+  "money at stake", which the feed does not carry.
+
+**`source_rule_key` — the provenance a goal now keeps.** Migration `20260903161000` adds one
+nullable column to `analytics_goals`. Before it, the strongest true sentence the goal sheet
+could show was "you already hold a goal on Wine revenue" — a match on `metric_key`, which
+cannot tell two recommendations apart, and which left an entry that had ALREADY been turned
+into a goal looking exactly like one that had not (an absence read as "nothing has been done",
+ADR 0051). The gateway validates the key against a catalogue of the twelve `rule("…")` keys
+plus `goal_behind_<uuid>` (`GoalsService.RECOMMENDATION_RULE_KEYS` / `isRecommendationRuleKey`)
+and refuses an unknown one with words — deliberately **not** a CHECK constraint, because the
+catalogue is code and a constraint would make adding a rule a migration. NULL means **set by
+hand**, never "unknown", and the page never infers a watch from a shared metric.
+
+**Verified, not asserted** (local gateway :4000, tenant `550e8400-…`, 2026-09-03):
+
+| Checked | Result |
+|---|---|
+| `POST /analytics/goals/:rid` with `sourceRuleKey: "wine_sales_dive"` | **400** "Unknown recommendation rule 'wine_sales_dive'. A goal's source must be a rule the engine evaluates: …" |
+| the same with a **suppression** key (`rule#subject#grain`) — the likeliest near-miss | **400**, same refusal |
+| the same with `sourceRuleKey: "plowhorse_repricing"` | **400** "Could not find the 'source_rule_key' column of 'analytics_goals' in the schema cache" — the migration is not applied to this database, and migrations auto-apply on merge. The validator and the insert path are proven; the stored round-trip is **not yet measured against a real DB** |
+| `GET /analytics/pos-revenue/:rid?days=22` | 200, `posConnected: true`, window `2026-08-13 → 2026-09-03`, **12 of 22 days** in `dailySeries` — ten days hatched, none drawn as a zero |
+| `GET /analytics/exclusions/:rid` | 200 with `readable: false` ("Could not find the table 'public.analytics_day_exclusions' in the schema cache") — so the strip refuses to offer the strike and says why. The honesty branch is exercised live, not only in a test |
+| `GET /analytics/recommendations/:rid` | 200, `rulesEvaluated: 15`, 3 standing (2 × `goal_behind_*`, 1 × `staff_spread`) → the docket renders **Brief the floor** and **Not yet filed** |
+
+The tests were run against a mutated control (an absent day made a zero, an unrecognised rule
+absorbed into the first heading, the money line made `$0`, the watched state matched on the
+metric instead of the source): **8 of 117 fail** on it, in the three files that carry the new
+claims.
+
 ## 2. Entry
 
 **Not in the sidebar.** Entries are:
@@ -449,8 +599,12 @@ built: the founder decides.
   failure shape), `rec-next.css` (all styling — Mudavym tokens only, with the
   motion tokens written out at the bottom), **new (fourth pass)** `rec-forward.ts` (the
   rule → goal-metric and rule → reports-cutting maps, their bases and their refusals),
-  `MOTIONS.md`, and three test files
-  (**67 tests** after the fourth pass: 41 render, 14 transport, 12 mapping).
+  **new (the rework)** `rec-docket.ts` (rule → act, with the sentence each filing was read
+  from, and the withheld-money words), `rec-days.ts` (the ribbon's pure day model — the four
+  record states, `touchesDay`, the bar heights) and `Ribbon.tsx` (the strip, its keyboard, its
+  legend, the day panel and the exclusion control),
+  `MOTIONS.md`, and five test files
+  (**117 tests** after the rework: 61 render, 17 transport, 12 mapping, 18 days, 9 docket).
   3,384 lines of source + 1,399 of tests — well past
   the brief's ~900-line guideline, and disclosed rather than hidden: roughly a third of the
   source is the honesty prose (four real states per read, three failure sentences, the
@@ -466,6 +620,16 @@ built: the founder decides.
   `recommendation-suppression.spec.ts` (15), `insights/insight-cache-version.spec.ts` (9).
   Migrations `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql` and
   `20260903130000_insight_rows_carry_their_arithmetic.sql`.
+- Gateway, the rework (2026-09-03): two **additive hunks in one file** —
+  `analytics/goals.service.ts` gains `RECOMMENDATION_RULE_KEYS` / `GOAL_BEHIND_KEY` /
+  `isRecommendationRuleKey`, a `sourceRuleKey?` field on `createGoal`'s input, its
+  validation, and `source_rule_key` in the insert; plus one documentation line on the
+  `@ApiOperation` of `POST goals/:restaurantId` in `analytics.controller.ts`. No other
+  gateway file was touched (the reports builder was editing both files concurrently). One
+  spec, **7 tests**: `analytics/goal-source-rule.spec.ts` — including a catalogue-parity
+  test that reads `recommendations.service.ts` as text and fails when a rule is added or
+  renamed without the list following it. Migration
+  `supabase/migrations/20260903161000_a_goal_records_the_recommendation_it_came_from.sql`.
 - Gateway, fourth pass: **none.** The goal write needs `{name, metricKey, targetValue,
   deadline, period, direction}` and `GoalsService.createGoal` already takes exactly those
   (`goals.service.ts` `createGoal`), so nothing in the goals module was edited and no
@@ -496,8 +660,9 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | GET | `/analytics/exclusions/:rid` | **new 2026-09-03** — the days ruled out of every baseline, with a `readable` flag; `useRecommendationsNextData.ts` tenant effect |
 | POST | `/analytics/exclusions/:rid` | **new** — `{businessDate, reason}`; `excludeDay()` |
 | DELETE | `/analytics/exclusions/:rid/:businessDate` | **new** — `includeDay()`, "Count it again" |
-| GET | `/analytics/goals/:rid?status=active` | **new 2026-09-03** — the goal sheet's "you already hold a goal on this figure" line; lazy, on first sheet open; `analytics.controller.ts:485` |
-| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction}`, **no `createdBy`** (the controller passes the body through unfiltered at `:508`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:497` |
+| GET | `/analytics/goals/:rid?status=active` | **new 2026-09-03; EAGER since the rework** — read once per tenant, because an entry has to say "this one is being watched" on first paint and the ribbon needs the deadlines; `analytics.controller.ts:485` |
+| GET | `/analytics/pos-revenue/:rid?days=22` | **new (the rework)** — the ribbon's record marks. Its `dailySeries` is SPARSE (only days that carried a non-voided check), which is the one signal in the gateway that separates "shut" from "took nothing"; `posConnected:false` means nothing may be claimed about any day. `analytics.controller.ts:737` |
+| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction, sourceRuleKey}` — `sourceRuleKey` validated against the gateway's rule catalogue, an unknown key a 400 with words (curl-verified 2026-09-03) — and **no `createdBy`** (the controller passes the body through unfiltered at `:508`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:497` |
 
 **Endpoints researched for "see it in reports", and what each would give.** The founder asked which
 endpoints this page can reach "to give them better insight". The reports sheet's eleven cuttings are
@@ -748,6 +913,38 @@ consumer is the digest preference.
 
 ## 12. Design intent
 
+**Gaps the rework opened or could not close (2026-09-03):**
+
+- **A section cannot be totalled.** `recommendations.service.ts` puts each entry's money
+  inside its `observation` sentence, formatted for reading. There is no `moneyAtStake` field,
+  and the figures are not one quantity: `spend_acceleration` states 30-day spend,
+  `dead_stock_capital` states capital locked, `stockout_imminent` states none. The docket's
+  headings therefore show an em dash. **Why not yet:** the fix is a gateway field on a service
+  this pass was not scoped to edit (§13.20), and inventing the number page-side by parsing the
+  sentence is the fabrication ADR 0020 forbids.
+- **The ribbon's "no records" inherits one gateway ambiguity.** `getPosRevenueWindow` returns a
+  sparse `dailySeries`, which is exactly the signal the strip needs — but the query that builds
+  it, `GoalsService.computeMetricWithSeries`, wraps its read in a `catch` that logs a warning
+  and returns an empty map. So a connected till whose query FAILED and a house that was shut
+  for the whole window produce the same payload. The page refuses to choose: when a connected
+  till returns an empty series it says both are possible and claims neither. **Why not yet:**
+  the repair is in `goals.service.ts`, one module over, and belongs with §13.22, which names
+  the same `catch` for the goal-baseline half.
+- **A goal's deadline can never be edited.** The ribbon draws goal deadlines, and the entry
+  states the deadline before the write, because the only post-creation goal write in the
+  gateway is `PUT …/status` — nothing moves a date. (The reports builder is adding an edit path
+  in the same wave; if it lands, the ribbon's due marks become editable objects and this line
+  should be retired.)
+- **`firstSeenAt` is capped at forty rule keys** (`recommendations.service.ts` `attachFirstSeen`)
+  and is null for any rule with no impression row, so the ribbon cannot place every entry on a
+  day. The page states the count of entries in that state rather than drawing them on today.
+- **No vendor cutoff exists anywhere in the gateway**, so "falls due" is only ever a goal
+  deadline or a snooze wake. Sketch 094a drew a third source; nothing backs it.
+- **`analytics_day_exclusions` was unreadable on the local database** on 2026-09-03
+  ("Could not find the table … in the schema cache"), so the strip's strike control renders
+  refused with the reason. That is a database-provisioning gap, not a page gap — but it is the
+  state a reader of the captures will see.
+
 **Should be:** the to-do list a manager works down before service — each row a
 deterministic rule that fired, with the number, the action, and why the action follows.
 Auditable, never an LLM.
@@ -837,15 +1034,21 @@ execution, no first-fired timestamp — in the same way.
     The honest full version also *adds* the cutting when it is not on the reader's sheet — which is a
     write to another page's stored arrangement (`reportsSheet` in user preferences), and therefore a
     founder's call before it is a ticket.
-19. **Give a goal its provenance** (§9). One nullable `source_rule_key text` on `analytics_goals`
-    would let the entry say "this is already being watched" instead of "you already hold a goal on
-    this figure", and would let the case-ledger direction (094c) exist at all. Migration, so a
-    founder's call. While there: the `goal_behind_*` family should link to
-    `GET /analytics/goals/:rid/:goalId/progress` rather than refusing both doors — it is the one
-    rule family whose deep link is a goal, not a cutting.
-20. **Return a structured `moneyAtStake` on each recommendation, and an act key** (§9) — the two
-    fields the action-docket direction needs and the only two it needs. Both are additive on
-    `recommendations.service.ts`; neither changes a sentence.
+19. ~~**Give a goal its provenance.**~~ **Done 2026-09-03** — `analytics_goals.source_rule_key`,
+    migration `20260903161000`, validated in `GoalsService.createGoal` against the rule catalogue;
+    the entry now says "this entry is being watched — goal X, due …" (§1b rework). *Still open:*
+    the `goal_behind_*` family should link to `GET /analytics/goals/:rid/:goalId/progress` rather
+    than refusing both doors — it is the one rule family whose deep link is a goal, not a cutting,
+    and it is also the family the docket has to file as **Not yet filed**. *Also still open:* the
+    column is not yet applied to any database — the write was measured 400ing on the schema cache
+    locally, and applies on merge.
+20. **Return a structured `moneyAtStake` on each recommendation** (§9) — the one field the docket
+    still needs and cannot compute. Additive on `recommendations.service.ts`; it changes no
+    sentence. The *act key*, the other half of this item, is now built page-side in
+    `rec-docket.ts` rather than in the gateway, deliberately: the act is a reading of the rule's
+    prescription for a human, not a property of the rule's arithmetic, and a page that files by it
+    should be able to change its mind without a deploy. If a second surface ever needs the same
+    filing, that judgement is worth revisiting.
 21. **Decide whether a rule can be retuned, and by whom** (§9). The dismissal reasons are already a
     taxonomy and nothing reads them as one. DESIGN-FOUNDATION §6 rates this need-it-now for this
     page; it is an ADR (what may be tuned, under whose hand, with what threshold history), not a
@@ -853,7 +1056,20 @@ execution, no first-fired timestamp — in the same way.
 22. **Make `GoalsService.computeMetricWithSeries` distinguish a measured zero from an unread table**
     (§9) — the same fault the second pass removed from `toDaily`, still live one module over. A goal
     whose baseline could not be read should say so, not report 0.
-23. **Sketch set 094 is the shape fork** —
-    `.planning/sketches/094-recommendations-directions-2/`: `calendar-strip.html`,
-    `action-docket.html`, `case-ledger.html`. The recommendation on the index is 094b as the spine
-    with 094a as a ribbon above it and 094c as the roadmap; nothing of it is built.
+23. ~~**Sketch set 094 is the shape fork.**~~ **Decided and built 2026-09-03** — the founder chose
+    **094b (the action docket) as the spine with 094a (the calendar strip) above it as a selector
+    ribbon**; both are shipped behind the flag (§1b "The rework"). The register-as-spine layout is
+    retired. **094c (the case ledger) remains the roadmap:** opened → acted → watching → closed,
+    with *refused* as a state that keeps its reason. `source_rule_key` was its first prerequisite
+    and is now in place; what it still needs is a stored `acted_at`-to-outcome link and a way to
+    close a case with a result rather than only with a seal.
+24. **Let the ribbon draw a range, and a lineage hairline.** Sketch 094a drew shift-click for a
+    range (Fri to Sun) and a hairline from an entry back to the day it was first shown. Neither is
+    built: the range needs the docket's filter to take an interval rather than a day, and the
+    hairline needs per-entry hover state on a strip that is deliberately a plain selector. Both are
+    cheap and neither is load-bearing; they were left out to keep the ribbon a selector rather than
+    a second page.
+25. **Decide whether the day strip belongs on other pages** — the founder liked it on
+    `/notifications` too, and the model (`rec-days.ts`) is a pure function of entries, goals,
+    exclusions and a till window. Sharing it means a component outside a page's own directory,
+    which the page brief forbids by default; it is a founder/ADR call, not a ticket.

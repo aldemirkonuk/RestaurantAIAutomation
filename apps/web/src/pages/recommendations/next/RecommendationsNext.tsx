@@ -47,6 +47,27 @@
  * rows — **Carry it out** / **File it** — which is the control-side half of
  * "everything in a categorized classified section".
  *
+ * THE REWORK, 2026-09-03 — the docket, with the day strip as a ribbon.
+ * The founder, on being shown three shapes: *"the need is that we need to
+ * everything in a categorized classified section in order for people to
+ * understand what to do as action"*, and *"a calendar strip that we can select
+ * and see that is highly advanced and elegant looking"*. Sketch 094b (the
+ * action docket) became the spine and 094a (the calendar strip) sits above it
+ * as a SELECTOR, not the axis — the fork and its losing arguments are in the
+ * page note's §1b.
+ *
+ * What that means structurally: the page's top level is now THE ACT — order it
+ * · price it · move stock · call a vendor · brief the floor — and the register
+ * (money · stock · vendors · the floor), which used to be the spine, becomes
+ * the ordering INSIDE a section and the rail that cuts across all of them. One
+ * spine and one cross-cut, never two tables of contents. The standing-book
+ * layout this replaces — the register as the page's sections — is retired.
+ *
+ * The ribbon draws three things and refuses the rest: when an entry first
+ * fired, what falls due, and which days carry NO RECORD AT ALL (hatched, never
+ * a bar of zero). Selecting a day narrows the docket to the entries that touch
+ * it; selecting nothing leaves the whole book standing.
+ *
  * Transport: everything goes through `apiClient`. The page note's §10 "broken"
  * verdict (six raw `fetch` calls, no bearer, 401 on every request) was written
  * on 2026-08-26 and repaired the same day by `58113e26` on the LEGACY file —
@@ -54,10 +75,32 @@
  * `useRecommendationsNextData.test.tsx`.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Megaphone,
+  PhoneCall,
+  SlidersHorizontal,
+  Tag,
+  Truck,
+  Wine,
+  type LucideIcon,
+} from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
+import { animate, tuck } from '@/lib/mudavym/motion';
 import Entry from './Entry';
+import Ribbon from './Ribbon';
+import {
+  ACT_LABEL,
+  ACT_ORDER,
+  ACT_SAY,
+  CHANGE_A_RULE,
+  MONEY_WITHHELD,
+  MONEY_WITHHELD_WHY,
+  actOf,
+  type ActId,
+} from './rec-docket';
+import { buildDays, touchesDay } from './rec-days';
 import {
   EM,
   STAKE_BLURB,
@@ -86,6 +129,16 @@ const LEAVES: Array<{ id: Leaf; label: string }> = [
   { id: 'done', label: 'Ruled off' },
   { id: 'history', label: 'History' },
 ];
+
+/** One icon per act. Ink-coloured; the seal is not a decoration (ADR 0042). */
+const ACT_ICON: Record<ActId, LucideIcon> = {
+  order: Truck,
+  price: Tag,
+  stock: Wine,
+  vendor: PhoneCall,
+  floor: Megaphone,
+  unfiled: SlidersHorizontal,
+};
 
 const REGISTER_NAME: Record<Leaf, string> = {
   standing: 'the standing book',
@@ -116,11 +169,14 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const [searchParams] = useSearchParams();
   const linked = searchParams.get('insight');
   const [stake, setStake] = useState<StakeId | 'all'>('all');
+  /** The day the ribbon has selected. Null = the whole book. */
+  const [day, setDay] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedIdx, setFocusedIdx] = useState(-1);
   /** The entry whose dismissal sheet the `d` key asked to open. */
   const [sheetFor, setSheetFor] = useState<string | null>(null);
+  const docketRef = useRef<HTMLElement | null>(null);
   const { leaf, setLeaf } = data;
 
   useEffect(() => {
@@ -134,31 +190,78 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     setExpanded(new Set());
     setFocusedIdx(-1);
     setSheetFor(null);
+    setDay(null);
   }, [leaf]);
 
+  /* ── the ribbon's days ─────────────────────────────────────────────────── */
+
+  const days = useMemo(
+    () =>
+      buildDays({
+        entries: data.entries,
+        goals: data.goals,
+        pos: data.pos,
+        // An unreadable exclusion store must not strike days on the strip: a
+        // list that could not be read is not an empty one, and drawing no
+        // strikes from it would claim every day is counted.
+        exclusions: data.exclusions?.readable ? data.exclusions.items : null,
+      }),
+    [data.entries, data.goals, data.pos, data.exclusions],
+  );
+
+  /** Entries no day can hold — no impression row ever recorded them. */
+  const undated = useMemo(() => data.entries.filter((e) => !e.firstSeenAt).length, [data.entries]);
+
+  /** The book, narrowed by the ribbon. The register still cuts across it. */
+  const dayScoped = useMemo(
+    () => (day ? data.entries.filter((e) => touchesDay(e, day, data.goals)) : data.entries),
+    [data.entries, day, data.goals],
+  );
+
   /**
-   * The register decides the order of the page, so it decides the order of
-   * everything keyed to it: `byStake` is built first and `shown` is that
-   * grouping flattened, so entry numbers and j/k run straight down the page —
-   * a pinned entry in a lower section is not silently entry 01.
+   * THE DOCKET. Top level is the ACT — what your hands do — and the register
+   * (consequence) orders the entries inside each section. That is the whole
+   * rework: one spine, one cross-cut, never two tables of contents.
+   *
+   * `shown` is the grouping flattened, so entry numbers and j/k run straight
+   * down the page — a pinned entry in a lower section is not silently entry 01.
    */
-  const byStake = useMemo(() => {
-    const list = stake === 'all' ? data.entries : data.entries.filter((e) => e.stake === stake);
+  const byAct = useMemo(() => {
+    const stakeRank = (s: StakeId) => {
+      const i = STAKE_ORDER.indexOf(s);
+      return i < 0 ? STAKE_ORDER.length : i;
+    };
+    const list = stake === 'all' ? dayScoped : dayScoped.filter((e) => e.stake === stake);
     const ranked = [...list].sort((a, b) => {
       if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      const st = stakeRank(a.stake) - stakeRank(b.stake);
+      if (st !== 0) return st;
       const ur = (URGENCY_RANK[a.urgency] ?? 3) - (URGENCY_RANK[b.urgency] ?? 3);
       return ur !== 0 ? ur : (b.score ?? 0) - (a.score ?? 0);
     });
-    const m = new Map<StakeId, EntryVM[]>();
+    const m = new Map<ActId, EntryVM[]>();
     for (const e of ranked) {
-      const bucket = m.get(e.stake);
+      const act = actOf(e.ruleKey).act;
+      const bucket = m.get(act);
       if (bucket) bucket.push(e);
-      else m.set(e.stake, [e]);
+      else m.set(act, [e]);
     }
     return m;
-  }, [data.entries, stake]);
+  }, [dayScoped, stake]);
 
-  const shown = useMemo(() => STAKE_ORDER.flatMap((s) => byStake.get(s) ?? []), [byStake]);
+  const shown = useMemo(() => ACT_ORDER.flatMap((a) => byAct.get(a) ?? []), [byAct]);
+
+  /**
+   * The docket re-lays out on `tuck` when the ribbon or the register changes
+   * what it holds. Nothing tallies and nothing flies between sections: the
+   * whole docket settles once, so the eye is told "this is a different set of
+   * rows" without any row pretending to travel.
+   */
+  useEffect(() => {
+    const node = docketRef.current;
+    if (!node) return;
+    animate(node, [{ opacity: 0.55, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], tuck);
+  }, [day, stake]);
 
   /**
    * NEW-759: `?insight=<ruleKey>` opens and focuses that entry (the focus
@@ -175,11 +278,14 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linked, leaf, shown.length]);
 
+  // Counted on the DAY-SCOPED book, never the whole one: a rail that promises
+  // "Money 4" while the ribbon is holding one day open would be counting rows
+  // the click cannot reach.
   const stakeCounts = useMemo(() => {
     const m = new Map<StakeId, number>();
-    for (const e of data.entries) m.set(e.stake, (m.get(e.stake) ?? 0) + 1);
+    for (const e of dayScoped) m.set(e.stake, (m.get(e.stake) ?? 0) + 1);
     return m;
-  }, [data.entries]);
+  }, [dayScoped]);
 
   /* ── the writes ──────────────────────────────────────────────────────── */
 
@@ -311,6 +417,11 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   /* ── the opening voice — it only says what it knows ───────────────────── */
 
   const n = data.entries.length;
+  /** How many distinct acts the whole standing book asks for. */
+  const kinds = useMemo(
+    () => new Set(data.entries.map((e) => actOf(e.ruleKey).act)).size,
+    [data.entries],
+  );
   let voice: string;
   if (data.phase === 'loading') {
     voice = 'Reading the rule engine…';
@@ -326,7 +437,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     voice =
       n === 0
         ? `${read} were read, and none of them stands. The book is clear.`
-        : `${read} were read. ${n} ${n === 1 ? 'entry stands' : 'entries stand'} — the rest did not fire, or you have already ruled them off.`;
+        : `${read} were read. ${n} ${n === 1 ? 'entry stands' : 'entries stand'}, and ${
+            kinds === 1 ? 'they are one kind of work' : `they are ${kinds} kinds of work`
+          } — the rest did not fire, or you have already ruled them off.`;
   }
 
   const picked = shown.filter((e) => selected.has(e.ruleKey));
@@ -398,6 +511,27 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           </div>
         )}
 
+        {/*
+          The ribbon. Above the docket and never instead of it: the founder
+          liked the day strip, and the shape decision was that a calendar is a
+          SELECTOR over a book of work, not the axis the work is filed by.
+        */}
+        {leaf === 'standing' && data.phase === 'ready' && (
+          <Ribbon
+            days={days}
+            selected={day}
+            onSelect={setDay}
+            pos={data.pos}
+            posProblem={data.posProblem}
+            exclusionsReadable={data.exclusions === undefined ? undefined : data.exclusions.readable}
+            exclusionsProblem={data.exclusions?.problem ?? null}
+            onExclude={(date, reason) => void data.ruleOutDay(date, reason)}
+            onInclude={(date) => void data.includeDay(date)}
+            undated={undated}
+            matching={dayScoped.length}
+          />
+        )}
+
         <div className="rc-shell">
           {/* ── the register — the page's organising axis ──────────────── */}
           <aside>
@@ -408,8 +542,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             <div className="rc-reg-list">
               <RegisterRow
                 label="All"
-                blurb="every entry on this leaf"
-                count={data.entries.length}
+                blurb={day ? 'every entry that touches the selected day' : 'every entry on this leaf'}
+                count={dayScoped.length}
                 on={stake === 'all'}
                 onClick={() => setStake('all')}
               />
@@ -483,12 +617,13 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               <p className="rc-keys">
                 j / k move · e the working · a act
                 <br />d the dismissal sheet · s snooze · p pin · x select
+                <br />on the ribbon: ← → a day · ↑ ↓ a week · Enter selects · Esc clears
               </p>
             </div>
           </aside>
 
           {/* ── the book ───────────────────────────────────────────────── */}
-          <section key={leaf} className="rc-leaf-body">
+          <section key={leaf} className="rc-leaf-body" ref={docketRef}>
             {data.phase === 'loading' && (
               <div>
                 <p className="rc-loading">Reading {REGISTER_NAME[leaf]}…</p>
@@ -501,33 +636,64 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             {data.phase === 'ready' && shown.length === 0 && (
               <div className="rc-empty">
                 <p className="rc-serif">
-                  {leaf === 'standing'
-                    ? stake === 'all'
-                      ? 'Nothing stands against tonight’s numbers.'
-                      : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
-                    : `Nothing on ${REGISTER_NAME[leaf]}.`}
+                  {day
+                    ? 'Nothing on the docket touches that day.'
+                    : leaf === 'standing'
+                      ? stake === 'all'
+                        ? 'Nothing stands against tonight’s numbers.'
+                        : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
+                      : `Nothing on ${REGISTER_NAME[leaf]}.`}
                 </p>
-                {leaf === 'standing' && (
+                {day ? (
                   <p className="rc-empty-why">
-                    Rules that need till data stay silent without a POS, so a short book can mean a
-                    quiet week or a thin feed.{' '}
-                    <a href="/recommendations/catalog">Browse every insight type →</a>
+                    An entry touches a day only if it first fired on it, wakes on it, or is
+                    watched by a goal that falls due on it. {data.entries.length}{' '}
+                    {data.entries.length === 1 ? 'entry stands' : 'entries stand'} in all —
+                    clear the day to see the whole book.
                   </p>
+                ) : (
+                  leaf === 'standing' && (
+                    <p className="rc-empty-why">
+                      Rules that need till data stay silent without a POS, so a short book can mean a
+                      quiet week or a thin feed.{' '}
+                      <a href="/recommendations/catalog">Browse every insight type →</a>
+                    </p>
+                  )
                 )}
               </div>
             )}
 
+            {/*
+              The docket's one standing caveat, said once above the sections
+              rather than in five places: what a section is WORTH cannot be
+              totalled, and every heading shows an em dash instead of a zero.
+            */}
+            {data.phase === 'ready' && shown.length > 0 && (
+              <p className="rc-why rc-docket-note" data-testid="rc-money-why">
+                {MONEY_WITHHELD_WHY}
+              </p>
+            )}
+
             {data.phase === 'ready' &&
               shown.length > 0 &&
-              STAKE_ORDER.filter((s) => (byStake.get(s)?.length ?? 0) > 0).map((s) => {
-                const list = byStake.get(s) ?? [];
+              ACT_ORDER.filter((a) => (byAct.get(a)?.length ?? 0) > 0).map((a) => {
+                const list = byAct.get(a) ?? [];
+                const Icon = ACT_ICON[a];
                 return (
-                  <div key={s} className="rc-section">
+                  <div key={a} className="rc-section" data-testid="rc-act-section">
                     <div className="rc-section-head">
-                      <h2 className="rc-serif">{STAKE_LABEL[s]}</h2>
-                      <span className="rc-blurb">{STAKE_BLURB[s]}</span>
-                      <span className="rc-num">{list.length}</span>
+                      <span className="rc-act-ic" aria-hidden="true">
+                        <Icon size={17} />
+                      </span>
+                      <h2 className="rc-serif">{ACT_LABEL[a]}</h2>
+                      <span className="rc-num">
+                        {list.length} {list.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                      <span className="rc-num rc-amt" title={MONEY_WITHHELD_WHY}>
+                        {MONEY_WITHHELD}
+                      </span>
                     </div>
+                    <p className="rc-blurb rc-act-say">{ACT_SAY[a]}</p>
                     <DoubleRule />
                     {list.map((e) => (
                       <Entry
@@ -546,7 +712,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         onDismissOpened={() => setSheetFor(null)}
                         onAct={() => void act(e)}
                         onDismiss={(choice) => dismiss(e, choice)}
-                        onSnooze={(days, label) => snooze(e, days, label)}
+                        onSnooze={(inDays, label) => snooze(e, inDays, label)}
                         onPin={() => pin(e)}
                         onRate={(v) => rate(e, v)}
                         onDone={() => done(e)}
@@ -562,6 +728,33 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                   </div>
                 );
               })}
+
+            {/*
+              The founder's own fifth heading, drawn dark rather than left out.
+              The absence is the interesting part: the reasons stored with every
+              dismissal are exactly the evidence a tuning surface would run on,
+              and nothing in the product can move a threshold today.
+            */}
+            {data.phase === 'ready' && leaf === 'standing' && (
+              <div className="rc-section rc-dark-sect" data-testid="rc-change-a-rule">
+                <div className="rc-section-head">
+                  <span className="rc-act-ic" aria-hidden="true">
+                    <SlidersHorizontal size={17} />
+                  </span>
+                  <h2 className="rc-serif rc-dark-head">{CHANGE_A_RULE.label}</h2>
+                  <span className="rc-micro">nothing behind this yet</span>
+                </div>
+                <p className="rc-blurb rc-act-say">{CHANGE_A_RULE.why}</p>
+                <div className="rc-row">
+                  <button type="button" className="rc-dark rc-dark-inline" disabled>
+                    {CHANGE_A_RULE.control}
+                  </button>
+                  <span className="rc-said">
+                    Not built: no rule store, no threshold history, and no proposal-and-seal.
+                  </span>
+                </div>
+              </div>
+            )}
           </section>
         </div>
 

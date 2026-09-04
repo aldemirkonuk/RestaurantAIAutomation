@@ -103,10 +103,23 @@ function weekdayEntry(over: Record<string, unknown> = {}) {
   });
 }
 
+/**
+ * The ribbon's window is relative to "now", so every fixture date is derived
+ * rather than written down: a literal would rot out of the window the next day
+ * and the test would start asserting nothing.
+ */
+const dayKey = (back: number) =>
+  new Date(Date.now() - back * 86_400_000).toISOString().substring(0, 10);
+const TODAY = dayKey(0);
+const TILL_FROM = dayKey(21);
+/** A day inside the window that DID carry a record. */
+const TILL_DAY = dayKey(3);
+
 const setDisposition = vi.fn(async () => true);
 const dismissFn = vi.fn(async () => {});
 const includeDay = vi.fn(async () => {});
 const excludeDay = vi.fn(async () => true);
+const ruleOutDay = vi.fn(async () => {});
 const bulk = vi.fn(async () => {});
 const restore = vi.fn(async () => {});
 const refetch = vi.fn();
@@ -118,6 +131,8 @@ interface GoalInput {
   direction: 'at_least' | 'at_most';
   period: string;
   deadline: string;
+  /** The rule the goal remembers it came from (migration `20260903161000`). */
+  sourceRuleKey?: string;
 }
 interface GoalRes {
   ok: boolean;
@@ -151,6 +166,7 @@ const base = {
   suppressionsReadable: true,
   exclusions: { items: [], readable: true, problem: null },
   excludeDay,
+  ruleOutDay,
   includeDay,
   digest: { digestEnabled: false, digestHour: 7, digestMinUrgency: 'this_week', recipientEmail: null, lastSentAt: null },
   team: undefined,
@@ -159,6 +175,16 @@ const base = {
   goals: [] as unknown,
   loadGoals,
   createGoal,
+  // The till window behind the ribbon's record marks. A window with ONE day in
+  // its series is the interesting fixture: every other day in it is absent,
+  // which is what "no records" means and what must not become a zero.
+  pos: {
+    connected: true,
+    from: TILL_FROM,
+    to: TODAY,
+    byDay: { [TILL_DAY]: 612 },
+  } as unknown,
+  posProblem: null,
   note: null,
   undo: null,
   clearUndo: vi.fn(),
@@ -181,6 +207,7 @@ beforeEach(() => {
   dismissFn.mockClear();
   excludeDay.mockClear();
   includeDay.mockClear();
+  ruleOutDay.mockClear();
   bulk.mockClear();
   navigate.mockClear();
   loadGoals.mockClear();
@@ -189,16 +216,22 @@ beforeEach(() => {
 });
 
 describe('RecommendationsNext — the standing book', () => {
-  it('files entries under what they would change and states the three facts on each', () => {
+  it('files entries under THE ACT — the docket — and states the three facts on each', () => {
     mockData.current = {
       ...base,
       entries: [entry(), entry({ ruleKey: 'staff_spread', category: 'staff', urgency: 'this_week' })],
     };
     draw();
 
-    // the register sections — the page's organising axis, not a score
-    expect(screen.getByRole('heading', { name: 'Stock' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'The floor' })).toBeInTheDocument();
+    // THE REWORK. The docket's sections are acts, not registers: a stockout is
+    // an order and a server spread is a pre-shift. Filing both under what they
+    // would CHANGE (stock · the floor) put two different jobs in two sections
+    // that told nobody what to do with their hands.
+    expect(screen.getByRole('heading', { name: 'Order it' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Brief the floor' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Stock' })).not.toBeInTheDocument();
+    // the register survives as the rail that cuts across the docket
+    expect(screen.getByRole('button', { name: /Stock/ })).toBeInTheDocument();
 
     const rows = screen.getAllByTestId('rc-entry');
     expect(rows).toHaveLength(2);
@@ -842,5 +875,297 @@ describe('RecommendationsNext — the two forward doors', () => {
     expect(screen.getByText(/No cutting answers this one/)).toBeInTheDocument();
     fireEvent.click(dark);
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+
+/**
+ * THE REWORK, 2026-09-03 — the docket, and the day strip as a ribbon.
+ *
+ * The founder: *"we need everything in a categorized classified section in
+ * order for people to understand what to do as action"* and *"a calendar strip
+ * that we can select and see that is highly advanced and elegant looking"*.
+ *
+ * What these pin is the part a screenshot cannot show:
+ *  - the docket's sections are ACTS, and a one-entry section still carries its
+ *    count and its money line;
+ *  - the money line is WITHHELD IN WORDS, never totalled and never zero;
+ *  - the ribbon hatches a day with no record and refuses to hatch anything at
+ *    all when the till window could not be read;
+ *  - selecting a day narrows the docket, and clearing it restores the book;
+ *  - an entry no day can hold is SAID, not silently dropped;
+ *  - a goal that names this rule makes the entry say it is being watched — and
+ *    a goal set by hand does not.
+ */
+describe('RecommendationsNext — the docket', () => {
+  it('carries a count and a money line on every section, including one with a single entry', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    const sections = screen.getAllByTestId('rc-act-section');
+    expect(sections).toHaveLength(1);
+    expect(within(sections[0]).getByText('1 entry')).toBeInTheDocument();
+    // the money line is an em dash with words, never 0 and never a total
+    expect(within(sections[0]).getByText(/at stake · not carried/)).toBeInTheDocument();
+    expect(within(sections[0]).queryByText('$0')).not.toBeInTheDocument();
+  });
+
+  it('says once, above the docket, why no section can be totalled', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    expect(screen.getByTestId('rc-money-why')).toHaveTextContent(
+      /engine states each entry’s money inside its sentence, not as a field/,
+    );
+  });
+
+  it('draws the founder’s fifth heading dark, with the reason, rather than leaving it out', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    const dark = screen.getByTestId('rc-change-a-rule');
+    expect(within(dark).getByRole('heading', { name: 'Change a rule' })).toBeInTheDocument();
+    expect(within(dark).getByRole('button', { name: /Retune the rule/ })).toBeDisabled();
+    expect(within(dark).getByText(/thresholds are constants/)).toBeInTheDocument();
+  });
+
+  it('files an unrecognised rule as unfiled rather than guessing a heading for it', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'brand_new_rule', category: 'sales' })],
+    };
+    draw();
+    expect(screen.getByRole('heading', { name: 'Not yet filed' })).toBeInTheDocument();
+  });
+
+  it('states, in the working, why an entry is filed where it is', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(screen.getByText('The working'));
+    expect(screen.getByTestId('rc-filing-why')).toHaveTextContent(/brief the floor/);
+    // the act and the hand disagree here, and the page says so rather than
+    // quietly filing by the hand
+    expect(screen.getByTestId('rc-filing-why')).toHaveTextContent(/hand is Reports/);
+  });
+});
+
+describe('RecommendationsNext — the ribbon', () => {
+  const fired = (over = {}) =>
+    entry({ ruleKey: 'stockout_imminent', firstSeenAt: `${TILL_DAY}T09:00:00.000Z`, ...over });
+
+  it('hatches a day the till window holds no record for, and never draws it as a zero', () => {
+    mockData.current = { ...base, entries: [fired()] };
+    draw();
+    const blank = screen.getAllByTestId('rc-day').find((d) =>
+      (d.getAttribute('aria-label') ?? '').includes('no record at all'),
+    );
+    expect(blank).toBeTruthy();
+    expect(blank).toHaveAttribute('data-records', 'none');
+    expect(blank?.textContent).not.toContain('0');
+    expect(screen.getByTestId('rc-records-note')).toHaveTextContent(
+      /never drawn as a bar of zero/,
+    );
+  });
+
+  it('claims nothing about any day when the till window could not be read', () => {
+    mockData.current = {
+      ...base,
+      entries: [fired()],
+      pos: null,
+      posProblem: 'Failed to load POS revenue',
+    };
+    draw();
+    expect(screen.getByTestId('rc-records-note')).toHaveTextContent(
+      /could not be read \(Failed to load POS revenue\)/,
+    );
+    expect(
+      screen.getAllByTestId('rc-day').filter((d) => d.getAttribute('data-records') === 'none'),
+    ).toHaveLength(0);
+  });
+
+  it('says a house with no till is not a house with no trade', () => {
+    mockData.current = {
+      ...base,
+      entries: [fired()],
+      pos: { connected: false, from: TILL_FROM, to: TODAY, byDay: {} },
+    };
+    draw();
+    expect(screen.getByTestId('rc-records-note')).toHaveTextContent(
+      /an absence of a POS is not an absence of trade/,
+    );
+  });
+
+  it('narrows the docket to the entries that touch the selected day, and restores it', () => {
+    mockData.current = {
+      ...base,
+      entries: [fired(), entry({ ruleKey: 'staff_spread', category: 'staff' })],
+    };
+    draw();
+    expect(screen.getAllByTestId('rc-entry')).toHaveLength(2);
+
+    const day = screen
+      .getAllByTestId('rc-day')
+      .find((d) => (d.getAttribute('aria-label') ?? '').includes('1 first fired'))!;
+    fireEvent.click(day);
+    expect(screen.getAllByTestId('rc-entry')).toHaveLength(1);
+    expect(screen.getByTestId('rc-dayhead')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show the whole book' }));
+    expect(screen.getAllByTestId('rc-entry')).toHaveLength(2);
+  });
+
+  it('clears the selection on Escape, and moves the day with the arrow keys', () => {
+    mockData.current = { ...base, entries: [fired()] };
+    draw();
+    const days = screen.getAllByTestId('rc-day');
+    fireEvent.click(days[3]);
+    expect(screen.getByTestId('rc-dayhead')).toBeInTheDocument();
+
+    fireEvent.keyDown(days[3], { key: 'ArrowRight' });
+    expect(days[4]).toHaveFocus();
+
+    fireEvent.keyDown(days[4], { key: 'Escape' });
+    expect(screen.queryByTestId('rc-dayhead')).not.toBeInTheDocument();
+  });
+
+  it('states its two limits whether or not they bite today', () => {
+    // A cap that only announces itself once it has already distorted the
+    // picture is not a disclosure.
+    mockData.current = { ...base, entries: [fired()] };
+    draw();
+    const limits = screen.getByTestId('rc-ribbon-limits');
+    expect(limits).toHaveTextContent(/at most forty rule keys/);
+    expect(limits).toHaveTextContent(/no vendor cutoff exists/);
+    // and nothing is undated in this fixture, so the OTHER line is absent
+    expect(screen.queryByTestId('rc-undated')).not.toBeInTheDocument();
+  });
+
+  it('says how many entries no day can hold, rather than dropping them', () => {
+    mockData.current = { ...base, entries: [entry({ firstSeenAt: null })] };
+    draw();
+    expect(screen.getByTestId('rc-undated')).toHaveTextContent(
+      /no first-fired date/,
+    );
+    expect(screen.getByTestId('rc-undated')).toHaveTextContent(/at most forty rule keys/);
+  });
+
+  it('an entry with no first-fired date is not drawn on today', () => {
+    mockData.current = { ...base, entries: [entry({ firstSeenAt: null })] };
+    draw();
+    const today = screen
+      .getAllByTestId('rc-day')
+      .find((d) => d.getAttribute('data-today') === 'true')!;
+    expect(today.getAttribute('aria-label')).toContain('0 first fired');
+  });
+
+  it('strikes a day out of the analysis only after a reason is picked', () => {
+    mockData.current = { ...base, entries: [fired()] };
+    draw();
+    const day = screen
+      .getAllByTestId('rc-day')
+      .find((d) => (d.getAttribute('aria-label') ?? '').includes('1 first fired'))!;
+    fireEvent.click(day);
+    fireEvent.click(screen.getByRole('button', { name: /Rule this day out of the analysis/ }));
+
+    const strike = screen.getByRole('button', { name: 'Rule it out' });
+    expect(strike).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Closed' }));
+    fireEvent.click(strike);
+    expect(ruleOutDay).toHaveBeenCalledWith(TILL_DAY, 'closed');
+  });
+
+  it('refuses to offer the strike at all when the exclusion store could not be read', () => {
+    mockData.current = {
+      ...base,
+      entries: [fired()],
+      exclusions: { items: [], readable: false, problem: 'relation missing' },
+    };
+    draw();
+    const day = screen
+      .getAllByTestId('rc-day')
+      .find((d) => (d.getAttribute('aria-label') ?? '').includes('1 first fired'))!;
+    fireEvent.click(day);
+    const panel = screen.getByTestId('rc-dayhead');
+    expect(
+      within(panel).queryByRole('button', { name: /Rule this day out of the analysis/ }),
+    ).not.toBeInTheDocument();
+    expect(within(panel).getByText(/could not be read \(relation missing\)/)).toBeInTheDocument();
+  });
+
+  it('marks a day the manager already ruled out, and offers it back', () => {
+    mockData.current = {
+      ...base,
+      entries: [fired()],
+      exclusions: {
+        items: [{ businessDate: TILL_DAY, reason: 'closed', createdAt: null }],
+        readable: true,
+        problem: null,
+      },
+    };
+    draw();
+    const day = screen
+      .getAllByTestId('rc-day')
+      .find((d) => d.getAttribute('data-excluded') === 'true')!;
+    expect(day.getAttribute('aria-label')).toContain('out of the analysis');
+    fireEvent.click(day);
+    // the strip's own control, not the rail's list of every excluded day
+    fireEvent.click(
+      within(screen.getByTestId('rc-dayhead')).getByRole('button', { name: 'Count it again' }),
+    );
+    expect(includeDay).toHaveBeenCalledWith(TILL_DAY);
+  });
+});
+
+describe('RecommendationsNext — a goal remembers the entry it came from', () => {
+  const watched = {
+    id: 'g7',
+    name: 'Hold purchasing spend',
+    metricKey: 'purchase_spend',
+    targetValue: 9000,
+    currentValue: 4000,
+    deadline: '2026-09-10',
+    status: 'active',
+    sourceRuleKey: 'spend_acceleration',
+  };
+  const spend = () =>
+    entry({ ruleKey: 'spend_acceleration', category: 'purchasing', urgency: 'this_week' });
+
+  it('says an entry is being watched, and names the goal and its deadline', () => {
+    mockData.current = { ...base, entries: [spend()], goals: [watched] };
+    draw();
+    expect(screen.getByTestId('rc-watched-stamp')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-watched')).toHaveTextContent(/Hold purchasing spend/);
+    expect(screen.getByTestId('rc-watched')).toHaveTextContent(/due Thu 10 Sep/);
+  });
+
+  it('does NOT call an entry watched because a hand-set goal shares its figure', () => {
+    // `source_rule_key` null means "a person typed this". Matching on the
+    // metric instead would tell an owner their own target is a watch on a rule
+    // they never saw.
+    mockData.current = {
+      ...base,
+      entries: [spend()],
+      goals: [{ ...watched, sourceRuleKey: null }],
+    };
+    draw();
+    expect(screen.queryByTestId('rc-watched')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rc-watched-stamp')).not.toBeInTheDocument();
+  });
+
+  it('sends the rule key with the goal it writes', async () => {
+    mockData.current = { ...base, entries: [spend()], goals: [] };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    fireEvent.change(screen.getByLabelText('Target in $'), { target: { value: '9000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set the goal' }));
+    await waitFor(() => expect(createGoal).toHaveBeenCalled());
+    expect(createGoal.mock.calls[0][0].sourceRuleKey).toBe('spend_acceleration');
+  });
+
+  it('warns about the exact duplicate, not just about the figure', () => {
+    mockData.current = { ...base, entries: [spend()], goals: [watched] };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    expect(screen.getByTestId('rc-goal-watching')).toHaveTextContent(
+      /already being watched/,
+    );
+    expect(screen.queryByTestId('rc-goal-duplicate')).not.toBeInTheDocument();
   });
 });

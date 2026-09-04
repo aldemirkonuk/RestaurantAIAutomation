@@ -194,12 +194,16 @@ describe('useRecommendationsNextData transport', () => {
     await waitFor(() => expect(result.current.entries).toHaveLength(1));
 
     let release: (v: unknown) => void = () => {};
-    // Only the FEED read is held open — the digest and the exclusion list are
-    // separate reads and must not be the thing this test resolves.
+    // Only the FEED read is held open — the digest, the exclusion list, the
+    // goal list and the till window are separate reads and must not be the
+    // thing this test resolves.
     api.get.mockImplementation((url: string) => {
       if (url.includes('/digest')) return Promise.resolve({ data: null });
       if (url.includes('/exclusions'))
         return Promise.resolve({ data: { items: [], readable: true, problem: null } });
+      if (url.includes('/analytics/goals/')) return Promise.resolve({ data: [] });
+      if (url.includes('/pos-revenue/'))
+        return Promise.resolve({ data: { posConnected: false, dailySeries: [] } });
       return new Promise((res) => {
         release = res;
       });
@@ -228,12 +232,11 @@ describe('useRecommendationsNextData transport', () => {
  * generic one, and never claims a goal was set when it was not.
  */
 describe('useRecommendationsNextData — goals', () => {
-  it('does not read goals until something asks, then reads them through apiClient', async () => {
-    const { result } = renderHook(() => useRecommendationsNextData());
-    await waitFor(() => expect(result.current.phase).toBe('ready'));
-    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/analytics/goals/'));
-    expect(result.current.goals).toBeUndefined();
-
+  it('reads the goal list for the tenant, through apiClient, without being asked', async () => {
+    // The rework made this read EAGER. It was lazy while its only use was a
+    // duplicate warning inside a sheet; since `source_rule_key` a goal is a
+    // fact about an entry — "this one is being watched" — and an entry cannot
+    // wait for someone to open a sheet before it tells the truth about itself.
     api.get.mockImplementation(async (url: string) => {
       if (url.includes('/analytics/goals/'))
         return {
@@ -257,9 +260,10 @@ describe('useRecommendationsNextData — goals', () => {
       return { data: FEED };
     });
 
-    act(() => result.current.loadGoals());
-    await waitFor(() => expect(Array.isArray(result.current.goals)).toBe(true));
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
     expect(api.get).toHaveBeenCalledWith('/analytics/goals/r1?status=active');
+    await waitFor(() => expect(Array.isArray(result.current.goals)).toBe(true));
     expect(result.current.goals?.[0]).toEqual({
       id: 'g0',
       name: 'September wine push',
@@ -268,7 +272,78 @@ describe('useRecommendationsNextData — goals', () => {
       currentValue: 1200,
       deadline: '2026-09-30',
       status: 'active',
+      // A goal a person typed records no source. NULL is "set by hand", and it
+      // must never be read as "unknown" or filled in from the metric.
+      sourceRuleKey: null,
     });
+  });
+
+  it('reads a goal’s source rule back, so an entry can say it is being watched', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/analytics/goals/'))
+        return {
+          data: [
+            {
+              id: 'g1',
+              name: 'Hold purchasing spend',
+              metric_key: 'purchase_spend',
+              target_value: '9000.00',
+              current_value: '4000.00',
+              deadline: '2026-09-10',
+              status: 'active',
+              source_rule_key: 'spend_acceleration',
+            },
+          ],
+        };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(Array.isArray(result.current.goals)).toBe(true));
+    expect(result.current.goals?.[0].sourceRuleKey).toBe('spend_acceleration');
+  });
+
+  it('reads the till window and keeps its daily series SPARSE — an absent day is not a zero', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/pos-revenue/'))
+        return {
+          data: {
+            posConnected: true,
+            from: '2026-08-13',
+            to: '2026-09-03',
+            dailySeries: [{ date: '2026-08-14', revenue: 612 }],
+          },
+        };
+      if (url.includes('/analytics/goals/')) return { data: [] };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.pos).toBeTruthy());
+    expect(api.get).toHaveBeenCalledWith('/analytics/pos-revenue/r1?days=22');
+    expect(result.current.pos?.connected).toBe(true);
+    // Exactly one key. Every other day in the window is ABSENT from the map,
+    // which is how the ribbon can hatch it instead of drawing a bar of zero.
+    expect(Object.keys(result.current.pos?.byDay ?? {})).toEqual(['2026-08-14']);
+  });
+
+  it('an unreadable till window is null with the reason, never an empty one', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/pos-revenue/'))
+        throw { response: { status: 500, data: { message: 'Failed to load POS revenue' } } };
+      if (url.includes('/analytics/goals/')) return { data: [] };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.pos).toBeNull());
+    expect(result.current.posProblem).toBe('Failed to load POS revenue');
   });
 
   it('an unreadable goal list is null, not an empty list', async () => {
@@ -280,9 +355,10 @@ describe('useRecommendationsNextData — goals', () => {
       return { data: FEED };
     });
     const { result } = renderHook(() => useRecommendationsNextData());
-    await waitFor(() => expect(result.current.phase).toBe('ready'));
-    act(() => result.current.loadGoals());
     await waitFor(() => expect(result.current.goals).toBeNull());
+    // Null, not []. An empty array would tell every entry "no goal watches you",
+    // which is a claim; null says the page does not know.
+    expect(result.current.goals).not.toEqual([]);
   });
 
   it('posts a goal through apiClient and says so in words', async () => {

@@ -45,6 +45,7 @@ import {
   type SuppressionScope,
   type SuppressionVM,
 } from './rec-format';
+import { DAYS_BEHIND, type PosVM } from './rec-days';
 
 const BASE = '/analytics/recommendations';
 
@@ -117,14 +118,16 @@ export interface TeamOption {
 /**
  * A goal as `analytics_goals` holds it (fourth pass, 2026-09-03).
  *
- * Read lazily — only when someone opens a goal sheet — for the one honest use
- * the page has for it: telling a manager that a goal on this metric ALREADY
- * exists before they set a second one. It is not a provenance link, because
- * there is no provenance to read: `analytics_goals` has no column that records
- * which recommendation a goal came from (baseline schema,
- * `20260805000000_baseline_from_production.sql:2157-2172`), so the page matches
- * on `metric_key` and says exactly that — "you already track this figure",
- * never "this recommendation is already a goal".
+ * Read for the whole tenant, not lazily, since the rework: an entry has to be
+ * able to say "this one is already being watched" on first paint, and the day
+ * ribbon has to know which goals fall due on which day.
+ *
+ * `sourceRuleKey` is the provenance the fourth pass could not have. Until
+ * migration `20260903161000` there was no column recording which
+ * recommendation a goal came from, so the strongest true sentence available
+ * was "you already hold a goal on this FIGURE" — a match on `metric_key`,
+ * which cannot tell two recommendations apart. It is `null` for every goal a
+ * person typed, and null means exactly that: set by hand, NOT unknown.
  */
 export interface GoalRow {
   id: string;
@@ -134,6 +137,8 @@ export interface GoalRow {
   currentValue: number | null;
   deadline: string | null;
   status: string;
+  /** The rule this goal was made from. Null = a person set it by hand. */
+  sourceRuleKey: string | null;
 }
 
 /** undefined = never asked · null = the read failed · [] = read, and empty. */
@@ -217,6 +222,10 @@ function toGoal(raw: Record<string, unknown>): GoalRow {
     currentValue: num(raw.current_value),
     deadline: typeof raw.deadline === 'string' ? raw.deadline : null,
     status: typeof raw.status === 'string' ? raw.status : 'active',
+    sourceRuleKey:
+      typeof raw.source_rule_key === 'string' && raw.source_rule_key
+        ? raw.source_rule_key
+        : null,
   };
 }
 
@@ -258,6 +267,8 @@ export interface RecommendationsData {
   /** undefined = not asked yet. */
   exclusions: ExclusionsVM | undefined;
   excludeDay: (date: string, reason: string) => Promise<boolean>;
+  /** `excludeDay`, said in words afterwards — the ribbon's own control. */
+  ruleOutDay: (date: string, reason: string) => Promise<void>;
   includeDay: (date: string) => Promise<void>;
   /** undefined = not asked yet; null = the read failed. */
   digest: DigestPref | null | undefined;
@@ -275,7 +286,13 @@ export interface RecommendationsData {
     direction: 'at_least' | 'at_most';
     period: string;
     deadline: string;
+    /** The rule this goal came from — `analytics_goals.source_rule_key`. */
+    sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
+  /** The till window behind the ribbon's record marks. undefined = not asked. */
+  pos: PosVM;
+  /** Why the till window could not be read, when it could not. */
+  posProblem: string | null;
   /** The last write the page performed, said in words. */
   note: string | null;
   undo: { ruleKey: string; label: string } | null;
@@ -312,6 +329,8 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [exclusions, setExclusions] = useState<ExclusionsVM | undefined>(undefined);
   const [team, setTeam] = useState<TeamOption[] | null | undefined>(undefined);
   const [goals, setGoals] = useState<GoalsVM>(undefined);
+  const [pos, setPos] = useState<PosVM>(undefined);
+  const [posProblem, setPosProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ ruleKey: string; label: string } | null>(null);
   const seq = useRef(0);
@@ -454,6 +473,27 @@ export function useRecommendationsNextData(): RecommendationsData {
     [rid],
   );
 
+  /**
+   * The ribbon's version: exclude the day AND say what happened.
+   *
+   * `excludeDay` deliberately stays silent because `dismiss()` words its own
+   * combined sentence ("the entry is dismissed, but the day could NOT be
+   * excluded"). A strike made straight from the strip has no such sentence to
+   * join, so it needs its own — and it must be worded off the ANSWER, never
+   * off the intent.
+   */
+  const ruleOutDay = useCallback(
+    async (date: string, reason: string) => {
+      const landed = await excludeDay(date, reason);
+      say(
+        landed
+          ? `${date} is out of the analysis — its numbers count toward no average, here or anywhere else.`
+          : `${date} is still counted — the exclusion did not save, so every average still includes it.`,
+      );
+    },
+    [excludeDay, say],
+  );
+
   const includeDay = useCallback(
     async (date: string) => {
       if (!rid) return;
@@ -488,23 +528,43 @@ export function useRecommendationsNextData(): RecommendationsData {
       .catch(() => setTeam(null));
   }, [rid, team]);
 
-  /* ── goals (fourth pass) ─────────────────────────────────────────────── */
-
-  // A restaurant switch invalidates the goal list the same way it invalidates
-  // the book: goals are per tenant, and showing the previous house's targets
-  // beside this house's entries would be the wrong-tenant read this page's
-  // sequence numbers exist to prevent.
-  useEffect(() => {
-    setGoals(undefined);
-  }, [rid]);
+  /* ── goals (fourth pass; eager since the rework) ─────────────────────── */
 
   /**
-   * The goal list, read only when a goal sheet is opened.
+   * The goal list, read once per tenant.
    *
-   * `status=active` on purpose: an archived goal is not a duplicate anyone
-   * needs warning about, and the question this read answers is only ever "am I
-   * about to set a second live target on this figure?".
+   * It used to be lazy — fetched only when a goal sheet opened — because its
+   * only use was warning about a duplicate metric. Since `source_rule_key`
+   * (migration `20260903161000`) a goal is a fact ABOUT AN ENTRY: an entry
+   * whose rule a live goal names is being watched, and it has to say so on
+   * first paint rather than after someone opens a sheet. The day ribbon needs
+   * the same rows to draw what falls due.
+   *
+   * `status=active` on purpose: an archived goal is not watching anything, and
+   * an achieved one is not a duplicate anyone needs warning about.
+   *
+   * A restaurant switch invalidates the list the same way it invalidates the
+   * book — showing the previous house's targets beside this house's entries
+   * would be the wrong-tenant read the sequence numbers exist to prevent.
    */
+  useEffect(() => {
+    let cancelled = false;
+    setGoals(undefined);
+    if (!rid) return;
+    apiClient
+      .get<Record<string, unknown>[]>(`/analytics/goals/${rid}?status=active`)
+      .then(({ data }) => {
+        if (!cancelled) setGoals(Array.isArray(data) ? data.map(toGoal) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setGoals(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
+
+  /** Kept for the goal sheet: a re-read after a failed one, never a second read. */
   const loadGoals = useCallback(() => {
     if (!rid || goals !== undefined) return;
     setGoals(null);
@@ -513,6 +573,56 @@ export function useRecommendationsNextData(): RecommendationsData {
       .then(({ data }) => setGoals(Array.isArray(data) ? data.map(toGoal) : []))
       .catch(() => setGoals(null));
   }, [rid, goals]);
+
+  /* ── the till window, for the ribbon's record marks ──────────────────── */
+
+  /**
+   * Which days carry a record at all.
+   *
+   * `GET /analytics/pos-revenue/:rid` returns a SPARSE `dailySeries` — only
+   * days that actually carried a non-voided check appear — which is the one
+   * signal in the gateway that separates "the house was shut" from "the house
+   * took nothing". `posConnected: false` means no till has ever landed a check
+   * here, and then NOTHING may be claimed about any day; the ribbon hatches
+   * nothing and says so.
+   *
+   * Read separately from the book so a till failure never takes the entries
+   * down with it, and keyed by tenant like every other read on this page.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setPos(undefined);
+    setPosProblem(null);
+    if (!rid) return;
+    apiClient
+      .get<Record<string, unknown>>(`/analytics/pos-revenue/${rid}?days=${DAYS_BEHIND + 1}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const series = Array.isArray(data?.dailySeries)
+          ? (data.dailySeries as Array<Record<string, unknown>>)
+          : [];
+        const byDay: Record<string, number> = {};
+        for (const row of series) {
+          const date = typeof row?.date === 'string' ? row.date.substring(0, 10) : null;
+          if (!date) continue;
+          byDay[date] = num(row?.revenue) ?? 0;
+        }
+        setPos({
+          connected: data?.posConnected === true,
+          from: typeof data?.from === 'string' ? data.from : '',
+          to: typeof data?.to === 'string' ? data.to : '',
+          byDay,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPos(null);
+        setPosProblem(failureOf(err).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
 
   /**
    * Write one goal.
@@ -525,10 +635,16 @@ export function useRecommendationsNextData(): RecommendationsData {
    * reason is the difference between a fixable mistake and a dead button.
    *
    * `createdBy` is deliberately NOT sent. The controller passes the request
-   * body to the service unfiltered (`analytics.controller.ts:507`), so a
+   * body to the service unfiltered (`analytics.controller.ts:503-515`), so a
    * client-supplied actor id would be an unverified claim written to a stored
    * record; the JWT is the only thing that knows who this is, and nothing on
    * this path reads it.
+   *
+   * `sourceRuleKey` IS sent, and is a different kind of claim: it is not about
+   * a person, it is the rule that produced the entry the manager is standing
+   * on, and the gateway validates it against its own rule catalogue
+   * (`GoalsService.isRecommendationRuleKey`) — an unknown key is a 400 with
+   * words, never a stored string nothing can resolve.
    */
   const createGoal = useCallback(
     async (input: {
@@ -538,6 +654,7 @@ export function useRecommendationsNextData(): RecommendationsData {
       direction: 'at_least' | 'at_most';
       period: string;
       deadline: string;
+      sourceRuleKey?: string;
     }): Promise<GoalWrite> => {
       if (!rid)
         return { ok: false, message: 'no restaurant is selected', expired: false };
@@ -724,6 +841,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     suppressionsReadable,
     exclusions,
     excludeDay,
+    ruleOutDay,
     includeDay,
     phase,
     entries,
@@ -738,6 +856,8 @@ export function useRecommendationsNextData(): RecommendationsData {
     goals,
     loadGoals,
     createGoal,
+    pos,
+    posProblem,
     note,
     undo,
     clearUndo: () => setUndo(null),
