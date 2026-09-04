@@ -750,6 +750,13 @@ export class AuthService {
         .replace(/^-|-$/g, "");
       const slug = `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`;
 
+      // The point the house asserted at sign-up, or nothing at all: a
+      // half-pair and an out-of-range pair are both dropped rather than
+      // half-written. Spelled as three explicit keys (undefined when absent,
+      // which the client omits) so the capture-contract guard can read every
+      // column this insert writes — a conditional spread is unreadable to it.
+      const coords = this.coordinateColumns(dto);
+
       const { data: restaurant, error: restErr } =
         await this.databaseService.supabase
           .from("restaurants")
@@ -767,10 +774,9 @@ export class AuthService {
             cuisine_type: dto.cuisineType,
             timezone: dto.timezone || "America/New_York",
             organization_id: org.id,
-            // The point the house asserted at sign-up, or nothing at all. See
-            // `coordinateColumns` — a half-pair and an out-of-range pair are
-            // both dropped rather than half-written.
-            ...this.coordinateColumns(dto),
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            google_place_id: coords.google_place_id,
           })
           .select()
           .single();

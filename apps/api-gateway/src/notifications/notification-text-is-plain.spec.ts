@@ -67,6 +67,11 @@ const FUNNELS = [
   "createNotification",
   "persistManagerNotification",
   'from("notifications")',
+  // The six pass-4 producers write through ProducerLedgerService.emit, so
+  // none of them contained a funnel above and the scan never opened them;
+  // the vacuity check below still passed on the older set. Round-two audit,
+  // 2026-09-03.
+  "this.ledger.emit(",
 ];
 
 function walk(dir: string, ext: string[], out: string[] = []): string[] {
