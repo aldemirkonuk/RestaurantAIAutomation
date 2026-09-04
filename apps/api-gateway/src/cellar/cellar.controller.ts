@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Put,
   Req,
   UseGuards,
@@ -12,7 +13,11 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CellarRegistersService } from "./cellar-registers.service";
-import { SetCellarRegistersDto } from "./dto/cellar-registers.dto";
+import { ZonesService } from "./zones.service";
+import {
+  ConfirmZoneDto,
+  SetCellarRegistersDto,
+} from "./dto/cellar-registers.dto";
 
 /**
  * Which registers this house carries.
@@ -27,7 +32,10 @@ import { SetCellarRegistersDto } from "./dto/cellar-registers.dto";
 @Controller("cellar")
 @UseGuards(JwtAuthGuard)
 export class CellarController {
-  constructor(private readonly registers: CellarRegistersService) {}
+  constructor(
+    private readonly registers: CellarRegistersService,
+    private readonly zones: ZonesService,
+  ) {}
 
   @Get(":restaurantId/registers")
   @ApiOperation({
@@ -45,6 +53,61 @@ export class CellarController {
           ? error.message
           : "Failed to read the cellar registers",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /* ── the floor: zones, and whether anybody has ever looked at them ───── */
+
+  @Get(":restaurantId/zones")
+  @ApiOperation({
+    summary:
+      "This house's storage zones, split by whether a human has confirmed the name",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Confirmed zones (the floor draws these) and unconfirmed ones (counted, never drawn)",
+  })
+  async readZones(@Param("restaurantId") restaurantId: string) {
+    try {
+      return await this.zones.read(restaurantId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error instanceof Error ? error.message : "Failed to read the zones",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Put(":restaurantId/zones/:zoneId")
+  @ApiOperation({
+    summary: "Confirm a zone's name, or rename it. The actor comes from the JWT",
+  })
+  @ApiResponse({ status: 200, description: "The zone as it was written" })
+  async confirmZone(
+    @Param("restaurantId") restaurantId: string,
+    @Param("zoneId", new ParseUUIDPipe()) zoneId: string,
+    @Body() dto: ConfirmZoneDto,
+    @Req() req: { user?: { userId?: string } },
+  ) {
+    try {
+      return await this.zones.confirm(
+        restaurantId,
+        zoneId,
+        dto.name ?? null,
+        req.user?.userId ?? null,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const message =
+        error instanceof Error ? error.message : "The zone was not written";
+      throw new HttpException(
+        message,
+        /no zone of this house/i.test(message)
+          ? HttpStatus.NOT_FOUND
+          : HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

@@ -305,6 +305,88 @@ export function houseNamingFor(
   );
 }
 
+/* ── which view of the parent opens first ──────────────────────────────── */
+
+/**
+ * THE WHOLE-CELLAR VIEW AS THE DEFAULT, FOR A SMALL HOUSE.
+ *
+ * The founder's decision: a house whose confirmed registers row has **three or
+ * fewer** registers opens `/cellar` on the whole view — every register in one
+ * table — and a house with more opens on the parent, registers as their own
+ * rows, with the whole view still one button away.
+ *
+ * WHY A THRESHOLD AT ALL. The whole view costs one read per register. For a
+ * meyhane carrying five or six that is a real page load nobody asked to be
+ * expensive, and the registers are worth reading one at a time. For a café
+ * carrying two, the register cards ARE the whole cellar with an extra click in
+ * front of them, and the flat table is simply the page.
+ *
+ * COMPUTED FROM THE SAME READOUT AS THE NAME, so the two can never disagree:
+ * both are pure functions of `restaurant_cellar_registers`, which is inferred
+ * once and confirmed at onboarding. Stable per house, not per session, and not
+ * recomputed per render.
+ *
+ * AN UNREAD READOUT NEVER OPENS THE WHOLE VIEW, and this is the load-bearing
+ * clause rather than a nicety: the whole view fires one read per carried
+ * register, so opening it against a set nobody has established would fire reads
+ * for registers this house may not have — asserting a set in the network layer
+ * that the page refuses to assert in words. Unread falls to the parent, which
+ * already says the set could not be read.
+ *
+ * AND A SET WITH NO NON-WINE REGISTER NEVER OPENS IT EITHER. `/wines` is served
+ * by a different endpoint with the inventory overlay laid over it, so the whole
+ * view deliberately excludes it (`WholeCellar.tsx`). A wines-only house is at
+ * the threshold and would open on an empty table — the count would be right and
+ * the page would be wrong. It falls to the parent, and says so.
+ */
+export const WHOLE_CELLAR_THRESHOLD = 3;
+
+/** Registers the whole view can actually read. Wines are served elsewhere. */
+const WHOLE_CELLAR_SERVES = (ids: RegisterId[]): RegisterId[] =>
+  ids.filter((id) => id !== 'wines');
+
+export interface ParentView {
+  /** True when `/cellar` opens on the whole-cellar table. */
+  whole: boolean;
+  /** The sentence the page prints beside the naming rule. */
+  because: string;
+}
+
+export function parentView(
+  readout:
+    | { carried: RegisterId[]; decidedBy: DecidedBy | 'mixed' }
+    | null
+    | undefined,
+): ParentView {
+  if (!readout || readout.decidedBy === 'unknown') {
+    return {
+      whole: false,
+      because:
+        'This page opens on its registers because the set this house carries has not been established. The whole-cellar table is one read per register, and it is not fired against a set nobody has confirmed.',
+      };
+  }
+  const n = readout.carried.length;
+  const servable = WHOLE_CELLAR_SERVES(readout.carried).length;
+
+  if (n > WHOLE_CELLAR_THRESHOLD) {
+    return {
+      whole: false,
+      because: `This house carries ${n} registers, so the page opens on them one at a time; the whole cellar in one table is a button away, and costs one read per register. Houses with ${WHOLE_CELLAR_THRESHOLD} or fewer open on it instead.`,
+    };
+  }
+  if (servable === 0) {
+    return {
+      whole: false,
+      because:
+        'This house carries few enough registers to open on the whole cellar, and it carries only wines — which the whole-cellar table does not serve, because a wine row carries a stock figure and the other kinds cannot. Opening on it would open on an empty table, so the page opens on its registers.',
+    };
+  }
+  return {
+    whole: true,
+    because: `This house carries ${n} register${n === 1 ? '' : 's'}, so the page opens on all of them at once rather than making you choose one first. Houses with more than ${WHOLE_CELLAR_THRESHOLD} open on their registers instead.`,
+  };
+}
+
 /* ── how a register's answer was reached ───────────────────────────────── */
 
 /** Mirrors the gateway's `DecidedBy` (cellar/cellar-registers.ts). */

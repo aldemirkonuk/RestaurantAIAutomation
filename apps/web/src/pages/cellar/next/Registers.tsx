@@ -28,11 +28,13 @@ import {
   REGISTER_TITLE,
   count,
   decidedLine,
+  parentView,
   registerHref,
   type RegisterId,
 } from './cellar-format';
 import { REGISTER_SOURCE } from './registerShapes';
 import { BOOK_READ_LIMIT, type CellarData, type RegisterReadoutVM } from './useCellarNextData';
+import FloorStrip from './FloorStrip';
 import WholeCellar from './WholeCellar';
 
 /* ── the tally: figures arrive overdamped, and an unknown never counts ──── */
@@ -316,10 +318,18 @@ export default function Registers({ data }: { data: CellarData }) {
         </p>
       </section>
 
+      {/* Direction A, built: the floor, over confirmed zones only. It sits
+          BELOW "In the building tonight" because the founder's "keep the top
+          info boxes" stands above it. */}
+      <FloorStrip />
+
       {/* Direction B, merged in rather than replacing the registers: the whole
           book in one list, with only the columns that mean the same thing in
           every register. Opened deliberately — it is one read per register. */}
-      <WholeCellar carried={unread || unknown ? null : shown.filter((r) => r !== 'wines')} />
+      <WholeCellar
+        carried={unread || unknown ? null : shown.filter((r) => r !== 'wines')}
+        defaultOpen={parentView(unread ? null : registers).whole}
+      />
     </>
   );
 }

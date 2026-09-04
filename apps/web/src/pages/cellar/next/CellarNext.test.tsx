@@ -42,6 +42,8 @@ const mock = vi.hoisted(() => ({
   writes: {} as Record<string, unknown>,
   rowRecord: { data: null, loading: false, error: null } as Record<string, unknown>,
   whole: { rows: [], reads: [], loading: false, partial: false } as Record<string, unknown>,
+  zones: { data: null, loading: false, error: null } as Record<string, unknown>,
+  confirmZone: { confirm: vi.fn(), saving: false, error: null } as Record<string, unknown>,
 }));
 
 vi.mock('./useCellarNextData', async (orig) => ({
@@ -54,6 +56,8 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useCocktailWrites: () => mock.writes,
   useRowRecord: () => mock.rowRecord,
   useWholeCellar: () => mock.whole,
+  useZones: () => mock.zones,
+  useConfirmZone: () => mock.confirmZone,
 }));
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
@@ -195,6 +199,8 @@ beforeEach(() => {
   mock.cocktails = { data: null, loading: false, error: null };
   mock.rowRecord = { data: null, loading: false, error: null };
   mock.whole = { rows: [], reads: [], loading: false, partial: false };
+  mock.zones = { data: null, loading: false, error: null };
+  mock.confirmZone = { confirm: vi.fn(), saving: false, error: null };
 });
 
 describe('CellarNext — the parent surface', () => {
@@ -1080,13 +1086,18 @@ describe('the gesture set — the header owns the column, the cell owns the reco
 
 describe('the whole cellar at once — direction B, merged in', () => {
   it('does not spend six reads on a page load nobody asked to be expensive', () => {
+    // A house ABOVE the threshold: the founder's 2026-09-04 rule opens the
+    // whole view by default only for three registers or fewer, so this is the
+    // case where the cost is still paid on a gesture.
     mock.current = { ...base, registers: readout({ registers: [
       reg('wines', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
       reg('beer', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
-      reg('whiskey'), reg('cocktails'), reg('spirits'), reg('non_alcoholic'), reg('soft_drinks'),
+      reg('whiskey', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('spirits', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('cocktails'), reg('non_alcoholic'), reg('soft_drinks'),
     ] }) };
     draw();
-    expect(screen.getByTestId('whole-cellar-open')).toHaveTextContent(/1 reads?/);
+    expect(screen.getByTestId('whole-cellar-open')).toHaveTextContent(/3 reads?/);
     expect(screen.queryByTestId('whole-partial')).not.toBeInTheDocument();
   });
 
@@ -1103,7 +1114,7 @@ describe('the whole cellar at once — direction B, merged in', () => {
       partial: true,
     };
     draw();
-    fireEvent.click(screen.getByTestId('whole-cellar-open'));
+    // Two registers: open by default under the founder's rule, no gesture.
     expect(screen.getByTestId('whole-partial')).toHaveTextContent(
       /Beer could not be read \(HTTP 500\).*short by an unknown amount/s,
     );
@@ -1122,7 +1133,6 @@ describe('the whole cellar at once — direction B, merged in', () => {
       partial: false,
     };
     draw();
-    fireEvent.click(screen.getByTestId('whole-cellar-open'));
     const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '').join('|');
     expect(heads).toMatch(/Register/);
     expect(heads).toMatch(/Taken/);
@@ -1423,5 +1433,216 @@ describe('the expanded row — the /inventory dropdown, in the cellar', () => {
       /arithmetic on nothing, so none is drawn/,
     );
     expect(screen.queryByTestId('row-expander')).not.toBeInTheDocument();
+  });
+});
+
+/* ── FOUNDER DECISIONS, 2026-09-04 ───────────────────────────────────────── */
+
+function carryingRegisters(...ids: RegisterId[]) {
+  return readout({
+    registers: ([
+      'wines', 'beer', 'whiskey', 'cocktails', 'spirits', 'non_alcoholic', 'soft_drinks',
+    ] as RegisterId[]).map((id) =>
+      reg(id, ids.includes(id)
+        ? { carried: true, decidedBy: 'confirmed', confidence: 'certain' }
+        : {}),
+    ),
+  });
+}
+
+describe('which view /cellar opens on', () => {
+  it('a house with 2 registers opens on the whole cellar, without being asked', () => {
+    mock.current = { ...base, registers: carryingRegisters('beer', 'non_alcoholic') };
+    mock.whole = {
+      rows: [{ ...houseRow(), register: 'beer' }],
+      reads: [{ register: 'beer', loading: false, error: null, rows: 1 }],
+      loading: false,
+      partial: false,
+    };
+    draw();
+    // The table is there with no gesture, and the button that opens it is gone.
+    expect(screen.getByRole('columnheader', { name: /Register/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('whole-cellar-open')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cellar-view-rule')).toHaveTextContent(
+      /carries 2 registers, so the page opens on all of them at once/,
+    );
+  });
+
+  it('a house with 4 registers opens on its registers, with the whole view a button away', () => {
+    mock.current = {
+      ...base,
+      registers: carryingRegisters('wines', 'beer', 'spirits', 'cocktails'),
+    };
+    draw();
+    expect(screen.getByTestId('whole-cellar-open')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Register/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('cellar-view-rule')).toHaveTextContent(
+      /carries 4 registers, so the page opens on them one at a time/,
+    );
+  });
+
+  it('an unread readout NEVER opens the whole view — it would fire reads for a set nobody confirmed', () => {
+    mock.current = {
+      ...base,
+      registers: null,
+      registersError: 'HTTP 500',
+    };
+    draw();
+    expect(screen.queryByRole('columnheader', { name: /Register/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('registers-unread')).toHaveTextContent(
+      /could not be read/,
+    );
+    expect(screen.getByTestId('cellar-view-rule')).toHaveTextContent(
+      /not fired against a set nobody has confirmed/,
+    );
+  });
+
+  it('a wines-only house is under the threshold and still opens on its registers', () => {
+    // The trap the rule has to survive: the whole view does not serve wines, so
+    // a wines-only house would open on an empty table.
+    mock.current = { ...base, bottles: [bottle()], registers: carryingRegisters('wines') };
+    draw();
+    expect(screen.queryByRole('columnheader', { name: /Register/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('cellar-view-rule')).toHaveTextContent(
+      /would open on an empty table/,
+    );
+  });
+});
+
+describe('the floor — confirmed zones only', () => {
+  const zone = (over: Record<string, unknown> = {}) => ({
+    id: 'z1',
+    name: 'Wine Cellar - Main Cellar',
+    zone: 'Wine Cellar',
+    section: 'Main Cellar',
+    capacityBottles: 500,
+    itemsAssigned: 17,
+    confirmedAt: null,
+    confirmedBy: null,
+    provenance: 'unconfirmed',
+    ...over,
+  });
+  const zonesVM = (over: Record<string, unknown> = {}) => ({
+    restaurantId: 'r1',
+    confirmed: [],
+    unconfirmed: [],
+    counts: { confirmed: 0, unconfirmed: 0, total: 0 },
+    readable: true,
+    reason: null,
+    confirmable: true,
+    scopeNote: 'A zone is drawn on the floor only once somebody in this house has confirmed its name.',
+    ...over,
+  });
+
+  beforeEach(() => {
+    mock.current = { ...base, registers: carryingRegisters('wines', 'beer', 'spirits', 'cocktails') };
+  });
+
+  it('draws NOTHING while every zone is unconfirmed, and says how many there are', () => {
+    // The live state on 2026-09-04: 4 rows, 2 tenants, 4 of 4 unconfirmed.
+    mock.zones = {
+      data: zonesVM({
+        unconfirmed: [zone(), zone({ id: 'z2', name: 'Bar Area - Bar Fridge' })],
+        counts: { confirmed: 0, unconfirmed: 2, total: 2 },
+      }),
+      loading: false,
+      error: null,
+    };
+    draw();
+    expect(screen.getByTestId('floor-unconfirmed')).toHaveTextContent(
+      /2 zones are not yet confirmed, so the floor is not drawn at all yet/,
+    );
+    expect(screen.queryByTestId('zone-z1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('zone-z2')).not.toBeInTheDocument();
+  });
+
+  it('draws the confirmed zones and keeps counting the rest', () => {
+    mock.zones = {
+      data: zonesVM({
+        confirmed: [zone({ id: 'zc', name: 'Keg line', confirmedAt: '2026-09-04T10:00:00Z', provenance: 'renamed', itemsAssigned: 9 })],
+        unconfirmed: [zone()],
+        counts: { confirmed: 1, unconfirmed: 1, total: 2 },
+      }),
+      loading: false,
+      error: null,
+    };
+    draw();
+    const drawn = screen.getByTestId('zone-zc');
+    expect(drawn).toHaveTextContent('Keg line');
+    expect(drawn).toHaveTextContent('9');
+    expect(drawn).toHaveTextContent('renamed by the house');
+    expect(screen.queryByTestId('zone-z1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('floor-unconfirmed')).toHaveTextContent(
+      /1 zone is not yet confirmed and are not drawn|1 zone is not yet confirmed/,
+    );
+  });
+
+  it('an unread floor names the migration and draws no zone at all', () => {
+    mock.zones = {
+      data: zonesVM({
+        readable: false,
+        confirmable: false,
+        reason: 'The zone-confirmation columns are not on this database yet — migration 20260904130000_a_zone_is_confirmed_or_it_is_not_drawn.sql has not been applied here.',
+      }),
+      loading: false,
+      error: null,
+    };
+    draw();
+    expect(screen.getByTestId('floor-unread')).toHaveTextContent(/20260904130000/);
+    expect(screen.getByTestId('floor-unread')).toHaveTextContent(
+      /a floor plan asserts a room/,
+    );
+    expect(screen.queryByTestId('zone-z1')).not.toBeInTheDocument();
+  });
+
+  it('the confirm control writes the name the manager typed, and a rename is a rename', () => {
+    const confirm = vi.fn().mockResolvedValue({});
+    mock.confirmZone = { confirm, saving: false, error: null };
+    mock.zones = {
+      data: zonesVM({
+        unconfirmed: [zone()],
+        counts: { confirmed: 0, unconfirmed: 1, total: 1 },
+      }),
+      loading: false,
+      error: null,
+    };
+    draw();
+    fireEvent.click(screen.getByTestId('floor-confirm-open'));
+
+    // Untouched: confirming the name as it stands sends no name at all.
+    fireEvent.click(screen.getByTestId('zone-confirm-z1'));
+    expect(confirm).toHaveBeenLastCalledWith({ zoneId: 'z1' });
+
+    // Edited: it becomes a rename, and the typed name is what is sent.
+    fireEvent.change(screen.getByLabelText(/Name for Wine Cellar/), {
+      target: { value: 'Back cellar' },
+    });
+    fireEvent.click(screen.getByTestId('zone-confirm-z1'));
+    expect(confirm).toHaveBeenLastCalledWith({ zoneId: 'z1', name: 'Back cellar' });
+  });
+
+  it('a failed confirm says nothing was written, never a silent success', () => {
+    mock.confirmZone = { confirm: vi.fn(), saving: false, error: 'HTTP 500' };
+    mock.zones = {
+      data: zonesVM({
+        unconfirmed: [zone()],
+        counts: { confirmed: 0, unconfirmed: 1, total: 1 },
+      }),
+      loading: false,
+      error: null,
+    };
+    draw();
+    fireEvent.click(screen.getByTestId('floor-confirm-open'));
+    expect(screen.getByTestId('floor-confirm-error')).toHaveTextContent(
+      /not written \(HTTP 500\). Nothing was\s+confirmed/,
+    );
+  });
+
+  it('a house with no zones on record says so about the BOOK, not the building', () => {
+    mock.zones = { data: zonesVM(), loading: false, error: null };
+    draw();
+    expect(screen.getByTestId('floor-none')).toHaveTextContent(
+      /a fact about the\s+book, not about the building/,
+    );
   });
 });

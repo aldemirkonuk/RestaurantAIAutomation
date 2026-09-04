@@ -6,6 +6,9 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
   ValidateNested,
 } from "class-validator";
 import { REGISTER_IDS } from "../cellar-registers";
@@ -56,4 +59,21 @@ export class SetCellarRegistersDto {
   })
   @IsIn(["inferred", "confirmed", "manual"])
   source: "inferred" | "confirmed" | "manual" = "confirmed";
+}
+
+/**
+ * Confirming a zone, or renaming it. `name` absent means "the name as it
+ * stands is right"; present and different means a rename. There is no
+ * "unconfirm" and no `confirmedBy` on the body — the actor comes from the JWT,
+ * because a body cannot name who decided this any more than it can name which
+ * restaurant.
+ */
+export class ConfirmZoneDto {
+  @ApiPropertyOptional({
+    description: "A new name for the zone. Omit to confirm the name it carries.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
 }

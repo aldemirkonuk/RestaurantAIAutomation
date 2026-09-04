@@ -573,6 +573,91 @@ export function useInkOnChange(
   }, [el, stamp]);
 }
 
+/* ── the floor: zones, and whether anybody has ever looked at them ─────── */
+
+export type ZoneProvenance = 'unconfirmed' | 'confirmed' | 'renamed' | 'created';
+
+export interface ZoneVM {
+  id: string;
+  name: string;
+  zone: string | null;
+  section: string | null;
+  capacityBottles: number | null;
+  /** Counted from the inventory rows assigned to it. Null = could not count. */
+  itemsAssigned: number | null;
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+  provenance: ZoneProvenance;
+}
+
+export interface ZonesVM {
+  restaurantId: string;
+  confirmed: ZoneVM[];
+  unconfirmed: ZoneVM[];
+  counts: { confirmed: number; unconfirmed: number; total: number };
+  readable: boolean;
+  reason: string | null;
+  confirmable: boolean;
+  scopeNote: string;
+}
+
+/**
+ * The house's zones. Read only for the floor strip, which draws the confirmed
+ * ones and counts the rest in a sentence.
+ */
+export function useZones() {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'zones', activeRestaurantId],
+    enabled: Boolean(activeRestaurantId),
+    queryFn: async (): Promise<ZonesVM> => {
+      const r = await apiClient.get(`/cellar/${activeRestaurantId}/zones`);
+      return r.data as ZonesVM;
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+  };
+}
+
+/**
+ * Confirming a zone's name, or renaming it. The actor is NOT sent: the gateway
+ * takes it from the signed token, because a body cannot name who decided this.
+ */
+export function useConfirmZone() {
+  const { activeRestaurantId } = useAuth();
+  const queryClient = useQueryClient();
+  const m = useMutation({
+    mutationFn: async (input: { zoneId: string; name?: string }) => {
+      const r = await apiClient.put(
+        `/cellar/${activeRestaurantId}/zones/${input.zoneId}`,
+        input.name === undefined ? {} : { name: input.name },
+      );
+      return r.data as { zone: ZoneVM; provenance: ZoneProvenance };
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['cellar', 'zones', activeRestaurantId],
+      });
+    },
+  });
+  return {
+    confirm: m.mutateAsync,
+    saving: m.isPending,
+    error: m.isError
+      ? m.error instanceof Error
+        ? m.error.message
+        : 'no reason given'
+      : null,
+  };
+}
+
 /* ── the whole cellar at once: direction B, one flat book ───────────────── */
 
 export interface WholeRowVM extends RegisterRowVM {

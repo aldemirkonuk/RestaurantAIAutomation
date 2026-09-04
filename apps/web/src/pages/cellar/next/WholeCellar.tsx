@@ -22,7 +22,7 @@
  * drawing a column of nothing.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, LayoutList } from 'lucide-react';
 import ColumnMenu from './ColumnMenu';
 import SeriesPanel from './SeriesPanel';
@@ -36,14 +36,33 @@ function valueFor(r: WholeRowVM, id: string): string | number | null {
   return sortValueFor(r, id);
 }
 
-export default function WholeCellar({ carried }: { carried: RegisterId[] | null }) {
-  const [open, setOpen] = useState(false);
+export default function WholeCellar({
+  carried,
+  defaultOpen = false,
+}: {
+  carried: RegisterId[] | null;
+  /**
+   * Opened without a gesture, because the founder's rule says a house this
+   * small should not have to ask. Decided by `parentView` off the same readout
+   * the parent's name comes from — never by this component, which would then be
+   * a second place the rule lived.
+   */
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
   const [facet, setFacet] = useState<RegisterId | 'all'>('all');
   const [sortKey, setSortKey] = useState<string>('books');
   const [asc, setAsc] = useState(false);
   const [menu, setMenu] = useState<{ column: CellarColumn; x: number; y: number } | null>(null);
   const [series, setSeries] = useState<{ label: string; column: CellarColumn } | null>(null);
+
+  // The readout arrives after the first paint, so `defaultOpen` can turn true
+  // one render in. Sync it ONCE, upward only: a house that qualifies opens, and
+  // a view the reader opened by hand is never closed back by the rule.
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
 
   const whole = useWholeCellar(open, carried);
   const record = useRowRecord(series?.label ?? null);

@@ -60,6 +60,7 @@ import {
   SANS,
   ensureFraunces,
   houseNamingFor,
+  parentView,
   registerHref,
   type RegisterId,
 } from './cellar-format';
@@ -118,6 +119,10 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
   // registers call the same function — the name cannot say one thing here and
   // another in a breadcrumb one click deep.
   const naming = houseNamingFor(data.registers);
+
+  // Which view this page opens on, off the SAME readout as the name — so the
+  // two can never disagree, and neither is recomputed per session.
+  const view = parentView(data.registers);
 
   useEffect(() => {
     ensureFraunces();
@@ -188,6 +193,13 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
               <p className="cl-note" data-testid="cellar-naming-rule">
                 {naming.because}
                 {' The address stays /cellar whatever this page is called.'}
+              </p>
+              {/* The second rule, beside the first: which view opens. Same
+                  readout, same paragraph block, so a reader who wonders why the
+                  page looks different from another branch's finds both answers
+                  in one place. */}
+              <p className="cl-note" data-testid="cellar-view-rule">
+                {view.because}
               </p>
               <hr className="cl-rule" style={{ margin: '16px 0 0' }} />
               <Registers data={data} />

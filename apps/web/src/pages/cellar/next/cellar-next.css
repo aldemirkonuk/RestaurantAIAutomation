@@ -665,3 +665,53 @@ textarea.cl-field {
 .cl-kv > span[data-filled='true'] {
   color: var(--seal-deep);
 }
+
+/* ── the floor strip: confirmed zones only ─────────────────────────────── */
+
+.cl-floor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.cl-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.cl-zone > b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.cl-zone-n {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  color: var(--ink-1);
+}
+.cl-confirmzones {
+  margin-top: 10px;
+  padding: 12px 13px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.cl-zonerow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px solid var(--paper-2);
+}
+.cl-zonerow:first-child {
+  border-top: 0;
+}
+.cl-zonerow > input {
+  flex: 1 1 220px;
+  min-width: 180px;
+}

@@ -166,11 +166,14 @@ a.nav { text-decoration: none; }
       <b>Contributed:</b> the room, and the only answer on the whole page to <i>where</i> &mdash;
       plus the two verbs that come with it (walk a zone, put away what is at the door).
       <b>Cost, and how the merge pays it:</b> A stands on
-      <span class="num">storage_locations</span>, which holds 87 rows across 7 tenants with 84
-      carrying one of four invented zone names (measured on production 2026-09-02). Drawn as
-      the whole parent it is a picture of fabricated rooms. Reduced to a strip, and drawn only
-      from zones that carry a real count and a real walk date, it costs nothing and still
-      answers <i>where</i>.
+      <span class="num">storage_locations</span>, which cannot tell a zone somebody walked from
+      a zone a seeder invented &mdash; measured on production 2026-09-04, it holds 4 rows across
+      2 tenants and <b>all four</b> carry one of the four names the seeded-defaults sweep named
+      (87 rows across 7 tenants was the 2026-09-02 figure; 83 have since been deleted, so the
+      proportion went from 84-of-87 to 4-of-4). Drawn as the whole parent it is a picture of
+      fabricated rooms. BUILT as a strip, gated on confirmation &mdash; a manager confirms or
+      renames each zone once, and only confirmed zones are drawn &mdash; it costs nothing and
+      still answers <i>where</i>.
     </p>
   </div>
   <div class="panel" style="margin-bottom:12px">

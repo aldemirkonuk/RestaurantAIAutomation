@@ -164,25 +164,57 @@ a.nav { text-decoration: none; }
     minimum.
   </p>
 
-  <!-- ── FROM DIRECTION A: the room, reduced to a strip ──────────────────── -->
+  <!-- ── FROM DIRECTION A: the room, BUILT over confirmed zones only ─────── -->
   <h2 class="sk-sec">On the floor &middot; from direction A</h2>
-  <div class="floorstrip">
-    <div class="zone"><b>A</b><span>North rack &middot; reds</span><span class="n">486</span><span class="dim">walked 2d ago</span></div>
-    <div class="zone"><b>B</b><span>Cold wall &middot; whites, orange</span><span class="n">263</span><span class="dim">walked 2d ago</span></div>
-    <div class="zone"><b>C</b><span>Keg line &middot; beer</span><span class="n">9 kegs</span><span class="dim">walked today</span></div>
-    <div class="zone"><b>D</b><span>Back bar &middot; rakı, gin, amaro</span><span class="n">318</span><span class="dim" style="color:var(--seal-deep)">walked 6d ago</span></div>
-    <div class="zone"><b>E</b><span>Cold room &middot; non-alcoholic</span><span class="n">108</span><span class="dim">walked today</span></div>
-    <div class="zone"><b>F</b><span>Door &middot; received, unshelved</span><span class="n">36</span><span class="dim">live</span></div>
-    <div class="zone"><b>G</b><span>Service pass &middot; tonight&rsquo;s glasses</span><span class="n">40</span><span class="dim">16:00</span></div>
+  <div class="floorstrip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="zone"><b>A</b><span>North rack &middot; reds</span><span class="n">486</span><span class="dim">confirmed by Deniz &middot; 2 Sep</span></div>
+    <div class="zone"><b>B</b><span>Cold wall &middot; whites, orange</span><span class="n">263</span><span class="dim">confirmed by Deniz &middot; 2 Sep</span></div>
+    <div class="zone"><b>C</b><span>Keg line &middot; beer</span><span class="n">9 kegs</span><span class="dim">renamed by the house &middot; 3 Sep</span></div>
+    <div class="zone"><b>D</b><span>Back bar &middot; rakı, gin, amaro</span><span class="n">318</span><span class="dim">confirmed by Aslı &middot; 3 Sep</span></div>
+  </div>
+  <p class="sk-said" style="margin-top:10px">
+    <b>3 zones are not yet confirmed and are not drawn.</b> Every zone here was
+    written by a seeder or an import until somebody in this house says otherwise.
+    <span class="btn" style="margin-left:6px">Confirm your zones</span>
+  </p>
+  <div class="panel" style="margin-top:10px">
+    <p class="sk-note" style="margin:0 0 8px">
+      Confirm the name as it stands, or type the name this room actually goes by.
+      Either way it is recorded against you and the zone joins the floor.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--paper-2)">
+      <span class="btn" style="flex:1 1 240px;justify-content:flex-start">Reserve Room - Rare Collection</span>
+      <span class="btn">&#10003; It is called that</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--paper-2)">
+      <span class="btn" style="flex:1 1 240px;justify-content:flex-start">Cold room</span>
+      <span class="btn" data-on="true">&#9998; Rename it</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--paper-2)">
+      <span class="btn" style="flex:1 1 240px;justify-content:flex-start">Overflow Storage</span>
+      <span class="btn">&#10003; It is called that</span>
+    </div>
   </div>
   <p class="sk-note">
-    <b>What A contributed, and what the merge kept of it.</b> A answered the one question no
-    table answers &mdash; <i>where</i>. What it could not survive was trust:
-    <span class="num">storage_locations</span> holds 87 rows across 7 tenants, 84 of them
-    carrying one of four invented zone names (measured on production 2026-09-02). Drawn as a
-    whole parent surface it would have been a picture of fabricated rooms. Reduced to a
-    strip, every zone here is one that carries a real count and a real walk date, and a zone
-    that carries neither is not drawn at all rather than drawn empty.
+    <b>What A contributed, and what the merge kept of it.</b> A answered the one
+    question no table answers &mdash; <i>where</i>. What it could not survive was
+    trust: <span class="num">storage_locations</span> cannot tell a zone somebody
+    walked from a zone a seeder invented, and a floor plan is the one surface
+    where that difference IS the content. Measured on production
+    <b>2026-09-04: 4 rows across 2 tenants, and all four carry one of the four
+    names the seeded-defaults sweep named</b> (87 rows across 7 tenants was the
+    2026-09-02 figure; 83 have since been deleted, so the proportion went from
+    84-of-87 to 4-of-4). So the floor is built in the cellar&rsquo;s own
+    infer-then-confirm shape: <b>a zone is drawn once somebody in this house has
+    confirmed its name, and never before.</b> The rest are a sentence with a
+    count and the control beside it &mdash; never a drawn room, and never
+    &ldquo;no zones&rdquo;, which would be a claim about the building.
+  </p>
+  <p class="sk-note">
+    What is in a zone is counted from the inventory rows assigned to it, not read
+    off <span class="num">current_occupancy</span> &mdash; on the only tenant that
+    has both, that column says 180/32/45 against 17/17/16 rows actually assigned.
+    Confirming a zone&rsquo;s NAME is not confirming a seeder&rsquo;s arithmetic.
   </p>
   <div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">
     <span class="btn" data-on="true">Count zone D &mdash; oldest walk on the floor</span>

@@ -238,13 +238,15 @@ this list is the note-side index (ADR 0044 §2).
 **Disclosed: this directory is far over the page brief's size guidance.**
 The p4 page brief asks a rebuilt page to stay "under ~900 lines across its
 files, split into components inside your directory when it grows."
-`apps/web/src/pages/cellar/next/` is **7,546 non-test lines across 21 files**
-(1,323 comment, 445 blank, 5,778 code) plus 2,311 lines of test — roughly eight
+`apps/web/src/pages/cellar/next/` is **7,938 non-test lines across 22 files**
+(1,412 comment, 469 blank, 6,057 code) plus 2,532 lines of test — roughly nine
 times the guidance, and it is stated here rather than left to be discovered.
 
 *Why it escalated.* The guidance sizes ONE page. This directory is not one page:
 `CellarNext` renders **seven surfaces** from one component — the parent plus six
-registers — and three of the seven have a grammar of their own (`WineRegister`
+registers — and the parent itself now carries three sections of its own (the
+registers, the floor, and the whole cellar). Three of the seven have a grammar
+of their own (`WineRegister`
 carries the inventory overlay and the order ceremony; `CocktailRegister` is the
 only WRITE surface on the page, with full CRUD and a recipe editor;
 `CatalogueRegister` serves the other four). On top of that it exports two
@@ -253,11 +255,11 @@ surfaces other pages mount (`CellarRegistersStep` for `/get-started`,
 five-book assembly rather than a table read. Divided by surface it is ~1,080
 lines each, which is the shape the guidance is actually describing.
 
-*Where it went, and what it retires.* The fourth pass added **seven new files,
-2,366 non-test lines** (`cellar-columns.ts` 744, `RowExpander.tsx` 517,
-`SeriesPanel.tsx` 344, `WholeCellar.tsx` 278, `ColumnMenu.tsx` 200,
-`registerCells.tsx` 144, `rowSeries.ts` 139) and changed the existing ones by
-+1,152 / −158. The single largest new file is a **vocabulary, not behaviour**:
+*Where it went, and what it retires.* The fourth pass added **eight new files,
+2,569 non-test lines** (`cellar-columns.ts` 744, `RowExpander.tsx` 517,
+`SeriesPanel.tsx` 344, `WholeCellar.tsx` 297, `FloorStrip.tsx` 184,
+`ColumnMenu.tsx` 200, `registerCells.tsx` 144, `rowSeries.ts` 139) and rewrote
+parts of the existing ones. The single largest new file is a **vocabulary, not behaviour**:
 `cellar-columns.ts` is 744 lines of which 172 are the measurements and citations
 behind each column, and it exists precisely so the same rule is not restated in
 every register component. Against that, this pass **retires**
@@ -1450,6 +1452,42 @@ founder's phrase was "order ledgers maybe when clicked on paid", and this is the
 one word of it the books cannot support today. No line in the expander claims
 settlement.
 
+### Gaps found on 2026-09-04 — the floor, and two things outside this page
+
+**9.28 · `storage_locations.current_occupancy` is the seeder's arithmetic.** On
+the only tenant that has both, it says 180/32/45 against 17/17/16 inventory rows
+actually assigned to those zones (measured 2026-09-04). Nothing on this page
+reads it — the floor counts the assigned rows instead — but it is still on the
+table and any other surface that reads it will print a fabricated occupancy. It
+should be nulled or recomputed. Outside this page's paths.
+
+**9.29 · `/settings`' storage-location editor does not stamp provenance.** A
+zone a manager creates today lands with `zone_provenance = 'unconfirmed'` (the
+column default) and has to be confirmed a second time, on a page that is not the
+one they added it from. The writer should stamp `'created'` with the timestamp
+and actor, which the new CHECK constraint already allows. Filed rather than
+fixed: the settings module is outside this page's paths.
+
+**9.30 · MEASUREMENT CORRECTION, and the lesson in it.** This note carried
+"87 rows across 7 tenants, 84 of them carrying one of four invented zone names"
+from 2026-09-02, and repeated it in three places including a sketch. Re-measured
+2026-09-04: **4 rows across 2 tenants, 4 of 4 carrying one of those names.** 83
+rows were deleted in between. The shape of the finding survived and the count
+did not, which is the argument for re-measuring a number every time it is
+restated rather than copying it forward — the corrected figure is now in §1b,
+§12 and `095-cellar-merged/index.html`, each dated.
+
+**9.31 · The gateway boot guard is RED on this branch, and not because of this
+page.** `check_gateway_boots.sh` fails with
+`ReferenceError: Cannot access 'AuthModule' before initialization` at
+`organizations.module.js:28`. Attributed by reverting this page's gateway
+changes on disk and re-running: **it still fails**. The ring is another
+builder's in-flight change — `communications.module.ts` now imports
+`IntegrationsModule`, `AuthModule` already imports `CommunicationsModule`, and
+`IntegrationsModule` imports `AuthModule`. Their `forwardRef` fixes Nest's DI
+graph but not the ES-module load order, which is what this crash is. Not fixable
+from this page's paths.
+
 ## 10. Maturity
 
 **hollow.** Browsing works and is real. The page's two headline *actions* — "order this
@@ -1791,3 +1829,31 @@ built here:
    keeps a closed list honest here: without it an operator has to file a real beer
    under a wrong style, and a wrong style is indistinguishable from a right one on
    this page's register, whereas `other` announces itself.
+4. **What would fill the `quote` line — [ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md)
+   (Proposed, 2026-09-04).** §9's *"`vendor_price_observations` — 0 in the whole
+   database"* was re-measured on production **2026-09-04** and still reads 0, so the
+   *who quoted it, off what* column of every register on this page is a permanent em
+   dash today. The ADR decides what would end that, and the answer is **not** a feed:
+
+   - **First fill is the house's own paper.** `price_history` has a writer
+     (`procurement.service.ts:900`, from receipt verification at `:2902` and order
+     confirmation at `:4393`) and it writes a **different table**, so a verified
+     invoice line — trust tier 1, the best provenance this house will ever have —
+     never lands where this page reads. Mirroring it in is step one and needs no
+     vendor, no terms and no network. Both tables are at **0 rows** today.
+   - **`master_wine_library.price_reference` cannot be promoted to fill it.**
+     Measured 2026-09-04: **3,674 of 4,226** rows carry one, and **3,474 come from
+     `source='menu_corpus'`** — restaurant *menu* prices, what a diner pays for a
+     glass. The column has **no date and no issuer**, so under the ADR's admission
+     test it is not a sighting at all. `retail_price_avg` exists and is NULL on all
+     4,226. This closes the tempting shortcut of showing 3,674 quotes tomorrow.
+   - **A public list price is a separate line, never this column.** The two sources
+     that parsed cleanly on 2026-09-04 (Iowa Liquor Products, 13,762 rows; Oregon
+     OLCC, 3,856) are **spirits-only control-state shelf prices** — Iowa's is its own
+     cost × **exactly 1.50** at the median — and neither serves any tenant state.
+     Written with `restaurant_id NULL` they would appear in every house's ladder,
+     which is the comparison ADR 0111's index rule forbids.
+
+   Registry with today's fetch result per source:
+   [`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md).
+   Proof (dry run, writes nothing): `scripts/fetch_price_sightings.py`.
