@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>101 &middot; The assistant configures the house</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:920px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:920px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+a{color:var(--seal-deep)}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+.callout{border-left:2px solid var(--seal);background:var(--seal-tint);padding:14px 18px}
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+table{border-collapse:collapse;width:100%;margin:14px 0 0;font-size:12px}
+th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:400;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--paper-2);color:var(--ink-2);vertical-align:top;line-height:1.55}
+td b{color:var(--ink-1)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:16px 0 0}
+.card{border:1px solid var(--paper-2);background:var(--paper-1);padding:16px 18px}
+.card h3{font-family:var(--serif);font-size:17px;font-weight:600;margin:0 0 2px;color:var(--ink-1)}
+.card .f{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--seal-deep)}
+.card p{font-size:12px;margin-top:8px}
+.card a{display:inline-block;margin-top:11px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;color:var(--seal-deep);border-bottom:1px solid var(--seal-ring);padding-bottom:2px}
+.ico{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-2);font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:2px}
+.chip.seal{border-color:var(--seal-ring);color:var(--seal-deep);background:var(--seal-tint)}
+.fork{border:1px solid var(--paper-2);padding:14px 18px;margin:12px 0 0;background:var(--paper-1)}
+.fork .q{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1)}
+.spec{border:1px solid var(--paper-2);background:var(--paper-0);padding:18px 20px;margin:14px 0 0}
+.cite{font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);margin-top:12px;word-break:break-word}
+.cite b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 101 &middot; the assistant configures the house &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<div class="wordmark">Mudavym</div>
+<h1>101 &middot; The assistant configures the house, and the seal applies it<span class="dot">.</span></h1>
+<p class="lede">The founder, 2026-09-03: &ldquo;keep as defaults, but while onboarding they have the option to do that. + it will be game changer let AI assistant talk with you and handle all the configs then approval button, research this and understand how should we approach this.&rdquo;</p>
+<div class="dbl"></div>
+
+<div class="callout" style="margin-top:20px">
+  <p style="font-family:var(--serif);font-size:19px;line-height:1.42;color:var(--ink-1);margin:0">
+    One rule holds the whole thing up: <b>the assistant may never write a value the owner did not see &mdash; and a value that arrives this way is a third kind of value, not the same as one somebody typed.</b>
+  </p>
+  <p style="margin-top:9px">This house already refuses to read a column default as an answer: <code>lead_time_days DEFAULT 7</code> means a row reading 7 is <em>exactly as likely</em> to mean &ldquo;nobody was ever asked&rdquo; as &ldquo;the vendor said a week&rdquo; (<code>vendor-terms.service.ts:47&ndash;52</code>). An assistant that fills fourteen registers in one sitting would turn every &ldquo;nobody gave&rdquo; into &ldquo;somebody gave&rdquo; and destroy that distinction on the house&rsquo;s first day. So it does not. It writes a <b>third</b> state.</p>
+</div>
+
+<div class="nums">
+  <div><span class="n">14</span><span class="k">registers on /settings</span></div>
+  <div><span class="n">8</span><span class="k">the assistant may propose</span></div>
+  <div><span class="n">6</span><span class="k">it may never touch</span></div>
+  <div><span class="n">1</span><span class="k">seal, at the bottom</span></div>
+  <div><span class="n">0</span><span class="k">migrations needed</span></div>
+  <div><span class="n">3</span><span class="k">provenance states, not 2</span></div>
+</div>
+
+<div class="sec-h"><span class="sec-n">01</span><h2>The three drawings</h2></div>
+<div class="sec-k">each renders standalone at 1440 from file://</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="f">conversation.html</div>
+    <h3>The talk</h3>
+    <p>Seven turns of a real setup conversation, with the ledger of what the assistant has learned filling on the right as it goes. Includes the two turns that matter most: the one where it <b>refuses</b> to set something, and the one where it <b>contests</b> a value the owner already stated rather than quietly batching it.</p>
+    <a href="conversation.html">Open the conversation</a>
+  </div>
+  <div class="card">
+    <div class="f">proposal.html</div>
+    <h3>The proposal, and the seal</h3>
+    <p>The diff of registers: every value, grouped by register, each with its reason, its current value and where that current value came from. Rows are droppable. One hold-to-approve at the bottom &mdash; and the <b>receipt</b> after it, because the apply crosses eight services and is not atomic.</p>
+    <a href="proposal.html">Open the proposal</a>
+  </div>
+  <div class="card">
+    <div class="f">onboarding-step.html</div>
+    <h3>The optional step</h3>
+    <p>The founder&rsquo;s smaller ask, drawn: five short questions in the slot <code>GetStarted.tsx</code> already reserves. And the part that is actually the proposal &mdash; <b>a skip that is recorded</b>, so &ldquo;offered and declined&rdquo; stops sharing an em dash with &ldquo;nobody ever asked&rdquo;.</p>
+    <a href="onboarding-step.html">Open the step</a>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">02</span><h2>Why a diff, and not an interview or a filled-in page</h2></div>
+<div class="sec-k">three shapes were weighed; two were rejected on measured facts</div>
+
+<table>
+  <thead><tr><th style="width:16%">Shape</th><th style="width:34%">What it is</th><th>Why it wins or loses</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>A &mdash; one talk, one diff, one seal</b><br><span class="chip seal">chosen</span></td>
+      <td>The owner talks. The assistant returns one document listing every value it would set, grouped by register, each row prunable. One seal applies what remains.</td>
+      <td><b>Wins, but only amended four times.</b> The field&rsquo;s settled shape for consequential change &mdash; Terraform&rsquo;s plan, CloudFormation&rsquo;s change set, Copilot Workspace&rsquo;s editable plan. It survived four attempts to kill it (see below) and none of the four left it unchanged.</td>
+    </tr>
+    <tr>
+      <td><b>B &mdash; a guided interview</b><br><span class="chip">rejected</span></td>
+      <td>One register at a time, each sealed. Toast&rsquo;s onboarding checklist shape.</td>
+      <td>Fourteen seals in a sitting turns the seal into a <em>Next</em> button. And it forfeits the only thing a conversation buys: one sentence &mdash; &ldquo;small meyhane, closed Mondays, three vendors, I sign anything over &#8378;5,000&rdquo; &mdash; moves <b>eight registers at once</b>. An interview re-asks per register, which is what <code>/settings</code> already is with a wizard on top.</td>
+    </tr>
+    <tr>
+      <td><b>C &mdash; fill the page, then review</b><br><span class="chip">rejected</span></td>
+      <td>The assistant drafts <code>/settings</code> as pending values the owner walks through. Shopify Sidekick&rsquo;s shape.</td>
+      <td>Rejected on <b>measured facts, not taste</b>. Three of fourteen registers cannot hold a pending value: <code>measurement</code> is <code>kind:&nbsp;'browser'</code> (<code>st-format.ts:123</code>) with no server row to stage; <code>features</code> writes to a table with <b>no changed-at column at all</b> (<code>st-format.ts:54&ndash;55</code>), so pending&rarr;applied cannot be dated; <code>ledger</code> is read-only. C needs a shadow table across eight services &mdash; more machinery than the batch &mdash; for a worse outcome, because a page of grey pending values is indistinguishable at a glance from a page of real ones.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">03</span><h2>Four attempts to kill shape A</h2></div>
+<div class="sec-k">three of the four succeeded partially &mdash; every amendment they forced is load-bearing</div>
+
+<table>
+  <thead><tr><th style="width:5%">#</th><th style="width:40%">The attempt</th><th>What survived, and what changed</th></tr></thead>
+  <tbody>
+    <tr><td><b>1</b></td>
+      <td><b>The seal is a per-commitment ceremony; a forty-field batch devalues it.</b> The house&rsquo;s own rule rations hold-to-approve &mdash; bulk actions get the die pressed dry, no wax. One seal over fourteen registers is the EULA gesture.</td>
+      <td><b>Partly fatal.</b> Amendment: a register that already holds a <b>stated</b> value never enters the batch. It is <em>contested</em> in a separate section with its own single seal. The batch is only ever a batch of <b>answers nobody gave</b>, so the seal covers filling silence, never overwriting a person.</td></tr>
+    <tr><td><b>2</b></td>
+      <td><b>Notion &mdash; the closest product in the field &mdash; forbids exactly this.</b> Its agent restructures a whole workspace and may not &ldquo;manage any workspace level settings, like member roles, billing, security features, and more&rdquo;.</td>
+      <td><b>Not fatal; it moves the line.</b> Notion&rsquo;s line is drawn by <em>blast radius</em>, not by the word &ldquo;settings&rdquo;. The same test applied here excludes Team, Locations, Features, Services, the ledger and anything touching payment &mdash; and does <b>not</b> exclude the registers that encode the house&rsquo;s judgment about its own trade.</td></tr>
+    <tr><td><b>3</b></td>
+      <td><b>The batch cannot be transactional.</b> Fourteen registers are written by eight services with no shared transaction. A seal that completes while three registers silently failed is this repo&rsquo;s cross-cutting fault in its purest form.</td>
+      <td><b>Fatal as proposed.</b> Amendment: the batch <b>never reports a single &ldquo;Done&rdquo;</b>. Every item carries its own outcome and reason &mdash; written &middot; refused &middot; not attempted. Terraform publishes the same limit about itself on the same page as the apply command; so does CloudFormation.</td></tr>
+    <tr><td><b>4</b></td>
+      <td><b>It destroys the honesty machinery it is built inside.</b> Fill fourteen registers in one sitting and every one reads as <em>stated</em>; the product can no longer tell &ldquo;nobody was asked&rdquo; from &ldquo;the owner chose this&rdquo;.</td>
+      <td><b>Fatal as proposed, and the deepest.</b> Amendment: a sealed proposal is <b>its own provenance class</b>. Not <code>stated</code> &mdash; <code>proposed_sealed</code>, recorded with the utterance that produced it. Three states, not two. Costs no migration.</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">04</span><h2>Everything it needs already exists</h2></div>
+<div class="sec-k">re-verified on feat/mudavym-design-p4, 2026-09-04</div>
+
+<table>
+  <thead><tr><th style="width:26%">The piece</th><th style="width:36%">Where it is</th><th>State</th></tr></thead>
+  <tbody>
+    <tr><td>propose &rarr; confirm &rarr; execute</td><td><code>ask-ai/ask-ai.controller.ts:34,70</code></td><td><b>Built and shipped.</b> The confirm is a compare-and-swap, so a double tap executes exactly once (<code>ask-ai.service.ts:500&ndash;548</code>).</td></tr>
+    <tr><td>a mechanical allowlist</td><td><code>ask-ai/ask-ai-actions.ts:1&ndash;30</code></td><td><b>Built.</b> A proposal that is not exactly a declared shape is <b>rejected, not coerced</b>. An operator&rsquo;s edit is re-validated through the same allowlist.</td></tr>
+    <tr><td>the seal</td><td><code>components/mudavym/HoldToApprove.tsx:1&ndash;21</code></td><td><b>Built.</b> Fires exactly once; an early release says what did not happen.</td></tr>
+    <tr><td>fourteen registers, each declaring where it is kept</td><td><code>pages/settings/next/st-format.ts:31&ndash;44,112&ndash;146</code></td><td><b>Built.</b> <code>restaurant</code> &middot; <code>account</code> &middot; <code>browser</code>.</td></tr>
+    <tr><td>an audit row storing <code>{from, to}</code> per field</td><td><code>settings-audit/settings-audit.service.ts:89&ndash;91,205&ndash;221</code></td><td><b>Built.</b> This is the undo substrate, and the field survey found nothing else that has it.</td></tr>
+    <tr><td>a reader that groups audit rows into a batch</td><td><code>logs/logs-timeline.service.ts:302</code></td><td><b>Built and unfed.</b> <code>/logs</code> already filters <code>system_audit_log</code> by <code>correlation_id</code>; the settings writer never sets it.</td></tr>
+    <tr><td><code>system_audit_log.correlation_id</code> and <code>.reason</code></td><td><code>20260805132000:73&ndash;75</code> &middot; baseline <code>:5564</code></td><td><b>Columns exist, unused.</b> Filling them is the whole of batch-undo. <b>No migration.</b></td></tr>
+    <tr><td>the role gate on the threshold write</td><td><code>settings/settings.controller.ts:40,107</code></td><td><b>MISSING &mdash; and this is blocking.</b> <code>@UseGuards(JwtAuthGuard, TenantGuard)</code> and <b>no role decorator</b>, so any member of the tenant can rewrite the policy that decides who may seal an order. <code>@Roles()</code>/<code>RolesGuard</code> exist and are used on two other controllers.</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">05</span><h2>The tool surface &mdash; many reads, one write, and the apply verb is never exposed</h2></div>
+<div class="sec-k">mapped onto the 42 documented tools in 08-softwares/mudavym-mcp.md &sect;3</div>
+
+<table>
+  <thead><tr><th style="width:28%">Tool</th><th style="width:22%">In the documented 42?</th><th>Verb and why</th></tr></thead>
+  <tbody>
+    <tr><td><code>settings.feature_flags</code></td><td><span class="chip">exists &mdash; <code>mudavym-mcp.md:151</code></span></td><td>R</td></tr>
+    <tr><td><code>cellar.registers</code></td><td><span class="chip">exists &mdash; <code>:130</code></span></td><td>R</td></tr>
+    <tr><td><code>team.members</code></td><td><span class="chip">exists &mdash; <code>:150</code></span></td><td>R</td></tr>
+    <tr><td><code>settings.registers</code> &mdash; all fourteen with <b>value + provenance state</b></td><td><span class="chip seal">new</span></td><td>R. The provenance state is the point: without it the assistant cannot tell a stated value from a default and would batch over a person&rsquo;s answer.</td></tr>
+    <tr><td><code>settings.vendor_terms</code></td><td><span class="chip seal">new</span></td><td>R</td></tr>
+    <tr><td><code>settings.approval_thresholds</code></td><td><span class="chip seal">new</span></td><td>R</td></tr>
+    <tr><td><code>config.propose_batch</code></td><td><span class="chip seal">new</span></td><td>W &mdash; writes a batch row, <b>executes nothing</b>. Same class as the nine existing writes, every one of which &ldquo;writes a draft, a proposal, or a record of something that already physically happened&rdquo; (<code>mudavym-mcp.md:165&ndash;166</code>).</td></tr>
+    <tr><td><code>config.apply_batch</code></td><td><span class="chip seal">new, and deliberately NOT exposed</span></td><td>&mdash; The seal in a first-party Mudavym client is the <b>only</b> caller. This is the pattern the MCP doc already uses twice: <code>ask_ai.propose</code> is exposed and its confirm is not (<code>:161</code>); <code>one_tap.pending</code> is exposed and its execute is not (<code>:162</code>).</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">06</span><h2>Five questions only the founder can answer</h2></div>
+<div class="sec-k">the parent asks these; nothing here assumes an answer</div>
+
+<div class="fork"><div class="q">1. &ldquo;Talk with you&rdquo; &mdash; literally talk?</div>
+<p>Voice-first setup is plausible on the phone (<code>apps/mobile</code>) and a novelty on desktop. These drawings assume typing. Say if that is wrong.</p></div>
+
+<div class="fork"><div class="q">2. Does a sealed batch belong to the house, or to the person who sealed it?</div>
+<p>If a manager seals a batch and leaves, the values stay. Should the batch stay revocable <b>as a unit</b> by the owner, or dissolve into ordinary settings the moment it applies?</p></div>
+
+<div class="fork"><div class="q">3. Is <code>features</code> on the right side of the line?</div>
+<p>It is excluded because those switches &ldquo;change what the system does on its own&rdquo; (<code>st-format.ts:127</code>). Should the assistant be able to propose turning autonomy <em>on</em> &mdash; with the seal &mdash; as the natural end of a setup conversation?</p></div>
+
+<div class="fork"><div class="q">4. The market drop threshold is per-deployment today.</div>
+<p><code>MARKET_SIGNAL_DROP_PCT</code>, one number for every house (<code>market-price.producer.ts:95&ndash;97</code>). Worth a column and a migration, or correct as it is for now?</p></div>
+
+<div class="fork"><div class="q">5. How much may the assistant read to make a good proposal?</div>
+<p>A genuinely useful batch wants the POS history, the vendor threads and the order book. All three are already exposed read tools &mdash; but <em>&ldquo;the assistant read your vendor mail to set your thresholds&rdquo;</em> is a sentence worth approving before it is true.</p></div>
+
+<div class="sec-h"><span class="sec-n">07</span><h2>Build order, if it goes ahead</h2></div>
+<div class="sec-k">each step earns the trust the next one spends</div>
+
+<table>
+  <thead><tr><th style="width:5%">&nbsp;</th><th style="width:34%">Step</th><th>Why it is in this position</th></tr></thead>
+  <tbody>
+    <tr><td><b>1</b></td><td><b>The role gate on <code>PUT /settings/approval-thresholds</code>.</b></td><td>Blocking, and worth doing whether or not the assistant is ever built. The assistant does not create this hole; it makes it reachable by sentence.</td></tr>
+    <tr><td><b>2</b></td><td><b><code>SettingsAuditService.record</code> sets <code>correlation_id</code> and <code>reason</code>.</b></td><td>Two columns, no migration, and it makes every existing settings change groupable. <code>/logs</code> can already read it.</td></tr>
+    <tr><td><b>3</b></td><td><b>The recorded skip in <code>/get-started</code>.</b></td><td>The smallest instance of the whole idea, and useful alone: it ends the tie between &ldquo;declined&rdquo; and &ldquo;never asked&rdquo;.</td></tr>
+    <tr><td><b>4</b></td><td><b>The three new read tools, and the provenance state on each register.</b></td><td>Read-only. Nothing can go wrong, and <code>/settings</code> gets a truthful third state out of it regardless of what happens next.</td></tr>
+    <tr><td><b>5</b></td><td><b><code>config.propose_batch</code> and the proposal document.</b></td><td>Still writes nothing to a register. The proposal can be reviewed by the founder in production before any apply exists.</td></tr>
+    <tr><td><b>6</b></td><td><b>The seal, the per-item apply, and the receipt.</b></td><td>Last, because it is the only step that can be wrong in a way that costs money.</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">08</span><h2>Both grounds</h2></div>
+<div class="sec-k">every drawing carries a charcoal specimen; this is the palette itself</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+  <div class="spec" data-ground="paper">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)">Paper</div>
+    <p style="font-family:var(--serif);font-size:17px;color:var(--ink-1);margin-top:6px">Eight values, drawn from six sentences.</p>
+    <p style="margin-top:4px">Six will be written. One is kept in this browser. One I cannot set for you.</p>
+    <div style="margin-top:11px;display:flex;gap:7px;flex-wrap:wrap">
+      <span class="chip seal"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>written</span>
+      <span class="chip"><svg class="ico" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>this browser</span>
+      <span class="chip"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>refused</span>
+    </div>
+  </div>
+  <div class="spec mudavym" data-ground="charcoal">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)">Warm Charcoal</div>
+    <p style="font-family:var(--serif);font-size:17px;color:var(--ink-1);margin-top:6px">Eight values, drawn from six sentences.</p>
+    <p style="margin-top:4px">Six will be written. One is kept in this browser. One I cannot set for you.</p>
+    <div style="margin-top:11px;display:flex;gap:7px;flex-wrap:wrap">
+      <span class="chip seal"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>written</span>
+      <span class="chip"><svg class="ico" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>this browser</span>
+      <span class="chip"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>refused</span>
+    </div>
+  </div>
+</div>
+
+<div class="dbl" style="margin-top:36px"></div>
+<div class="cite">
+<b>Repo claims</b>, re-verified on <code>feat/mudavym-design-p4</code>, 2026-09-04 &mdash;
+<code>apps/api-gateway/src/ask-ai/ask-ai.controller.ts:34,70</code> &middot;
+<code>apps/api-gateway/src/ask-ai/ask-ai.service.ts:500-548</code> &middot;
+<code>apps/api-gateway/src/ask-ai/ask-ai-actions.ts:1-30</code> &middot;
+<code>apps/web/src/components/mudavym/HoldToApprove.tsx:1-21</code> &middot;
+<code>apps/web/src/pages/settings/next/st-format.ts:31-44,54-55,112-146</code> &middot;
+<code>apps/api-gateway/src/settings-audit/settings-audit.service.ts:89-91,188-236,205-221</code> &middot;
+<code>apps/api-gateway/src/logs/logs-timeline.service.ts:302</code> &middot;
+<code>apps/api-gateway/src/settings/settings.controller.ts:40,107</code> &middot;
+<code>apps/api-gateway/src/vendor-terms/vendor-terms.service.ts:44-59</code> &middot;
+<code>apps/api-gateway/src/notifications/producers/market-price.producer.ts:95-97</code> &middot;
+<code>apps/api-gateway/src/notifications/producers/market-signal.ts:93,96</code> &middot;
+<code>apps/web/src/components/onboarding/ThresholdStep.tsx:80-81</code> &middot;
+<code>apps/web/src/pages/GetStarted.tsx:256-286</code> &middot;
+<code>supabase/migrations/20260805000000_baseline_from_production.sql:3597,5553-5568 (reason at :5564)</code> &middot;
+<code>supabase/migrations/20260805132000:73-75</code> &middot;
+<code>.planning/08-softwares/mudavym-mcp.md:130,150,151,161,162,165-166</code>
+<br><br>
+<b>Product claims</b> &mdash;
+Notion Agent <a href="https://www.notion.com/help/notion-agent">notion.com/help/notion-agent</a> &middot;
+Shopify Sidekick <a href="https://help.shopify.com/en/manual/shopify-admin/productivity-tools/sidekick/help-and-guidance">help.shopify.com</a> &middot;
+Terraform apply <a href="https://developer.hashicorp.com/terraform/cli/commands/apply">developer.hashicorp.com</a> &middot;
+CloudFormation <a href="https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stack-failure-options.html">docs.aws.amazon.com</a> &middot;
+Copilot Workspace <a href="https://github.com/githubnext/copilot-workspace-user-manual/blob/main/changes.md">github.com/githubnext</a> &middot;
+Cursor <a href="https://cursor.com/docs/agent/review">cursor.com/docs/agent/review</a> &middot;
+Claude Code plan mode <a href="https://code.claude.com/docs/en/permission-modes">code.claude.com</a> &middot;
+Salesforce Setup Audit Trail <a href="https://www.salesforceben.com/setup-audit-trail-keep-track-of-metadata-changes-in-salesforce/">salesforceben.com</a> &middot;
+Toast onboarding <a href="https://support.toasttab.com/en/article/Self-Service-Guide">support.toasttab.com</a> &middot;
+OWASP LLM06 <a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/2_0_vulns/LLM06_ExcessiveAgency.html">owasp.org</a> &middot;
+MCP tools spec <a href="https://modelcontextprotocol.io/specification/2025-06-18/server/tools">modelcontextprotocol.io</a>
+<br><br>
+Full survey of fifteen products: <code>.planning/06-pages/DESIGN-FOUNDATION.md</code> &sect;6d. Decision: <code>.planning/decisions/0113-the-assistant-proposes-the-seal-applies.md</code>.
+<b>No file under <code>apps/</code>, <code>supabase/</code> or <code>services/</code> was changed by this sketch.</b>
+</div>
+
+</div>
+</body>
+</html>

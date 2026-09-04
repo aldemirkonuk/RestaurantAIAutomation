@@ -164,3 +164,22 @@ Adjacent, same root cause: `GET /menus/:restaurantId` (`menus.controller.ts:27-3
 4. Build the guidance sink — a `POST /signals` the `wineops:guidance` events land in (`guidance/analytics.ts:19-41`). This page already emits; nothing listens. It is the cheapest first win for the tracking mandate, and every other page's §13 "no sink" blocker resolves here.
 5. Instrument import method chosen / import success / import failure / threshold set — the four events that would actually explain activation drop-off (§5).
 6. Decide whether POS connection joins activation. *Blocked:* founder decision (§6, [TIER-MAP](../03-scenarios/TIER-MAP.md) S14/S15).
+7. **An optional configuration step, and a skip that is recorded.** Proposed by [ADR 0113](../decisions/0113-the-assistant-proposes-the-seal-applies.md) from the founder's note of 2026-09-03: *"keep as defaults, but while onboarding they have the option to do that."* Sketch [`101-config-assistant/onboarding-step.html`](../sketches/101-config-assistant/onboarding-step.html) draws it.
+
+   **Where it sits.** In the slot the flow already reserves — after `CellarRegistersOnboarding` (`GetStarted.tsx:256-271`), replacing `ThresholdStep` (`:280-286`) rather than being added beside it. The step is one screen of five short questions, not five screens.
+
+   **What it offers, and the one thing it must not.** Each row is offered only because a write path exists today:
+
+   | Offered | The route that writes it |
+   |---|---|
+   | low-stock threshold (today's whole step) | `menus.service.ts:707-720` |
+   | which drinks registers this house carries | `cellar.controller.ts:32` and its writer |
+   | approval ceiling + the role that must sign | `PUT /settings/approval-thresholds` (`settings/settings.controller.ts:107`) |
+   | notification channel and quiet hours | `PATCH /notifications/preferences` (`notifications/notifications.controller.ts:159`) |
+   | vendor terms for vendors already added | `PUT /vendor-terms/:providerId` (`vendor-terms/vendor-terms.controller.ts:71`) |
+
+   The **market-price drop threshold** is deliberately **not** offered. It is read per deployment from `MARKET_SIGNAL_DROP_PCT` (`notifications/producers/market-price.producer.ts:95-97`, default `0.1` at `market-signal.ts:93`), so there is no per-house value to write. Offering a control that silently writes nowhere is the fault this page's §9 already catalogues; the step names the number, says it is set for every house at once, and moves on.
+
+   **The skip is the actual proposal.** Today `ThresholdStep`'s "Skip for now" calls `onDone()` and writes nothing (`components/onboarding/ThresholdStep.tsx:80-81`), and the only state it could touch is `restaurants.threshold_configured boolean DEFAULT false NOT NULL` (`20260805000000_baseline_from_production.sql:3597`) — `false` for a house that skipped **and** for a house nobody asked. The product cannot tell them apart, which is [[absence-reported-as-health]] at the front door. So: an explicit skip writes one `system_audit_log` row — `action: 'configuration_step_skipped'`, `changes: {register, offered: [...], answered: []}`, **no setting changed**. Then `/settings` can render *"offered on 4 September, skipped"* instead of sharing an em dash with a register nobody ever mentioned, and the assistant of ADR 0113 can re-offer it truthfully later. No migration: `system_audit_log` and its `changes jsonb` are in the baseline (`:5553-5568`), and `SettingsAuditService.record` is already exported from `SettingsAuditModule`.
+
+   *Outside this page's paths:* the step needs the role gate ADR 0113 rule 2 makes a precondition — `PUT /settings/approval-thresholds` carries `@UseGuards(JwtAuthGuard, TenantGuard)` and no role decorator (`settings/settings.controller.ts:40,107`) while `@Roles()`/`RolesGuard` exist and are used on two other controllers. Filed in `settings.md` §13.31, not built here.

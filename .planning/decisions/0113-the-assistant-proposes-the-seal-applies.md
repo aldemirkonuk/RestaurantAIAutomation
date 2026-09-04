@@ -1,8 +1,8 @@
 # 0113 — The assistant proposes the house's configuration; the seal applies it
 
-- **Status:** **draft — research and design only, nothing built.** The founder asked for the
-  approach, not the build: *"research this and understand how should we approach this."*
-- **Date:** 2026-09-03
+- **Status:** **Proposed — research and design only, nothing built.** The founder asked for
+  the approach, not the build: *"research this and understand how should we approach this."*
+- **Date:** 2026-09-03 (drafted) &middot; 2026-09-04 (survey verified, sketch 101 drawn)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** configuration assistant, settings, onboarding, propose, confirm, seal,
   hold-to-approve, batch, diff, provenance, skip, audit trail, correlation_id, MCP,
@@ -181,7 +181,7 @@ Every register value is one of:
 The third is not cosmetic. It is what lets the assistant later say *"you sealed a 20% market
 threshold from a conversation on 3 September — was that right?"* instead of treating it as a
 figure a person chose deliberately. It costs **no migration**:
-`public.system_audit_log.reason` exists in the baseline (`20260805000000:5560`) and
+`public.system_audit_log.reason` exists in the baseline (`20260805000000:5564`) and
 `correlation_id` was added by `20260805132000:73-75`.
 
 ### Rule 2 — the registers the assistant may propose, and the ones it may not
@@ -201,10 +201,13 @@ sealing):
 
 `team` (who works here and their role) · `locations` (the branches on the account) ·
 `features` (the switches that change what the system does on its own) · `services` (what the
-product may do with the owner's data, and which apps are connected) · `ledger` (a read-only
-register — there is nothing to write) · anything touching a payment instrument.
+product may do with the owner's data, and which apps are connected) · `pos` (the till
+connection — a credential, not a judgment) · `ledger` (a read-only register — there is
+nothing to write) · and anything touching a payment instrument.
 
-\* `measurement` is `kind: 'browser'` (`st-format.ts:122`) — kept in localStorage only, so
+Eight and six account for all fourteen; no register is left unassigned.
+
+\* `measurement` is `kind: 'browser'` (`st-format.ts:123`) — kept in localStorage only, so
 **a server-side batch cannot write it at all**. It stays on the "may be proposed" side
 because the assistant may propose it, but the apply happens in the client and the batch must
 say so on the row. A batch that claimed to have written a browser-kept value on the server
@@ -212,7 +215,7 @@ would be a fabrication.
 
 **One thing this ADR must not paper over.** `PUT /settings/approval-thresholds` carries
 `@UseGuards(JwtAuthGuard, TenantGuard)` and **no role decorator**
-(`settings/settings.controller.ts:39,105`), so any authenticated member of the tenant can
+(`settings/settings.controller.ts:40,107`), so any authenticated member of the tenant can
 rewrite the policy that decides who may seal an order. `@Roles()` and `RolesGuard` exist
 (`auth/decorators/roles.decorator.ts`, `auth/guards/roles.guard.ts`) and are used on exactly
 two controllers (`auth.controller.ts`, `vendor-intel.controller.ts`). The assistant does not
@@ -287,7 +290,7 @@ that have a write path today, and it is honest about the one that does not:
 |---|---|
 | low-stock threshold | `menus.service.ts:707-720` (today's step) |
 | cellar registers | `cellar.controller.ts:32` and its writer |
-| approval ceiling + role | `PUT /settings/approval-thresholds` (`settings.controller.ts:105`) — **behind the role gate of rule 2** |
+| approval ceiling + role | `PUT /settings/approval-thresholds` (`settings.controller.ts:107`) — **behind the role gate of rule 2** |
 | notification channel + quiet hours | `PATCH /notifications/preferences` (`notifications.controller.ts:159`) |
 | vendor terms for vendors already added | `PUT /vendor-terms/:providerId` (`vendor-terms.controller.ts:71`) |
 | **market drop threshold** | **none.** It is read from the `MARKET_SIGNAL_DROP_PCT` environment variable, per deployment, not per house (`notifications/producers/market-price.producer.ts:95-97`; `market-signal.ts:93,96`). It must be **named and not offered** until a per-tenant column exists. |
@@ -311,7 +314,7 @@ once and **eight registers move**. An interview re-asks per register, which is p
 
 **C — fill-then-review, pending values on `/settings`.** Rejected on measured facts, not
 taste. Three of the fourteen registers cannot hold a pending value: `measurement` is
-`kind: 'browser'` (`st-format.ts:122`), so there is no server row to stage; `features` writes
+`kind: 'browser'` (`st-format.ts:123`), so there is no server row to stage; `features` writes
 to a table with **no changed-at column at all** (`st-format.ts:54-55`: "the settings row has
 no changed-at column"), so a pending→applied transition cannot be dated; and `ledger` is
 read-only. C would need a `settings_pending_values` table shadowing eight services — more
@@ -367,8 +370,16 @@ between the write and the notice, orders get sealed under it.
 
 ## Review trail
 
-- 2026-09-03 — drafted from the founder's note of the same day. Field survey of fourteen
-  products recorded in `DESIGN-FOUNDATION.md` §6d with a URL each. Every repo claim
-  re-verified on `feat/mudavym-design-p4` at the lines cited. Sketch
-  `101-config-assistant/` draws the conversation, the proposal and the onboarding step.
+- 2026-09-03 — drafted from the founder's note of the same day. Cut short by the weekly API
+  limit before the survey was verified and before the sketch existed.
+- 2026-09-04 — **completed.** Field survey of fifteen products and specifications recorded in
+  `DESIGN-FOUNDATION.md` §6d, every row carrying a URL; six were fetched and read in full and
+  are the quoted rows. **Three citations written from search summaries did not survive that
+  check and were corrected** — a Claude Code plan-mode URL that 404s, a CloudFormation
+  sentence that is not on the page cited, and a Cursor keyboard quote absent from its own
+  docs. Every repo claim re-verified on `feat/mudavym-design-p4`; five line references were
+  off by one to three lines after the `origin/main` merge and were corrected. Sketch
+  `101-config-assistant/` draws the conversation, the proposal with the seal and the receipt,
+  and the onboarding step — 8 screenshots at 1440, both grounds, `scrollWidth === 1440` and
+  zero console errors on all eight.
   **Nothing built** — no file under `apps/`, `supabase/` or `services/` was changed.

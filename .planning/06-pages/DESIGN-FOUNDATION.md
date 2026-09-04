@@ -805,3 +805,76 @@ per restaurant, so when a manager leaves, whose Google calendar was the house's?
 [^om]: https://open-meteo.com/en/terms · https://open-meteo.com/en/docs
 [^omp]: https://open-meteo.com/en/pricing
 [^nws]: https://www.weather.gov/documentation/services-web-api
+
+### 6d. An assistant that configures the house (2026-09-04)
+
+The founder, 2026-09-03: *"keep as defaults, but while onboarding they have the option to do
+that. + it will be game changer let AI assistant talk with you and handle all the configs
+then approval button, research this and understand how should we approach this."* Decided in
+[ADR 0113](../decisions/0113-the-assistant-proposes-the-seal-applies.md); this is the survey
+behind it. Fifteen products and specifications were read. **Quoted text was fetched and read
+in full; unquoted rows are drawn from the linked documentation's own summary pages.**
+
+| Product | What the assistant may change | How the proposal is shown | The approval step | What is logged | Partial approval |
+|---|---|---|---|---|---|
+| **Shopify Sidekick** | products, discounts, collections, orders, form fields, theme settings, customers | fills the real field in place — "that field is highlighted in purple so you can easily identify what was added" | the page's own control: "The order updates only after you review the changes and click **Update order**" | not stated on the page | inherent — each field is separate |
+| **Notion Agent** | pages, databases, views, properties, relations, comments | edits land, version history is the safety net | none for content; **the line is drawn by scope** | version history | n/a |
+| **Notion Agent — the boundary** | **may not** "manage any workspace level settings, like member roles, billing, security features, and more" | — | — | — | — |
+| **Salesforce, Setup with Agentforce** | Setup metadata — users, permissions, objects | conversation plus a plan canvas; preview before activation | the agent asks for confirmation before acting; admins can pause and adjust | Setup Audit Trail | per-change |
+| **Salesforce Setup Audit Trail** | — | — | — | read-only log of who/what/when; **does not capture field-level before-and-after values**, so it can never be an undo | — |
+| **Zapier (Copilot + Agents)** | Zap steps, agent behaviour | drafts, and a checkpoint view showing exactly what was added, removed or rewritten | Publish replaces the live Zap; drafts never run | draft/published versions per agent | per-draft |
+| **Intercom Fin** | answers, guidance, tasks, procedures | a Preview panel across every training area; guidance can be draft, paused or live | Publish | version state per artefact | per-artefact |
+| **Microsoft 365 Copilot (admin)** | tenant Copilot settings, plugins, promptbooks | the admin centre's own forms | ordinary admin save | Purview audit logs of administrative activity; collection cannot be disabled | n/a |
+| **Terraform** | any managed resource | a plan file — the canonical "here is everything I will do" artefact | reviewing the plan *is* the approval: applying a saved plan "performs the operations in the saved plan without prompting you for confirmation" | state file + plan | **none — a saved plan is applied whole** |
+| **Terraform — the honest limit** | — | — | — | — | "Terraform does not automatically roll back a partially-completed apply" |
+| **AWS CloudFormation** | stack resources | a change set, previewed before execution | Execute change set | stack events | "CloudFormation stops at the first failure in each independent provisioning path"; then **Retry**, **Update** or **Roll back** |
+| **GitHub Copilot Workspace** | files in a repository | **the plan itself is the editable artefact**, before any code is written — the Plan view supports "Adding, editing, and deleting files" and "Adding, editing, and deleting steps for a file" | implement the plan, then review the diff | the session | per-file and per-step |
+| **Cursor** | files in a workspace | "The diff view shows changes as they happen"; the run can be stopped and redirected mid-flight | accept or reject in the review surface; checkpoints to roll back a session | checkpoints | per-change |
+| **Claude Code, plan mode** | nothing, until approved — it "tells Claude to research and propose changes without making them" | a written plan | edits "stay blocked until you approve the plan" | the session transcript | approve, or revise the plan |
+| **Toast onboarding** | the restaurant's own configuration | a setup checklist on the home page, reachable at any time | each section saves itself; sections are skippable | — | inherent |
+| **Square AI / Managerbot** | **nothing** — it watches stock, sales velocity, weather and local events and **flags** | insight cards | the seller acts, in the ordinary UI | — | n/a |
+| **OWASP LLM06:2025** | — | — | the named mitigation is human-in-the-loop plus **independent authorization enforcement**, never the model's own judgment | log and monitor extension activity | — |
+
+Sources, in order: <https://help.shopify.com/en/manual/shopify-admin/productivity-tools/sidekick/help-and-guidance> ·
+<https://www.notion.com/help/notion-agent> ·
+<https://admin.salesforce.com/blog/2025/introducing-setup-powered-by-agentforce> ·
+<https://www.salesforceben.com/setup-audit-trail-keep-track-of-metadata-changes-in-salesforce/> ·
+<https://help.zapier.com/hc/en-us/articles/9693520498445-Create-Zap-drafts-and-versions> ·
+<https://zapier.com/blog/december-2025-product-updates/> ·
+<https://www.intercom.com/help/en/articles/12599471-use-fin-previews> ·
+<https://learn.microsoft.com/en-us/purview/audit-copilot> ·
+<https://developer.hashicorp.com/terraform/cli/commands/apply> ·
+<https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stack-failure-options.html> ·
+<https://github.com/githubnext/copilot-workspace-user-manual/blob/main/changes.md> ·
+<https://cursor.com/docs/agent/review> ·
+<https://code.claude.com/docs/en/permission-modes> ·
+<https://support.toasttab.com/en/article/Self-Service-Guide> ·
+<https://squareup.com/us/en/press/square-ai-open-beta> ·
+<https://owasp.org/www-project-top-10-for-large-language-model-applications/2_0_vulns/LLM06_ExcessiveAgency.html> ·
+<https://modelcontextprotocol.io/specification/2025-06-18/server/tools>
+
+#### The four things the field actually settles
+
+1. **The proposal is an artefact, not a message.** Terraform's plan, CloudFormation's change
+   set and Copilot Workspace's plan are all *documents you can hold and edit*. Only the
+   weakest instances leave the proposal as chat prose.
+2. **Partial approval is the norm everywhere the unit is a file or a field, and impossible
+   everywhere the unit is a plan.** Both are defensible; what is not defensible is a plan
+   presented as prunable and then applied whole.
+3. **Nobody claims atomicity across services, and the two that could have, say so out loud.**
+   Terraform and CloudFormation both publish their partial-failure behaviour on the same page
+   as the apply command. Mudavym writes across eight services with no shared transaction, so
+   it inherits this and must say so on the seal's own receipt.
+4. **The line is drawn by blast radius, not by the word "settings".** Notion — the closest
+   analogue by a distance — permits an agent to restructure an entire workspace's content and
+   forbids it from touching member roles, billing and security. That is the test ADR 0113
+   adopts, phrased for this house: *does this change who may act, or what the house may
+   spend?*
+
+**What Mudavym has that none of them do.** `system_audit_log.changes` already stores every
+field as `{from, to}` (`settings-audit/settings-audit.service.ts:89-91,205-221`), and `/logs`
+already filters that table by `correlation_id`
+(`logs/logs-timeline.service.ts:302`). Salesforce's audit trail explicitly cannot do the
+first; nothing in the survey does both. A sealed batch is therefore undoable **as a batch**
+here, with no new table — the only missing piece is that the settings writer does not set
+`correlation_id` today (`settings-audit.service.ts:205-221`).
