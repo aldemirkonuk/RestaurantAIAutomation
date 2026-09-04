@@ -61,6 +61,23 @@ export interface WeatherReadingRow {
   shortForecast: string | null;
 }
 
+/** One day of what the weather actually was, as stored. */
+export interface WeatherObservationRow {
+  businessDate: string;
+  issuer: string;
+  stationId: string;
+  stationName: string | null;
+  timeZone: string;
+  firstObservedAt: string;
+  lastObservedAt: string;
+  observationCount: number;
+  fetchedAt: string;
+  temperatureHigh: number | null;
+  temperatureLow: number | null;
+  temperatureUnit: "C" | "F";
+  precipitationTotalMm: number | null;
+}
+
 export interface WeatherWindow {
   from: string;
   to: string;
@@ -77,6 +94,17 @@ export interface WeatherWindow {
    * line that a cache would have destroyed.
    */
   forecastInAdvance: WeatherReadingRow[];
+  /**
+   * What the weather actually WAS on each day in the window, from the nearest
+   * reporting station. The half that makes a forecast scoreable at all.
+   */
+  observations: WeatherObservationRow[];
+  /**
+   * Why there are no observations, when there are none. Kept apart from
+   * `refusal`: a point whose forecast reads fine can still have no station
+   * reporting, and those are different sentences.
+   */
+  observationRefusal: string | null;
   /**
    * The whole overlay is dark, and this sentence says why. Rendered verbatim.
    * Null when readings are available.
@@ -98,6 +126,14 @@ export interface WeatherWindow {
   staleReason: string | null;
   /** Age of the newest reading in minutes, or null when there are none. */
   ageMinutes: number | null;
+  /**
+   * Whether this call actually went to the issuer.
+   *
+   * A real signal rather than something a caller has to infer from elapsed
+   * time: the scheduled prefetch needs to report "asked" versus "already
+   * fresh", and a fast network would make a timing guess report the wrong one.
+   */
+  askedTheIssuer: boolean;
   issuer: string;
   /** How far ahead this issuer publishes; a cell past it says so. */
   horizonDays: number | null;
@@ -122,6 +158,22 @@ interface DbRow {
   short_forecast: string | null;
 }
 
+interface ObsDbRow {
+  business_date: string;
+  issuer: string;
+  station_id: string;
+  station_name: string | null;
+  time_zone: string;
+  first_observed_at: string;
+  last_observed_at: string;
+  observation_count: number;
+  fetched_at: string;
+  temperature_high: string | number | null;
+  temperature_low: string | number | null;
+  temperature_unit: string;
+  precipitation_total_mm: string | number | null;
+}
+
 function num(value: string | number | null): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "number" ? value : Number(value);
@@ -144,6 +196,24 @@ function toReading(row: DbRow): WeatherReadingRow {
     precipitationAmountMm: num(row.precipitation_amount_mm),
     windSummary: row.wind_summary,
     shortForecast: row.short_forecast,
+  };
+}
+
+function toObservation(row: ObsDbRow): WeatherObservationRow {
+  return {
+    businessDate: String(row.business_date).slice(0, 10),
+    issuer: row.issuer,
+    stationId: row.station_id,
+    stationName: row.station_name,
+    timeZone: row.time_zone,
+    firstObservedAt: row.first_observed_at,
+    lastObservedAt: row.last_observed_at,
+    observationCount: row.observation_count,
+    fetchedAt: row.fetched_at,
+    temperatureHigh: num(row.temperature_high),
+    temperatureLow: num(row.temperature_low),
+    temperatureUnit: row.temperature_unit === "F" ? "F" : "C",
+    precipitationTotalMm: num(row.precipitation_total_mm),
   };
 }
 
@@ -174,10 +244,13 @@ export class WeatherService {
       coordinate,
       readings: [],
       forecastInAdvance: [],
+      observations: [],
+      observationRefusal: null,
       refusal,
       refusalReason: reason,
       staleReason: null,
       ageMinutes: null,
+      askedTheIssuer: false,
       issuer: this.issuerName,
       horizonDays: null,
       advisories: [],
@@ -243,6 +316,7 @@ export class WeatherService {
     const fresh = ageMs !== null && ageMs < MAX_AGE_MS;
 
     let staleReason: string | null = null;
+    let askedTheIssuer = false;
     let horizonDays: number | null = null;
     let advisories: WeatherAdvisory[] = [];
     let advisoriesReadable = false;
@@ -250,6 +324,7 @@ export class WeatherService {
 
     if (!fresh) {
       try {
+        askedTheIssuer = true;
         const forecast = await this.provider.forecast(latitude, longitude);
         horizonDays = forecast.horizonDays;
         advisories = forecast.advisories;
@@ -283,6 +358,66 @@ export class WeatherService {
       }
     }
 
+    /**
+     * The observations, on the same read and the same max age.
+     *
+     * Deliberately its own try/catch and its own refusal: a point whose
+     * forecast reads perfectly can still have no station reporting, and the
+     * scorer has to be able to tell "no observation" from "no forecast" — those
+     * withhold the score for different reasons and the row says which.
+     *
+     * Only the PAST is asked for. A station cannot observe tomorrow, and
+     * requesting it would spend a call to be told so.
+     */
+    const today = new Date().toISOString().slice(0, 10);
+    const obsTo = to < today ? to : today;
+    let observations: ObsDbRow[] = [];
+    let observationRefusal: string | null = null;
+
+    if (from <= obsTo) {
+      const storedObs = await this.readStoredObservations(restaurantId, from, obsTo);
+      if (storedObs === null) {
+        observationRefusal = "The observation register could not be read.";
+      } else {
+        observations = storedObs;
+        const newestObs = observations.reduce<string | null>(
+          (acc, r) => (acc === null || r.fetched_at > acc ? r.fetched_at : acc),
+          null,
+        );
+        const obsFresh =
+          newestObs !== null && Date.now() - new Date(newestObs).getTime() < MAX_AGE_MS;
+
+        if (!obsFresh) {
+          try {
+            askedTheIssuer = true;
+            const measured = await this.provider.observations(
+              latitude,
+              longitude,
+              from,
+              obsTo,
+            );
+            await this.keepObservations(restaurantId, coordinate, measured);
+            const again = await this.readStoredObservations(restaurantId, from, obsTo);
+            if (again !== null) observations = again;
+          } catch (error) {
+            const message =
+              error instanceof WeatherUnavailableError
+                ? error.message
+                : "The observations could not be read.";
+            if (!(error instanceof WeatherUnavailableError)) {
+              this.logger.error(
+                `Observation refresh failed for r=${restaurantId}: ${(error as Error).message}`,
+              );
+            }
+            // Stored observations stay: they are real measurements and do not
+            // go stale the way a forecast does. The refusal is recorded only
+            // when there is nothing at all to show.
+            if (observations.length === 0) observationRefusal = message;
+          }
+        }
+      }
+    }
+
     const newestAfter = rows.reduce<string | null>(
       (acc, row) => (acc === null || row.fetched_at > acc ? row.fetched_at : acc),
       null,
@@ -294,9 +429,12 @@ export class WeatherService {
       coordinate,
       readings: newestPerDay(rows).map(toReading),
       forecastInAdvance: earliestPriorIssuancePerDay(rows).map(toReading),
+      observations: observations.map(toObservation),
+      observationRefusal,
       refusal: null,
       refusalReason: null,
       staleReason,
+      askedTheIssuer,
       ageMinutes: newestAfter
         ? Math.max(
             0,
@@ -339,6 +477,83 @@ export class WeatherService {
       return null;
     }
     return (data ?? []) as unknown as DbRow[];
+  }
+
+  /** Stored observations for the window, or null when unreadable. */
+  private async readStoredObservations(
+    restaurantId: string,
+    from: string,
+    to: string,
+  ): Promise<ObsDbRow[] | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("weather_observations")
+      .select(
+        "business_date, issuer, station_id, station_name, time_zone, " +
+          "first_observed_at, last_observed_at, observation_count, fetched_at, " +
+          "temperature_high, temperature_low, temperature_unit, " +
+          "precipitation_total_mm",
+      )
+      .eq("restaurant_id", restaurantId)
+      .gte("business_date", from)
+      .lte("business_date", to)
+      .order("business_date", { ascending: true });
+
+    if (error) {
+      this.logger.warn(
+        `weather_observations unreadable for r=${restaurantId}: ${error.message}`,
+      );
+      return null;
+    }
+    return (data ?? []) as unknown as ObsDbRow[];
+  }
+
+  /**
+   * Keep the measured days.
+   *
+   * Upsert on `(restaurant_id, business_date, station_id)` — one row per station
+   * per day, UPDATED as the day fills in. This is the opposite of the forecast
+   * table's rule and deliberately so: competing forecasts for one day are all
+   * evidence, whereas a day's observed high is one fact that becomes more
+   * complete, not a sequence of claims.
+   */
+  private async keepObservations(
+    restaurantId: string,
+    coordinate: { latitude: number; longitude: number },
+    measured: Awaited<ReturnType<WeatherProvider["observations"]>>,
+  ): Promise<void> {
+    if (measured.days.length === 0) return;
+
+    const payload = measured.days.map((day) => ({
+      restaurant_id: restaurantId,
+      issuer: measured.issuer,
+      station_id: day.stationId,
+      station_name: day.stationName,
+      business_date: day.businessDate,
+      time_zone: measured.timeZone,
+      first_observed_at: day.firstObservedAt,
+      last_observed_at: day.lastObservedAt,
+      observation_count: day.observationCount,
+      fetched_at: new Date().toISOString(),
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      temperature_high: day.temperatureHigh,
+      temperature_low: day.temperatureLow,
+      temperature_unit: day.temperatureUnit,
+      precipitation_total_mm: day.precipitationTotalMm,
+      raw_hash: day.rawHash,
+    }));
+
+    const { error } = await this.databaseService.supabase
+      .from("weather_observations")
+      .upsert(payload, {
+        onConflict: "restaurant_id,business_date,station_id",
+      });
+
+    if (error) {
+      this.logger.error(
+        `weather_observations upsert failed for r=${restaurantId}: ${error.message}`,
+      );
+    }
   }
 
   /**

@@ -28,6 +28,37 @@
   `GET /calendar/day-record`); and the four iCal fixes
   (`calendar.controller.ts`, `calendar.service.ts`, `calendar/zoned-time.ts`).
 
+  **Amendment — 2026-09-04, two founder decisions after the first build:**
+
+  | # | Decision | What it changed |
+  |---|---|---|
+  | 6 | **Record weather OBSERVATIONS beside the forecasts, so a forecast can be scored.** Per refresh, the nearest reporting station's observations for the same coordinate | §2a said the weather overlay was "transcription" with "no maths", and slice 3 wrote `prediction_outcomes` with `accuracy_score` NULL for a stated reason — *"no temperature observation is recorded anywhere"*. That reason is now gone. `weather_observations` (a sibling table, `20260904140000`) records what the station measured, and `day-record.service.ts` writes **the first real `accuracy_score` this product has ever produced**: the absolute error of the forecast daily high against the observed daily high, **in degrees Celsius, lower is better**, stated in words in every row's `context.metric` and withheld with a reason when either side is missing |
+  | 7 | **A scheduled prefetch: one refresh per house per hour, for every house with a coordinate**, so a house nobody opens still accumulates history | Closes the cost this ADR's §Status admitted and filed rather than fixed. It does **not** go through `ScheduledTenantsService.runPerTenant` — that scheduler serves one house of fourteen, which is this ADR's own finding — so it required an amendment to [[0022-scheduled-jobs-serve-opted-in-tenants|ADR 0022]], dated 2026-09-04, naming exactly the two NWS reads it permits and nothing else |
+
+  **Why the score is an error and not a goodness, and why that had to be written
+  down.** `prediction_outcomes.accuracy_score` is a `double precision` carrying
+  an index (`idx_prediction_accuracy`), and its name says "score" while the
+  number written is an error — anything reading it as higher-is-better would
+  read every row backwards. Three defences, all in the row itself: the metric is
+  stated in English in `context.metric`; both raw sides are kept in
+  `predicted_value` / `actual_value` so the number can be recomputed rather than
+  trusted; and the rows sit under their own `agent_name`
+  (`mudavym.calendar.day_record`), separate from the only other writer,
+  `services/self-evolution/main.py`.
+
+  **The unit disagreement is a measured fact, not a design choice.** NWS
+  publishes its gridpoint forecast in **Fahrenheit** and its station
+  observations in **Celsius** (measured 2026-09-04: MTR/91,89 vs KPAO,
+  `wmoUnit:degC`). Celsius is the common unit because it is the *observation's*
+  own — converting the measurement would put our arithmetic on the side of the
+  comparison that is supposed to be ground truth.
+
+  **What is still not scored, and this has not moved:** the covers forecast.
+  It is slice 9, gated on ninety observed service days, and the best-covered
+  tenant had twenty-two. A row can now carry a real weather score and still
+  carry no claim whatever about trading — which is why the recorded covers
+  travel in `actual_value` unscored.
+
   **One thing this ADR proposed and the build did NOT do,** because the measurement
   contradicted it: §6 slice 2 said the weather refresh should run under
   `ScheduledTenantsService.runPerTenant`. It does not. That scheduler enumerates only
@@ -541,6 +572,17 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-04 — **observations recorded from today, and the forecast is scored.**
+  `weather_observations` (`20260904140000`) stores what the nearest station
+  measured; `day-record.service.ts` writes the first non-null `accuracy_score`
+  in this product's history. Measured live through the compiled provider on
+  2026-09-04: station **KPAO / Palo Alto Airport**, zone `America/Los_Angeles`,
+  five local days, highs 19/22/25/24/20 °C, **precipitation null on every one of
+  them** — that station does not report rainfall at all, which is exactly the
+  case a `DEFAULT 0` would have turned into a dry week. The 2026-09-03 pair is
+  the first real score: forecast 75 °F (23.89 °C) against an observed 24 °C,
+  **error 0.11 °C**. Also added: the hourly prefetch, and the ADR 0022 amendment
+  it required.
 - 2026-09-03 (later) — **the founder answered five of the six forks and slices 1-3 plus the
   iCal fixes were built.** The five answers are in §Status. Three things the BUILD measured
   that the research pass had not, each of which changed the code:

@@ -183,8 +183,82 @@ shipped without first checking it does not silence this tenant.**
   warning fires for it — that is the signal that the `owner`-vs-`manager` role
   gap (6 of 10 restaurants) has to be answered rather than logged.
 
+---
+
+## Amendment — 2026-09-04: one named read is exempt from the opt-in
+
+**Decided by the founder on 2026-09-04**, alongside ADR 0111's observations
+work. This narrows the rule; it does not weaken it.
+
+**What is exempt, exactly and only:** the scheduled weather prefetch —
+`apps/api-gateway/src/weather/weather-prefetch.service.ts` — may iterate
+**every restaurant carrying a non-null `latitude` and `longitude`** directly,
+without consulting `restaurant_feature_flags.flag_name =
+'scheduled_communications'` or `DEFAULT_RESTAURANT_ID`. The reads it is
+permitted to make are two, both against the United States National Weather
+Service, both public and unauthenticated:
+
+1. the gridpoint **forecast** for that restaurant's coordinate, and
+2. the nearest reporting station's **observations** for that coordinate.
+
+It writes the answers to `weather_readings` and `weather_observations`, scoped
+to the restaurant that supplied the coordinate. **Nothing else is exempt.** Any
+scheduled work that sends mail, a message, a push or a notification — anything
+that reaches a person, or reaches outside the house at all — still goes through
+`ScheduledTenantsService.runPerTenant`, unchanged.
+
+**Why the exemption is coherent with the original decision rather than a hole
+in it.** This ADR exists because eight crons could mail the wrong tenant: OD-87
+was about *recipients*, and the opt-in flag is a consent gate on **being
+contacted**. The prefetch contacts nobody. It is a read of a public government
+API on the tenant's own behalf, stored against the tenant's own row, visible
+only on that tenant's own calendar. Applying a consent-to-be-mailed gate to it
+protects no one and costs something real:
+
+> **Measured, 2026-09-03:** `runPerTenant` enumerates **one** restaurant of
+> **fourteen** in production (`communications/scheduled-tenants.service.ts:88-125`).
+> Routing the prefetch through it would leave thirteen houses accumulating no
+> forecast and no observation history at all — and ADR 0111 slice 9's covers
+> model is gated on **ninety days of a house's own history**, which counts days
+> of *record*, not days of *existence*. A house that opened its calendar rarely
+> would arrive at day sixty with nothing to model and no indication why.
+
+That is this repo's standing fault — a system reporting absence as health —
+reached through the very mechanism meant to prevent it.
+
+**The guardrails that keep the exemption narrow**, each implemented rather than
+promised:
+
+- A house with **no coordinate is never fetched**; the eligibility query filters
+  on both axes being non-null, so there is nothing to ask about and no call is
+  spent discovering that.
+- A house whose reading is **younger than the max age is not re-asked**. The
+  skip is delegated to `WeatherService.windowFor`, the same path the page takes,
+  so the cron and the page cannot drift about what "fresh" means; the service
+  reports `askedTheIssuer` as a fact rather than leaving the caller to infer it
+  from elapsed time.
+- **One house at a time**, with a pause between them, on top of the provider's
+  8-second timeout. NWS asks callers for reasonable use and a descriptive
+  `User-Agent` rather than publishing a hard limit; both are honoured.
+- **One house's failure never stops the sweep.** Each is caught, counted and
+  logged in words.
+- An **unreadable restaurant register returns null, never `[]`** — a sweep that
+  served nobody because it could not read the register must not look like a
+  sweep with nobody to serve.
+- The switch is `WEATHER_PREFETCH_ENABLED`, and it defaults **on** — the
+  opposite of `CALENDAR_REMINDERS_ENABLED`, deliberately: that job writes to
+  every member's inbox and phone, this one reads a weather service.
+
+**Consequence to watch.** This is the first scheduled work in the product that
+serves tenants the opt-in register does not name. If a second candidate appears,
+it does **not** inherit this exemption: the test is "does it reach a person or
+leave the house", and anything that does belongs behind `runPerTenant`.
+
+---
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-26 | — | Created; awaiting founder lock on OD-91 |
+| 2026-09-04 | Aldemir (founder) | Amended: the weather prefetch's two NWS reads are exempt from the opt-in for coordinate-bearing houses; nothing that reaches a person is |

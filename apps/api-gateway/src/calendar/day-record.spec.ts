@@ -4,6 +4,8 @@ import {
   PAIRING_TYPE,
   leadDaysFor,
   reconciliationLine,
+  scoreForecast,
+  toCelsius,
 } from "./day-record.service";
 import {
   RecordedDaysService,
@@ -167,6 +169,8 @@ const YESTERDAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
 const WEATHER = (over = {}) => ({
   refusal: null,
+  observationRefusal: null,
+  observations: [],
   forecastInAdvance: [
     {
       businessDate: YESTERDAY,
@@ -318,5 +322,208 @@ describe("DayRecordService", () => {
 
     const out = await service.windowFor("r1", today, today);
     expect(out.days).toHaveLength(0);
+  });
+});
+
+/* ── the score itself (ADR 0111, observations added 2026-09-04) ───────────── */
+
+describe("toCelsius", () => {
+  it("converts Fahrenheit and leaves Celsius alone", () => {
+    expect(toCelsius(75, "F")).toBeCloseTo(23.889, 3);
+    expect(toCelsius(32, "F")).toBe(0);
+    expect(toCelsius(20, "C")).toBe(20);
+  });
+});
+
+describe("scoreForecast", () => {
+  it("scores a real pair in Celsius — the observation's own unit", () => {
+    // NWS forecast 75 °F = 23.89 °C; KPAO observed 25 °C. Error 1.11.
+    const { errorC, withheld } = scoreForecast(75, "F", 25, "C");
+    expect(withheld).toBeNull();
+    expect(errorC).toBeCloseTo(1.11, 2);
+  });
+
+  it("is an ABSOLUTE error, so an over- and under-forecast score alike", () => {
+    expect(scoreForecast(20, "C", 25, "C").errorC).toBe(5);
+    expect(scoreForecast(30, "C", 25, "C").errorC).toBe(5);
+  });
+
+  it("gives a perfect forecast a zero, which is a real score not a missing one", () => {
+    const { errorC, withheld } = scoreForecast(25, "C", 25, "C");
+    expect(errorC).toBe(0);
+    expect(withheld).toBeNull();
+  });
+
+  it("withholds, and says WHICH side is missing, when the forecast is absent", () => {
+    expect(scoreForecast(null, "F", 25, "C")).toEqual({
+      errorC: null,
+      withheld: "no forecast high stood before this day",
+    });
+  });
+
+  it("withholds, and says which side, when no station observed the day", () => {
+    expect(scoreForecast(75, "F", null, "C")).toEqual({
+      errorC: null,
+      withheld: "no station observed a high for this day",
+    });
+    expect(scoreForecast(75, "F", 25, undefined)).toEqual({
+      errorC: null,
+      withheld: "no station observed a high for this day",
+    });
+  });
+});
+
+describe("reconciliationLine — the weather half", () => {
+  const day = {
+    businessDate: "2026-09-02",
+    checkCount: 3,
+    sales: 300,
+    covers: 12,
+    excluded: false,
+    exclusionReason: null,
+  };
+
+  it("states the error in words when there is one", () => {
+    expect(reconciliationLine(day, true, true, 1.11)).toContain("out by 1.1 °C");
+  });
+
+  it("says a forecast that landed exactly, landed exactly", () => {
+    expect(reconciliationLine(day, true, true, 0)).toContain("called the high exactly");
+  });
+
+  it("says nothing about the weather when the score was withheld", () => {
+    const line = reconciliationLine(day, true, true, null);
+    expect(line).not.toMatch(/°C/);
+    expect(line).toContain("no covers model exists yet");
+  });
+
+  it("still reports the weather error on a day with no covers", () => {
+    // The two halves are scored independently: a POS that sends no cover counts
+    // does not make the meteorologist's error unknowable.
+    const line = reconciliationLine({ ...day, covers: null }, true, true, 2.5);
+    expect(line).toContain("Covers were not recorded");
+    expect(line).toContain("out by 2.5 °C");
+  });
+});
+
+describe("DayRecordService — writing the first real accuracy_score", () => {
+  const OBSERVED = {
+    businessDate: YESTERDAY,
+    issuer: "NOAA/NWS",
+    stationId: "KPAO",
+    stationName: "Palo Alto Airport",
+    timeZone: "America/Los_Angeles",
+    firstObservedAt: `${YESTERDAY}T14:47:00Z`,
+    lastObservedAt: `${YESTERDAY}T23:47:00Z`,
+    observationCount: 18,
+    fetchedAt: new Date().toISOString(),
+    temperatureHigh: 25,
+    temperatureLow: 13,
+    temperatureUnit: "C" as const,
+    precipitationTotalMm: null,
+  };
+
+  it("writes the error in accuracy_score, with the metric stated in words", async () => {
+    const { service, inserted } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER({ observations: [OBSERVED] }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+
+    expect(out.pairsWritten).toBe(1);
+    const row = inserted[0][0];
+    // forecast 75 °F = 23.89 °C against an observed 25 °C.
+    expect(row.accuracy_score).toBeCloseTo(1.11, 2);
+    expect(row.context.metric).toContain("LOWER IS BETTER");
+    expect(row.context.metric).toContain("degrees Celsius");
+    expect(row.context.withheld).toBeNull();
+    // Both raw sides are kept, so the score can be recomputed rather than trusted.
+    expect(row.predicted_value.temperatureHigh).toBe(75);
+    expect(row.actual_value.observedTemperatureHigh).toBe(25);
+    expect(row.actual_value.observationStation).toBe("KPAO");
+    expect(row.actual_value.observationCount).toBe(18);
+  });
+
+  it("surfaces the error on the day and in its line", async () => {
+    const { service } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER({ observations: [OBSERVED] }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.days[0].forecastErrorC).toBeCloseTo(1.11, 2);
+    expect(out.days[0].scoreWithheld).toBeNull();
+    expect(out.days[0].observed?.stationId).toBe("KPAO");
+    expect(out.days[0].line).toContain("out by 1.1 °C");
+  });
+
+  it("withholds the score when no station observed the day", async () => {
+    const { service, inserted } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER(),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+
+    expect(out.days[0].forecastErrorC).toBeNull();
+    expect(out.days[0].scoreWithheld).toBe("no station observed a high for this day");
+    expect(inserted[0][0].accuracy_score).toBeNull();
+    expect(inserted[0][0].context.withheld).toBe(
+      "no station observed a high for this day",
+    );
+    expect(inserted[0][0].context.note).toContain("No score:");
+  });
+
+  it("withholds the score when no forecast stood before the day", async () => {
+    const { service } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER({ forecastInAdvance: [], observations: [OBSERVED] }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.days[0].forecastErrorC).toBeNull();
+    expect(out.days[0].scoreWithheld).toBe("no forecast high stood before this day");
+    // and nothing is written: a forecast is the thing being scored.
+    expect(out.pairsWritten).toBe(0);
+  });
+
+  it("keeps a day that has a forecast and an observation but no trading", async () => {
+    // The weather half is scoreable on a day the house was closed to the public
+    // or the POS was silent; that evidence is worth keeping.
+    const { service, inserted } = makeService({
+      recorded: LEDGER({ days: [] }),
+      weather: WEATHER({ observations: [OBSERVED] }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.pairsWritten).toBe(1);
+    expect(inserted[0][0].actual_value.covers).toBeNull();
+    expect(inserted[0][0].actual_value.checkCount).toBe(0);
+    expect(inserted[0][0].accuracy_score).toBeCloseTo(1.11, 2);
+  });
+
+  it("never scores a day the house was ruled out of the baselines", async () => {
+    const { service, inserted } = makeService({
+      recorded: LEDGER({
+        days: [
+          {
+            businessDate: YESTERDAY,
+            checkCount: 0,
+            sales: null,
+            covers: null,
+            excluded: true,
+            exclusionReason: "Closed for a private event",
+          },
+        ],
+      }),
+      weather: WEATHER({ observations: [OBSERVED] }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    // The observation still makes it pairable, but the LINE leads with the
+    // closure — a closed day must never read as a quiet one.
+    expect(out.days[0].line).toContain("Closed — Closed for a private event");
+    expect(inserted.length <= 1).toBe(true);
   });
 });

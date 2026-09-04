@@ -414,6 +414,69 @@ ever — the forecast that stood before the day, paired with what the day turned
 with `accuracy_score` **NULL** and a `context.note` saying why. Writing a number there today
 would mean inventing the metric it scores.
 
+### Fifth pass, 2026-09-04 — the observation, and the first real score
+
+**What the founder asked**, in two decisions on the same day: *record weather
+OBSERVATIONS beside the forecasts so a forecast can be scored*, and *the weather refresh
+gains a scheduled prefetch — one refresh per house per hour, only for restaurants with a
+coordinate, so a house nobody opens still accumulates history*.
+
+**What that changed, in one sentence:** the fourth pass shipped an overlay that could
+never be wrong on the record, because nothing recorded what actually happened; the fifth
+gives it a station to be measured against.
+
+| Piece | Where |
+|---|---|
+| `weather_observations` — the station's own measurements, per local day | `supabase/migrations/20260904140000_an_observation_scores_the_forecast.sql` |
+| `/points` → station list → `/stations/{id}/observations`, folded to local days | `weather/nws.provider.ts` `observations`, `foldObservationsToDays`, `localDateInZone`, `usableQuantity` |
+| The score | `calendar/day-record.service.ts` `scoreForecast`, written to `prediction_outcomes.accuracy_score` |
+| The hourly prefetch | `weather/weather-prefetch.service.ts` |
+
+**Four things the build measured, each of which shaped the code:**
+
+1. **The two sides disagree about units.** NWS publishes its gridpoint forecast in
+   **Fahrenheit** and its station observations in **Celsius** (`wmoUnit:degC`). Each side
+   stores the unit its own issuer published; the scorer converts the FORECAST, because
+   converting the measurement would put our arithmetic on the side that is meant to be
+   ground truth.
+2. **`/points` carries no station id** — it carries `observationStations`, a URL to the
+   ranked station LIST for the grid square (53 stations for MTR/91,89, nearest first). One
+   more hop, cached with the rest of the point.
+3. **A nearest station can be silent.** The provider walks up to four down the ranked list
+   rather than reporting "no observations" for a point with a staffed airport two miles
+   away.
+4. **KPAO reports no rainfall at all** — 42 of 42 observations carried
+   `precipitationLastHour.value = null`. `precipitation_total_mm` is nullable and summed
+   only over hours that published a number; a `DEFAULT 0` would have published a dry week.
+
+**The score, stated once so nothing has to infer it.**
+
+> `accuracy_score` = |forecast daily high − observed daily high|, in degrees **Celsius**.
+> **Lower is better.** Withheld (NULL) when either side is missing, with `context.withheld`
+> naming which side.
+
+That sentence is in `context.metric` on every row, because the column is named
+`accuracy_score`, carries an index, and holds an **error** — a reader assuming
+higher-is-better would read every row backwards. Both raw sides are kept in
+`predicted_value` / `actual_value` so the number can be recomputed rather than trusted, and
+the rows sit under their own `agent_name` (`mudavym.calendar.day_record`), separate from
+`services/self-evolution/main.py`, the only other writer.
+
+**The first real score, measured live on 2026-09-04:** forecast 75 °F (23.89 °C) for
+2026-09-03 against an observed high of 24 °C at KPAO — **out by 0.11 °C**.
+
+**Why the prefetch does not ride ADR 0022.** `runPerTenant` enumerates one restaurant of
+fourteen, so a cron behind it would leave thirteen houses accumulating nothing while slice
+28's ninety-day floor counts days of *record*. ADR 0022's opt-in is a consent gate on
+**being contacted**, and this contacts nobody: it reads two public NWS endpoints on the
+tenant's own behalf and stores the answers against the tenant's own row. That is now a
+dated amendment on ADR 0022 naming exactly those two reads — **and nothing else**; anything
+that reaches a person still goes through `runPerTenant`.
+
+**Still not built, and still for the same reason:** the covers forecast, and therefore the
+scoring of the TRADING half of a day. Slice 28, gated on ninety observed service days; the
+house has 22.
+
 ### Quant overlay — research 2026-09-03
 
 **Nothing in this subsection is built.** It is the research-and-design pass behind

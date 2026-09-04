@@ -10,6 +10,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { CommunicationsModule } from "../communications/communications.module";
 import { WeatherService } from "../weather/weather.service";
 import { NwsWeatherProvider } from "../weather/nws.provider";
+import { WeatherPrefetchService } from "../weather/weather-prefetch.service";
 import { RecordedDaysService } from "./recorded-days.service";
 import { DayRecordService } from "./day-record.service";
 
@@ -41,6 +42,7 @@ import { DayRecordService } from "./day-record.service";
     CalendarRemindersService,
     NwsWeatherProvider,
     WeatherService,
+    WeatherPrefetchService,
     RecordedDaysService,
     DayRecordService,
   ],

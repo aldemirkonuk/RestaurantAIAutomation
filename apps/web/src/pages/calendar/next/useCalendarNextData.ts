@@ -212,6 +212,31 @@ export interface ReconciledDay {
     precipitationProbability: number | null;
     shortForecast: string | null;
   } | null;
+  /**
+   * What the nearest station actually MEASURED on this day (added 2026-09-04).
+   * Null when no station reported it.
+   */
+  observed: {
+    stationId: string;
+    stationName: string | null;
+    observationCount: number;
+    temperatureHigh: number | null;
+    temperatureLow: number | null;
+    temperatureUnit: 'C' | 'F';
+    precipitationTotalMm: number | null;
+  } | null;
+  /**
+   * The forecast's error on this day: absolute degrees CELSIUS between the
+   * forecast high and the observed high. **Lower is better** — it is an error,
+   * not a goodness. Null when either side is missing.
+   */
+  forecastErrorC: number | null;
+  /** Why there is no score, in the gateway's own words. Null when there is one. */
+  scoreWithheld: string | null;
+  /**
+   * The sentence the cell prints. Built by the gateway so the page cannot
+   * soften it; it already carries the error when there is one.
+   */
   line: string;
 }
 

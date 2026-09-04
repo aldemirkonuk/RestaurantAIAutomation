@@ -2,8 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import * as crypto from "crypto";
 import {
   WeatherAdvisory,
+  WeatherDayObservation,
   WeatherDayReading,
   WeatherForecast,
+  WeatherObservations,
   WeatherProvider,
   WeatherUnavailableError,
 } from "./weather-provider";
@@ -41,11 +43,30 @@ import {
 const NWS_BASE = "https://api.weather.gov";
 const POINTS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 8000;
+/** How far down the ranked station list to walk before giving up. */
+const MAX_STATION_ATTEMPTS = 4;
 
 interface PointsResolution {
   forecastUrl: string;
   gridHandle: string | null;
+  /** `properties.observationStations` — a URL to the station LIST, not an id. */
+  stationsUrl: string | null;
+  /** `properties.timeZone`, the zone the point's local dates are expressed in. */
+  timeZone: string | null;
   resolvedAt: number;
+}
+
+interface NwsQuantity {
+  value?: number | null;
+  unitCode?: string;
+  qualityControl?: string;
+}
+
+interface NwsObservation {
+  timestamp?: string;
+  stationId?: string;
+  temperature?: NwsQuantity | null;
+  precipitationLastHour?: NwsQuantity | null;
 }
 
 interface NwsPeriod {
@@ -139,6 +160,8 @@ export class NwsWeatherProvider implements WeatherProvider {
         gridId?: string;
         gridX?: number;
         gridY?: number;
+        observationStations?: string;
+        timeZone?: string;
       };
     };
 
@@ -157,6 +180,15 @@ export class NwsWeatherProvider implements WeatherProvider {
         props.gridId && props.gridX != null && props.gridY != null
           ? `${props.gridId}/${props.gridX},${props.gridY}`
           : null,
+      // NWS does not put a station ID on /points; it puts a URL to the ranked
+      // station LIST for the grid square (measured 2026-09-04: 53 stations for
+      // MTR/91,89, nearest first — KPAO, Palo Alto Airport). One more hop, and
+      // it is cached with the rest of the point resolution.
+      stationsUrl:
+        typeof props.observationStations === "string"
+          ? props.observationStations
+          : null,
+      timeZone: typeof props.timeZone === "string" ? props.timeZone : null,
       resolvedAt: Date.now(),
     };
     this.points.set(key, resolution);
@@ -263,6 +295,248 @@ export class NwsWeatherProvider implements WeatherProvider {
       advisoriesReadable: readable,
     };
   }
+
+  /**
+   * What the weather actually WAS, from the nearest reporting station.
+   *
+   * Three hops, two of them cached with the point: `/points` names the station
+   * LIST for the grid square, the list is ranked nearest-first, and the first
+   * station that returns usable observations for the window is the one used.
+   * Walking past a silent station matters — a grid square's nearest station can
+   * be an amateur unit that reports nothing for days, and giving up on it would
+   * report "no observations" for a point with a staffed airport two miles away.
+   * It walks at most `MAX_STATION_ATTEMPTS`, so a dead grid costs a bounded
+   * number of calls rather than 53.
+   */
+  async observations(
+    latitude: number,
+    longitude: number,
+    from: string,
+    to: string,
+  ): Promise<WeatherObservations> {
+    const point = await this.resolvePoint(latitude, longitude);
+
+    if (!point.stationsUrl) {
+      throw new WeatherUnavailableError(
+        "The weather service names no observing station for this location, so " +
+          "there is nothing to record what the weather actually was.",
+        "issuer-refused",
+      );
+    }
+    if (!point.timeZone) {
+      // Without the point's zone an observation timestamped in UTC cannot be
+      // filed under the right local day, and filing it under the wrong one
+      // would score a forecast against the following morning.
+      throw new WeatherUnavailableError(
+        "The weather service named no time zone for this location, so an " +
+          "observation cannot be placed on a calendar day.",
+        "issuer-malformed",
+      );
+    }
+
+    const stationsBody = (await this.getJson(point.stationsUrl)) as {
+      features?: Array<{
+        properties?: { stationIdentifier?: string; name?: string };
+      }>;
+    };
+    const stations = (stationsBody?.features ?? [])
+      .map((f) => f?.properties)
+      .filter(
+        (p): p is { stationIdentifier: string; name?: string } =>
+          !!p && typeof p.stationIdentifier === "string",
+      );
+
+    if (stations.length === 0) {
+      throw new WeatherUnavailableError(
+        "The weather service lists no observing station for this location.",
+        "issuer-refused",
+      );
+    }
+
+    // The window, widened to whole UTC days so a local-evening observation on
+    // the last day is inside it.
+    const start = `${from}T00:00:00Z`;
+    const endAt = new Date(`${to}T00:00:00Z`);
+    endAt.setUTCDate(endAt.getUTCDate() + 2);
+
+    let lastError: string | null = null;
+    for (const station of stations.slice(0, MAX_STATION_ATTEMPTS)) {
+      const url =
+        `${NWS_BASE}/stations/${encodeURIComponent(station.stationIdentifier)}` +
+        `/observations?start=${encodeURIComponent(start)}` +
+        `&end=${encodeURIComponent(endAt.toISOString())}&limit=500`;
+      try {
+        const body = (await this.getJson(url)) as {
+          features?: Array<{ properties?: NwsObservation }>;
+        };
+        const rows = (body?.features ?? [])
+          .map((f) => f?.properties)
+          .filter((o): o is NwsObservation => !!o);
+
+        const days = foldObservationsToDays(
+          rows,
+          point.timeZone,
+          station.stationIdentifier,
+          station.name ?? null,
+        );
+        // A station that answered with nothing usable is not a failure of the
+        // point; try the next one down the ranked list.
+        if (days.length === 0) {
+          lastError = `${station.stationIdentifier} reported nothing for this window`;
+          continue;
+        }
+
+        return {
+          issuer: this.issuer,
+          stationId: station.stationIdentifier,
+          stationName: station.name ?? null,
+          timeZone: point.timeZone,
+          days,
+        };
+      } catch (error) {
+        if (error instanceof WeatherUnavailableError) {
+          lastError = `${station.stationIdentifier}: ${error.message}`;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new WeatherUnavailableError(
+      "No station near this location reported the weather for these days" +
+        (lastError ? ` (${lastError})` : "") + ".",
+      "issuer-refused",
+    );
+  }
+}
+
+/**
+ * An ISO instant → the calendar date it falls on **in `timeZone`**.
+ *
+ * Deliberately different from `localDateOf` below, and the difference is a
+ * measured fact rather than a style choice: NWS stamps forecast periods with
+ * the forecast point's own offset (`2026-09-03T18:00:00-07:00`), so their local
+ * date can be read straight off the string. It stamps station observations in
+ * **UTC** (`2026-09-04T18:47:00+00:00`, measured at KPAO), so the same trick
+ * would file a 5pm Pacific reading under the following day. This resolves the
+ * date in the point's own zone instead.
+ */
+export function localDateInZone(iso: string, timeZone: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  try {
+    // `en-CA` formats as YYYY-MM-DD, which is the shape we want.
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(at);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a station's own quality-control flag says its number is usable.
+ *
+ * NWS marks each observed quantity: `V` validated, `C` coarse pass, `S`
+ * subjectively good, `Z` preliminary/no value, `X` failed, `Q` questionable.
+ * Only `X` and `Q` are rejections the issuer itself is making, so those are
+ * the two dropped; anything else is taken at the issuer's word, and a null
+ * value is absent regardless of flag. (All 42 observations in the recorded
+ * KPAO fixture carry `V`.)
+ */
+export function usableQuantity(q: NwsQuantity | null | undefined): number | null {
+  if (!q || typeof q.value !== "number" || !Number.isFinite(q.value)) return null;
+  const flag = (q.qualityControl || "").toUpperCase();
+  if (flag === "X" || flag === "Q") return null;
+  return q.value;
+}
+
+/**
+ * Hourly station observations → one row per calendar date.
+ *
+ * The only arithmetic: a max, a min, a conditional sum and a count. Nothing is
+ * interpolated across a gap, and a date with no usable temperature keeps a null
+ * high and low rather than borrowing its neighbour's.
+ */
+export function foldObservationsToDays(
+  observations: NwsObservation[],
+  timeZone: string,
+  stationId: string,
+  stationName: string | null,
+): WeatherDayObservation[] {
+  const byDate = new Map<
+    string,
+    {
+      temps: number[];
+      precip: number[];
+      stamps: string[];
+      unit: "C" | "F" | null;
+      raw: unknown[];
+    }
+  >();
+
+  for (const o of observations) {
+    if (!o?.timestamp) continue;
+    const date = localDateInZone(o.timestamp, timeZone);
+    if (!date) continue;
+
+    const entry = byDate.get(date) ?? {
+      temps: [],
+      precip: [],
+      stamps: [],
+      unit: null,
+      raw: [],
+    };
+
+    const temp = usableQuantity(o.temperature);
+    if (temp !== null) {
+      entry.temps.push(temp);
+      const code = (o.temperature?.unitCode || "").toLowerCase();
+      if (code.includes("degf")) entry.unit = "F";
+      else if (code.includes("degc")) entry.unit = "C";
+    }
+
+    // Summed only over the hours that actually published a number. An hour
+    // reporting nothing contributes nothing — it does not contribute zero.
+    const rain = usableQuantity(o.precipitationLastHour);
+    if (rain !== null) entry.precip.push(rain);
+
+    entry.stamps.push(o.timestamp);
+    entry.raw.push(o);
+    byDate.set(date, entry);
+  }
+
+  const out: WeatherDayObservation[] = [];
+  for (const [businessDate, entry] of byDate) {
+    const stamps = [...entry.stamps].sort();
+    out.push({
+      businessDate,
+      stationId,
+      stationName,
+      firstObservedAt: stamps[0],
+      lastObservedAt: stamps[stamps.length - 1],
+      observationCount: entry.raw.length,
+      temperatureHigh: entry.temps.length ? Math.max(...entry.temps) : null,
+      temperatureLow: entry.temps.length ? Math.min(...entry.temps) : null,
+      // NWS observations publish Celsius; the fallback is recorded rather than
+      // assumed, and it is the opposite of the forecast's default for a reason.
+      temperatureUnit: entry.unit ?? "C",
+      // NULL when NOT ONE hour published a number — not 0. Measured at KPAO on
+      // 2026-09-04: 42 of 42 observations carried a null value here.
+      precipitationTotalMm: entry.precip.length
+        ? Math.round(entry.precip.reduce((a, b) => a + b, 0) * 100) / 100
+        : null,
+      rawHash: crypto
+        .createHash("sha256")
+        .update(JSON.stringify(entry.raw))
+        .digest("hex"),
+    });
+  }
+
+  return out.sort((a, b) => a.businessDate.localeCompare(b.businessDate));
 }
 
 /**

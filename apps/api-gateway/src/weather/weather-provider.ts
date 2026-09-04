@@ -103,6 +103,63 @@ export class WeatherUnavailableError extends Error {
   }
 }
 
+/**
+ * One day of what the weather ACTUALLY WAS, folded from an issuer's own
+ * observations.
+ *
+ * This is the other half of ADR 0111 §2, and until 2026-09-04 the product had
+ * none of it: NWS publishes forecasts, and nothing anywhere recorded what
+ * happened, so a forecast's error was not computable at all and slice 3 wrote
+ * `prediction_outcomes` with a NULL score for that reason. An observation is a
+ * measurement somebody took at a named station, which is a different KIND of
+ * fact from a forecast and is why it gets its own table rather than a `kind`
+ * column on `weather_readings`.
+ *
+ * The same rule binds as everywhere else in this module: every field is either
+ * a number the station published or `null`. Nothing is interpolated across a
+ * gap in the record, and a day the station did not report is absent rather than
+ * carried over from its neighbour.
+ */
+export interface WeatherDayObservation {
+  /** Local calendar date, in the FORECAST POINT's zone. See `localDateInZone`. */
+  businessDate: string;
+  /** The station that measured it. */
+  stationId: string;
+  stationName: string | null;
+  /** First and last observation actually used for this date. */
+  firstObservedAt: string;
+  lastObservedAt: string;
+  /** How many observations backed this row. A day is not a single reading. */
+  observationCount: number;
+  temperatureHigh: number | null;
+  temperatureLow: number | null;
+  /**
+   * The STATION's own unit. NWS observations publish `wmoUnit:degC` while its
+   * forecasts publish Fahrenheit — measured, 2026-09-04, KPAO vs MTR/91,89 —
+   * so the two sides of a comparison genuinely disagree about units and the
+   * scorer has to convert and say which unit it compared in.
+   */
+  temperatureUnit: "C" | "F";
+  /**
+   * Millimetres summed over the hours that published a number, or `null` when
+   * NOT ONE hour did. Measured at KPAO on 2026-09-04: all 42 observations
+   * carried `precipitationLastHour.value === null`. A `0` here would report a
+   * dry day at a station that simply does not report rainfall.
+   */
+  precipitationTotalMm: number | null;
+  /** sha256 of the raw observations behind this date. */
+  rawHash: string;
+}
+
+export interface WeatherObservations {
+  issuer: string;
+  stationId: string;
+  stationName: string | null;
+  /** The IANA zone the dates below are expressed in. */
+  timeZone: string;
+  days: WeatherDayObservation[];
+}
+
 export interface WeatherProvider {
   /** The name that travels with every reading this provider produces. */
   readonly issuer: string;
@@ -114,4 +171,19 @@ export interface WeatherProvider {
    * It must never return an empty forecast to mean a failure.
    */
   forecast(latitude: number, longitude: number): Promise<WeatherForecast>;
+
+  /**
+   * Ask what the weather actually WAS at one point, over a closed day range.
+   *
+   * Throws `WeatherUnavailableError` for the same reasons `forecast` does, plus
+   * one of its own: a point inside the issuer's coverage may still have no
+   * station reporting, which is `issuer-refused` with a sentence saying so —
+   * never an empty day list standing in for a failure.
+   */
+  observations(
+    latitude: number,
+    longitude: number,
+    from: string,
+    to: string,
+  ): Promise<WeatherObservations>;
 }

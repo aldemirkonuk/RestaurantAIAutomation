@@ -5,6 +5,7 @@
     "gridY": 89,
     "forecast": "https://api.weather.gov/gridpoints/MTR/91,89/forecast",
     "forecastHourly": "https://api.weather.gov/gridpoints/MTR/91,89/forecast/hourly",
+    "observationStations": "https://api.weather.gov/gridpoints/MTR/91,89/stations",
     "timeZone": "America/Los_Angeles"
   }
 }
