@@ -47,6 +47,15 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 
 ## 1b. Motions used — Mudavym addition (flag `mudavym_design_inventory`)
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 Deliberately none. This is a card added inside the KEPT page (the founder's
 verdict kept `/inventory` as it is — the addition is styled native to the
 page's own grey-card idiom, not the `.mudavym` tokens, and the İznik re-skin
@@ -298,4 +307,24 @@ invariants the database cannot.
    too: phase 1 drops that `NOT NULL`, because it is what makes a non-wine lot
    unwritable.
 
-*Blocker on all six: the founder locks ADR 0115. Nothing here is built.*
+7. **A library wine this page stocks can no longer be hard-deleted** (founder,
+   2026-09-04). The FK becomes `ON DELETE RESTRICT`, soft-delete
+   (`master_wine_library.deleted_at`) is the only retirement path, and the refusal
+   names the count rather than saying *"still referenced from table
+   restaurant_inventory"*. This closes a real hole on this page's data: under
+   `CASCADE`, deleting a library row took the house's `restaurant_inventory` row
+   **and**, through `inventory_lots_inventory_id_fkey`'s own cascade, its lots —
+   silently and irreversibly. Nothing has to change here to benefit; what does
+   change is that a **retired** wine now shows up as a live item whose library row
+   is soft-deleted, which invariant 7 of the guard **flags** (never fails, because
+   a house pours out a retired wine over weeks) and which phase 2's producer turns
+   into a notification.
+8. **Nothing on this page may auto-create a house item** (founder, 2026-09-04).
+   A house item comes into being only through an explicit "carry this" that states
+   kind and unit together. The receiving and four-way-match paths this page owns
+   must therefore leave an unmatched line **unmatched, and say so** — they may
+   never mint an inventory row to make a document reconcile. That is the same rule
+   `ReceiptDepth`'s §9 gap already follows by accident ("deliberately not faked
+   with description matching"); it is now a decision rather than a restraint.
+
+*Blocker on all eight: the founder locks ADR 0115. Nothing here is built.*

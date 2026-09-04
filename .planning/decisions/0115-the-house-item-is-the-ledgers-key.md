@@ -1,7 +1,15 @@
 # 0115 — The house item is the ledger's key, and it is the row the house already has
 
-- **Status:** Proposed — the founder locks. Migration written and **NOT applied**; no app code changed.
-- **Date:** 2026-09-03
+- **Status:** Proposed — the founder locks the shape. Migration written and **NOT
+  applied**; no app code changed. **Three sub-decisions were taken by the founder on
+  2026-09-04 and are settled**: (a) the library link is `ON DELETE RESTRICT` and
+  soft-delete is the only retirement path; (b) a house item exists **only** through an
+  explicit "carry this" that also states kind and unit — nothing auto-creates one;
+  (c) the first enrichment writer funded is **beer style and IBU**, over the **BJCP
+  style list with an `other` escape** — an off-list style is free text under `other`,
+  flagged for the catalogue, and `other` sorts last. See §Retirement, §Coming into
+  being, and phase 2 items 6–7.
+- **Date:** 2026-09-03 (sub-decisions 2026-09-04)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** OD-113, identity axis, ledger, house item, restaurant_inventory, master_wine_id, beverages, uom, kind, stock, par, counts, orders, non-wine, keg
 - **Links:** [[0070-a-quantity-states-its-own-unit]] (the quantity axis; this is the identity axis it parked),
@@ -266,7 +274,7 @@ On `public.restaurant_inventory`:
 | `display_name` | `text NOT NULL` | Backfilled `coalesce(nullif(btrim(wine_name),''), library.name)` — measured to cover all 206 rows (53 have a blank `wine_name`; all 206 resolve to a named library row). |
 | `beverage_id` | `uuid NULL REFERENCES public.beverages(id) ON DELETE SET NULL` | The catalogue link for a non-wine. Deleting a catalogue row must never delete a house's stock. |
 | `identity_provenance` | `text NOT NULL` | CHECK `{wine_library, beverage_catalogue, house_declared, backfill}`. Says how this row got its name. |
-| `master_wine_id` | `uuid` — **nullable** | Was the key; becomes an attribute, per the decision. |
+| `master_wine_id` | `uuid` — **nullable**, FK **`ON DELETE RESTRICT`** | Was the key; becomes an attribute. An attribute may not delete the row it describes — see §Retirement. |
 
 Relaxed with it, because a non-wine lot and a non-wine movement are otherwise
 unwritable: `inventory_lots.master_wine_id` and `inventory_transactions.wine_id`
@@ -290,16 +298,91 @@ AND beverage_id IS NULL AND deleted_at IS NULL`. The existing UNIQUE keeps wine.
 without that flag a view runs with the definer's rights and would bypass the
 table's RLS. Revoked from `anon`/`authenticated`, granted to `service_role`.
 
+### Retirement, not deletion (founder, 2026-09-04)
+
+The question put was: what should happen when a library wine is deleted, and how
+would an erroneous deletion be caught? The answer taken has three parts, and all
+three are in phase 1.
+
+**1. `ON DELETE RESTRICT`.** The FK was `CASCADE`, which meant a catalogue edit
+could delete a house's stock row — and, through `inventory_lots`' own cascade, its
+lots with it — silently, irreversibly, and leaving no record anywhere that the
+house had ever carried the wine. That is acceptable for a *key* and indefensible
+for an *attribute*. `SET NULL` was considered and rejected: it keeps the stock and
+throws away the only thing that says what the stock *is*, producing a row nobody
+can interpret, which is the same failure this ADR exists to remove.
+
+**Measured before changing it, so the cost is known rather than assumed:**
+
+- `master_wine_library.deleted_at` already exists and is *exercised* — **664 of
+  4 226** rows are soft-deleted.
+- `merge_library_wines()` **no longer hard-deletes**:
+  `20260817120000_nondestructive_merge.sql:3,15` replaced the `DELETE` with
+  soft-delete plus `superseded_by`. Checked against the live database rather than
+  the migration files, because a function body is `CREATE OR REPLACE`d: **zero**
+  live functions in production hard-delete from `master_wine_library`. The two
+  `DELETE FROM public.master_wine_library` lines that remain in the tree
+  (`20260813030000:211`, `20260813040000:167`) are in superseded bodies.
+- **199** distinct library wines are stocked by a house, and **0** of them are
+  soft-deleted — so RESTRICT starts from a clean baseline and breaks no path that
+  exists today.
+
+**2. The refusal names the count.** A bare FK violation says *"still referenced
+from table restaurant_inventory"* — true, and useless: it names no house, no
+count, and no remedy. A `BEFORE DELETE` row trigger fires ahead of the constraint
+check, so `refuse_to_delete_a_stocked_wine()` is where the sentence lives. Proved
+live, not described:
+
+> `master_wine_library bbbb…: 1 house item row(s) across 1 house(s) still key on
+> this wine, so it cannot be hard-deleted. Retire it instead — UPDATE
+> public.master_wine_library SET deleted_at = now() WHERE id = … — which leaves
+> every house's stock, cost and pour history intact and flags the link rather
+> than cascading it.`
+
+The FK stays as the backstop for the case where the trigger is disabled. And an
+**unstocked** wine is still deletable — measured — because a rule that made every
+catalogue row immortal would be a worse bug than the one it replaced.
+
+**3. The link is flagged, never cascaded — and never silent.** Invariant 7 splits
+on severity, on purpose. A house item pointing at a wine that *no longer exists*
+is a **failure**; a live house item keying on a *retired* wine is a **flag**. The
+second is not a defect — a house pours the last bottle of a retired wine over
+weeks — so failing the build on it would punish the correct action. But it is
+printed loudly rather than dropped, because silence is the one outcome this rule
+forbids. Phase 2 item 6 turns that flag into the notification a human actually
+sees.
+
+### Coming into being: only "carry this" (founder, 2026-09-04)
+
+**A house item is created by one explicit action and no other.** The "carry this"
+action states the kind and the unit in the same step that creates the row. Nothing
+infers a house item and nothing back-fills one: a menu line, an invoice line, a
+quote or a till line that matches no house item **stays unmatched and says so**.
+
+This answers §Questions 3 and reverses that section's tentative reading. The
+temptation is real — ADR 0108's five-book ledger already knows every non-wine
+product a house touches, and auto-creating a zero-stock row for each would make
+the registers look complete overnight. It is refused because a row created that
+way would carry a `kind` and a `uom` that nobody stated, which is exactly the
+silent characterisation `NO DEFAULT` and `set_house_item_identity()` exist to
+prevent — arriving through the front door instead of the back. An unmatched line
+that says it is unmatched is the truth; a fabricated house item is a number.
+
+The consequence is stated rather than hidden: the registers stay as thin as the
+house's own deliberate answers, and the five books keep showing products with no
+house item behind them, labelled as such.
+
 ## The cut-over, in three phases, each with its rollback
 
 **Phase 1 — additive, written and NOT applied
 (`20260903171000_the_house_item_is_the_ledgers_key.sql`).** Everything in §The
-shape. No app code changes. No FK is repointed and no reader is switched.
+shape, including §Retirement's `ON DELETE RESTRICT` swap and its refusal trigger.
+No app code changes. No FK is repointed and no reader is switched.
 *Rollback:* `DELETE FROM restaurant_inventory WHERE master_wine_id IS NULL`, then
-`SET NOT NULL`, then drop the five columns, the trigger, the two indexes and the
-view. Reversible **only while no non-wine row exists**, which is true for exactly
-as long as phase 2 has not shipped. Stated because it is the phase boundary that
-matters.
+`SET NOT NULL`, then drop the five columns, both triggers, the two indexes and
+the view, and put the FK back on `CASCADE` if that is really wanted. Reversible
+**only while no non-wine row exists**, which is true for exactly as long as phase
+2 has not shipped. Stated because it is the phase boundary that matters.
 
 **Phase 2 — teach the write paths (a separate dispatch, app code).** In order:
 
@@ -310,14 +393,77 @@ matters.
 2. `apps/api-gateway/src/database/database.service.ts:46` — the embed is a LEFT
    join and returns `master_wine_library: null` for a keg; every consumer of that
    shape must be read.
-3. An add-a-non-wine write path that supplies `kind`, `uom`, `display_name` and
-   `identity_provenance`, and the intake vocabulary widened to match (ADR 0070's
-   "explicitly out of scope, and blocking the same goal" — the receiving door's
-   `uom` CHECK still has no mass unit and 15 `@IsInt()` fields still reject 4.5).
+3. **The "carry this" action** — the only way a house item comes into being. One
+   deliberate step that supplies `kind`, `uom`, `display_name` and
+   `identity_provenance` together, with the intake vocabulary widened to match
+   (ADR 0070's "explicitly out of scope, and blocking the same goal" — the
+   receiving door's `uom` CHECK still has no mass unit and 15 `@IsInt()` fields
+   still reject 4.5). No other path creates a row; an unmatched book line renders
+   as unmatched.
 4. `unit_type` documented as superseded by `uom` and stopped being read.
 5. `low-stock-alerts.service.ts:683-690` already reads `stock_live` and
    `threshold_min` off whatever row it is given — it needs no change, and that is
    the point.
+6. **A producer: "a wine your house stocks was retired from the library."**
+   *Design only — do not build in this dispatch.* Phase 1 makes soft-delete the
+   only retirement path, which means a retirement is now completely silent to the
+   house that is still pouring the wine; that is the same fault as a cascade, only
+   slower. **Shape:** a scheduled read under `ScheduledTenantsService.runPerTenant`
+   (ADR 0022), joining live `restaurant_inventory` rows to
+   `master_wine_library.deleted_at IS NOT NULL`, writing through
+   `persistForRestaurant` like every other producer, claiming before it writes
+   (`20260903143000_a_producer_claims_before_it_writes.sql`) so a retirement is
+   announced once and not once per run. **It names the rows** — the wine, the house
+   items that key on it, the stock still on hand and, where `superseded_by` is set,
+   the keeper it was merged into — because "a wine was retired" with no list is a
+   notification nobody can act on. Invariant 7's FLAGGED line is the query this
+   producer runs; until it exists, the guard is the only thing that says so, and
+   only to whoever runs it.
+7. **The first enrichment writer: beer style and IBU.** *Design only — do not build
+   in this dispatch; funded ahead of the rest by the founder, 2026-09-04.* Measured
+   2026-09-04: `beverages.type_attributes` is `'{}'` on **all 608** catalogue rows,
+   so the **57** beer rows carry **0** styles and **0** IBUs — which is what makes
+   a beer register a list of brand names (`wines.md` §13 roadmap item 1 already
+   called this the highest-value missing writer). **Two writers, one field, and the
+   row says which spoke:**
+   - *The house, at carry-time.* The "carry this" dialog, for `kind = 'beer'`,
+     offers a **style picker over the BJCP list, with an `other` escape** (settled
+     below) and an optional IBU. Never pre-filled from a guess; left blank it stays
+     an em dash with its reason.
+     Storage is the house item's own attributes — a `house_attributes jsonb NOT
+     NULL DEFAULT '{}'` column on `restaurant_inventory`, added by phase 2's own
+     migration, **not** by phase 1. `'{}'` is the honest empty rather than a
+     characterising default: it asserts nothing about the item, which is the whole
+     distinction phase 1's `NO DEFAULT` rule is drawing.
+   - *The catalogue, where a match exists.* Where the house item carries a
+     `beverage_id` and that row's `type_attributes` holds a style, the read uses it
+     and **labels it as the catalogue's**, not the house's. The house may not write
+     to `public.beverages` — ADR 0108 refuses tenants a write path into a shared
+     catalogue whose identity is trigger-set, and that refusal is unchanged here.
+   - *Precedence and provenance.* The house's own value wins; every rendered value
+     states which writer it came from and when. A field with neither is an em dash
+     naming both books it looked in.
+   **The vocabulary is settled (founder, 2026-09-04): the BJCP style list, with an
+   `other` escape.** A style that is on the list is chosen from it. A style that is
+   not is typed as free text, stored under `other`, and **flagged for the
+   catalogue** — so the gap is a queue somebody can work rather than a silent
+   divergence. Sorting and filtering run on the style, and **`other` sorts last**:
+   an unrecognised style is never allowed to interleave with the named ones and
+   quietly look like one of them.
+
+   The escape is what makes the closed list survivable. A purely closed list would
+   have forced the operator to file a real beer under a wrong style — the single
+   worst outcome here, because a wrong style is indistinguishable from a right one
+   downstream, whereas `other` announces itself. Pure free text was refused for the
+   reason the writer is funded at all: it leaves the register unsortable and
+   unfilterable, which is the state the beer register is in today. This shape keeps
+   the sort while never asking anyone to lie.
+
+   Two consequences to build to, not discover: the free text under `other` is
+   **display and triage only** — it is never promoted to a style by a matcher, and
+   it must never become a second style vocabulary growing beside BJCP; and the flag
+   is the same shape as invariant 7's, a row a human is told about, so it should
+   reach the founder through a real surface rather than living only in the column.
 
 *Rollback:* revert the code; the schema stays, because the schema is additive.
 
@@ -359,6 +505,17 @@ is the fault this repo is named for.
    whose `identity_provenance` is `wine_library` has one too.
 6. **The view is `security_invoker`.** A `house_items` view without it is a
    cross-tenant read.
+7. **The library link is retired, never deleted** (founder, 2026-09-04). Split on
+   severity, deliberately:
+   - **FAIL** — a house item points at a library wine that **no longer exists**;
+     or the FK is not `ON DELETE RESTRICT`; or
+     `refuse_to_delete_a_stocked_wine()` is gone. Each is the cascade coming back,
+     or the evidence that it already came back once.
+   - **FLAGGED, not failed** — a live house item keys on a **retired**
+     (soft-deleted) wine. A house pours out a retired wine over weeks, so failing
+     the build would punish the correct action. It is printed loudly rather than
+     dropped, because silence is the one outcome the rule forbids, and phase 2
+     item 6 is what turns the flag into a notification a human sees.
 
 The guard is **not wired into CI by this ADR** — the parent does that at lock
 time, because a blocking guard against a migration that has not been applied
@@ -395,17 +552,25 @@ velocity on a non-wine row become arithmetic rather than a wait.
 
 **Harder, or given up.** The table keeps its name and its 64 wine-shaped columns
 until phase 3; a keg row carries `pour_size_ml` and `glasses_per_bottle_override`
-and means nothing by them. "House item" and "stock row" are the same object, so a
-product the house knows about but does not stock needs a row with zero on hand
-(`is_active` and `is_optional_tracking` already exist for that, and a zero row
-for a thing you have bought is arguably the truth). And a merge of two library
-wines now moves a house item, not just a wine — `20260902160000_merge_repoints_by_referenced_column.sql`
-and ADR 0076 must be re-read before the first non-wine merge.
+and means nothing by them. "House item" and "stock row" are the same object, and
+since a house item is created **only** by an explicit "carry this"
+(§Coming into being), a product the house merely knows about has no row at all —
+it stays an unmatched line in the five books, labelled as one. That is the cost of
+the founder's 2026-09-04 call and it is the right one: the registers stay as thin
+as the house's own deliberate answers rather than filling up with rows whose kind
+and unit nobody stated. And a merge of two library wines now moves a house item,
+not just a wine — `20260902160000_merge_repoints_by_referenced_column.sql` and ADR
+0076 must be re-read before the first non-wine merge; note that the merge path
+already soft-deletes rather than deletes, so §Retirement's RESTRICT does not
+obstruct it.
 
-**Given up deliberately: enforcement by the database.** Four of the five ledger
+**Given up deliberately: enforcement by the database.** Four of the eight ledger
 tables have no foreign key to `restaurant_inventory`, so the invariant "every
 stock row keys on a house item" is held by a script. That was already true before
-this decision; this ADR is the first document to say so.
+this decision; this ADR is the first document to say so. The one place enforcement
+moves *into* the database is §Retirement: `ON DELETE RESTRICT` plus a refusal
+trigger, because a cascade that has already fired cannot be reported after the
+fact — the rows it took are gone.
 
 **Supersedes, by retire-to-write.** `INVENTORY_SOTA_PLAN.md:352` — *"Schema
 early: `domain ∈ {beverage, food, supply}`, `subsection`, `subtype`, plus
@@ -428,27 +593,29 @@ operator.
 
 ## Questions only the founder can answer
 
-1. **`restaurant_inventory_master_wine_id_fkey` is `ON DELETE CASCADE`** — today,
-   deleting a library wine deletes the house's stock row. If the library link is
-   now an *attribute*, an attribute should probably not be able to delete the
-   row. `SET NULL` keeps the stock and loses the identity; `RESTRICT` refuses the
-   library delete. **Left as `CASCADE` in phase 1** because changing it is a
-   behaviour change, not an additive one. Which do you want?
+1. ~~**`restaurant_inventory_master_wine_id_fkey` is `ON DELETE CASCADE`**~~ —
+   **ANSWERED 2026-09-04.** `ON DELETE RESTRICT`, soft-delete is the only
+   retirement path, the refusal names the count, and the link to a retired wine is
+   flagged rather than cascaded. Built in phase 1; see §Retirement, not deletion.
 2. **Is the `kind` vocabulary right?** Phase 1 proposes thirteen values including
    `food` and `supply` so the ledger does not need a second migration when
    bakery arrives (`INVENTORY_SOTA_PLAN.md:338` sequences wine → beverages →
    bakery → kitchen). Adding a value later is a cheap CHECK change; getting the
    axis wrong is not.
-3. **Does a house item exist before it is stocked?** Under this shape, no — the
-   item *is* the stock row. ADR 0108's five-book ledger knows products the house
-   has never stocked. Should a menu line or an invoice line create a zero row
-   automatically, or only on an explicit "carry this"?
+3. ~~**Does a house item exist before it is stocked?**~~ — **ANSWERED 2026-09-04.**
+   Only through an explicit "carry this" that also states kind and unit. Menu and
+   invoice lines that match nothing stay unmatched and say so; nothing
+   auto-creates a house item. See §Coming into being.
 4. **Phase 3's rename.** Renaming `restaurant_inventory` to `house_items` is
    correct and costs a compatibility view plus a sweep of 199 call sites. Worth
    doing, or does the view alone settle it permanently?
 5. **The ADR 0070 sequencing.** The receiving door still cannot express a mass
    unit (15 `@IsInt()` fields, a `uom` CHECK with no `kg`). Should phase 2 fix
    the door in the same dispatch, or is beverages-first the right cut?
+6. ~~**The beer style vocabulary**~~ — **ANSWERED 2026-09-04.** The BJCP list with
+   an `other` escape: an off-list style is typed as free text under `other` and
+   flagged for the catalogue; style sorts and filters, and `other` sorts last. See
+   phase 2 item 7. Phase 2 item 7 is now unblocked on vocabulary.
 
 ## Review trail
 
@@ -460,4 +627,8 @@ operator.
 | 2026-09-03 | — | Created — **Proposed**. Migration written and NOT applied; founder locks |
 | 2026-09-04 | Migration proof | Applied inside a transaction and rolled back, against a local build of all 114 other migration files (0 failures, the file under test excluded as the control). Proven: the three `DROP NOT NULL`s take; the four new columns are `NOT NULL` with **0 defaults**; `house_items` is `security_invoker` and unreadable by `anon`/`authenticated`; both partial uniques exist; the §8 probe leaves no rows. Against seeded wine rows: the backfill fills `display_name` from the library for a blank `wine_name`, maps `unit_type='CASE'` to `uom='case'`, the legacy insert path still derives `wine`/`bottle`/`wine_library`, a declared keg keeps `beer`/`keg`, a duplicate keg name and an unknown `uom` and a both-catalogues row are each refused, and **a non-wine lot writes and projects `stock_live = 4`**. Negative control: a pre-existing row with a NULL `master_wine_id` makes §0 refuse the whole migration |
 | 2026-09-04 | Guard | `scripts/check_house_item_invariants.py` written and proven: exit **2** on the unmigrated control and on an unreachable database, **1** on a stock row naming a house item that does not exist, **0** on a correct one; `--self-test` also catches a reintroduced `DEFAULT`, an inconsistent provenance, a view that lost `security_invoker` and a stored house key, inside one rolled-back transaction. Not wired into CI: the migration is gated, so a blocking guard would fail every build |
+| 2026-09-04 | Aldemir (founder) | **Three sub-decisions taken.** (a) The library link becomes `ON DELETE RESTRICT`; soft-delete is the only retirement path; the refusal names the count; a link to a retired wine is flagged, never cascaded; and phase 2 gains a producer, "a wine your house stocks was retired from the library", naming the rows (design only). (b) A house item exists **only** through an explicit "carry this" that also sets kind and unit — menu and invoice lines that match nothing stay unmatched and say so, never auto-created. (c) The first enrichment writer funded is **beer style and IBU**, written by the house at carry-time with a picker and by the catalogue where a match exists. Questions 1 and 3 close; question 6 (the style vocabulary) opens |
+| 2026-09-04 | Aldemir (founder) | **Beer style vocabulary settled: the BJCP list with an `other` escape.** An off-list style is typed as free text, stored under `other`, and flagged for the catalogue; style sorts and filters, and `other` sorts last. The escape is what makes a closed list survivable — without it an operator is forced to file a real beer under a wrong style, and a wrong style is indistinguishable from a right one downstream where `other` announces itself. Question 6 closes; phase 2 item 7 is unblocked on vocabulary |
+| 2026-09-04 | Retirement measurement | Taken before changing the FK, so the cost is known: `master_wine_library.deleted_at` exists and is exercised (**664 of 4 226** soft-deleted); **zero** live database functions hard-delete from `master_wine_library` — `merge_library_wines()` was converted by `20260817120000:3,15` and the two remaining `DELETE` lines in the tree are in superseded bodies; **199** distinct library wines are stocked and **0** of them are retired. So RESTRICT breaks no path that exists |
+| 2026-09-04 | Re-proof | Migration re-applied in a rollback transaction on a rebuilt control (114 other migrations, 0 failures). `confdeltype = 'r'`; the refusal trigger is attached; an **unstocked** wine is still deletable, so RESTRICT does not make wines immortal; the §8 probe proves a stocked wine cannot be hard-deleted, that the refusal names "1 house item row(s) across 1 house(s)", and that retiring it leaves the house item live. Guard extended to invariant 7 and re-proved: exit **1** on a persisted dangling-link fixture (all three parts reported), exit **0** with a `FLAGGED` line on a persisted retired-wine fixture, and 10 of 10 self-test probes green |
 | 2026-09-04 | Correction | Invariant 1 said "four of those five" have no foreign key. Re-measured: it is **four of eight**, and the five named were the wrong denominator — `inventory_lots`, `stock_counts`, `pos_item_mappings` and `wine_consumption_log` all DO carry an `inventory_id` FK; the four without one are `inventory_transactions`, `pour_events`, `inventory_alert_state` and `inventory_lot_revaluations`. Fixed in place, per ADR 0025 |

@@ -121,9 +121,12 @@ spectrum, not a shape (see Consequences).
 - **Retired by this (retire-to-write).** `TwinSheet`'s hand-rolled overlay — its inline
   scrim, its `pv-sheet-in` keyframes and its private Esc handler — is **deleted**, not
   archived; the component is now 106 lines of content over the shared `Sheet`.
-  `.cn-scrim`/`.cn-sheet` (`calendar-next.css:484-518`) and `.rp-ask__*`
-  (`reports-next.css:640-687`) are named for the same retirement when the two ready patches
-  in this pass's report land; they are held only because other agents hold those files.
+  `.cn-scrim`/`.cn-sheet`/`@keyframes cn-sheet-in` and `.rp-ask`/`.rp-ask__scrim`/
+  `.rp-ask__panel`/`.rp-ask__field`/`.rp-ask__foot` **were retired on 2026-09-04**, when the
+  two held files came free: `EventSheet.tsx` is a `Sheet` and `AskTheBook.tsx` is a `Panel`,
+  each having also shed its own Esc handler, its own focus effect and (for reports) its own
+  `animate(settle)` call. Both pages' form and list classes are untouched. `.rp-ask__body`
+  survives alone, because the list inside it is still the reports page's own.
   DESIGN-FOUNDATION §3 item 4 stops being an open agenda item and points here.
 - **Harder / given up.** Three shapes means an implementer chooses, and can choose wrong; the
   ADR's "what it is FOR" test is the whole guardrail. The `Popover` is non-modal by default,
@@ -144,8 +147,8 @@ spectrum, not a shape (see Consequences).
   a wine ring, a colour this house does not have — which painted itself inside every overlay
   until `.mdv-ovl :focus-visible` cancelled the Tailwind ring box-shadow explicitly (outline
   alone does not). And the centered `Panel` inherited `align-items: stretch`, so an overlay
-  holding one sentence rendered as ~700px of empty paper. `.rp-ask` (`reports-next.css:640`)
-  has that same latent shape today.
+  holding one sentence rendered as ~700px of empty paper. `.rp-ask` had that same latent
+  shape, and it went with the rule on 2026-09-04.
 - **Revisit when:** a *second* anchored surface needs `modal`. One exception is a seam; two
   means the third shape is a spectrum and the policy should collapse to two modal shapes
   (Sheet, Panel), with menus staying as plain anchored elements inside their trigger's own
@@ -156,3 +159,10 @@ spectrum, not a shape (see Consequences).
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-03 | — | Created (Proposed). Built, gated, 19 tests green. Founder ratification open. |
+| 2026-09-04 | — | **Migration complete for the two held pages.** `pages/calendar/next/EventSheet.tsx` → `Sheet`, `pages/reports/next/AskTheBook.tsx` → `Panel`; the per-page scrim/panel/keyframe CSS named above is deleted. Status unchanged (**Proposed**) — the founder has still not ratified the three-shape policy itself. Tests: `Sheet.test.tsx` 15, `shellOverlays.test.tsx` 25, `InviteTeamDialog.test.tsx` 5, calendar 44, reports 77, all green. |
+
+## Founder answers (2026-09-04)
+
+- **The seal never appears inside an anchored popover.** Anything sealed opens a sheet or a
+  panel; a one-click approval from the bell opens the panel first. The third shape stays a
+  choice, not a commitment. (Sketch 099's rule, ratified.)

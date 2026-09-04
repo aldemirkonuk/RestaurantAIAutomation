@@ -67,12 +67,24 @@
 --   2. database.service.ts:46 embeds master_wine_library as a LEFT join, so a
 --      keg returns `master_wine_library: null`; every consumer of that shape is
 --      read before this lands.
---   3. A write path that supplies kind / uom / display_name /
---      identity_provenance, and the intake vocabulary widened to match ADR 0070
---      (the receiving door still has no mass unit and 15 @IsInt() fields).
+--   3. The "carry this" action -- the ONLY way a house item comes into being
+--      (founder, 2026-09-04). It supplies kind / uom / display_name /
+--      identity_provenance in one deliberate step, and the intake vocabulary is
+--      widened to match ADR 0070 (the receiving door still has no mass unit and
+--      15 @IsInt() fields). Nothing auto-creates a house item: a menu line or an
+--      invoice line that matches no house item stays UNMATCHED and says so.
 --   4. `unit_type` documented as superseded by `uom` and stopped being read.
 --   5. Nothing needed for low-stock alerts: low-stock-alerts.service.ts:683-690
 --      already reads stock_live and threshold_min off whatever row it is given.
+--   6. A notification producer -- "a wine your house stocks was retired from the
+--      library" -- naming the rows. §1a below makes retirement the only
+--      deletion path; without this producer a retirement is silent, which is
+--      the same fault as a cascade, only slower. DESIGN ONLY in ADR 0115; not
+--      built by this migration and not built by the phase-2 dispatch's first cut.
+--   7. The first enrichment writer, funded ahead of the rest: beer style and
+--      IBU. Measured 2026-09-04 -- beverages.type_attributes is '{}' on ALL 608
+--      catalogue rows, so 57 beer rows carry 0 styles and 0 IBUs. Shape is in
+--      ADR 0115's phase list; no column is added here.
 --
 -- WHAT PHASE 3 DOES (a separate dispatch, gated on a green guard)
 -- --------------------------------------------------------------
@@ -88,6 +100,13 @@
 --   DROP VIEW public.house_items;
 --   DROP TRIGGER set_house_item_identity ON public.restaurant_inventory;
 --   DROP FUNCTION public.set_house_item_identity();
+--   DROP TRIGGER refuse_to_delete_a_stocked_wine ON public.master_wine_library;
+--   DROP FUNCTION public.refuse_to_delete_a_stocked_wine();
+--   ALTER TABLE public.restaurant_inventory
+--     DROP CONSTRAINT restaurant_inventory_master_wine_id_fkey,
+--     ADD  CONSTRAINT restaurant_inventory_master_wine_id_fkey
+--       FOREIGN KEY (master_wine_id) REFERENCES public.master_wine_library(id)
+--       ON DELETE CASCADE;   -- back to the old behaviour, if it is really wanted
 --   DROP INDEX public.restaurant_inventory_house_beverage_uidx,
 --              public.restaurant_inventory_house_declared_uidx;
 --   ALTER TABLE public.restaurant_inventory
@@ -162,7 +181,86 @@ ALTER TABLE public.inventory_transactions
 COMMENT ON COLUMN public.restaurant_inventory.master_wine_id IS
   'The wine library link. An ATTRIBUTE, not the key (ADR 0115 / OD-113). NULL '
   'on every row that is not a wine. UNIQUE (restaurant_id, master_wine_id) '
-  'still holds for wines because Postgres treats NULLs as distinct.';
+  'still holds for wines because Postgres treats NULLs as distinct. The FK is '
+  'ON DELETE RESTRICT: an attribute may not delete the row it describes.';
+
+-- ---------------------------------------------------------------------------
+-- 1a. Retirement, not deletion (founder, 2026-09-04).
+--
+--     The link was ON DELETE CASCADE, which means a catalogue edit could delete
+--     a house's stock -- and worse, delete it SILENTLY and irreversibly, with no
+--     record anywhere that the house ever carried the wine. Now that the link is
+--     an attribute rather than the key, an attribute may not do that.
+--
+--     Measured before changing it (production, 2026-09-04):
+--       * master_wine_library.deleted_at already exists and is EXERCISED --
+--         664 of 4 226 rows are soft-deleted.
+--       * merge_library_wines() no longer hard-deletes: 20260817120000
+--         replaced the DELETE with soft-delete + superseded_by, and ZERO live
+--         functions in the database hard-delete from master_wine_library.
+--       * 199 distinct library wines are stocked by a house; 0 of them are
+--         soft-deleted, so RESTRICT starts from a clean baseline.
+--     So this breaks no path that exists. It closes one that should not.
+-- ---------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_deltype "char";
+BEGIN
+  SELECT confdeltype INTO v_deltype
+  FROM pg_constraint
+  WHERE conname = 'restaurant_inventory_master_wine_id_fkey'
+    AND conrelid = 'public.restaurant_inventory'::regclass;
+
+  -- 'r' = RESTRICT. Idempotent: only swap when it is not already RESTRICT.
+  IF v_deltype IS DISTINCT FROM 'r' THEN
+    ALTER TABLE public.restaurant_inventory
+      DROP CONSTRAINT IF EXISTS restaurant_inventory_master_wine_id_fkey;
+    ALTER TABLE public.restaurant_inventory
+      ADD CONSTRAINT restaurant_inventory_master_wine_id_fkey
+      FOREIGN KEY (master_wine_id) REFERENCES public.master_wine_library(id)
+      ON DELETE RESTRICT;
+  END IF;
+END
+$$;
+
+-- A bare FK violation says "still referenced from table
+-- restaurant_inventory". That is true and useless: it does not say how many
+-- houses, or what to do instead. A BEFORE DELETE row trigger fires ahead of the
+-- constraint check, so this is where the sentence goes.
+CREATE OR REPLACE FUNCTION public.refuse_to_delete_a_stocked_wine()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  n_rows   integer;
+  n_houses integer;
+BEGIN
+  SELECT count(*), count(DISTINCT restaurant_id)
+    INTO n_rows, n_houses
+  FROM public.restaurant_inventory
+  WHERE master_wine_id = OLD.id;
+
+  IF n_rows > 0 THEN
+    RAISE EXCEPTION
+      'master_wine_library %: % house item row(s) across % house(s) still key on this wine, so it cannot be hard-deleted. Retire it instead -- UPDATE public.master_wine_library SET deleted_at = now() WHERE id = % -- which leaves every house''s stock, cost and pour history intact and flags the link rather than cascading it (ADR 0115).',
+      OLD.id, n_rows, n_houses, OLD.id
+      USING ERRCODE = '23503';
+  END IF;
+
+  RETURN OLD;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.refuse_to_delete_a_stocked_wine IS
+  'BEFORE DELETE on master_wine_library. Refuses to hard-delete a wine any '
+  'house stocks, and names the count so the message is actionable. The FK''s '
+  'ON DELETE RESTRICT is the backstop; this is the sentence (ADR 0115).';
+
+DROP TRIGGER IF EXISTS refuse_to_delete_a_stocked_wine ON public.master_wine_library;
+CREATE TRIGGER refuse_to_delete_a_stocked_wine
+  BEFORE DELETE ON public.master_wine_library
+  FOR EACH ROW EXECUTE FUNCTION public.refuse_to_delete_a_stocked_wine();
 
 -- ---------------------------------------------------------------------------
 -- 2. What the row is, in its own words.
@@ -523,7 +621,31 @@ BEGIN
     RAISE EXCEPTION 'house_items is readable by anon/authenticated -- that is a cross-tenant read';
   END IF;
 
-  RAISE NOTICE 'restaurant_inventory is the house item: master_wine_id relaxed on 3 tables, kind/uom/display_name/identity_provenance NOT NULL with no default, trigger + 2 partial uniques + house_items view in place.';
+  -- 7g. The library link cannot delete the row it describes.
+  IF (SELECT confdeltype FROM pg_constraint
+       WHERE conname = 'restaurant_inventory_master_wine_id_fkey'
+         AND conrelid = 'public.restaurant_inventory'::regclass) <> 'r' THEN
+    RAISE EXCEPTION
+      'restaurant_inventory_master_wine_id_fkey is not ON DELETE RESTRICT. An attribute must not be able to delete the row it describes, and a CASCADE here erases a house''s stock, cost and pour history with no record that it ever carried the wine.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                 WHERE tgname = 'refuse_to_delete_a_stocked_wine'
+                   AND tgrelid = 'public.master_wine_library'::regclass
+                   AND NOT tgisinternal) THEN
+    RAISE EXCEPTION
+      'the refuse_to_delete_a_stocked_wine trigger is not attached -- the FK would still refuse, but with a message that names no count and no remedy';
+  END IF;
+
+  -- 7h. Retirement must remain possible. A guard that made a wine immortal
+  --     would be worse than the cascade it replaced.
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = 'public' AND table_name = 'master_wine_library'
+                   AND column_name = 'deleted_at') THEN
+    RAISE EXCEPTION
+      'master_wine_library has no deleted_at column, so RESTRICT would leave no way to retire a wine at all';
+  END IF;
+
+  RAISE NOTICE 'restaurant_inventory is the house item: master_wine_id relaxed on 3 tables and its FK now RESTRICT, kind/uom/display_name/identity_provenance NOT NULL with no default, 2 triggers + 2 partial uniques + house_items view in place.';
 END
 $$;
 
@@ -538,11 +660,16 @@ $$;
 
 DO $$
 DECLARE
-  v_rid       uuid := gen_random_uuid();
-  refused     boolean := false;
-  derived_ok  boolean := false;
-  v_kind      text;
-  v_uom       text;
+  v_rid           uuid := gen_random_uuid();
+  v_wid           uuid := gen_random_uuid();
+  refused         boolean := false;
+  derived_ok      boolean := false;
+  delete_refused  boolean := false;
+  names_count     boolean := false;
+  retire_ok       boolean := false;
+  v_still_there   integer;
+  v_kind          text;
+  v_uom           text;
 BEGIN
   BEGIN
     INSERT INTO public.restaurants (id, name, slug)
@@ -570,6 +697,29 @@ BEGIN
       derived_ok := (v_kind = 'beer' AND v_uom = 'keg');
     END;
 
+    -- Branch 3: a library wine a house stocks must be UNDELETABLE, and the
+    -- refusal must name the count. Branch 4: retiring it must still work and
+    -- must leave the house's row exactly where it was.
+    INSERT INTO public.master_wine_library (id, wine_id, name, producer, primary_type, country)
+    VALUES (v_wid, '__P0115', '__adr0115_probe_wine__', 'Probe', 'red', 'Italy');
+    INSERT INTO public.restaurant_inventory (restaurant_id, master_wine_id, wine_name)
+    VALUES (v_rid, v_wid, '__adr0115_probe_bottle__');
+
+    BEGIN
+      DELETE FROM public.master_wine_library WHERE id = v_wid;
+    EXCEPTION
+      WHEN foreign_key_violation THEN
+        delete_refused := true;
+        -- The whole reason the trigger exists rather than the bare FK.
+        names_count := SQLERRM LIKE '%1 house item row(s) across 1 house(s)%';
+    END;
+
+    UPDATE public.master_wine_library SET deleted_at = now() WHERE id = v_wid;
+    SELECT count(*) INTO v_still_there
+    FROM public.restaurant_inventory
+    WHERE master_wine_id = v_wid AND deleted_at IS NULL;
+    retire_ok := (v_still_there = 1);
+
     RAISE EXCEPTION 'ADR0115_PROBE_UNWIND';
   EXCEPTION
     WHEN OTHERS THEN
@@ -588,10 +738,25 @@ BEGIN
       coalesce(v_kind, '(null)'), coalesce(v_uom, '(null)');
   END IF;
 
-  IF EXISTS (SELECT 1 FROM public.restaurants WHERE id = v_rid) THEN
-    RAISE EXCEPTION 'the probe restaurant survived its own subtransaction -- this migration has left rows behind';
+  IF NOT delete_refused THEN
+    RAISE EXCEPTION
+      'a library wine a house stocks was HARD-DELETED. ON DELETE RESTRICT and refuse_to_delete_a_stocked_wine() are the only things between a catalogue edit and a house losing its stock, its cost and its pour history irrecoverably.';
+  END IF;
+  IF NOT names_count THEN
+    RAISE EXCEPTION
+      'the deletion was refused, but the message did not name how many house item rows and how many houses. A bare FK violation is true and useless; naming the count is the reason this trigger exists.';
+  END IF;
+  IF NOT retire_ok THEN
+    RAISE EXCEPTION
+      'retiring a library wine did not leave the house''s item row intact (found % live row(s), expected 1). Retirement must FLAG the link, never cascade it.',
+      coalesce(v_still_there, -1);
   END IF;
 
-  RAISE NOTICE 'set_house_item_identity proven: refuses an unstated non-wine, accepts a stated one with its own unit, and left no probe rows.';
+  IF EXISTS (SELECT 1 FROM public.restaurants WHERE id = v_rid)
+     OR EXISTS (SELECT 1 FROM public.master_wine_library WHERE id = v_wid) THEN
+    RAISE EXCEPTION 'a probe row survived its own subtransaction -- this migration has left rows behind';
+  END IF;
+
+  RAISE NOTICE 'proven: set_house_item_identity refuses an unstated non-wine and accepts a stated one with its own unit; a stocked library wine cannot be hard-deleted and the refusal names the count; retiring it leaves the house item intact. No probe rows left behind.';
 END
 $$;

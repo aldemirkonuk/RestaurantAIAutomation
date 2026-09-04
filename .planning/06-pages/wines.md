@@ -184,7 +184,20 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
   and where this kind's facts come from
 - **Everything at once** on the parent: one flat book across every register the
   house carries, with the eight columns that mean the same thing in all of them.
-  Opened by a button, because it is one read per register
+  It is **the default view for a house carrying three registers or fewer** and a
+  button for everyone else, because it is one read per register — founder
+  decision 2026-09-04. The rule is printed beside the naming rule, and an unread
+  register set never opens it
+- **The floor is built, over confirmed zones only** — the house's storage zones
+  in the cellar's own infer-then-confirm shape: a manager confirms or renames
+  each once, and only confirmed zones are drawn. Unconfirmed ones are a sentence
+  with a count and the control, never a drawn room
+- **PARTIAL** &middot; **No zone is confirmed anywhere yet**, so the floor draws
+  nothing today and says how many are waiting. Measured 2026-09-04:
+  `storage_locations` holds 4 rows across 2 tenants and all 4 carry one of the
+  four seeded names. What is IN a zone is counted from the inventory rows
+  assigned to it, never from `current_occupancy`, which disagrees with them
+  (180/32/45 against 17/17/16 on the only tenant that has both)
 - **The parent is named by what the house pours** — The Cellar (wine or
   spirits), The Bar (beer or cocktails, no wine), Drinks (no alcohol at all) —
   with the rule printed under the headline. The route stays `/cellar`
@@ -200,6 +213,15 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
   `master_wine_id` (OD-113) and neither figure exists for a keg
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_cellar`)
+
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
 
 Canonical source with curves: `apps/web/src/pages/cellar/next/MOTIONS.md` —
 this list is the note-side index (ADR 0044 §2).
@@ -521,9 +543,12 @@ off-with-items state.
 parent: zones on a plan, each stating what it holds, how full it is and when it
 was last walked) and `one-register-with-kind.html` (one flat register for the whole
 cellar with a kind facet). Each carries an "adapting to the house" panel showing
-what a non-alcoholic café and a whisky bar would see. **A is still blocked on
-trust, not code** — `storage_locations` holds 87 rows across 7 tenants, 84 of them
-carrying one of four invented zone names. **B is no longer blocked**: this pass put
+what a non-alcoholic café and a whisky bar would see. **A was blocked on
+trust, not code** — `storage_locations` held 87 rows across 7 tenants on
+2026-09-02, 84 of them carrying one of four invented zone names. (Re-measured
+2026-09-04: 4 rows across 2 tenants, 4 of 4 carrying one of those names. It was
+unblocked in the fourth pass by gating the floor on confirmation rather than by
+the data improving — see §1b.) **B is no longer blocked**: this pass put
 `beverage_kind` on the wire and served the two catalogues, so its facet has real
 counts; what it still trades away is one row grammar per kind, which is what the
 four-child IA was chosen to keep.
@@ -897,6 +922,66 @@ breadcrumb and in every sentence anybody writes about the page. The rule is
 printed on the page under the headline (`cellar-naming-rule`), because a name
 that changes with the house has to say why it changed or it reads as a bug.
 
+#### Which view the parent opens on (founder, 2026-09-04)
+
+`parentView` in `cellar-format.ts`, computed from the SAME readout as the name
+so the two can never disagree. **Three registers or fewer → `/cellar` opens on
+the whole-cellar table; more → it opens on the registers, with the whole view a
+button away.** The rule is printed beside the naming rule
+(`cellar-view-rule`), and the route never changes.
+
+Two clauses that are load-bearing rather than tidy:
+
+- **An unread readout never opens the whole view.** It fires one read per
+  carried register, so opening it against a set nobody has established would
+  assert that set in the network layer while the page refuses to assert it in
+  words. Unread falls to the parent, which already says the set could not be
+  read.
+- **A set with no non-wine register never opens it either.** `/wines` is served
+  by a different endpoint with the inventory overlay laid over it, so the whole
+  view excludes it. A wines-only house is *under* the threshold and would open
+  on an empty table — the count right, the page wrong. It falls to the parent
+  and says so.
+
+#### The floor, built — confirmed zones only (founder, 2026-09-04)
+
+`FloorStrip.tsx` over `GET /cellar/:rid/zones` and
+`PUT /cellar/:rid/zones/:zoneId` (new, `cellar/zones.service.ts`), with
+migration **`20260904130000_a_zone_is_confirmed_or_it_is_not_drawn.sql`**.
+
+*Why a gate at all.* A drawn room asserts a room, and `storage_locations` cannot
+tell a zone somebody walked from a zone a seeder invented. **Re-measured
+2026-09-04: 4 rows across 2 tenants, and all four carry one of the four names
+the seeded-defaults sweep named.** The 84-of-87 figure this note carried was
+measured 2026-09-02; 83 of those rows have since been deleted, so the count
+changed and the proportion got worse — 4 of 4.
+
+*The shape is the cellar's own.* Infer, then confirm, exactly as the register
+set does: the house's zones are listed with the names they currently carry, a
+manager confirms or renames each once (one write, `zone_confirmed_at`,
+`zone_confirmed_by` from the JWT, `zone_provenance` one of
+`confirmed`/`renamed`/`created`), and the strip fills in behind them.
+
+*Three states, three sentences.* Unread (or the migration unapplied) → words
+naming the migration, no zone drawn. None confirmed → "N zones are not yet
+confirmed, so the floor is not drawn at all yet", with the control. Some
+confirmed → those are drawn, the rest stay in the sentence.
+
+*What is deliberately not on the wire.* `current_occupancy`. It disagrees with
+the inventory rows assigned to the same zone on the only tenant that has both —
+180/32/45 against 17/17/16 — so what is in a zone is COUNTED from those rows,
+and a zone whose contents could not be counted renders an em dash rather than an
+empty room. Confirming a zone's name is not confirming a seeder's arithmetic.
+
+*The migration is additive and confirms nothing.* Three columns, one CHECK
+constraint tying the provenance word to the timestamp, one partial index. Every
+existing row arrives `zone_confirmed_at IS NULL`, which is true of every one of
+them. The actor FK points at `public.users(user_id)`, not `auth.users` — the two
+are disjoint here and the JWT carries the former (copying
+`20260903092000:89`). **Measured live 2026-09-04**: `GET /cellar/:rid/zones`
+returns 200 with `readable: false, confirmable: false` and the sentence naming
+the migration, because it has not been applied to this database yet.
+
 #### The merge of directions A and B — sketch 095
 
 `.planning/sketches/095-cellar-merged/` (index · merged-parent ·
@@ -1024,6 +1109,21 @@ against the local gateway on :4000):
   `named: []`, five sentences and no rows. This read serves BOTH the expanded
   row and the series a cell opens, so opening a row costs one request and
   opening a cell on that row costs none.
+
+**Added by the fourth pass, 2026-09-04** (the two founder decisions):
+- `GET /cellar/:restaurantId/zones` — this house's storage zones split by
+  whether a human has confirmed the name: `confirmed[]` (the floor draws these),
+  `unconfirmed[]` (counted, listed only inside the control), `counts`,
+  `readable`/`reason`, `confirmable` and `scopeNote`. What is in a zone is
+  counted from `restaurant_inventory.storage_location_id`, never from
+  `current_occupancy`. `apps/api-gateway/src/cellar/zones.service.ts`
+- `PUT /cellar/:restaurantId/zones/:zoneId` — confirm the name as it stands
+  (empty body) or rename it (`{ name }`). The actor comes from the JWT, never
+  the body. Writes `zone_confirmed_at`, `zone_confirmed_by`, `zone_provenance`;
+  a write that matched no row raises rather than reporting success.
+  **Measured live 2026-09-04**: the GET returns 200 with `readable: false` and a
+  reason naming migration `20260904130000`, which is not applied to this
+  database yet — the honest state, and it flips on merge
 
 ## 5. Signals
 none. No `uxSignals`, no tracking calls (grep of `WineLibrary.tsx` + `wine-library/` — zero hits).
@@ -1591,10 +1691,16 @@ the onboarding step for every house on a database missing the migration.
    can distinguish invoiced from paid.
 7. **The end-to-end realtime measurement** (§9.26), once the RabbitMQ bridge can
    be run against a worktree.
-8. **The floor strip on the parent** — sketch 095 draws it from
-   `storage_locations`, and that table is 84-of-87 invented names. It is drawn
-   in the sketch and NOT built, and it stays unbuilt until the zone names are
-   real.
+8. ~~**The floor strip on the parent**~~ — **BUILT 2026-09-04** over confirmed
+   zones only, with a confirm-your-zones step and migration
+   `20260904130000`. What remains is not a build but a fact about the data: no
+   zone is confirmed anywhere yet, so the strip draws nothing until a manager
+   walks the list. See §1b. Two follow-ons, neither on this page:
+   **(a)** the seeded `current_occupancy` figures should be nulled or
+   recomputed — they are the same seeder's arithmetic and no surface should read
+   them; **(b)** `/settings`' storage-location editor writes new zones and does
+   not set `zone_provenance = 'created'`, so a zone a manager adds today arrives
+   unconfirmed and has to be confirmed a second time.
 9. **Split the directory** (§1b's size disclosure): three register grammars
    into `registers/wines/`, `registers/cocktails/`, `registers/catalogue/`, and
    move `CellarRegistersStep` / `CellarRegistersControl` to the pages that mount
@@ -1652,3 +1758,36 @@ which a half-written row looks correct.
 Nothing on this page is built for it yet, and nothing here should be until the
 founder locks the ADR. The registers keep saying what they say today, which
 remains true.
+
+**Three sub-decisions, founder 2026-09-04**, all recorded in ADR 0115 and none
+built here:
+
+1. **Retirement, not deletion.** The library FK becomes `ON DELETE RESTRICT` and
+   soft-delete is the only way to retire a wine, so a catalogue edit can no longer
+   erase a house's stock. Measured first: `master_wine_library.deleted_at` is
+   already exercised (664 of 4 226 rows), no live database function hard-deletes
+   from that table, and 0 of the 199 stocked wines are retired. A link to a retired
+   wine is **flagged, never cascaded**, and phase 2 gains a producer — *"a wine
+   your house stocks was retired from the library"*, naming the rows — because
+   after this change a retirement is otherwise completely silent to the house
+   still pouring it.
+2. **A house item exists only through an explicit "carry this"** that states kind
+   and unit in the same step. This settles what this page's own registers may do
+   with the five books: a menu, invoice, quote or till line that matches no house
+   item **stays unmatched and says so** — it is never auto-promoted into a stock
+   row. Roadmap item 4's *"add-to-inventory gated on OD-113"* therefore becomes
+   one deliberate action per row, not a background reconcile.
+3. **The first enrichment writer funded is beer style and IBU**, which is exactly
+   the fourth-pass roadmap's item 1 above (*"the single highest-value missing
+   writer on this page"*). Re-measured 2026-09-04: `beverages.type_attributes` is
+   `{}` on **all 608** catalogue rows, so the 57 beer rows carry 0 styles and 0
+   IBUs. Two writers, and the row says which spoke: the house at carry-time
+   through a style picker, and the catalogue where a `beverage_id` match exists.
+   The house may still not write to `public.beverages` — ADR 0108's refusal is
+   unchanged; the house's own value lands on the house item instead. The
+   vocabulary is settled too: the **BJCP style list with an `other` escape** — an
+   off-list style is typed as free text under `other` and flagged for the
+   catalogue, style sorts and filters, and `other` sorts last. That escape is what
+   keeps a closed list honest here: without it an operator has to file a real beer
+   under a wrong style, and a wrong style is indistinguishable from a right one on
+   this page's register, whereas `other` announces itself.

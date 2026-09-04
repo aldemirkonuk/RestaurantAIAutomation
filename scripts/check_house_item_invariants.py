@@ -34,10 +34,26 @@ lock time, alongside the migration. Until then, run it by hand.
 Its own honest behaviour on today's tree is therefore **exit 2**: the columns it
 checks do not exist yet, and "nothing to check" is never a pass here.
 
+THE SEVENTH INVARIANT IS SPLIT ON PURPOSE
+-----------------------------------------
+The founder's rule of 2026-09-04 is that a library wine a house stocks may not be
+hard-deleted, retirement (`master_wine_library.deleted_at`) is the only path, and
+a link to a retired wine is *flagged, never cascaded*. Those are two different
+severities and this guard reports them as two:
+
+    FAIL (exit 1)  a house item points at a wine that no longer exists, or the
+                   FK is not ON DELETE RESTRICT, or the refusal trigger is gone
+    FLAGGED        a live house item keys on a RETIRED wine
+
+The second is deliberately not a build failure. A house keeps stock of a retired
+wine until the last bottle is poured, so failing on it would punish the correct
+action -- but it is printed loudly rather than dropped, because the one outcome
+the rule forbids is silence.
+
 EXIT CODES
 ----------
     0   every invariant that could be checked held, and at least one was
-        actually checked against something
+        actually checked against something (flags do not change this)
     1   an invariant is broken
     2   COULD NOT CHECK -- no database, no migration, or nothing to look at.
         Never a pass. A guard that reports absence as health is this repo's
@@ -105,6 +121,13 @@ class Report:
     failures: list[Finding] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
     vacuous: list[str] = field(default_factory=list)
+    # Things that are TRUE and want a human's eye, but are not defects. A house
+    # legitimately keeps stock of a wine the library has retired until the last
+    # bottle is poured, so failing the build on that would punish the correct
+    # action. It is printed loudly instead of being dropped -- the point of the
+    # founder's rule is that a retirement is FLAGGED, never cascaded and never
+    # silent.
+    flags: list[Finding] = field(default_factory=list)
 
     @property
     def substantive(self) -> bool:
@@ -378,6 +401,103 @@ def _inv6_house_items_view(cur, rep: Report) -> None:
     rep.checked.append(name)
 
 
+def _inv7_library_link_is_retired_never_deleted(cur, rep: Report) -> None:
+    """A stock row's library link never points at a hard-deleted wine, and a
+    link to a soft-deleted (retired) wine is flagged, never cascaded.
+
+    Founder, 2026-09-04. The FK was `ON DELETE CASCADE`: a catalogue edit could
+    erase a house's stock, cost and pour history with no record it ever carried
+    the wine. It is now `ON DELETE RESTRICT`, soft-delete is the only retirement
+    path, and this is the check that says so out loud.
+    """
+    name = "7. the library link is retired, never deleted"
+
+    # Structural half -- checkable on an empty database, and the more important
+    # half: it is what stops the cascade coming back.
+    deltype = _one(
+        cur,
+        """SELECT confdeltype::text FROM pg_constraint
+            WHERE conname = 'restaurant_inventory_master_wine_id_fkey'
+              AND conrelid = 'public.restaurant_inventory'::regclass""",
+    )
+    if deltype is None:
+        rep.failures.append(
+            Finding(name, "restaurant_inventory_master_wine_id_fkey is gone entirely.")
+        )
+    elif deltype != "r":
+        was = {"c": "CASCADE", "n": "SET NULL", "a": "NO ACTION", "d": "SET DEFAULT"}.get(
+            deltype, deltype
+        )
+        rep.failures.append(
+            Finding(
+                name,
+                f"the library FK is ON DELETE {was}, not RESTRICT. Under CASCADE a "
+                "catalogue edit deletes a house's stock row, its lots and its pour "
+                "history, irreversibly and with no record that the house ever carried "
+                "the wine.",
+            )
+        )
+    if not _one(
+        cur,
+        """SELECT count(*) FROM pg_trigger
+            WHERE tgname = 'refuse_to_delete_a_stocked_wine'
+              AND tgrelid = 'public.master_wine_library'::regclass
+              AND NOT tgisinternal""",
+    ):
+        rep.failures.append(
+            Finding(
+                name,
+                "the refuse_to_delete_a_stocked_wine trigger is missing. The FK would "
+                "still refuse, but with a message that names no count and no remedy.",
+            )
+        )
+    rep.checked.append(f"{name} -- the FK is RESTRICT and the refusal names the count")
+
+    # Row half.
+    population = _one(
+        cur, "SELECT count(*) FROM public.restaurant_inventory WHERE master_wine_id IS NOT NULL"
+    )
+    if population == 0:
+        rep.vacuous.append(f"{name} -- 0 house items carry a library link")
+        return
+
+    dangling = _one(
+        cur,
+        """SELECT count(*) FROM public.restaurant_inventory ri
+            WHERE ri.master_wine_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM public.master_wine_library w
+                               WHERE w.id = ri.master_wine_id)""",
+    )
+    if dangling:
+        rep.failures.append(
+            Finding(
+                name,
+                f"{dangling} of {population} house item(s) point at a library wine that "
+                "no longer exists. A wine a house stocks must never be hard-deleted; "
+                "retire it with master_wine_library.deleted_at instead.",
+            )
+        )
+
+    retired = _one(
+        cur,
+        """SELECT count(*) FROM public.restaurant_inventory ri
+             JOIN public.master_wine_library w ON w.id = ri.master_wine_id
+            WHERE ri.deleted_at IS NULL AND w.deleted_at IS NOT NULL""",
+    )
+    if retired:
+        rep.flags.append(
+            Finding(
+                name,
+                f"{retired} live house item(s) key on a library wine that has been "
+                "retired (soft-deleted). This is not a defect -- a house keeps stock of "
+                "a retired wine until the last bottle is poured -- but nobody has been "
+                "told. Phase 2's producer, 'a wine your house stocks was retired from "
+                "the library', is what turns this line into a notification.",
+            )
+        )
+    rep.checked.append(f"{name} ({population} linked house items)")
+
+
 INVARIANTS = (
     _inv1_stock_rows_key_on_a_house_item,
     _inv2_kind_and_uom,
@@ -385,6 +505,7 @@ INVARIANTS = (
     _inv4_house_key_is_never_stored,
     _inv5_identity_links_are_consistent,
     _inv6_house_items_view,
+    _inv7_library_link_is_retired_never_deleted,
 )
 
 
@@ -446,6 +567,8 @@ def print_report(rep: Report) -> None:
         print(f"  checked   {line}")
     for line in rep.vacuous:
         print(f"  NOT CHECKED  {line}")
+    for f in rep.flags:
+        print(f"  FLAGGED   [{f.invariant}] {f.detail}")
 
 
 # --------------------------------------------------------------------------
@@ -585,6 +708,80 @@ def self_test(dsn: str) -> int:
         else:
             print("  ok  a stored house_key column -> caught (invariant 4)")
 
+        # (h) THE CASCADE COMING BACK. This is the regression the founder's
+        #     2026-09-04 decision exists to prevent.
+        problem = _break_and_expect(
+            conn,
+            "the library FK reverting to CASCADE",
+            """ALTER TABLE public.restaurant_inventory
+                 DROP CONSTRAINT restaurant_inventory_master_wine_id_fkey;
+               ALTER TABLE public.restaurant_inventory
+                 ADD CONSTRAINT restaurant_inventory_master_wine_id_fkey
+                 FOREIGN KEY (master_wine_id)
+                 REFERENCES public.master_wine_library(id) ON DELETE CASCADE""",
+            "7.",
+        )
+        if problem:
+            failures.append(problem)
+        else:
+            print("  ok  the library FK back on CASCADE -> caught (invariant 7)")
+
+        # (i) THE EXIT-1 FIXTURE for invariant 7: a house item pointing at a
+        #     library wine that no longer exists. Reaching it requires removing
+        #     the two things that make it impossible, which is exactly the
+        #     scenario this guard is the last line of defence for.
+        cur.execute("SAVEPOINT probe7")
+        try:
+            cur.execute(
+                """DROP TRIGGER refuse_to_delete_a_stocked_wine ON public.master_wine_library;
+                   ALTER TABLE public.restaurant_inventory
+                     DROP CONSTRAINT restaurant_inventory_master_wine_id_fkey;
+                   DELETE FROM public.master_wine_library
+                    WHERE id = 'bbbbbbbb-0000-0000-0000-00000000f001'"""
+            )
+            rep = scan(cur)
+            dangling = [
+                f
+                for f in rep.failures
+                if f.invariant.startswith("7.") and "no longer exists" in f.detail
+            ]
+            if not dangling:
+                failures.append(
+                    "hard-deleted library wine: the guard did not report a dangling link"
+                )
+            else:
+                print(
+                    "  ok  a house item pointing at a hard-deleted wine -> caught "
+                    "(invariant 7, exit 1)"
+                )
+        finally:
+            cur.execute("ROLLBACK TO SAVEPOINT probe7")
+
+        # (j) A RETIRED wine is FLAGGED, not failed. The other half of the rule:
+        #     failing here would punish the correct action.
+        cur.execute("SAVEPOINT probe7b")
+        try:
+            cur.execute(
+                """UPDATE public.master_wine_library SET deleted_at = now()
+                    WHERE id = 'bbbbbbbb-0000-0000-0000-00000000f001'"""
+            )
+            rep = scan(cur)
+            if [f for f in rep.failures if f.invariant.startswith("7.")]:
+                failures.append(
+                    "retired library wine: reported as a FAILURE. A house keeps stock of "
+                    "a retired wine until the last bottle is poured; the rule is flagged, "
+                    "never cascaded -- and never failed."
+                )
+            elif not [f for f in rep.flags if f.invariant.startswith("7.")]:
+                failures.append(
+                    "retired library wine: neither failed nor flagged. Silence is the "
+                    "one outcome the founder's rule forbids."
+                )
+            else:
+                print("  ok  a retired (soft-deleted) wine -> flagged, not failed (invariant 7)")
+        finally:
+            cur.execute("ROLLBACK TO SAVEPOINT probe7b")
+
     finally:
         conn.rollback()
         conn.close()
@@ -597,8 +794,10 @@ def self_test(dsn: str) -> int:
     print(
         "\nSELF-TEST PASSED -- the guard refuses an unmigrated tree with exit 2, passes a "
         "correct one, and catches an orphan ledger row, a reintroduced DEFAULT, an "
-        "inconsistent identity link, a view that lost security_invoker and a stored "
-        "house key. Everything ran inside one transaction, which was rolled back."
+        "inconsistent identity link, a view that lost security_invoker, a stored house "
+        "key, the library FK reverting to CASCADE and a house item pointing at a "
+        "hard-deleted wine -- while FLAGGING, not failing, a house item that keys on a "
+        "retired one. Everything ran inside one transaction, which was rolled back."
     )
     return 0
 
@@ -673,7 +872,12 @@ def main() -> int:
 
     print(
         f"\nPASS -- {len(rep.checked)} invariant group(s) held"
-        + (f", {len(rep.vacuous)} had nothing to check." if rep.vacuous else ".")
+        + (f", {len(rep.vacuous)} had nothing to check" if rep.vacuous else "")
+        + (
+            f", {len(rep.flags)} FLAGGED for a human (not a defect, not silence)."
+            if rep.flags
+            else "."
+        )
     )
     return 0
 
