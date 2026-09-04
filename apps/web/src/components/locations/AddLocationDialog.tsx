@@ -1,4 +1,33 @@
-import { useState, useEffect, type RefObject } from 'react'
+/**
+ * Add a new restaurant location.
+ *
+ * SHAPE: `Sheet`. It authors ONE OBJECT with nine fields — the longest form of
+ * the four — which is exactly the Sheet's brief in ADR 0112 (right slide-in,
+ * 440px, motion `tuck`). The 440px column also gives the progressive address
+ * reveal room to grow downward without moving anything already on screen.
+ *
+ * The `anchorRef` prop is DELIBERATELY IGNORED in the house branch, and this is
+ * the honest version of that: the legacy dialog hangs under the Add button
+ * (`useAnchoredDialogPosition`), and the house Sheet does not. ADR 0112's
+ * exception for an anchored form (`InviteTeamDialog` takes `Popover modal`) was
+ * granted to one dialog on the grounds that a second would turn the third shape
+ * into a spectrum. This one is a nine-field form with a conditional reveal —
+ * far past what an anchored surface can hold below a button — so it takes the
+ * shape its content asks for. The legacy branch still anchors, unchanged.
+ *
+ * WHAT STAYS LEGACY INSIDE THE HOUSE SHAPE, named rather than hidden: three
+ * shared controls — `ui/PlacesAutocomplete`, `ui/CountryCombobox`,
+ * `ui/PhoneNumberInput` — hardcode their chrome in Tailwind utilities and are
+ * mounted by legacy pages too, so they cannot be rewritten from here. They are
+ * wrapped in `.mdv-adopt` (locations-mudavym.css), which repaints the COLOUR
+ * utilities they emit and nothing else. Their geometry — radii, paddings, the
+ * dropdown's shadow — is still theirs. Re-authoring the three is its own task.
+ *
+ * The legacy Radix branch is frozen; `locationDialogs.test.tsx` pins its class
+ * strings against `git show origin/main:<path>`. Nothing here deletes.
+ */
+
+import { useState, useEffect, useRef, type RefObject } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Building2, X } from 'lucide-react'
@@ -13,6 +42,9 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useProviders } from '../../hooks/queries'
 import { BranchProviderTransferModal } from '../providers/BranchProviderTransferModal'
 import { apiClient } from '../../services/api/client'
+import { Sheet } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import './locations-mudavym.css'
 
 interface AddLocationDialogProps {
   open: boolean
@@ -51,6 +83,10 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
   const [chainId, setChainId] = useState('')
   const [chains, setChains] = useState<Chain[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  /* The failure in words — see the note in EditLocationChainDialog. */
+  const [failure, setFailure] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement | null>(null)
+  const shell = useMudavymShell()
   const [transferModal, setTransferModal] = useState<TransferModalState>({
     open: false,
     newBranchName: '',
@@ -77,14 +113,17 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
 
   const handleSubmit = async () => {
     if (!name.trim() || !country.trim()) {
+      setFailure('Location name and country are required')
       toast.error('Location name and country are required')
       return
     }
     if (!address.trim() || !city.trim()) {
+      setFailure('Street address and city are required')
       toast.error('Street address and city are required')
       return
     }
     setIsSubmitting(true)
+    setFailure(null)
     try {
       const { data: location } = await apiClient.post('/organizations/locations', {
         name: name.trim(),
@@ -109,6 +148,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         handleClose()
       }
     } catch (err: unknown) {
+      setFailure(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
       toast.error(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
     } finally {
       setIsSubmitting(false)
@@ -123,6 +163,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
 
   const handleClose = () => {
     resetFormFields()
+    setFailure(null)
     onClose()
   }
 
@@ -138,6 +179,165 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
       newRestaurantId={transferModal.newRestaurantId}
       currentProviders={currentProviders}
     />
+    {shell.on ? (
+    /* ── the house shape ───────────────────────────────────────────────────
+       Copy is the legacy dialog's, word for word. Only the surface changes. */
+    <Sheet
+      open={open}
+      onClose={handleClose}
+      label="Add New Location"
+      eyebrow="The locations"
+      title="Add New Location"
+      initialFocusRef={nameRef}
+      bodyClassName="mdv-ovl__body--flush"
+      footer={<span>Add a new restaurant location to your organization.</span>}
+    >
+      <div className="mdv-form">
+        {failure ? (
+          <div className="mdv-alert" role="alert">
+            <p className="mdv-alert__head">Not added</p>
+            <p>{failure}</p>
+          </div>
+        ) : null}
+
+        <div>
+          <label className="mdv-label" htmlFor="mdv-newloc-name">
+            Location name <span aria-hidden style={{ color: 'var(--seal)' }}>*</span>
+          </label>
+          <input
+            id="mdv-newloc-name"
+            ref={nameRef}
+            className="mdv-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Joe's Pizza — Uptown"
+          />
+        </div>
+
+        {chains.length > 0 && (
+          <div>
+            <label className="mdv-label" htmlFor="mdv-newloc-chain">
+              Chain / Brand <span style={{ textTransform: 'none' }}>(optional)</span>
+            </label>
+            <select
+              id="mdv-newloc-chain"
+              className="mdv-select"
+              value={chainId}
+              onChange={(e) => setChainId(e.target.value)}
+            >
+              <option value="">Standalone — no chain</option>
+              {chains.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <p className="mdv-hintline">
+              Groups this location under an existing brand in the branch switcher.
+            </p>
+          </div>
+        )}
+
+        <div>
+          <span className="mdv-label">
+            Country <span aria-hidden style={{ color: 'var(--seal)' }}>*</span>
+          </span>
+          {/* `.mdv-adopt`: a shared legacy control, repainted not rewritten —
+              see the honest limit in this file's header. */}
+          <div className="mdv-adopt">
+            <CountryCombobox value={country} onChange={setCountry} />
+          </div>
+          {!country && (
+            <p className="mdv-hintline">Select a country to enable address search</p>
+          )}
+        </div>
+
+        {country.trim().length >= 2 && (
+          <>
+            <div>
+              <span className="mdv-label">
+                Street Address <span aria-hidden style={{ color: 'var(--seal)' }}>*</span>
+              </span>
+              <div className="mdv-adopt">
+                <PlacesAutocomplete
+                  country={country}
+                  value={address}
+                  onChange={setAddress}
+                  onPlaceSelect={handlePlaceSelect}
+                  placeholder="Start typing your street address…"
+                />
+              </div>
+            </div>
+
+            <div className="mdv-pair">
+              <div>
+                <label className="mdv-label" htmlFor="mdv-newloc-city">
+                  City <span aria-hidden style={{ color: 'var(--seal)' }}>*</span>
+                </label>
+                <input
+                  id="mdv-newloc-city"
+                  className="mdv-input"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Chicago"
+                />
+              </div>
+              <div>
+                <label className="mdv-label" htmlFor="mdv-newloc-state">
+                  State / Province
+                </label>
+                <input
+                  id="mdv-newloc-state"
+                  className="mdv-input"
+                  value={stateProvince}
+                  onChange={(e) => setStateProvince(e.target.value)}
+                  placeholder="IL"
+                />
+              </div>
+            </div>
+
+            <div className="mdv-pair">
+              <div>
+                <label className="mdv-label" htmlFor="mdv-newloc-zip">
+                  ZIP / Postal
+                </label>
+                <input
+                  id="mdv-newloc-zip"
+                  className="mdv-input"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="60601"
+                />
+              </div>
+              <div>
+                <span className="mdv-label">Phone</span>
+                <div className="mdv-adopt">
+                  <PhoneNumberInput
+                    value={phone}
+                    onChange={setPhone}
+                    countryHint={country}
+                    invalid={Boolean(phone.trim() && !isValidPhone(phone))}
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="mdv-actions">
+          <button type="button" className="mdv-btn" onClick={handleClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="mdv-btn mdv-btn--seal"
+            onClick={handleSubmit}
+            disabled={isSubmitting || !name.trim() || !country.trim() || !address.trim() || !city.trim()}
+          >
+            {isSubmitting ? 'Adding…' : 'Add Location'}
+          </button>
+        </div>
+      </div>
+    </Sheet>
+    ) : (
     <Dialog.Root open={open} onOpenChange={(o) => !o && handleClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/30 z-50" onClick={handleClose} />
@@ -300,6 +500,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    )}
     </>
   )
 }
