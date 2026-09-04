@@ -1,8 +1,9 @@
 # 0115 — The house item is the ledger's key, and it is the row the house already has
 
 - **Status:** Proposed — the founder locks the shape. Migration written and **NOT
-  applied**; no app code changed. **Three sub-decisions were taken by the founder on
-  2026-09-04 and are settled**: (a) the library link is `ON DELETE RESTRICT` and
+  applied**; no app code changed. **Six sub-decisions were taken on 2026-09-04 and are
+  settled** — (a)–(e) by the founder, (f) delegated by the founder and decided here:
+  (a) the library link is `ON DELETE RESTRICT` and
   soft-delete is the only retirement path; (b) a house item exists **only** through an
   explicit "carry this" that also states kind and unit — nothing auto-creates one;
   (c) the first enrichment writer funded is **beer style and IBU**, over the **BJCP
@@ -10,7 +11,11 @@
   flagged for the catalogue, and `other` sorts last; and (d) **phase 2 fixes the
   receiving door in the same dispatch** — ADR 0070's leftover lands together with the
   beverage rows' stock cards, as one named dispatch with both regressions tested
-  separately. See §Retirement, §Coming into being, and phase 2 items 3a and 6–7.
+  separately; (e) the `kind` vocabulary ships as the **full thirteen values**, beverage
+  kinds used first, with the note stating that only those have readers today; and
+  (f) **there is no phase-3 rename** — the `house_items` view settles the noun.
+  **Every question on this ADR is now closed.** See §Retirement, §Coming into being,
+  phase 2 items 3a and 6–7, and §Questions 2 and 4 for the reasoning on (e) and (f).
 - **Date:** 2026-09-03 (sub-decisions 2026-09-04)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** OD-113, identity axis, ledger, house item, restaurant_inventory, master_wine_id, beverages, uom, kind, stock, par, counts, orders, non-wine, keg
@@ -496,8 +501,9 @@ the view, and put the FK back on `CASCADE` if that is really wanted. Reversible
 **Phase 3 — drop the old key (a separate dispatch, gated on a green guard for a
 measured period).** `inventory_lots.master_wine_id` and
 `inventory_transactions.wine_id` resolve through `inventory_id` and are dropped.
-Consider renaming the table to `house_items` with a compatibility view named
-`restaurant_inventory` in the other direction. *Rollback:* re-add the columns and
+**There is no rename**: the table keeps the name `restaurant_inventory` and the
+`house_items` view carries the noun (question 4, answered 2026-09-04). *Rollback:*
+re-add the columns and
 repopulate from `restaurant_inventory` through `inventory_id` — possible because
 the join exists; this is the phase to sequence last for that reason.
 
@@ -623,18 +629,47 @@ operator.
    **ANSWERED 2026-09-04.** `ON DELETE RESTRICT`, soft-delete is the only
    retirement path, the refusal names the count, and the link to a retired wine is
    flagged rather than cascaded. Built in phase 1; see §Retirement, not deletion.
-2. **Is the `kind` vocabulary right?** Phase 1 proposes thirteen values including
-   `food` and `supply` so the ledger does not need a second migration when
-   bakery arrives (`INVENTORY_SOTA_PLAN.md:338` sequences wine → beverages →
-   bakery → kitchen). Adding a value later is a cheap CHECK change; getting the
-   axis wrong is not.
+2. ~~**Is the `kind` vocabulary right?**~~ — **ANSWERED 2026-09-04.** The **full
+   thirteen-value list ships now**, `food` and `supply` included, and the beverage
+   kinds are the ones used first. The vocabulary is not the same thing as the
+   roadmap: a CHECK that already admits `food` costs nothing until a row uses it,
+   whereas widening it later is a migration against live rows at exactly the moment
+   the bakery work is trying to move (`INVENTORY_SOTA_PLAN.md:338` sequences wine →
+   beverages → bakery → kitchen). What the note must say, and does, is that **only
+   the beverage kinds have readers today** — no surface renders a `food` or
+   `supply` row, and the CHECK admitting one is not a claim that anything can yet
+   do anything with it.
 3. ~~**Does a house item exist before it is stocked?**~~ — **ANSWERED 2026-09-04.**
    Only through an explicit "carry this" that also states kind and unit. Menu and
    invoice lines that match nothing stay unmatched and say so; nothing
    auto-creates a house item. See §Coming into being.
-4. **Phase 3's rename.** Renaming `restaurant_inventory` to `house_items` is
-   correct and costs a compatibility view plus a sweep of 199 call sites. Worth
-   doing, or does the view alone settle it permanently?
+4. ~~**Phase 3's rename.**~~ — **ANSWERED 2026-09-04. No rename. The `house_items`
+   view settles the noun, permanently.** The founder delegated this one on
+   premortem, future technical change, scalability and cleanliness; all four point
+   the same way.
+
+   **Premortem.** The rename is a 199-call-site mechanical change, and its only
+   failure mode is a missed site left reading a table that no longer exists — a
+   break that is silent at write time and surfaces as absent data, which is the
+   exact shape this codebase names as its cardinal fault. A rename buys a nicer
+   name by adding the one class of bug the repo is least able to detect.
+
+   **Future technical change.** The view already gives every future reader the
+   right noun, at zero risk. New code says `house_items`; nothing has to be swept
+   for that to be true.
+
+   **Scalability.** Unaffected either way — same rows, same indexes. A view is not
+   a materialisation and adds no storage and no write path.
+
+   **Cleanliness.** Better served by one name in the code and one in the schema
+   that the view maps than by a rename that still leaves 88 migration files, the
+   production baseline and every archived note saying `restaurant_inventory`. A
+   rename does not remove the old name from the corpus; it only removes it from the
+   places that are cheapest to read.
+
+   **The condition that would reopen this:** the noun leaking into a public API or
+   a partner contract. That is the day to rename — and by then the view is already
+   there to rename *behind*, which is the cheap order to do it in.
 5. ~~**The ADR 0070 sequencing.**~~ — **ANSWERED 2026-09-04.** Phase 2 fixes the
    receiving door in the **same dispatch** as the beverage rows' stock cards, with
    both regressions tested separately. See phase 2 item 3a.
@@ -656,6 +691,8 @@ operator.
 | 2026-09-04 | Aldemir (founder) | **Three sub-decisions taken.** (a) The library link becomes `ON DELETE RESTRICT`; soft-delete is the only retirement path; the refusal names the count; a link to a retired wine is flagged, never cascaded; and phase 2 gains a producer, "a wine your house stocks was retired from the library", naming the rows (design only). (b) A house item exists **only** through an explicit "carry this" that also sets kind and unit — menu and invoice lines that match nothing stay unmatched and say so, never auto-created. (c) The first enrichment writer funded is **beer style and IBU**, written by the house at carry-time with a picker and by the catalogue where a match exists. Questions 1 and 3 close; question 6 (the style vocabulary) opens |
 | 2026-09-04 | Aldemir (founder) | **Beer style vocabulary settled: the BJCP list with an `other` escape.** An off-list style is typed as free text, stored under `other`, and flagged for the catalogue; style sorts and filters, and `other` sorts last. The escape is what makes a closed list survivable — without it an operator is forced to file a real beer under a wrong style, and a wrong style is indistinguishable from a right one downstream where `other` announces itself. Question 6 closes; phase 2 item 7 is unblocked on vocabulary |
 | 2026-09-04 | Aldemir (founder) | **Phase 2 fixes the receiving door in the same dispatch.** ADR 0070's leftover — no mass unit at intake, `@IsInt()` rejecting 4.5 — lands together with the beverage rows' stock cards, as one named dispatch with both regressions tested separately. The reason it cannot wait: shipping the stock cards alone would put `kg` on a house item while leaving a receiver unable to book a flour delivery. Re-measured on the day: the intake vocabulary has **zero** mass units and lives in **three** places, not one (`20260805000000:4401`, `:4593`, and inlined at `20260901150000:106`) — all three move or a line the invoice accepts is one the receipt refuses; and `@IsInt()` appears **98 times across 21 DTO files**, so ADR 0070's "15" is the quantity subset and must be re-derived rather than trusted. Question 5 closes |
+| 2026-09-04 | Aldemir (founder) | **The `kind` vocabulary ships whole.** All thirteen values, `food` and `supply` included, with the beverage kinds used first — a CHECK that already admits `food` costs nothing until a row uses it, where widening it later is a migration against live rows at the moment the bakery work is trying to move. The note states that **only the beverage kinds have readers today**, so the CHECK admitting a kind is never read as a claim that a surface can render it. Question 2 closes; no change to the migration, whose CHECK already carries all thirteen |
+| 2026-09-04 | Delegated, decided here | **No phase-3 rename; the `house_items` view settles the noun permanently.** The founder delegated question 4 on premortem, future technical change, scalability and cleanliness, and all four agree. Premortem: a 199-call-site mechanical rename whose only failure mode is a missed site reading a table that no longer exists — silent at write time, surfacing as absent data, this repo's named cardinal fault, bought in exchange for a nicer name. Future change: the view already gives every future reader the right noun at zero risk. Scalability: unaffected either way — same rows, same indexes, no materialisation and no write path. Cleanliness: one name in code and one in the schema that the view maps beats a rename that still leaves 88 migration files, the production baseline and every archived note saying the old one. **Reopen only if the noun leaks into a public API or a partner contract** — and by then the view is there to rename behind, which is the cheap order. Phase 3 amended: it drops the two legacy columns and renames nothing. Question 4 closes, and with it every question on this ADR |
 | 2026-09-04 | Retirement measurement | Taken before changing the FK, so the cost is known: `master_wine_library.deleted_at` exists and is exercised (**664 of 4 226** soft-deleted); **zero** live database functions hard-delete from `master_wine_library` — `merge_library_wines()` was converted by `20260817120000:3,15` and the two remaining `DELETE` lines in the tree are in superseded bodies; **199** distinct library wines are stocked and **0** of them are retired. So RESTRICT breaks no path that exists |
 | 2026-09-04 | Re-proof | Migration re-applied in a rollback transaction on a rebuilt control (114 other migrations, 0 failures). `confdeltype = 'r'`; the refusal trigger is attached; an **unstocked** wine is still deletable, so RESTRICT does not make wines immortal; the §8 probe proves a stocked wine cannot be hard-deleted, that the refusal names "1 house item row(s) across 1 house(s)", and that retiring it leaves the house item live. Guard extended to invariant 7 and re-proved: exit **1** on a persisted dangling-link fixture (all three parts reported), exit **0** with a `FLAGGED` line on a persisted retired-wine fixture, and 10 of 10 self-test probes green |
 | 2026-09-04 | Correction | Invariant 1 said "four of those five" have no foreign key. Re-measured: it is **four of eight**, and the five named were the wrong denominator — `inventory_lots`, `stock_counts`, `pos_item_mappings` and `wine_consumption_log` all DO carry an `inventory_id` FK; the four without one are `inventory_transactions`, `pour_events`, `inventory_alert_state` and `inventory_lot_revaluations`. Fixed in place, per ADR 0025 |
