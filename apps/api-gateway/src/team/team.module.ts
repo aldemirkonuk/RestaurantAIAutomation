@@ -6,6 +6,7 @@ import { PushModule } from "../push/push.module";
 import { CommunicationsModule } from "../communications/communications.module";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
+import { NotesService } from "./notes.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
 
@@ -18,7 +19,7 @@ import { PerformanceService } from "./performance.service";
     CommunicationsModule,
   ],
   controllers: [TeamController],
-  providers: [TeamService, ScheduleService, PerformanceService],
+  providers: [NotesService, TeamService, ScheduleService, PerformanceService],
   exports: [TeamService, ScheduleService],
 })
 export class TeamModule {}

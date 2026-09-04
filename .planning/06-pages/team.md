@@ -103,16 +103,37 @@ arrives in the middle, a menu hangs off its own control):
   SCHEDULE, not reading a note.
 - The composer is a small `Sheet` and is **always targeted** — named members, or
   the published week's active linked crew — never an unnamed fan-out (ADR 0089).
-- **Nothing leaves through the house mailbox.** The composer sends
-  `channels: ['inbox', 'push']`, and the gateway's new channel gate
-  (`team/dto/team.dto.ts` + `team.controller.ts`) never reaches the email leg,
-  which would otherwise go out through `GmailService` — the single configured
+- **A crew message never sends email — for EVERY caller, the legacy desk
+  included** (founder, 2026-09-04). The leg is deleted from
+  `team.controller.ts`, and the controller no longer takes a `GmailService` at
+  all, so reintroducing the send would fail to construct. It was not broken: it
+  worked, and left through `GmailService`, the single configured
   `GMAIL_SENDER_EMAIL` (`communications/gmail.service.ts:78-80`) that
-  procurement writes to vendors from. Omitting `channels` is today's behaviour
-  unchanged, so the legacy desk still sends exactly as it always has.
-- **Nothing records a sent note.** `broadcast` writes a notification row per
-  recipient and no route reads them back for a manager, so an empty strip says
-  "not from here, this session" and never "nobody has said anything" (§13.7).
+  procurement writes to vendors from — a staff member replying to "Saturday
+  moved to seven" landed in the vendor thread. It returns when a house has a
+  sender of its own (ADR 0114 / the composer).
+- **The default channel set is `['inbox', 'push']`**, not all four. An omitted
+  `channels` used to mean "every channel this person has an address for" — the
+  same absence-read-as-intent shape ADR 0088 T3 removed from the audience — so
+  the legacy desk stops texting too. SMS is still reachable, by name only, and
+  nothing asks today.
+- **What was withheld is counted, in three separate fields.**
+  `suppressed` (the recipients opted out) · `withheldByCaller` (this send did
+  not ask for the channel) · `withheldByProduct` (the house has no sender, with
+  the reason and the number of addresses). Folding them together would let "the
+  house has no mailbox" read as "nobody wanted an email".
+- **A note is a RECORD, since 2026-09-04** (migration `20260904180000`,
+  `team_notes` + `team_note_recipients`, `team/notes.service.ts`). It has an
+  author, the audience it named at send time, and a per-person `opened_at`, so
+  it survives a reload and the strip can say who has read it. The staff view
+  shows the note and carries the *Mark as read* that records the receipt. The
+  two receipts stay apart: `schedule_receipts` records opening the SCHEDULE,
+  `team_note_recipients.opened_at` records reading one note — blending them
+  would make "saw the roster" and "read the message" the same fact. A read that
+  fails renders as words (`readable: false`), never as a quiet week.
+- **A staff member sees only notes addressed to them.** The register carries a
+  manager's free text about a week; every member reading every note is the shape
+  ADR 0088 closed on time-off reasons.
 
 **Roster names, and why they were all the same.** Every roster row in the demo
 tenant read "Team member" (3 of 3, measured 2026-09-04) because the gateway's
@@ -213,7 +234,11 @@ controls whose consequences you learn by pressing them.
   SELECT naming a column a table does not have, against a DECLARED schema
   (opt-in per table, cited to its migration) rather than against the shape of a
   fixture. Without it no spec could have failed on the defect above. Proven
-  against the pre-fix tree: 4 of the 6 new assertions go red.
+  against the pre-fix tree: **5 of the 6** new assertions go red. (A first
+  proof run measured 4; it was taken before the backfill was also made to
+  THROW on an unreadable identity read, which is what puts the sixth assertion
+  — "creates no roster row it cannot name" — on the failing side too. The
+  earlier figure was true of an earlier tree and is wrong about this one.)
 - `team/dto/team.dto.ts` + `team.controller.ts` — `BroadcastDto.channels`, an
   optional allow-list. Omitting it is today's behaviour byte for byte (the
   legacy desk names none); `/team`'s crew note names `['inbox', 'push']` so its
@@ -350,10 +375,17 @@ dashboard.md §7.
   placeholder until someone saves the Edit sheet, which prefills the account's
   name for exactly that reason. **No data migration was run**: renaming
   production rows is not this branch's, and the page does not need it.
-- **Nothing records a sent crew note.** `POST …/broadcast` writes one
-  notification row per recipient and no route reads them back for a manager, so
-  the strip can only report the send this page just made. Not yet built because
-  it needs a table (§13.7).
+- ~~**Nothing records a sent crew note.**~~ **Closed 2026-09-04** — migration
+  `20260904180000` adds `team_notes` and `team_note_recipients`, and
+  `team/notes.service.ts` writes, reads and receipts them. What is still open on
+  it: a note cannot be edited or withdrawn (there is no update route and no
+  delete route, deliberately — a note a manager can rewrite after it was read is
+  not a record), and the strip shows the newest note in full and counts the rest.
+- **The three roster rows are still named "Team member" until somebody runs the
+  repair.** `scripts/repair_team_member_names.py` proposes one name per row from
+  the linked account, dry-run by default, `--apply` to write, and reports every
+  row it will not touch. **It has not been run against production by this
+  session** — the parent runs it on the founder's word.
 - **Nothing records that a renewal was requested**, so *Request renewal* reports
   a moment and never a state (unchanged; §13.2b).
 - **Nothing records that cover was offered**, for the same reason — the
@@ -362,6 +394,11 @@ dashboard.md §7.
   `recordAccessChange` covers role changes and removals only, so the
   configuration register shows a date and never an author, and says which
   column it checked. §13.10.
+- **SMS is still reachable, and nothing on screen offers it.** The channel gate
+  keeps `sms` as a named channel that no caller asks for. Left in rather than
+  deleted: the reason email went is the shared MAILBOX, which does not apply to
+  the SMS sender, and removing a working channel nobody asked to remove would be
+  a decision taken by a refactor. Named here so it is a choice, not an oversight.
 - **`GET certifications` still requires no role** (`team.service.ts:397`), so
   the client-side split is defence in depth, not access control (§13.2c,
   unchanged).
@@ -556,12 +593,31 @@ re-deriving it.
    BEFORE writing anything, and a house `Sheet` on the parity page that shows
    that parse for confirmation. The picker is already real; only the two ends
    are missing.
-7. **A `team_notes` store, so a crew note is a record.** One table
-   (`restaurant_id`, `schedule_id`, `body`, `author_id`, `created_at`, plus
-   recipients) and one read route would turn the week's note strip from "what
-   this page just sent" into "what has been said about this week", with its own
-   read receipts instead of borrowing the schedule's. One migration; not this
-   branch's.
+7. ~~**A `team_notes` store, so a crew note is a record.**~~ **Built
+   2026-09-04** — migration `20260904180000` (`team_notes`,
+   `team_note_recipients`), `team/notes.service.ts`, three routes
+   (`GET/POST …/team/notes`, `POST …/team/notes/:id/opened`). What is left on
+   it: a note cannot be edited or withdrawn, and there is no digest of a week's
+   notes for someone joining mid-week.
+
+7a. **Email returns when a house has a sender of its own.** The crew broadcast's
+   email leg was removed for every caller on 2026-09-04 because the only sender
+   available is the house's shared mailbox, the one vendors are written from.
+   Restoring it needs a per-house sender (ADR 0114 / the composer) and nothing
+   else — the channel vocabulary already carries `email`, and the gate refuses
+   it in one line (`team.controller.ts`, `may()`).
+
+7b. **RETIRE-ON-FLAG — what happens to the legacy desk, decided.** The legacy
+   Manager Shift Desk retires **the day the flag turns on for a house**: from
+   that moment it is not the surface anybody operates, and a fix belongs on the
+   Mudavym half only. It is **deleted in the wave that removes the flags**, not
+   before, because until then a flag-off house still renders it byte-for-byte.
+   **Nothing is deleted now.** What retires, when that wave comes:
+   `pages/team/command/{ManagerShiftDesk,MyShifts,editors,bits,PerformancePanel,OpsRulesPanel,TeamCommandPage}.tsx`,
+   the five legacy renderer entries in `scripts/check_windowed_figures.py`'s
+   `/team` PageSpec, and `TeamCommand.honesty.test.tsx`. Until then both halves
+   are maintained, and the cost of that is real: every `/team` fix is written
+   twice, and this note is where that cost is recorded rather than discovered.
 8. **Move sales ingest off the schedule.** The legacy `PerformancePanel`'s "log
    a service" form and CSV import were deliberately not carried onto the
    expander (§1b, "the two directions not built"). They need a surface of their

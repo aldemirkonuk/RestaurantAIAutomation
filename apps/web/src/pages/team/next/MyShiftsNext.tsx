@@ -22,6 +22,8 @@ import {
   assignCover,
   createTimeOff,
   getMyWeek,
+  getTeamNotes,
+  openTeamNote,
   type MyWeekPayload,
 } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
@@ -66,6 +68,21 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
       assignCover(v.shiftId, v.memberId),
     onSuccess: invalidate,
   });
+  /**
+   * The week's notes addressed to ME. The gateway filters by the caller's own
+   * roster row, so a staff member never reads a note they were not named on.
+   */
+  const notesQ = useQuery({
+    queryKey: ['team-next-notes', rid, weekStart],
+    queryFn: () => getTeamNotes(weekStart),
+    enabled: rid !== null,
+    staleTime: 30_000,
+  });
+  const markRead = useMutation({
+    mutationFn: (noteId: string) => openTeamNote(noteId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['team-next-notes', rid, weekStart] }),
+  });
+
   const askOff = useMutation({
     mutationFn: (memberId: string) =>
       createTimeOff({
@@ -175,6 +192,44 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             desk, not here — nothing on this page reads the request file back.
           </p>
         )}
+
+        {notesQ.isError || (notesQ.data && !notesQ.data.readable) ? (
+          <p className="tm-alert" role="alert">
+            The notes about this week could not be read, so whether your manager has said
+            anything is unknown — not no.
+          </p>
+        ) : (notesQ.data?.notes.length ?? 0) > 0 ? (
+          <section className="tm-panel" style={{ marginBottom: 14 }}>
+            <h2 className="tm-panel__title">From your manager</h2>
+            <MutationError when={markRead.isError}>
+              Your manager was not told you have read this. Try again.
+            </MutationError>
+            {notesQ.data!.notes.map((n) => {
+              const mine = n.recipients.find((r) => r.openedAt !== null);
+              return (
+                <div key={n.id} style={{ paddingTop: 8 }}>
+                  <p className="tm-note">{n.body}</p>
+                  {mine ? (
+                    <p className="tm-quiet" style={{ fontSize: 11.5 }}>
+                      You have read this.
+                    </p>
+                  ) : (
+                    <div className="tm-actions">
+                      <button
+                        type="button"
+                        className="tm-ctl tm-ctl--sm"
+                        disabled={markRead.isPending}
+                        onClick={() => markRead.mutate(n.id)}
+                      >
+                        {markRead.isPending ? 'Marking…' : 'Mark as read'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        ) : null}
 
         <hr className="tm-rule" />
 

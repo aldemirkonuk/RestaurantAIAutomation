@@ -294,13 +294,13 @@ export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string
  * out loud is the fix, so this signature will not let a caller stay silent.
  */
 /**
- * `channels` (added 2026-09-04 for /team's inline crew note) is OPTIONAL and
- * omitting it is today's behaviour, unchanged — the legacy desk names none and
- * still sends on all four. The Mudavym page names `['inbox', 'push']` because a
- * note on the schedule is not correspondence: its email leg would leave through
- * the house's single configured mailbox (`GMAIL_SENDER_EMAIL`), the same
- * address procurement writes to vendors from. Gateway half:
- * `apps/api-gateway/src/team/dto/team.dto.ts` + `team.controller.ts`.
+ * `channels` names the channels a send may use. TWO founder decisions of
+ * 2026-09-04 changed what this verb does FOR EVERY CALLER, the legacy desk
+ * included: a crew message never sends email (the only sender available is the
+ * house's shared mailbox, the one vendors are written from), and omitting
+ * `channels` now means `['inbox', 'push']` rather than all four — SMS has to be
+ * asked for by name. Email returns when a house has a sender of its own.
+ * Gateway half: `apps/api-gateway/src/team/dto/team.dto.ts` + `team.controller.ts`.
  */
 export type BroadcastChannel = 'inbox' | 'push' | 'email' | 'sms'
 
@@ -326,6 +326,69 @@ export async function broadcast(
 ) {
   const { data } = await apiClient.post<BroadcastReceipt>(`${base(rid)}/broadcast`, body)
   return data
+}
+
+// ── Crew notes ─────────────────────────────────────────────────────────
+/**
+ * A note about one week, kept as a record (migration 20260904180000).
+ *
+ * `broadcast` reaches people and leaves nothing a manager can read back; these
+ * three give the note an author, the audience it named at send time, and a
+ * per-person `openedAt`. Delivery is the inbox and the phone only.
+ */
+export interface TeamNoteRecipient {
+  memberId: string
+  /** `null` when the roster could not be read — never a member id shown raw. */
+  name: string | null
+  /** `null` means UNOPENED, and only that. */
+  openedAt: string | null
+}
+
+export interface TeamNote {
+  id: string
+  weekStart: string
+  scheduleId: string | null
+  body: string
+  channels: string[]
+  createdAt: string
+  authorUserId: string
+  recipients: TeamNoteRecipient[]
+  openedCount: number
+  addressedCount: number
+}
+
+export interface TeamNotesReadout {
+  weekStart: string
+  notes: TeamNote[]
+  /** `false` renders as words. An unreadable register is never a quiet week. */
+  readable: boolean
+  reason: string | null
+  namesReadable?: boolean
+}
+
+export async function getTeamNotes(weekStart: string, rid?: string): Promise<TeamNotesReadout> {
+  const { data } = await apiClient.get<TeamNotesReadout>(`${base(rid)}/notes`, {
+    params: { weekStart },
+  })
+  return data
+}
+
+export async function createTeamNote(
+  body: { weekStart: string; body: string; memberIds: string[]; scheduleId?: string },
+  rid?: string,
+) {
+  const { data } = await apiClient.post(`${base(rid)}/notes`, body)
+  return data as {
+    id: string
+    addressed: number
+    delivered: { inbox: boolean; push: number }
+    channels: string[]
+  }
+}
+
+export async function openTeamNote(noteId: string, rid?: string) {
+  const { data } = await apiClient.post(`${base(rid)}/notes/${noteId}/opened`)
+  return data as { recorded: boolean; alreadyOpen: boolean }
 }
 
 // ── Settings ───────────────────────────────────────────────────────────

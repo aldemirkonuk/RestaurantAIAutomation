@@ -550,7 +550,14 @@ export class TeamService {
    * The member row this user is, in this restaurant. `null` when they have no
    * ops profile yet (an account-less roster entry, or a brand-new account).
    */
-  private async ownMemberId(
+  /**
+   * PUBLIC since 2026-09-04: `NotesService` needs it to answer "which roster
+   * row is the caller?" when recording that a crew note was opened. Kept as one
+   * implementation rather than copied, so the error handling below — a failed
+   * lookup RAISES rather than returning the `null` that means "no ops profile"
+   * — cannot drift between two versions of the same question.
+   */
+  async ownMemberId(
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {

@@ -18,7 +18,7 @@ import { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ExpoPushService } from "../push/expo-push.service";
-import { GmailService } from "../communications/gmail.service";
+import { NotesService } from "./notes.service";
 import { SmsService } from "../communications/sms.service";
 import { TeamService } from "./team.service";
 import { ScheduleService } from "./schedule.service";
@@ -33,6 +33,7 @@ import {
   CreateScheduleDto,
   CreateShiftDto,
   CreateTeamMemberDto,
+  CreateTeamNoteDto,
   CreateTimeOffDto,
   IngestSalesDto,
   IngestSalesBatchDto,
@@ -60,8 +61,8 @@ export class TeamController {
     private readonly performance: PerformanceService,
     private readonly notifications: NotificationsService,
     private readonly push: ExpoPushService,
-    private readonly gmail: GmailService,
     private readonly sms: SmsService,
+    private readonly notes: NotesService,
   ) {}
 
   private uid(req: Request & { user: AuthedUser }): string {
@@ -393,16 +394,34 @@ export class TeamController {
 
     /**
      * Which channels this send may use. An omitted `channels` is today's
-     * behaviour, byte for byte — the legacy desk names none. `/team`'s inline
-     * crew message names `["inbox", "push"]`, so its email leg (which would
-     * leave through the house's single configured mailbox, the same one
-     * procurement writes to vendors from) is never reached. What a caller
-     * declined is reported, so a smaller number is never mistaken for a
-     * smaller audience.
+     * behaviour. What a caller declined is reported separately from what the
+     * RECIPIENTS declined, so a smaller number is never mistaken for a smaller
+     * audience.
+     *
+     * TWO CHANGES OF DEFAULT, 2026-09-04 (founder). Both affect EVERY caller,
+     * the legacy desk included, and both are stated on the surfaces that send.
+     *
+     * 1. **A crew message never sends email.** It is not that the send was
+     *    unreliable — it worked. It left through `GmailService`, which is the
+     *    house's single configured mailbox (`GMAIL_SENDER_EMAIL`,
+     *    `communications/gmail.service.ts:78-80`), the same address procurement
+     *    writes to vendors from. A staff member replying to "Saturday moved to
+     *    seven" landed in the vendor thread. Naming `email` in `channels` no
+     *    longer opens it: the leg is gone from this method, and it returns when
+     *    a house has a sender of its own (ADR 0114 / the composer).
+     * 2. **The default channel set is `["inbox", "push"]`**, not all four. The
+     *    legacy desk names no channels, and an omitted field used to mean "use
+     *    every channel this person has an address for" — the same
+     *    absence-read-as-intent shape ADR 0088 T3 removed from the audience.
+     *    SMS is still reachable, but only by asking for it by name, and nothing
+     *    asks today.
      */
-    const allowed = dto.channels;
+    const DEFAULT_CHANNELS: Array<"inbox" | "push" | "sms"> = ["inbox", "push"];
+    const allowed = dto.channels ?? DEFAULT_CHANNELS;
     const may = (channel: "inbox" | "push" | "email" | "sms"): boolean =>
-      !allowed || allowed.includes(channel);
+      // `email` is never permitted, however it is asked for. A gate a caller
+      // can open is not a gate; the house has no sender to open it with.
+      channel !== "email" && allowed.includes(channel);
 
     const roster = await this.team.listMembers(userId, rid);
     const targets = named
@@ -454,6 +473,8 @@ export class TeamController {
       return !optOuts.optedOut[channel].has(m.user_id);
     };
 
+    // Counted, not sent: how many people COULD have been emailed is the size of
+    // what this change withholds, and reporting 0 addresses would hide it.
     const allEmails = targets
       .map((m: any) => [m, m.email || m.linkedUser?.email] as const)
       .filter((pair): pair is readonly [any, string] => !!pair[1]);
@@ -461,39 +482,28 @@ export class TeamController {
       .map((m: any) => [m, m.phone] as const)
       .filter((pair): pair is readonly [any, string] => !!pair[1]);
 
-    const emails = may("email")
-      ? allEmails.filter(([m]) => wants(m, "email")).map(([, e]) => e)
-      : [];
     const phones = may("sms")
       ? allPhones.filter(([m]) => wants(m, "sms")).map(([, p]) => p)
       : [];
-    // What the RECIPIENTS declined, separately from what the CALLER declined.
-    // Folding the two together would let "the manager chose not to email" read
-    // as "nobody wanted an email", which is a different fact about the house.
+    // What the RECIPIENTS declined, separately from what the CALLER declined
+    // and from what the PRODUCT withholds. Folding them together would let
+    // "the house has no sender" read as "nobody wanted an email".
     const suppressed = {
-      email: may("email") ? allEmails.length - emails.length : 0,
+      email: 0,
       sms: may("sms") ? allPhones.length - phones.length : 0,
     };
     const withheldByCaller = {
-      email: may("email") ? 0 : allEmails.length,
+      email: 0,
       sms: may("sms") ? 0 : allPhones.length,
     };
+    const withheldByProduct = {
+      email: allEmails.length,
+      reason:
+        "a crew message would leave through the house's shared mailbox, the one vendors are written from",
+    };
 
-    let emailed = 0;
+    const emailed = 0;
     let texted = 0;
-    if (emails.length) {
-      try {
-        const res = await this.gmail.sendEmail({
-          to: emails,
-          subject: dto.title ?? "Message from your manager",
-          html: `<p>${dto.message.replace(/</g, "&lt;")}</p>`,
-          text: dto.message,
-        });
-        if (res?.success) emailed = emails.length;
-      } catch {
-        /* soft-fail */
-      }
-    }
     if (phones.length) {
       for (const phone of phones) {
         try {
@@ -516,13 +526,58 @@ export class TeamController {
       },
       suppressed,
       withheldByCaller,
-      channels: allowed ?? ["inbox", "push", "email", "sms"],
+      withheldByProduct,
+      channels: allowed.filter((c) => c !== "email"),
       preferencesUnavailable,
       notified: may("push") ? userIds.length : 0,
       emailed,
       texted,
       inbox: may("inbox"),
     };
+  }
+
+  // ── Crew notes ───────────────────────────────────────────────────────────
+  /**
+   * A note about the week, as a record rather than a send.
+   *
+   * `POST …/broadcast` reaches people and leaves nothing a manager can read
+   * back, which is why the week strip could only report what the page had just
+   * done. These three routes give the note an author, an audience captured at
+   * send time and a per-person `opened_at` (`team_notes`,
+   * `team_note_recipients`, migration 20260904180000). Delivery is the inbox
+   * and the phone; there is no email leg here either, for the same reason.
+   */
+  @Get("notes")
+  listNotes(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Query("weekStart") weekStart: string,
+  ) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart ?? "")) {
+      throw new BadRequestException(
+        `weekStart must be a date like 2026-09-04; got "${weekStart}".`,
+      );
+    }
+    return this.notes.list(this.uid(req), rid, weekStart);
+  }
+
+  @Post("notes")
+  createNote(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CreateTeamNoteDto,
+  ) {
+    return this.notes.create(this.uid(req), rid, dto);
+  }
+
+  /** The caller has opened it. Their own row, and only the first time. */
+  @Post("notes/:noteId/opened")
+  openNote(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("noteId") noteId: string,
+  ) {
+    return this.notes.markOpened(this.uid(req), rid, noteId);
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import {
+  ArrayNotEmpty,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -204,6 +205,20 @@ export class BroadcastDto {
   @IsArray()
   @IsIn(["inbox", "push", "email", "sms"], { each: true })
   channels?: Array<"inbox" | "push" | "email" | "sms">;
+}
+
+// ── Crew notes ─────────────────────────────────────────────────────────────
+/**
+ * A note about one week. `weekStart` and not `scheduleId` is the required key:
+ * a manager writes about Saturday while the week is still a draft, and
+ * `schedules` may hold no row for it yet.
+ */
+export class CreateTeamNoteDto {
+  @IsDateString() weekStart: string;
+  @IsString() @IsNotEmpty() body: string;
+  /** Required and non-empty: a note that names nobody reaches nobody. */
+  @IsArray() @ArrayNotEmpty() @IsUUID("all", { each: true }) memberIds: string[];
+  @IsOptional() @IsUUID() scheduleId?: string;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────

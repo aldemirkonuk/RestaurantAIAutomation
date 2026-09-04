@@ -41,10 +41,12 @@ import {
   getCertifications,
   getCoverageTemplates,
   getTeamMembers,
+  getTeamNotes,
   getTimeOff,
   getWeek,
   type Certification,
   type Shift,
+  type TeamNotesReadout,
   type TeamMember,
   type WeekPayload,
 } from '../../../services/api/team';
@@ -283,6 +285,9 @@ export interface TeamNextData {
   members: TeamMember[] | null;
   /** The whole credential file. `null` until it answers; `[]` means none exist. */
   certs: Certification[] | null;
+  /** The week's crew notes, as a record. `null` until the register answers. */
+  notes: TeamNotesReadout | null;
+  notesFailed: boolean;
   /** Who changed what on this team. `null` until the trail answers. */
   trail: TeamTrail | null;
   trailFailed: boolean;
@@ -379,6 +384,13 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     },
     enabled,
     staleTime: 60_000,
+  });
+  /** Keyed by the WEEK as well as the tenant: a note belongs to one week. */
+  const notesQ = useQuery({
+    queryKey: ['team-next-notes', rid, weekStart],
+    queryFn: () => getTeamNotes(weekStart),
+    enabled,
+    staleTime: 30_000,
   });
   const timeOffQ = useQuery({
     queryKey: ['team-next-time-off', rid],
@@ -564,6 +576,8 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     week: weekQ.data ?? null,
     members: membersQ.data === undefined ? null : members,
     certs: certsQ.data === undefined ? null : certsQ.data,
+    notes: notesQ.data === undefined ? null : notesQ.data,
+    notesFailed: notesQ.isError,
     trail: trailQ.data === undefined ? null : trailQ.data,
     trailFailed: trailQ.isError,
     target: readLabourTarget(
@@ -607,6 +621,7 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
       void rulesQ.refetch();
       void timeOffQ.refetch();
       void trailQ.refetch();
+      void notesQ.refetch();
     },
   };
 }

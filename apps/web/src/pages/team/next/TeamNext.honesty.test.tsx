@@ -19,6 +19,8 @@ configure({ asyncUtilTimeout: 5000 });
 
 
 const api = vi.hoisted(() => ({
+  notes: { weekStart: '2026-08-31', notes: [] as unknown[], readable: true, reason: null } as Record<string, unknown>,
+  createTeamNote: vi.fn(() => Promise.resolve({ id: 'n1', addressed: 1, delivered: { inbox: true, push: 1 }, channels: ['inbox', 'push'] })),
   timeOff: [] as unknown[],
   myWeek: {} as Record<string, unknown>,
   publishSchedule: vi.fn(() => Promise.resolve({})),
@@ -35,6 +37,9 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/api/team', () => ({
+  getTeamNotes: () => Promise.resolve(api.notes),
+  createTeamNote: api.createTeamNote,
+  openTeamNote: vi.fn(() => Promise.resolve({ recorded: true, alreadyOpen: false })),
   getTimeOff: () => Promise.resolve(api.timeOff),
   getMyWeek: () => Promise.resolve(api.myWeek),
   getMemberPerformance: () => Promise.resolve({ hasData: false }),

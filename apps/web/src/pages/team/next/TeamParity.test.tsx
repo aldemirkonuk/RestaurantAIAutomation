@@ -26,6 +26,8 @@ configure({ asyncUtilTimeout: 5000 });
 
 
 const api = vi.hoisted(() => ({
+  notes: { weekStart: '2026-08-31', notes: [] as unknown[], readable: true, reason: null } as Record<string, unknown>,
+  createTeamNote: vi.fn(() => Promise.resolve({ id: 'n1', addressed: 1, delivered: { inbox: true, push: 1 }, channels: ['inbox', 'push'] })),
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
@@ -43,6 +45,9 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/api/team', () => ({
+  getTeamNotes: () => Promise.resolve(api.notes),
+  createTeamNote: api.createTeamNote,
+  openTeamNote: vi.fn(() => Promise.resolve({ recorded: true, alreadyOpen: false })),
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve(api.certs),
@@ -232,16 +237,19 @@ describe('a control whose backend does not exist is disabled and says why', () =
 
 /* ── inline comms ────────────────────────────────────────────────────────── */
 
-describe('the crew note is a note on the week', () => {
-  it('says nothing records a past note rather than showing an empty list', async () => {
+describe('the crew note is a record, not a memory of this page', () => {
+  it('says the register answered and holds nothing, not that this page forgot', async () => {
     render(<TeamNext />, { wrapper });
-    expect(await screen.findByText(/No note has been sent from this page/)).toBeInTheDocument();
+    // Pre-2026-09-04 this said "No note has been sent FROM THIS PAGE" and had
+    // to caption an empty strip "not from here, this session", because
+    // `broadcast` left nothing to read back.
+    expect(await screen.findByText(/Nothing has been written about/)).toBeInTheDocument();
+    expect(screen.queryByText(/from this page/i)).not.toBeInTheDocument();
   });
 
-  it('sends only to the inbox and the phone, never through the house mailbox', async () => {
+  it('writes a record against the week rather than firing a broadcast', async () => {
     api.members = [member({ display_name: 'Ada Lovelace' })];
     render(<TeamNext />, { wrapper });
-    // Two openers on purpose: the header control and the strip beside the week.
     const openers = await screen.findAllByRole('button', { name: /Write a note/ });
     expect(openers).toHaveLength(2);
     fireEvent.click(openers[1]);
@@ -250,13 +258,59 @@ describe('the crew note is a note on the week', () => {
       target: { value: 'Saturday moved to seven.' },
     });
     fireEvent.click(within(sheet).getByRole('button', { name: /Send to 1/ }));
-    await vi.waitFor(() => expect(api.broadcast).toHaveBeenCalled());
-    expect(api.broadcast).toHaveBeenCalledWith(
-      expect.objectContaining({ channels: ['inbox', 'push'], memberIds: ['m1'] }),
+    await vi.waitFor(() => expect(api.createTeamNote).toHaveBeenCalled());
+    expect(api.createTeamNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        weekStart: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        body: 'Saturday moved to seven.',
+        memberIds: ['m1'],
+      }),
     );
+    // The channel decision is the gateway's now — inbox and push, no mailbox.
+    expect(api.broadcast).not.toHaveBeenCalled();
   });
 
-  it('reads who has opened the published week from the receipts, by name', async () => {
+  it('reads a note back with who has opened it, by name', async () => {
+    api.members = [member({ display_name: 'Ada Lovelace' })];
+    api.notes = {
+      weekStart: '2026-08-31',
+      readable: true,
+      reason: null,
+      notes: [
+        {
+          id: 'n1',
+          weekStart: '2026-08-31',
+          scheduleId: null,
+          body: 'Saturday moved to seven.',
+          channels: ['inbox', 'push'],
+          createdAt: '2026-08-31T09:00:00Z',
+          authorUserId: 'u1',
+          recipients: [
+            { memberId: 'm1', name: 'Ada Lovelace', openedAt: '2026-08-31T10:00:00Z' },
+            { memberId: 'm2', name: 'Bo', openedAt: null },
+          ],
+          openedCount: 1,
+          addressedCount: 2,
+        },
+      ],
+    };
+    render(<TeamNext />, { wrapper });
+    expect(await screen.findByText('Saturday moved to seven.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 of 2 have opened it: Ada Lovelace/),
+    ).toBeInTheDocument();
+  });
+
+  it('says the note register could not be read rather than showing a quiet week', async () => {
+    api.notes = { weekStart: '2026-08-31', notes: [], readable: false, reason: 'connection reset' };
+    render(<TeamNext />, { wrapper });
+    expect(
+      await screen.findByText(/note register could not be read/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing has been written about/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the schedule receipt and the note receipt apart', async () => {
     api.members = [member({ display_name: 'Ada Lovelace' })];
     api.week = weekPayload({
       schedule: { id: 'sch1', restaurant_id: 'r1', week_start: '2026-08-31', status: 'published', published_at: '2026-09-01' },
@@ -264,6 +318,8 @@ describe('the crew note is a note on the week', () => {
     });
     render(<TeamNext />, { wrapper });
     expect(await screen.findByText(/1 of 1 have opened it: Ada Lovelace\./)).toBeInTheDocument();
+    // The caption is what stops "saw the roster" being read as "read the note".
+    expect(screen.getByText(/records opening the SCHEDULE/)).toBeInTheDocument();
   });
 });
 
@@ -280,6 +336,84 @@ describe('the labour target is read against its column default', () => {
     const r = readLabourTarget(31, false);
     expect(r.pct).toBe(31);
     expect(r.why).toMatch(/No column records who set it/);
+  });
+
+  it('renders "No target set" on screen for a stored 28 with no provenance', async () => {
+    // The pure function is tested above; this is the same rule reaching the
+    // DOM. The register row must not print "28%" as though the house chose it,
+    // and the labour panel beside it must not measure the week against it.
+    api.week = weekPayload({
+      labor: {
+        enabled: true,
+        totalHours: 40,
+        totalCost: 1200,
+        costComplete: true,
+        pricedShifts: 4,
+        unpricedShifts: 0,
+        // `numeric(5,2) DEFAULT 28 NOT NULL` — a row that exists always carries
+        // a number, and 28 is indistinguishable from nobody choosing one.
+        targetPct: 28,
+        overtime: [],
+      },
+      settings: {
+        restaurant_id: 'r1',
+        labor_tracking_enabled: true,
+        wage_visible: true,
+        labor_target_pct: 28,
+        configured: true,
+        updated_at: '2026-09-01T08:00:00Z',
+      },
+    });
+    render(<TeamNext />, { wrapper });
+
+    // Wait for the WEEK, not just for the section: before the query answers
+    // the target is "no row on file", which is a different sentence about a
+    // different state and would let this test pass for the wrong reason.
+    // TWO matches on purpose: the register row states it, and the labour panel
+    // repeats it where the figure would otherwise have been measured against.
+    expect(await screen.findAllByText(/column's own default/)).toHaveLength(2);
+    const section = screen.getByRole('region', { name: 'How this desk is configured' });
+    expect(within(section).getByText('Labour target')).toBeInTheDocument();
+    expect(within(section).getByText(/No target set/)).toBeInTheDocument();
+    expect(within(section).getByText(/column's own default/)).toBeInTheDocument();
+    // The VALUE column is an em dash, not the stored figure — nowhere in the
+    // register does 28 appear as a number this house set.
+    expect(within(section).queryByText('28%')).not.toBeInTheDocument();
+
+    // And the week is not measured against it: the labour panel says so too.
+    const labour = screen.getByRole('region', { name: 'Labour cost' });
+    expect(within(labour).getByText(/no target set/)).toBeInTheDocument();
+    expect(within(labour).queryByText(/target 28% of sales/)).not.toBeInTheDocument();
+  });
+
+  it('renders a chosen figure as a target, with the author unrecorded', async () => {
+    api.week = weekPayload({
+      labor: {
+        enabled: true,
+        totalHours: 40,
+        totalCost: 1200,
+        costComplete: true,
+        pricedShifts: 4,
+        unpricedShifts: 0,
+        targetPct: 31,
+        overtime: [],
+      },
+      settings: {
+        restaurant_id: 'r1',
+        labor_tracking_enabled: true,
+        wage_visible: true,
+        labor_target_pct: 31,
+        configured: true,
+        updated_at: '2026-09-01T08:00:00Z',
+      },
+    });
+    render(<TeamNext />, { wrapper });
+    await screen.findByText(/No column records who set it/);
+    const section = screen.getByRole('region', { name: 'How this desk is configured' });
+    expect(within(section).getByText('31%')).toBeInTheDocument();
+    expect(
+      within(section).getByText(/No column records who set it/),
+    ).toBeInTheDocument();
   });
 
   it('renders every stated value with where it is kept and why there is no author', async () => {

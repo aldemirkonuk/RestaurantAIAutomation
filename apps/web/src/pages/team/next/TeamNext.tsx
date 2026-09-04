@@ -74,7 +74,6 @@ import {
   ExportPopover,
   PublishPanel,
   TimeOffSheet,
-  type CrewNoteReceipt,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
 import {
@@ -391,13 +390,6 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [lens, setLens] = useState<Lens>('coverage');
   const [overlay, setOverlay] = useState<Overlay | null>(null);
-  /**
-   * The last crew note this page sent. Held here and nowhere else, because
-   * nowhere else holds it: `broadcast` writes a notification per recipient and
-   * no route reads them back for a manager. The strip says so in words rather
-   * than letting an empty line read as "nobody has said anything".
-   */
-  const [note, setNote] = useState<CrewNoteReceipt | null>(null);
   const exportAnchor = useRef<HTMLButtonElement | null>(null);
 
   const data = useTeamNextData(weekStart);
@@ -412,6 +404,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
     void qc.invalidateQueries({ queryKey: ['team-next-week', rid, weekStart] });
     void qc.invalidateQueries({ queryKey: ['team-next-members', rid] });
     void qc.invalidateQueries({ queryKey: ['team-next-time-off', rid] });
+    void qc.invalidateQueries({ queryKey: ['team-next-notes', rid, weekStart] });
   };
 
   const ownerCount = useMemo(
@@ -709,10 +702,11 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
 
         <CrewNoteStrip
           members={data.members}
+          notes={data.notes}
+          notesFailed={data.notesFailed}
           receipts={data.week?.receipts ?? null}
           published={data.published}
           weekStart={weekStart}
-          sent={note}
           onCompose={() => setOverlay({ kind: 'note', only: null })}
         />
 
@@ -801,8 +795,9 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           membersFailed={data.membersFailed}
           only={overlay.only}
           weekStart={weekStart}
+          scheduleId={data.scheduleId}
           onClose={() => setOverlay(null)}
-          onSent={setNote}
+          onSent={refreshWeek}
         />
       )}
       {overlay?.kind === 'trail' && (

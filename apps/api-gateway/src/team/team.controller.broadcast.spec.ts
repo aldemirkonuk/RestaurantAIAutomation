@@ -120,18 +120,22 @@ function harness(db: StubDb) {
     persistForRestaurant: jest.fn(async () => ({ inserted: 0 })),
   } as any;
   const push = { sendToUsers: jest.fn(async () => undefined) } as any;
-  const gmail = { sendEmail: jest.fn(async () => ({ success: true })) } as any;
   const sms = { sendSms: jest.fn(async () => ({ success: true })) } as any;
+  // No mailbox is handed in AT ALL. The controller no longer takes one — the
+  // strongest available form of "a crew message never sends email", because a
+  // future edit cannot reintroduce the send without also reintroducing the
+  // dependency, which this line would fail on.
+  const notes = { list: jest.fn(), create: jest.fn(), markOpened: jest.fn() } as any;
   const controller = new TeamController(
     team,
     {} as any,
     {} as any,
     notifications,
     push,
-    gmail,
     sms,
+    notes,
   );
-  return { controller, gmail, sms, notifications, push };
+  return { controller, sms, notifications, push, notes };
 }
 
 const req = { user: { userId: MANAGER, role: "manager" } } as any;
@@ -139,14 +143,13 @@ const req = { user: { userId: MANAGER, role: "manager" } } as any;
 describe("TeamController.broadcast — T3: one is never mistaken for all", () => {
   it("refuses a broadcast that names neither a target nor an audience", async () => {
     const db = seed();
-    const { controller, gmail, sms } = harness(db);
+    const { controller, sms } = harness(db);
 
     await expect(
       controller.broadcast(req, RID, { message: "Hello" } as any),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     // Nothing left the building on the ambiguous call.
-    expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(sms.sendSms).not.toHaveBeenCalled();
   });
 
@@ -178,26 +181,12 @@ describe("TeamController.broadcast — T3: one is never mistaken for all", () =>
 });
 
 describe("TeamController.broadcast — T4: an opt-out means the same thing on both paths", () => {
-  it("does not email a member who has opted out of email", async () => {
-    const db = seed();
-    db.tables.notification_preferences.push({
-      user_id: SAM,
-      restaurant_id: RID,
-      email_enabled: false,
-      sms_enabled: true,
-    });
-    const { controller, gmail } = harness(db);
-
-    await controller.broadcast(req, RID, {
-      message: "Hello",
-      audience: "everyone",
-    } as any);
-
-    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
-    const to: string[] = gmail.sendEmail.mock.calls[0][0].to;
-    expect(to).not.toContain("sam@example.test");
-    expect(to).toContain("ray@example.test");
-  });
+  // The two email-leg tests that used to live here asserted a real behaviour
+  // that is GONE as of 2026-09-04: a crew message no longer emails anybody,
+  // opted out or not, because the only sender available is the house's shared
+  // vendor mailbox. They are rewritten rather than deleted — the rule they
+  // pinned (an opt-out is honoured) is now carried by the SMS pair below, and
+  // the removal itself is pinned by the block after them.
 
   it("does not text a member who has opted out of SMS", async () => {
     const db = seed();
@@ -212,6 +201,8 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
     await controller.broadcast(req, RID, {
       message: "Hello",
       audience: "everyone",
+      // SMS is no longer a default channel — it has to be asked for by name.
+      channels: ["inbox", "push", "sms"],
     } as any);
 
     const texted = sms.sendSms.mock.calls.map((c: any[]) => c[0].to);
@@ -224,9 +215,73 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
     db.tables.notification_preferences.push({
       user_id: SAM,
       restaurant_id: RID,
-      email_enabled: false,
-      sms_enabled: true,
+      email_enabled: true,
+      sms_enabled: false,
     });
+    const { controller } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+      channels: ["inbox", "push", "sms"],
+    } as any);
+
+    // A send that quietly reaches fewer people than the caller addressed is
+    // the same shape as one that reached everybody, unless it says so.
+    expect(res.suppressed.sms).toBe(1);
+  });
+
+  it("a member with no preferences row still receives — silence is not an opt-out", async () => {
+    const db = seed();
+    const { controller, sms } = harness(db);
+
+    await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+      channels: ["inbox", "push", "sms"],
+    } as any);
+
+    const texted = sms.sendSms.mock.calls.map((c: any[]) => c[0].to).sort();
+    expect(texted).toEqual([
+      "+15550000001",
+      "+15550000002",
+      "+15550000003",
+    ]);
+  });
+});
+
+/**
+ * The email leg is gone, for every caller. (Founder, 2026-09-04.)
+ *
+ * It was not broken — it worked, and that was the problem: a crew message left
+ * through `GmailService`, the single configured `GMAIL_SENDER_EMAIL`
+ * (`communications/gmail.service.ts:78-80`) that procurement writes to vendors
+ * from, so a staff member replying to "Saturday moved to seven" landed in the
+ * vendor thread. It returns when a house has a sender of its own.
+ *
+ * `harness()` hands the controller NO mailbox at all, so these are not just
+ * assertions about a branch not being taken: reintroducing the send would fail
+ * to construct.
+ */
+describe("TeamController.broadcast — a crew message never emails", () => {
+  it("sends no email even when the caller asks for the channel by name", async () => {
+    const db = seed();
+    const { controller } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+      channels: ["inbox", "push", "email"],
+    } as any);
+
+    expect(res.emailed).toBe(0);
+    // A gate a caller can open is not a gate: `email` never survives into the
+    // channels the response reports.
+    expect(res.channels).not.toContain("email");
+  });
+
+  it("counts the addresses it withheld instead of reporting none on file", async () => {
+    const db = seed();
     const { controller } = harness(db);
 
     const res: any = await controller.broadcast(req, RID, {
@@ -234,26 +289,29 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
       audience: "everyone",
     } as any);
 
-    // A send that quietly reaches fewer people than the caller addressed is
-    // the same shape as one that reached everybody, unless it says so.
-    expect(res.suppressed.email).toBe(1);
+    // Three people have an address. Reporting 0 would make the size of what
+    // this change withholds invisible, which is the whole reason it is counted.
+    expect(res.withheldByProduct.email).toBe(3);
+    expect(res.withheldByProduct.reason).toMatch(/shared mailbox/);
+    // NOT folded into the opt-out figure: "the house has no sender" and
+    // "nobody wanted an email" are different facts.
+    expect(res.suppressed.email).toBe(0);
   });
 
-  it("a member with no preferences row still receives — silence is not an opt-out", async () => {
+  it("defaults to inbox and push, so the legacy desk stops texting too", async () => {
     const db = seed();
-    const { controller, gmail } = harness(db);
+    const { controller, sms, notifications, push } = harness(db);
 
-    await controller.broadcast(req, RID, {
+    // No `channels` at all — exactly what the legacy Manager Shift Desk sends.
+    const res: any = await controller.broadcast(req, RID, {
       message: "Hello",
       audience: "everyone",
     } as any);
 
-    const to: string[] = gmail.sendEmail.mock.calls[0][0].to;
-    expect(to.sort()).toEqual([
-      "moe@example.test",
-      "ray@example.test",
-      "sam@example.test",
-    ]);
+    expect(notifications.persistForRestaurant).toHaveBeenCalled();
+    expect(push.sendToUsers).toHaveBeenCalled();
+    expect(sms.sendSms).not.toHaveBeenCalled();
+    expect(res.channels).toEqual(["inbox", "push"]);
   });
 });
 
@@ -313,7 +371,7 @@ describe("TeamController.broadcast — T5: the house's default title is plain", 
 describe("TeamController.broadcast — the channel gate", () => {
   it("sends nothing outbound when the caller names inbox and push", async () => {
     const db = seed();
-    const { controller, gmail, sms, notifications, push } = harness(db);
+    const { controller, sms, notifications, push } = harness(db);
 
     const res: any = await controller.broadcast(req, RID, {
       message: "Saturday's line-up changed — check the grid.",
@@ -321,7 +379,6 @@ describe("TeamController.broadcast — the channel gate", () => {
       channels: ["inbox", "push"],
     } as any);
 
-    expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(sms.sendSms).not.toHaveBeenCalled();
     expect(notifications.persistForRestaurant).toHaveBeenCalled();
     expect(push.sendToUsers).toHaveBeenCalled();
@@ -340,27 +397,20 @@ describe("TeamController.broadcast — the channel gate", () => {
       channels: ["inbox", "push"],
     } as any);
 
-    // Three people have an address and a phone on file and none of them opted
-    // out. Folding this into `suppressed` would let "the manager chose not to
-    // email" read as "nobody wanted an email".
-    expect(res.withheldByCaller).toEqual({ email: 3, sms: 3 });
+    // Three people have a phone on file and none of them opted out. Folding
+    // this into `suppressed` would let "the manager chose not to text" read as
+    // "nobody wanted a text". Email is 0 on both counts because the CALLER did
+    // not withhold it — the product does, and that is its own field.
+    expect(res.withheldByCaller).toEqual({ email: 0, sms: 3 });
     expect(res.suppressed).toEqual({ email: 0, sms: 0 });
+    expect(res.withheldByProduct.email).toBe(3);
   });
 
-  it("still sends on every channel when the caller names none", async () => {
-    const db = seed();
-    const { controller, gmail, sms } = harness(db);
-
-    const res: any = await controller.broadcast(req, RID, {
-      message: "Hello",
-      audience: "everyone",
-    } as any);
-
-    expect(gmail.sendEmail).toHaveBeenCalled();
-    expect(sms.sendSms).toHaveBeenCalled();
-    expect(res.withheldByCaller).toEqual({ email: 0, sms: 0 });
-    expect(res.channels).toEqual(["inbox", "push", "email", "sms"]);
-  });
+  // "still sends on every channel when the caller names none" used to live
+  // here. It asserted the OLD default, and the founder changed it on
+  // 2026-09-04: omitting `channels` now means inbox and push, not all four.
+  // The replacement is "defaults to inbox and push, so the legacy desk stops
+  // texting too" in the block above — same question, current answer.
 
   it("an inbox-only message reaches no push either", async () => {
     const db = seed();

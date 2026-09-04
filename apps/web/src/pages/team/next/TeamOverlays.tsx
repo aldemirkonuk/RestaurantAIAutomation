@@ -29,14 +29,15 @@ import {
 } from 'lucide-react';
 import { HoldToApprove, Panel, Popover, Sheet } from '@/components/mudavym';
 import {
-  broadcast,
   copyWeek,
+  createTeamNote,
   createSchedule,
   createTimeOff,
   publishSchedule,
   reviewTimeOff,
   type Shift,
   type TeamMember,
+  type TeamNotesReadout,
 } from '../../../services/api/team';
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport';
 import { EM, addDays, fmtDayShort, fmtWeekRange, resolveName } from './tm-format';
@@ -223,31 +224,38 @@ export function CopyWeekPanel({
  * one durable.
  */
 
-export interface CrewNoteReceipt {
-  message: string;
-  at: number;
-  audience: 'everyone' | 'selected';
-  targeted: number;
-  notified: number;
-  inbox: boolean;
-  names: string[];
-}
-
+/**
+ * The strip is a READ of the register now, not a memory of this page.
+ *
+ * Until 2026-09-04 it could only report the send it had just made, because
+ * `broadcast` left nothing behind — so an empty strip had to be captioned "not
+ * from here, this session". `team_notes` and `team_note_recipients` (migration
+ * 20260904180000) give a note an author, the audience it named at send time,
+ * and a per-person `openedAt`, so the strip survives a reload and can say who
+ * has read the note as distinct from who has opened the SCHEDULE.
+ *
+ * The two receipts stay apart, deliberately. `schedule_receipts` records
+ * opening the published week; `team_note_recipients.opened_at` records reading
+ * one note. Blending them would make "saw the roster" and "read the message"
+ * the same fact.
+ */
 export function CrewNoteStrip({
   members,
+  notes,
+  notesFailed,
   receipts,
   published,
   weekStart,
-  sent,
   onCompose,
 }: {
   members: TeamMember[] | null;
+  /** `null` until the register answers; `readable: false` is a failed read. */
+  notes: TeamNotesReadout | null;
+  notesFailed: boolean;
   /** `schedule_receipts` rows for the published week; `null` until it answers. */
   receipts: Array<{ member_id: string; seen_at: string }> | null;
   published: boolean;
   weekStart: string;
-  /** The last note this page sent. Not persisted anywhere — see the header. */
-  sent: CrewNoteReceipt | null;
   onCompose: () => void;
 }) {
   const seenNames = useMemo(() => {
@@ -256,32 +264,47 @@ export function CrewNoteStrip({
     return receipts.map((r) => byId.get(r.member_id) ?? 'someone no longer on the roster');
   }, [receipts, members]);
   const crew = (members ?? []).filter((m) => m.status === 'active' && m.accountLinked).length;
+  const latest = notes?.notes[0] ?? null;
+  const unreadable = notesFailed || (notes !== null && !notes.readable);
 
   return (
     <section className="tm-panel" aria-label="Crew note" style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 320px', minWidth: 0 }}>
           <h2 className="tm-panel__title">The week&apos;s note</h2>
-          {sent ? (
-            <>
-              <p className="tm-note">{sent.message}</p>
-              <p className="tm-hint">
-                Sent from this page to{' '}
-                {sent.audience === 'everyone'
-                  ? `the whole active crew — ${sent.targeted} ${sent.targeted === 1 ? 'person' : 'people'}`
-                  : sent.names.join(', ')}
-                , through the in-app inbox
-                {sent.notified > 0 ? ` and ${sent.notified} push` : ' only'}. No email and no
-                SMS left the building. Nothing records a sent note, so this line goes when
-                the page reloads.
-              </p>
-            </>
-          ) : (
-            <p className="tm-quiet">
-              No note has been sent from this page for {fmtWeekRange(weekStart)}. Nothing
-              records past notes either, so an empty strip means &quot;not from here, this
-              session&quot; — never &quot;nobody has said anything&quot;.
+          {unreadable ? (
+            <p className="tm-alert" role="alert">
+              The note register could not be read
+              {notes?.reason ? ` (${notes.reason})` : ''}, so whether anything has been
+              said about this week is unknown — not no.
             </p>
+          ) : notes === null ? (
+            <p className="tm-quiet">Reading the week&apos;s notes…</p>
+          ) : latest === null ? (
+            <p className="tm-note">
+              Nothing has been written about {fmtWeekRange(weekStart)}. That is the
+              register answering, not this page forgetting.
+            </p>
+          ) : (
+            <>
+              <p className="tm-note">{latest.body}</p>
+              <p className="tm-hint">
+                {`Sent to ${latest.addressedCount} ${latest.addressedCount === 1 ? 'person' : 'people'} through ${latest.channels.join(' and ')} — `}
+                {latest.openedCount === 0
+                  ? 'nobody has opened it yet'
+                  : `${latest.openedCount} of ${latest.addressedCount} have opened it: ${latest.recipients
+                      .filter((r) => r.openedAt)
+                      .map((r) => r.name ?? `${EM} name unreadable`)
+                      .join(', ')}`}
+                . No email and no SMS left the building.
+              </p>
+              {notes.notes.length > 1 && (
+                <p className="tm-hint">
+                  {notes.notes.length - 1} earlier note
+                  {notes.notes.length - 1 === 1 ? '' : 's'} about this week.
+                </p>
+              )}
+            </>
           )}
         </div>
         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
@@ -305,8 +328,8 @@ export function CrewNoteStrip({
                 {seenNames.length} of {crew} have opened it: {seenNames.join(', ')}.
               </p>
               <p className="tm-hint">
-                From `schedule_receipts`, which records opening the SCHEDULE — not reading
-                a note.
+                From `schedule_receipts`, which records opening the SCHEDULE — a different
+                fact from reading the note beside it.
               </p>
             </>
           )}
@@ -320,17 +343,17 @@ export function CrewNoteStrip({
 }
 
 /**
- * The composer. Small, always targeted, and it says what it will and will not
- * do before it does it. `broadcast` without `memberIds` used to mean the whole
- * restaurant across four channels, and a control labelled "Message {name}" sent
- * exactly that (ADR 0088/0089); the gateway now 400s a body naming neither, so
- * this sheet always says who.
+ * The composer. Small, always targeted, and it writes a RECORD: the note, its
+ * author, the people it named and a per-person receipt. `broadcast` without
+ * `memberIds` used to mean the whole restaurant across four channels, and a
+ * control labelled "Message {name}" sent exactly that (ADR 0088/0089).
  */
 export function CrewNoteSheet({
   members,
   membersFailed,
   only,
   weekStart,
+  scheduleId,
   onClose,
   onSent,
 }: {
@@ -339,8 +362,9 @@ export function CrewNoteSheet({
   /** A single member id, or null for the whole active crew. */
   only: string | null;
   weekStart: string;
+  scheduleId: string | null;
   onClose: () => void;
-  onSent: (r: CrewNoteReceipt) => void;
+  onSent: () => void;
 }) {
   const [message, setMessage] = useState('');
   const recipients = useMemo(() => {
@@ -351,23 +375,14 @@ export function CrewNoteSheet({
 
   const send = useMutation({
     mutationFn: () =>
-      broadcast({
-        title: `The week of ${weekStart}`,
-        message,
+      createTeamNote({
+        weekStart,
+        body: message,
         memberIds: recipients.map((m) => m.id),
-        // Inline comms: the inbox and the phone, never the house mailbox.
-        channels: ['inbox', 'push'],
+        scheduleId: scheduleId ?? undefined,
       }),
-    onSuccess: (r) => {
-      onSent({
-        message,
-        at: Date.now(),
-        audience: r?.audience ?? 'selected',
-        targeted: r?.recipients?.targeted ?? recipients.length,
-        notified: r?.notified ?? 0,
-        inbox: r?.inbox ?? true,
-        names: recipients.map((m) => resolveName(m).text),
-      });
+    onSuccess: () => {
+      onSent();
       onClose();
     },
   });
@@ -389,7 +404,7 @@ export function CrewNoteSheet({
     >
       <div className="tm-in tm-form">
         <MutationError when={send.isError}>
-          {serverMessage(send.error) ?? 'The note did not send. Nobody was reached.'}
+          {serverMessage(send.error) ?? 'The note was not written, so nothing was sent.'}
         </MutationError>
         <div>
           <span className="tm-label">
@@ -423,9 +438,8 @@ export function CrewNoteSheet({
             onChange={(e) => setMessage(e.target.value)}
           />
           <p className="tm-hint">
-            It lands beside the schedule and in each person&apos;s inbox. Nothing records it
-            afterwards, so it is a message, not a record — say anything that has to survive
-            in the shift&apos;s own note instead.
+            It is kept against this week and each person&apos;s reading of it is recorded,
+            so it is still here after a reload — and you can see who has read it.
           </p>
         </label>
         <div className="tm-actions">

@@ -387,9 +387,12 @@ PAGES = (
         tenant_tokens=("rid", "restaurantId", "activeRestaurantId"),
         tenant_keyed=True,
         # W7 checks shared hooks a page DECLARES. /team declares none: every
-        # query it reads is a `useQuery` in one of its own five files above, so
-        # W6 sees all of them. That is a measurement, not an omission, and it is
-        # printed on every clean run so it cannot be read as "checked and fine".
+        # query it reads is a `useQuery` in one of the TWELVE files above —
+        # eight on the rebuilt half since the 2026-09-04 parity build split it,
+        # four on the legacy one — so W6 sees all of them. That is a
+        # measurement, not an omission, and it is printed on every clean run so
+        # it cannot be read as "checked and fine". Keep this count honest: it is
+        # the sentence a reader trusts instead of counting the tuple.
         imported_query_hooks=(),
     ),
 )
