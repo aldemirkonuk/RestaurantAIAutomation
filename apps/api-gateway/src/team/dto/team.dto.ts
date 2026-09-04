@@ -187,19 +187,17 @@ export class BroadcastDto {
   @IsOptional() @IsIn(["everyone"]) audience?: "everyone";
   @IsOptional() @IsString() title?: string;
   /**
-   * Which channels this message may leave by. OMITTED means today's behaviour,
-   * unchanged — inbox, push, and email/SMS to anyone who has an address and has
-   * not opted out — so the legacy desk sends exactly as it always has.
+   * Which channels this message may leave by. Omitting it means
+   * `["inbox", "push"]`, which since 2026-09-04 is also the most it can ever
+   * be: a crew message no longer sends email or SMS for ANY caller, because the
+   * only senders available are the house's shared mailbox and shared SMS
+   * account — the ones vendors are written from.
    *
-   * It exists because `/team`'s inline crew message is a note ON THE SCHEDULE,
-   * not correspondence: its email leg would go out through `GmailService`,
-   * which is the house's single configured mailbox
-   * (`GMAIL_SENDER_EMAIL`, `communications/gmail.service.ts:78-80`) — the same
-   * address procurement writes to vendors from. The founder's rule for this
-   * surface is that nothing leaves through that mailbox, so the Mudavym
-   * composer names `["inbox", "push"]` and the two outbound legs are never
-   * reached. Naming the channels is how a caller declines a send instead of
-   * hoping nobody has an address on file.
+   * `email` and `sms` are still ACCEPTED VALUES on purpose. A caller that names
+   * one is not rejected; it is told, in `withheldByProduct`, how many people it
+   * would have reached and why it did not. Rejecting the body outright would
+   * make an old caller fail with no explanation, and silently dropping the
+   * channel would let "we told everyone" stay true-looking while being false.
    */
   @IsOptional()
   @IsArray()

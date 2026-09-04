@@ -136,8 +136,12 @@ export function fmtHours(h: number | null): string {
    `public.users` for an `avatar_url` it has never had, so PostgREST answered
    42703, the identity map came back empty, and the backfill wrote the literal
    below into the column for every row it created. The demo tenant's three
-   roster rows still carry it (measured 2026-09-04: 3 of 3, with `email: null`),
-   because fixing a read does not rename rows already written.
+   roster rows carried it (measured 2026-09-04: 3 of 3, with `email: null`),
+   because fixing a read does not rename rows already written. Eleven rows
+   across eight houses were repaired in production the same day
+   (`scripts/repair_team_member_names.py`), and this resolution stays: a house
+   restored from an older backup reproduces exactly one more of these, and the
+   page must show it as "no name on file" rather than as somebody's name.
 
    So the page resolves a name from what it can actually stand behind: the
    linked account first, then a stored name that is not the placeholder, and

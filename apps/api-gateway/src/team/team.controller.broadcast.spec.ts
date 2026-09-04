@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
@@ -21,8 +22,9 @@ const MANAGER = "user-manager";
 const SAM = "user-sam";
 const RAY = "user-ray";
 
-function seed(): StubDb {
-  return makeStubDb({
+function seed(errors: Record<string, { message: string }> = {}): StubDb {
+  return makeStubDb(
+    {
     user_restaurant_access: [
       {
         id: "a1",
@@ -107,11 +109,13 @@ function seed(): StubDb {
         status: "active",
       },
     ],
-    team_settings: [],
-    notification_preferences: [],
-    notifications: [],
-    system_audit_log: [],
-  });
+      team_settings: [],
+      notification_preferences: [],
+      notifications: [],
+      system_audit_log: [],
+    },
+    errors,
+  );
 }
 
 function harness(db: StubDb) {
@@ -120,11 +124,10 @@ function harness(db: StubDb) {
     persistForRestaurant: jest.fn(async () => ({ inserted: 0 })),
   } as any;
   const push = { sendToUsers: jest.fn(async () => undefined) } as any;
-  const sms = { sendSms: jest.fn(async () => ({ success: true })) } as any;
-  // No mailbox is handed in AT ALL. The controller no longer takes one — the
-  // strongest available form of "a crew message never sends email", because a
-  // future edit cannot reintroduce the send without also reintroducing the
-  // dependency, which this line would fail on.
+  // Neither a mailbox NOR an SMS sender is handed in, because the controller no
+  // longer takes either. That is the strongest available form of "a crew
+  // message never sends email or SMS": a future edit cannot reintroduce a send
+  // without also reintroducing the dependency, and this line would fail first.
   const notes = { list: jest.fn(), create: jest.fn(), markOpened: jest.fn() } as any;
   const controller = new TeamController(
     team,
@@ -132,10 +135,9 @@ function harness(db: StubDb) {
     {} as any,
     notifications,
     push,
-    sms,
     notes,
   );
-  return { controller, sms, notifications, push, notes };
+  return { controller, notifications, push, notes };
 }
 
 const req = { user: { userId: MANAGER, role: "manager" } } as any;
@@ -143,14 +145,15 @@ const req = { user: { userId: MANAGER, role: "manager" } } as any;
 describe("TeamController.broadcast — T3: one is never mistaken for all", () => {
   it("refuses a broadcast that names neither a target nor an audience", async () => {
     const db = seed();
-    const { controller, sms } = harness(db);
+    const { controller, notifications, push } = harness(db);
 
     await expect(
       controller.broadcast(req, RID, { message: "Hello" } as any),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     // Nothing left the building on the ambiguous call.
-    expect(sms.sendSms).not.toHaveBeenCalled();
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+    expect(push.sendToUsers).not.toHaveBeenCalled();
   });
 
   it("sends to everyone only when the caller says 'everyone', and reports the reach", async () => {
@@ -184,30 +187,33 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
   // The two email-leg tests that used to live here asserted a real behaviour
   // that is GONE as of 2026-09-04: a crew message no longer emails anybody,
   // opted out or not, because the only sender available is the house's shared
-  // vendor mailbox. They are rewritten rather than deleted — the rule they
-  // pinned (an opt-out is honoured) is now carried by the SMS pair below, and
-  // the removal itself is pinned by the block after them.
+  // vendor mailbox, and the SMS pair that briefly replaced them went the same
+  // way on the same day for the same reason one layer over. They are rewritten
+  // rather than deleted: the rule they pinned — an opt-out is honoured — now
+  // rides on PUSH, which is the only outbound channel left. A channel nobody
+  // can decline is one they will eventually resent, and
+  // `notification_preferences.push_enabled` exists to decline it
+  // (baseline `:3929`).
 
-  it("does not text a member who has opted out of SMS", async () => {
+  it("does not push to a member who has turned push off", async () => {
     const db = seed();
     db.tables.notification_preferences.push({
       user_id: RAY,
       restaurant_id: RID,
       email_enabled: true,
-      sms_enabled: false,
+      sms_enabled: true,
+      push_enabled: false,
     });
-    const { controller, sms } = harness(db);
+    const { controller, push } = harness(db);
 
     await controller.broadcast(req, RID, {
       message: "Hello",
       audience: "everyone",
-      // SMS is no longer a default channel — it has to be asked for by name.
-      channels: ["inbox", "push", "sms"],
     } as any);
 
-    const texted = sms.sendSms.mock.calls.map((c: any[]) => c[0].to);
-    expect(texted).not.toContain("+15550000003");
-    expect(texted).toContain("+15550000002");
+    const pushed: string[] = push.sendToUsers.mock.calls[0][0];
+    expect(pushed).not.toContain(RAY);
+    expect(pushed).toContain(SAM);
   });
 
   it("reports what the opt-outs suppressed rather than silently shrinking the send", async () => {
@@ -216,37 +222,50 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
       user_id: SAM,
       restaurant_id: RID,
       email_enabled: true,
-      sms_enabled: false,
+      sms_enabled: true,
+      push_enabled: false,
     });
     const { controller } = harness(db);
 
     const res: any = await controller.broadcast(req, RID, {
       message: "Hello",
       audience: "everyone",
-      channels: ["inbox", "push", "sms"],
     } as any);
 
     // A send that quietly reaches fewer people than the caller addressed is
     // the same shape as one that reached everybody, unless it says so.
-    expect(res.suppressed.sms).toBe(1);
+    expect(res.suppressed.push).toBe(1);
+    expect(res.recipients.notified).toBe(2);
   });
 
   it("a member with no preferences row still receives — silence is not an opt-out", async () => {
     const db = seed();
-    const { controller, sms } = harness(db);
+    const { controller, push } = harness(db);
 
     await controller.broadcast(req, RID, {
       message: "Hello",
       audience: "everyone",
-      channels: ["inbox", "push", "sms"],
     } as any);
 
-    const texted = sms.sendSms.mock.calls.map((c: any[]) => c[0].to).sort();
-    expect(texted).toEqual([
-      "+15550000001",
-      "+15550000002",
-      "+15550000003",
-    ]);
+    const pushed: string[] = push.sendToUsers.mock.calls[0][0];
+    expect(pushed.sort()).toEqual([MANAGER, RAY, SAM].sort());
+  });
+
+  it("pushes to nobody when the preference register could not be read", async () => {
+    const db = seed({ "notification_preferences:select": { message: "connection reset" } });
+    const { controller, push } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    // The rule the two removed legs used to carry: a failed preference read is
+    // not "nobody opted out". It is skipped and said out loud, because pushing
+    // to somebody who may have declined is the error that cannot be undone.
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+    expect(res.preferencesUnavailable).toBe(true);
+    expect(res.recipients.notified).toBe(0);
   });
 });
 
@@ -259,11 +278,40 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
  * from, so a staff member replying to "Saturday moved to seven" landed in the
  * vendor thread. It returns when a house has a sender of its own.
  *
- * `harness()` hands the controller NO mailbox at all, so these are not just
- * assertions about a branch not being taken: reintroducing the send would fail
- * to construct.
+ * `harness()` hands the controller NO mailbox and no SMS sender, so these are
+ * not just assertions about a branch not being taken. But a spec's own harness
+ * only proves the spec compiles: Nest resolves constructor parameters from DI
+ * metadata, and `CommunicationsModule` still EXPORTS `GmailService`
+ * (`communications.module.ts:95-103`), so a future edit could add the parameter
+ * back and Nest would inject it without a word. The first test below closes
+ * that by reading the controller's own `design:paramtypes` — the same metadata
+ * Nest injects from — so the claim is checked where it is actually decided.
  */
 describe("TeamController.broadcast — a crew message never emails", () => {
+  it("takes no mail or SMS sender in its constructor, as Nest sees it", () => {
+    // `design:paramtypes` is exactly what Nest reads to decide what to inject
+    // (`emitDecoratorMetadata: true`, apps/api-gateway/tsconfig.json:6), so
+    // this is the claim checked at the point it is decided rather than at the
+    // point this file happens to call the constructor.
+    const params = (Reflect.getMetadata("design:paramtypes", TeamController) ??
+      []) as Array<{ name?: string }>;
+    expect(params.length).toBeGreaterThan(0);
+
+    const names = params.map((t) => t?.name);
+    expect(names).not.toContain("GmailService");
+    expect(names).not.toContain("SmsService");
+    // Named positively too, so deleting a real dependency cannot make this
+    // pass by emptying the list.
+    expect(names).toEqual([
+      "TeamService",
+      "ScheduleService",
+      "PerformanceService",
+      "NotificationsService",
+      "ExpoPushService",
+      "NotesService",
+    ]);
+  });
+
   it("sends no email even when the caller asks for the channel by name", async () => {
     const db = seed();
     const { controller } = harness(db);
@@ -298,9 +346,9 @@ describe("TeamController.broadcast — a crew message never emails", () => {
     expect(res.suppressed.email).toBe(0);
   });
 
-  it("defaults to inbox and push, so the legacy desk stops texting too", async () => {
+  it("defaults to inbox and push, which is also the most it can be", async () => {
     const db = seed();
-    const { controller, sms, notifications, push } = harness(db);
+    const { controller, notifications, push } = harness(db);
 
     // No `channels` at all — exactly what the legacy Manager Shift Desk sends.
     const res: any = await controller.broadcast(req, RID, {
@@ -310,8 +358,24 @@ describe("TeamController.broadcast — a crew message never emails", () => {
 
     expect(notifications.persistForRestaurant).toHaveBeenCalled();
     expect(push.sendToUsers).toHaveBeenCalled();
-    expect(sms.sendSms).not.toHaveBeenCalled();
     expect(res.channels).toEqual(["inbox", "push"]);
+  });
+
+  it("sends no SMS even when the caller asks for the channel by name", async () => {
+    const db = seed();
+    const { controller } = harness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+      channels: ["inbox", "push", "sms"],
+    } as any);
+
+    expect(res.texted).toBe(0);
+    expect(res.channels).not.toContain("sms");
+    // Reported, not silently dropped: three people have a phone on file.
+    expect(res.withheldByProduct.sms).toBe(3);
+    expect(res.withheldByProduct.reason).toMatch(/shared SMS number/);
   });
 });
 
@@ -369,9 +433,9 @@ describe("TeamController.broadcast — T5: the house's default title is plain", 
  * every assertion above still describes exactly what it sends.
  */
 describe("TeamController.broadcast — the channel gate", () => {
-  it("sends nothing outbound when the caller names inbox and push", async () => {
+  it("sends nothing outbound but the push when the caller names inbox and push", async () => {
     const db = seed();
-    const { controller, sms, notifications, push } = harness(db);
+    const { controller, notifications, push } = harness(db);
 
     const res: any = await controller.broadcast(req, RID, {
       message: "Saturday's line-up changed — check the grid.",
@@ -379,7 +443,6 @@ describe("TeamController.broadcast — the channel gate", () => {
       channels: ["inbox", "push"],
     } as any);
 
-    expect(sms.sendSms).not.toHaveBeenCalled();
     expect(notifications.persistForRestaurant).toHaveBeenCalled();
     expect(push.sendToUsers).toHaveBeenCalled();
     expect(res.emailed).toBe(0);
@@ -401,9 +464,9 @@ describe("TeamController.broadcast — the channel gate", () => {
     // this into `suppressed` would let "the manager chose not to text" read as
     // "nobody wanted a text". Email is 0 on both counts because the CALLER did
     // not withhold it — the product does, and that is its own field.
-    expect(res.withheldByCaller).toEqual({ email: 0, sms: 3 });
-    expect(res.suppressed).toEqual({ email: 0, sms: 0 });
-    expect(res.withheldByProduct.email).toBe(3);
+    expect(res.withheldByCaller).toEqual({ email: 0, sms: 0, push: 0 });
+    expect(res.suppressed).toEqual({ email: 0, sms: 0, push: 0 });
+    expect(res.withheldByProduct).toMatchObject({ email: 3, sms: 3 });
   });
 
   // "still sends on every channel when the caller names none" used to live

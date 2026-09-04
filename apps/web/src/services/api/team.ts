@@ -294,12 +294,14 @@ export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string
  * out loud is the fix, so this signature will not let a caller stay silent.
  */
 /**
- * `channels` names the channels a send may use. TWO founder decisions of
- * 2026-09-04 changed what this verb does FOR EVERY CALLER, the legacy desk
- * included: a crew message never sends email (the only sender available is the
- * house's shared mailbox, the one vendors are written from), and omitting
- * `channels` now means `['inbox', 'push']` rather than all four — SMS has to be
- * asked for by name. Email returns when a house has a sender of its own.
+ * `channels` names the channels a send may use. Founder decisions of
+ * 2026-09-04, all binding on EVERY caller including the legacy desk: a crew
+ * message sends neither email nor SMS (the only senders available are the
+ * house's shared mailbox and shared SMS account, the ones vendors are written
+ * from), and the set is `['inbox', 'push']` — which is also the most it can be.
+ * `email` and `sms` remain accepted VALUES so a caller naming one is told what
+ * it would have reached under `withheldByProduct` rather than silently losing
+ * the channel. Both return when a house has senders of its own.
  * Gateway half: `apps/api-gateway/src/team/dto/team.dto.ts` + `team.controller.ts`.
  */
 export type BroadcastChannel = 'inbox' | 'push' | 'email' | 'sms'
@@ -307,8 +309,12 @@ export type BroadcastChannel = 'inbox' | 'push' | 'email' | 'sms'
 export interface BroadcastReceipt {
   audience: 'everyone' | 'selected'
   recipients: { targeted: number; notified: number }
-  suppressed: { email: number; sms: number }
-  withheldByCaller?: { email: number; sms: number }
+  /** The RECIPIENTS declined it. Push is the only channel this can be non-zero on. */
+  suppressed: { email: number; sms: number; push?: number }
+  /** This send did not ask for the channel. */
+  withheldByCaller?: { email: number; sms: number; push?: number }
+  /** The house has no sender of its own, with the reason and the count. */
+  withheldByProduct?: { email: number; sms: number; reason: string }
   channels?: BroadcastChannel[]
   preferencesUnavailable: boolean
   notified: number

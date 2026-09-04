@@ -206,10 +206,12 @@ export function CopyWeekPanel({
  * The founder's rule, 2026-09-04: the message sits in the page beside the week
  * it concerns, it always names who it went to, and nothing leaves through the
  * house's vendor mailbox. So the composer sends `channels: ['inbox', 'push']`
- * — the two the product owns — and the gateway's email and SMS legs (which go
- * out through `GmailService`, the single configured `GMAIL_SENDER_EMAIL` that
- * procurement writes to vendors from) are never reached. The gateway half is
- * `dto/team.dto.ts`'s `channels` and the gate in `team.controller.ts`.
+ * — the two the product owns. The gateway's email and SMS legs are gone
+ * entirely as of 2026-09-04: both left through shared senders (the single
+ * configured `GMAIL_SENDER_EMAIL` procurement writes to vendors from, and a
+ * shared SMS account), so a reply landed in the vendor thread and a text came
+ * from an unknown number. The gateway half is `dto/team.dto.ts`'s `channels`
+ * and the `NO_SENDER` gate in `team.controller.ts`.
  *
  * WHAT THE STRIP CAN AND CANNOT SAY. There is exactly one durable read-receipt
  * store on this page and it is `schedule_receipts` (baseline `:5293-5298`,

@@ -237,9 +237,35 @@ export class NotesService {
       );
     }
 
-    // `opened_at IS NULL` in the WHERE clause is what makes "the first open"
-    // the recorded one; a second open must not move the timestamp forward and
-    // quietly turn a day-old read into a fresh one.
+    // ASK FIRST, because the UPDATE below cannot tell two different answers
+    // apart. `.is("opened_at", null)` matching nothing means EITHER "already
+    // open" OR "this note was never addressed to you", and the first is a
+    // no-op while the second is a person reading a note meant for somebody
+    // else. Reporting them with one shape was the whole shape this file's own
+    // comment warned about, and it did it anyway.
+    const { data: row, error: readError } = await this.sb
+      .from("team_note_recipients")
+      .select("id, opened_at")
+      .eq("note_id", noteId)
+      .eq("member_id", memberId)
+      .maybeSingle();
+    if (readError) {
+      this.logger.error(`markOpened lookup failed: ${readError.message}`);
+      throw new InternalServerErrorException(
+        "The read was not recorded, so your manager will still see this as unopened.",
+      );
+    }
+    if (!row) {
+      throw new NotFoundException(
+        "This note was not addressed to you, so there is nothing of yours to mark as read.",
+      );
+    }
+    if (row.opened_at) return { recorded: false, alreadyOpen: true };
+
+    // `opened_at IS NULL` stays in the WHERE clause even after the check
+    // above: two tabs can arrive between the read and the write, and the first
+    // open is the one that counts. A second must not move the timestamp
+    // forward and quietly turn a day-old read into a fresh one.
     const { data, error } = await this.sb
       .from("team_note_recipients")
       .update({ opened_at: new Date().toISOString() })
@@ -254,8 +280,8 @@ export class NotesService {
         "The read was not recorded, so your manager will still see this as unopened.",
       );
     }
-    // No row can mean two things and they are not the same: already open, or
-    // never addressed to this person. Only the first is a success.
+    // Now unambiguous: the row exists, so no match means the race above was
+    // lost and somebody else's write already recorded the open.
     return { recorded: Boolean(data), alreadyOpen: !data };
   }
 }

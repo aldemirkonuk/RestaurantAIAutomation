@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { NotesService } from "./notes.service";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
@@ -156,6 +156,25 @@ describe("NotesService — unopened is a state, not a silence", () => {
 
     const after: any = await svc(db).notes.list(MANAGER, RID, WEEK);
     expect(after.notes[0].openedCount).toBe(1);
+  });
+
+  it("refuses a note that was never addressed to the caller, and says which it is", async () => {
+    const db = seed();
+    await write(db, ["m-ray"]);
+    const noteId = db.tables.team_notes[0].id;
+
+    // NOT the same answer as "already open". The UPDATE alone could not tell
+    // them apart — `.is("opened_at", null)` matches nothing in both cases —
+    // and reporting one shape for both let a person reading somebody else's
+    // note get a quiet success.
+    await expect(svc(db).notes.markOpened(SAM, RID, noteId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    // And nothing of Ray's moved because Sam asked.
+    expect(
+      db.tables.team_note_recipients.find((r: any) => r.member_id === "m-ray")
+        ?.opened_at ?? null,
+    ).toBeNull();
   });
 
   it("does not move the timestamp when the same person opens it again", async () => {

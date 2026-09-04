@@ -57,17 +57,33 @@
  * has not declined anything.
  */
 
-export type BroadcastChannel = "email" | "sms";
+/**
+ * `push` joined this on 2026-09-04, when the founder removed the email and SMS
+ * legs from a crew broadcast (the only senders available are the house's shared
+ * mailbox and a shared SMS account). Push became the ONLY outbound channel, and
+ * a channel nobody can decline is a channel that will eventually be resented —
+ * so the opt-out rule moved onto it rather than lapsing with the two legs it
+ * used to govern.
+ */
+export type BroadcastChannel = "email" | "sms" | "push";
 
 export interface ChannelPreferences {
   /** user ids that have turned this channel OFF. */
   optedOut: Record<BroadcastChannel, Set<string>>;
 }
 
-/** The column each broadcast channel is governed by. Both exist; see above. */
+/**
+ * The column each broadcast channel is governed by. All three exist:
+ * `notification_preferences.email_enabled`, `.push_enabled` and `.sms_enabled`
+ * (baseline `20260805000000_baseline_from_production.sql:3928-3930`). Named
+ * explicitly rather than derived, so a column that stops existing fails the
+ * read-columns guard instead of silently reading `undefined` — which is how
+ * `recipient-resolver.service.ts` came to be backwards on two channels.
+ */
 const CHANNEL_COLUMN: Record<BroadcastChannel, string> = {
   email: "email_enabled",
   sms: "sms_enabled",
+  push: "push_enabled",
 };
 
 /**
@@ -95,19 +111,23 @@ export async function loadChannelOptOuts(
   userIds: string[],
 ): Promise<ChannelPreferences | null> {
   const result: ChannelPreferences = {
-    optedOut: { email: new Set<string>(), sms: new Set<string>() },
+    optedOut: {
+      email: new Set<string>(),
+      sms: new Set<string>(),
+      push: new Set<string>(),
+    },
   };
   if (!userIds.length) return result;
 
   const { data, error } = await sb
     .from("notification_preferences")
-    .select("user_id, email_enabled, sms_enabled")
+    .select("user_id, email_enabled, sms_enabled, push_enabled")
     .in("user_id", userIds);
 
   if (error) return null;
 
   for (const prefs of data ?? []) {
-    for (const channel of ["email", "sms"] as BroadcastChannel[]) {
+    for (const channel of ["email", "sms", "push"] as BroadcastChannel[]) {
       if (!channelAllowed(prefs, channel)) {
         result.optedOut[channel].add(prefs.user_id);
       }

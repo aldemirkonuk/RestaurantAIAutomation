@@ -103,25 +103,40 @@ arrives in the middle, a menu hangs off its own control):
   SCHEDULE, not reading a note.
 - The composer is a small `Sheet` and is **always targeted** — named members, or
   the published week's active linked crew — never an unnamed fan-out (ADR 0089).
-- **A crew message never sends email — for EVERY caller, the legacy desk
-  included** (founder, 2026-09-04). The leg is deleted from
-  `team.controller.ts`, and the controller no longer takes a `GmailService` at
-  all, so reintroducing the send would fail to construct. It was not broken: it
-  worked, and left through `GmailService`, the single configured
+- **A crew message never sends email OR SMS — for EVERY caller, the legacy desk
+  included** (founder, 2026-09-04). Neither was broken: both worked, and that
+  was the problem. Email left through `GmailService`, the single configured
   `GMAIL_SENDER_EMAIL` (`communications/gmail.service.ts:78-80`) that
   procurement writes to vendors from — a staff member replying to "Saturday
-  moved to seven" landed in the vendor thread. It returns when a house has a
-  sender of its own (ADR 0114 / the composer).
-- **The default channel set is `['inbox', 'push']`**, not all four. An omitted
-  `channels` used to mean "every channel this person has an address for" — the
-  same absence-read-as-intent shape ADR 0088 T3 removed from the audience — so
-  the legacy desk stops texting too. SMS is still reachable, by name only, and
-  nothing asks today.
-- **What was withheld is counted, in three separate fields.**
+  moved to seven" landed in the vendor thread — and the SMS sender is a shared
+  account too, so a text arrived from an unknown shared number. Both return when
+  a house has senders of its own, "as long as the third-party connections are
+  well built" (founder; §13.7c).
+- **The channel set is `['inbox', 'push']`, and that is the most it can be.** An
+  omitted `channels` used to mean "every channel this person has an address for"
+  — the same absence-read-as-intent shape ADR 0088 T3 removed from the audience.
+- **The removal is checked where Nest decides it.** `TeamController` takes
+  neither a `GmailService` nor an `SmsService`, and
+  `team.controller.broadcast.spec.ts` asserts the controller's own
+  `design:paramtypes` — the metadata Nest injects from — names exactly its six
+  real dependencies. A spec harness alone would not have held this:
+  `CommunicationsModule` still exports `GmailService`
+  (`communications.module.ts:95-103`), so re-adding the parameter would have
+  resolved silently.
+- **Naming a removed channel is REPORTED, never silently dropped.** A caller
+  that asks for `email` or `sms` is not rejected; it is told how many people it
+  would have reached and why it did not.
+- **What was withheld is counted, in three separate fields, per channel.**
   `suppressed` (the recipients opted out) · `withheldByCaller` (this send did
-  not ask for the channel) · `withheldByProduct` (the house has no sender, with
-  the reason and the number of addresses). Folding them together would let "the
-  house has no mailbox" read as "nobody wanted an email".
+  not ask for the channel) · `withheldByProduct` (the house has no sender of its
+  own, with the reason and the count). Folding them would let "the house has no
+  mailbox" read as "nobody wanted an email".
+- **The opt-out moved onto push.** It used to govern the two legs that are now
+  gone, and push is the only outbound channel left — a channel nobody can
+  decline is one they will eventually resent.
+  `notification_preferences.push_enabled` exists and says exactly that (baseline
+  `:3929`). A preference register that cannot be READ skips the push and says so
+  (`preferencesUnavailable`), rather than pushing to people who may have said no.
 - **A note is a RECORD, since 2026-09-04** (migration `20260904180000`,
   `team_notes` + `team_note_recipients`, `team/notes.service.ts`). It has an
   author, the audience it named at send time, and a per-person `opened_at`, so
@@ -367,25 +382,32 @@ dashboard.md §7.
 
 ### Filed by the parity pass, 2026-09-04
 
-- **The three roster rows still read "Team member" in the database.** The read
-  is fixed and the page now shows the linked account's real name ("Demo User",
-  "Sarah Johnson", "David Chen" — measured through
-  `GET /restaurants/:rid/members`, which never had the bug), but a repair to a
-  read does not rename rows already written. `display_name` stays the
-  placeholder until someone saves the Edit sheet, which prefills the account's
-  name for exactly that reason. **No data migration was run**: renaming
-  production rows is not this branch's, and the page does not need it.
+- ~~**The three roster rows still read "Team member" in the database.**~~
+  Superseded by the repair below: the read was fixed on 2026-09-04 and the rows
+  were renamed the same day. The page's own name resolution stays regardless —
+  it is what makes a future occurrence visible instead of silent.
 - ~~**Nothing records a sent crew note.**~~ **Closed 2026-09-04** — migration
   `20260904180000` adds `team_notes` and `team_note_recipients`, and
   `team/notes.service.ts` writes, reads and receipts them. What is still open on
   it: a note cannot be edited or withdrawn (there is no update route and no
   delete route, deliberately — a note a manager can rewrite after it was read is
   not a record), and the strip shows the newest note in full and counts the rest.
-- **The three roster rows are still named "Team member" until somebody runs the
-  repair.** `scripts/repair_team_member_names.py` proposes one name per row from
-  the linked account, dry-run by default, `--apply` to write, and reports every
-  row it will not touch. **It has not been run against production by this
-  session** — the parent runs it on the founder's word.
+- ~~**The roster rows are still named "Team member".**~~ **Repaired in
+  production 2026-09-04.** `scripts/repair_team_member_names.py --apply`
+  renamed **eleven rows across eight houses** from their linked accounts, and
+  the re-check came back clean: no `team_members` row carries the placeholder
+  any more. Each repaired row also carries `repaired from the linked account
+  2026-09-04` in `notes`, so the change is legible on the row and not only in
+  this note. The demo tenant's three rows were part of that eleven.
+
+  The measurement that made it eleven rather than three is worth keeping: the
+  defect was never demo-only. Every house whose roster was backfilled while the
+  identity read was broken got the same literal, and nobody could have seen it
+  from one tenant. The script stays in the tree — a house restored from an old
+  backup, or an access row created before the gateway fix reached it, would
+  reproduce exactly one more of these — and the page renders "no name on file"
+  rather than the placeholder either way, so a future occurrence is visible
+  instead of silent.
 - **Nothing records that a renewal was requested**, so *Request renewal* reports
   a moment and never a state (unchanged; §13.2b).
 - **Nothing records that cover was offered**, for the same reason — the
@@ -447,7 +469,7 @@ and "complete" was reading the absence of a bug report as the absence of bugs.
 | Check | Evidence |
 |---|---|
 | Publishing a week is a real event | `schedule.service.ts` sets `status:'published'` and writes a restaurant-wide notification deep-linked back to `/team?schedule=…&week=…`. It also **clears `schedule_receipts`** — which the old row listed as a feature; since ADR 0088 that clearing requires `resetReceipts: true` and reports `receiptsCleared`, because destroying the record of who has seen the schedule is not a side effect a click should have |
-| Broadcast reaches four channels | In-app notification + web push + email + SMS (`team.controller.ts`). Since ADR 0088 it must name its audience, and it honours `notification_preferences` opt-outs the scheduled mailer already honoured |
+| ~~Broadcast reaches four channels~~ **Broadcast reaches two** | **Corrected 2026-09-04.** It reached four — in-app notification, web push, email and SMS — and the founder removed the two outbound legs that day for every caller: the only senders available are the house's shared mailbox and shared SMS account, the ones vendors are written from. It is now the in-app inbox and web push, it must still name its audience (ADR 0088), and the `notification_preferences` opt-out it honoured on email and SMS now governs **push** (`push_enabled`, baseline `:3929`) — the channel it has left. Held by `team.controller.broadcast.spec.ts`, including an assertion on the controller's DI metadata |
 | Performance numbers are not invented | `PerformancePanel.tsx:3` states the rule explicitly — *"'no data yet' state (never mock numbers) until sales are attributed"* — and honours it. Contrast `/reports` (reports.md §10) |
 | Mutations report failure | Every mutation says so — an `onError` toast on the legacy half, an on-screen `role="alert"` line on the redesigned half, which mounts no toaster (`TeamNext.tsx` `CoverageRuleForm`/`GapRow`/`CertRow`). **True since ADR 0089, false when this row was first written.** Seven had none: call-out (`ManagerShiftDesk.tsx:303-306`), assign cover (`:331-334`), delete shift (`editors.tsx:84-87`), remove member (`:202-205`), delete rule (`OpsRulesPanel.tsx:97-104`), delete cert (`:212-218`), acknowledge (`MyShifts.tsx:38-44`). A failed delete showed the user nothing at all |
 | Reads report failure | Since ADR 0089. The four legacy desk queries and `MyShifts`'s `my-week` had no `isError` branch, so a dead gateway rendered *"No team members yet"*, `0 active`, an empty task rail under a green tick, *"Publish readiness: Clear"* on all three `?? 0` rows, and seven days of *"Off"*. Both halves now carry the two-sentence banner |
@@ -504,7 +526,8 @@ be hollow about.
 | Write | Downstream reaction |
 |---|---|
 | Publish week | Restaurant-wide notification (`/notifications` inbox), receipts cleared, staff `my-week` changes |
-| Broadcast | Notification + push + email + SMS (`team.controller.ts:350-380`) |
+| Broadcast | Notification + push. **Corrected 2026-09-04**: the email and SMS legs were removed for every caller (see §10) and the push honours `notification_preferences.push_enabled` |
+| Crew note (`POST …/team/notes`) | A `team_notes` row + one `team_note_recipients` row per addressee, then the same notification + push. The note is readable afterwards and carries a per-person `opened_at` |
 | Acknowledge | `schedule_receipts` row — the manager's "seen" column |
 | Claim cover / callout | Shift assignment changes for both members |
 | Sales ingest | `…/members/:id/performance` becomes non-empty |
@@ -586,6 +609,12 @@ Nothing below is built. This is the proposal and its cost, written by the
 `/settings` session so `/team`'s own session inherits the measurement rather than
 re-deriving it.
 
+5a. ~~**Repair the stored placeholders.**~~ **Done 2026-09-04** —
+   `scripts/repair_team_member_names.py --apply` against production: eleven rows
+   across eight houses renamed from their linked accounts, re-check clean (§9).
+   The script is kept rather than deleted, because the condition that produced
+   the rows can recur from a restore.
+
 6. **A real shift import.** `components/team/ShiftImportModal.tsx`'s apply path
    was a simulation and is now disabled with the reason on the modal
    (`ShiftImportModal.test.tsx` pins "no success without an import"). Building
@@ -600,12 +629,32 @@ re-deriving it.
    it: a note cannot be edited or withdrawn, and there is no digest of a week's
    notes for someone joining mid-week.
 
-7a. **Email returns when a house has a sender of its own.** The crew broadcast's
-   email leg was removed for every caller on 2026-09-04 because the only sender
-   available is the house's shared mailbox, the one vendors are written from.
-   Restoring it needs a per-house sender (ADR 0114 / the composer) and nothing
-   else — the channel vocabulary already carries `email`, and the gate refuses
-   it in one line (`team.controller.ts`, `may()`).
+7a. **Email and SMS return when a house has senders of its own.** Both legs were
+   removed for every caller on 2026-09-04: the only senders available are the
+   house's shared mailbox and its shared SMS account, the ones vendors are
+   written from. Restoring either needs a per-house sender and nothing else —
+   the channel vocabulary already carries both values, the gate refuses them in
+   one line (`team.controller.ts`, `NO_SENDER`), and a caller that names one is
+   told how many people it would have reached under `withheldByProduct`.
+
+7c. **The founder's follow-on, verbatim (2026-09-04):** *"for each individual
+   having their phone connected helps us use their connection to message and use
+   freely"*, and the condition he set on restoring either leg: *"as long as the
+   third-party connections are well built"*.
+
+   Nothing here is built, and this note is a POINTER, not a design. It says: the
+   way out of a shared sender is not a better shared sender but a per-person
+   connected one — the message leaves through the individual's own channel, so
+   there is no house mailbox for a reply to land in and no unknown number for a
+   text to arrive from. That reframes the sender question from "buy a per-house
+   domain" to "let a person connect their phone", which is a different piece of
+   work with different consent, revocation and liability questions.
+
+   **The parent is dispatching messaging-sender research on it.** Do not build
+   against this line: the questions it opens — what "connected" means, who may
+   send as whom, what happens when a person leaves, and whether a manager
+   messaging staff through a staff member's own connection is a thing a house
+   should be able to do at all — are exactly what that research is for.
 
 7b. **RETIRE-ON-FLAG — what happens to the legacy desk, decided.** The legacy
    Manager Shift Desk retires **the day the flag turns on for a house**: from

@@ -19,7 +19,6 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ExpoPushService } from "../push/expo-push.service";
 import { NotesService } from "./notes.service";
-import { SmsService } from "../communications/sms.service";
 import { TeamService } from "./team.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
@@ -61,7 +60,6 @@ export class TeamController {
     private readonly performance: PerformanceService,
     private readonly notifications: NotificationsService,
     private readonly push: ExpoPushService,
-    private readonly sms: SmsService,
     private readonly notes: NotesService,
   ) {}
 
@@ -398,74 +396,60 @@ export class TeamController {
      * RECIPIENTS declined, so a smaller number is never mistaken for a smaller
      * audience.
      *
-     * TWO CHANGES OF DEFAULT, 2026-09-04 (founder). Both affect EVERY caller,
-     * the legacy desk included, and both are stated on the surfaces that send.
+     * THREE CHANGES OF DEFAULT, 2026-09-04 (founder). All affect EVERY caller,
+     * the legacy desk included, and all are stated on the surfaces that send.
      *
      * 1. **A crew message never sends email.** It is not that the send was
      *    unreliable — it worked. It left through `GmailService`, which is the
      *    house's single configured mailbox (`GMAIL_SENDER_EMAIL`,
      *    `communications/gmail.service.ts:78-80`), the same address procurement
      *    writes to vendors from. A staff member replying to "Saturday moved to
-     *    seven" landed in the vendor thread. Naming `email` in `channels` no
-     *    longer opens it: the leg is gone from this method, and it returns when
-     *    a house has a sender of its own (ADR 0114 / the composer).
-     * 2. **The default channel set is `["inbox", "push"]`**, not all four. The
-     *    legacy desk names no channels, and an omitted field used to mean "use
-     *    every channel this person has an address for" — the same
-     *    absence-read-as-intent shape ADR 0088 T3 removed from the audience.
-     *    SMS is still reachable, but only by asking for it by name, and nothing
-     *    asks today.
+     *    seven" landed in the vendor thread.
+     * 2. **A crew message never sends SMS**, for the same reason one layer
+     *    over: the SMS sender is a shared account too, and a text from an
+     *    unknown shared number is a worse version of the same problem. Both
+     *    return when a house has senders of its own, "as long as the
+     *    third-party connections are well built" (founder) — see team.md §13.7c.
+     * 3. **The channel set is `["inbox", "push"]`, and that is all there is.**
+     *    An omitted `channels` used to mean "every channel this person has an
+     *    address for" — the same absence-read-as-intent shape ADR 0088 T3
+     *    removed from the audience.
+     *
+     * NAMING A REMOVED CHANNEL IS REPORTED, NEVER SILENTLY DROPPED. A caller
+     * that asks for `email` or `sms` gets the count of people it would have
+     * reached back under `withheldByProduct`, with the reason. A gate that
+     * quietly shrinks a send is how "we told everyone" becomes untrue.
+     *
+     * AND THE OPT-OUT MOVED ONTO PUSH. It used to govern the two legs that are
+     * now gone; push is the only outbound channel left, and a channel nobody
+     * can decline is one they will eventually resent.
+     * `notification_preferences.push_enabled` exists and says exactly that
+     * (baseline `:3929`).
      */
-    const DEFAULT_CHANNELS: Array<"inbox" | "push" | "sms"> = ["inbox", "push"];
+    const DEFAULT_CHANNELS: Array<"inbox" | "push"> = ["inbox", "push"];
     const allowed = dto.channels ?? DEFAULT_CHANNELS;
+    /** The channels this house has no sender of its own for. */
+    const NO_SENDER: ReadonlyArray<"email" | "sms"> = ["email", "sms"];
     const may = (channel: "inbox" | "push" | "email" | "sms"): boolean =>
-      // `email` is never permitted, however it is asked for. A gate a caller
-      // can open is not a gate; the house has no sender to open it with.
-      channel !== "email" && allowed.includes(channel);
+      // A gate a caller can open is not a gate: neither removed channel is
+      // permitted however it is asked for.
+      !NO_SENDER.includes(channel as "email" | "sms") && allowed.includes(channel);
 
     const roster = await this.team.listMembers(userId, rid);
     const targets = named
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
       : roster.filter((m: any) => m.status === "active" && m.accountLinked);
     const audience: "everyone" | "selected" = named ? "selected" : "everyone";
-
-    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
-    // when the caller named targets. A renewal request addressed to one person
-    // must never read as a restaurant-wide announcement (team-audit.md).
-    if (may("inbox"))
-      await this.notifications.persistForRestaurant(
-      rid,
-      {
-        type: "system",
-        title: dto.title ?? "Team broadcast",
-        message: dto.message,
-        priority: "high",
-        actionUrl: "/team",
-        actionLabel: "Open Team",
-      },
-      named
-        ? { onlyUserIds: targets.map((m: any) => m.user_id).filter(Boolean) }
-        : {},
-    );
-
     const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
-    if (userIds.length && may("push")) {
-      await this.push.sendToUsers(userIds, {
-        title: dto.title ?? "Message from your manager",
-        body: dto.message,
-        priority: "high",
-        data: { type: "team_broadcast", actionUrl: "/team" },
-      });
-    }
 
-    // The same opt-out register the scheduled jobs read. `null` means the read
-    // FAILED, which is not the same as "nobody opted out" — so the email and
-    // SMS legs are skipped and said out loud rather than sent to people who may
-    // have declined ([[absence-reported-as-health]]).
+    // Read BEFORE anything is sent, because push is now governed by it. `null`
+    // means the read FAILED, which is not the same as "nobody opted out" — the
+    // push leg is then skipped and said out loud rather than sent to people who
+    // may have declined ([[absence-reported-as-health]]).
     const optOuts = await this.team.channelOptOuts(userIds);
     const preferencesUnavailable = optOuts === null;
 
-    const wants = (m: any, channel: "email" | "sms"): boolean => {
+    const wants = (m: any, channel: "push"): boolean => {
       if (!optOuts) return false;
       // An account-less roster entry has no user id and therefore no
       // preferences row it could ever have written. It has not opted out.
@@ -473,63 +457,74 @@ export class TeamController {
       return !optOuts.optedOut[channel].has(m.user_id);
     };
 
-    // Counted, not sent: how many people COULD have been emailed is the size of
-    // what this change withholds, and reporting 0 addresses would hide it.
-    const allEmails = targets
-      .map((m: any) => [m, m.email || m.linkedUser?.email] as const)
-      .filter((pair): pair is readonly [any, string] => !!pair[1]);
-    const allPhones = targets
-      .map((m: any) => [m, m.phone] as const)
-      .filter((pair): pair is readonly [any, string] => !!pair[1]);
+    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
+    // when the caller named targets. A renewal request addressed to one person
+    // must never read as a restaurant-wide announcement (team-audit.md).
+    if (may("inbox"))
+      await this.notifications.persistForRestaurant(
+        rid,
+        {
+          type: "system",
+          title: dto.title ?? "Team broadcast",
+          message: dto.message,
+          priority: "high",
+          actionUrl: "/team",
+          actionLabel: "Open Team",
+        },
+        named ? { onlyUserIds: userIds } : {},
+      );
 
-    const phones = may("sms")
-      ? allPhones.filter(([m]) => wants(m, "sms")).map(([, p]) => p)
+    const pushable = may("push")
+      ? targets.filter((m: any) => m.user_id && wants(m, "push"))
       : [];
-    // What the RECIPIENTS declined, separately from what the CALLER declined
-    // and from what the PRODUCT withholds. Folding them together would let
-    // "the house has no sender" read as "nobody wanted an email".
+    const pushIds = pushable.map((m: any) => m.user_id);
+    if (pushIds.length) {
+      await this.push.sendToUsers(pushIds, {
+        title: dto.title ?? "Message from your manager",
+        body: dto.message,
+        priority: "high",
+        data: { type: "team_broadcast", actionUrl: "/team" },
+      });
+    }
+
+    // Counted, not sent: how many people COULD have been reached on a removed
+    // channel is the size of what this decision withholds, and reporting 0
+    // would hide it.
+    const allEmails = targets.filter((m: any) => m.email || m.linkedUser?.email);
+    const allPhones = targets.filter((m: any) => m.phone);
+
+    // Three different reasons a person did not get something, kept apart.
+    // Folding them would let "the house has no sender" read as "nobody wanted
+    // a message", which is a different fact about the house.
     const suppressed = {
       email: 0,
-      sms: may("sms") ? allPhones.length - phones.length : 0,
+      sms: 0,
+      push: may("push") ? userIds.length - pushIds.length : 0,
     };
     const withheldByCaller = {
       email: 0,
-      sms: may("sms") ? 0 : allPhones.length,
+      sms: 0,
+      push: may("push") ? 0 : userIds.length,
     };
     const withheldByProduct = {
       email: allEmails.length,
+      sms: allPhones.length,
       reason:
-        "a crew message would leave through the house's shared mailbox, the one vendors are written from",
+        "a crew message would leave through the house's shared mailbox and shared SMS number, the ones vendors are written from; both return when this house has senders of its own",
     };
 
     const emailed = 0;
-    let texted = 0;
-    if (phones.length) {
-      for (const phone of phones) {
-        try {
-          const res = await this.sms.sendSms({
-            to: phone,
-            message: dto.message,
-          });
-          if (res?.success) texted += 1;
-        } catch {
-          /* soft-fail */
-        }
-      }
-    }
+    const texted = 0;
 
     return {
       audience,
-      recipients: {
-        targeted: targets.length,
-        notified: may("push") ? userIds.length : 0,
-      },
+      recipients: { targeted: targets.length, notified: pushIds.length },
       suppressed,
       withheldByCaller,
       withheldByProduct,
-      channels: allowed.filter((c) => c !== "email"),
+      channels: allowed.filter((c) => !NO_SENDER.includes(c as "email" | "sms")),
       preferencesUnavailable,
-      notified: may("push") ? userIds.length : 0,
+      notified: pushIds.length,
       emailed,
       texted,
       inbox: may("inbox"),
