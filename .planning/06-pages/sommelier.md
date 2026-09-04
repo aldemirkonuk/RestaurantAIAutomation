@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[wines]]"]
 ---
 
@@ -93,6 +93,8 @@ none user-visible. (`wineops.sommelier.model` is a localStorage key, `SommelierA
 
 ---
 
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the page calls the Python orchestrator directly from the browser (`SommelierAI.tsx:156,173-174`; down locally) and answers every question — three manager questions and one guest pairing — with the same honest "currently unavailable" message; the offline fallback for low-stock/reorder questions (`:195-233`) is dead code because `lib/wine-library.ts:38-39` hardcodes `liveStock: null, threshold: 6` for every wine (defect 4). No guest-facing route exists in `App.tsx`; the only public route is the vendor's B2B catalogue.
+
 ## 10. Maturity — **hollow**
 
 A 721-line chat product with no chat backend. Everything around the model call is real;
@@ -123,6 +125,8 @@ the model call is not.
   FAB (`guidance/components/WineAgentFab.tsx:37-39`), the Help card (`pages/Help.tsx:173-176`)
   and the Learn panel (`guidance/components/LearnPanel.tsx:227-233`) all land here. The
   concept's entire surface area now resolves to a page whose backend is missing.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** still hollow, and honestly so: a failure message rather than a fabricated answer. With a night of real sales on the tenant, the product cannot answer "what sold best" from any surface a manager would ask.
 
 ## 11. Data flow
 

@@ -5,7 +5,7 @@ import {
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
-import { normalizeUom, toBottles, Uom } from "./document-types";
+import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import {
   reconciliationVerdict,
@@ -68,33 +68,41 @@ export async function settledEventId(
 
 const SYSTEM_PROMPT = `You are reading a beverage distributor's delivery paperwork for a restaurant's back office.
 
-CLASSIFY the document first. It is one of:
-- "invoice": states prices and an amount owed.
-- "packing_slip": lists what shipped, usually WITHOUT prices. Often titled packing slip, delivery note, or ASN.
-- "credit_memo": a credit or adjustment against an earlier invoice.
+CLASSIFY the document first. It is exactly one of these twelve:
+- "invoice": states prices and an amount owed. A Turkish e-Fatura or fatura is an invoice.
+- "packing_slip": lists what shipped, usually WITHOUT prices. Often titled packing slip or ASN.
+- "delivery_note": a despatch advice that travels WITH the goods and carries no money — a Turkish irsaliye or e-İrsaliye, a bordro, a European delivery note. If it names quantities and a vehicle or a driver and prints no prices, it is this, not a packing_slip.
+- "receiving_advice": OUR OWN door count, written by the receiving restaurant rather than the vendor. It records what was counted at the door, not what was shipped or billed.
+- "credit_memo": a credit or adjustment against an earlier invoice (a Turkish iade faturası is the same document issued the other way).
 - "delivery_receipt": a signature/proof-of-delivery sheet with little or no line detail.
 - "statement": a period roll-up of several invoices.
-- "unknown": anything else.
+- "price_list": a vendor price sheet or quotation. Prices with no quantities ordered and no amount owed.
+- "portal_export": a CSV, spreadsheet or PDF pulled out of a distributor portal (Sysco/MOXē, Dot, Provi and the like). Machine-laid-out columns, often several documents' worth of rows, and usually an export header or a filename banner rather than a letterhead.
+- "purchase_order": what WE asked for, before anything shipped.
+- "informal_note": a handwritten slip, a photographed scrap of paper, or a note from an unregistered supplier (a farmer, a market stall). It is a legally normal transaction, not a broken document — classify it as itself so it does not sit in review ageing.
+- "unknown": anything else. Use this when you genuinely cannot tell; do not stretch one of the eleven to fit.
 
-A document with no prices is almost certainly a packing slip, NOT an invoice. This distinction matters more than any other field: a packing slip is the distributor's own statement of what shipped, and mislabelling one as an invoice destroys that evidence.
+A document with no prices is almost certainly a packing_slip or a delivery_note, NOT an invoice. This distinction matters more than any other field: a shipping document is the distributor's own statement of what shipped, and mislabelling one as an invoice destroys that evidence.
 
 EXTRACT, transcribing only what is printed:
 - docNumber (invoice/slip number), docDate (ISO), poNumber, referencesDocNumber (an invoice a credit memo adjusts, or the packing slip an invoice bills)
 - vendorName
 - header money: subtotal, freight, fuelSurcharge, splitCaseFee, deliveryFee, depositTotal, tax, otherCharges, discountTotal, total
-- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, lineTotal, allowance, deposit
+- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit
 
 RULES
 - Transcribe, never compute. If a line total is not printed, leave it null; do not multiply.
 - Never invent a value to make the arithmetic work. A document that does not add up must come back not adding up — that is a signal, and smoothing it over hides the error we exist to catch.
 - uom is one of: bottle, case, keg, pack, split_case, each, liter. Use what the document says.
 - packSize is bottles per case when stated (a "12/750ml" case is packSize 12). Null if not stated — do not assume 12.
+- priceBaseQty / priceBaseUom are the quantity the UNIT PRICE is stated for, and its unit — ONLY when the document prints it. "142,00 / KS(12)" is priceBaseQty 12, priceBaseUom "bottle"; "22.00 / BT" is priceBaseQty 1, priceBaseUom "bottle". Null if not stated — do not assume 12, exactly as for packSize. Getting this wrong is a factor-of-twelve error on the line.
 - Free goods: only set a line's allowance/zero price if the document itself says so.
 - Money as plain numbers, no currency symbols or thousands separators.
+- "printed": alongside each line and alongside the document totals, return the LITERAL text the page shows for money and quantity fields, exactly as printed — keep the vendor's own grouping and decimal marks ("1.704,00" stays "1.704,00", "142,00 / KS(12)" stays whole). Line keys: qty, unitPrice, lineTotal, allowance, deposit. Document keys: subtotal, tax, freight, total. Omit a key you did not read; never write "" and never rewrite the number into our format.
 - Anything illegible: null, and say so in "unreadable".
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"lineTotal":null,"allowance":null,"deposit":null}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"printed":{}}],"unreadable":[]}`;
 
 type MediaType =
   | "image/jpeg"
@@ -276,6 +284,20 @@ export class DocumentExtractorService {
           const resolved: Uom = uom ?? "each";
           const qty = num(l?.qty) ?? 0;
           const packSize = Math.max(1, Math.round(num(l?.packSize) ?? 1));
+
+          // BT-149/BT-150. Only what the page printed: `priceBaseQty` stays
+          // NULL when the model did not read one, exactly as `packSize` does,
+          // because a guessed base of 12 is a factor-of-twelve error on the
+          // line. An unreadable base UNIT is refused rather than defaulted to
+          // `bottle` for the same reason `normalizeUom` refuses elsewhere.
+          const priceBaseQty = num(l?.priceBaseQty);
+          const rawBaseUom = l?.priceBaseUom ? String(l.priceBaseUom) : null;
+          const priceBaseUom = normalizeUom(rawBaseUom);
+          if (rawBaseUom && !priceBaseUom)
+            warnings.push(
+              `Line ${i + 1}: unrecognised price base unit "${rawBaseUom}" — the printed price basis was not applied.`,
+            );
+
           return {
             lineNo: i + 1,
             vendorSku: str(l?.vendorSku),
@@ -290,9 +312,12 @@ export class DocumentExtractorService {
             // billable comparison on a model's guess would hide a real overbill.
             freeGoodsQty: 0,
             unitPrice: num(l?.unitPrice),
+            priceBaseQty,
+            priceBaseUom,
             lineTotal: num(l?.lineTotal),
             allowance: num(l?.allowance),
             deposit: num(l?.deposit),
+            ...spreadPrinted(l?.printed),
             poNumber: str(parsed.poNumber),
           };
         })
@@ -328,6 +353,7 @@ export class DocumentExtractorService {
       discountTotal: num(parsed.discountTotal),
       total: num(parsed.total),
       lines,
+      ...spreadPrinted(parsed.printed),
       computedLinesTotal: null,
       tieOutDelta: null,
       tiesOut: null,
@@ -356,17 +382,22 @@ export class DocumentExtractorService {
     return withTieOut;
   }
 
+  /**
+   * File the model's answer against the ONE vocabulary (`DOC_TYPES`).
+   *
+   * Derived from `DOC_TYPES` rather than repeating a list, because the two
+   * copies drifted: `DOC_TYPES` and the CHECK constraint carried twelve while
+   * this carried six, so an irsaliye the model classified correctly as
+   * `delivery_note` was thrown away and refiled as `unknown` — an absence
+   * reported as a classification.
+   *
+   * `unknown` stays a value the model may return AND the fallback for anything
+   * outside the vocabulary. Widening the list must never make an unrecognised
+   * label into a confident guess, so the warning survives untouched.
+   */
   private coerceDocType(value: unknown, warnings: string[]): DocType {
     const v = String(value ?? "").toLowerCase();
-    const known: DocType[] = [
-      "invoice",
-      "packing_slip",
-      "delivery_receipt",
-      "credit_memo",
-      "statement",
-      "purchase_order",
-    ];
-    if ((known as string[]).includes(v)) return v as DocType;
+    if ((DOC_TYPES as readonly string[]).includes(v)) return v as DocType;
     warnings.push(
       `Document type "${value ?? "(none)"}" was not recognised; filed as unknown for a human to classify.`,
     );
@@ -403,6 +434,29 @@ function num(v: unknown): number | null {
 function int(v: unknown): number | null {
   const n = num(v);
   return n == null ? null : Math.round(n);
+}
+
+/**
+ * The model's `printed` map, kept as text and NOTHING ELSE.
+ *
+ * Returned as a spreadable object so an ABSENT map stays absent on the line
+ * rather than becoming `{}` — `{}` would read as "the paper printed nothing",
+ * which is the opposite of "we did not keep it" (ADR 0067's distinction).
+ *
+ * Values are never trimmed, cased, re-grouped or re-pointed: `1.704,00` must
+ * still be `1.704,00` when the screen shows it beside our 1704. Entries that are
+ * empty or whitespace-only are DROPPED rather than stored, because an empty
+ * `as_printed` beside a real value is what the `as_printed_not_mutated`
+ * invariant exists to catch.
+ */
+function spreadPrinted(v: unknown): { printed?: Record<string, string> } {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof raw !== "string" || raw.trim() === "") continue;
+    out[k] = raw;
+  }
+  return Object.keys(out).length ? { printed: out } : {};
 }
 
 function str(v: unknown): string | null {

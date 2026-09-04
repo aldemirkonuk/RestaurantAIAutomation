@@ -343,7 +343,7 @@ and never pooled**, and the Google app **goes for verification now**.
 | Slice | What shipped | Where |
 |---|---|---|
 | 1 — the coordinate | The Google Places selection's point captured at sign-up and written with the restaurant; a backfill script for the 13 existing rows with a dry run, keyed on `google_place_id` | `apps/web/src/pages/Register.tsx`, `components/ui/PlacesAutocomplete.tsx`, `contexts/AuthContext.tsx`, `apps/api-gateway/src/auth/auth.service.ts` `coordinateColumns`, `auth/dto/register-restaurant.dto.ts`, `scripts/backfill_restaurant_coordinates.py` |
-| 2 — the weather overlay | `WeatherProvider` interface + `NwsWeatherProvider` (points → gridpoint → forecast, cached point resolution, descriptive User-Agent, `/alerts/active`), `weather_readings`, `GET /calendar/weather`, and the cell mark | `apps/api-gateway/src/weather/`, `supabase/migrations/20260903160000_a_forecast_names_its_issuer.sql`, `pages/calendar/next/SkyMark.tsx` |
+| 2 — the weather overlay | `WeatherProvider` interface + `NwsWeatherProvider` (points → gridpoint → forecast, cached point resolution, descriptive User-Agent, `/alerts/active`), `weather_readings`, `GET /calendar/weather`, and the cell mark | `apps/api-gateway/src/weather/`, `supabase/migrations/20260903162000_a_forecast_names_its_issuer.sql`, `pages/calendar/next/SkyMark.tsx` |
 | 3 — the passed day | Covers/sales per day from `pos_checks` with closures hatched, paired with the forecast that stood *before* the day, written to `prediction_outcomes` with a NULL score | `apps/api-gateway/src/calendar/recorded-days.service.ts`, `day-record.service.ts`, `GET /calendar/day-record` |
 | — the iCal one-liners | `inline` not `attachment`; the restaurant's IANA zone not the server's; `X-PUBLISHED-TTL`/`REFRESH-INTERVAL`; absolute + `webcal://` URL | `calendar.controller.ts`, `calendar.service.ts`, `calendar/zoned-time.ts` |
 
@@ -852,7 +852,7 @@ Measured against the live NWS API and the local gateway on :4000. Each is **outs
    on-read instead. **Why not yet:** whether ADR 0022's opt-in should govern reads as well as
    sends is a founder decision, not a builder's.
 2. 🟠 **`weather_readings` is not in production.** The migration
-   `20260903160000_a_forecast_names_its_issuer.sql` is on this branch only; a select against
+   `20260903162000_a_forecast_names_its_issuer.sql` is on this branch only; a select against
    the table on the live database will answer `42P01` until it merges. The endpoint never
    reaches it today because the no-coordinate branch fires first — which is honest, but it
    means the register read path is proved by tests and not yet by production.

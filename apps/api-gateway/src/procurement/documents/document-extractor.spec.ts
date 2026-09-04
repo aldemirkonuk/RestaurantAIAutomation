@@ -209,3 +209,161 @@ describe("settledEventId — attribution never blocks the extraction", () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 });
+
+/**
+ * Gap 1 (slice-1 tech debt) — the extractor must emit the five document types
+ * ADR 0104 D2/S6 added, not file them as `unknown`.
+ *
+ * `unknown` is not a harmless holding pen. A Turkish irsaliye landing there
+ * reads as "we could not classify this", which routes a legally ordinary
+ * delivery into the review queue and ages it under ADR 0103 D9 — the exact
+ * "a legally normal transaction must not read like a broken intake" failure
+ * S6 names. One fixture per new literal, because a list that is right for four
+ * of five is wrong in production for the fifth.
+ */
+describe("DocumentExtractorService — the five ADR 0104 document types", () => {
+  const cases: [string, string][] = [
+    ["delivery_note", "a Turkish irsaliye / e-İrsaliye with no money on it"],
+    ["receiving_advice", "our own door count"],
+    ["informal_note", "a handwritten slip from an unregistered vendor"],
+    ["price_list", "a vendor price sheet"],
+    ["portal_export", "a Sysco/MOXē-style portal export"],
+  ];
+
+  it.each(cases)("classifies %s (%s) as itself", (docType) => {
+    const d = svc.normalize(json({ docType, lines: [] }), "test");
+    expect(d.docType).toBe(docType);
+    // And says nothing about not recognising it — a warning here would put the
+    // document in front of a human for no reason.
+    expect(d.warnings.join(" ")).not.toMatch(/not recognised/);
+  });
+
+  it("still files a genuinely unknown type as unknown, with its warning", () => {
+    // The fallback is the point of the mechanism, not a leftover: widening the
+    // list must not turn "we do not know what this is" into a silent guess.
+    const d = svc.normalize(
+      json({ docType: "bill_of_lading", lines: [] }),
+      "test",
+    );
+    expect(d.docType).toBe("unknown");
+    expect(d.warnings.join(" ")).toMatch(/bill_of_lading/);
+  });
+});
+
+/**
+ * Gap 2 — BT-149/BT-150 round-trip. The extractor must carry the PRINTED price
+ * basis, and must not invent one.
+ */
+describe("DocumentExtractorService — printed price base (BT-149/BT-150)", () => {
+  it("keeps a printed price base on the line", () => {
+    const d = svc.normalize(
+      json({
+        docType: "invoice",
+        lines: [
+          {
+            description: "Öküzgözü",
+            qty: 1,
+            uom: "case",
+            packSize: 12,
+            unitPrice: 142,
+            lineTotal: 142,
+            priceBaseQty: 12,
+            priceBaseUom: "bottle",
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(d.lines[0].priceBaseQty).toBe(12);
+    expect(d.lines[0].priceBaseUom).toBe("bottle");
+  });
+
+  it("leaves the price base null when the document did not print one", () => {
+    // Same rule the prompt already states for packSize: null, never assumed.
+    // A guessed base of 12 is wrong by a factor of twelve on a per-bottle line.
+    const d = svc.normalize(json(INVOICE), "test");
+    expect(d.lines[1].priceBaseQty).toBeNull();
+    expect(d.lines[1].priceBaseUom).toBeNull();
+  });
+
+  it("refuses an unrecognised price base unit rather than guessing bottle", () => {
+    const d = svc.normalize(
+      json({
+        docType: "invoice",
+        lines: [
+          {
+            qty: 1,
+            uom: "case",
+            unitPrice: 142,
+            priceBaseQty: 12,
+            priceBaseUom: "magnum",
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(d.lines[0].priceBaseUom).toBeNull();
+    expect(d.warnings.join(" ")).toMatch(/magnum/);
+  });
+});
+
+/**
+ * Gap 3 — `as_printed`. The extractor must return the literal glyphs for money
+ * and quantity fields, and must never reformat them.
+ */
+describe("DocumentExtractorService — printed literals", () => {
+  const TR_LINE = {
+    docType: "invoice",
+    total: 1704,
+    printed: { total: "1.704,00" },
+    lines: [
+      {
+        description: "Öküzgözü",
+        qty: 12,
+        uom: "bottle",
+        unitPrice: 142,
+        lineTotal: 1704,
+        printed: {
+          unitPrice: "142,00 / KS(12)",
+          qty: "12",
+          lineTotal: "1.704,00",
+        },
+      },
+    ],
+  };
+
+  it("keeps a Turkish-formatted number byte for byte", () => {
+    const d = svc.normalize(json(TR_LINE), "test");
+    expect(d.lines[0].printed?.unitPrice).toBe("142,00 / KS(12)");
+    expect(d.lines[0].printed?.lineTotal).toBe("1.704,00");
+    expect(d.printed?.total).toBe("1.704,00");
+    // The parsed number is ours; the string is the paper's. Both survive.
+    expect(d.lines[0].lineTotal).toBe(1704);
+  });
+
+  it("does not invent a printed map when the model returned none", () => {
+    // An empty map would read as "the paper printed nothing" rather than
+    // "we did not keep it" — ADR 0067's distinction, on the other axis.
+    const d = svc.normalize(json(INVOICE), "test");
+    expect(d.lines[0].printed).toBeUndefined();
+    expect(d.printed).toBeUndefined();
+  });
+
+  it("drops blank printed entries instead of storing whitespace", () => {
+    const d = svc.normalize(
+      json({
+        docType: "invoice",
+        lines: [
+          {
+            qty: 1,
+            uom: "bottle",
+            unitPrice: 10,
+            printed: { qty: "  ", unitPrice: "10,00" },
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(d.lines[0].printed).toEqual({ unitPrice: "10,00" });
+  });
+});

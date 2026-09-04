@@ -130,6 +130,8 @@ Seams:
 
 ## §8 Where it's going
 
+> **Decided 2026-09-03:** the delivery becomes its own state machine — `RECONCILING ⇄ AGREED → VERIFIED`, *agreed* = both sides recorded, clocks as data, `UNORDERED` provenance, six human gates — [ADR 0103](../decisions/0103-a-delivery-is-agreed-before-it-is-verified.md); what it renders into is [ADR 0104](../decisions/0104-every-incoming-document-renders-as-one-canonical-mudavym-document.md). Design only; the door here is the first surface the build touches.
+
 - [ADR 0049](../decisions/0049-ecosystem-division-layer.md) §3a: **Restaurant** division,
   phases **E1** and **E4**.
 - [[ECOSYSTEM-PLAN]] §2 names the live gap precisely: *"both ends SOTA … the middle doesn't

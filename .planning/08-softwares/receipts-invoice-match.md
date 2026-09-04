@@ -89,6 +89,26 @@ server-side: *"the client never dictates the outcome"* (`procurement.service.ts:
 [[orders]] (26), [[receiving]] (3) and [[recurring-orders]] (6). `GET
 /procurement/credits/stats` is also [[receiving]]'s owner view.
 
+**The canonical module (ADR 0104 slice 1, 2026-09-03).**
+`apps/api-gateway/src/procurement/canonical/` — **no endpoint, no route, and not yet
+registered as a Nest provider.** Slice 1 exposes nothing to the SPA by design; slice 2's
+template is what wires it in.
+
+| File | What it is |
+|---|---|
+| `canonical/canonical-types.ts:1` | Three layers in one object; every layer-1 field a `FieldEnvelope` carrying value, source, confidence, page/bbox and `as_printed`. Field names are EN 16931 BT/BG ids. |
+| `canonical/canonical-invariants.ts:1` | 16 invariants (`INVARIANTS`, `:955`). Each returns `{ id, rule, path, holds, expected, found, explanation }`; `holds` is TRI-STATE — `null` means "ran, nothing to test", counted separately by `summarise` (`:987`) so untestable never inflates a pass rate. |
+| `canonical/from-parsed-document.ts:1` | `ParsedDocument → CanonicalDocument`. Pure; `ParsedDocument` is not modified. Leaves the VAT breakdown empty rather than inventing a row that would pass. |
+| `canonical/canonical-document.service.ts:1` | `buildFromDocumentId` (`:117`) and `persistRevision` (`:204`, INSERT-only). Rebuilds from the COLUMNS, not from `procurement_documents.extracted`, because `editLine` never rewrites that snapshot. Every read checks `error` before `data` (ADR 0067). |
+| `canonical/cli.ts:1` | stdin → invariants → JSON, so `scripts/canonical_corpus_run.py` grades the product's own code rather than a second implementation. |
+| `canonical/__fixtures__/synthetic-documents.ts:1` | 9 documents, every one labelled SYNTHETIC. They are the invariants' only proof today — see §5. |
+
+Two rules from ADR 0103 are enforced here rather than described: `received` is
+`"not_counted"` unless a door count exists (A6), and BT-149 is **not** `packSize` —
+`ParsedDocument` prices per invoiced unit, so the real `1 cs × 12 şişe` price base cannot
+survive a round trip through it. That gap is named in
+`from-parsed-document.ts` rather than papered over.
+
 ## §4 Automation
 
 - `email_parsing_agent.py` (863 LOC) — tier **CORE**, depends on `procurement_agent`
@@ -118,6 +138,38 @@ From the `documents/` services, all verified in
   `conversation_attachments`.
 - `generated_reports` backs [[documents-reports]] — and holds **0 rows in production**
   ([[documents-reports]] §10).
+
+**New with ADR 0104 slice 1** —
+`supabase/migrations/20260903160000_canonical_document_and_delivery.sql`, additive, nothing
+dropped, RLS enabled with a `service_role` policy on all six:
+
+| Table | Line | What it holds |
+|---|---|---|
+| `deliveries` | `:68` | The commercial event (ADR 0103 D1 / 0104 D7): 12 states, `provenance ∈ {ORDERED, UNORDERED}`, owner + deputy (D9), `dedupe_key` unique **per restaurant** (S2). `PAID` is deliberately not a state — A3 puts payment on the invoice. |
+| `document_deliveries` | `:161` | The many-to-many join (S5 / A2). N documents per delivery **and** N deliveries per document. |
+| `delivery_proposals` | `:202` | Every recorded position, with a D7 reason class. Replaces `syncOrderState`'s silent drop of a contradicting vendor reply (A5). |
+| `vendor_terms` | `:274` | Clocks as data (D4/A8). **A missing row means UNKNOWN and must BLOCK** — never "no deadline". |
+| `document_revisions` | `:402` | Layer 1 as one JSONB document per revision (S1). APPEND-ONLY by trigger. |
+| `document_corrections` | `:453` | Who corrected what, and what was there before (D5). Same trigger. |
+
+`procurement_documents` gains `direction`, `jurisdiction`, `retain_until`, `legal_hold`,
+`paid_at`, `paid_by`, `intake_verdict`, `intake_reason` (`:497`), and its `doc_type` CHECK is
+**widened** to 12 literals (`:566`) — mirrored in `documents/document-types.ts:22`.
+`inventory_transactions.delivery_id` and `inventory_lots.cost_state` are added as
+**columns only** (`:586`, `:603`); nothing in slice 1 writes them and no stock path is touched.
+
+**Only two `vendor_terms` rows are seeded** (`:363`, `:379`): US-CA alcohol invoice payment
+30 days from delivery, wholesaler-initiated EFT; TR invoice objection window 8 days from
+issue. The Turkish e-İrsaliye response window is deliberately ABSENT — ADR 0103 A8 holds it
+open for a YMM, and a 7-day row seeded now would be a legal deadline invented by an agent.
+
+**The corpus is empty.** Measured read-only 2026-09-03: `procurement_documents` 0 rows,
+`procurement_document_lines` 0 rows, the `vendor-attachments` bucket 0 objects. The product
+has never held a vendor document in this database, so ADR 0104 D12's "run as a test suite
+over the documents already in `vendor-attachments`" had nothing to run over.
+`datasets/canonical/CORPUS-RUN-2026-09-03.md:3` leads with that absence rather than with "0
+failures"; the invariants' evidence is the 9 synthetic fixtures, and
+`scripts/canonical_corpus_run.py --self-test` proves the runner can still name a failure.
 
 ## §6 Owner
 
@@ -179,6 +231,8 @@ Seams:
 7. **One module, four softwares** (§3).
 
 ## §8 Where it's going
+
+> **Decided 2026-09-03:** every incoming document renders as one canonical Mudavym document — one schema (EXTRACTED / RESOLVED / ADJUDICATED, per-field provenance with `as_printed`), one template with conditional sections, the original content-addressed and fetched on demand, verdict first, confidence never a number, intake gate for blank/duplicate/bundled uploads — [ADR 0104](../decisions/0104-every-incoming-document-renders-as-one-canonical-mudavym-document.md); the flow it records is [ADR 0103](../decisions/0103-a-delivery-is-agreed-before-it-is-verified.md). Sketches: `sketches/089-agreed-invoice-directions`.
 
 - [ADR 0049](../decisions/0049-ecosystem-division-layer.md) §3a: **Restaurant** division,
   phases **E1** and **E4**. [[ECOSYSTEM-PLAN]] §2 records this end as already SOTA —

@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 3
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]", "[[dashboard]]"]
 ---
 
@@ -111,6 +111,8 @@ Both halves are now gated, and the gates agree:
 
 ---
 
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** the catalog seeds every button at a hard-coded $45 (`simpos.service.ts:91-96`; 53 of 53 measured, unmarked as placeholders — defect 3); the webhook payload carries no money, table, server or covers (`:401-415`; NULL on 44 of 44 `pos_checks` — defect 4); every line is `is_wine: true` (`:411-414`; mezes and coffee become permanent "unmapped wine" — defect 5); "Add item" is disabled until a size chip is clicked, unexplained (defect 10); nothing reads `restaurants.operating_hours` — 44 checks rang after the venue's close with no warning (defect 11); timestamps render in the viewer's zone (defect 12).
+
 ## 10. Maturity — **partial**, and *absent in production*
 
 **Say this first: this page does not exist in production.** The route redirects
@@ -145,6 +147,8 @@ What holds it back from complete, within dev:
 - **It polls a possibly-dead endpoint every 5 seconds indefinitely** (`:74`).
 - The Receipts tab reads `/procurement/documents` — a **production** module — so in the
   dev-frontend/prod-gateway case one tab shows real data beside a void.
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** 135 buttons were programmed from the real Meyhouse Palo Alto menu (3 by hand in Edit POS, the rest through `POST /simpos/:rid/catalog`) and 44 checks closed — 9 on this terminal, 35 through the check API; a second close of a closed check is refused (`403`, no duplicate ledger row). The founder-facing page for the run: https://claude.ai/code/artifact/d59646d4-0021-43dd-87e9-9fc70135849e.
 
 ## 11. Data flow
 

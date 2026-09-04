@@ -170,14 +170,27 @@ jobs:
           pip install -r requirements.test.txt
 
       # -----------------------------------------------------------------------
-      # pnpm 8 was pinned here while package.json declares
+      # The `version:` input is deliberately ABSENT, and the action is @v6.
+      #
+      # pnpm 8 was pinned here while the root package.json declares
       # `packageManager: pnpm@9.15.9` and `engines.pnpm >= 9.0.0`, so this step's
-      # `pnpm install` died with ERR_PNPM_UNSUPPORTED_ENGINE on every run —
-      # a second red that also had nothing to do with production. Aligned with
-      # ci.yml:770 and deploy.yml:217, which use @v4 with no pin and read the
-      # version from package.json.
+      # `pnpm install --frozen-lockfile` died with ERR_PNPM_UNSUPPORTED_ENGINE
+      # ("Expected version: >=9.0.0 / Got: 8.15.9") and every wave after it was
+      # SKIPPED. Two sessions found this independently on 2026-09-03 (#266 and
+      # the Dependabot sweep, ADR 0106); this is the merged fix.
+      #
+      # @v6 rather than @v4 because Dependabot #2 asked for the bump and it was
+      # verified here — ci.yml and deploy.yml move to @v6 in the same change, so
+      # all seven action-setup usages in this repo now agree. From v4 onward the
+      # action reads `packageManager` from package.json and THROWS "Multiple
+      # versions of pnpm specified" if `version:` is also given, so do not
+      # reintroduce it.
+      #
+      # Fixing this step does NOT make the nightly meaningful — see the
+      # secrets precondition above. With the secrets unset every wave still
+      # skips, and a skipped wave exits 0.
       - name: Set up pnpm + Node.js (Wave F — Playwright)
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

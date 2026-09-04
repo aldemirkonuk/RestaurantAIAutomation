@@ -833,6 +833,8 @@ Found by the fourth pass (2026-09-03), all outside this page's paths:
   restaurant switch those two disagree. The Mudavym build uses `activeRestaurantId`
   throughout; the legacy page is untouched by this wave. §13.10.
 
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** none found — "12 rules evaluated · 1 active" matched `GET /analytics/recommendations/:id` exactly; the 11 rules that produced nothing rendered nothing.
+
 ## 10. Maturity
 
 **partial** (moved from **broken** on 2026-09-02, ADR 0044 p4 wave). The transport
@@ -864,6 +866,8 @@ than papering over them, which is what moves the verdict to *partial* rather tha
 | **Result:** `loadActive` throws `Request failed (401)` and the page renders its error state. Every action (act / dismiss / snooze / done / pin / assign / bulk / digest) 401s identically. | `Recommendations.tsx:193-199` (`if (!res.ok) throw new Error(\`Request failed (${res.status})\`)`) |
 | **The backend it cannot reach is complete.** `RecommendationsService` is a deterministic, auditable rule engine (no LLM) merged with the `recommendation_actions` disposition store; the hourly `insight-scheduler` sweep keeps its inputs fresh. None of that is the defect. | `analytics/recommendations.service.ts:35-56`; `analytics/recommendation-actions.service.ts`; `analytics/insights/insight-scheduler.service.ts:42` |
 | The fix is one import away — sibling pages use `apiClient`, whose request interceptor stamps `Authorization: Bearer` and `X-Restaurant-Id` synchronously. | `services/api/client.ts:58-73` |
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the active recommendation (Acılı Muhammara + Köpoğlu, lift 2.24) is grounded in real `wine_consumption_log` co-occurrence from the night's 44 checks — a genuinely healthy surface.
 
 ## 11. Data flow
 

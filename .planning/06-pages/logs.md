@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-02
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[0086-a-count-confesses-what-it-could-not-count]]"]
 ---
 
@@ -109,6 +109,8 @@ change that makes the third reportable. PR #253 carried this work first and was
 **closed unmerged**; #262 rebased and carried it, so a reference to #253
 anywhere is a reference to a branch that will never land.
 
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the Stock register reads 56 against 55 `wine_consumption_log` rows — one row unexplained, not chased.
+
 ## 10. Maturity
 
 > **On `main` since `4d0f6c50` (PR #262, 2026-09-02).** Both halves — ADR 0086's
@@ -159,6 +161,8 @@ page is built to say so by staying quiet rather than by guessing.
 The dead-end observation in §9 is confirmed: the file contains no `Link`, no
 `navigate`, and `useSearchParams` is used only to set `correlationId`
 (`LogsTimelinePage.tsx:152,205-206,244,370`). You can pivot within the timeline, never out of it.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the one surface that states what it did not read on the page itself ("Read 5 of 6 registers · not read: the event store"); POS 44 = `pos_checks` exactly, Agent 0 correct with the orchestrator down.
 
 ## 11. Data flow
 

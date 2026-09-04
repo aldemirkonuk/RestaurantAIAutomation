@@ -22,7 +22,7 @@
   **What is built, and where:** slice 1 (`apps/api-gateway/src/auth/auth.service.ts`
   `coordinateColumns`, `apps/web/src/pages/Register.tsx`,
   `scripts/backfill_restaurant_coordinates.py`); slice 2
-  (`apps/api-gateway/src/weather/`, `supabase/migrations/20260903160000_a_forecast_names_its_issuer.sql`,
+  (`apps/api-gateway/src/weather/`, `supabase/migrations/20260903162000_a_forecast_names_its_issuer.sql`,
   `GET /calendar/weather`, `apps/web/src/pages/calendar/next/SkyMark.tsx`); slice 3
   (`apps/api-gateway/src/calendar/recorded-days.service.ts` and `day-record.service.ts`,
   `GET /calendar/day-record`); and the four iCal fixes

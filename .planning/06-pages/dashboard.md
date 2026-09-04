@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[calendar]]", "[[wines]]"]
 ---
 
@@ -236,6 +236,9 @@ page's paths; neither was built here, and the rail panel states both in words.
   (`one-tap-actions.service.ts:404-430`) is three `// TODO` branches and a default
   log. The card states this above the die rather than letting the seal imply a
   reorder; the fix is a gateway one.
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** when `getSalesChartData` rejects, the hook renders `Math.floor(Math.random()*5000)+1000` per day as sales (`hooks/useDashboardData.ts:205-230`; absence 1 — a failed read becomes a healthy business). "Vendor Spend (30d) $0 ↗ +0.0%" draws a green trend over a base with no purchase orders.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the Low Stock Alerts card reads camelCase (`Dashboard.tsx:998,1004,971`, modal `:1315-1320`) from a snake_case payload (`GET /inventory/:id/low-stock` → `v_low_stock_items`, `database.service.ts:57-62`), so all 7 real wines render as "Unknown wine" with blank counts (defect 1). "Top Performing Wines / This month's best sellers" never reads sales — `topPerformingWines` (`:327-345`) aggregates procurement orders and calendar entries — so it says "no sales performance data" over $2,236 of real sales.
 
 ## 10. Maturity
 
@@ -252,6 +255,10 @@ side is what the page claims to be for ("the actions worth doing first", Sidebar
 | **The real one-tap backend is built and unconsumed.** `one-tap-actions` is a fully guarded NestJS module with audited execution and WebSocket sync; the web client wraps it (`getOneTapActions`, `executeOneTapAction`) and **no component calls either function** — the only references are the barrel re-export. | `apps/api-gateway/src/one-tap-actions/one-tap-actions.controller.ts:36-50`; `services/api/dashboard.ts:161,183`; `services/api/index.ts:84-85` (sole importers) |
 | **"Total Revenue" is purchase spend.** `totalRevenue`, `todaySales`, `weekSales`, `monthSales` and the sales chart's `revenue` all sum `procurement_orders.total_cost` of **delivered POs** — money paid *out* to distributors — and render under "Total Revenue" / "Revenue Breakdown". `pos_checks` (real sales) is never read by this service. | service `dashboard.service.ts:285-330,529-533,785-792`; labels `pages/Dashboard.tsx:1125,1155,1456` |
 | Guarded, and the §9 note is correct — class-level `JwtAuthGuard` since #60. | `dashboard.controller.ts:51` |
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** with 53 items / 274 bottles / 205.5 L on the tenant, the inventory tiles matched the rows exactly; Low Stock 7 matched the API. The sales figures were not exercised past the failure path cited above.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** Active Inventory 53, Low Stock 7, Vendor Spend $0, Pending Orders 0 all matched the rows (honest zeros); One-Tap Actions names the 7 wines correctly. The morning-after owner cannot see *which* wines are low from the card that exists for it.
 
 ## 11. Data flow
 
