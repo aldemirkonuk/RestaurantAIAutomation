@@ -215,9 +215,14 @@ API on the tenant's own behalf, stored against the tenant's own row, visible
 only on that tenant's own calendar. Applying a consent-to-be-mailed gate to it
 protects no one and costs something real:
 
-> **Measured, 2026-09-03:** `runPerTenant` enumerates **one** restaurant of
-> **fourteen** in production (`communications/scheduled-tenants.service.ts:88-125`).
-> Routing the prefetch through it would leave thirteen houses accumulating no
+> **Measured 2026-08-26, re-checked 2026-09-04:** `runPerTenant` enumerates
+> **one** restaurant of **ten** in production. The count is the one the service
+> itself records and dates (`communications/scheduled-tenants.service.ts:80-87`: "`restaurants` holds
+> 10 rows, all `is_active = true` … only ONE … is a real tenant"); `:88-125` is
+> the `list()` query and holds no count at all, so the earlier "one of fourteen
+> (:88-125)" here cited a range for a number it does not contain. Corrected
+> 2026-09-04.
+> Routing the prefetch through it would leave nine houses accumulating no
 > forecast and no observation history at all — and ADR 0111 slice 9's covers
 > model is gated on **ninety days of a house's own history**, which counts days
 > of *record*, not days of *existence*. A house that opened its calendar rarely

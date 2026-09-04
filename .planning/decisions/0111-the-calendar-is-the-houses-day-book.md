@@ -33,7 +33,7 @@
   | # | Decision | What it changed |
   |---|---|---|
   | 6 | **Record weather OBSERVATIONS beside the forecasts, so a forecast can be scored.** Per refresh, the nearest reporting station's observations for the same coordinate | §2a said the weather overlay was "transcription" with "no maths", and slice 3 wrote `prediction_outcomes` with `accuracy_score` NULL for a stated reason — *"no temperature observation is recorded anywhere"*. That reason is now gone. `weather_observations` (a sibling table, `20260904140000`) records what the station measured, and `day-record.service.ts` writes **the first real `accuracy_score` this product has ever produced**: the absolute error of the forecast daily high against the observed daily high, **in degrees Celsius, lower is better**, stated in words in every row's `context.metric` and withheld with a reason when either side is missing |
-  | 7 | **A scheduled prefetch: one refresh per house per hour, for every house with a coordinate**, so a house nobody opens still accumulates history | Closes the cost this ADR's §Status admitted and filed rather than fixed. It does **not** go through `ScheduledTenantsService.runPerTenant` — that scheduler serves one house of fourteen, which is this ADR's own finding — so it required an amendment to [[0022-scheduled-jobs-serve-opted-in-tenants|ADR 0022]], dated 2026-09-04, naming exactly the two NWS reads it permits and nothing else |
+  | 7 | **A scheduled prefetch: one refresh per house per hour, for every house with a coordinate**, so a house nobody opens still accumulates history | Closes the cost this ADR's §Status admitted and filed rather than fixed. It does **not** go through `ScheduledTenantsService.runPerTenant` — that scheduler serves one house of ten (measured 2026-08-26, `communications/scheduled-tenants.service.ts:80-87`), which is this ADR's own finding — so it required an amendment to [[0022-scheduled-jobs-serve-opted-in-tenants|ADR 0022]], dated 2026-09-04, naming exactly the two NWS reads it permits and nothing else |
 
   **Why the score is an error and not a goodness, and why that had to be written
   down.** `prediction_outcomes.accuracy_score` is a `double precision` carrying
@@ -64,8 +64,11 @@
   `ScheduledTenantsService.runPerTenant`. It does not. That scheduler enumerates only
   tenants carrying `restaurant_feature_flags.flag_name = 'scheduled_communications'` or
   matching `DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`),
-  and production has **one** such tenant out of fourteen — so a cron behind that gate
-  would have left thirteen houses with a permanently blank weather column and no sentence
+  and production has **one** such tenant out of **ten** (measured 2026-08-26 and recorded
+  in the service's own header, `communications/scheduled-tenants.service.ts:80-87`; the `:88-125` range is the
+  `list()` query and carries no count — the earlier "one of fourteen" cited it for a
+  number it does not hold, corrected 2026-09-04) — so a cron behind that gate
+  would have left nine houses with a permanently blank weather column and no sentence
   explaining it, which is the absence-reported-as-health fault delivered by the mechanism
   meant to prevent it. The refresh is **on read with a 60-minute max age**
   (`weather/weather.service.ts`), which costs strictly fewer issuer calls than a cron and

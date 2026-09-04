@@ -45,10 +45,38 @@ import { collapseStackedNotifications } from '../notificationStack';
 export const BELL_PAGE = 25;
 
 /**
- * The bell polls slower than the page (`POLL_MS` there is 10s). The bell is
- * mounted on EVERY rebuilt page; the page is one surface a reader chose to
- * open. A minute is the interval at which a header badge stops being wrong
- * without turning the chrome into a load generator.
+ * THE CADENCE, AND WHY IT IS A STAIRCASE (founder's call, 2026-09-04)
+ * ------------------------------------------------------------------
+ * The founder asked for the bell to be right sooner than a minute, and was
+ * told what each step costs. The answer was to walk it, not to jump:
+ *
+ *  1. **60 s now, plus a refresh whenever the window regains focus.** The bell
+ *     is mounted on every rebuilt page that renders chrome (seventeen of the
+ *     eighteen slugs in `MUDAVYM_PAGES`, all but the receiving door), whereas
+ *     `/notifications` (`POLL_MS` = 10s there) is one surface a reader chose to
+ *     open. At one poll per minute per open tab the chrome stays a reader, not
+ *     a load generator, and the focus refresh removes the case that actually
+ *     makes a badge look broken: a tab left open for an hour, brought back to
+ *     the front, showing an hour-old count for up to a minute. Almost every
+ *     "the bell was wrong" moment is a return-to-tab moment, so this buys most
+ *     of the freshness of a fast poll for none of the traffic.
+ *  2. **10 s next**, matching the page, once the gateway's unread-count query
+ *     is measured under the real tenant fan-out. It is a `count: 'exact',
+ *     head: true` on an indexed predicate, so the expected answer is that it is
+ *     cheap — but "expected" is not measured, and a six-fold traffic increase
+ *     on every page of the app is not a change to make on an expectation.
+ *  3. **Realtime over the socket last**, and then no poll at all. The app
+ *     already carries a socket — this file listens for its
+ *     `ws:dashboard-invalidate` nudge below — so the endpoint is the honest one
+ *     the count wants: the register tells the bell when it changed, instead of
+ *     the bell asking once a minute per open tab whether it did. It is last
+ *     because it needs a server-side per-user notification channel that does
+ *     not exist yet; until it does, a poll that is slightly stale is honest and
+ *     a socket that silently stops delivering is exactly the
+ *     absence-reported-as-health failure (ADR 0020) this file is written to
+ *     avoid.
+ *
+ * Recorded, dated, in DESIGN-FOUNDATION §3 item 2.
  */
 export const BELL_POLL_MS = 60_000;
 
@@ -255,10 +283,14 @@ export function useBellBook(open: boolean): BellBook {
     // The same two nudges the page and the legacy header already listen for.
     window.addEventListener('notification_sent', onLive);
     window.addEventListener('ws:dashboard-invalidate', onLive);
+    // Step 1 of the cadence above: a tab returned to after an hour must not
+    // print an hour-old count for up to a minute.
+    window.addEventListener('focus', onLive);
     return () => {
       clearInterval(id);
       window.removeEventListener('notification_sent', onLive);
       window.removeEventListener('ws:dashboard-invalidate', onLive);
+      window.removeEventListener('focus', onLive);
     };
   }, [read]);
 

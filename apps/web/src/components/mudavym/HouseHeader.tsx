@@ -35,6 +35,23 @@
  * pages drop their masthead one — is written up for the founder in
  * DESIGN-FOUNDATION §3 item 2.
  *
+ * THE BELL'S CADENCE — A STAIRCASE, NOT A NUMBER (founder's call, 2026-09-04)
+ * --------------------------------------------------------------------------
+ * The badge is polled, and the founder settled how fast in three steps rather
+ * than one: **60 s now plus a refresh on window focus** — the bell is mounted on
+ * every rebuilt page that renders chrome, seventeen of the eighteen slugs in
+ * `MUDAVYM_PAGES`, so a fast poll here is seventeen pages' worth of traffic,
+ * while nearly every "the bell was wrong" moment is a return-to-a-left-open-tab
+ * moment that focus catches instantly. Then **10 s next**, matching the
+ * `/notifications` page, once the unread-count query is measured under the real
+ * tenant fan-out rather than assumed cheap. **Realtime over the socket last**,
+ * with no poll at all, because that needs a per-user server channel that does
+ * not exist yet — and a socket that silently stops delivering is the exact
+ * absence-reported-as-health failure (ADR 0020) the bell is built to avoid.
+ * The interval and the focus listener live in `lib/mudavym/useBellBook.ts`
+ * (`BELL_POLL_MS`); the same reasoning is recorded, dated, in
+ * DESIGN-FOUNDATION §3 item 2.
+ *
  * THE GROUND
  * ----------
  * ADR 0042 scopes every token under `.mudavym`, so this element carries the

@@ -241,6 +241,32 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      either way — it is the colophon, a different job). That is sixteen page
      edits across directories other builders hold open this wave, so it was not
      taken unilaterally.
+   - **The bell's cadence is a staircase, and each step is dated (2026-09-04).**
+     The badge is polled, and the founder settled the speed as three steps
+     rather than one number:
+     1. **60 s now, plus a refresh whenever the window regains focus.**
+        `BELL_POLL_MS` in `apps/web/src/lib/mudavym/useBellBook.ts`, with the
+        `focus` listener in the same effect. Why: the bell is mounted on every
+        rebuilt page that renders chrome (seventeen of the eighteen slugs in
+        `MUDAVYM_PAGES` — all but the chrome-free receiving door), whereas `/notifications` — which polls at
+        10 s — is one surface a reader chose to open, so a fast poll in the
+        chrome multiplies across the whole app. And nearly every "the bell was
+        wrong" moment is a tab left open and returned to, which the focus
+        refresh catches instantly. This buys most of a fast poll's freshness for
+        none of its traffic.
+     2. **10 s next**, matching the page. Why not now: the unread count is a
+        `count: 'exact', head: true` query
+        (`notifications.service.ts:872-894`), so it *should* be cheap — but a
+        six-fold traffic increase on every page of the app is not a change to
+        make on an expectation. The step is taken once the query is measured
+        under the real tenant fan-out.
+     3. **Realtime over the socket last**, and then no poll at all. Why last:
+        the app already carries a socket (the hook listens for its
+        `ws:dashboard-invalidate` nudge today), but a per-user notification
+        channel on the server does not exist yet. Until it does, a slightly
+        stale poll is honest and a socket that silently stops delivering is the
+        exact absence-reported-as-health failure (ADR 0020) the bell exists to
+        avoid.
    - **Retire-to-write.** This retires nothing yet: it ADDS chrome that was
      absent. What it makes retirable, on the founder's call above, is the
      per-page masthead `Wordmark` in those sixteen files. Nothing else here
@@ -264,6 +290,15 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    the ADR ratifies right-sheet-for-a-record on that measured evidence. Status
    Proposed until the founder ratifies. The rest of item 4 (tab bar, table spec,
    filter bar, export, status chips, the state triplet) is still open.
+
+   **2026-09-04 — house-level components live under `components/mudavym`: the
+   sheet, the day strip.** This amends the one-directory rule for page work: a
+   component two rebuilt pages both draw is the house's, not either page's.
+   Measured cause: `/recommendations` and `/notifications` had each grown their
+   own day strip and the two had already drifted — one carried the hatched-not-
+   zero rule and a keyboard map, the other carried neither — so the shared
+   `DayStrip.tsx` (+ `dayStripDates.ts`, `day-strip.css`, `DayStrip.test.tsx`)
+   replaces both, and `pages/notifications/next/DayRail.tsx` is deleted.
 5. **Interaction grammar** — `?tab=`/deep-links, command-palette verbs, one
    keyboard map, realtime-update and offline-outbox presentation, the honesty
    idioms (§2 last bullet).

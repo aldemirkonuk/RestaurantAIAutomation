@@ -128,7 +128,7 @@ unchanged with the flag off):
   days, and the house has 22. The recorded covers travel beside the score, unscored
 - **The forecast refreshes on a schedule as well as on read** (hourly, every house with a
   coordinate), so a house nobody opens still accumulates the history slice 9 needs. It does
-  not go through the ADR 0022 opt-in — that scheduler serves one house of fourteen — which
+  not go through the ADR 0022 opt-in — that scheduler serves one house of ten (§9, weather-overlay gap 1) — which
   required a dated amendment to that ADR naming exactly the two NWS reads it permits
 - **Covers are an em dash, never a zero, when the POS did not send them**, and a day the
   house was shut is **hatched and labelled "ruled out"** rather than drawn as zero trading —
@@ -398,8 +398,8 @@ should run under `ScheduledTenantsService.runPerTenant` (ADR 0022). It does not.
 `runPerTenant` enumerates only tenants carrying
 `restaurant_feature_flags.flag_name = 'scheduled_communications'` or matching
 `DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`), and
-production has **one such tenant out of fourteen** — a cron behind that gate would have left
-thirteen houses with a permanently blank weather column and no sentence explaining it, which
+production has **one such tenant out of ten** (§9, weather-overlay gap 1) — a cron behind that gate would have left
+nine houses with a permanently blank weather column and no sentence explaining it, which
 is the absence-reported-as-health fault delivered by the mechanism meant to prevent it. The
 refresh is **on read, with a 60-minute max age** matching NWS's own republish cadence: fewer
 issuer calls than a cron, an 8-second provider timeout so a dead issuer cannot hang the
@@ -466,7 +466,7 @@ the rows sit under their own `agent_name` (`mudavym.calendar.day_record`), separ
 2026-09-03 against an observed high of 24 °C at KPAO — **out by 0.11 °C**.
 
 **Why the prefetch does not ride ADR 0022.** `runPerTenant` enumerates one restaurant of
-fourteen, so a cron behind it would leave thirteen houses accumulating nothing while slice
+ten (§9, weather-overlay gap 1), so a cron behind it would leave nine houses accumulating nothing while slice
 28's ninety-day floor counts days of *record*. ADR 0022's opt-in is a consent gate on
 **being contacted**, and this contacts nobody: it reads two public NWS endpoints on the
 tenant's own behalf and stores the answers against the tenant's own row. That is now a
@@ -949,7 +949,15 @@ Measured against the live NWS API and the local gateway on :4000. Each is **outs
    `ScheduledTenantsService.runPerTenant` serves only tenants with
    `restaurant_feature_flags.flag_name = 'scheduled_communications'` or matching
    `DEFAULT_RESTAURANT_ID` (`communications/scheduled-tenants.service.ts:88-125`) — **one of
-   fourteen in production**. That is correct for a job that *sends* and wrong for one that
+   TEN in production**. *(Count corrected 2026-09-04. Every earlier statement of this
+   finding — here, in calendar.md's §1b and §13, in ADR 0022 and in ADR 0111 — said
+   "fourteen" and cited `:88-125` for it. That range is the `list()` query and holds no
+   count of anything. The only measured, dated count in the tree is the service's own
+   header: `communications/scheduled-tenants.service.ts:80-87`, "Verified against
+   production on 2026-08-26: `restaurants` holds 10 rows … only ONE … is a real tenant".
+   The finding's shape is unchanged and its force is slightly smaller: nine houses starved,
+   not thirteen. Re-measuring against the live database was not done in this pass — the
+   number quoted is the repo's own dated measurement, and it is nine days old.)* That is correct for a job that *sends* and wrong for one that
    *reads*, and ADR 0111 §6 had assumed the weather refresh could ride it. **Resolved:** the
    refresh is on-read AND on an hourly prefetch that iterates coordinate-bearing restaurants
    directly (`apps/api-gateway/src/weather/weather-prefetch.service.ts`).
@@ -1196,7 +1204,7 @@ ADR's; the order is not preference — each slice earns the trust the next one s
 21. ~~**The weather overlay** (**M**)~~ — **done 2026-09-03**, with two departures from the
     text below: the issuer is **NWS** (the founder's call — the keyless Open-Meteo tier is
     non-commercial), and the refresh is **on read with a 60-minute max age** rather than
-    under `runPerTenant`, because that scheduler serves one tenant in fourteen (§9). Original
+    under `runPerTenant`, because that scheduler serves one tenant in ten (§9, weather-overlay gap 1). Original
     text: A `WeatherProvider` interface with an Open-Meteo
     implementation (and NWS / OpenWeather behind the same interface), refreshed under
     `ScheduledTenantsService.runPerTenant`, into a `weather_readings` table that **keeps**
@@ -1257,7 +1265,7 @@ ADR's; the order is not preference — each slice earns the trust the next one s
 
 32. ~~**Prefetch the forecast for houses nobody opens**~~ — **done 2026-09-04.** Hourly,
     every restaurant with a coordinate, iterating them directly rather than through
-    `ScheduledTenantsService.runPerTenant` (which serves one house of fourteen). It required
+    `ScheduledTenantsService.runPerTenant` (which serves one house of ten — §9, weather-overlay gap 1). It required
     a dated amendment to ADR 0022 naming exactly the two NWS reads it permits — the forecast
     and the observations — and nothing else; anything that reaches a person is unchanged.
     Switch: `WEATHER_PREFETCH_ENABLED`, default **on**, because it sends nothing and an

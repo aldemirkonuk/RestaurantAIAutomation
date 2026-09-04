@@ -55,11 +55,14 @@ const PREFETCH_JOB_NAME = "weather-prefetch";
  * Pause between houses, milliseconds.
  *
  * Not a rate limit NWS publishes — they ask for reasonable use and a
- * descriptive User-Agent rather than naming a number. At fourteen houses this
- * spreads the sweep over about twenty seconds, which is unmistakably reasonable
- * and costs nothing that matters.
+ * descriptive User-Agent rather than naming a number. At the ten restaurants
+ * production holds (measured 2026-08-26,
+ * `communications/scheduled-tenants.service.ts:80-87`) this spreads the sweep
+ * over about fifteen seconds, which is unmistakably reasonable and costs
+ * nothing that matters. Exported so the spec waits on the same number the
+ * service sleeps for rather than a copy of it.
  */
-const PAUSE_BETWEEN_HOUSES_MS = 1500;
+export const PAUSE_BETWEEN_HOUSES_MS = 1500;
 
 /** How far ahead to prefetch. The issuer's own horizon is seven days. */
 const PREFETCH_DAYS = 7;

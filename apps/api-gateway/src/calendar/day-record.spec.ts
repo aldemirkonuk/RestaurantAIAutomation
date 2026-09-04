@@ -18,10 +18,14 @@ import {
  *
  * The two assertions this whole file exists for:
  *  1. A day with no covers recorded says so; it never renders 0.
- *  2. Every `prediction_outcomes` row written carries `accuracy_score: null`,
- *     because there is no covers model to score against and no temperature
- *     observation to score with. A number there would be invented arithmetic
- *     wearing a metric's clothes.
+ *  2. A `prediction_outcomes` row carries a score ONLY when something was
+ *     actually observed to score against. When a station observed the day, the
+ *     row carries the absolute forecast error in °C (see the "writing the first
+ *     real accuracy_score" block below); when no station did, `accuracy_score`
+ *     is NULL and `context.withheld` says which half was missing. A number in
+ *     the second case would be invented arithmetic wearing a metric's clothes.
+ *     (Point 2 said "every row carries null, always" until 2026-09-04; that was
+ *     written before the scoring half landed and had been false since.)
  */
 
 describe("checkBusinessDate", () => {
@@ -224,7 +228,7 @@ describe("DayRecordService", () => {
     expect(out.days[0].forecastInAdvance?.leadDays).toBeGreaterThanOrEqual(1);
   });
 
-  it("writes the pair with accuracy_score NULL, never a score", async () => {
+  it("withholds the score when nothing observed the day — NULL, never a guess", async () => {
     const { service, inserted } = makeService({
       recorded: LEDGER(),
       weather: WEATHER(),
@@ -237,6 +241,9 @@ describe("DayRecordService", () => {
     expect(row.agent_name).toBe(CALENDAR_LEDGER_AGENT);
     expect(row.prediction_type).toBe(PAIRING_TYPE);
     expect(row.accuracy_score).toBeNull();
+    // NULL because nothing observed, and the row SAYS which half was missing —
+    // a null with no reason beside it is the absence-as-health shape again.
+    expect(row.context.withheld).toBe("no station observed a high for this day");
     expect(row.actual_value.covers).toBe(41);
     expect(row.predicted_value.temperatureHigh).toBe(75);
     expect(row.context.businessDate).toBe(YESTERDAY);

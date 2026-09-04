@@ -1,4 +1,7 @@
-import { WeatherPrefetchService } from "./weather-prefetch.service";
+import {
+  WeatherPrefetchService,
+  PAUSE_BETWEEN_HOUSES_MS,
+} from "./weather-prefetch.service";
 
 /**
  * The scheduled prefetch — one refresh per house per hour.
@@ -11,9 +14,17 @@ import { WeatherPrefetchService } from "./weather-prefetch.service";
  *  2. A house whose reading is still FRESH is not re-asked. The skip is
  *     delegated to `WeatherService.windowFor` on purpose, so the cron and the
  *     page cannot drift apart about what "fresh" means.
- *  3. One house FAILING never stops the others. A sweep that abandons twelve
- *     houses because the thirteenth threw is the same silence the prefetch was
- *     built to end.
+ *  3. One house FAILING never stops the others. A sweep that abandons the rest
+ *     because one threw is the same silence the prefetch was built to end.
+ *
+ * WHY THE TIMERS ARE FAKE. The sweep sleeps `PAUSE_BETWEEN_HOUSES_MS` (1.5 s)
+ * between houses, deliberately — it is the politeness NWS asks for. Paying that
+ * in real seconds made this file the slowest in the module for no information:
+ * the multi-house cases cost 4.5 s of wall clock to prove ordering that has
+ * nothing to do with elapsed time. The clock is therefore mocked and advanced
+ * explicitly through `sweep()` below, which also makes the pause OBSERVABLE:
+ * `does not sleep after the last house` would have been unwritable against a
+ * real clock, and a sweep that dropped the pause entirely used to pass here.
  */
 
 type House = Record<string, unknown>;
@@ -73,14 +84,31 @@ describe("WeatherPrefetchService", () => {
   });
   beforeEach(() => {
     delete process.env.WEATHER_PREFETCH_ENABLED;
+    jest.useFakeTimers();
   });
+
+  /**
+   * Run a sweep to completion without paying its pauses.
+   *
+   * `advanceTimersByTimeAsync` flushes the microtask queue between ticks, so
+   * each house's awaited work resolves before the next pause is skipped
+   * forward. The loop runs one step per possible house plus slack; a sweep that
+   * never sleeps finishes on the first iteration regardless.
+   */
+  async function sweep(service: WeatherPrefetchService) {
+    const running = service.sweep();
+    for (let i = 0; i < 10; i++) {
+      await jest.advanceTimersByTimeAsync(PAUSE_BETWEEN_HOUSES_MS);
+    }
+    return running;
+  }
 
   it("never asks the issuer about a house with no coordinate", async () => {
     // The query filters them out, so the sweep sees an empty eligible list —
     // and says so in words rather than reporting a clean run over nobody.
     const { service, windowFor } = makeService({ houses: [] });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(out.eligible).toBe(0);
     expect(out.fetched).toBe(0);
@@ -92,7 +120,7 @@ describe("WeatherPrefetchService", () => {
       houses: [HOUSE(), HOUSE({ id: "r-2", name: "Second House" })],
     });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(out.eligible).toBe(2);
     expect(out.fetched).toBe(2);
@@ -101,11 +129,41 @@ describe("WeatherPrefetchService", () => {
     expect(windowFor.mock.calls[1][0]).toBe("r-2");
   });
 
+  it("pauses between houses, and does not sleep after the last one", async () => {
+    // The politeness is real: with two houses the sweep is still mid-flight
+    // until the 1.5 s pause has passed. With one house there is nothing to be
+    // polite to, so it must finish with the clock untouched — a sweep that
+    // slept after the final house would double the cron's runtime for nothing.
+    const two = makeService({
+      houses: [HOUSE(), HOUSE({ id: "r-2", name: "Second House" })],
+    });
+    let twoDone = false;
+    const running = two.service.sweep().then((r) => {
+      twoDone = true;
+      return r;
+    });
+    await jest.advanceTimersByTimeAsync(PAUSE_BETWEEN_HOUSES_MS - 1);
+    expect(twoDone).toBe(false);
+    expect(two.windowFor).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await running;
+    expect(twoDone).toBe(true);
+
+    const one = makeService({ houses: [HOUSE()] });
+    let oneDone = false;
+    const single = one.service.sweep().then(() => {
+      oneDone = true;
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(oneDone).toBe(true);
+    await single;
+  });
+
   it("asks for a window that looks back as well as forward", async () => {
     // Looking back means a missed sweep still backfills the observations a
     // passed day needs to be scored.
     const { service, windowFor } = makeService({ houses: [HOUSE()] });
-    await service.sweep();
+    await sweep(service);
     const [, from, to] = windowFor.mock.calls[0];
     expect(from < to).toBe(true);
     expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -128,7 +186,7 @@ describe("WeatherPrefetchService", () => {
     }));
     const { service } = makeService({ houses: [HOUSE()], windowFor });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(out.skippedFresh).toBe(1);
     expect(out.fetched).toBe(0);
@@ -146,7 +204,7 @@ describe("WeatherPrefetchService", () => {
     }));
     const { service } = makeService({ houses: [HOUSE()], windowFor });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(out.refused).toBe(1);
     expect(out.fetched).toBe(0);
@@ -174,7 +232,7 @@ describe("WeatherPrefetchService", () => {
       windowFor,
     });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(out.eligible).toBe(3);
     expect(out.failed).toBe(1);
@@ -189,7 +247,7 @@ describe("WeatherPrefetchService", () => {
       registerError: { message: "connection reset" },
     });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(out.error).toContain("could not be read");
     expect(out.eligible).toBe(0);
@@ -200,7 +258,7 @@ describe("WeatherPrefetchService", () => {
     process.env.WEATHER_PREFETCH_ENABLED = "false";
     const { service, windowFor } = makeService({ houses: [HOUSE()] });
 
-    const out = await service.sweep();
+    const out = await sweep(service);
 
     expect(windowFor).not.toHaveBeenCalled();
     expect(out.eligible).toBe(0);
@@ -216,7 +274,7 @@ describe("WeatherPrefetchService", () => {
   it("reports its last run, so a status surface is not guessing", async () => {
     const { service } = makeService({ houses: [HOUSE()] });
     expect(service.status().lastRun).toBeNull();
-    await service.sweep();
+    await sweep(service);
     expect(service.status().lastRun?.eligible).toBe(1);
   });
 });

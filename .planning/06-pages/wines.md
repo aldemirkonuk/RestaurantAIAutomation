@@ -12,7 +12,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-09-02
+updated: 2026-09-04
 links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]", "[[orders]]", "[[inventory]]", "[[providers]]"]
 ---
 
@@ -1474,8 +1474,12 @@ from 2026-09-02, and repeated it in three places including a sketch. Re-measured
 2026-09-04: **4 rows across 2 tenants, 4 of 4 carrying one of those names.** 83
 rows were deleted in between. The shape of the finding survived and the count
 did not, which is the argument for re-measuring a number every time it is
-restated rather than copying it forward — the corrected figure is now in §1b,
-§12 and `095-cellar-merged/index.html`, each dated.
+restated rather than copying it forward — the corrected figure is now in §1a
+(:197), §1b (:551, :956) and `095-cellar-merged/merged-parent.html:204`, each
+dated. (Those three references were themselves wrong when first written — they
+said "§1b, §12" and named the sketch's `index.html`; §12 never carried the
+number and the sketch that does is `merged-parent.html`. Corrected 2026-09-04,
+by opening each one.)
 
 **9.31 · The gateway boot guard is RED on this branch, and not because of this
 page.** `check_gateway_boots.sh` fails with

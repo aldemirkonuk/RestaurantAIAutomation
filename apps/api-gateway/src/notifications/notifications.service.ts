@@ -475,7 +475,7 @@ export class NotificationsService {
     bcc?: string[];
   }): Promise<{ success: boolean; messageId: string }> {
     this.logger.log(
-      `📧 Sending email to: ${data.to.join(", ")} — ${data.subject}`,
+      `Sending email to: ${data.to.join(", ")} — ${data.subject}`,
     );
 
     if (this.gmailService) {
@@ -488,7 +488,7 @@ export class NotificationsService {
         bcc: data.bcc,
       });
       this.logger.log(
-        `✅ Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
+        `Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
       );
       return {
         success: result.success,
@@ -499,7 +499,7 @@ export class NotificationsService {
     // Fallback mock (no GmailService available)
     const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     this.logger.warn(
-      `⚠ GmailService not available — email mocked. MessageID: ${messageId}`,
+      `GmailService not available — email mocked. MessageID: ${messageId}`,
     );
     return { success: true, messageId };
   }

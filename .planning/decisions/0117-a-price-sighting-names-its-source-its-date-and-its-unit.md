@@ -29,9 +29,45 @@
   a two-row group and `belowTrailingAverage` filters flagged rows out. Whether
   the batch pass should replace or supplement this is the founder's call
   (Q6 below).
+
+  **Q4 is answered by research, not yet decided, 2026-09-04.** The founder's call the
+  same day — *"research their markets separately"* — was carried out; the result is
+  the dated section **"Türkiye and the United Kingdom, 2026-09-04"** in
+  `.planning/07-reference/price-sources.md`. Headline: **neither market has a class B
+  and neither can have one.** Class B exists in the US because three-tier licensing
+  compels a wholesaler to publish; Türkiye instead *bans* alcohol price advertising and
+  online sale (Law 4250 md. 6; sales regulation md. 11 — both reached only through
+  secondary commentary today, since `mevzuat.gov.tr` failed DNS and
+  `resmigazete.gov.tr` failed TLS, so the statutory claim is recorded as unverified),
+  and the UK simply has no posting regime — every trade portal measured (Matthew
+  Clark/MCB, LWC, Bidfood, Brakes, Booker, Venus) prices per account. What both states
+  publish is **the tax**: the GİB ÖTV (III)(A) schedule, read in full today (beer
+  12,4849 TL · still wine 61,3914 TL · rakı 1.705,9025 TL · spirits 1.919,1384 TL,
+  **unit not stated on the table and not asserted**), and HMRC's duty rates in force
+  1 February 2026 (£22.58 / £26.61 / £30.62 / £33.99 per litre of pure alcohol, OGL
+  v3.0). Neither is a price. Five new founder questions, Q8–Q12, are recorded in the
+  registry rather than copied here.
+
+  **A defect this research found, and it lands only on these three houses.**
+  `price_history` has **no currency column** (`…20260805000000_baseline_from_
+  production.sql:4274`), neither call site passes one (`procurement.service.ts:3221`,
+  `:4764`), and `own-paper-sighting.ts:276` reads
+  `const currency = (input.currency ?? "USD").toUpperCase()`. **So every class-A
+  sighting the two Türkiye houses and the UK house produce is stamped USD**, and the
+  mixed-currency guard (`price-below-average.ts:187-192`) cannot see it because the
+  group agrees — on the wrong currency. `public.restaurants.currency` already exists
+  (`…:3576`), so the fix needs **no migration**: pass the tenant's currency at both
+  call sites and **refuse** when it is absent, exactly as the writer already refuses an
+  absent `observedAt`. Whether those three tenant rows actually hold `TRY`/`GBP` rather
+  than the `'USD'` column default is **unmeasured** (Q10).
+
+  **Q5 update, 2026-09-04:** the founder is **requesting a Wine-Searcher trade API
+  quote himself**. If bought it is a **class-D retail reference only** — its own
+  register, labelled retail, never beside a vendor quote. **The cost stays unmeasured
+  until the quote arrives**; the pricing page returned 403 to this environment.
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** price sightings, vendor_price_observations, price register, market price, posted wholesale list, public index, provenance, is_outlier, Iowa, Oregon, OLCC, USDA, robots.txt, rate limit, attribution
+- **Keywords:** price sightings, vendor_price_observations, price register, market price, posted wholesale list, public index, provenance, is_outlier, Iowa, Oregon, OLCC, USDA, robots.txt, rate limit, attribution, Türkiye, ÖTV, GİB, TADB, hal.gov.tr, United Kingdom, HMRC alcohol duty, ONS, Defra, AHDB, WSTA, Liv-ex, currency default
 - **Links:** `[[0111-the-calendar-is-the-houses-day-book]]` (the separate-register rule), `[[0114-connections-are-the-houses-profile-is-the-persons]]` (where a licensed feed is declared), `[[0020-no-fabricated-answers]]` and `[[0051-rebuilt-pages-show-live-data-only]]` (the absence-reported-as-health rule), `[[0108-a-register-is-the-houses-own-books-first]]`, `[[0115-the-house-item-is-the-ledgers-key]]`, `.planning/07-reference/price-sources.md`, `scripts/fetch_price_sightings.py`
 
 ## Context
@@ -329,3 +365,4 @@ and not an implementation detail.
 |---|---|---|
 | 2026-09-04 | Claude (research) | Created. Sources fetched and measured the same day; the leading candidate attacked and demoted from class B to class D before being recorded. Registry: `.planning/07-reference/price-sources.md`. Proof: `scripts/fetch_price_sightings.py` |
 | 2026-09-04 | Claude (build) | Step 1 BUILT on `feat/mudavym-design-p4`: `own-paper-sighting.ts` + `recordOwnPaperSighting`, both `price_history` call sites mirrored, idempotent on the existing `(source_ref, content_hash)` index, `is_outlier` written by `flagOutliers` at write time (founder's instruction; the divergence from this ADR's own batch-pass wording is recorded in the Status). 14 tests pass; `GET /vendor-intel/below-average` still 200 with `scanned.observations` 0 locally, the register being empty in this environment. Two new founder questions (Q6, Q7). |
+| 2026-09-04 | Claude (market research, TR + UK) | **Q4 researched, not decided.** ~65 fetch attempts recorded in `.planning/07-reference/price-sources.md` §"Türkiye and the United Kingdom, 2026-09-04". Verified: GİB ÖTV (III)(A) PDF, HMRC duty rates, hal.gov.tr HKS (daily, TL/kg, live today), Defra wholesale fruit and veg CSV, ONS `d7bv` JSON, TÜİK/Metro/Bizim Toptan robots.txt, five Turkish producers, five UK trade portals, WSTA, Liv-ex, AHDB terms. Unverified and named as such: resmigazete.gov.tr and mevzuat.gov.tr (TLS/DNS), TCMB EVDS, İBB Swagger, Booker, Brakes, Venus, all three UK grocers' robots.txt. Found the class-A USD-default defect above. Q5 updated (quote requested); Q8–Q12 filed in the registry. No code changed. |
