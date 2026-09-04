@@ -200,7 +200,6 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     "provider_promotions.times_used": (
         "No such column. Same select as savings_realized."
     ),
-    "users.avatar_url": (
         "No such column. team.service.ts:136 and :182 -- both team listings "
         "42703. (members.service.ts stopped reading it; that read is fixed.)"
     ),
