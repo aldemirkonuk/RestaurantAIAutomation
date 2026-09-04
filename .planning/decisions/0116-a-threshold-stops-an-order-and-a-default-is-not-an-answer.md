@@ -9,6 +9,7 @@
   [[0016-ledgers-must-express-unknown]], [[0022-scheduled-jobs-serve-every-tenant]],
   [[0077-accounts-payable-is-a-module-not-a-column]],
   `supabase/migrations/20260903170000_a_default_is_not_an_answer.sql`,
+  `supabase/migrations/20260904190000_a_report_has_no_default_clock.sql`,
   `.planning/06-pages/settings.md` §13.32 (drop the snapshot, 2026-10-04),
   `apps/api-gateway/src/procurement/order-approval-gate.ts`,
   `scripts/list_weekdays_in_regions_covered.py`,
@@ -199,9 +200,54 @@ rather than from the geography column.
 
 ### What becomes harder, or is given up
 
+- **The first reader sweep claimed four runtimes and covered three, and the
+  omission was an outage.** Corrected 2026-09-04 by the audit. The sweep grepped
+  the three TypeScript trees for the COLUMN NAMES and read
+  `services/agent-orchestrator`'s two hits as inert. They were not: the
+  orchestrator does not read these columns by name, it validates rows into a
+  Pydantic model, and **that model is a reader of every column it names**.
+  `Provider.lead_time_days` was declared `int = 7` — non-Optional, unlike
+  `payment_terms` two lines below — so after this migration a NULL lead time
+  raises `ValidationError` in `model_validate`;
+  `BaseRepository.find_many`/`get_by_id` catch **only `APIError`**, so it escaped
+  the repository; and `RFQAgent._select_vendors` swallowed it in a bare
+  `except Exception` and returned `[]`. Symptom: **every restaurant reports no
+  active vendors, permanently**, behind one ERROR line. Proven against a HEAD
+  copy of the model (`Input should be a valid integer … input_value=None`).
+  Fixed at both levels — the fields are Optional, and `find_many` now validates
+  per row and names the row it drops, so the next model/schema disagreement
+  costs one row rather than the whole query. 17 tests in
+  `services/agent-orchestrator/tests/test_dropped_column_defaults.py`.
+  **The durable lesson:** a reader sweep that greps for column names is blind to
+  a runtime that reads columns through a schema.
 - **Real answers equal to a default were erased.** Stated in the migration, in
   its `NOTICE`, and here. There is no way to recover which were real — the
   snapshot below records WHAT was erased, not WHICH of it was deliberate.
+- **The two report-timezone defaults went too** (founder, 2026-09-04, after
+  reading the reader list): `manager_preferences.report_timezone` and
+  `manager_report_profiles.timezone`, migration
+  `20260904190000_a_report_has_no_default_clock.sql`, same snapshot shape. They
+  were **not the same case**: the second has zero readers of the column and 0
+  rows in production, so it was free; the first had the fabricated answer
+  hard-coded twice more in Python, and dropping the column default alone would
+  have been cosmetic. `agents/reporting_agent.py:_should_generate_report` — the
+  line that decides **whether a manager's report fires now** — now refuses in
+  words rather than assuming California. `ManagerPreferencesRepository.is_quiet_hours`
+  is **dead code** (zero callers; the only other `is_quiet_hours` in the tree is
+  `NotificationAgent._is_quiet_hours`, a different method reading a different
+  table) and was made safe and recorded as dead rather than quietly repaired.
+- **The weekday cleanup became a MOVE** (founder, 2026-09-04). The listing was
+  read and the days are recovered rather than deleted:
+  `scripts/list_weekdays_in_regions_covered.py --apply-move` writes them into
+  `restaurant_vendor_terms.delivery_weekdays` with `notes = "recovered from the
+  regions column"` and `stated_by` left ABSENT — nobody said this, it was mined,
+  and attributing it to an operator would invent a witness — then clears them
+  from `regions_covered`. **It is two writes, not a transaction**, because
+  PostgREST exposes none; the ordering is the guarantee (term first, so a
+  failure loses nothing and re-running retries) and the header says exactly that
+  rather than claiming atomicity. Still dry-run by default; 24 tests pin the
+  matcher and the payload, including that the upsert can never carry a key that
+  would erase a cutoff, a minimum, a lead time or payment terms.
 - **A temporary table now exists and must be dropped on 2026-10-04.**
   `public.tmp_dropped_column_defaults_20260903` (RLS on, service_role only,
   `anon`/`authenticated` revoked, no column defaults of its own — all asserted in
@@ -253,4 +299,6 @@ rather than from the geography column.
 |---|---|---|
 | 2026-09-03 | Aldemir (founder) | Decided all three in session; "do option 1" on enforcement, "only certain high tier like manager or owner can adjust it" on the write gate |
 | 2026-09-04 | — | Written up; migration proven on local Postgres in a rolled-back transaction; production row counts NOT measured |
+| 2026-09-04 | Sonnet audit | BLOCKER: the reader sweep missed `services/agent-orchestrator` — `Provider.lead_time_days: int = 7` would have made every restaurant report zero vendors. Fixed at the model AND the repository; proven against a HEAD copy |
+| 2026-09-04 | Aldemir (founder) | Drop both report-timezone defaults and their two Python defaults; make the weekday cleanup a MOVE with provenance |
 | 2026-09-04 | Aldemir (founder) | Asked for a pre-change snapshot before the UPDATE. Added with a per-column assertion; re-proven on local Postgres (3/3/2 cleared, snapshot matched exactly) and the assertion proven to FIRE against a deliberately broken snapshot. Expiry filed as settings.md §13.32 |

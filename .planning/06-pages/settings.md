@@ -1411,8 +1411,40 @@ cleared to edit, so each is filed rather than built):
     **Production counts were not measured** — no production access this
     session; the `NOTICE` reports them at apply time.
 
-    The reader sweep (all four runtimes) found the fault had COPIES, and each
-    is fixed:
+    **CORRECTED 2026-09-04 by the audit: the first sweep claimed four runtimes
+    and covered three.** It grepped `apps/api-gateway`, `apps/web` and
+    `apps/mobile` for the COLUMN names and treated
+    `services/agent-orchestrator` as covered because the grep returned two hits
+    it read as inert. It was the same omission §9 records the 2026-09-02 pass
+    making — and it hid a real outage, because the orchestrator does not read
+    these columns by name, it *validates rows into a model*:
+
+    `core/database.py` declared `Provider.lead_time_days: int = 7`,
+    **non-Optional** (unlike `payment_terms` two lines below). After this
+    migration a NULL lead time makes `Provider.model_validate` raise
+    `pydantic.ValidationError`; `BaseRepository.find_many` and `.get_by_id`
+    catch **only `APIError`**, so it escaped the repository entirely; and
+    `RFQAgent._select_vendors` swallowed it in a bare `except Exception` and
+    returned `[]`. The symptom would have been **"this house has no active
+    vendors", for every restaurant, permanently** — one ERROR line and an empty
+    list. Proven against a HEAD copy of the model:
+    `Input should be a valid integer [type=int_type, input_value=None]`.
+
+    Fixed: `lead_time_days` and `minimum_order_quantity` are
+    `Optional[... ] = None` (the second names a column that does not exist at
+    all — `providers` has `minimum_order` — so its `12` was fabricated for every
+    provider and has zero readers); `find_many` validates **per row**, logs the
+    id of a row it cannot read and the count it dropped, and returns the rest;
+    `get_by_id` reports an unvalidatable row as not-found *and says so*. Pinned
+    in `services/agent-orchestrator/tests/test_dropped_column_defaults.py`
+    (17 cases), which fails against the pre-fix tree.
+
+    **The lesson, which is the durable part:** a reader sweep that greps for
+    COLUMN NAMES cannot see a runtime that reads columns through a schema. The
+    orchestrator's models are a reader of every column they name, and they were
+    not in the grep.
+
+    The rest of the sweep, and each fix:
     | Site | Was | Now |
     |---|---|---|
     | `vendor-terms.service.ts` `leadTimeCell` / `paymentCell` | compared against `7` / `'Net 30'` and reported a match as unknown | the comparison is gone; a `7` is a term. **Couples this file to the migration** — named in ADR 0116's Consequences |
@@ -1424,10 +1456,24 @@ cleared to edit, so each is filed rather than built):
     | `providers.service.ts:201,420,1374,1382` | writes `?? null` / `?? undefined`, reads raw | unchanged — already correct |
     | `restaurants/operating-hours.service.ts:179`, `simpos/scenario-verify.service.ts` | `?? null`, and says "an unrecorded timezone" | unchanged — already correct |
 
-    **NOT touched, and filed here rather than done in passing:**
-    `manager_preferences.report_timezone DEFAULT 'America/Los_Angeles'`
-    (`baseline:3692`) and `manager_report_profiles.timezone` (`baseline:3729`)
-    carry the same fault; neither was named in the decision.
+    ~~**NOT touched, and filed here rather than done in passing:**~~
+    **DONE 2026-09-04** — the founder read the reader list and dropped both:
+    `manager_preferences.report_timezone` (`baseline:3692`) and
+    `manager_report_profiles.timezone` (`baseline:3729`), migration
+    `20260904190000_a_report_has_no_default_clock.sql`, same snapshot shape and
+    same per-column assertion. **They were not the same case**, and the
+    measurement is why the second was nearly cosmetic:
+    `manager_report_profiles.timezone` has **zero readers of the column
+    anywhere** and its table holds 0 rows in production
+    (`demo/weekly_report_scheduler.py:96`), so dropping its default was free —
+    while `manager_preferences.report_timezone` had the same fabricated answer
+    **hard-coded twice more in Python**, and dropping the column default alone
+    would have changed nothing:
+    | Site | Was | Now |
+    |---|---|---|
+    | `core/database.py` `ManagerPreferences.report_timezone` | `str = "America/Los_Angeles"` — non-Optional, so a NULL row would also have raised `ValidationError` in `model_validate` | `Optional[str] = None` |
+    | `agents/reporting_agent.py` `_should_generate_report` | `preferences.get("report_timezone", "America/Los_Angeles")` — and this line decides **whether a manager's report fires now** | refuses in words: logs, skips the schedule, sends nothing, assumes no zone. An unknown zone name is refused separately |
+    | `core/database.py` `ManagerPreferencesRepository.is_quiet_hours` | `pytz.timezone(prefs.report_timezone)` | **DEAD** — zero callers anywhere (the only other `is_quiet_hours` is `NotificationAgent._is_quiet_hours`, a different method on a different table). Left in place, made safe, and recorded as dead in ADR 0116 rather than quietly repaired |
     `auth.service.ts:768` writes `dto.timezone || "America/New_York"` on
     registration — the same fault on the sign-up path — and was left because
     another builder held that file uncommitted for the whole session.
@@ -1544,3 +1590,11 @@ cleared to edit, so each is filed rather than built):
     bug). If the founder wants the erasure preserved beyond a month, the answer is
     an export taken deliberately and stored outside the database, **not** an
     un-dropped table.
+
+33. **Drop `public.tmp_dropped_report_clocks_20260904` — on or after 2026-10-04.**
+    The twin of §13.32, for migration
+    `20260904190000_a_report_has_no_default_clock.sql`. Same shape, same
+    argument, same date: `DROP TABLE IF EXISTS
+    public.tmp_dropped_report_clocks_20260904;`, nothing reads it, and a
+    snapshot kept indefinitely stops being a record of an erasure and becomes a
+    second copy of the erased answers. Both drops can be one migration.
