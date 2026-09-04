@@ -7,8 +7,10 @@
   explicit "carry this" that also states kind and unit — nothing auto-creates one;
   (c) the first enrichment writer funded is **beer style and IBU**, over the **BJCP
   style list with an `other` escape** — an off-list style is free text under `other`,
-  flagged for the catalogue, and `other` sorts last. See §Retirement, §Coming into
-  being, and phase 2 items 6–7.
+  flagged for the catalogue, and `other` sorts last; and (d) **phase 2 fixes the
+  receiving door in the same dispatch** — ADR 0070's leftover lands together with the
+  beverage rows' stock cards, as one named dispatch with both regressions tested
+  separately. See §Retirement, §Coming into being, and phase 2 items 3a and 6–7.
 - **Date:** 2026-09-03 (sub-decisions 2026-09-04)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** OD-113, identity axis, ledger, house item, restaurant_inventory, master_wine_id, beverages, uom, kind, stock, par, counts, orders, non-wine, keg
@@ -395,11 +397,35 @@ the view, and put the FK back on `CASCADE` if that is really wanted. Reversible
    shape must be read.
 3. **The "carry this" action** — the only way a house item comes into being. One
    deliberate step that supplies `kind`, `uom`, `display_name` and
-   `identity_provenance` together, with the intake vocabulary widened to match
-   (ADR 0070's "explicitly out of scope, and blocking the same goal" — the
-   receiving door's `uom` CHECK still has no mass unit and 15 `@IsInt()` fields
-   still reject 4.5). No other path creates a row; an unmatched book line renders
-   as unmatched.
+   `identity_provenance` together. No other path creates a row; an unmatched book
+   line renders as unmatched.
+3a. **The receiving door, in this same dispatch** (founder, 2026-09-04). ADR 0070
+   listed this under "explicitly out of scope, and blocking the same goal" and it
+   has blocked it ever since: **the receiving door cannot express a mass unit, so
+   the ledger's new `uom` vocabulary stops at the door.** Shipping the stock cards
+   without it would put `kg` on the item and leave a receiver unable to take a
+   flour delivery — a house item that can state its unit and an intake that cannot
+   accept it. So the two land together, as one named dispatch.
+
+   Re-measured 2026-09-04, and the first number is worse than ADR 0070 recorded:
+   the intake CHECK is `{bottle, case, keg, pack, split_case, each, liter}` with
+   **zero mass units**, and it exists in **two** places, not one —
+   `procurement_document_lines_uom_check`
+   (`20260805000000_baseline_from_production.sql:4401`) and
+   `procurement_receipt_events_uom_check` (`…:4593`) — plus a third copy of the
+   vocabulary inlined in
+   `20260901150000_order_line_capture_and_units.sql:106`. All three move or none
+   does; widening one and not the others produces a line the invoice accepts and
+   the receipt refuses. On the API side, `@IsInt()` appears **98 times across 21
+   DTO files** repo-wide; ADR 0070's "15" is the *quantity* subset (10 of them in
+   `procurement.dto.ts`, the 15th at `storage-locations.dto.ts:146`), so the
+   dispatch's first job is to re-derive that subset rather than trust the count —
+   changing a non-quantity `@IsInt()` is a silent widening of something unrelated.
+
+   **Both regressions are tested separately**, per the founder: one suite proves a
+   beverage row's stock card, one proves the door takes `4.5 kg` end to end and
+   still refuses a unit outside the vocabulary. A single suite covering both would
+   let either half pass on the other's evidence.
 4. `unit_type` documented as superseded by `uom` and stopped being read.
 5. `low-stock-alerts.service.ts:683-690` already reads `stock_live` and
    `threshold_min` off whatever row it is given — it needs no change, and that is
@@ -609,9 +635,9 @@ operator.
 4. **Phase 3's rename.** Renaming `restaurant_inventory` to `house_items` is
    correct and costs a compatibility view plus a sweep of 199 call sites. Worth
    doing, or does the view alone settle it permanently?
-5. **The ADR 0070 sequencing.** The receiving door still cannot express a mass
-   unit (15 `@IsInt()` fields, a `uom` CHECK with no `kg`). Should phase 2 fix
-   the door in the same dispatch, or is beverages-first the right cut?
+5. ~~**The ADR 0070 sequencing.**~~ — **ANSWERED 2026-09-04.** Phase 2 fixes the
+   receiving door in the **same dispatch** as the beverage rows' stock cards, with
+   both regressions tested separately. See phase 2 item 3a.
 6. ~~**The beer style vocabulary**~~ — **ANSWERED 2026-09-04.** The BJCP list with
    an `other` escape: an off-list style is typed as free text under `other` and
    flagged for the catalogue; style sorts and filters, and `other` sorts last. See
@@ -629,6 +655,7 @@ operator.
 | 2026-09-04 | Guard | `scripts/check_house_item_invariants.py` written and proven: exit **2** on the unmigrated control and on an unreachable database, **1** on a stock row naming a house item that does not exist, **0** on a correct one; `--self-test` also catches a reintroduced `DEFAULT`, an inconsistent provenance, a view that lost `security_invoker` and a stored house key, inside one rolled-back transaction. Not wired into CI: the migration is gated, so a blocking guard would fail every build |
 | 2026-09-04 | Aldemir (founder) | **Three sub-decisions taken.** (a) The library link becomes `ON DELETE RESTRICT`; soft-delete is the only retirement path; the refusal names the count; a link to a retired wine is flagged, never cascaded; and phase 2 gains a producer, "a wine your house stocks was retired from the library", naming the rows (design only). (b) A house item exists **only** through an explicit "carry this" that also sets kind and unit — menu and invoice lines that match nothing stay unmatched and say so, never auto-created. (c) The first enrichment writer funded is **beer style and IBU**, written by the house at carry-time with a picker and by the catalogue where a match exists. Questions 1 and 3 close; question 6 (the style vocabulary) opens |
 | 2026-09-04 | Aldemir (founder) | **Beer style vocabulary settled: the BJCP list with an `other` escape.** An off-list style is typed as free text, stored under `other`, and flagged for the catalogue; style sorts and filters, and `other` sorts last. The escape is what makes a closed list survivable — without it an operator is forced to file a real beer under a wrong style, and a wrong style is indistinguishable from a right one downstream where `other` announces itself. Question 6 closes; phase 2 item 7 is unblocked on vocabulary |
+| 2026-09-04 | Aldemir (founder) | **Phase 2 fixes the receiving door in the same dispatch.** ADR 0070's leftover — no mass unit at intake, `@IsInt()` rejecting 4.5 — lands together with the beverage rows' stock cards, as one named dispatch with both regressions tested separately. The reason it cannot wait: shipping the stock cards alone would put `kg` on a house item while leaving a receiver unable to book a flour delivery. Re-measured on the day: the intake vocabulary has **zero** mass units and lives in **three** places, not one (`20260805000000:4401`, `:4593`, and inlined at `20260901150000:106`) — all three move or a line the invoice accepts is one the receipt refuses; and `@IsInt()` appears **98 times across 21 DTO files**, so ADR 0070's "15" is the quantity subset and must be re-derived rather than trusted. Question 5 closes |
 | 2026-09-04 | Retirement measurement | Taken before changing the FK, so the cost is known: `master_wine_library.deleted_at` exists and is exercised (**664 of 4 226** soft-deleted); **zero** live database functions hard-delete from `master_wine_library` — `merge_library_wines()` was converted by `20260817120000:3,15` and the two remaining `DELETE` lines in the tree are in superseded bodies; **199** distinct library wines are stocked and **0** of them are retired. So RESTRICT breaks no path that exists |
 | 2026-09-04 | Re-proof | Migration re-applied in a rollback transaction on a rebuilt control (114 other migrations, 0 failures). `confdeltype = 'r'`; the refusal trigger is attached; an **unstocked** wine is still deletable, so RESTRICT does not make wines immortal; the §8 probe proves a stocked wine cannot be hard-deleted, that the refusal names "1 house item row(s) across 1 house(s)", and that retiring it leaves the house item live. Guard extended to invariant 7 and re-proved: exit **1** on a persisted dangling-link fixture (all three parts reported), exit **0** with a `FLAGGED` line on a persisted retired-wine fixture, and 10 of 10 self-test probes green |
 | 2026-09-04 | Correction | Invariant 1 said "four of those five" have no foreign key. Re-measured: it is **four of eight**, and the five named were the wrong denominator — `inventory_lots`, `stock_counts`, `pos_item_mappings` and `wine_consumption_log` all DO carry an `inventory_id` FK; the four without one are `inventory_transactions`, `pour_events`, `inventory_alert_state` and `inventory_lot_revaluations`. Fixed in place, per ADR 0025 |

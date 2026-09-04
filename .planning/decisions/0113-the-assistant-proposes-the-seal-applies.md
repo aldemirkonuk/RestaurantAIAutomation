@@ -2,9 +2,10 @@
 
 - **Status:** **Proposed — research and design only, nothing built.** The founder asked for
   the approach, not the build: *"research this and understand how should we approach this."*
-  **Two of the five open questions were answered by the founder on 2026-09-04 and are now
+  **Three of the five open questions were answered by the founder on 2026-09-04 and are now
   binding on this ADR** — Q2, a sealed batch is revocable as one unit for seven days
-  (rule 4a), and Q5, what the assistant may read (rule 6). Q1, Q3 and Q4 remain open.
+  (rule 4a); Q3, **features stay outside the line** (rule 2); and Q5, what the assistant may
+  read (rule 6). Q1 and Q4 remain open.
 - **Date:** 2026-09-03 (drafted) &middot; 2026-09-04 (survey verified, sketch 101 drawn)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** configuration assistant, settings, onboarding, propose, confirm, seal,
@@ -205,8 +206,10 @@ every one already carrying an audit writer or a route that can gain one):
 sealing):
 
 `team` (who works here and their role) · `locations` (the branches on the account) ·
-`features` (the switches that change what the system does on its own) · `services` (what the
-product may do with the owner's data, and which apps are connected) · `pos` (the till
+`features` (the switches that change what the system does on its own — **founder call,
+2026-09-04: the assistant may point at an autonomy switch and never propose flipping it,
+sealed or not**) · `services` (what the product may do with the owner's data, and which apps
+are connected) · `pos` (the till
 connection — a credential, not a judgment) · `ledger` (a read-only register — there is
 nothing to write) · and anything touching a payment instrument.
 
@@ -446,21 +449,23 @@ scope (<https://owasp.org/www-project-top-10-for-large-language-model-applicatio
 2. ~~**Does the batch belong to the house or to the person?**~~ **ANSWERED 2026-09-04 —
    revocable as one unit for seven days, then ordinary settings.** See rule 4a. The
    `correlation_id` the audit trail already carries is what makes it one unit.
-3. **Rule 2's line.** `features` is excluded because those switches "change what the system
-   does on its own" (`st-format.ts:127`). Is that the founder's line too, or should the
-   assistant be able to propose turning autonomy *on* — with the seal — as the natural end
-   of a setup conversation?
+3. ~~**Rule 2's line — should the assistant be able to propose turning autonomy on?**~~
+   **ANSWERED 2026-09-04 — FEATURES STAY OUTSIDE THE LINE.** The assistant may **point at**
+   an autonomy switch on `/settings` — name it, say what it would do, and take the owner to
+   it — but it may **never propose flipping it, sealed or not**. Blast radius draws the line,
+   not the word "settings". Rule 2 already reads this way and is now the founder's call
+   rather than a session's reading of it.
 4. **The market drop threshold** is per-deployment today. Is per-house worth a column and a
    migration, or is one number for every house correct for now?
 5. ~~**How much may the assistant read to make a good proposal?**~~ **ANSWERED 2026-09-04 —
    everything the house exposes, with every source named; a person's mailbox only through
    that person's own consent row.** See rule 6.
 
-**Still open after the 2026-09-04 calls: 1, 3 and 4.** On 1, the working assumption is
-**typing first** and voice on mobile **left undecided** — the sketch draws typing and nothing
-in this ADR depends on the answer. On 3, `features` **stays outside the line** unless the
-founder says otherwise; rule 2 is written that way and the question stays filed rather than
-closed.
+**Still open after the 2026-09-04 calls: 1 and 4.** On 1, the working assumption is **typing
+first** and voice on mobile **left undecided** — the sketch draws typing and nothing in this
+ADR depends on the answer. 4 is a product question with a migration behind it and nothing in
+this ADR is blocked on it; until it is answered the market threshold is **named and not
+offered**.
 
 ## Review trail
 
@@ -479,7 +484,10 @@ closed.
 - 2026-09-04 — **two founder calls recorded**, both from the same session as the ADR. Q2 is
   answered by rule 4a (seven-day batch revocation on the `correlation_id`); Q5 is answered by
   rule 6 (the house's record without qualification, a person's mailbox only by that person's
-  consent row, per [[0114-connections-are-the-houses-profile-is-the-persons]] §2). Q1 and Q3
-  were touched in the same session and **deliberately left open** — typing first with voice
-  undecided, and `features` staying outside the line unless the founder moves it.
+  consent row, per [[0114-connections-are-the-houses-profile-is-the-persons]] §2).
+- 2026-09-04 — **third founder call: Q3 closed.** *Features stay outside the line* — the
+  assistant may point at an autonomy switch on `/settings`, **never propose flipping it,
+  sealed or not**; blast radius draws the line, not the word "settings". Rule 2 already read
+  that way as a session's inference and is now the founder's decision. **Q1 (voice) and Q4
+  (a per-house market threshold) remain the only open questions.**
   **Nothing built** — no file under `apps/`, `supabase/` or `services/` was changed.
