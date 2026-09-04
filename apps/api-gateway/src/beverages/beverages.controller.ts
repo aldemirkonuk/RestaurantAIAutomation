@@ -22,6 +22,7 @@ import {
   ListBeveragesQueryDto,
   ListCocktailsQueryDto,
   ReadRegisterQueryDto,
+  ReadRowRecordQueryDto,
   SetCocktailIngredientsDto,
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
@@ -146,6 +147,33 @@ export class BeveragesController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error instanceof Error ? error.message : "Failed to read the register",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get("beverages/:restaurantId/row-record")
+  @ApiOperation({
+    summary:
+      "Every line of this house's five books that names one row — the series behind a column",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Per-book price and quantity series plus the ledger they were made of; a book that could not be read says so",
+  })
+  async readRowRecord(
+    @Param("restaurantId") restaurantId: string,
+    @Query() query: ReadRowRecordQueryDto,
+  ) {
+    try {
+      return await this.beverages.readRowRecord(restaurantId, query.label);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error instanceof Error
+          ? error.message
+          : "Failed to read the record behind this row",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

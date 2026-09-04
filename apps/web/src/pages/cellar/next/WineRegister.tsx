@@ -20,8 +20,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { animate, turn } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import BottleLeaf from './BottleLeaf';
-import { BOOK_READ_LIMIT, type BottleVM, type CellarData } from './useCellarNextData';
-import { EM, money, volume, year } from './cellar-format';
+import {
+  BOOK_READ_LIMIT,
+  useInkOnChange,
+  type BottleVM,
+  type CellarData,
+} from './useCellarNextData';
+import { EM, houseNamingFor, money, volume, year } from './cellar-format';
 
 /**
  * The menu scanner ships today and its detection half is real (`scanMenuImage`
@@ -86,6 +91,52 @@ function sortValue(b: BottleVM, key: SortKey): string | number | null {
     case 'onhand': return b.cellar ? b.cellar.stockLive : null;
     default: return b.name.toLowerCase();
   }
+}
+
+/**
+ * One row of the wine register, which is the only register whose figures MOVE
+ * while somebody is looking at them.
+ *
+ * A stock move arrives on the socket, `useCellarLive` patches the cached row
+ * with the figure the event already carried, and this row flashes `ink` —
+ * 160ms, one paper step, nothing translating, so a row that changes under the
+ * reader's eye does not push the rows below it. The alternative the page had
+ * until this pass was to invalidate the query and wait for a whole HTTP round
+ * trip before the number changed, which is what "not smooth" meant.
+ */
+function LiveRow({
+  bottle,
+  selected,
+  stamp,
+  onChoose,
+  children,
+}: {
+  bottle: BottleVM;
+  selected: boolean;
+  stamp: number | undefined;
+  onChoose: () => void;
+  children: React.ReactNode;
+}) {
+  const [el, setEl] = useState<HTMLTableRowElement | null>(null);
+  useInkOnChange(el, stamp);
+  return (
+    <tr
+      ref={setEl}
+      key={bottle.id}
+      data-selected={selected}
+      data-live={stamp === undefined ? undefined : 'true'}
+      tabIndex={0}
+      onClick={onChoose}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onChoose();
+        }
+      }}
+    >
+      {children}
+    </tr>
+  );
 }
 
 function distinct(bottles: BottleVM[], pick: (b: BottleVM) => string | null): string[] {
@@ -220,9 +271,12 @@ export default function WineRegister({ data }: { data: CellarData }) {
 
   return (
     <div data-testid="wine-register">
+      {/* The parent's own name. A wine house always reads "The Cellar" here by
+          the rule, but the rule is what renders it — not a literal that would
+          survive the house changing what it pours. */}
       <p className="cl-crumb">
         <Link to="/cellar" className="cl-focus">
-          The Cellar
+          {houseNamingFor(data.registers).name}
         </Link>{' '}
         · register
       </p>
@@ -443,17 +497,14 @@ export default function WineRegister({ data }: { data: CellarData }) {
               </thead>
               <tbody>
                 {shown.map((b) => (
-                  <tr
+                  <LiveRow
                     key={b.id}
-                    data-selected={b.id === openId}
-                    tabIndex={0}
-                    onClick={() => choose(b.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        choose(b.id);
-                      }
-                    }}
+                    bottle={b}
+                    selected={b.id === openId}
+                    stamp={
+                      b.cellar ? data.live.touched[b.cellar.inventoryId] : undefined
+                    }
+                    onChoose={() => choose(b.id)}
                   >
                     <td>
                       <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
@@ -484,12 +535,20 @@ export default function WineRegister({ data }: { data: CellarData }) {
                         <span className="cl-dim">not in the cellar</span>
                       )}
                     </td>
-                  </tr>
+                  </LiveRow>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        {/* The live path, said out loud. A page that claims to be realtime and
+            does not say what it measured is claiming, not reporting. */}
+        <p className="cl-note" data-testid="wine-live-note">
+          {data.live.lastApplyMs === null
+            ? 'Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured.'
+            : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later — measured in this tab, from the event to the painted frame. The transport leg is separate and is stated in MOTIONS.md.`}
+        </p>
       </div>
     </div>
   );

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 095 — The Cellar, A and B merged</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mudavym tokens, copied inline from apps/web/src/styles/mudavym.css (ADR 0042).
+   Sketches render from file:// with no build, so the tokens are duplicated here
+   rather than imported. Do not re-derive values; copy them. */
+:root {
+  --seal: #1A5E6B;
+  --seal-deep: #14515C;
+  --seal-tint: rgba(26, 94, 107, 0.10);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #FAF7F1;
+  --paper-1: #F3EFE6;
+  --paper-2: #EAE4D8;
+  --ink-1: #211C16;
+  --ink-2: #4F473C;
+  --ink-3: #7C7365;
+  --ink-4: #665D50;
+  color-scheme: light;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.sk-banner {
+  background: var(--ink-1);
+  color: var(--paper-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 7px 20px;
+}
+.wrap { max-width: 1400px; margin: 0 auto; padding: 22px 24px 56px; }
+.serif { font-family: var(--serif); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--ink-3); }
+h1.sk-h1 {
+  font-family: var(--serif);
+  font-size: 40px; line-height: 1.04; letter-spacing: -0.022em;
+  font-weight: 600; margin: 12px 0 0;
+}
+h2.sk-sec {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin: 30px 0 10px;
+}
+.sk-crumb { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.sk-standing { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 10px 0 0; max-width: 74ch; }
+.sk-note { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 9px 0 0; }
+.sk-said { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--paper-2); height: 3px; margin: 16px 0 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--paper-2); border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; color: var(--ink-2); background: var(--paper-1);
+}
+.chip[data-seal="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+.panel { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 14px 16px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1);
+  color: var(--ink-1); font: inherit; font-size: 12px; padding: 6px 11px; cursor: pointer;
+}
+.btn[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+table.reg { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.reg th {
+  text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; padding: 8px 10px;
+  border-bottom: 1px solid var(--ink-1);
+}
+table.reg td { padding: 8px 10px; border-bottom: 1px solid var(--paper-2); vertical-align: top; }
+table.reg tbody tr:nth-child(even) td { background: var(--paper-1); }
+</style>
+<style>
+/* additions for the merge */
+.grid { display: grid; gap: 14px; }
+.tiles { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+.tile { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 12px 14px; }
+.tile-label { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.tile-fig { font-family: var(--mono); font-size: 27px; font-variant-numeric: tabular-nums; margin: 4px 0 0; letter-spacing: -0.02em; }
+.cards { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
+.card { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-0); padding: 13px 14px; }
+.card h3 { font-family: var(--serif); font-size: 18px; font-weight: 600; margin: 0; }
+.card dl { display: flex; gap: 16px; margin: 9px 0 0; }
+.card dt { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.card dd { font-family: var(--mono); font-size: 16px; margin: 2px 0 0; }
+.floorstrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.zone { border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); padding: 9px 10px; }
+.zone b { display: block; font-family: var(--mono); font-size: 11px; color: var(--seal-deep); }
+.zone span { display: block; font-size: 11px; color: var(--ink-2); margin-top: 3px; line-height: 1.35; }
+.zone .n { font-family: var(--mono); font-size: 17px; margin-top: 6px; display: block; }
+.mark { display: inline-block; width: 15px; height: 15px; line-height: 15px; text-align: center;
+        font-family: var(--mono); font-size: 9.5px; border: 1px solid var(--paper-2);
+        border-radius: 4px; color: var(--ink-3); background: var(--paper-0); }
+.mark[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); color: var(--seal-deep); font-weight: 600; }
+.menu { position: absolute; width: 330px; background: var(--paper-0); border: 1px solid var(--paper-2);
+        border-radius: 10px; box-shadow: 0 14px 34px rgba(0,0,0,.13); padding: 10px; z-index: 5; }
+.menuitem { display: flex; gap: 7px; align-items: center; padding: 6px 8px; border-radius: 6px; font-size: 12.5px; }
+.menuitem[data-on="true"] { background: var(--paper-1); border: 1px solid var(--seal-ring); }
+.menunote { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 6px 0 0; }
+.account { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--paper-2); }
+.series { border: 1px solid var(--paper-2); border-bottom: 3px double var(--ink-4); border-radius: 10px;
+          background: var(--paper-1); padding: 14px 16px 16px; }
+.two { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.contrib { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.contrib h4 { margin: 0 0 5px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--seal-deep); }
+.contrib p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+a.nav { text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="sk-banner">SKETCH &middot; 095 &middot; cellar &mdash; directions A and B merged &middot; example data, not a tenant</div>
+<div class="wrap">
+  <p class="sk-crumb">Mudavym &middot; /cellar &middot; fourth pass, 2026-09-03</p>
+  <h1 class="sk-h1">A and B, merged<span style="color:var(--seal)">.</span></h1>
+  <p class="sk-standing">
+    The founder: <i>&ldquo;Both the direction A and B look great in their own fields, research
+    on it try to merge those two.&rdquo;</i> They are not alternatives to each other &mdash;
+    they answer different questions. A answers <b>where</b>. B answers <b>everything, at
+    once</b>. The shipped book answers <b>this kind, in full</b>. The merge keeps all three
+    and pays each one&rsquo;s cost only where it is small.
+  </p>
+  <hr class="rule">
+
+  <h2 class="sk-sec">The three screens</h2>
+  <div class="contrib">
+    <div class="panel">
+      <h4><a class="nav" href="merged-parent.html">1 &middot; The parent</a></h4>
+      <p>The adaptive name, the four info boxes the founder asked to keep, A&rsquo;s floor
+      reduced to a strip of zones that carry a real count, the registers, and B&rsquo;s
+      &ldquo;everything at once&rdquo; with the general column set.</p>
+    </div>
+    <div class="panel">
+      <h4><a class="nav" href="merged-register.html">2 &middot; A register</a></h4>
+      <p>The per-register columns, the column&rsquo;s own menu on right-click, the series a
+      cell opens (graph then ledger), and the four columns not drawn with the measurement
+      that says why.</p>
+    </div>
+    <div class="panel">
+      <h4><a class="nav" href="merged-row-open.html">3 &middot; A row, opened</a></h4>
+      <p>The <span class="num">/inventory</span> dropdown shape on a cellar row, in place,
+      both grounds &mdash; including the two cards this register cannot fill, drawn hatched
+      with their reason instead of dropped.</p>
+    </div>
+  </div>
+
+  <h2 class="sk-sec">What each direction contributed</h2>
+  <div class="panel" style="margin-bottom:12px">
+    <h4 style="margin:0 0 5px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--seal-deep)">A &middot; the cellar floor</h4>
+    <p class="sk-said">
+      <b>Contributed:</b> the room, and the only answer on the whole page to <i>where</i> &mdash;
+      plus the two verbs that come with it (walk a zone, put away what is at the door).
+      <b>Cost, and how the merge pays it:</b> A stands on
+      <span class="num">storage_locations</span>, which holds 87 rows across 7 tenants with 84
+      carrying one of four invented zone names (measured on production 2026-09-02). Drawn as
+      the whole parent it is a picture of fabricated rooms. Reduced to a strip, and drawn only
+      from zones that carry a real count and a real walk date, it costs nothing and still
+      answers <i>where</i>.
+    </p>
+  </div>
+  <div class="panel" style="margin-bottom:12px">
+    <h4 style="margin:0 0 5px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--seal-deep)">B &middot; one register, kind as a facet</h4>
+    <p class="sk-said">
+      <b>Contributed:</b> &ldquo;see everything&rdquo; taken literally &mdash; a whisky, a keg
+      and a Burgundy in one list, with the register as a facet across the top.
+      <b>Cost, and how the merge pays it:</b> one row grammar for three kinds of thing, which
+      is the thing the four-child IA was chosen to avoid. The merge pays it only for the eight
+      columns that survive being general (Bottle &middot; Register &middot; Our record &middot;
+      On the list &middot; Paid &middot; Sold &middot; Taken &middot; Last quote), and refuses
+      the ninth: <b>On hand</b> is real for wines and structurally absent for the other six, so
+      as a general column it would be an em dash on most of the page.
+    </p>
+  </div>
+  <div class="panel">
+    <h4 style="margin:0 0 5px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--seal-deep)">The shipped book</h4>
+    <p class="sk-said">
+      <b>Contributed:</b> the spine. A parent of registers, each opening at full breadth, with
+      depth off the row. It is the only one of the three that needed nothing further, and both
+      of the others now hang off it rather than replacing it.
+    </p>
+  </div>
+
+  <h2 class="sk-sec">The one thing the merge adds that neither direction had</h2>
+  <p class="sk-said" style="max-width:82ch">
+    <b>A gesture set, stated once.</b> The <b>header owns the column</b> &mdash; right-click it
+    or press its caret for sort, hide, and the column&rsquo;s own account of itself (what it
+    means, which table it reads, how much of it is filled). The <b>row owns its record</b>
+    &mdash; click it and it opens in place as cards. The <b>cell owns the series</b> &mdash;
+    double-click or right-click and the graph and the ledger behind that one figure open
+    below. That split is not invented here: Airtable&rsquo;s field-header menu is schema and
+    nothing else, TradingView says outright that <i>&ldquo;you can click any row to open the
+    chart&rdquo;</i> while a right-click on a column header customises the column, and
+    Bloomberg has answered &ldquo;graph or table?&rdquo; with <i>both</i> since the terminal
+    shipped &mdash; <span class="num">GP</span> draws the series,
+    <span class="num">HP</span> tables it.
+  </p>
+</div>
+</body>
+</html>

@@ -32,13 +32,14 @@
  * every row on this page is the inventory overlay, and that half IS keyed.
  */
 
-import { useCallback, useMemo } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useWines } from '../../../hooks/queries/useWineQueries';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
+import { animate, ink } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import { apiClient } from '../../../services/api/client';
 import type { Wine } from '../../../services/api/types';
@@ -402,6 +403,326 @@ export function useRegister(register: RegisterId | null) {
   };
 }
 
+/* ── live: a stock move arrives before the refetch does ─────────────────── */
+
+/**
+ * THE REALTIME PATH, AND WHY THE SHIPPING ONE FELT SLOW.
+ *
+ * The founder: *"The realtime update must be super fast and smooth."*
+ *
+ * What was there. `WebsocketGateway.emitStockUpdate` pushes `stock:updated` to
+ * the `restaurant:<id>` room (`websocket.gateway.ts:358-367`), the browser's
+ * socket handler re-dispatches it as a window `inventory_change` CustomEvent
+ * (`lib/websocket.tsx:485-498`), and `useInventory` answers by INVALIDATING the
+ * inventory query (`hooks/queries/useInventoryQueries.ts:59-65`). So the row
+ * only changes after a whole extra HTTP round trip to `/inventory/:rid` — the
+ * socket saved nothing except the polling interval. That is the "not smooth"
+ * the founder is describing, and it is an architecture, not a jank.
+ *
+ * What this does instead. The event already CARRIES the new figure
+ * (`stock_after`), so the cached row is patched with it the moment it lands and
+ * the cell repaints on the next frame. The invalidation still happens — the
+ * push is a hint, the read is the truth — but it now reconciles behind a row
+ * that is already correct instead of in front of one that is stale.
+ *
+ * TWO PRODUCERS, TWO SHAPES, ONE EVENT NAME — and this reader accepts both.
+ * `lib/websocket.tsx:492` dispatches `{ inventory_id, stock_after, ... }` while
+ * `contexts/RealtimeContext.tsx:376` dispatches `{ type, wineId, quantity }`.
+ * Neither is wrong and neither knows about the other; a reader that assumed one
+ * would silently ignore half the traffic, which is the absence-reported-as-
+ * health fault wearing a socket. Filed for a single shape in the page note §9.
+ *
+ * TENANCY. A payload carrying a `restaurant_id` that is not the active one is
+ * dropped rather than applied. The gateway rooms already scope this, but a
+ * window event is a shared bus and the page does not get to assume.
+ */
+export interface LiveTouch {
+  /** Inventory row id, when the payload named one. */
+  inventoryId: string | null;
+  /** Wine id, when it named that instead. */
+  wineId: string | null;
+  stockAfter: number | null;
+  /** performance.now() at receipt — the clock the latency is measured against. */
+  at: number;
+}
+
+interface WireStockEvent {
+  inventory_id?: unknown;
+  restaurant_id?: unknown;
+  stock_after?: unknown;
+  wineId?: unknown;
+  quantity?: unknown;
+  type?: unknown;
+}
+
+export function readStockEvent(
+  detail: unknown,
+  activeRestaurantId: string | null,
+): LiveTouch | null {
+  const d = (detail as { new?: unknown } | null)?.new ?? detail;
+  if (d === null || typeof d !== 'object') return null;
+  const e = d as WireStockEvent;
+  const rid = typeof e.restaurant_id === 'string' ? e.restaurant_id : null;
+  // A payload from another house is dropped, never applied to this one's rows.
+  if (rid !== null && activeRestaurantId !== null && rid !== activeRestaurantId) {
+    return null;
+  }
+  const inventoryId = typeof e.inventory_id === 'string' ? e.inventory_id : null;
+  const wineId = typeof e.wineId === 'string' ? e.wineId : null;
+  if (inventoryId === null && wineId === null) return null;
+  const after =
+    typeof e.stock_after === 'number'
+      ? e.stock_after
+      : typeof e.quantity === 'number'
+        ? e.quantity
+        : null;
+  return { inventoryId, wineId, stockAfter: after, at: performance.now() };
+}
+
+export interface CellarLive {
+  /** Inventory row ids touched since mount, newest wins. Drives the ink flash. */
+  touched: Record<string, number>;
+  /**
+   * Milliseconds from the event landing in this tab to the frame that showed
+   * it. The transport leg is measured separately and stated in MOTIONS.md —
+   * this figure is the half this page is responsible for.
+   */
+  lastApplyMs: number | null;
+}
+
+export function useCellarLive(): CellarLive {
+  const { activeRestaurantId } = useAuth();
+  const queryClient = useQueryClient();
+  const [touched, setTouched] = useState<Record<string, number>>({});
+  const [lastApplyMs, setLastApplyMs] = useState<number | null>(null);
+  const ridRef = useRef(activeRestaurantId);
+  ridRef.current = activeRestaurantId;
+
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const touch = readStockEvent(
+        (event as CustomEvent).detail,
+        ridRef.current,
+      );
+      if (touch === null) return;
+
+      // The optimistic patch. Every cached inventory list for this tenant is
+      // updated in place; nothing is inserted, because a row this page has
+      // never read is not a row this page may invent.
+      if (touch.stockAfter !== null) {
+        queryClient.setQueriesData<unknown>(
+          { queryKey: queryKeys.inventory.lists() },
+          (old: unknown) => {
+            if (!Array.isArray(old)) return old;
+            let hit = false;
+            const next = old.map((row) => {
+              const r = row as { id?: string; wineId?: string };
+              const match =
+                (touch.inventoryId !== null && r.id === touch.inventoryId) ||
+                (touch.wineId !== null && r.wineId === touch.wineId);
+              if (!match) return row;
+              hit = true;
+              return { ...(row as object), stockLive: touch.stockAfter };
+            });
+            return hit ? next : old;
+          },
+        );
+      }
+
+      const key = touch.inventoryId ?? touch.wineId;
+      if (key !== null) setTouched((t) => ({ ...t, [key]: Date.now() }));
+
+      // Measured on the frame the browser actually painted, not on the line
+      // after setState — a number taken before the paint is not a latency.
+      requestAnimationFrame(() => {
+        setLastApplyMs(Math.round(performance.now() - touch.at));
+      });
+
+      // The read is still the truth. It reconciles behind a correct row now.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    };
+
+    window.addEventListener('inventory_change', onChange);
+    return () => window.removeEventListener('inventory_change', onChange);
+  }, [queryClient]);
+
+  return { touched, lastApplyMs };
+}
+
+/**
+ * The ink flash on a row a live event just moved. `ink` is the house's 160ms
+ * micro-state token; nothing translates, so a row that changes under the
+ * reader's eye does not push the rows below it.
+ */
+export function useInkOnChange(
+  el: HTMLElement | null,
+  stamp: number | undefined,
+) {
+  const seen = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (el === null || stamp === undefined || stamp === seen.current) return;
+    seen.current = stamp;
+    animate(
+      el,
+      [
+        { background: 'var(--seal-tint)' },
+        { background: 'transparent' },
+      ],
+      ink,
+    );
+  }, [el, stamp]);
+}
+
+/* ── the whole cellar at once: direction B, one flat book ───────────────── */
+
+export interface WholeRowVM extends RegisterRowVM {
+  register: RegisterId;
+}
+
+export interface WholeCellarVM {
+  rows: WholeRowVM[];
+  /** Per register: whether it answered, and with how many rows. */
+  reads: { register: RegisterId; loading: boolean; error: string | null; rows: number | null }[];
+  loading: boolean;
+  /** True when at least one register could not be read — stated, never hidden. */
+  partial: boolean;
+}
+
+/**
+ * Every register the house carries, in one list.
+ *
+ * NOT FETCHED UNTIL ASKED FOR. Six register reads is a real cost and the parent
+ * does not spend it on a page load nobody asked to be expensive; the section is
+ * opened by a button and the reads fire then. That is also the honest shape:
+ * "see everything at once" is a deliberate act, and the page says what it is
+ * about to do before it does it.
+ *
+ * WINES ARE NOT IN HERE, and the reason is a real one rather than an omission:
+ * `/wines` is served by a different endpoint with the inventory overlay laid
+ * over it, so a wine row and a beer row are not the same shape. The whole-cellar
+ * view says so in one line rather than pretending the shapes match — which is
+ * exactly the trade direction B makes and the reason the four-child IA existed.
+ */
+export function useWholeCellar(
+  enabled: boolean,
+  carried: RegisterId[] | null,
+): WholeCellarVM {
+  const { activeRestaurantId } = useAuth();
+  const registers = (carried ?? []).filter((r) => r !== 'wines');
+
+  const results = useQueries({
+    queries: registers.map((register) => ({
+      queryKey: ['cellar', 'register', activeRestaurantId, register],
+      enabled: enabled && Boolean(activeRestaurantId),
+      queryFn: async (): Promise<RegisterVM> => {
+        const r = await apiClient.get(
+          `/beverages/${activeRestaurantId}/registers/${register}`,
+        );
+        return r.data as RegisterVM;
+      },
+    })),
+  });
+
+  return useMemo(() => {
+    const rows: WholeRowVM[] = [];
+    const reads: WholeCellarVM['reads'] = [];
+    let loading = false;
+    let partial = false;
+    results.forEach((q, i) => {
+      const register = registers[i];
+      const error = q.isError
+        ? q.error instanceof Error
+          ? q.error.message
+          : 'no reason given'
+        : null;
+      if (q.isLoading) loading = true;
+      if (error !== null) partial = true;
+      reads.push({
+        register,
+        loading: q.isLoading,
+        error,
+        rows: q.data ? q.data.rows.length : null,
+      });
+      for (const r of q.data?.rows ?? []) rows.push({ ...r, register });
+    });
+    return { rows, reads, loading, partial };
+    // `registers` is derived from `carried` on every render; the results array
+    // is the stable dependency the query client hands back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, carried]);
+}
+
+/* ── the record behind ONE row: the series a column opens ──────────────── */
+
+export interface SeriesPointVM {
+  at: string;
+  value: number;
+  unit: 'money' | 'count';
+}
+
+export interface LedgerEntryVM {
+  at: string | null;
+  label: string;
+  who: string | null;
+  qty: number | null;
+  unitPrice: number | null;
+  total: number | null;
+  note: string | null;
+  matchedBy: 'exact' | 'contains';
+}
+
+export interface BookRecordVM {
+  book: 'menu' | 'invoice' | 'order' | 'quote' | 'pos';
+  readable: boolean;
+  reason: string | null;
+  rows: number | null;
+  price: SeriesPointVM[];
+  quantity: SeriesPointVM[];
+  ledger: LedgerEntryVM[];
+  source: string;
+}
+
+export interface RowRecordVM {
+  restaurantId: string;
+  label: string;
+  matchRule: string;
+  books: BookRecordVM[];
+  named: BookRecordVM['book'][];
+  nothingNamesIt: boolean;
+}
+
+/**
+ * Every line of this house's five books that names one row.
+ *
+ * Enabled only when a label is chosen, so opening a register costs nothing:
+ * this read happens on the gesture, not on the page. Keyed by tenant AND label
+ * so a branch switch cannot show the previous house's ledger under the same
+ * bottle — the exact failure the tenant-keying rule exists for.
+ */
+export function useRowRecord(label: string | null) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'row-record', activeRestaurantId, label],
+    enabled: Boolean(activeRestaurantId) && label !== null && label.trim() !== '',
+    queryFn: async (): Promise<RowRecordVM> => {
+      const r = await apiClient.get(
+        `/beverages/${activeRestaurantId}/row-record`,
+        { params: { label } },
+      );
+      return r.data as RowRecordVM;
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading || q.isFetching,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+  };
+}
+
 /* ── the one register a house can write ────────────────────────────────────
    `public.cocktails` is the only table behind these registers that carries a
    `restaurant_id`, so it is the only one with a write path. There is no
@@ -608,6 +929,7 @@ export function useCellarNextData() {
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const registers = useCellarRegisters();
+  const live = useCellarLive();
 
   const winesQ = useWines({ limit: BOOK_READ_LIMIT });
   const inventoryQ = useInventory();
@@ -720,6 +1042,15 @@ export function useCellarNextData() {
      * catalogue figure and every surface that prints it labels it as one.
      */
     libraryByKind,
+
+    /**
+     * Live stock moves that have landed in this tab and been applied to the
+     * cached rows already. `touched` drives the ink flash; `lastApplyMs` is the
+     * measured half of the latency this page owns (event in this tab → painted
+     * frame). The transport half is measured separately and stated in
+     * MOTIONS.md, because a page cannot honestly claim a number it did not time.
+     */
+    live,
 
     booking: winesQ.isLoading,
     bookError: winesQ.isError ? errorOf(winesQ.error) : null,

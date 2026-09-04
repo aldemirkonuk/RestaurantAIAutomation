@@ -40,6 +40,8 @@ const mock = vi.hoisted(() => ({
   register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
   recipe: { data: null, loading: false, error: null } as Record<string, unknown>,
   writes: {} as Record<string, unknown>,
+  rowRecord: { data: null, loading: false, error: null } as Record<string, unknown>,
+  whole: { rows: [], reads: [], loading: false, partial: false } as Record<string, unknown>,
 }));
 
 vi.mock('./useCellarNextData', async (orig) => ({
@@ -50,6 +52,8 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useRegister: () => mock.register,
   useCocktailRecipe: () => mock.recipe,
   useCocktailWrites: () => mock.writes,
+  useRowRecord: () => mock.rowRecord,
+  useWholeCellar: () => mock.whole,
 }));
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
@@ -162,6 +166,7 @@ const base = {
   registersError: null as string | null,
   saveRegisters: { mutateAsync: vi.fn(), isPending: false, error: null },
   libraryByKind: null as Map<string, number> | null,
+  live: { touched: {} as Record<string, number>, lastApplyMs: null as number | null },
   refetch: vi.fn(),
 };
 
@@ -188,6 +193,8 @@ beforeEach(() => {
   mock.current = { ...base };
   mock.beverages = { data: null, loading: false, error: null };
   mock.cocktails = { data: null, loading: false, error: null };
+  mock.rowRecord = { data: null, loading: false, error: null };
+  mock.whole = { rows: [], reads: [], loading: false, partial: false };
 });
 
 describe('CellarNext — the parent surface', () => {
@@ -854,5 +861,567 @@ describe('CellarNext — the registers that are not wines', () => {
     mock.current = { ...base, bottles: [bottle()], registers: readout() };
     draw({}, '/cellar?register=kombucha');
     expect(screen.getByTestId('register-wines')).toBeInTheDocument();
+  });
+});
+
+/* ── FOURTH PASS, 2026-09-03 ─────────────────────────────────────────────────
+   The founder's three named requirements for this pass, asserted:
+     · what the columns represent, per register and for the whole cellar;
+     · the gesture set — the header owns the column, the cell owns the record;
+     · the parent's name follows what the house pours.                       */
+
+function bookRecord(over: Record<string, unknown> = {}) {
+  return {
+    book: 'invoice',
+    readable: true,
+    reason: null,
+    rows: 2,
+    price: [
+      { at: '2026-03-02T00:00:00Z', value: 8.2, unit: 'money' },
+      { at: '2026-08-19T00:00:00Z', value: 8.6, unit: 'money' },
+    ],
+    quantity: [],
+    ledger: [
+      {
+        at: '2026-08-19T00:00:00Z',
+        label: 'EFES PILSEN 24/50CL',
+        who: 'Anadolu İçecek',
+        qty: 24,
+        unitPrice: 8.6,
+        total: 206.4,
+        note: 'INV-4471',
+        matchedBy: 'contains',
+      },
+      {
+        at: '2026-03-02T00:00:00Z',
+        label: 'Efes Pilsen',
+        who: 'Anadolu İçecek',
+        qty: 48,
+        unitPrice: 8.2,
+        total: 393.6,
+        note: null,
+        matchedBy: 'exact',
+      },
+    ],
+    source: 'procurement_document_lines',
+    ...over,
+  };
+}
+
+function rowRecordVM(books: Record<string, unknown>[]) {
+  return {
+    restaurantId: 'r1',
+    label: 'Efes Pilsen',
+    matchRule:
+      "A line belongs to this row when its label is the same words (exact), or contains this row's label — a weaker rule than beverage_house_key.",
+    books,
+    named: books.filter((b) => b.readable && (b.rows as number) > 0).map((b) => b.book),
+    nothingNamesIt: false,
+  };
+}
+
+describe('the columns a register draws', () => {
+  beforeEach(() => {
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    mock.current = { ...base, registers: readout() };
+  });
+
+  it('draws the house’s own record first and the catalogue after it', () => {
+    draw({ category: 'beer' });
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
+    expect(heads[0]).toMatch(/Bottle/);
+    expect(heads[1]).toMatch(/Our record/);
+    expect(heads.join('|')).toMatch(/Paid/);
+    expect(heads.join('|')).toMatch(/Taken/);
+    // The catalogue's own facts come after the house's.
+    const paid = heads.findIndex((h) => /Paid/.test(h));
+    const type = heads.findIndex((h) => /Type/.test(h));
+    expect(paid).toBeLessThan(type);
+  });
+
+  it('does NOT draw ABV or Format, and says why in the columns-not-drawn list', () => {
+    draw({ category: 'beer' });
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '').join('|');
+    expect(heads).not.toMatch(/ABV/);
+    const more = screen.getByTestId('register-more-columns');
+    expect(more).toHaveTextContent(/ABV/);
+    expect(more).toHaveTextContent(/0 of 609/);
+    expect(more).toHaveTextContent(/Style/);
+  });
+
+  it('an operator can turn a hidden column on and gets the em dash WITH its reason', () => {
+    draw({ category: 'beer' });
+    const more = screen.getByTestId('register-more-columns');
+    fireEvent.click(within(more).getByRole('button', { name: 'ABV' }));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '').join('|');
+    expect(heads).toMatch(/ABV/);
+  });
+});
+
+describe('the gesture set — the header owns the column, the cell owns the record', () => {
+  beforeEach(() => {
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    mock.current = { ...base, registers: readout() };
+    mock.rowRecord = { data: null, loading: false, error: null };
+  });
+
+  it('right-clicking a header opens that column’s own account — source and measured fill', () => {
+    draw({ category: 'beer' });
+    const head = screen.getAllByRole('columnheader').find((h) => /Last quote/.test(h.textContent ?? ''))!;
+    fireEvent.contextMenu(head);
+    const menu = screen.getByTestId('column-menu');
+    expect(menu).toHaveTextContent(/vendor_price_observations/);
+    expect(menu).toHaveTextContent(/0 rows in the whole database/);
+    expect(within(menu).getByRole('menuitem', { name: /Sort up/ })).toBeInTheDocument();
+  });
+
+  it('the caret is right-click’s keyboard-reachable twin, and it is a real button', () => {
+    draw({ category: 'beer' });
+    const caret = screen.getAllByRole('button', { name: /What Paid is/ })[0];
+    expect(caret).toHaveAttribute('aria-haspopup', 'menu');
+    fireEvent.click(caret);
+    expect(screen.getByTestId('column-menu')).toHaveTextContent(/procurement_document_lines/);
+  });
+
+  it('a column with no series says so rather than offering an empty graph', () => {
+    draw({ category: 'beer' });
+    const head = screen.getAllByRole('columnheader').find((h) => /Type/.test(h.textContent ?? ''))!;
+    fireEvent.contextMenu(head);
+    expect(screen.getByTestId('column-menu-no-series')).toHaveTextContent(
+      /nothing to plot over time/,
+    );
+  });
+
+  it('double-clicking a Paid cell opens the order ledger for that row', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.doubleClick(within(row).getByText('$618.40'));
+
+    const panel = screen.getByTestId('series-panel');
+    expect(panel).toHaveTextContent(/Paid · the whole record/);
+    expect(within(panel).getAllByText('Anadolu İçecek')).toHaveLength(2);
+    expect(panel).toHaveTextContent('INV-4471');
+    // Two dated, priced lines make a series, so the graph is drawn.
+    expect(screen.getByTestId('series-graph')).toBeInTheDocument();
+    // And the weaker match is labelled as weaker, on the line it found.
+    expect(panel).toHaveTextContent(/matched loosely/);
+  });
+
+  it('right-clicking the same cell opens the same panel — both gestures the founder named', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.contextMenu(within(row).getByText('$618.40'));
+    expect(screen.getByTestId('series-panel')).toBeInTheDocument();
+  });
+
+  it('a book nobody could read renders words, and no graph is drawn for it', () => {
+    mock.rowRecord = {
+      data: rowRecordVM([
+        bookRecord({
+          readable: false,
+          rows: null,
+          reason: 'procurement_document_lines is not on this database.',
+          price: [],
+          ledger: [],
+        }),
+      ]),
+      loading: false,
+      error: null,
+    };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.doubleClick(within(row).getByText('$618.40'));
+    expect(screen.getByTestId('series-unread-invoice')).toHaveTextContent(/Unread, not empty/);
+    expect(screen.queryByTestId('series-graph')).not.toBeInTheDocument();
+  });
+
+  it('a book that was read and names it nowhere prints its own sentence, not a flat line', () => {
+    mock.rowRecord = {
+      data: rowRecordVM([
+        bookRecord({
+          book: 'quote',
+          rows: 0,
+          reason: 'No vendor has quoted this to this house.',
+          price: [],
+          ledger: [],
+        }),
+      ]),
+      loading: false,
+      error: null,
+    };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.doubleClick(within(row).getByText('$618.40'));
+    expect(screen.getByTestId('series-empty-quote')).toHaveTextContent(/No vendor has quoted/);
+    expect(screen.queryByTestId('series-graph')).not.toBeInTheDocument();
+  });
+
+  it('one line is a fact, not a series — no axis is drawn through a single point', () => {
+    mock.rowRecord = {
+      data: rowRecordVM([
+        bookRecord({
+          rows: 1,
+          price: [{ at: '2026-03-02T00:00:00Z', value: 8.2, unit: 'money' }],
+          ledger: [bookRecord().ledger[1]],
+        }),
+      ]),
+      loading: false,
+      error: null,
+    };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.doubleClick(within(row).getByText('$618.40'));
+    expect(screen.getByTestId('series-one-point')).toHaveTextContent(/A single\s+point is a fact/);
+    expect(screen.queryByTestId('series-graph')).not.toBeInTheDocument();
+  });
+});
+
+describe('the whole cellar at once — direction B, merged in', () => {
+  it('does not spend six reads on a page load nobody asked to be expensive', () => {
+    mock.current = { ...base, registers: readout({ registers: [
+      reg('wines', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('beer', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('whiskey'), reg('cocktails'), reg('spirits'), reg('non_alcoholic'), reg('soft_drinks'),
+    ] }) };
+    draw();
+    expect(screen.getByTestId('whole-cellar-open')).toHaveTextContent(/1 reads?/);
+    expect(screen.queryByTestId('whole-partial')).not.toBeInTheDocument();
+  });
+
+  it('says which register could not be read rather than being quietly short', () => {
+    mock.current = { ...base, registers: readout({ registers: [
+      reg('wines', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('beer', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('whiskey'), reg('cocktails'), reg('spirits'), reg('non_alcoholic'), reg('soft_drinks'),
+    ] }) };
+    mock.whole = {
+      rows: [],
+      reads: [{ register: 'beer', loading: false, error: 'HTTP 500', rows: null }],
+      loading: false,
+      partial: true,
+    };
+    draw();
+    fireEvent.click(screen.getByTestId('whole-cellar-open'));
+    expect(screen.getByTestId('whole-partial')).toHaveTextContent(
+      /Beer could not be read \(HTTP 500\).*short by an unknown amount/s,
+    );
+  });
+
+  it('carries the general columns and no On hand column at all', () => {
+    mock.current = { ...base, registers: readout({ registers: [
+      reg('wines', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('beer', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('whiskey'), reg('cocktails'), reg('spirits'), reg('non_alcoholic'), reg('soft_drinks'),
+    ] }) };
+    mock.whole = {
+      rows: [{ ...houseRow(), register: 'beer' }],
+      reads: [{ register: 'beer', loading: false, error: null, rows: 1 }],
+      loading: false,
+      partial: false,
+    };
+    draw();
+    fireEvent.click(screen.getByTestId('whole-cellar-open'));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '').join('|');
+    expect(heads).toMatch(/Register/);
+    expect(heads).toMatch(/Taken/);
+    expect(heads).not.toMatch(/On hand/);
+    expect(screen.getByTestId('whole-cellar')).toHaveTextContent(/Wines are not in this list/);
+  });
+});
+
+describe('what this house’s book is called', () => {
+  const carrying = (...ids: RegisterId[]) =>
+    readout({
+      registers: ([
+        'wines', 'beer', 'whiskey', 'cocktails', 'spirits', 'non_alcoholic', 'soft_drinks',
+      ] as RegisterId[]).map((id) =>
+        reg(id, ids.includes(id)
+          ? { carried: true, decidedBy: 'confirmed', confidence: 'certain' }
+          : {}),
+      ),
+    });
+
+  it('a wine house is The Cellar', () => {
+    mock.current = { ...base, bottles: [bottle()], registers: carrying('wines') };
+    draw();
+    expect(screen.getByTestId('cellar-headline')).toHaveTextContent('The Cellar');
+  });
+
+  it('a beer-and-cocktail house with no wine and no spirits is The Bar', () => {
+    mock.current = { ...base, registers: carrying('beer', 'cocktails') };
+    draw();
+    expect(screen.getByTestId('cellar-headline')).toHaveTextContent('The Bar');
+    expect(screen.getByTestId('cellar-naming-rule')).toHaveTextContent(
+      /pours beer or cocktails and keeps no wine or spirits/,
+    );
+  });
+
+  it('a house that pours no alcohol at all is Drinks — never “Soft drinks”', () => {
+    mock.current = { ...base, registers: carrying('non_alcoholic', 'soft_drinks') };
+    draw();
+    expect(screen.getByTestId('cellar-headline')).toHaveTextContent('Drinks');
+    expect(screen.getByTestId('cellar-headline')).not.toHaveTextContent('Soft drinks');
+    expect(screen.getByTestId('cellar-naming-rule')).toHaveTextContent(
+      /name of one of the seven registers/,
+    );
+  });
+
+  it('the address never moves, whatever the page is called', () => {
+    mock.current = { ...base, registers: carrying('non_alcoholic') };
+    draw();
+    expect(screen.getByTestId('cellar-naming-rule')).toHaveTextContent(
+      /address stays \/cellar/,
+    );
+  });
+
+  it('the child registers carry the SAME name in their breadcrumb, not a literal', () => {
+    // The defect this pins: the rule was applied at the root and nowhere else,
+    // so a Drinks-only house read the truth on /cellar and "The Cellar" one
+    // click deep — the same lie, one level down.
+    mock.current = { ...base, registers: carrying('non_alcoholic', 'soft_drinks') };
+    mock.register = { data: registerVM({ register: 'non_alcoholic' }), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'non_alcoholic' }, '/non-alcoholic');
+    const crumb = screen.getByText('· register', { exact: false });
+    expect(crumb).toHaveTextContent('Drinks · register');
+    expect(crumb).not.toHaveTextContent('The Cellar');
+    // And it still points at the parent, whatever the parent is called.
+    expect(within(crumb).getByRole('link')).toHaveAttribute('href', '/cellar');
+  });
+
+  it('the wine register’s breadcrumb renders the rule, not a hardcoded string', () => {
+    mock.current = { ...base, bottles: [bottle()], registers: carrying('wines') };
+    draw({ category: 'wines' }, '/wines');
+    const crumb = within(screen.getByTestId('wine-register')).getByText('· register', {
+      exact: false,
+    });
+    expect(crumb).toHaveTextContent('The Cellar · register');
+  });
+
+  it('a Bar house reads “The Bar” in its own children too', () => {
+    mock.current = { ...base, registers: carrying('beer', 'cocktails') };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' }, '/beer');
+    expect(screen.getByText('· register', { exact: false })).toHaveTextContent(
+      'The Bar · register',
+    );
+  });
+
+  it('an unread readout falls back to the route’s name in a breadcrumb as well', () => {
+    mock.current = { ...base, registers: null, registersLoading: true };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' }, '/beer');
+    expect(screen.getByText('· register', { exact: false })).toHaveTextContent(
+      'The Cellar · register',
+    );
+  });
+
+  it('an unestablished house keeps the route’s own name and claims nothing', () => {
+    mock.current = { ...base, registers: null, registersLoading: true };
+    draw();
+    expect(screen.getByTestId('cellar-headline')).toHaveTextContent('The Cellar');
+    expect(screen.getByTestId('cellar-naming-rule')).toHaveTextContent(/has not been established/);
+  });
+});
+
+describe('the live path on the wine register', () => {
+  it('says nothing has moved rather than claiming a latency it did not measure', () => {
+    mock.current = { ...base, bottles: [bottle()], registers: readout() };
+    draw({ category: 'wines' });
+    expect(screen.getByTestId('wine-live-note')).toHaveTextContent(
+      /no time has been measured/,
+    );
+  });
+
+  it('states the measured figure once a move has actually landed', () => {
+    mock.current = {
+      ...base,
+      bottles: [bottle()],
+      registers: readout(),
+      live: { touched: { i1: 1 }, lastApplyMs: 3 },
+    };
+    draw({ category: 'wines' });
+    expect(screen.getByTestId('wine-live-note')).toHaveTextContent(
+      /on screen 3 ms later — measured in this tab/,
+    );
+  });
+
+  it('marks the row a live move touched, so the ink flash has something to fire on', () => {
+    mock.current = {
+      ...base,
+      bottles: [
+        bottle({
+          cellar: {
+            inventoryId: 'i1',
+            stockLive: 5,
+            thresholdMin: 2,
+            providerId: null,
+            providerName: null,
+            lastCountedAt: null,
+          },
+        }),
+      ],
+      registers: readout(),
+      live: { touched: { i1: 1725300000000 }, lastApplyMs: 4 },
+    };
+    draw({ category: 'wines' });
+    const row = screen.getByText('2016 Gravner Ribolla').closest('tr')!;
+    expect(row).toHaveAttribute('data-live', 'true');
+  });
+});
+
+describe('the expanded row — the /inventory dropdown, in the cellar', () => {
+  beforeEach(() => {
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    mock.current = { ...base, registers: readout() };
+  });
+
+  it('opens IN PLACE, inside the table, rather than above it or in a modal', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.click(row);
+    const expander = screen.getByTestId('row-expander');
+    // Inside the same table, in a row of its own directly under the row it
+    // belongs to. A panel above the register is a different thing.
+    expect(expander.closest('tr')).toHaveClass('cl-openrow');
+    expect(row.nextElementSibling).toBe(expander.closest('tr'));
+  });
+
+  it('DRAWS the two cards this register cannot fill, with the reason on each', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    expect(screen.getByTestId('withheld-live-vs-shadow')).toHaveTextContent(
+      /keyed on master_wine_id/,
+    );
+    expect(screen.getByTestId('withheld-par-and-reorder')).toHaveTextContent(
+      /restaurant_inventory\.threshold_min/,
+    );
+  });
+
+  it('fills the cards the books CAN answer — cost, markup and the order ledger', () => {
+    mock.rowRecord = {
+      data: rowRecordVM([
+        bookRecord(),
+        bookRecord({ book: 'menu', rows: 1, price: [], ledger: [
+          { at: '2026-03-02T00:00:00Z', label: 'Efes Pilsen', who: null, qty: null,
+            unitPrice: 95, total: null, note: 'Bira', matchedBy: 'exact' },
+        ] }),
+      ]),
+      loading: false,
+      error: null,
+    };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    const ex = screen.getByTestId('row-expander');
+    expect(ex).toHaveTextContent('$8.60');
+    expect(ex).toHaveTextContent('$95.00');
+    expect(ex).toHaveTextContent('11.0x');
+    expect(ex).toHaveTextContent(/Order ledger/);
+    expect(ex).toHaveTextContent(/invoiced/);
+    // No line claims a payment: the books do not carry one.
+    expect(ex).toHaveTextContent(/no payment date, so no line here claims/);
+  });
+
+  it('says the till never rang it up rather than drawing a zero-a-day rate', () => {
+    mock.rowRecord = {
+      data: rowRecordVM([
+        bookRecord({ book: 'pos', rows: 0, price: [], quantity: [], ledger: [],
+          reason: 'The till has not rung this up.' }),
+      ]),
+      loading: false,
+      error: null,
+    };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    expect(screen.getByTestId('velocity-none')).toHaveTextContent(
+      /Not zero a day — none recorded/,
+    );
+  });
+
+  it('an unread till is unread, not a quiet night', () => {
+    mock.rowRecord = {
+      data: rowRecordVM([
+        bookRecord({ book: 'pos', readable: false, rows: null, price: [], quantity: [],
+          ledger: [], reason: 'pos_unresolved_lines is not on this database.' }),
+      ]),
+      loading: false,
+      error: null,
+    };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    expect(screen.getByTestId('velocity-none')).toHaveTextContent(/unread, not a quiet night/);
+  });
+
+  it('opens with a fact strip — what it IS, before any card says what it has DONE', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    const strip = screen.getByTestId('fact-strip');
+    // The /inventory anatomy: the run of label/value pairs directly under the
+    // row, before the cards (grape · region · format · vintage · last counted).
+    expect(strip).toHaveTextContent('Style');
+    expect(strip).toHaveTextContent('ABV');
+    expect(strip).toHaveTextContent('Origin');
+    expect(strip).toHaveTextContent('Counted');
+    // The row's real catalogue facts are read, not withheld.
+    expect(strip).toHaveTextContent('5%');
+    expect(strip).toHaveTextContent('Türkiye');
+  });
+
+  it('a fact with no source is a WITHHELD LINE — label drawn, table named on it', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    const strip = screen.getByTestId('fact-strip');
+    const withheld = strip.querySelectorAll('[data-withheld="true"]');
+    // Style, IBU and the count. Each says where it would have come from.
+    expect(withheld.length).toBe(3);
+    expect(withheld[0]).toHaveAttribute(
+      'title',
+      expect.stringContaining('beverages.type_attributes'),
+    );
+    expect(strip).toHaveTextContent('never counted');
+  });
+
+  it('names every unwritten field of its kind instead of leaving the card out', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    const ex = screen.getByTestId('row-expander');
+    expect(ex).toHaveTextContent('Style');
+    expect(ex).toHaveTextContent('IBU');
+    // The card says where each fact WOULD come from — it is not a second copy
+    // of the strip's values.
+    expect(ex).toHaveTextContent('no writer');
+    expect(ex).toHaveTextContent(/0 of 609 rows/);
+    expect(ex).toHaveTextContent(/Carbonation and yeast are not listed at all/);
+  });
+
+  it('a whisky row names age, cask and proof — its own kind, not a beer’s', () => {
+    mock.register = {
+      data: registerVM({ register: 'whiskey' }),
+      loading: false, error: null, refetch: () => {},
+    };
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    draw({ category: 'whiskey' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    const ex = screen.getByTestId('row-expander');
+    expect(ex).toHaveTextContent('Age');
+    expect(ex).toHaveTextContent('Cask');
+    expect(ex).toHaveTextContent('Proof');
+    expect(ex).not.toHaveTextContent('IBU');
+  });
+
+  it('a failed record read draws no cards at all rather than empty ones', () => {
+    mock.rowRecord = { data: null, loading: false, error: 'HTTP 500' };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
+    expect(screen.getByTestId('expander-error')).toHaveTextContent(
+      /arithmetic on nothing, so none is drawn/,
+    );
+    expect(screen.queryByTestId('row-expander')).not.toBeInTheDocument();
   });
 });

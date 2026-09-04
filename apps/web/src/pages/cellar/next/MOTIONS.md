@@ -96,3 +96,71 @@ not an omission.
 - **A loose match is marked in words, not in colour or movement.** "matched
   loosely" under the row name, and the full sentence on the stand. A warning
   tint would make a weaker join look like an error, which it is not.
+
+---
+
+## Fourth pass, 2026-09-03 — the columns, the gestures, and the live path
+
+### Motions added: one
+
+| id | token | curve / ms | fires |
+|---|---|---|---|
+| `cl-live-ink` | `ink` | house micro curve, 160ms | a row of the wine register whose stock a live socket event just moved. Background steps to `--seal-tint` and back. **Nothing translates**, so a row that changes under the reader's eye never pushes the rows below it. |
+
+`cl-stand-settle` is reused, unchanged, by the expanded row (the record fades in
+on `settle` when a row opens) and by the series panel; `cl-leaf-turn` still
+fires when a *different* row is opened while one is already open.
+
+### The measured latency, in two halves — and why it is reported in two halves
+
+A page that calls itself realtime and does not say what it timed is claiming,
+not reporting. Neither half below is a guess.
+
+| leg | what was measured | how | result |
+|---|---|---|---|
+| transport | browser ⇄ the real gateway on `:4000`, socket.io namespace `/ws` | 12 `ping` → `heartbeat` round trips over a real websocket with a minted session, 2026-09-03 | connect **17 ms**; `subscribe:restaurant` ack **1 ms**; RTT **min 0.49 ms · p50 0.81 ms · p95 1.79 ms** |
+| apply | the event landing in the tab → the frame that showed it | 18 dispatches through `useCellarLive`, timed from `performance.now()` at receipt to a `requestAnimationFrame` callback after the React commit | **min 3 ms · p50 5 ms · p95 6 ms** |
+
+Two honest limits on those figures, stated rather than buried:
+
+1. The transport leg is **localhost**. It is the real gateway, the real
+   namespace and a real socket, but it is not a real network, and the founder
+   should read it as "the gateway adds ~1 ms", not "a phone in the dining room
+   sees 1 ms".
+2. The apply leg is **jsdom**, so the `requestAnimationFrame` callback follows
+   the React commit but there is no compositor behind it. It is the work this
+   page does, not the pixel.
+
+What is NOT measured, and cannot be from here: the *end to end* leg, because
+nothing emits `stock:updated` without the RabbitMQ bridge
+(`common/orchestrator/rabbitmq-bridge.service.ts:333`), which is not running
+against this worktree. That number is a gap, and it is filed as one.
+
+### What actually changed, and why the old path felt slow
+
+The socket was already delivering the new figure —
+`WebsocketGateway.emitStockUpdate` sends `stock_before` and `stock_after`
+(`websocket.gateway.ts:358-367`) — and the browser was throwing it away:
+`useInventory` answers the event by INVALIDATING the query
+(`hooks/queries/useInventoryQueries.ts:59-65`), so the row only moved after a
+whole extra HTTP round trip. The socket was saving the polling interval and
+nothing else. `useCellarLive` now writes the carried figure into the cached row
+on arrival and lets the read reconcile behind a row that is already correct.
+
+### New deliberate non-motions
+
+- **The expanded row does not slide the rows below it.** It is a real table row
+  appearing, and the browser reflows. A height animation on a row that contains
+  seven cards is a compositor stall on every open, and the founder's own praise
+  of `/inventory`'s dropdown was about what it *shows*, not how it arrives.
+- **The column menu does not animate in.** It is a menu; it must be under the
+  pointer on the frame it opens, and 160 ms of fade is 160 ms of a menu that is
+  there but not yet legible.
+- **The series graph does not draw itself.** A stroke that animates from left to
+  right implies the data is arriving over time. It arrived in one read.
+- **A withheld card does not pulse or shimmer.** It is hatched and static. It is
+  not loading; there is nothing coming.
+- **A live row flashes once and stops.** No repeat, no glow, no badge that
+  persists. The figure changed; the reader has been told; the page goes quiet
+  again — which is the same rule `/notifications` follows when an item is
+  handled.

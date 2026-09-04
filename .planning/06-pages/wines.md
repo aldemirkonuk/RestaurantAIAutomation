@@ -163,6 +163,42 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
   `readable: false` with a reason naming that migration file. It renders as
   words, never as an empty record
 
+**Fourth pass, 2026-09-03 — the columns, the gestures, the name and the row:**
+
+- **Every column states what it represents**, per register and for the whole
+  cellar at once — one vocabulary in `cellar-columns.ts` carrying each column's
+  source table, its meaning in the operator's words, and its **measured fill**
+- **A column that cannot be filled is offered, not drawn** — ABV, Format, Style,
+  IBU, Age, Cask, Proof and Market are all real columns with no writer (measured
+  0 rows on 2026-09-03) and sit in a "Columns not drawn" list with the figure
+  beside each. An operator can turn one on and gets the em dash *with* its reason
+- **Right-click a column header** (or press its caret, or `Shift+F10`) for the
+  column's own menu: sort, hide, and **what this column is** — meaning, source
+  table, measured fill
+- **Double-click or right-click a cell** for the series behind that one figure:
+  a graph and the ledger it was made of, from one read (`GET
+  /beverages/:rid/row-record`, new). The founder's "order ledger when clicked on
+  paid" is the lower half of that panel
+- **A row opens IN PLACE**, `/inventory`'s dropdown anatomy: a fact strip, then
+  cards — cost and markup, velocity, when it sells, the order ledger, quotes,
+  and where this kind's facts come from
+- **Everything at once** on the parent: one flat book across every register the
+  house carries, with the eight columns that mean the same thing in all of them.
+  Opened by a button, because it is one read per register
+- **The parent is named by what the house pours** — The Cellar (wine or
+  spirits), The Bar (beer or cocktails, no wine), Drinks (no alcohol at all) —
+  with the rule printed under the headline. The route stays `/cellar`
+- **A live stock move is applied before the read comes back** — the figure the
+  socket already carried is written into the cached row and the row flashes
+  `ink`; measured transport p50 0.81 ms (real gateway) and apply p50 5 ms
+- **PARTIAL** &middot; **The invoice and quote books hold 0 rows in the whole
+  database**, so First bought, Paid and Last quote are structurally em dashes
+  today and every panel says which book was read and found nothing. The till is
+  the one book with real rows in it
+- **DARK / GATED** &middot; **Live vs shadow and Par and reorder are drawn
+  hatched on every expanded row**, because `restaurant_inventory` is keyed on
+  `master_wine_id` (OD-113) and neither figure exists for a keg
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_cellar`)
 
 Canonical source with curves: `apps/web/src/pages/cellar/next/MOTIONS.md` —
@@ -175,6 +211,50 @@ this list is the note-side index (ADR 0044 §2).
 | `cl-ink` | Ink micro-state | register cards, shelf cards, rows, chips, fields, register switches, buttons — border to seal ring, one paper step; nothing translates |
 | `cl-tally` | Figures arrive | every count on `/cellar` — three on the wine register card, two on each catalogue card, four in *In the building tonight* — `tally`, 840ms overdamped spring off `springs.tally.samples`. **An em dash never tallies** |
 | `cl-hold-pour` / `cl-seal-stamp` | The seal lands | inside `HoldToApprove`, sending a real purchase order — `pour` 620ms linear, then `stamp` 360ms. The only ceremony, and the only place the seal appears |
+| `cl-live-ink` | A figure moves under the reader | *added in the fourth pass* — a row of the wine register whose stock a live socket event just moved (`data-live='true'`, `useInkOnChange`): `ink`, house micro curve, 160ms, background steps to `--seal-tint` and back. **Nothing translates**, so a row that changes while it is being read never pushes the rows below it, and it flashes once and stops — no repeat, no glow, no badge that persists |
+
+**Disclosed: this directory is far over the page brief's size guidance.**
+The p4 page brief asks a rebuilt page to stay "under ~900 lines across its
+files, split into components inside your directory when it grows."
+`apps/web/src/pages/cellar/next/` is **7,546 non-test lines across 21 files**
+(1,323 comment, 445 blank, 5,778 code) plus 2,311 lines of test — roughly eight
+times the guidance, and it is stated here rather than left to be discovered.
+
+*Why it escalated.* The guidance sizes ONE page. This directory is not one page:
+`CellarNext` renders **seven surfaces** from one component — the parent plus six
+registers — and three of the seven have a grammar of their own (`WineRegister`
+carries the inventory overlay and the order ceremony; `CocktailRegister` is the
+only WRITE surface on the page, with full CRUD and a recipe editor;
+`CatalogueRegister` serves the other four). On top of that it exports two
+surfaces other pages mount (`CellarRegistersStep` for `/get-started`,
+`CellarRegistersControl` for `/settings`), and ADR 0108 made the register a
+five-book assembly rather than a table read. Divided by surface it is ~1,080
+lines each, which is the shape the guidance is actually describing.
+
+*Where it went, and what it retires.* The fourth pass added **seven new files,
+2,366 non-test lines** (`cellar-columns.ts` 744, `RowExpander.tsx` 517,
+`SeriesPanel.tsx` 344, `WholeCellar.tsx` 278, `ColumnMenu.tsx` 200,
+`registerCells.tsx` 144, `rowSeries.ts` 139) and changed the existing ones by
++1,152 / −158. The single largest new file is a **vocabulary, not behaviour**:
+`cellar-columns.ts` is 744 lines of which 172 are the measurements and citations
+behind each column, and it exists precisely so the same rule is not restated in
+every register component. Against that, this pass **retires**
+`CatalogueRegister`'s own `COLUMNS` constant, its `sortValue` switch and its
+`Books` mark-strip (all three now live once, in `cellar-columns.ts` and
+`registerCells.tsx` — and `WholeCellar` reuses them rather than adding a third
+copy), and the reading-stand container that sat above the table, replaced by the
+in-place expanded row. **`WineRegister` still carries its own `COLUMNS` and
+`sortValue` (`WineRegister.tsx:71`, `:83`) and was NOT migrated** — its row is a
+`BottleVM` with an inventory overlay, not a `RegisterRowVM`, so sharing the cell
+vocabulary needs a common row shape first. That is one duplication this pass did
+not remove, and it is filed rather than described as retired. Net: one of two
+column duplications gone, and the total up.
+
+*What would actually shrink it.* Splitting the three register grammars into
+`registers/wines/`, `registers/cocktails/` and `registers/catalogue/`
+subdirectories, and moving `CellarRegistersStep`/`CellarRegistersControl` to the
+pages that mount them. Both are structural moves that touch other pages' paths,
+so neither was taken here; filed in §13.
 
 **One disclosed exception to "no framer-motion": the menu scanner.**
 `WineRegister.tsx` lazily imports `components/wines/MenuScannerModal`, which is
@@ -567,6 +647,297 @@ same die pressed dry, because the ceremony is rationed to the one hold that
 spends money. And the happy-path cocktail *create* was deliberately **not**
 exercised against the live database (see §9.11).
 
+### Fourth pass, 2026-09-03 — what a column represents, what a gesture opens, and what the house is called
+
+**What the founder asked**, verbatim: *"What if there is only non-alcoholic,
+then what do we do? do we say soft drinks? just drinks?"* · *"The realtime
+update must be super fast and smooth."* · *"research what should the columns
+represent and help us visualize. Let us see insights and details when double
+clicked/right clicked on columns to see their data graphs or research (you
+decide), order ledgers maybe when clicked on paid etc."* · *"what each bev have
+different columns based on their features, beers might have diff (pilsner, IPA,
+maya, gaz oranı…)"* · *"We show more general columns when they want to see the
+whole menu inventories at once right?"* · *"Keep the top info boxes"* · *"Both
+the direction A and B look great in their own fields, research on it try to
+merge those two."* And, on the review call: *"that dropdown, all in one with
+essential details"* — the `/inventory` row expansion
+(`apps/web/src/pages/inventory/command/RowExpansion.tsx`,
+MAKEOVER-VERDICTS.md:66-72 *"it shows everything you need to see"*).
+
+#### The measurement this pass rests on
+
+Counted against the live database this gateway reads (`exzueerziesmczwlhomd`),
+2026-09-03. Every column decision below follows from it.
+
+| table | rows | what is filled | what is EMPTY |
+|---|---|---|---|
+| `public.beverages` | 609 live | name, producer, country (609), region (524), beverage_type (609), price_reference (294) | `abv_pct` 0 · `volume_ml` 0 · `package_format` 0 · `age_years` 0 · `cask_finish` 0 · `expression` 0 · `proof` 0 · `body` 0 · `acidity` 0 · `serving_temp_celsius` 0 · `glass_type` 0 · `barcode`/`sku`/`upc` 0 · `type_attributes` `{}` on all 609 |
+| `master_wine_library` | 3,562 live | vintage 3,118 · appellation 2,259 · grape 3,514 · primary_type 3,562 · price_reference 3,345 · acidity/tannins/texture/finish ~3,346 (74.5% marked `inferred`) | `retail_price_avg` **0** · `quality_level` 0 · `rating_ws`/`rp`/`jr` 0 · `critic_scores` 0 · `bottle_size_ml` **750 on 4,226 of 4,226 — a constant, not a measurement** |
+| `restaurant_inventory` | 206 | stock_live 206 · threshold_min 206 · pour_size_ml 206 | `sales_velocity_30d`/`7d` 0 · `last_sold_at` 0 · `markup_ratio` 0 · `menu_price_current` 0 · `last_purchase_price` 0 · **`total_revenue` and `times_ordered_count` are NOT NULL on all 206 and ZERO on all 206** |
+| `cocktails` | 55 | menu_section 55 · price 44 | method 0 · glass 0 · garnish 0 · description 0 · `restaurant_id` **0** |
+| `cocktail_ingredients` | 0 | — | the whole table |
+| `procurement_document_lines` | **0 in the whole database** | — | — |
+| `vendor_price_observations` | **0 in the whole database** | — | — |
+| `pos_unresolved_lines` | 39 for the demo tenant (130 across three) | item_name, qty, price, created_at, all 100% | — |
+| `inventory_transactions` | 215 across four tenants | quantity_after 100%, type ∈ initial/sale/return/reconciliation/transfer/purchase | `unit_cost` 3 of 215 |
+
+Two of those lines are the whole argument. **`total_revenue` and
+`times_ordered_count` are a default with no writer**: a column over either
+renders "0 sold · 0" as though it had been counted, which is the
+absence-reported-as-health fault in table form, and both are refused by name in
+`cellar-columns.test.ts`. And **the two books the founder named — "paid" and the
+price history — are empty in this database**, while the one book he did not name
+(the till) is the only one with a real series in it.
+
+#### The rule a column has to pass
+
+Three tests, in order. `apps/web/src/pages/cellar/next/cellar-columns.ts` is the
+single source of truth for all of them, and a column that fails one is **offered
+in the header menu with its measured reason**, never silently dropped and never
+drawn as a file of em dashes.
+
+1. **Is there a writer?** A column whose source has no writer can only render an
+   em dash. It is not a column, it is a promise.
+2. **Does it vary?** `bottle_size_ml` is 750 on every row. A one-value column
+   sorts nothing and filters nothing — it is the Body filter's mistake in
+   another suit, and Body was removed for exactly this in the first pass.
+3. **Is it ours?** A fact about this house (what we paid) and a fact about the
+   bottle (its region) are different claims, and the register orders them so:
+   the house's spine first, the catalogue's facts after.
+
+#### What the field's own tools put on a row
+
+| tool | its row, in its own words | URL |
+|---|---|---|
+| CellarTracker | four REQUIRED import columns — Vintage, wine name, Quantity, BottleSize; everything else optional, and the optional list is the OWNER'S record: Storage Location, Bin, Store, Purchase Date, Cost, Bottle Note, **Consumption Revenue**, critics' scores | https://support.cellartracker.com/article/26-migrating-from-another-system |
+| Backbar | eight columns for a bar inventory sheet: item name, item cost, sale price, product type, subtype, vendor, size, varietal/style | https://academy.getbackbar.com/how-to-create-a-liquor-inventory-spreadsheet |
+| BinWise | every product by depletion rate, cost and movement; supplier and par on the row; actual pour cost for any date range | https://home.binwise.com/binwise-pro · https://home.binwise.com/blog/setting-par-level-inventory |
+| Partender | the row is a bottle level as a fraction of full → value on hand in wholesale AND retail dollars, plus price-change alerts and a usage/variance report | https://appdemo.partender.com/pricing.html |
+| BevSpot | the per-item figure is *usage* — by-volume consumed — because it generates the par, exposes over-pouring and builds the order | https://bevspot.com/ordering/ |
+| Untappd for Business | the only beer tool in the study, and it makes **three** fields required — Beer Name, Brewery, **Style**; ABV and IBU optional. API beer object: `name, abv, style, brewery, rating`; price lives on a *container* with its own size | https://docs.business.untappd.com/ · https://help.business.untappd.com/support/solutions/articles/16000102385-how-do-i-add-a-new-beer-to-my-untappd-for-business-menu- |
+| BJCP | a style's Vital Statistics is exactly five numbers — `IBU · SRM · OG · FG · ABV`. **Carbonation is prose in Mouthfeel; yeast is prose in Characteristic Ingredients** | https://www.bjcp.org/style/2021/21/21A/american-ipa/ |
+| Whisky Advocate | 5,000+ reviews searchable by **price, score, style, brand** — not by age or cask | https://whiskyadvocate.com/ratings-reviews |
+| Distiller / the whisky trade | age statement, cask type, ABV/proof, region, peat in ppm — the label's own fields | https://distiller.com/ · https://whiskytastingcompany.com/blogs/news/understanding-whisky-labels-for-beginners |
+| cocktail spec sheets | name, ingredients + measures, method (build), glass, ice, garnish; cost-per-drink is the ops overlay on top | https://www.thecocktailservice.co.uk/how-to-create-a-cocktail-spec/ · https://www.getbackbar.com/cocktail-recipe-template-free-download |
+| GS1 GDSN (the standard behind a distributor's soft-drink row) | GTIN, brand name, product description, net content, GPC classification, packaging hierarchy, nutrients at the lowest GTIN | https://www.gs1.org/docs/gdsn/GS1_Attribute_Business_Definitions.pdf |
+| Provi / SevenFifty | standardised product and producer names, descriptions, categorisations, label images; filter by appellation and region | https://daily.sevenfifty.com/power-your-business-with-better-product-data/ · https://www.provi.com/provi-sevenfifty |
+
+The answer is consistent across all eleven: **the trade's registers are
+commercial, not chemical.** That is why the spine is the house's own record and
+the chemistry is offered rather than drawn.
+
+#### The columns, per register
+
+`•` drawn by default · `○` offered in the header menu with its measured reason.
+Every column states its source and its fill in `cellar-columns.ts`, and the
+header menu prints both.
+
+**The house spine — every register except cocktails**
+
+| | column | source | state |
+|---|---|---|---|
+| • | Bottle | the row's own longest label | real |
+| • | Our record | five marks, one per book that names it (`house_beverage_ledger`) | real |
+| • | On the list | `menu_items.bottle_price` / `by_glass_price` | real |
+| • | First bought | `procurement_document_lines`, invoices only | real; 0 rows in this DB |
+| • | Paid | `procurement_document_lines.line_total`, summed | real; 0 rows in this DB |
+| • | Sold | `pos_unresolved_lines.qty` | real, and populated |
+| • | Taken | `pos_unresolved_lines.price · qty` — what the till took, not what the list says | real, and populated |
+| • | Last quote | `vendor_price_observations.normalized_unit_price` | real; 0 rows in this DB |
+| ○ | Last ordered | `procurement_order_items` via `procurement_orders.requested_at` | real; off because Paid answers it with a stronger book |
+
+**Wines** — spine plus: • Style (`primary_type`, 3,562) · • Vintage (3,118) ·
+• Origin (3,529/3,562) · ○ Grape (3,514, off for width only) · • List
+(`price_reference`, 3,345) · ○ Market (`retail_price_avg`, **0**) ·
+○ Format (**750 ml on every row**) · • On hand (`stock_live`) · ○ Par
+(`threshold_min`, 206/206) · ○ Last counted (4/206).
+
+**Beer** — spine plus: ○ **Style** (`type_attributes → style`, 0 of 57 — *the
+founder's first beer column, and the single highest-value writer this register
+is waiting on*) · ○ IBU (0) · • Type · • Origin · ○ ABV (0) · ○ Format (0).
+**Carbonation ("gaz oranı") and yeast ("maya") are not offered as columns at
+all** — BJCP keeps both in prose, and prose does not sort. They belong on the
+expanded row.
+
+**Whiskey** — spine plus: ○ Age (`age_years`, 0 of 272) · ○ Cask
+(`cask_finish`, 0) · ○ Proof (0) · • Type · • Origin (261/272) · ○ ABV (0).
+
+**Spirits** — spine plus: • Type (609/609) · • Origin · ○ ABV · ○ Format.
+
+**Cocktails** — a recipe's grammar, not a bottle's: • Bottle · • Our record ·
+• Sold · • Taken · • Section (55/55) · • Price (44/55) · • Recipe (line count) ·
+○ Build (0) · ○ Glass (0) · ○ Garnish (0). No First bought and no Last quote: a
+cocktail has no invoice line of its own, and those would be dead columns.
+
+**Non-alcoholic / Soft drinks** — spine plus: • Type · • Origin · ○ Format.
+Sugar and caffeine are **not proposed**: nothing in the schema carries either,
+and `type_attributes` would hold them without a migration the moment there is a
+writer. A case size is already in the schema on the buying side —
+`procurement_document_lines.pack_size` — so it is derivable, not missing.
+
+#### The general set — the whole cellar at once
+
+Eight columns, and the test for a general column is harsher than for a register
+column: **it has to mean the same thing in every register.**
+
+`Bottle · Register · Our record · On the list · Paid · Sold · Taken · Last quote`
+
+`On hand` is deliberately excluded and the section says so in one line: it is
+real for wines and structurally absent for the other six (OD-113), so as a
+general column it would be an em dash on most of the page — the same fault the
+register-level ABV column had. `WholeCellar.tsx` on the parent draws this set,
+opened by a button because it is one read per register.
+
+**NO MIGRATION IS PROPOSED BY THIS RESEARCH.** Every column the field asks for
+already exists as a column somewhere (`beverages.type_attributes` for
+style/IBU; `beverages.age_years`/`cask_finish`/`proof` for whisky;
+`procurement_document_lines.pack_size` for a case size;
+`cocktail_ingredients.quantity`/`unit` for a cost per pour) or is derivable from
+the house's own books. What is missing is **writers**, and a writer is not this
+page's to build. Filed in §13.
+
+#### The gesture set, stated once
+
+- **The header owns the column.** Right-click a header, or press its caret
+  (`aria-haspopup="menu"`, the keyboard- and touch-reachable twin), for: Sort
+  up · Sort down · Open the series for the chosen row · Hide this column · and
+  **What this column is** — its meaning, the table it reads, and its measured
+  fill. Clicking the label sorts; clicking again reverses.
+- **The row owns its record.** Click a row and it opens **in place**, as cards.
+- **The cell owns the series.** Double-click or right-click a cell whose column
+  has a series, and the graph and the ledger behind that one figure open below.
+  `Enter` on a focused row does the same as a click.
+
+Whose precedent: Airtable's field-header dropdown is schema and nothing else
+(Edit field · Edit description · Duplicate · Delete —
+https://support.airtable.com/articles/2361876459-field-type-overview);
+TradingView's screener says outright *"You can click any row to open the chart"*
+and *"With a right-click on a column header, you can customize the column, select
+the sorting type, change a column's position … or remove a column"*
+(https://www.tradingview.com/support/solutions/43000718866-tradingview-stock-screener-trade-smarter-not-harder/);
+and Bloomberg has answered "graph or table?" with **both** since the terminal
+shipped — `GP <GO>` draws a security's history, `HP <GO>` tables the same series
+(https://libguides.cbs.dk/gp_function_bloomberg,
+https://businesslibrary.uflib.ufl.edu/c.php?g=114612&p=746558). That pair is why
+`SeriesPanel` is a graph AND a ledger from one read rather than a choice the
+page makes for the operator.
+
+#### The expanded row — the `/inventory` dropdown, on a cellar register
+
+`RowExpander.tsx`. The founder's named shape, and the anatomy is copied from
+the reference capture rather than guessed: **the row stays in place**, a **fact
+strip** runs directly under it (what the thing IS — `/inventory` shows grape ·
+region · format · vintage · last counted), and only then do the cards sit side
+by side. A fact with no source in this schema is a **withheld line**: the label
+is drawn, the value is the em dash, and the table it would have been read from
+is on the value's own title — the same move `/inventory` makes when it writes
+"Last counted: never" in words rather than leaving a blank. Confirmed by the
+founder as **the house pattern for ledger tables, cellar first**.
+
+`/inventory`'s six cards, answered honestly:
+
+| card | `/inventory` | the cellar | why |
+|---|---|---|---|
+| Live vs shadow | real | **WITHHELD, drawn hatched** | `restaurant_inventory` is keyed on `master_wine_id`; a keg has no stock row, so there is no live count to hold a shadow against. OD-113 |
+| Par and reorder | real | **WITHHELD, drawn hatched** | `threshold_min` is a column on the inventory row that does not exist; suggested order, reorder point and runway are all arithmetic over it, so all four are withheld together |
+| Market price | real | **REAL, renamed** *What it costs and what it makes* | last paid (invoice) · on our list (menu) · catalogue reference (`beverages.price_reference`) · markup = list ÷ last paid |
+| Velocity 14d | real, **zero-filled** | **REAL, clipped** | `/inventory` pushes a dense 14 days (`inventory.service.ts:688-696`), so a house with one day of POS data sees thirteen zero-sales days it never had. Ours covers only the span the till has evidence for, and says how many days that is |
+| When it sells | real, **16:00–23:00 only** | **REAL, any hour** | `/inventory`'s heatmap is a 7×8 matrix of 16:00..23:00 (`inventory.service.ts:660-684`), which drops every lunch service and every café — and a café is exactly the house this pass is about |
+| Order history | real | **REAL, as an order ledger** | purchase orders and invoice lines, dated, with the vendor. **No line claims "paid"**: `procurement_documents` carries a status but no payment date, so settlement is not a fact these books hold |
+| — | — | **NEW: "As a beer" / "As a whiskey"** | the per-type research as a card: style, IBU, ABV, format / age, cask, proof — each named, each an em dash, each with the measurement and the migration line beside it |
+| — | — | **NEW: Quoted** | the one book the founder named by name, and it has 0 rows anywhere |
+
+A withheld card is **drawn, not dropped**. Dropping it would make a keg look
+like a bottle whose stock merely happens to be unknown; drawing it hatched with
+its reason makes it a decision somebody has to take.
+
+#### Real-time
+
+`useCellarLive` (in `useCellarNextData.ts`). The socket already carried the new
+figure — `emitStockUpdate` sends `stock_before`/`stock_after`
+(`apps/api-gateway/src/websocket/websocket.gateway.ts:358-367`) — and the
+browser threw it away: `useInventory` answers the event by INVALIDATING the
+query (`apps/web/src/hooks/queries/useInventoryQueries.ts:59-65`), so the row
+only moved after an extra HTTP round trip. The socket was saving the polling
+interval and nothing else. The carried figure is now written into the cached row
+on arrival, the row flashes `ink`, and the read reconciles behind a row that is
+already right.
+
+Two producers dispatch the same `inventory_change` window event with **different
+shapes** — `lib/websocket.tsx:492` sends `{inventory_id, stock_after}`,
+`contexts/RealtimeContext.tsx:376` sends `{type, wineId, quantity}` — and
+`readStockEvent` accepts both, because a reader that assumed one would silently
+ignore half the traffic. Filed for a single shape in §9.
+
+**Measured** (both halves, and the missing third, in
+`apps/web/src/pages/cellar/next/MOTIONS.md`): transport, against the real
+gateway on `:4000` over a real websocket — connect 17 ms, subscribe ack 1 ms,
+`ping`→`heartbeat` RTT p50 **0.81 ms** / p95 **1.79 ms** over 12 samples;
+apply, event-in-tab → painted frame — p50 **5 ms** / p95 **6 ms** over 18
+samples. Both are localhost/jsdom and say so. The end-to-end leg is **not**
+measured and cannot be from here: nothing emits `stock:updated` without the
+RabbitMQ bridge, which is not running.
+
+#### What this house's book is CALLED
+
+The founder's ruling: **adaptive** — the parent is named by what the house
+pours; one surface; the route stays `/cellar`.
+
+| the registers on | the name | why |
+|---|---|---|
+| any of wines · spirits · whiskey | **The Cellar** | this house keeps bottles |
+| else, any of beer · cocktails | **The Bar** | it pours but does not keep. A bar without alcohol is still a bar: "temperance bar, also known as an alcohol-free bar, sober bar, or dry bar, is a type of bar that does not serve alcoholic beverages" — https://en.wikipedia.org/wiki/Temperance_bar |
+| else (non-alcoholic and/or soft drinks) | **Drinks** | one of the two words the founder himself offered |
+| unread / nothing established | **The Cellar** | the route's own name, with the sentence saying nothing has been established. It never guesses a specific name and then changes it |
+
+**"Soft drinks" is refused as a parent name** on a structural ground rather than
+a taste one: it is already the name of one of the seven registers, so a parent
+called Soft drinks would collide with its own child in the spine, in the
+breadcrumb and in every sentence anybody writes about the page. The rule is
+printed on the page under the headline (`cellar-naming-rule`), because a name
+that changes with the house has to say why it changed or it reads as a bug.
+
+#### The merge of directions A and B — sketch 095
+
+`.planning/sketches/095-cellar-merged/` (index · merged-parent ·
+merged-register · merged-row-open, the last in both grounds). They are not
+alternatives: A answers *where*, B answers *everything at once*, the shipped
+book answers *this kind in full*, and the merge keeps all three.
+
+- **A contributed** the room, and the only answer on the page to *where*, with
+  the two verbs that come with it (walk a zone, put away what is at the door).
+  **Its cost** is that it stands on `storage_locations`, which holds 87 rows
+  across 7 tenants with 84 carrying one of four invented zone names. The merge
+  pays that cost down by reducing the floor to a **strip on the parent, drawn
+  only from zones that carry a real count and a real walk date** — a zone with
+  neither is not drawn at all.
+- **B contributed** "see everything" taken literally — a whisky, a keg and a
+  Burgundy in one list with the register as a facet. **Its cost** is one row
+  grammar for three kinds of thing, which is what the four-child IA existed to
+  avoid. The merge pays it only for the eight columns that survive being
+  general, and refuses the ninth (`On hand`).
+- **The shipped book contributed** the spine, unchanged, and both of the others
+  now hang off it rather than replacing it.
+- **The merge adds one thing neither had**: the gesture set above.
+
+#### Substituted or left out, and why
+
+- **No migration.** The research demanded none: every column it asks for exists
+  or is derivable (see the column tables). A migration for a column nobody
+  writes would be schema theatre.
+- **No `unit_cost` series.** `inventory_transactions.unit_cost` is filled on 3
+  of 215 rows, so a cost-over-time chart off the ledger would be a line through
+  three points and a lot of nothing.
+- **No pour-cost / cost-per-drink card on cocktails.** It is
+  `cocktail_ingredients` × each ingredient's price, and that table has 0 rows.
+  Derivable the moment a bartender writes a recipe; not computed from nothing.
+- **`getItemActivity` was not reused** even though it exists: it ignores its own
+  `restaurantId` parameter (`inventory.service.ts:639-652` filters on
+  `inventory_id` alone) and it zero-fills. Both are filed in §9; the inventory
+  module is outside this page's paths.
+- **The transport latency is localhost and the apply latency is jsdom**, and
+  both are labelled as such rather than quoted as production numbers.
+
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records
 in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
@@ -637,6 +1008,22 @@ against the local gateway on :4000):
   `recipesAvailable: false`
 - `GET /wines` now carries `beverageKind` and `classificationStatus` on every row
   (`apps/api-gateway/src/wines/wines.service.ts`, spec `wines.service.spec.ts`)
+
+**Added by the fourth pass, 2026-09-03** (curl-verified against :4000):
+- `GET /beverages/:restaurantId/row-record?label=` — every line of this house's
+  five books that names one row, in time order: per book a `price` series, a
+  `quantity` series and the `ledger` those series were made of, plus
+  `readable`/`reason`/`rows` and the `source` table named. Carries `matchRule` in
+  words, and `nothingNamesIt` only when every book was readable AND empty.
+  `apps/api-gateway/src/beverages/beverages.controller.ts` →
+  `beverages.service.ts:readRowRecord` → `row-record.ts` (pure, 13 specs).
+  **Measured live 2026-09-03**: `label=Chardonnay Reserve (glass)` → 200 in
+  0.33 s, `named: ["pos"]`, 11 till lines with an 11-point price series and an
+  11-point quantity series; menu, invoice and order each `readable: true,
+  rows: 0` with their own sentence; `label=Nothing Like This At All` → 200,
+  `named: []`, five sentences and no rows. This read serves BOTH the expanded
+  row and the series a cell opens, so opening a row costs one request and
+  opening a cell on that row costs none.
 
 ## 5. Signals
 none. No `uxSignals`, no tracking calls (grep of `WineLibrary.tsx` + `wine-library/` — zero hits).
@@ -890,6 +1277,79 @@ Each one is a file the p4 page agent does not own; none was built.
     One live create-then-retire is still owed once there is a scratch tenant to
     do it in.
 
+### Gaps found in the fourth pass (2026-09-03) — columns, gestures and the live path
+
+**9.20 · The columns the field asks for exist and nobody writes them.** This is
+one gap with eight faces, and none of them needs a migration:
+
+| field | column, already in the schema | measured |
+|---|---|---|
+| beer style, IBU | `beverages.type_attributes` (JSONB, `20260817070000_beverages_table.sql:266`) | `{}` on all 609 rows |
+| ABV | `beverages.abv_pct:228` | 0 of 609 |
+| format, package | `beverages.volume_ml:229`, `.package_format:230` | 0 of 609 |
+| whisky age, cask, expression, proof | `beverages.age_years:262`, `.cask_finish:263`, `.expression:264`, `.proof:265` | 0 of 609 — the migration's own comment says "Left NULL at migration time — parsing is separate, future work" |
+| cocktail build, glass, garnish | `cocktails.method`, `.glass`, `.garnish` (`20260817090000_cocktails.sql:31-33`) | 0 of 55 |
+| cost per pour | `cocktail_ingredients.quantity`/`.unit` | 0 rows in the table |
+| case size | `procurement_document_lines.pack_size` | 0 rows in the whole table |
+| market price | `master_wine_library.retail_price_avg` | 0 of 3,562 (carried from §9 pass one) |
+
+**What is needed is a writer, not a column.** Owner: the enrichment worker for
+the first five, the bartender for the cocktail three (they have a write path as
+of pass three), the invoice parser for the case size.
+
+**9.21 · `restaurant_inventory.total_revenue` and `.times_ordered_count` are a
+default with no writer.** NOT NULL on all 206 rows and **zero on all 206**
+(measured 2026-09-03). Any surface that renders either as a figure will print a
+counted-looking zero. This page refuses both by name and pins the refusal in
+`cellar-columns.test.ts`; other surfaces should be swept. Outside this page's
+paths.
+
+**9.22 · `getItemActivity` ignores its own `restaurantId`.**
+`apps/api-gateway/src/inventory/inventory.service.ts:639-652` filters
+`inventory_transactions` on `inventory_id` alone; the `restaurantId` parameter
+is accepted and never used. `JwtAuthGuard` asserts the caller may read the
+restaurant in the PATH, but nothing asserts the item belongs to it, so a caller
+holding tenant A's token can read tenant B's depletion series by passing B's
+inventory id. Inventory module is outside this page's paths — filed, not fixed.
+
+**9.23 · The same endpoint zero-fills its 14-day series.**
+`inventory.service.ts:688-696` builds "a dense 14-day series (zero-filled) so
+the chart has a stable x-axis", so a day before the house's first POS line
+renders identically to a day nobody bought anything — and its heatmap is a 7x8
+matrix of 16:00–23:00 only (`:660-684`), which drops every lunch service and
+every café. The cellar's own `rowSeries.ts` does neither and says so; the
+inventory one still does.
+
+**9.24 · Two producers dispatch `inventory_change` with different payload
+shapes.** `apps/web/src/lib/websocket.tsx:492` sends
+`{inventory_id, restaurant_id, stock_after}`;
+`apps/web/src/contexts/RealtimeContext.tsx:376` sends
+`{type, wineId, quantity}`. A reader that assumed either one would silently
+ignore half the traffic. `readStockEvent` accepts both and is tested against
+both; the shape should be unified in the RealtimeContext, which is outside this
+page's paths.
+
+**9.25 · `public.vendor_price_observations` has NO foreign keys at all.**
+Verified 2026-09-03 — `pg_constraint` returns zero rows of `contype = 'f'` for
+that relation — so PostgREST cannot resolve `providers(name)` and any read that
+embeds it 400s with "Could not find a relationship". `house_beverage_ledger`
+gets the vendor name with an explicit SQL LEFT JOIN, which PostgREST has no
+equivalent for; the row-record read therefore takes the vendor from
+`vendor_name_raw` and says so. A `provider_id` FK would fix it for every reader
+at once, and is a migration this page did not take.
+
+**9.26 · The end-to-end realtime leg cannot be measured from here.** Nothing
+emits `stock:updated` without the RabbitMQ bridge
+(`apps/api-gateway/src/common/orchestrator/rabbitmq-bridge.service.ts:333`),
+which is not running against this worktree. Transport and apply are measured
+(§1b); the number between them is not, and no figure is quoted for it.
+
+**9.27 · `procurement_documents` carries a status but no payment date.** So the
+order ledger can say a line was *invoiced* and cannot say it was *paid*. The
+founder's phrase was "order ledgers maybe when clicked on paid", and this is the
+one word of it the books cannot support today. No line in the expander claims
+settlement.
+
 ## 10. Maturity
 
 **hollow.** Browsing works and is real. The page's two headline *actions* — "order this
@@ -1111,3 +1571,40 @@ the onboarding step for every house on a database missing the migration.
 8. **Deadstock and velocity on the row** — DESIGN-FOUNDATION §6 table stakes.
    `pos_unresolved_lines` gives velocity for a non-wine today; deadstock needs a
    stock figure, so it waits on OD-113 with everything else.
+
+### Roadmap for the fourth pass (added 2026-09-03, ordered)
+
+1. **A writer for `beverages.type_attributes`** — beer style and IBU first. It
+   is the single highest-value missing writer on this page: a beer register with
+   no style is a list of brand names, and Untappd makes Style one of only three
+   required fields on a menu beer. No migration; the column is JSONB and empty.
+2. **A writer for the whisky projections** (`age_years`, `cask_finish`,
+   `expression`, `proof`) — the parse pass the migration itself defers.
+3. **A `provider_id` foreign key on `vendor_price_observations`** (§9.25), so
+   every reader can embed the vendor instead of each one working around it.
+4. **Unify the `inventory_change` payload** (§9.24) to the websocket bridge's
+   shape, and delete the second reader branch here once it lands.
+5. **Fix `getItemActivity`'s tenant scope and its zero-fill** (§9.22, §9.23) —
+   or retire it in favour of `rowSeries.ts`, which already answers the same two
+   questions without either fault.
+6. **A payment date on `procurement_documents`** (§9.27), so the order ledger
+   can distinguish invoiced from paid.
+7. **The end-to-end realtime measurement** (§9.26), once the RabbitMQ bridge can
+   be run against a worktree.
+8. **The floor strip on the parent** — sketch 095 draws it from
+   `storage_locations`, and that table is 84-of-87 invented names. It is drawn
+   in the sketch and NOT built, and it stays unbuilt until the zone names are
+   real.
+9. **Split the directory** (§1b's size disclosure): three register grammars
+   into `registers/wines/`, `registers/cocktails/`, `registers/catalogue/`, and
+   move `CellarRegistersStep` / `CellarRegistersControl` to the pages that mount
+   them (`/get-started`, `/settings`). Both cross into other pages' paths, which
+   is why the fourth pass disclosed the size rather than fixing it.
+10. **One row shape for both register grammars**, so `WineRegister` can drop its
+   own `COLUMNS` and `sortValue` (`WineRegister.tsx:71`, `:83`) and read
+   `cellar-columns.ts` like every other register. It needs `BottleVM` and
+   `RegisterRowVM` reconciled — which is the same identity question as OD-113,
+   from the other end.
+11. **Sugar and caffeine on a non-alcoholic row** — nothing in the schema carries
+   either; `type_attributes` would hold them without a migration the moment a
+   source exists (GS1 GDSN nutrient attributes are the standard shape).

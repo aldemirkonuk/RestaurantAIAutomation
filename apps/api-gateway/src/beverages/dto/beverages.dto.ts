@@ -72,6 +72,22 @@ export class ListCocktailsQueryDto {
 }
 
 /**
+ * The record behind ONE row of a register — every line of the five books that
+ * names it, so a column can be opened as a graph and read as a ledger.
+ *
+ * `label` is REQUIRED and bounded. It is a search term, not an id: the row it
+ * belongs to may exist in the house's books and in no catalogue at all, so
+ * there is no uuid to ask for.
+ */
+export class ReadRowRecordQueryDto {
+  @ApiProperty({ description: "The row's label, as the register renders it" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(240)
+  label!: string;
+}
+
+/**
  * The register read: one register, whole — this house's own rows with their
  * record, then the shared catalogue rows nobody here has touched.
  */

@@ -191,6 +191,120 @@ export function registerHref(id: RegisterId): string {
   return REGISTER_ROUTE[id] ?? `/cellar?register=${id}`;
 }
 
+/* ── what this house's book is CALLED ──────────────────────────────────── */
+
+/**
+ * THE PARENT'S NAME, CHOSEN BY WHAT THE HOUSE POURS.
+ *
+ * The founder, fourth pass: *"What if there is only non-alcoholic, then what do
+ * we do? do we say soft drinks? just drinks?"* — and then, on the answer:
+ * **adaptive** — "The Cellar" when wine or spirits are on, "The Bar" when only
+ * beer/cocktails/non-alcoholic, "Drinks" when only non-alcoholic and soft
+ * drinks; one surface, the route stays `/cellar`.
+ *
+ * WHY A NAME AND NOT A ROUTE. The route, the sidebar entry and the breadcrumb
+ * all stay `/cellar` — an adaptive URL would break every link, every bookmark
+ * and every sentence anybody has ever written about this page. What adapts is
+ * the one thing that was previously a small lie: the headline. A café that
+ * pours Turkish coffee and ayran was being shown a page called The Cellar,
+ * which is the same fault the four hard-coded registers had before the second
+ * pass — presence asserted where there is none.
+ *
+ * WHY IT CANNOT FLICKER. The name is a pure function of the registers readout,
+ * which is one authoritative row per (restaurant, register) in
+ * `restaurant_cellar_registers`, inferred once and confirmed at onboarding. It
+ * is stable for a house, not recomputed per render. While the readout is
+ * unread the name is `The Cellar` — the route's own name, and the page says the
+ * set has not been established rather than guessing a different one and
+ * changing it a second later.
+ *
+ * "Soft drinks" is refused as a name for a deliberate reason: it is already the
+ * name of one of the seven registers, so a parent called Soft drinks would
+ * collide with its own child in the spine and in every sentence.
+ */
+export type HouseName = 'The Cellar' | 'The Bar' | 'Drinks';
+
+/** Registers that make a house one that KEEPS bottles. */
+const KEEPING: RegisterId[] = ['wines', 'spirits', 'whiskey'];
+/** Registers that make a house one that POURS but does not keep. */
+const POURING: RegisterId[] = ['beer', 'cocktails'];
+
+export interface HouseNaming {
+  name: HouseName;
+  /** The sentence the page prints under the headline. */
+  because: string;
+  /** True when nothing has been established and the default was used. */
+  unestablished: boolean;
+}
+
+/**
+ * The ladder, closed and in order. `carried` is the set of registers this house
+ * has on; an empty or unread set falls to the route's own name.
+ */
+export function houseNaming(carried: RegisterId[] | null): HouseNaming {
+  if (carried === null || carried.length === 0) {
+    return {
+      name: 'The Cellar',
+      because:
+        'Which registers this house carries has not been established, so this page keeps the name its route has and claims nothing about what is poured here.',
+      unestablished: true,
+    };
+  }
+  const has = (ids: RegisterId[]) => ids.some((id) => carried.includes(id));
+
+  if (has(KEEPING)) {
+    return {
+      name: 'The Cellar',
+      because:
+        'Called the Cellar because this house keeps bottles — wine or spirits are on its registers. Change which registers it carries in Settings.',
+      unestablished: false,
+    };
+  }
+  if (has(POURING)) {
+    return {
+      name: 'The Bar',
+      because:
+        'Called the Bar, not the Cellar, because this house pours beer or cocktails and keeps no wine or spirits. A bar without alcohol is still a bar — the trade has called them that for a century — so this name holds whether or not the alcohol is real.',
+      unestablished: false,
+    };
+  }
+  return {
+    name: 'Drinks',
+    because:
+      'Called Drinks because nothing alcoholic is on this house’s registers. Not “soft drinks” — that is the name of one of the seven registers, and a parent cannot share a name with its own child.',
+    unestablished: false,
+  };
+}
+
+/**
+ * The naming, taken straight off a registers readout — the ONE place the
+ * `decidedBy === 'unknown'` guard is written.
+ *
+ * It exists because the fourth pass's first cut applied the rule at the root
+ * and nowhere else: `/beer` and `/wines` still said "The Cellar" in their
+ * breadcrumb, so a Drinks-only house read the truth on the parent and the old
+ * lie one click deep. Three surfaces now call this, and none of them carries a
+ * second copy of the rule.
+ *
+ * Structurally typed on purpose: the readout view-model lives in
+ * `useCellarNextData`, which imports this file, so naming its type here would
+ * close a cycle. What is actually needed is two fields.
+ *
+ * `'mixed'` is deliberately NOT treated as unknown: it means several registers
+ * were decided by different routes, which is established, not unestablished.
+ * Only `'unknown'` falls back to the route's own name.
+ */
+export function houseNamingFor(
+  readout:
+    | { carried: RegisterId[]; decidedBy: DecidedBy | 'mixed' }
+    | null
+    | undefined,
+): HouseNaming {
+  return houseNaming(
+    readout && readout.decidedBy !== 'unknown' ? readout.carried : null,
+  );
+}
+
 /* ── how a register's answer was reached ───────────────────────────────── */
 
 /** Mirrors the gateway's `DecidedBy` (cellar/cellar-registers.ts). */

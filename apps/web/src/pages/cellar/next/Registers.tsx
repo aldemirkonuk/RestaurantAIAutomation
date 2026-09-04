@@ -33,6 +33,7 @@ import {
 } from './cellar-format';
 import { REGISTER_SOURCE } from './registerShapes';
 import { BOOK_READ_LIMIT, type CellarData, type RegisterReadoutVM } from './useCellarNextData';
+import WholeCellar from './WholeCellar';
 
 /* ── the tally: figures arrive overdamped, and an unknown never counts ──── */
 
@@ -314,6 +315,11 @@ export default function Registers({ data }: { data: CellarData }) {
               : 'Par is only claimed for a row that records its own minimum. Everything the cellar holds is booked against the wine library today — `restaurant_inventory` is keyed on it, so beer, spirits and cocktails can be browsed here but not yet counted as stock.'}
         </p>
       </section>
+
+      {/* Direction B, merged in rather than replacing the registers: the whole
+          book in one list, with only the columns that mean the same thing in
+          every register. Opened deliberately — it is one read per register. */}
+      <WholeCellar carried={unread || unknown ? null : shown.filter((r) => r !== 'wines')} />
     </>
   );
 }

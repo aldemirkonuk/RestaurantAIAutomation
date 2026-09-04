@@ -373,3 +373,295 @@ textarea.cl-field {
   height: auto;
   resize: vertical;
 }
+
+/* ── the column's own menu, and the series a cell opens (fourth pass) ───── */
+
+/* The caret is right-click's reachable twin: a real button, so the column's
+   account is available to a keyboard and to a thumb, not only to a mouse. */
+.cl-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+.cl-caret:hover {
+  border-color: var(--seal-ring);
+  color: var(--ink-2);
+}
+
+.cl-menu {
+  position: fixed;
+  z-index: 40;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: 10px;
+  background: var(--paper-0);
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
+}
+.cl-menuitem {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-menuitem:hover {
+  background: var(--paper-1);
+  border-color: var(--seal-ring);
+}
+.cl-menuitem[data-on='true'] {
+  color: var(--seal-deep);
+}
+.cl-menunote,
+.cl-menunote-plain {
+  display: flex;
+  gap: 7px;
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.cl-menunote-plain {
+  display: block;
+}
+.cl-menuaccount {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+}
+
+/* A cell that has a series says so on hover — the affordance for a gesture
+   that would otherwise be invisible. Underline, never a colour: the seal is
+   the one chromatic mark on this page and it belongs to the ceremony. */
+.cl-table td[data-series='true'] {
+  text-decoration-color: var(--paper-2);
+}
+.cl-table tbody tr:hover td[data-series='true'] {
+  text-decoration: underline dotted var(--ink-4);
+  text-underline-offset: 3px;
+}
+
+/* The double rule under the series panel: the account is ruled off. */
+.cl-series {
+  padding: 14px 16px 16px;
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  border-bottom: 3px double var(--ink-4);
+}
+
+.cl-more {
+  margin-top: 14px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.cl-more > summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+/* A row a live event just moved. The flash itself is `ink` from motion.ts and
+   is applied in script; this is only the resting state it returns to. */
+.cl-table tbody tr[data-live='true'] td {
+  background: var(--paper-1);
+}
+
+/* ── the expanded row: the /inventory dropdown shape, in the house idiom ── */
+
+.cl-openrow > td {
+  padding: 0;
+  background: var(--paper-1);
+  border-bottom: 3px double var(--ink-4);
+}
+.cl-openrow > td > div {
+  padding: 14px 14px 16px;
+}
+.cl-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+  gap: 12px;
+}
+.cl-card {
+  background: var(--paper-0);
+  border: 1px solid var(--paper-2);
+  border-radius: 11px;
+  padding: 12px 13px;
+}
+/* A card that cannot be filled is DRAWN, dimmed, with its reason. Dropping it
+   would make a keg look like a bottle whose stock is merely unknown. */
+.cl-card[data-withheld='true'] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--paper-1),
+    var(--paper-1) 7px,
+    var(--paper-0) 7px,
+    var(--paper-0) 14px
+  );
+}
+.cl-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cl-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.cl-kv > span:last-child {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.cl-linkish {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+.cl-linkish:hover {
+  border-color: var(--seal-ring);
+  color: var(--seal-deep);
+}
+.cl-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 62px;
+}
+.cl-bars > i {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--seal-tint);
+  border-top: 2px solid var(--seal-ring);
+}
+.cl-bars > i[data-peak='true'] {
+  background: var(--seal-tint);
+  border-top-color: var(--seal);
+}
+.cl-barscale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+.cl-heat {
+  display: grid;
+  gap: 2px;
+  align-items: center;
+}
+.cl-heat-h,
+.cl-heat-d {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.cl-heat-d {
+  text-align: left;
+}
+.cl-heat-c {
+  height: 11px;
+  border-radius: 2px;
+  background: var(--seal);
+  outline: 1px solid var(--paper-2);
+}
+.cl-ledgerline {
+  display: grid;
+  grid-template-columns: 74px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid var(--paper-2);
+  font-size: 11.5px;
+}
+.cl-ledgerline:first-child {
+  border-top: 0;
+}
+.cl-tag {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border: 1px solid var(--paper-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.cl-tag[data-paid='true'] {
+  border-color: var(--seal-ring);
+  color: var(--seal-deep);
+}
+
+/* The fact strip: what the thing IS, before any card says what it has DONE.
+   `/inventory`'s expander opens with the same run (grape · region · format ·
+   vintage · last counted), and the founder named that dropdown for it. */
+.cl-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  padding: 0 2px 13px;
+  margin-bottom: 13px;
+  border-bottom: 1px solid var(--paper-2);
+}
+.cl-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cl-fact-k {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cl-fact-v {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ink-1);
+}
+/* A withheld line is drawn, not dropped: the label stands, the value is the
+   dash, and the table it would have come from is on the title. */
+.cl-fact-v[data-withheld='true'] {
+  color: var(--ink-3);
+  cursor: help;
+}
+
+/* In the kind card the value is a STATE, not a figure: 'read' or 'no writer'.
+   The strip above already carries the values; this says where they come from. */
+.cl-kv > span[data-filled='true'] {
+  color: var(--seal-deep);
+}

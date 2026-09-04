@@ -59,6 +59,7 @@ import {
   REGISTER_TITLE,
   SANS,
   ensureFraunces,
+  houseNamingFor,
   registerHref,
   type RegisterId,
 } from './cellar-format';
@@ -105,6 +106,19 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
       : REGISTER_ORDER.filter((id) => data.registers?.carried.includes(id))
     : ['wines'];
 
+  // What this house's book is CALLED. The founder's ruling, fourth pass: the
+  // parent is named by what the house pours — the Cellar when wine or spirits
+  // are on, the Bar when only beer/cocktails/non-alcoholic, Drinks when only
+  // non-alcoholic and soft drinks. One surface; the route stays /cellar.
+  //
+  // Computed from the SAME `carried` set the spine is drawn from, so the name
+  // and the registers can never disagree. Unread → 'The Cellar', the route's
+  // own name, with the sentence saying nothing has been established.
+  // `houseNamingFor` holds the `decidedBy === 'unknown'` guard, and the child
+  // registers call the same function — the name cannot say one thing here and
+  // another in a breadcrumb one click deep.
+  const naming = houseNamingFor(data.registers);
+
   useEffect(() => {
     ensureFraunces();
   }, []);
@@ -142,14 +156,14 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
         <div style={{ marginTop: 20 }}>
           {data.authLoading ? (
             <div role="status" data-testid="cellar-opening">
-              <h1 className="cl-h1">The Cellar.</h1>
+              <h1 className="cl-h1">{naming.name}.</h1>
               <p className="cl-said" style={{ marginTop: 8 }}>
                 Finding out which building this is…
               </p>
             </div>
           ) : data.activeRestaurantId === null ? (
             <div role="status" data-testid="cellar-no-tenant">
-              <h1 className="cl-h1">The Cellar.</h1>
+              <h1 className="cl-h1">{naming.name}.</h1>
               <p className="cl-said" style={{ marginTop: 8 }}>
                 No restaurant is active on this account, so there is no building to open a cellar
                 for. The book is unread — not empty. Choose a branch, or ask an owner for access.
@@ -158,8 +172,9 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
           ) : open === null ? (
             <>
               <p className="cl-crumb">What the house keeps</p>
-              <h1 className="cl-h1" data-size="parent">
-                The Cellar<span style={{ color: 'var(--seal)' }}>.</span>
+              <h1 className="cl-h1" data-size="parent" data-testid="cellar-headline">
+                {naming.name}
+                <span style={{ color: 'var(--seal)' }}>.</span>
               </h1>
               <p className="cl-standing" style={{ fontSize: 15.5 }}>
                 {data.registersLoading
@@ -167,6 +182,12 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
                   : data.registers && data.registers.decidedBy !== 'unknown'
                     ? `${data.registers.carried.length} ${data.registers.carried.length === 1 ? 'register' : 'registers'}, because that is what this house pours. The others are not drawn.`
                     : 'The registers this house carries have not been established, so all seven are shown and none is claimed.'}
+              </p>
+              {/* The rule, on the page. A name that changes with the house has
+                  to say why it changed, or it reads as a bug. */}
+              <p className="cl-note" data-testid="cellar-naming-rule">
+                {naming.because}
+                {' The address stays /cellar whatever this page is called.'}
               </p>
               <hr className="cl-rule" style={{ margin: '16px 0 0' }} />
               <Registers data={data} />

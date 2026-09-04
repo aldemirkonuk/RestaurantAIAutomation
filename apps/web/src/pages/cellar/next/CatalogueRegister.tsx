@@ -40,98 +40,51 @@
  * This register reads `menu_items`; it never writes one.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Search } from 'lucide-react';
+import { AlertTriangle, BookOpen, ChevronDown, Search } from 'lucide-react';
 import { animate, turn } from '../../../lib/mudavym/motion';
 import CocktailRegister from './CocktailRegister';
+import ColumnMenu from './ColumnMenu';
 import HouseRecordLeaf from './HouseRecordLeaf';
 import RegisterNotice from './NeedsItemsNotice';
 import RegisterEvidenceLine from './RegisterEvidenceLine';
+import RowExpander from './RowExpander';
+import SeriesPanel from './SeriesPanel';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
-  EM,
   REGISTER_TITLE,
   count,
-  money,
   noHouseRowsLine,
-  shortDate,
-  volume,
   type HouseBookId,
   type RegisterId,
 } from './cellar-format';
+import { houseNamingFor } from './cellar-format';
+import { columnsFor, type CellarColumn } from './cellar-columns';
+import { cellFor, sortValueFor } from './registerCells';
 import { REGISTER_SOURCE } from './registerShapes';
 import {
   useRegister,
+  useRowRecord,
   type CellarData,
-  type RegisterRowVM,
   type RegisterVM,
 } from './useCellarNextData';
 
-type SortKey =
-  | 'name' | 'books' | 'first' | 'paid' | 'sold' | 'quote'
-  | 'type' | 'origin' | 'abv' | 'format';
 type Scope = 'all' | 'ours' | 'catalogue';
 type MatchFilter = 'all' | 'exact' | 'contains' | 'none';
 
-/**
- * The register's columns. A UI vocabulary, not a table of rows — `kind` says
- * whether the cell is a figure (right-aligned, tabular mono) or a word. The
- * same three keys `WineRegister.COLUMNS` uses, deliberately: one idea, one
- * shape, and a descriptor list that only describes.
- */
-const COLUMNS: { id: SortKey; label: string; kind: 'figure' | 'word' }[] = [
-  { id: 'name', label: 'Bottle', kind: 'word' },
-  { id: 'books', label: 'Our record', kind: 'word' },
-  { id: 'first', label: 'First bought', kind: 'figure' },
-  { id: 'paid', label: 'Paid', kind: 'figure' },
-  { id: 'sold', label: 'Sold', kind: 'figure' },
-  { id: 'quote', label: 'Last quote', kind: 'figure' },
-  { id: 'type', label: 'Type', kind: 'word' },
-  { id: 'origin', label: 'Origin', kind: 'word' },
-  { id: 'abv', label: 'ABV', kind: 'figure' },
-  { id: 'format', label: 'Format', kind: 'figure' },
-];
-
-/** Sort value, or null for unknown. Unknowns sink in BOTH directions. */
-function sortValue(r: RegisterRowVM, key: SortKey): string | number | null {
-  const h = r.house;
-  switch (key) {
-    case 'books': return h ? h.books.length : null;
-    case 'first': return h?.bought?.first ? Date.parse(h.bought.first) : null;
-    case 'paid': return h?.bought?.paidTotal ?? null;
-    case 'sold': return h?.poured?.qty ?? null;
-    case 'quote': return h?.quoted?.lastPrice ?? null;
-    case 'type': return r.catalogue?.beverageType?.toLowerCase() ?? null;
-    case 'origin':
-      return [r.catalogue?.region, r.catalogue?.country].filter(Boolean).join(', ').toLowerCase() || null;
-    case 'abv': return r.catalogue?.abvPct ?? null;
-    case 'format': return r.catalogue?.volumeMl ?? null;
-    default: return r.name.toLowerCase();
-  }
+/** Where a column menu was opened from, so it can be drawn there. */
+interface MenuAt {
+  column: CellarColumn;
+  x: number;
+  y: number;
 }
 
-/**
- * The row's record, at a glance: one mark per book that names it. Ink, never a
- * semantic colour — the chip rule (contrast measured, ADR 0042).
- */
-function Books({ books }: { books: HouseBookId[] }) {
-  if (books.length === 0) return <span className="cl-dim">{EM}</span>;
-  return (
-    <span style={{ display: 'inline-flex', gap: 3 }}>
-      {BOOK_ORDER.map((b) => (
-        <span
-          key={b}
-          className="cl-mark"
-          data-on={books.includes(b) ? 'true' : 'false'}
-          title={books.includes(b) ? BOOK_LABEL[b] : `not ${BOOK_LABEL[b]}`}
-          aria-hidden
-        />
-      ))}
-      <span className="cl-sr">{books.map((b) => BOOK_LABEL[b]).join(', ')}</span>
-    </span>
-  );
+/** Which cell's series is open: one row, one column. */
+interface OpenSeries {
+  label: string;
+  column: CellarColumn;
 }
 
 function Sift({
@@ -162,10 +115,14 @@ const ANY = { value: 'all', label: 'Any' };
 function Head({ id, readout }: { id: RegisterId; readout: CellarData['registers'] }) {
   const r = readout?.registers.find((x) => x.id === id);
   const source = REGISTER_SOURCE[id];
+  // The parent's own name, not the literal "The Cellar": a house that pours no
+  // wine reads "Drinks · register" here, because a breadcrumb that disagrees
+  // with the page it points at is the same lie the root fix removed.
+  const naming = houseNamingFor(readout);
   return (
     <>
       <p className="cl-crumb">
-        <Link to="/cellar" className="cl-focus">The Cellar</Link> · register
+        <Link to="/cellar" className="cl-focus">{naming.name}</Link> · register
       </p>
       <h1 className="cl-h1">{REGISTER_TITLE[id]}</h1>
       <p className="cl-standing">{source.oneLine}</p>
@@ -254,13 +211,39 @@ export default function CatalogueRegister({
   const [book, setBook] = useState<string>('all');
   const [type, setType] = useState('all');
   const [match, setMatch] = useState<MatchFilter>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('books');
+  const [sortKey, setSortKey] = useState<string>('books');
   const [asc, setAsc] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [menu, setMenu] = useState<MenuAt | null>(null);
+  const [series, setSeries] = useState<OpenSeries | null>(null);
   const leafRef = useRef<HTMLDivElement | null>(null);
+
+  // The column vocabulary for THIS register. Columns whose source has no
+  // writer are off by default and offered from the header menu with the
+  // measured reason beside them — never drawn as a file of em dashes.
+  const vocabulary = useMemo(() => columnsFor(id), [id]);
+  const columns = useMemo(
+    () => vocabulary.filter((c) => (c.on && !hidden.has(c.id)) || (!c.on && hidden.has(`show:${c.id}`))),
+    [vocabulary, hidden],
+  );
 
   const register = useRegister(id);
   const reg = register.data;
+
+  // One read serves both the expanded row and the series a cell opens, because
+  // both are the same question about the same line. Opening a row therefore
+  // costs one request, and opening a cell on that row costs none.
+  const openedRow = (reg?.rows ?? []).find((r) => r.key === openKey) ?? null;
+  const record = useRowRecord(series?.label ?? openedRow?.name ?? null);
+
+  const openSeriesFor = useCallback((label: string, column: CellarColumn) => {
+    // A column with no series does not open one; the header menu says so
+    // rather than opening an empty panel that looks like a failure.
+    if (column.series === null) return;
+    setSeries({ label, column });
+    setMenu(null);
+  }, []);
 
   // "The page turns" — the stand's contents change when another row is opened.
   useEffect(() => {
@@ -298,8 +281,8 @@ export default function CatalogueRegister({
       return true;
     });
     return rows.sort((a, z) => {
-      const av = sortValue(a, sortKey);
-      const zv = sortValue(z, sortKey);
+      const av = sortValueFor(a, sortKey);
+      const zv = sortValueFor(z, sortKey);
       if (av === null && zv === null) return a.name.localeCompare(z.name);
       if (av === null) return 1; // unknowns sink in both directions
       if (zv === null) return -1;
@@ -322,11 +305,14 @@ export default function CatalogueRegister({
     );
   }
 
-  const toggleSort = (k: SortKey) => {
+  const toggleSort = (k: string) => {
     if (k === sortKey) setAsc((v) => !v);
     else {
       setSortKey(k);
-      setAsc(k === 'name' || k === 'type' || k === 'origin');
+      // Words read forwards, figures read biggest-first: the answer somebody
+      // sorting by Paid wants is the most expensive line, not the cheapest.
+      const col = vocabulary.find((c) => c.id === k);
+      setAsc(col?.kind === 'word');
     }
   };
   const open = shown?.find((r) => r.key === openKey) ?? null;
@@ -406,21 +392,6 @@ export default function CatalogueRegister({
 
           <SourceLines data={reg} />
 
-          {/* ── the reading stand ────────────────────────────────────────── */}
-          <div className="cl-stand" data-open={open ? 'true' : 'false'} style={{ marginTop: open ? 14 : 0 }}>
-            <div>
-              <div ref={leafRef}>
-                {open ? (
-                  <HouseRecordLeaf
-                    row={open}
-                    stockingReason={reg.stocking.reason}
-                    onClose={() => setOpenKey(null)}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
-
           {/* ── the register itself ──────────────────────────────────────── */}
           <div style={{ marginTop: 14 }}>
             {shown === null || shown.length === 0 ? (
@@ -434,28 +405,59 @@ export default function CatalogueRegister({
                 <table className="cl-table">
                   <thead>
                     <tr>
-                      {COLUMNS.map((c) => (
-                        <th key={c.id} style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}>
-                          <button
-                            type="button"
-                            className="cl-focus"
-                            onClick={() => toggleSort(c.id)}
-                            aria-label={`Sort by ${c.label}`}
+                      {columns.map((c) => (
+                        <th
+                          key={c.id}
+                          style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setMenu({ column: c, x: e.clientX, y: e.clientY });
+                          }}
+                        >
+                          <span
                             style={{
-                              background: 'none', border: 0, padding: 0, font: 'inherit',
-                              cursor: 'pointer',
-                              color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
+                              display: 'inline-flex',
+                              gap: 3,
+                              alignItems: 'center',
+                              flexDirection: c.kind === 'figure' ? 'row-reverse' : 'row',
                             }}
                           >
-                            {c.label}
-                            {sortKey === c.id ? (asc ? ' ▲' : ' ▼') : ''}
-                          </button>
+                            <button
+                              type="button"
+                              className="cl-focus"
+                              onClick={() => toggleSort(c.id)}
+                              aria-label={`Sort by ${c.label}`}
+                              style={{
+                                background: 'none', border: 0, padding: 0, font: 'inherit',
+                                cursor: 'pointer',
+                                color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
+                              }}
+                            >
+                              {c.label}
+                              {sortKey === c.id ? (asc ? ' \u25B2' : ' \u25BC') : ''}
+                            </button>
+                            {/* Right-click's keyboard- and touch-reachable twin.
+                                Right-click alone would put the column's own
+                                account behind a gesture a keyboard cannot make. */}
+                            <button
+                              type="button"
+                              className="cl-caret cl-focus"
+                              aria-haspopup="menu"
+                              aria-label={`What ${c.label} is, and how to sort it`}
+                              onClick={(e) => {
+                                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setMenu({ column: c, x: r.left, y: r.bottom + 4 });
+                              }}
+                            >
+                              <ChevronDown size={11} aria-hidden />
+                            </button>
+                          </span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {shown.map((r) => (
+                    {shown.flatMap((r) => [
                       <tr
                         key={r.key}
                         data-selected={r.key === openKey}
@@ -469,49 +471,150 @@ export default function CatalogueRegister({
                           }
                         }}
                       >
-                        <td>
-                          <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>
-                            {r.name}
-                          </span>
-                          <span className="cl-dim" style={{ fontSize: 11 }}>
-                            {r.producer ?? (r.house ? 'this house’s own line' : 'unattributed')}
-                            {r.catalogue?.matchedBy === 'contains' ? ' · matched loosely' : ''}
-                          </span>
-                        </td>
-                        <td><Books books={r.house?.books ?? []} /></td>
-                        <td className="cl-num" style={{ textAlign: 'right' }}>
-                          {shortDate(r.house?.bought?.first)}
-                        </td>
-                        <td className="cl-num" style={{ textAlign: 'right' }}>
-                          {money(r.house?.bought?.paidTotal)}
-                        </td>
-                        <td className="cl-num" style={{ textAlign: 'right' }}>
-                          {count(r.house?.poured?.qty ?? null)}
-                        </td>
-                        <td className="cl-num" style={{ textAlign: 'right' }}>
-                          {money(r.house?.quoted?.lastPrice)}
-                        </td>
-                        <td>{r.catalogue?.beverageType ?? <span className="cl-dim">{EM}</span>}</td>
-                        <td>
-                          {[r.catalogue?.region, r.catalogue?.country].filter(Boolean).join(', ') || (
-                            <span className="cl-dim">{EM}</span>
-                          )}
-                        </td>
-                        <td className="cl-num" style={{ textAlign: 'right' }}>
-                          {r.catalogue?.abvPct === null || r.catalogue?.abvPct === undefined
-                            ? EM
-                            : `${r.catalogue.abvPct}%`}
-                        </td>
-                        <td className="cl-num" style={{ textAlign: 'right' }}>
-                          {volume(r.catalogue?.volumeMl)}
-                        </td>
-                      </tr>
-                    ))}
+                        {columns.map((c) => (
+                          <td
+                            key={c.id}
+                            className={c.kind === 'figure' ? 'cl-num' : undefined}
+                            style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}
+                            data-series={c.series !== null ? 'true' : undefined}
+                            title={
+                              c.series === null
+                                ? undefined
+                                : `Double-click for ${c.label.toLowerCase()} — the whole record behind this line`
+                            }
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              openSeriesFor(r.name, c);
+                            }}
+                            onContextMenu={(e) => {
+                              if (c.series === null) return;
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openSeriesFor(r.name, c);
+                            }}
+                          >
+                            {cellFor(r, c.id)}
+                          </td>
+                        ))}
+                      </tr>,
+                      r.key === openKey ? (
+                        /* THE DROPDOWN THE FOUNDER NAMED. `/inventory`'s row
+                           expansion opens IN PLACE and "shows everything you
+                           need to see" (MAKEOVER-VERDICTS.md:66-72); this is
+                           that shape, with the cards this register's books can
+                           actually fill and the two it cannot drawn as
+                           withheld rather than dropped. */
+                        <tr key={`${r.key}-open`} className="cl-openrow">
+                          <td colSpan={columns.length}>
+                            <div ref={leafRef}>
+                              <RowExpander
+                                row={r}
+                                register={id}
+                                record={record.data}
+                                loading={record.loading}
+                                error={record.error}
+                                stockingReason={reg.stocking.reason}
+                                onOpenSeries={(b) => {
+                                  const col =
+                                    vocabulary.find((c) => c.series === b) ?? null;
+                                  if (col !== null) openSeriesFor(r.name, col);
+                                }}
+                              />
+                              <HouseRecordLeaf
+                                row={r}
+                                stockingReason={reg.stocking.reason}
+                                onClose={() => setOpenKey(null)}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null,
+                    ])}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
+
+          {/* ── the series behind a cell: the graph, then the ledger ─────── */}
+          {series !== null ? (
+            <div style={{ marginTop: 16 }}>
+              <SeriesPanel
+                label={series.label}
+                columnLabel={series.column.label}
+                columnId={series.column.id}
+                book={series.column.series}
+                record={record.data}
+                loading={record.loading}
+                error={record.error}
+                onClose={() => setSeries(null)}
+              />
+            </div>
+          ) : null}
+
+          {menu !== null ? (
+            <ColumnMenu
+              column={menu.column}
+              at={{ x: menu.x, y: menu.y }}
+              sorted={sortKey === menu.column.id ? (asc ? 'asc' : 'desc') : null}
+              onSort={(dir) => {
+                setSortKey(menu.column.id);
+                setAsc(dir === 'asc');
+                setMenu(null);
+              }}
+              onOpenSeries={
+                menu.column.series !== null && open !== null
+                  ? () => openSeriesFor(open.name, menu.column)
+                  : null
+              }
+              onHide={
+                menu.column.on
+                  ? () => {
+                      setHidden((h) => new Set([...h, menu.column.id]));
+                      setMenu(null);
+                    }
+                  : null
+              }
+              onClose={() => setMenu(null)}
+            />
+          ) : null}
+
+          {/* Columns this register knows about and does not draw, each with the
+              measured reason. An operator can turn one on and get the em dash
+              WITH its explanation — which is a decision, not a blank cell. */}
+          {vocabulary.some((c) => !columns.includes(c)) ? (
+            <details className="cl-more" data-testid="register-more-columns">
+              <summary className="cl-focus">
+                Columns not drawn ({vocabulary.length - columns.length})
+              </summary>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 16 }}>
+                {vocabulary
+                  .filter((c) => !columns.includes(c))
+                  .map((c) => (
+                    <li key={c.id} style={{ marginBottom: 6 }}>
+                      <button
+                        type="button"
+                        className="cl-btn cl-focus"
+                        onClick={() =>
+                          setHidden((h) => {
+                            const next = new Set(h);
+                            next.delete(c.id);
+                            if (!c.on) next.add(`show:${c.id}`);
+                            return next;
+                          })
+                        }
+                      >
+                        {c.label}
+                      </button>{' '}
+                      <span className="cl-dim" style={{ fontSize: 11.5 }}>
+                        {c.why || `Hidden by you. ${c.meaning}`}
+                        {c.fill ? ` (${c.fill})` : ''}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </details>
+          ) : null}
 
           <p className="cl-note" style={{ marginTop: 18 }}>
             {reg.scopeNote}

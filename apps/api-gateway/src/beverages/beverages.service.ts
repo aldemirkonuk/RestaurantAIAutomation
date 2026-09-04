@@ -13,6 +13,17 @@ import {
   type RegisterResult,
   type SourceStatus,
 } from "./house-record";
+import {
+  composeBook,
+  composeRowRecord,
+  matchLine,
+  num as seriesNum,
+  str as seriesStr,
+  unreadableBook,
+  type BookRecord,
+  type LedgerEntry,
+  type RowRecord,
+} from "./row-record";
 import type {
   CreateCocktailDto,
   SetCocktailIngredientsDto,
@@ -72,6 +83,39 @@ const MISSING_FUNCTION_CODES = new Set(["42883", "PGRST202", "PGRST203"]);
  */
 const CATALOGUE_COLUMNS =
   "id, beverage_type, name, display_name, producer, brand, country, region, abv_pct, volume_ml, package_format, price_reference, identity_status, observed_at";
+
+/**
+ * The five books behind ONE row, read line by line rather than aggregated.
+ *
+ * Each is a module-level const for the same reason CATALOGUE_COLUMNS is:
+ * `scripts/check_read_columns_exist.py` resolves a module-level const and
+ * checks every column against the migrations. A read whose column list is
+ * inlined at the call site is a read nobody is checking.
+ */
+const MENU_LINE_COLUMNS =
+  "id, name, producer, category, bottle_price, by_glass_price, created_at";
+const INVOICE_LINE_COLUMNS =
+  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date, restaurant_id, providers(name))";
+const ORDER_LINE_COLUMNS =
+  "id, wine_name, producer, quantity, quoted_unit_price, negotiated_unit_price, final_unit_price, procurement_orders!inner(id, requested_at, restaurant_id, providers(name))";
+/**
+ * No `providers(name)` embed here, and the absence is measured rather than an
+ * oversight: `public.vendor_price_observations` carries NO foreign key at all
+ * (verified 2026-09-03 — `pg_constraint` returns zero rows of `contype = 'f'`
+ * for that relation), so PostgREST cannot resolve the relationship and the
+ * whole read 400s with "Could not find a relationship". `house_beverage_ledger`
+ * gets the vendor's name with an explicit SQL LEFT JOIN, which PostgREST has no
+ * equivalent for. The vendor is therefore read from `vendor_name_raw` — the
+ * name the observation itself recorded — and where that is null the ledger line
+ * says the vendor is unknown rather than borrowing one.
+ */
+const QUOTE_COLUMNS =
+  "id, product_name_raw, raw_price, normalized_unit_price, source_type, observed_at, vendor_name_raw, provider_id";
+const TILL_LINE_COLUMNS =
+  "id, item_name, qty, price, created_at, external_check_id";
+
+/** How many lines of one book a single row's record will carry. */
+export const ROW_RECORD_LINE_LIMIT = 400;
 
 /** The register read's own cap on each side. The response says if it was hit. */
 export const REGISTER_CATALOGUE_LIMIT = 400;
@@ -647,5 +691,291 @@ export class BeveragesService {
       // register renders them differently.
       writable: true as const,
     };
+  }
+
+  /* ── the record behind ONE row: the lines the aggregates were made of ──── */
+
+  /**
+   * Every line of this house's five books that names one product, in time
+   * order, so a register column can be opened as a graph AND as a ledger.
+   *
+   * FIVE READS, FIVE SURVIVABLE FAILURES. Each book is read on its own and each
+   * failure is reported as that book's own sentence. A row whose invoices could
+   * not be read still shows what the till sold; it never shows an empty chart,
+   * because an empty chart claims the price never moved, and that is a claim
+   * about the vendor rather than about our books.
+   *
+   * TENANT SCOPE. Four of the five tables carry `restaurant_id` and are
+   * filtered on it directly; `procurement_order_items` is filtered through its
+   * order's `restaurant_id` with an inner join, exactly as
+   * `house_beverage_ledger` does (migration 20260903120000:187-198), so a line
+   * cannot arrive from another house by way of a null on the child row.
+   */
+  async readRowRecord(
+    restaurantId: string,
+    label: string,
+  ): Promise<RowRecord> {
+    const trimmed = label.trim();
+    const [menu, invoice, order, quote, pos] = await Promise.all([
+      this.readMenuLines(restaurantId, trimmed),
+      this.readInvoiceLines(restaurantId, trimmed),
+      this.readOrderLines(restaurantId, trimmed),
+      this.readQuoteLines(restaurantId, trimmed),
+      this.readTillLines(restaurantId, trimmed),
+    ]);
+    return composeRowRecord({
+      restaurantId,
+      label: trimmed,
+      books: [menu, invoice, order, quote, pos],
+    });
+  }
+
+  private failed(
+    book: "menu" | "invoice" | "order" | "quote" | "pos",
+    source: string,
+    error: { message: string; code?: string },
+  ): BookRecord {
+    const code = String(error.code);
+    this.logger.error(`row record ${book} read failed: ${error.message}`);
+    return unreadableBook(
+      book,
+      source,
+      MISSING_RELATION_CODES.has(code)
+        ? `${source} is not on this database, so this book could not be read. Unread, not empty.`
+        : error.message,
+    );
+  }
+
+  private async readMenuLines(
+    restaurantId: string,
+    label: string,
+  ): Promise<BookRecord> {
+    const source = "menu_items";
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("menu_items")
+      .select(MENU_LINE_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .limit(ROW_RECORD_LINE_LIMIT);
+    if (error) return this.failed("menu", source, error);
+
+    const ledger: LedgerEntry[] = [];
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const line = [seriesStr(r.producer), seriesStr(r.name)]
+        .filter(Boolean)
+        .join(" ");
+      const how = matchLine(label, line);
+      if (how === null) continue;
+      const bottle = seriesNum(r.bottle_price);
+      const glass = seriesNum(r.by_glass_price);
+      ledger.push({
+        at: seriesStr(r.created_at),
+        label: line,
+        who: null,
+        qty: null,
+        unitPrice: bottle ?? glass,
+        total: null,
+        note:
+          [
+            seriesStr(r.category),
+            glass === null ? null : `by the glass ${glass}`,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+        matchedBy: how,
+      });
+    }
+    return composeBook({
+      book: "menu",
+      source,
+      ledger,
+      emptyReason:
+        "This house's menu was read and does not list this line. Not listed is not the same as not sold.",
+    });
+  }
+
+  private async readInvoiceLines(
+    restaurantId: string,
+    label: string,
+  ): Promise<BookRecord> {
+    const source = "procurement_document_lines";
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("procurement_document_lines")
+      .select(INVOICE_LINE_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .eq("procurement_documents.doc_type", "invoice")
+      .limit(ROW_RECORD_LINE_LIMIT);
+    if (error) return this.failed("invoice", source, error);
+
+    const ledger: LedgerEntry[] = [];
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const line = seriesStr(r.description) ?? "";
+      const how = matchLine(label, line);
+      if (how === null) continue;
+      const doc = (r.procurement_documents ?? null) as Record<
+        string,
+        unknown
+      > | null;
+      const provider = (doc?.providers ?? null) as Record<
+        string,
+        unknown
+      > | null;
+      ledger.push({
+        // The invoice's own date, never the row's insert time: what we were
+        // charged happened when the vendor says it did.
+        at: seriesStr(doc?.doc_date) ?? seriesStr(r.created_at),
+        label: line,
+        who: seriesStr(provider?.name),
+        qty: seriesNum(r.qty_bottles),
+        unitPrice: seriesNum(r.unit_price),
+        total: seriesNum(r.line_total),
+        note: seriesStr(doc?.doc_number),
+        matchedBy: how,
+      });
+    }
+    return composeBook({
+      book: "invoice",
+      source,
+      ledger,
+      emptyReason:
+        "No invoice line in this house's books names this. Nothing has been charged for it that we have a document of — which is not the same as nothing having been paid.",
+    });
+  }
+
+  private async readOrderLines(
+    restaurantId: string,
+    label: string,
+  ): Promise<BookRecord> {
+    const source = "procurement_order_items";
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("procurement_order_items")
+      .select(ORDER_LINE_COLUMNS)
+      .eq("procurement_orders.restaurant_id", restaurantId)
+      .limit(ROW_RECORD_LINE_LIMIT);
+    if (error) return this.failed("order", source, error);
+
+    const ledger: LedgerEntry[] = [];
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const line = [seriesStr(r.producer), seriesStr(r.wine_name)]
+        .filter(Boolean)
+        .join(" ");
+      const how = matchLine(label, line);
+      if (how === null) continue;
+      const ord = (r.procurement_orders ?? null) as Record<
+        string,
+        unknown
+      > | null;
+      const provider = (ord?.providers ?? null) as Record<
+        string,
+        unknown
+      > | null;
+      // The order's own precedence: what was finally agreed beats what was
+      // negotiated beats what was quoted. Same order the ledger uses.
+      const unit =
+        seriesNum(r.final_unit_price) ??
+        seriesNum(r.negotiated_unit_price) ??
+        seriesNum(r.quoted_unit_price);
+      ledger.push({
+        at: seriesStr(ord?.requested_at),
+        label: line,
+        who: seriesStr(provider?.name),
+        qty: seriesNum(r.quantity),
+        unitPrice: unit,
+        total: null,
+        note: null,
+        matchedBy: how,
+      });
+    }
+    return composeBook({
+      book: "order",
+      source,
+      ledger,
+      emptyReason:
+        "This house has never put this on a purchase order. An order is what we asked for; it is a different claim from what we were charged.",
+    });
+  }
+
+  private async readQuoteLines(
+    restaurantId: string,
+    label: string,
+  ): Promise<BookRecord> {
+    const source = "vendor_price_observations";
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("vendor_price_observations")
+      .select(QUOTE_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .limit(ROW_RECORD_LINE_LIMIT);
+    if (error) return this.failed("quote", source, error);
+
+    const ledger: LedgerEntry[] = [];
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const line = seriesStr(r.product_name_raw) ?? "";
+      const how = matchLine(label, line);
+      if (how === null) continue;
+      ledger.push({
+        at: seriesStr(r.observed_at),
+        label: line,
+        who: seriesStr(r.vendor_name_raw),
+        qty: null,
+        // The normalized unit price where the observation carries one, because
+        // a case price and a bottle price on the same axis is not a series.
+        unitPrice:
+          seriesNum(r.normalized_unit_price) ?? seriesNum(r.raw_price),
+        total: null,
+        note: seriesStr(r.source_type),
+        matchedBy: how,
+      });
+    }
+    return composeBook({
+      book: "quote",
+      source,
+      ledger,
+      emptyReason:
+        "No vendor has quoted this to this house. vendor_price_observations is scoped to the tenant here on purpose — a scraped public list price belongs to everyone and is not this house's quote.",
+    });
+  }
+
+  private async readTillLines(
+    restaurantId: string,
+    label: string,
+  ): Promise<BookRecord> {
+    const source = "pos_unresolved_lines";
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_unresolved_lines")
+      .select(TILL_LINE_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .eq("resolved", false)
+      .limit(ROW_RECORD_LINE_LIMIT);
+    if (error) return this.failed("pos", source, error);
+
+    const ledger: LedgerEntry[] = [];
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const line = seriesStr(r.item_name) ?? "";
+      const how = matchLine(label, line);
+      if (how === null) continue;
+      const qty = seriesNum(r.qty);
+      const price = seriesNum(r.price);
+      ledger.push({
+        at: seriesStr(r.created_at),
+        label: line,
+        who: null,
+        qty,
+        unitPrice: price,
+        total: qty !== null && price !== null ? qty * price : null,
+        note: seriesStr(r.external_check_id),
+        matchedBy: how,
+      });
+    }
+    return composeBook({
+      book: "pos",
+      source,
+      ledger,
+      emptyReason:
+        "The till has not rung this up. Only UNRESOLVED lines are here, and that is the point: a resolved line was mapped to a wine's inventory row and is counted against that wine instead.",
+    });
   }
 }
