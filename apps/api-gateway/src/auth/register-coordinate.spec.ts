@@ -85,6 +85,10 @@ const BASE: RegisterRestaurantDto = {
 const restaurantPayload = (inserts: Insert[]) =>
   inserts.find((i) => i.table === "restaurants")?.payload ?? {};
 
+// The insert spells all three coordinate columns as explicit keys so the
+// capture-contract guard can read them; an absent point is therefore a key
+// whose value is undefined, which supabase-js omits from the wire payload.
+// "Never written" is asserted as "undefined", not as "key absent".
 describe("registerRestaurant — the coordinate", () => {
   it("writes latitude, longitude and the place id when a place was chosen", async () => {
     const { svc, inserts } = makeService();
@@ -111,9 +115,9 @@ describe("registerRestaurant — the coordinate", () => {
     await svc.registerRestaurant({ ...BASE });
 
     const row = restaurantPayload(inserts);
-    expect("latitude" in row).toBe(false);
-    expect("longitude" in row).toBe(false);
-    expect("google_place_id" in row).toBe(false);
+    expect(row.latitude).toBeUndefined();
+    expect(row.longitude).toBeUndefined();
+    expect(row.google_place_id).toBeUndefined();
   });
 
   it("refuses a half-pair rather than storing one axis", async () => {
@@ -122,8 +126,8 @@ describe("registerRestaurant — the coordinate", () => {
     await svc.registerRestaurant({ ...BASE, latitude: 37.4419 });
 
     const row = restaurantPayload(inserts);
-    expect("latitude" in row).toBe(false);
-    expect("longitude" in row).toBe(false);
+    expect(row.latitude).toBeUndefined();
+    expect(row.longitude).toBeUndefined();
   });
 
   it("never invents a point from an out-of-range or non-finite pair", async () => {
@@ -136,8 +140,8 @@ describe("registerRestaurant — the coordinate", () => {
       const { svc, inserts } = makeService();
       await svc.registerRestaurant({ ...BASE, ...pair });
       const row = restaurantPayload(inserts);
-      expect("latitude" in row).toBe(false);
-      expect("longitude" in row).toBe(false);
+      expect(row.latitude).toBeUndefined();
+      expect(row.longitude).toBeUndefined();
     }
   });
 
@@ -162,6 +166,6 @@ describe("registerRestaurant — the coordinate", () => {
 
     await svc.registerRestaurant({ ...BASE, googlePlaceId: "ChIJabc123" });
 
-    expect("google_place_id" in restaurantPayload(inserts)).toBe(false);
+    expect(restaurantPayload(inserts).google_place_id).toBeUndefined();
   });
 });
