@@ -336,10 +336,15 @@ cannot check** — because a guard that cannot reach the database and prints PAS
 is the fault this repo is named for.
 
 1. **Every stock row keys on a house item.** Every `inventory_lots`,
-   `inventory_transactions`, `pour_events`, `stock_counts` and
-   `pos_item_mappings` row whose `inventory_id` is set resolves to a
-   `restaurant_inventory` row — enforced by a guard, not by a foreign key,
-   because four of those five have none.
+   `inventory_transactions`, `pour_events`, `stock_counts`, `pos_item_mappings`,
+   `inventory_alert_state`, `inventory_lot_revaluations` and
+   `wine_consumption_log` row whose `inventory_id` is set resolves to a
+   `restaurant_inventory` row. **Four of those eight — `inventory_transactions`,
+   `pour_events`, `inventory_alert_state`, `inventory_lot_revaluations` — carry
+   no foreign key on `inventory_id` at all** (re-measured 2026-09-04 against the
+   full local build, correcting an earlier draft of this line that said "four of
+   those five", which was this number attached to the wrong denominator). For
+   those four the guard is the only enforcement that has ever existed.
 2. **No house item without a kind and a uom.** `kind IS NOT NULL AND uom IS NOT
    NULL` on every row, and neither column has a `DEFAULT` in the catalogue — a
    default reintroduces exactly the silent characterisation the CHECK removes.
@@ -453,3 +458,6 @@ operator.
 | 2026-09-03 | Design pass | Blast radius measured from `pg_constraint` on production; four unenforced ledger references found that a migration-grep and an FK sweep both miss |
 | 2026-09-03 | Adversarial pass | H1 (a new `house_items` table) killed on its dual-write window after being the leading shape; H2 killed on four independent grounds; H3's own relaxation measured in a full local build (112 migrations, 0 failures) rather than reasoned |
 | 2026-09-03 | — | Created — **Proposed**. Migration written and NOT applied; founder locks |
+| 2026-09-04 | Migration proof | Applied inside a transaction and rolled back, against a local build of all 114 other migration files (0 failures, the file under test excluded as the control). Proven: the three `DROP NOT NULL`s take; the four new columns are `NOT NULL` with **0 defaults**; `house_items` is `security_invoker` and unreadable by `anon`/`authenticated`; both partial uniques exist; the §8 probe leaves no rows. Against seeded wine rows: the backfill fills `display_name` from the library for a blank `wine_name`, maps `unit_type='CASE'` to `uom='case'`, the legacy insert path still derives `wine`/`bottle`/`wine_library`, a declared keg keeps `beer`/`keg`, a duplicate keg name and an unknown `uom` and a both-catalogues row are each refused, and **a non-wine lot writes and projects `stock_live = 4`**. Negative control: a pre-existing row with a NULL `master_wine_id` makes §0 refuse the whole migration |
+| 2026-09-04 | Guard | `scripts/check_house_item_invariants.py` written and proven: exit **2** on the unmigrated control and on an unreachable database, **1** on a stock row naming a house item that does not exist, **0** on a correct one; `--self-test` also catches a reintroduced `DEFAULT`, an inconsistent provenance, a view that lost `security_invoker` and a stored house key, inside one rolled-back transaction. Not wired into CI: the migration is gated, so a blocking guard would fail every build |
+| 2026-09-04 | Correction | Invariant 1 said "four of those five" have no foreign key. Re-measured: it is **four of eight**, and the five named were the wrong denominator — `inventory_lots`, `stock_counts`, `pos_item_mappings` and `wine_consumption_log` all DO carry an `inventory_id` FK; the four without one are `inventory_transactions`, `pour_events`, `inventory_alert_state` and `inventory_lot_revaluations`. Fixed in place, per ADR 0025 |

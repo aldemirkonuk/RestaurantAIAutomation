@@ -1608,3 +1608,47 @@ the onboarding step for every house on a database missing the migration.
 11. **Sugar and caffeine on a non-alcoholic row** — nothing in the schema carries
    either; `type_attributes` would hold them without a migration the moment a
    source exists (GS1 GDSN nutrient attributes are the standard shape).
+
+### The identity axis is decided — OD-113 closes (added 2026-09-04)
+
+The founder decided it on 2026-09-03, on this page's own question: **one house
+item id across all beverages.** It is written up as
+[[0115-the-house-item-is-the-ledgers-key]] — *Proposed*, the founder locks —
+with migration `supabase/migrations/20260903171000_the_house_item_is_the_ledgers_key.sql`
+**written and NOT applied** and `scripts/check_house_item_invariants.py` beside
+it. That closes the blocker under every OD-113 line above: roadmap item 4 ("Decide
+the inventory identity axis"), item 5 ("Deplete a base spirit from a poured
+cocktail"), item 8 (`/menu` as a real surface), the beverages roadmap's item 8
+("Deadstock and velocity on the row"), and item 10's `BottleVM` /
+`RegisterRowVM` reconciliation, which the note already identified as *"the same
+identity question as OD-113, from the other end"*.
+
+**The shape, in one line:** the house item is `restaurant_inventory.id` — the row
+this page's wine register already reads. It stops being a wine:
+`master_wine_id` becomes a nullable **attribute**, and the row gains `kind`,
+`uom`, `display_name`, `beverage_id` and `identity_provenance`. No new table, and
+therefore no dual-write window; a `house_items` view carries the name. The ADR's
+own §H1 records the `house_items` *table* that was the leading shape and why it
+lost — 18 foreign-key dependents and 199 gateway call sites' worth of window in
+which a half-written row looks correct.
+
+**What changes on this page when the ADR locks, and only then:**
+
+- §1a's two `DARK / GATED` lines both fall. *Live vs shadow* and *Par and
+  reorder* (the hatched cards at the table in §1b) become arithmetic over
+  `stock_live` and `threshold_min`, which a keg's row now has.
+- `STOCKING_WITHHELD` (`apps/api-gateway/src/beverages/house-record.ts:183`) and
+  the literal `available: false` at `:176` are deleted **in the same change as
+  the write path**, never before it. The literal type was chosen so that a
+  future build could not flip the flag without removing the sentence next to it;
+  this is that removal, and doing it early would leave a working button over a
+  ledger that cannot take the row.
+- One line must go first, and it is not on this page:
+  `apps/api-gateway/src/inventory/inventory.service.ts:69` reads
+  `row.master_wine_library?.bottle_size_ml ?? 750` and then divides by the pour
+  size, so a keg with no library row behind it would be published as five
+  glasses. That is why the migration is gated rather than merely staged.
+
+Nothing on this page is built for it yet, and nothing here should be until the
+founder locks the ADR. The registers keep saying what they say today, which
+remains true.

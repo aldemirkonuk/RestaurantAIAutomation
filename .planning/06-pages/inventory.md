@@ -243,3 +243,59 @@ keep it true — count what drifted, verify what arrived.
    (`ReceivingWorkspace.tsx:126,625,633`) — the instrumentation is written, the sink is not.
 6. `INVENTORY_SOTA_PLAN.md` phases 2–3 (`v3.0-TECH-DEBT.md:357`). *Blocker: unbuilt plan,
    not a defect.*
+
+### The ledger's key becomes the house item — what changes here (added 2026-09-04)
+
+OD-113 is decided (founder, 2026-09-03): **one house item id across all
+beverages.** [[0115-the-house-item-is-the-ledgers-key]] — *Proposed*, the founder
+locks — makes the house item `restaurant_inventory.id`, the row this page is
+built on. The row stops being a wine: `master_wine_id` becomes a nullable
+attribute and the row gains `kind`, `uom`, `display_name`, `beverage_id` and
+`identity_provenance`. Migration
+`supabase/migrations/20260903171000_the_house_item_is_the_ledgers_key.sql` is
+written and **NOT applied**; `scripts/check_house_item_invariants.py` holds the
+invariants the database cannot.
+
+**This page is the one that changes most, and one line of it is a blocker.**
+
+1. **`inventory.service.ts:69` must be fixed before the migration lands.**
+   `const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750` is the
+   first line of `mapInventoryItem`, and `glassesPerBottle` is
+   `floor(effectiveBottleSizeMl / pourSizeMl)` from it. A keg carries no library
+   row, so it would be published as a 750 ml bottle yielding five glasses — a
+   fabricated number in the read path every inventory surface uses (ADR 0020 /
+   ADR 0051). It becomes an em dash. This is why the migration is gated rather
+   than merely staged, and it is item 1 of the ADR's phase 2.
+2. **`database.service.ts:46`** embeds `master_wine_library(...)` as a LEFT join,
+   so a non-wine row returns `master_wine_library: null` rather than
+   disappearing. Measured: there are **zero** `master_wine_library!inner` embeds
+   in the gateway, so no list silently drops a keg — but every consumer of that
+   embedded shape has to be read before the columns arrive.
+3. **The row expander gains what the cellar's could not have.** `RowExpansion.tsx`
+   is the anatomy [[wines]] copied, and the two cards the cellar draws hatched —
+   *Live vs shadow* and *Par and reorder* — are exactly the two this page draws
+   real. Once a keg has a row they are the same arithmetic on both pages, off
+   `stock_live` and `threshold_min`.
+4. **The POS bridge needs no repointing.** Measured on production 2026-09-03:
+   `pos_item_mappings` holds 254 rows, **239 carry an `inventory_id`** and only
+   107 carry a `master_wine_id`. The bridge already keys on the house item; what
+   changes is that a till line for a keg now has one to resolve *to*, instead of
+   landing in `pos_unresolved_lines` (130 rows) and being invisible to this page,
+   to `/reports` and to the analytics engine. ADR 0030's mapping-integrity rules
+   are unaffected — the FK it rests on
+   (`20260902130000_capture_pos_inventory_fks.sql:65`) points at
+   `restaurant_inventory(id)` and that target does not move.
+5. **Low-stock alerts need no new producer.**
+   `notifications/low-stock-alerts.service.ts:683-690` reads `stock_live` and
+   `threshold_min` off whatever row it is handed and keys on `inventoryId`, so a
+   keg with a par is alerted the day it has a row.
+6. **`INVENTORY_SOTA_PLAN.md:352`'s identity paragraph is superseded** by the ADR
+   (retire-to-write; that file gets no edit). `kind` is the one axis, on the row,
+   CHECK-constrained — there is no `domain`/`subsection`/`subtype` triple and no
+   attribute pack, because `beverages.type_attributes` already holds
+   category-specific attributes and a second copy would be two homes for one
+   fact. `:134`'s `inventory_lots(master_wine_id UUID NOT NULL, …)` is superseded
+   too: phase 1 drops that `NOT NULL`, because it is what makes a non-wine lot
+   unwritable.
+
+*Blocker on all six: the founder locks ADR 0115. Nothing here is built.*
