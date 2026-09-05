@@ -34,6 +34,12 @@ import {
   isRejudgeArmed,
   planRejudge,
 } from "./outlier-rejudge";
+// The register's one enforcement point (ADR 0117 addendum, 2026-09-05). This
+// file holds the register's ONLY cross-house read, and it now says so by name.
+import {
+  VENDOR_PRICE_OBSERVATIONS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 
 /** The columns the plan needs, and nothing else. */
 const REJUDGE_SELECT =
@@ -103,9 +109,31 @@ export class OutlierRejudgeService {
       now.getTime() - windowDays * 86_400_000,
     ).toISOString();
 
-    const { data, error } = await this.databaseService.supabase
-      .from("vendor_price_observations")
-      .select(REJUDGE_SELECT)
+    // THE REGISTER'S ONLY CROSS-HOUSE READ, and the only place `everyHouse` is
+    // used in the gateway. It is named rather than implied: before ADR 0117's
+    // addendum this same read simply carried no tenancy clause, which reads
+    // identically in the code and means "we did not think about it".
+    //
+    // Why it is legitimate: this pass has no caller and no house. It exists to
+    // write `is_outlier` back onto rows, and a verdict it does not compute
+    // stays stale on rows some house is looking at. Nothing crosses houses in
+    // the JUDGEMENT: `planRejudge` buckets on `row.restaurant_id ?? "market"`
+    // (`outlier-rejudge.ts:221`), so a house's row is only ever compared with
+    // that house's rows, and each verdict is written back to the row it came
+    // from. No row of one house is shown to, or scored against, another.
+    const { data, error } = await scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(REJUDGE_SELECT),
+      VENDOR_PRICE_OBSERVATIONS,
+      {
+        kind: "everyHouse",
+        because:
+          "the nightly re-judge has no caller and no house; it writes is_outlier " +
+          "back onto every house's own rows, and planRejudge buckets by " +
+          "restaurant_id so no house is ever judged against another's prices",
+      },
+    )
       .gte("observed_at", from)
       .order("observed_at", { ascending: true })
       .limit(REJUDGE_ROW_LIMIT);

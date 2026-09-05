@@ -1,3 +1,4 @@
+import { NOT_CONTRIBUTED_ONLY } from "../price-register/visibility";
 import {
   GROUP_SILENCE_SENTENCE,
   MIN_OUTLIER_SAMPLE,
@@ -262,12 +263,20 @@ function makeService(
 ) {
   const updates: Array<{ id: string; patch: any }> = [];
 
+  const ors: string[] = [];
   const builder = (): any => {
     const b: any = {
       select: () => b,
       gte: () => b,
       order: () => b,
       limit: () => b,
+      // The sweep reads through `scopePriceRegisterRead` (ADR 0117 addendum),
+      // which applies the third state's exclusion even on the `everyHouse`
+      // scope. Recorded so a test can assert it rather than assume it.
+      or: (clause: string) => {
+        ors.push(clause);
+        return b;
+      },
       update: (patch: any) => ({
         eq: async (_col: string, id: string) => {
           if (opts.failIds?.includes(id))
@@ -284,7 +293,7 @@ function makeService(
 
   const databaseService = { supabase: { from: () => builder() } } as any;
   const config = { get: () => opts.flag } as any;
-  return { svc: new OutlierRejudgeService(databaseService, config), updates };
+  return { svc: new OutlierRejudgeService(databaseService, config), updates, ors };
 }
 
 describe("OutlierRejudgeService", () => {
@@ -312,6 +321,17 @@ describe("OutlierRejudgeService", () => {
     expect(s.lastRun).toBeNull();
     expect(s.sentence).toMatch(/switched off/);
     expect(s.sentence).toMatch(/every flag on the register is the one its writer set/);
+  });
+
+  it("names its cross-house scope, and still excludes the third visibility state", async () => {
+    // ADR 0117 addendum. This is the register's ONLY cross-house read, and the
+    // point of routing it through `scopePriceRegisterRead` is that the width is
+    // now stated (`everyHouse`, with a reason) instead of being the accidental
+    // result of a missing clause. The one predicate it MUST still carry is the
+    // exclusion of a row contributed under a floor.
+    const { svc, ors } = makeService(cluster, { flag: "true" });
+    await svc.rejudge({});
+    expect(ors).toEqual([NOT_CONTRIBUTED_ONLY]);
   });
 
   it("distinguishes armed-and-never-run from armed-and-nothing-found", async () => {

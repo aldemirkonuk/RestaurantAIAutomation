@@ -29,6 +29,17 @@ import {
   standardTrends,
   vendorPriceConsensus,
 } from "../analytics/engine/vendor-price-consensus";
+// The register's tenancy boundary, in one place (ADR 0117 addendum,
+// 2026-09-05). Every read of `vendor_price_observations` in this file goes
+// through it; `scripts/check_price_register_reads_are_scoped.py` fails CI for
+// one that does not. The `.from()` above each call keeps the table's name as a
+// STRING LITERAL on purpose: `check_read_columns_exist.py` pairs a literal
+// `.from("t")` with the `.select(` that follows it, and a constant there would
+// make every register read invisible to that guard.
+import {
+  VENDOR_PRICE_OBSERVATIONS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 
 export interface VendorComparison {
   productKey: { masterWineId?: string; signatureHash?: string };
@@ -107,12 +118,20 @@ export class VendorComparisonService {
   /**
    * Load observations for a product.
    *
-   * Deliberately NOT scoped to one restaurant by default. A scraped list price
-   * is market intelligence that belongs to everyone; restricting the ladder to
-   * rows this tenant happened to generate would make a vendor look absent
-   * simply because this restaurant has never bought from them. Tenant-scoped
-   * rows (invoices, negotiated quotes) are included on top when a restaurantId
-   * is supplied.
+   * A scraped list price is market intelligence that belongs to everyone;
+   * restricting the ladder to rows this tenant happened to generate would make
+   * a vendor look absent simply because this restaurant has never bought from
+   * them. So the openly posted rows are always in, and this house's own rows
+   * (invoices, negotiated quotes) are added on top when a restaurantId is
+   * supplied.
+   *
+   * CHANGED 2026-09-05 (ADR 0117 addendum): with no restaurantId this read used
+   * to apply NO tenancy clause at all, which is not "the market" -- it is every
+   * house's private paper. The docblock above it said "deliberately not scoped",
+   * which was true of the intent and false of the effect. It is now
+   * `openMarketOnly`. The only caller (line 523) always passes a restaurantId,
+   * so nothing on any screen changes; what changes is that the branch which
+   * could have leaked no longer exists.
    */
   private async loadObservations(params: {
     masterWineId?: string;
@@ -128,11 +147,20 @@ export class VendorComparisonService {
       windowDays = 365,
     } = params;
 
-    let q = this.databaseService.supabase
-      .from("vendor_price_observations")
-      .select(
-        "provider_id, vendor_name_raw, product_name_raw, source_type, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at",
-      )
+    // The scope is decided FIRST, before the query exists, so there is no
+    // branch in which a query is built and then not scoped. A read with no
+    // house named is the openly posted rows only -- never everything.
+    let q = scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(
+          "provider_id, vendor_name_raw, product_name_raw, source_type, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at",
+        ),
+      VENDOR_PRICE_OBSERVATIONS,
+      restaurantId
+        ? { kind: "houseAndOpenMarket", restaurantId }
+        : { kind: "openMarketOnly" },
+    )
       .gte(
         "observed_at",
         new Date(Date.now() - windowDays * 86_400_000).toISOString(),
@@ -142,8 +170,8 @@ export class VendorComparisonService {
 
     // Match on either key. An observation resolved to a library row and one
     // that only ever knew a name are the same bottle, and ranking them apart
-    // is the bug this replaces. Two separate `.or()` calls are ANDed by
-    // PostgREST, which is what we want: (product) AND (tenant scope).
+    // is the bug this replaces. Separate `.or()` calls are ANDed by PostgREST,
+    // which is what we want: (product) AND (tenant scope) AND (not contributed).
     const identityHash = params.identityHash ?? signatureHash ?? null;
 
     const keys: Array<[column: string, value: string]> = [];
@@ -162,11 +190,6 @@ export class VendorComparisonService {
       q = q.eq(keys[0][0], keys[0][1]);
     } else if (keys.length > 1) {
       q = q.or(keys.map(([col, val]) => `${col}.eq.${val}`).join(","));
-    }
-
-    // Market rows (restaurant_id null) plus this tenant's own rows.
-    if (restaurantId) {
-      q = q.or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`);
     }
 
     const { data, error } = await q;
@@ -399,12 +422,15 @@ export class VendorComparisonService {
   }): Promise<number[]> {
     if (!args.masterWineId && !args.signatureHash) return [];
     try {
-      let q = this.databaseService.supabase
-        .from("vendor_price_observations")
-        .select(
-          "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
-        )
-        .or(`restaurant_id.is.null,restaurant_id.eq.${args.restaurantId}`)
+      let q = scopePriceRegisterRead(
+        this.databaseService.supabase
+          .from("vendor_price_observations")
+          .select(
+            "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+          ),
+        VENDOR_PRICE_OBSERVATIONS,
+        { kind: "houseAndOpenMarket", restaurantId: args.restaurantId },
+      )
         .order("observed_at", { ascending: false })
         .limit(200);
       q = args.masterWineId
@@ -466,14 +492,17 @@ export class VendorComparisonService {
     const windowDays = params.windowDays ?? 30;
     const from = new Date(Date.now() - windowDays * 86_400_000).toISOString();
 
-    const { data, error } = await this.databaseService.supabase
-      .from("vendor_price_observations")
-      .select(
-        "identity_id, master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
-      )
+    const { data, error } = await scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(
+          "identity_id, master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
+        ),
+      VENDOR_PRICE_OBSERVATIONS,
+      { kind: "houseAndOpenMarket", restaurantId: params.restaurantId },
+    )
       .gte("observed_at", from)
       .eq("is_outlier", false)
-      .or(`restaurant_id.is.null,restaurant_id.eq.${params.restaurantId}`)
       .order("observed_at", { ascending: true })
       .limit(2000);
 

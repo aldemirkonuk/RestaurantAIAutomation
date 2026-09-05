@@ -17,6 +17,15 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+// The price register's one enforcement point (ADR 0117 addendum, 2026-09-05).
+// `MARKET_VISIBILITY` MOVED there so that the observations register's rule and
+// the postings register's rule live in one file and are applied by one
+// function; it is re-exported below, unchanged, for every existing importer.
+import {
+  MARKET_VISIBILITY as REGISTER_MARKET_VISIBILITY,
+  PRICE_INDEX_POSTINGS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 import {
   SourceEntry,
   SOURCES,
@@ -59,7 +68,7 @@ const SELECT_COLUMNS =
  * PostgREST ANDs repeated top-level parameters, so this composes with the
  * product search's own `.or()` rather than replacing it.
  */
-export const MARKET_VISIBILITY = "uploaded_by.is.null,admitted_at.not.is.null";
+export const MARKET_VISIBILITY = REGISTER_MARKET_VISIBILITY;
 
 /**
  * The review columns this file reads, as a module-level `const` of literal
@@ -317,16 +326,20 @@ export class PriceIndexService {
     let lines: IndexLine[] = [];
     let readFailed = false;
     try {
-      let query = this.db.client
-        .from("price_index_postings")
-        .select(SELECT_COLUMNS)
+      // A book somebody carried in is not an index line until somebody let it
+      // in (ADR 0128). Before that seal, an uploaded book was the market the
+      // instant it was written — and because the order below is by
+      // `issued_at`, a newer carried edition displaced every fetched line above
+      // it. The predicate is now applied BY the register's one enforcement
+      // point rather than spelled here (ADR 0117 addendum).
+      let query = scopePriceRegisterRead(
+        this.db.client
+          .from("price_index_postings")
+          .select(SELECT_COLUMNS),
+        PRICE_INDEX_POSTINGS,
+        { kind: "openMarketOnly" },
+      )
         .eq("state", state)
-        // A book somebody carried in is not an index line until somebody let
-        // it in (ADR 0128). Before this, an uploaded book was the market the
-        // instant it was written — and because the order below is by
-        // `issued_at`, a newer carried edition displaced every fetched line
-        // above it.
-        .or(MARKET_VISIBILITY)
         .order("issued_at", { ascending: false })
         .limit(Math.min(Math.max(limit, 1), 100));
       if (basis) query = query.eq("price_basis", basis);
@@ -575,16 +588,19 @@ export class PriceIndexService {
 
   private async countFor(sourceKey: string, state: string): Promise<number> {
     try {
-      const { count, error } = await this.db.client
-        .from("price_index_postings")
-        .select("id", { count: "exact", head: true })
+      // The same predicate the lines are read through, applied by the same
+      // function: a source whose only rows are a held book has no rows a reader
+      // can see, and reporting the held ones here would make the panel say
+      // "12,530 rows" beside an empty list (ADR 0128).
+      const { count, error } = await scopePriceRegisterRead(
+        this.db.client
+          .from("price_index_postings")
+          .select("id", { count: "exact", head: true }),
+        PRICE_INDEX_POSTINGS,
+        { kind: "openMarketOnly" },
+      )
         .eq("source_key", sourceKey)
-        .eq("state", state)
-        // The same predicate the lines are read through: a source whose only
-        // rows are a held book has no rows a reader can see, and reporting the
-        // held ones here would make the panel say "12,530 rows" beside an empty
-        // list (ADR 0128).
-        .or(MARKET_VISIBILITY);
+        .eq("state", state);
       if (error) throw error;
       return count ?? 0;
     } catch {
@@ -631,9 +647,21 @@ export class PriceIndexService {
     sourceKey: string,
   ): Promise<{ rows: number; lastFetchedAt: string | null }> {
     try {
-      const { data, count, error } = await this.db.client
-        .from("price_index_postings")
-        .select("fetched_at", { count: "exact" })
+      // FIXED 2026-09-05 (ADR 0117 addendum): this read carried NO visibility
+      // predicate, so `/price-index/status` counted held books as rows a reader
+      // could see -- the exact number `countFor` five lines up refuses to
+      // report, in the same service, about the same source. A fetched row has
+      // `uploaded_by IS NULL` and is admitted by the predicate unchanged, so
+      // nothing moves for a fetched source; an upload-only source key now
+      // reports the rows a reader can actually see rather than the rows that
+      // exist.
+      const { data, count, error } = await scopePriceRegisterRead(
+        this.db.client
+          .from("price_index_postings")
+          .select("fetched_at", { count: "exact" }),
+        PRICE_INDEX_POSTINGS,
+        { kind: "openMarketOnly" },
+      )
         .eq("source_key", sourceKey)
         .order("fetched_at", { ascending: false })
         .limit(1);

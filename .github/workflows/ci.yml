@@ -665,6 +665,27 @@ jobs:
       - name: ...and that guard's own failure path fires
         run: ./scripts/check_price_history_reads_group_by_unit.py --self-test
 
+      # ADR 0117 addendum (founder, 2026-09-05, batch 56 -- "All real"): the
+      # price register's tenancy boundary must be fixed before any cross-house
+      # read. `vendor_price_observations.restaurant_id` has two states, one of
+      # which is "everyone's, verbatim", and the gateway holds the SERVICE ROLE,
+      # which bypasses row level security -- so the application query IS the
+      # boundary and there is nothing behind it. Six hand-written `.or()`
+      # clauses and five reads with no tenancy clause at all were replaced by
+      # one function; this guard is what keeps them replaced. An omitted filter
+      # never throws, it returns MORE rows, so the failure mode is silent and
+      # the only defence is that it cannot be written.
+      - name: Every read of the price register passes through one enforcement point
+        run: python3 scripts/check_price_register_reads_are_scoped.py
+
+      - name: ...and that guard's own failure path fires
+        run: python3 scripts/check_price_register_reads_are_scoped.py --self-test
+
+      - name: ...and what to do when it fails
+        if: failure()
+        run: |
+          echo "::notice::Wrap the read: scopePriceRegisterRead(client.from(\"<table>\").select(...), \"<table>\", { kind: ... }). The .from() must sit INSIDE the first argument. A read that must genuinely cross houses says so: { kind: 'everyHouse', because: '<sentence>' }. Exit 2 is CANNOT CHECK -- the enforcement point is gone or renamed, the migration's CHECK no longer names the third visibility state, or an ALLOWLIST entry no longer describes its file. That is a failure, not a skip."
+
       # The same question one layer up. The guard above asks whether a column a
       # READ names exists in the database; this asks whether a KEY a web or
       # mobile type declares exists on the gateway DTO it mirrors. `Order`

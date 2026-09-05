@@ -2274,3 +2274,210 @@ This is unknown, not empty."*
 | 2026-09-05 | Claude (build, the three currency decisions) | **Q30, Q31 and Q33 ANSWERED by the founder the same afternoon and BUILT; the three wrong rows were CORRECTED in production on his word** (read back: ADMIN 1 `GBP`, Chez Community `TRY`, The Old House Pub `TRY`, `updated_at` 2026-09-05T12:40:5x — the trigger fired as documented; 11 rows still `USD`). **Q30** *"Clear all eleven to unrecorded; the onboarding step asks"*: `--clear-inherited` added to `scripts/correct_restaurant_currency.py`, dry by default, `--apply` refused without the founder's-word flag. Dry run reads **11 clear / 0 correct-first / 3 stated / 0 already-unrecorded**. NULL needed **no migration** — `restaurants.currency` is `is_nullable = YES` in the live catalogue and always has been. The self-test now asserts the two modes are **DISJOINT** on 13 rows, which caught a real hazard: a row that is wrong AND inherited was claimed by both, so the correction now wins and clearing defers (`correct-first`). **Q31** *"A currency column on the agreement line"*: `20260905200000_the_agreement_names_its_money.sql` adds `procurement_order_items.currency` (nullable, no default, ISO 4217 CHECK); `agreement-currency.ts` resolves the sheet's stated default — **measured: `restaurant_vendor_terms` has seven columns and no currency**, so "the vendor's terms" reads the vendor's own PAPER (`procurement_documents.currency`, by the document's own date) then the house then nothing; `GET /procurement/agreement-currency` serves it so the sheet and the writer use ONE tested chain; `AgreementSheet` shows it with the gateway's own evidence sentence. **This restores what Q25 cost:** a confirmed order with a stated currency now writes a class-A sighting again, where the refusal had blocked every one. **Q33** *"One country table keyed by ISO code"*: `lib/countries.ts` rebuilt as 194 rows keyed by ISO 3166-1 alpha-2 with display name, currency and aliases; `PlacesAutocomplete.COUNTRY_ISO` (113 pairs) and `currency.ts`'s `COUNTRY_CURRENCY` (122 pairs) DELETED; `countries.migration.test.ts` freezes all three retired tables verbatim and asserts every pair still resolves. **Measured: no country-name table exists outside `apps/web`**, and the gateway depends on no workspace package, so one table in the app that has the surfaces is the whole answer. **Verification:** both migrations EXECUTED against a real Postgres (PGlite, `$SP/pglite-probe/p4am-probe.mjs`) — **17/17**, in-file assertions passed, every CHECK bites (`'usd'`, `'US$'`, `'TL'` all 23514), NULL accepted on all three columns, and a house inserted naming no currency comes out **NULL, not USD**. jest 140/140 across 8 suites; vitest 190/190 across 12 files incl. 11 new retirement-proof cases and 7 new sheet cases; gateway `tsc` and web `tsc` clean in my files; gateway eslint `--quiet` clean; seven guards exit 0. **New guard:** `check_money_states_its_currency.py` — a baselined census of every rendered money figure that pins a currency, **53 files / 96 sites**, which only ever shrinks; it exits 2 if it matches nothing, and it caught the new country table on its first run (allowlisted with the reason). An earlier draft of it reported 1,465 sites because its patterns matched every template literal; that number was noise and the patterns were narrowed. **NOT done:** the clear-inherited apply (the founder runs it); Q32, so a verified receipt still records no currency; the 96 baselined `$` sites, which have no house currency in scope; and nothing lets a house change its currency after sign-up (Q35), which the clearing pass makes urgent. Two new questions, Q34-Q35. |
 | 2026-09-05 | Claude (research + build, approval tiers) | **Q18 is ANSWERED, in [0128](0128-an-approval-fits-the-decision.md), and the answer is a tier rather than a rule.** The founder: *"Yes, it needs an approval however we can't wait 2 people to approve a small decision, or a big one."* Both halves are constraints and the second one is a fact about this estate, measured read-only against production the same day, twice: of 15 houses **TEN have one owner-or-manager or none**, and of the eight jurisdictions the estate resolves to **FIVE contain exactly ONE person** — so "always two" would have been "never" for most of it. Because `price_index_postings` has no `restaurant_id` (`20260904200000`'s own header), the pool is the JURISDICTION and not the house; US-MI, the only jurisdiction with an uploadable source today, has three houses and **three** distinct owner-or-manager people. **This ADR's own framing of the defence is confirmed and sharpened, not overturned:** provenance stands, because a forged single price is 1 row in 12,530 and no band — and no second human being reading a table — will ever see it. What a second person CAN do is fetch the book from the issuer themselves and compare the sha256, so `POST /price-index/uploads/:id/confirm` accepts the bytes and records `byte_match` only when they agree, `attested` when nothing was produced, and `same_person` with a stated reason where the jurisdiction has nobody else (GAO-25-107721 §10.23). The upload path built here on 2026-09-04/05 is unchanged in every respect except that its rows now land HELD unless the book is a routine later edition: `price_index_postings.admitted_at`, one exported `MARKET_VISIBILITY` predicate on every read, and a panel label so a held book never reads as "nothing is posted here" — the same fault this ADR corrected for Illinois, wearing the other hat. Q17's four provenance columns are untouched and are what the review row joins on. |
 | 2026-09-05 | Claude (build, Q29 recorded and applied; Q26's reading made to agree) | **Q29 ANSWERED by the founder and BUILT; Q26's aftermath guarded.** Q29, the founder: *"Not a source until it quotes GBP unprompted."* `ShopUnarmedReason` gains `quotes_another_market_currency` — Hedonism had been filed under `terms_unstated` behind a detail opening *"Not a terms problem but a CURRENCY one"*, which made the one shop blocked on presentment currency uncountable against the two blocked on unread terms. Its row now carries the founder's words, the measurement (`priceCurrency: USD` + `og:price:currency: USD` on `hedonism-ruinart-2026-09-04.fixture.html`) and **the rejected path recorded on the row itself** — a `?currency=GBP` hint, refused because a price whose currency depends on what we sent is a price we half-made. Wine Chateau keeps `serves_no_house` with the founder's confirmation. **Every unarmed block gains a required `armsWhen`** naming the OBSERVATION that lifts it, never a date: Hedonism's demands GBP served to an ANONYMOUS fetcher and states that a GBP figure obtained by asking for GBP does not count; Wine Chateau's is a fact about the estate (a house in NJ), so the row says nothing the shop does can lift it. All six blocks were given one, so the field is a rule rather than one row's decoration. **The state is printed where the state is shown:** `ShopSweepStatusRow` gains `unarmedReason` and `armsWhen` beside `detail`, and the run notes append "It arms when …"; `armedShopKeys` already dropped a blocked key whatever `PRICE_REFERENCE_SHOPS_ARMED` said, and a test now asserts that so the block is the mechanism, not a note about one. **Q26:** the parent cleared all seventeen stamps in production at 2026-09-05T20:35:56Z and `20260906040000` refuses a sourceless one, which leaves the column NULL on every row — and the NULL is the dangerous half. **Measured on this tree: NOTHING reads it.** It is declared on the distributor row type, returned by `search_distributors` and `vendor_catalogue_match`, and carried to the client unread; the page's "verified only" toggle filters `listing_tier === 'curated'`, a different fact. So there was no reading to correct, only one to prevent: the rule is recorded at the column's declaration, and **new guard `scripts/check_verified_at_is_not_a_boolean.py`** refuses any truthiness or null test on it in a vendor-catalogue/distributor file — **13 in-scope files name the column, 0 test it**; `--self-test` passes 7 probes; **proven to BITE** against a temporary probe that wrote `if (!row.verified_at) return true` (exit 1, the line named), probe then deleted; exits **2** rather than passing if its scope stops matching. **Verification:** `npx jest --runInBand --forceExit src/vendor-intel` from `apps/api-gateway` — **370 passed, 19 suites**, of which **7 cases are new here** (`src/vendor-intel/shop-reference`: 37 passed, 2 suites). Gateway `tsc --noEmit` and `-p tsconfig.spec.json` both clean. `check_read_columns_exist.py` and `check_money_states_its_currency.py` exit 0; `check_no_conflict_markers.py` and `check_citation_pairing.py` PASS; emoji grep empty on the touched files. **Nothing was armed, no shop fetched, no row written to any database, and the block on Hedonism was not lifted — only named.** NOTE ON AUTHORSHIP: this session did not build the merchant-shop sweep; it recorded two founder answers onto another builder's work and kept to those hunks. |
+
+---
+
+## Addendum — the register's tenancy boundary, and a third visibility state (2026-09-05, batch 56)
+
+### The founder's words, and what they required
+
+Asked whether the fifteen houses of ADR 0128's production census are real
+independently owned restaurants or test tenants — specifically the Illinois trio
+(YARDOM, YAREN, Yaren's Fine Dine) and ADMIN 1 / Sim Bistro — the founder
+answered **"All real."** He accepted the consequence with the option, recorded in
+ADR 0126:
+
+> the contributor floors researched in `p4be-market.md` apply as written, and the
+> register's **tenancy boundary (nine hand-written filters and no RLS policy)
+> must be fixed before any cross-house read** — dispatched as its own build.
+
+This is that build. It is **the boundary, not a cross-house read**: nothing here
+pools, aggregates, bands, or shows one house anything belonging to another. What
+it does is make it impossible to write a read that does so by accident.
+
+### The measurement, first — and a correction to the number in the instruction
+
+`grep -rn "restaurant_id.is.null" apps/api-gateway/src --include="*.ts"` returns
+twenty lines on this tree. Six are live tenancy filters on the two register
+tables. **Three of the "nine" filter other tables entirely** and were counted by
+mistake in `p4be-market.md` §5 and carried into ADR 0126's sentence:
+
+| Cited as a register filter | What it actually filters |
+|---|---|
+| `identity.service.ts:701` | `beverage_identity_candidates` |
+| `identity.service.ts:924` | `beverage_identity_decisions` |
+| `invoice-confirmed.producer.ts:261` | `providers` |
+
+The shape of the finding was right and the count was not. The corrected census of
+the boundary, measured with
+`python3 scripts/check_price_register_reads_are_scoped.py` on the pre-fix tree:
+
+- **6 hand-written `.or("restaurant_id.is.null,restaurant_id.eq.<id>")` filters** —
+  `vendor-comparison.service.ts:169,407,476`, `vendor-page-extractor.service.ts:592`,
+  `procurement.service.ts:1910`, `market-price.producer.ts:315`.
+- **2 hand-written `MARKET_VISIBILITY` applications** on `price_index_postings`
+  (`price-index.service.ts:329,587`) — one exported constant, the better shape,
+  but still applied by hand at each site.
+- **6 reads with NO visibility clause at all**, which is the more serious half
+  and which the register-gap finding did not name:
+  `outlier-rejudge.service.ts:107` (every house's rows),
+  `identity.service.ts:190` (an estate-wide count),
+  `price-code-mappings.service.ts:269` (a count),
+  `procurement.service.ts:1780` (a dedup existence check),
+  `beverages.service.ts:907` (house-only, strictly narrower — not a leak),
+  and `price-index.service.ts:635`, which counted **held books as index-line rows
+  in `/price-index/status`** — the exact number `countFor` five lines above it
+  refuses to report, in the same service, about the same source.
+- **Zero `CREATE POLICY` naming either table** other than `price_index_postings`'
+  service-role one.
+
+### What was built
+
+**1. One enforcement point.**
+`apps/api-gateway/src/price-register/visibility.ts` exports
+`scopePriceRegisterRead(query, table, scope)`. Ten reads now pass through it and
+the six hand-written filters are gone. Its scopes are named rather than implied —
+`houseAndOpenMarket`, `houseOwnRowsOnly`, `openMarketOnly`, `everyHouse` and
+`includingHeldBooks`, the last two requiring a non-empty `because` — so a read
+that genuinely crosses houses is a sentence somebody had to write, and a reviewer
+finds every one of them by grepping a single word. It also refuses an id carrying
+a character that would change the meaning of the filter string it is interpolated
+into (`restaurant_id.eq.${id}` is a string, not a bound parameter), and refuses a
+scope on a table where it means nothing rather than reading everything.
+
+**2. The third visibility state.**
+`20260906100000_the_register_states_who_may_see_a_row.sql` adds
+`vendor_price_observations.visibility` — nullable, no default — with
+`vpo_visibility_check` admitting exactly `house`, `open_market` and
+`contributed_aggregate_only`, each tied to `restaurant_id` so the column can
+never disagree with the thing it describes. **No row is in the third state and no
+read returns one**: the migration asserts the row count is zero, and the
+enforcement point excludes the state on *every* scope including `everyHouse`,
+applied first, before any scope can widen anything. `visibility IS NULL` is not a
+fourth state — it means "whatever `restaurant_id` says", which is the two-state
+rule the register has always had.
+
+**3. RLS, and an honest account of what it protects.**
+The same migration adds `vendor_price_observations_authenticated_read` (the house
++ open-market + not-contributed rule, joined through `user_restaurant_access`
+exactly as `cocktails_authenticated_read` does) and
+`price_index_postings_authenticated_read` (ADR 0128's admission rule), plus
+service-role policies and `REVOKE ALL ... FROM anon, authenticated` on both.
+
+**These policies protect nothing today, and the file says so in its header.** The
+gateway holds `SUPABASE_SERVICE_ROLE_KEY` (`database.service.ts:15`) and the
+service role bypasses RLS, so for every read this product makes the enforcement
+point *is* the entire boundary. Nor do they tighten anything for a JWT-bearing
+caller, because both tables are already shut to one: `vendor_price_observations`
+has had RLS on with no permissive policy since `20260805154027:145` (a table with
+RLS on and no policy returns zero rows), and `price_index_postings` has RLS on
+plus a REVOKE. The policies are a **statement of the rule** written while nothing
+depends on them, so the day someone grants a JWT role access is not also the day
+the rule has to be invented. No GRANT is added here: adding one would open a
+table that is currently shut, which is the opposite of this file's job.
+
+**4. A guard.**
+`scripts/check_price_register_reads_are_scoped.py`, wired into `ci.yml` beside
+the other guards with its `--self-test`. A read of either table must sit inside
+the first argument of a `scopePriceRegisterRead` call whose second argument names
+the same table; arguments are found by balancing brackets, not by a proximity
+window, because the first version of the guard used a window and it credited an
+unscoped read for a compliant neighbour's scoping and credited a scope call that
+named the wrong table. Both are now regression cases in the self-test. Exit 2 —
+CANNOT CHECK, never a pass — when a read root is gone, when the enforcement point
+is missing or renamed, when the migration's CHECK and the TypeScript constant
+disagree about the third state's name, or when an allowlist entry no longer
+describes its file.
+
+### What was deliberately not done, and why
+
+**Four reads were left unconverted and are allowlisted by name.** They live in
+`procurement/**`, `notifications/**` and `distributor-feed/**`, which other
+builders hold open in this same worktree; editing across that line risks a
+conflict in files nobody asked me to touch. Two of the four already carry, by
+hand, the identical predicate `houseAndOpenMarket` applies — duplication, not
+leaks. The other two project no row at all, only a count or an id. **None is an
+open leak today**, and the allowlist pins the exact text that makes each of those
+sentences true: if it changes, the guard exits 2 rather than continuing to pass.
+They should be converted on merge.
+
+**The nightly outlier re-judge keeps its cross-house read**, now named
+`everyHouse` with its reason on the call. It has no caller and no house; it exists
+to write `is_outlier` back onto every house's own rows, and `planRejudge` buckets
+on `row.restaurant_id ?? "market"` (`outlier-rejudge.ts:221`), so no house is ever
+judged against another's prices. Two things are worth recording rather than
+leaving to be discovered: the job is **off in every environment**
+(`PRICE_OUTLIER_REJUDGE_ENABLED` is unset), and it judges a house's row against
+that house's rows ALONE while the write-time test pools the house's own rows with
+the open market — a real inconsistency between the two verdicts on the same row,
+in the pure module, out of scope here and noted in `vendor-prices.md` §9.
+
+### Rejected alternatives
+
+**Leave the filters as they are.** The strongest case for it: all six were
+correct on the day they were measured, the tables hold zero rows, and a
+refactor of six working queries buys nothing a careful reviewer would not
+catch. It was rejected for one reason that outlives all of that — **the failure
+mode is silent and asymmetric.** A forgotten `.or()` does not throw, does not
+log, and does not return fewer rows; it returns *more*, and the extra rows are
+another house's buying terms. There is no error to notice, no empty page to
+investigate, and no RLS policy behind the query to catch it. Six correct copies
+of a rule are six chances to write the seventh wrong, and the founder's "All
+real" is precisely what converts that from a hypothetical into fifteen real
+businesses' negotiating positions. A rule that can be forgotten will be.
+
+**A NOT NULL `visibility` with a DEFAULT.** Rejected: a default would have to
+choose between `house` and `open_market` without being able to see
+`restaurant_id`, so it would state a falsehood on half the rows, and
+`check_no_seeded_defaults.py` exists to argue with exactly that.
+
+**Hide `.from()` inside the enforcement point** (`priceRegisterQuery(client,
+table, scope)`), which would have made the guard a one-line grep. Rejected on
+measurement: `check_read_columns_exist.py` pairs a literal `.from("t")` with the
+`.select(` that follows it (`scripts/check_read_columns_exist.py:328`), so moving
+the table name out of `.from()` would have made every register read invisible to
+the guard that verifies its columns exist. Trading one guard for another is not a
+gain.
+
+**Add a GRANT so the new RLS policies do something.** Rejected: it would open two
+tables that are currently shut to every JWT role, in a change whose purpose is to
+close things.
+
+### Verification, measured on `feat/mudavym-design-p4`
+
+- `npx jest src/vendor-intel src/price-index src/price-register src/beverages`
+  from `apps/api-gateway`: **668 passed, 43 suites**, of which **16 in the new
+  `price-register/visibility.spec.ts`** and **5 added** to
+  `vendor-comparison.service.spec.ts`, `price-below-average.spec.ts` and
+  `outlier-rejudge.spec.ts`.
+- The migration **PGlite-proven**: `p4-scratch/pglite-probe/p4bk-register-visibility.mjs`
+  applies the ten real creating migrations onto stubbed leaf parents and reports
+  **26 passed / 0 failed** — the CHECK refuses all four disagreements with
+  `restaurant_id`, a NULL visibility still writes on a row with and without a
+  house, the exclusion predicate is measured (5 rows written, 4 visible with the
+  `IS NULL` arm, **2 without it** — which is why that arm is not redundant), four
+  policies exist, and `authenticated` is refused at the GRANT (42501) before RLS
+  is ever consulted.
+- The guard **proven to bite against pre-fix code**, per the branch's rule:
+  `git show HEAD:...vendor-comparison.service.ts` and
+  `git show HEAD:...price-index.service.ts` into same-depth probe files —
+  **exit 1, six findings**, the three vendor-comparison reads and the three
+  price-index reads named by line; probes deleted.
+- `--self-test` passes; `check_read_columns_exist.py`,
+  `check_new_tables_are_locked_down.py`, `check_fk_targets_exist.py`,
+  `check_no_seeded_defaults.py`, `check_migration_versions_unique.py` all exit 0.
+- Gateway `tsc --noEmit` clean; `-p tsconfig.spec.json` clean **on every file
+  this build touched** (its only errors are in `commodity/**` and
+  `communications/**`, another builder's in-flight edits).
+- `check_gateway_boots.sh` **PASS**, run against an isolated copy under
+  `p4-scratch/bootprobe-p4bk/` that differs from the worktree only in restoring
+  `commodity.service.spec.ts` from HEAD — on the worktree itself the build fails
+  on a stray comma at `commodity.service.spec.ts:114`, another builder's file,
+  which no change of mine can reach.
+- `eslint --quiet` clean on all eleven touched gateway files. No emoji.
+- **Nothing was written to any database.** The migration has not been applied
+  anywhere; the local gateway points at production and was not used.
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-09-05 | Claude (build, the register's tenancy boundary — founder batch 56) | **Addendum recorded.** One enforcement point (`price-register/visibility.ts`, `scopePriceRegisterRead`) replaces the six hand-written tenancy filters and the two hand-applied `MARKET_VISIBILITY` sites; ten reads now pass through it, including six that previously carried NO visibility clause at all. A third visibility state (`contributed_aggregate_only`) is defined with a CHECK, with **no row in it and no read that returns it**, both asserted. RLS policies on both tables state the rule in SQL and the migration's own header says plainly that they protect nothing while the gateway holds the service role. New guard `check_price_register_reads_are_scoped.py` + `--self-test`, wired into `ci.yml`, **proven to bite** on HEAD copies of two converted files (exit 1, six findings, probes deleted). **Corrects the "nine filters" figure** this ADR's instruction inherited from `p4be-market.md` §5: three of the nine filter `beverage_identity_candidates`, `beverage_identity_decisions` and `providers`, not the register. **Also fixed:** `price-index.service.ts:635` counted held books as visible rows in `/price-index/status`, contradicting `countFor` in the same file. **Four reads left unconverted and allowlisted by name** in `procurement/**`, `notifications/**`, `distributor-feed/**` (other builders' files this wave); none is an open leak and each is pinned so the entry cannot rot into a silent pass. 668 tests / 43 suites pass; migration PGlite-proven 26/0; boot check PASS on an isolated probe. Nothing written to any database. |

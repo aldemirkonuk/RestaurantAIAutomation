@@ -36,6 +36,13 @@ import {
 } from "@nestjs/common";
 import { readFile } from "fs/promises";
 import { DatabaseService } from "../database/database.service";
+// The register's one enforcement point (ADR 0117 addendum, 2026-09-05). Only
+// this file's READS of the two register tables go through it; the identity
+// semantics in here are ADR 0124's and are untouched.
+import {
+  VENDOR_PRICE_OBSERVATIONS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 import {
   IdentityInput,
   buildIdentityKey,
@@ -185,11 +192,26 @@ export class IdentityService {
         "restaurant_inventory.identity_id",
         notes,
       ),
+      // An estate-wide COUNT, not a read of anyone's prices: `head: true`
+      // returns a number and no row. It still goes through the register's one
+      // enforcement point (ADR 0117 addendum) and still names its scope,
+      // because "it only returns a count" is exactly the argument that lets the
+      // next read past the door -- and because the count must not include a
+      // contributed row, which no reader is entitled to know exists.
       vendor_price_observations: await this.countRows(
-        this.databaseService.supabase
-          .from("vendor_price_observations")
-          .select("id", { count: "exact", head: true })
-          .not("identity_id", "is", null),
+        scopePriceRegisterRead(
+          this.databaseService.supabase
+            .from("vendor_price_observations")
+            .select("id", { count: "exact", head: true }),
+          VENDOR_PRICE_OBSERVATIONS,
+          {
+            kind: "everyHouse",
+            because:
+              "identity coverage across the whole estate is the question this " +
+              "panel answers; the read projects no row, only a count, and the " +
+              "panel is an operator's view of the library, not a house's ladder",
+          },
+        ).not("identity_id", "is", null),
         "vendor_price_observations.identity_id",
         notes,
       ),
