@@ -63,6 +63,48 @@ const VIEWS: Array<{ key: CalView; label: string; hint: string }> = [
   { key: 'agenda', label: 'Agenda', hint: 'a' },
 ];
 
+/**
+ * `?new=<url-safe JSON>` — a drafted entry handed over by another page
+ * (`/recommendations`'s "Put it on the day-book", minted by
+ * `pages/recommendations/next/rec-daybook.ts`).
+ *
+ * Untrusted by construction: it is a URL, so a person can edit it or be sent
+ * one. Everything is bounded here — the parse cannot throw, `date` must be a
+ * plain `YYYY-MM-DD`, the strings are trimmed and length-capped — and the
+ * sheet treats what comes back as defaults a person still edits, so a bad
+ * link produces a wrong-looking form, never a wrong row. A link that cannot be
+ * read at all still OPENS the sheet, empty, carrying the reason in words:
+ * going quiet after a person clicked something reports the absence of a draft
+ * as health.
+ */
+function readNewParam(
+  raw: string | null,
+): { date: string | null; prefill: NonNullable<Extract<SheetTarget, { mode: 'create' }>['prefill']> } | null {
+  if (!raw) return null;
+  // A link that cannot be read still opens the sheet, empty, carrying the
+  // reason in words. Returning null here would report "no draft arrived" as
+  // "nothing happened", which is the one fault this house does not ship.
+  const unreadable = {
+    date: null,
+    prefill: { unreadable: 'The link that opened this carried a drafted entry this page could not read.' },
+  };
+  let d: unknown;
+  try {
+    d = JSON.parse(decodeURIComponent(raw));
+  } catch {
+    return unreadable; // it never throws on arrival
+  }
+  if (!d || typeof d !== 'object') return unreadable;
+  const o = d as Record<string, unknown>;
+  const str = (v: unknown, cap: number) =>
+    typeof v === 'string' && v.trim() ? v.trim().slice(0, cap) : undefined;
+  const date = typeof o.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : null;
+  return {
+    date,
+    prefill: { title: str(o.title, 200), type: str(o.type, 64), note: str(o.note, 2000) },
+  };
+}
+
 export interface CalendarNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
   ground?: 'charcoal';
@@ -189,6 +231,23 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   /* ── the command-palette deep link ────────────────────────────────────── */
   const [params, setParams] = useSearchParams();
   useEffect(() => {
+    // `?new=` first: a link carrying both is the richer one, and the drafted
+    // entry is what the person clicked.
+    const drafted = readNewParam(params.get('new'));
+    if (drafted) {
+      const day = drafted.date ?? dayKey(new Date());
+      setCursor(parseDayKey(day));
+      setSelected(day);
+      setSheet({ mode: 'create', date: day, startTime: null, prefill: drafted.prefill });
+      setParams(
+        (prev) => {
+          prev.delete('new');
+          return prev;
+        },
+        { replace: true },
+      );
+      return;
+    }
     if (params.get('openModal') !== 'true') return;
     const raw = params.get('date');
     // `date=today` is what quickActions.ts:81 and Dashboard.tsx:778 actually

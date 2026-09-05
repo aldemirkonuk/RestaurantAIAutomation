@@ -1249,14 +1249,15 @@ describe('RecommendationsNext — Schedule it, and the day-book', () => {
     expect(screen.getAllByRole('button', { name: 'Put it on the day-book' })).toHaveLength(1);
   });
 
-  it('never claims the calendar is prefilled — it prints the details to fill', () => {
+  it('says the calendar arrives filled in, and still prints the fields being carried', () => {
     mockData.current = { ...base, entries: [gap()] };
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Put it on the day-book' }));
     const panel = screen.getByRole('group', { name: 'Put it on the day-book' });
-    expect(panel).toHaveTextContent(/does not read this link’s draft yet/);
-    expect(panel).not.toHaveTextContent(/prefilled/i);
-    // and the fields are printed, so the manager can copy them across
+    // The calendar reads `?new=` since 2026-09-04 (CalendarNext.tsx:66-106).
+    expect(panel).toHaveTextContent(/already filled in/);
+    expect(panel).not.toHaveTextContent(/does not read this link/);
+    // and the fields are still printed, so a person sees what crosses over
     expect(panel).toHaveTextContent('Move training, deliveries and counts into the quiet day');
     expect(panel).toHaveTextContent('custom');
     expect(panel).toHaveTextContent('weekday_gap');

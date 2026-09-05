@@ -896,10 +896,12 @@ export default function Entry(props: EntryProps) {
         )}
 
         {/*
-          THE DAY-BOOK DRAFT. Printed in full before you leave, because the
-          calendar cannot yet read the link that carries it — see
-          `rec-daybook.ts`. Everything here is a field, not prose: a title, a
-          date, a type from the gateway's own enum, and a note naming the rule.
+          THE DAY-BOOK DRAFT. Printed in full before you leave, even though
+          the calendar now reads the link and fills the entry itself (see
+          `rec-daybook.ts`): a person crossing from one page to another should
+          see what is being carried. Everything here is a field, not prose: a
+          title, a date, a type from the gateway's own enum, and a note naming
+          the rule.
         */}
         {menu === 'daybook' && props.daybook && (
           <div className="rc-menu rc-sheet" role="group" aria-label="Put it on the day-book">

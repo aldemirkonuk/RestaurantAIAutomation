@@ -56,6 +56,20 @@ unchanged with the flag off):
   `completed`, or its linked order is one the orders book says arrived
 - **Search and type filter over the loaded period**, with a line saying how many entries the
   filter is holding back (they are in the book, just not on this screen)
+- **A drafted entry handed over by another page.** `/calendar?new=<url-safe JSON>` opens
+  the create sheet on the drafted date with the title, type and note already filled in —
+  the link `/recommendations` mints under "Put it on the day-book"
+  (`pages/recommendations/next/rec-daybook.ts`). The parameter is treated as untrusted
+  input because it is a URL: `readNewParam` (`CalendarNext.tsx:66-106`) cannot throw on a
+  malformed link — it opens the sheet empty and says, in words, that the link carried a
+  draft this page could not read, because a person clicked something and going quiet
+  would report the absence of a draft as health — requires `date` to match `^\d{4}-\d{2}-\d{2}$` and
+  otherwise opens on today, caps `title` at 200 and `note` at 2000 characters, and seeds
+  `type` only when it is a member of the gateway's own `CalendarEventType`
+  (`EventSheet.tsx:43-58`) — anything else falls back to the sheet's default rather than
+  entering the form as a value the gateway would 400 on. Every seeded field is a DEFAULT
+  the manager edits before saving, and the parameter is stripped on arrival so a refresh
+  does not reopen the sheet
 - **Four honest states**: loading names the window it is reading; a failed read says which
   register could not be read and offers a retry; a 403 is named as a permission answer, not
   an empty schedule; an empty period says so in words
@@ -736,6 +750,11 @@ interception.
   retired (route, `pages/Calendar.tsx`, `NewEventTypeModal`, `EntityAutocomplete`
   deleted); this is the only calendar. Its one blocking exclusive — reminders that
   actually fire — was ported here first (§10). ADR 0019 §B-parity records the check.
+- **`?new=` seeds three fields, not the whole entry.** The hand-over carries title, type
+  and note only. Start and end time, vendor link, repeat rule and reminder days are left
+  at the sheet's defaults, because `/recommendations` has no measured value for any of
+  them and inventing one is the fault ADR 0020 names. Nothing is written until the
+  manager saves (`CalendarNext.tsx:66-106`, `EventSheet.tsx:112-115,134`).
 - Phase 30 iCal feed "code scored 10/10 but no external calendar client has ever
   confirmed the feed subscribes" (`v3.0-TECH-DEBT.md:243-245`); the subscribe UI
   lives in Settings and Dashboard, but the untested feed serves this page's data.

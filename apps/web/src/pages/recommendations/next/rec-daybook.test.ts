@@ -96,9 +96,13 @@ describe('the day-book draft', () => {
     expect(back).toMatchObject({ date: '2026-09-09', type: 'custom' });
   });
 
-  it('promises only what the calendar can do today', () => {
-    expect(DAYBOOK_LANDING).toMatch(/does not read this link’s draft yet/);
-    expect(DAYBOOK_LANDING).not.toMatch(/prefill/i);
+  it('promises what the calendar now does: the entry arrives filled in', () => {
+    // The calendar reads `?new=` since 2026-09-04 (CalendarNext.tsx:66-106,
+    // :233-250), so the old hedge would now UNDERSTATE the page. What it must
+    // still not claim is that anything is written: the manager saves it.
+    expect(DAYBOOK_LANDING).toMatch(/already filled in/);
+    expect(DAYBOOK_LANDING).not.toMatch(/does not read/);
+    expect(DAYBOOK_LANDING).toMatch(/check and save/);
   });
 
   it('still drafts for a rule it has no spec for, rather than returning nothing', () => {

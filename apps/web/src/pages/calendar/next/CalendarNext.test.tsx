@@ -14,7 +14,7 @@
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const state = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -882,5 +882,95 @@ describe('CalendarNext — a passed day holds the record', () => {
     });
     draw();
     expect(screen.getByText('The sales register could not be read.')).toBeInTheDocument();
+  });
+});
+
+/* ── the day-book hand-over: `?new=` from /recommendations ────────────────── */
+
+describe('CalendarNext — a drafted entry handed over by another page', () => {
+  const link = (draft: unknown) => `/calendar?new=${encodeURIComponent(JSON.stringify(draft))}`;
+  const withTasting = () =>
+    mkData({
+      eventTypes: [
+        { id: 'default-delivery', name: 'Delivery', color: '#3b82f6', isDefault: true },
+        { id: 'default-tasting', name: 'Tasting', color: '#a855f7', isDefault: true },
+        { id: 'ct-1', name: 'Cellar audit', color: SEAL_HEX, isDefault: false },
+      ],
+    });
+
+  it('opens the create sheet on the drafted date, with title, type and note seeded', () => {
+    state.current = withTasting();
+    draw(
+      link({
+        title: 'Staff tasting — the two highest-margin slow movers',
+        date: '2026-09-24',
+        type: 'tasting',
+        note: 'From the recommendations book — rule weekly_demand_slide.',
+      }),
+    );
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByLabelText('Title')).toHaveValue(
+      'Staff tasting — the two highest-margin slow movers',
+    );
+    expect(within(sheet).getByLabelText('Date')).toHaveValue('2026-09-24');
+    expect(within(sheet).getByLabelText('Note')).toHaveValue(
+      'From the recommendations book — rule weekly_demand_slide.',
+    );
+    expect(within(sheet).getByRole('button', { name: /Tasting/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('refuses a type the gateway does not have, and keeps the default instead', () => {
+    state.current = withTasting();
+    draw(link({ title: 'A line', date: '2026-09-24', type: 'wine_o_clock', note: 'n' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByRole('button', { name: /Delivery/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(sheet).getByRole('button', { name: /Tasting/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(sheet.textContent).not.toContain('wine_o_clock');
+  });
+
+  it('opens the sheet EMPTY with the reason in words when the link cannot be read', () => {
+    // Not silence: a person clicked something. Going quiet would report the
+    // absence of a draft as if it were health.
+    expect(() => draw('/calendar?new=%7Bnot-json')).not.toThrow();
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveTextContent(/could not read/);
+    expect(sheet).toHaveTextContent(/Nothing is filled in below, and nothing was written/);
+    expect(within(sheet).getByLabelText('Title')).toHaveValue('');
+    expect(within(sheet).getByLabelText('Note')).toHaveValue('');
+  });
+
+  it('says the same when the JSON parses but is not a drafted entry', () => {
+    expect(() => draw(link(5))).not.toThrow();
+    expect(screen.getByRole('dialog')).toHaveTextContent(/could not read/);
+  });
+
+  it('opens on today when the draft carries no usable date', () => {
+    draw(link({ title: 'A line', date: '24 September', type: 'custom', note: 'n' }));
+    expect(within(screen.getByRole('dialog')).getByLabelText('Date')).toHaveValue('2026-09-15');
+  });
+
+  it('strips the param on arrival, so a refresh does not reopen the sheet', () => {
+    const seen: string[] = [];
+    function Spy() {
+      seen.push(useLocation().search);
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={[link({ title: 'A line', date: '2026-09-24', type: 'custom', note: 'n' })]}>
+        <CalendarNext />
+        <Spy />
+      </MemoryRouter>,
+    );
+    expect(seen[0]).toContain('new=');
+    expect(seen[seen.length - 1]).not.toContain('new=');
   });
 });

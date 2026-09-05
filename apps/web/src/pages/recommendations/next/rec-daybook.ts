@@ -8,14 +8,15 @@
  *     levers the rule names.
  *
  * ── What the calendar link can and cannot claim TODAY ──────────────────────
- * `apps/web/src/pages/calendar/next/CalendarNext.tsx` reads exactly one deep
- * link: `?openModal=true&date=…` (:190-214), which opens an EMPTY create sheet
- * on a date. `SheetTarget`'s create arm is `{ mode: 'create'; date; startTime }`
- * (`EventSheet.tsx:63-65`) — it carries no title, no type and no note — so
- * nothing on that page can be prefilled until the calendar builder lands the
- * patch this page's report ships with. Until then this control's copy says the
- * calendar OPENS WITH THE DETAILS TO FILL, never that it is prefilled. When
- * `?new=` starts being read, `DAYBOOK_LANDING` is the one string that changes.
+ * LANDED 2026-09-04. `apps/web/src/pages/calendar/next/CalendarNext.tsx` now
+ * reads `?new=` (`readNewParam`, :66-106, consumed by the arrival effect at
+ * :233-250) and `SheetTarget`'s create arm carries a `prefill`
+ * (`EventSheet.tsx:63-76`), which seeds title, type and note
+ * (`EventSheet.tsx:112-115,134`). So the copy may now say the entry opens
+ * FILLED IN. The draft is still printed in full on this page before you
+ * leave — a person about to cross from one page to another should see what is
+ * being carried — and the calendar validates every field again on arrival,
+ * because a URL is untrusted input wherever it was minted.
  *
  * ── Why the date is not scraped out of the rule's sentence ─────────────────
  * `weekday_gap`'s observation names the weakest weekday in prose ("Friday is
@@ -118,12 +119,16 @@ export function daybookHref(draft: DayBookDraft): string {
 /**
  * What the control is allowed to promise.
  *
- * Re-verified 2026-09-04 against `pages/calendar/next/CalendarNext.tsx`: the
- * only query keys it reads are `openModal` and `date` (:192-193). It does not
- * read `new`. So the copy names the details and says you fill them.
+ * Re-verified 2026-09-04 against `pages/calendar/next/CalendarNext.tsx` AFTER
+ * the `?new=` patch landed: `readNewParam` (:66-106) is read by the arrival
+ * effect (:233-250), which opens the create sheet on the drafted date with
+ * `prefill` seeding title, type and note (`EventSheet.tsx:112-115,134`). An
+ * unknown type falls back to the sheet's default rather than being seeded, so
+ * the promise is deliberately “filled in” and not “filed”: nothing is written
+ * until the manager saves it.
  */
 export const DAYBOOK_LANDING =
-  `The calendar does not read this link’s draft yet ${EM} it opens on the date below with an empty new entry, and the title, type and note are printed here for you to fill. When the calendar learns to read it, the same link fills them itself.`;
+  `The calendar opens on the date below with this entry already filled in ${EM} title, type and note ${EM} for you to check and save. It is printed here too, so you can see what is being carried across.`;
 
 /* ── door two: the goal that is slipping ─────────────────────────────────── */
 

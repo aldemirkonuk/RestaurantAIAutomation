@@ -61,7 +61,23 @@ const ENUM_TYPES = new Set([
 const STATUSES: EventStatus[] = ['pending', 'approved', 'completed', 'cancelled', 'dismissed'];
 
 export type SheetTarget =
-  | { mode: 'create'; date: string; startTime: string | null }
+  | {
+      mode: 'create';
+      date: string;
+      startTime: string | null;
+      /**
+       * A draft carried in from another page (`/recommendations`'s "Put it on
+       * the day-book"). Every field is optional and every one is only a
+       * DEFAULT — the manager edits all of them before anything is written, so
+       * a bad link produces a wrong-looking form, never a wrong row.
+       *
+       * `unreadable` is set INSTEAD of the fields when the link could not be
+       * read at all. The sheet still opens, empty, and says so in words: a
+       * person clicked something, and silently doing nothing would report the
+       * absence of a draft as if it were health.
+       */
+      prefill?: { title?: string; type?: string; note?: string; unreadable?: string };
+    }
   | { mode: 'edit'; event: CalEvent };
 
 export interface EventSheetProps {
@@ -88,8 +104,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const editing = target.mode === 'edit' ? target.event : null;
 
-  const [title, setTitle] = useState(editing?.title ?? '');
-  const [typeName, setTypeName] = useState(editing?.type ?? 'delivery');
+  // A draft handed over by another page. Only ever a set of DEFAULTS: every
+  // one is editable in this form before anything is written, and `type` is
+  // checked against the gateway's own enum below rather than trusted.
+  const seed = target.mode === 'create' ? target.prefill : undefined;
+
+  const [title, setTitle] = useState(editing?.title ?? seed?.title ?? '');
+  const [typeName, setTypeName] = useState(
+    editing?.type ?? (seed?.type && ENUM_TYPES.has(seed.type) ? seed.type : 'delivery'),
+  );
   // The stored row can carry values the gateway's own enums do not contain —
   // production has `event_type: 'audit'` and `status: 'active'`, neither of
   // which is in CalendarEventType / CalendarEventStatus (calendar.dto.ts:36-59).
@@ -108,7 +131,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const [endTime, setEndTime] = useState(editing ? clock(editing.endTime).replace(EM, '') : '');
   const [providerId, setProviderId] = useState(editing?.providerId ?? '');
   const [status, setStatus] = useState<EventStatus>(editing?.status ?? 'pending');
-  const [description, setDescription] = useState(editing?.description ?? '');
+  const [description, setDescription] = useState(editing?.description ?? seed?.note ?? '');
   const [freq, setFreq] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
   const [every, setEvery] = useState(1);
   const [repeatCount, setRepeatCount] = useState(0);
@@ -212,6 +235,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       title={editing ? editing.title : longDay(date)}
     >
       <form onSubmit={submit} className="cn-form">
+        {seed?.unreadable && (
+          <p className="cn-quiet">
+            {seed.unreadable} Nothing is filled in below, and nothing was written. Fill the
+            line in by hand, or go back and open it from the page that sent you.
+          </p>
+        )}
+
         {editing?.isOccurrence && (
           <p className="cn-quiet">
             This is one occurrence of a repeating entry. The gateway has no per-occurrence route,
