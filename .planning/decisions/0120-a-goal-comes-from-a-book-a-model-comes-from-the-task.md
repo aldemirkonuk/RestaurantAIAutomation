@@ -1,6 +1,6 @@
 # 0120 — A goal is chosen from a book of scenarios; a model is chosen by the task
 
-- **Status:** Proposed — all four open questions are now settled. Two on 2026-09-04 (Haiku standardised on the undated alias; `days_of_inventory` funded first, taking the catalogue to **10 servable / 11 unserved of 21**) and two on 2026-09-05 (batch 52): the consultant becomes a **fourth task class `consult`**, and a house may **request** a scenario in words but never author one. See the 2026-09-05 amendment.
+- **Status:** Locked 2026-09-06 — the founder locked it (batch 60) with all four questions answered and built (days of inventory; the `consult` class; a request path, no house-authored scenarios; routing by task class). Supersede, do not amend. (Was: Proposed — all four open questions are now settled. Two on 2026-09-04 (Haiku standardised on the undated alias; `days_of_inventory` funded first, taking the cat …)
 - **Date:** 2026-09-04 (amended the same day: citation audit, Haiku alias, `days_of_inventory`; amended 2026-09-05: the `consult` class and the scenario request)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** goals, scenarios, benchmarks, operator ranges, model routing, task class, metering, neural_footprint_event, sonnet, haiku, reports, recommendations
@@ -328,3 +328,8 @@ Three shapes were chosen against the repo's convention, each for a reason:
 |---|---|---|
 | 2026-09-04 | — | Created (Proposed) |
 | 2026-09-05 | Aldemir (founder) | Q2 and Q4 answered — the `consult` class and the scenario request, both built (batch 52) |
+
+
+## Founder answers, 2026-09-06 (batch 60)
+
+**"Lock it."** Status moved to Locked above. **"No, not for now"** on a house seeing its own scenario requests back: a request is sent and acknowledged; the answer is the scenario appearing in the book; a list with no state reads like a queue nobody answers. Rejected: a plain list of what they sent.

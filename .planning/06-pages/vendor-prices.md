@@ -432,3 +432,12 @@ and deliberately **not** paired with a GRANT.
   into `ci.yml`; proven to bite on HEAD copies of two converted files (exit 1, six
   findings)
 - Open: the four allowlisted reads (§9) and the two disagreeing outlier verdicts (§9)
+
+### Founder answers, 2026-09-06 (batch 60) — the re-judge's read and the two populations
+
+**"Keep the named read; fix the split before arming."** The nightly outlier re-judge keeps
+its one cross-house read, named `everyHouse` with its reason (no caller, no house, buckets
+on `restaurant_id`, off everywhere). `PRICE_OUTLIER_REJUDGE_ENABLED` may not be set until the
+write-time verdict (this house plus the open market) and the nightly verdict (this house
+alone) agree on one population — the §9 finding above. Rejected: narrow the read to one
+house now, which would leave every house's rows never re-judged.

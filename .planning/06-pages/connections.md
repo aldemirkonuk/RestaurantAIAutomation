@@ -1011,3 +1011,11 @@ that reach this register:
 ### Correction to 2dc891bd's message (audit a0b6c185ab03442e2, 2026-09-05)
 
 The commit message said `npx vitest run src/pages/connections src/pages/AuthorizeIntegration: 79 passed / 3 files`. The archive run printed 87 passed / 4 files (`cx-permissions.test.ts` 8, `AuthorizeIntegration.test.tsx` 8, `AuthorizeIntegration.retention.test.tsx` 12, `ConnectionsNext.test.tsx` 59); the parent pasted the builder's number over its own run — the third such slip today, each now recorded.
+
+### Founder answer, 2026-09-06 (batch 60) — an emailed 832
+
+**"Leave it; an 832 enters only by hand."** The mail sweep's filter does not list `.832`: an
+emailed file has no uploader identity and no sender key, so it could be stored but never
+priced, and admitting prices from a channel that cannot name who handed the file over is the
+shape ADR 0126 §7 exists to prevent. A manager uploads the file on this page with the sender
+named. Rejected: store emailed 832s unpriced.
