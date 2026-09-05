@@ -133,14 +133,10 @@ def count_rows(base: str, key: str, table: str) -> int:
     return int(total)
 
 
-def list_bucket_objects(base: str, key: str, bucket: str) -> int | None:
-    """Objects in a storage bucket, or None when the listing itself failed.
-
-    None is returned rather than 0 on purpose: 'the bucket is empty' and 'we
-    could not list the bucket' must not print the same number.
-    """
+def _list_prefix(base: str, key: str, bucket: str, prefix: str) -> list[dict] | None:
+    """One page of a storage listing under `prefix`, or None when it failed."""
     url = f"{base}/storage/v1/object/list/{bucket}"
-    payload = json.dumps({"prefix": "", "limit": 1000, "offset": 0}).encode()
+    payload = json.dumps({"prefix": prefix, "limit": 1000, "offset": 0}).encode()
     req = urllib.request.Request(url, data=payload, method="POST")
     req.add_header("apikey", key)
     req.add_header("Authorization", f"Bearer {key}")
@@ -148,9 +144,58 @@ def list_bucket_objects(base: str, key: str, bucket: str) -> int | None:
     try:
         with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
             items = json.loads(resp.read().decode("utf-8") or "[]")
-            return len(items) if isinstance(items, list) else None
+            return items if isinstance(items, list) else None
     except Exception:
         return None
+
+
+def list_bucket_objects(
+    base: str, key: str, bucket: str, max_depth: int = 6
+) -> int | None:
+    """Objects in a storage bucket, or None when the listing itself failed.
+
+    None is returned rather than 0 on purpose: 'the bucket is empty' and 'we
+    could not list the bucket' must not print the same number.
+
+    RECURSIVE, AND THAT IS THE WHOLE POINT. Supabase's list API is a DIRECTORY
+    listing: at the root it returns one FOLDER PLACEHOLDER per top-level prefix,
+    not the files underneath. This function used to count that top-level page,
+    so a bucket holding three PDFs under one restaurant folder reported
+    "1 objects" -- and the 2026-09-04 corpus report published that number, which
+    is what produced finding 8's premise that "either two uploads never
+    persisted their bytes or the signed-URL step fails". Measured 2026-09-05
+    with the service role: 5 documents, 5 objects, all five signable and
+    fetchable; the top-level page still returns exactly 1 entry. A counter that
+    reports a folder count as an object count is this repository's
+    absence-as-health fault inside the measuring instrument itself.
+
+    A folder is told from a file by `metadata`: real objects carry a metadata
+    object (size, mimetype); placeholders carry `null`.
+    """
+    seen = 0
+    stack: list[tuple[str, int]] = [("", 0)]
+    failed = False
+    while stack:
+        prefix, depth = stack.pop()
+        items = _list_prefix(base, key, bucket, prefix)
+        if items is None:
+            failed = True
+            continue
+        for item in items:
+            name = item.get("name")
+            if not name:
+                continue
+            full = f"{prefix}{name}"
+            if item.get("metadata") is None:
+                # A folder placeholder. Descend, unless we have gone too deep --
+                # depth is bounded so a pathological bucket cannot hang the run.
+                if depth < max_depth:
+                    stack.append((f"{full}/", depth + 1))
+            else:
+                seen += 1
+    # A listing that failed anywhere returns None rather than a partial count:
+    # a number that silently omits a subtree is worse than no number.
+    return None if failed else seen
 
 
 def fetch_all(base: str, key: str, table: str, columns: str, page: int = 1000) -> list[dict]:
