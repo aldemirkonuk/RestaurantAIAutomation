@@ -201,16 +201,22 @@ export class LowStockAlertsService {
       const isNew = prev === "ok" || (prev === "low" && cur === "critical");
       if (isNew) newCrossings.push(row);
 
+      // The LEVEL is written first and unconditionally, because it is the
+      // dedupe: only a crossing whose new level we DURABLY recorded is
+      // eligible to alert, so a DB blip cannot make us re-send forever.
+      //
+      // `last_alerted_at` and `alert_count` are NOT written here any more.
+      // They used to be, inside this loop, before the cooldown check below and
+      // before prefs had decided whether anything would be sent — so the
+      // ledger claimed 7 alerts while `notifications` held 2 rows covering 3
+      // wines (POS lens, absence-as-health 8). A ledger that timestamps an
+      // alert nobody received answers "did we tell them?" with a confident,
+      // wrong yes.
       const persisted = await this.upsertState(restaurantId, {
         inventoryId: row.inventoryId,
         wineName: row.wineName,
         level: cur,
-        bumpAlert: isNew,
-        alertedAt: isNew ? nowIso : undefined,
       });
-      // Fail-closed: only a crossing whose new level we DURABLY recorded is
-      // eligible to alert. If the write failed, we leave it untouched and retry
-      // next sweep — so a DB blip can't make us re-send the same alert forever.
       if (isNew && persisted) persistedNew.push(row);
     }
 
@@ -222,20 +228,131 @@ export class LowStockAlertsService {
         prefs.instantFirstAlert ||
         (w.severity === "critical" && prefs.criticalImmediate),
     );
+    const heldByPrefs = persistedNew.filter((w) => !immediate.includes(w));
     const now = Date.now();
     const cooledDown =
       now - (this.lastInstantAt.get(restaurantId) ?? 0) >=
       this.INSTANT_COOLDOWN_MS;
+
     if (immediate.length > 0 && cooledDown) {
       this.lastInstantAt.set(restaurantId, now);
-      await this.fireInstantAlert(restaurantId, immediate, restaurantName);
+      const delivered = await this.fireInstantAlert(
+        restaurantId,
+        immediate,
+        restaurantName,
+      );
+      // Stamped only now, and only for the wines the notification names. If
+      // `persistForRestaurant` produced no row, `delivered` is false and these
+      // wines are recorded as held rather than as alerted — the same defect
+      // one layer down, and it must not be reintroduced there.
+      await this.recordAlertOutcome(
+        restaurantId,
+        immediate,
+        delivered ? { alertedAt: nowIso } : { heldAt: nowIso, reason: "prefs" },
+      );
     } else if (immediate.length > 0) {
       this.logger.log(
         `Low-stock instant alert for ${restaurantId} suppressed by cooldown (${immediate.length} wines roll into the digest).`,
       );
+      await this.recordAlertOutcome(restaurantId, immediate, {
+        heldAt: nowIso,
+        reason: "instant_cooldown",
+      });
+    }
+
+    // Crossings the manager's own settings held back are real crossings that
+    // nobody has been told about. Recording them as held is what makes
+    // "waiting for tonight's digest" visible instead of looking like nothing
+    // happened.
+    if (heldByPrefs.length > 0) {
+      await this.recordAlertOutcome(restaurantId, heldByPrefs, {
+        heldAt: nowIso,
+        reason: "prefs",
+      });
     }
 
     return { newCrossings };
+  }
+
+  /**
+   * Crossings that have happened and that nobody has been told about yet.
+   *
+   * This is the read side of the ledger fix. Before it, a crossing suppressed
+   * by the instant cooldown or by the manager's own preferences was
+   * indistinguishable from a crossing that never happened — both left
+   * `last_alerted_at` looking settled — so "the digest will cover it tonight"
+   * and "nothing is wrong" rendered identically. The queue is small and the
+   * consequence of not knowing about it is a stockout, so it is worth a row on
+   * the screen rather than a line in a log.
+   *
+   * A failed read throws rather than returning an empty list (ADR 0067): an
+   * empty held-queue is good news, and good news must be measured.
+   */
+  async listHeldCrossings(restaurantId: string): Promise<{
+    restaurant_id: string;
+    held: Array<{
+      inventory_id: string;
+      wine_name: string | null;
+      level: string;
+      held_at: string;
+      reason: string | null;
+    }>;
+    summary: { count: number; critical: number; oldest_held_at: string | null };
+  }> {
+    const { data, error } = await this.db.supabase
+      .from("inventory_alert_state")
+      .select(
+        "inventory_id, wine_name, last_alert_level, last_held_at, last_held_reason",
+      )
+      .eq("restaurant_id", restaurantId)
+      .not("last_held_at", "is", null)
+      .order("last_held_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const held = (data || []).map((r: any) => ({
+      inventory_id: r.inventory_id,
+      wine_name: r.wine_name ?? null,
+      level: r.last_alert_level ?? "low",
+      held_at: r.last_held_at,
+      reason: r.last_held_reason ?? null,
+    }));
+    return {
+      restaurant_id: restaurantId,
+      held,
+      summary: {
+        count: held.length,
+        critical: held.filter((h) => h.level === "critical").length,
+        oldest_held_at: held.length > 0 ? held[held.length - 1].held_at : null,
+      },
+    };
+  }
+
+  /**
+   * Write what actually became of a crossing.
+   *
+   * Exactly one of two things is true of every crossing that reaches here: a
+   * notification row exists for it, or it is waiting. Both are recorded;
+   * neither is inferred from the absence of the other, because
+   * `last_alerted_at IS NULL` already means "no crossing detected" and
+   * overloading it with "held" would put us back where we started.
+   */
+  private async recordAlertOutcome(
+    restaurantId: string,
+    wines: LowStockRow[],
+    outcome:
+      | { alertedAt: string }
+      | { heldAt: string; reason: "instant_cooldown" | "prefs" },
+  ): Promise<void> {
+    for (const w of wines) {
+      await this.upsertState(restaurantId, {
+        inventoryId: w.inventoryId,
+        wineName: w.wineName,
+        level: w.severity,
+        ...("alertedAt" in outcome
+          ? { bumpAlert: true, alertedAt: outcome.alertedAt, clearHold: true }
+          : { heldAt: outcome.heldAt, heldReason: outcome.reason }),
+      });
+    }
   }
 
   // ==========================================================================
@@ -306,7 +423,9 @@ export class LowStockAlertsService {
     restaurantId: string,
     wines: LowStockRow[],
     restaurantName?: string,
-  ): Promise<void> {
+    /** True only when an inbox row was actually written. The caller stamps the
+     * ledger on this, so it must never report success it did not observe. */
+  ): Promise<boolean> {
     const criticalCount = wines.filter((w) => w.severity === "critical").length;
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
@@ -355,6 +474,12 @@ export class LowStockAlertsService {
       restaurantName,
     );
     await this.recordEmailOutcome(persisted?.ids, outcome);
+
+    // The INBOX row is what "we told them" means here — email delivery is
+    // recorded separately and is allowed to fail (the lens run's two alerts
+    // both carried `email = {ok:false, error:"no_recipients"}` and that was
+    // correct). A falsy `persisted` means no inbox row, so nothing was told.
+    return Boolean(persisted);
   }
 
   /**
@@ -720,6 +845,11 @@ export class LowStockAlertsService {
       bumpAlert?: boolean;
       alertedAt?: string;
       digestAt?: string;
+      /** A crossing detected and deliberately not sent yet. */
+      heldAt?: string;
+      heldReason?: "instant_cooldown" | "prefs";
+      /** Something was sent, so the hold is over. */
+      clearHold?: boolean;
     },
   ): Promise<boolean> {
     const nowIso = new Date().toISOString();
@@ -732,6 +862,17 @@ export class LowStockAlertsService {
     };
     if (p.alertedAt) row.last_alerted_at = p.alertedAt;
     if (p.digestAt) row.last_digest_at = p.digestAt;
+    if (p.heldAt) {
+      row.last_held_at = p.heldAt;
+      row.last_held_reason = p.heldReason ?? null;
+    }
+    // An alert going out ends the hold. Leaving a stale `last_held_at` behind
+    // would make an alerted wine look like one still waiting, which is the
+    // same fault as the one this column was added to fix, mirrored.
+    if (p.clearHold) {
+      row.last_held_at = null;
+      row.last_held_reason = null;
+    }
     try {
       // Count how many times we've alerted on this item (best-effort, +1 per
       // new crossing). Read-modify is fine: the sweep is single-writer.
