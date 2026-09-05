@@ -19,6 +19,21 @@ import {
   readEdiDate,
   tallyFeedRefusals,
 } from "./parse-edi832";
+import { PriceCodeMeaning } from "./price-code-mappings";
+
+/**
+ * A manager's statement, as `liveMappingsByCode` builds it (ADR 0126 Q3). The
+ * bare string this file used to pass stopped compiling on purpose: a meaning
+ * with no author and no mapping id is exactly what the founder's answer
+ * replaced.
+ */
+const MAPPING_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const said = (basis: string, id: string | null = MAPPING_ID): PriceCodeMeaning => ({
+  mappingId: id,
+  priceBasis: basis,
+  declaredByName: "Ada Manager",
+  declaredAt: "2026-09-05T09:00:00.000Z",
+});
 
 const HOUSE = "11111111-2222-3333-4444-555555555555";
 const RECEIVED = "2026-09-05T12:00:00.000Z";
@@ -31,7 +46,7 @@ const BASE = {
   restaurantId: HOUSE,
   distributorKey: "a-distributor-that-does-not-exist",
   distributorName: "A Distributor That Does Not Exist",
-  priceBasisByCode: { LIC: "licensee price" },
+  priceBasisByCode: { LIC: said("licensee price") },
   receivedAt: RECEIVED,
 };
 
@@ -91,7 +106,7 @@ describe("parseEdi832 — the published MSSS sample", () => {
   it("admits none of its three lines, because not one of them states a size", () => {
     const run = parseEdi832(
       fixture("edi832-msss-guide-sample-2022-06-02.edi"),
-      { ...BASE, declaredCurrency: "USD", priceBasisByCode: { CON: "contract price", CAT: "catalog price" } },
+      { ...BASE, declaredCurrency: "USD", priceBasisByCode: { CON: said("contract price"), CAT: said("catalog price") } },
     );
     expect(run.refusedWhole).toBeNull();
     expect(run.currency).toBe("USD");
@@ -141,6 +156,22 @@ describe("parseEdi832 — the constructed fixture", () => {
       no_effective_date: 1,
       size_unit_not_volume: 1,
       price_not_positive: 1,
+    });
+  });
+
+  it("stamps the manager statement that admitted the row, on the row (ADR 0126 Q3)", () => {
+    const [first] = run().sightings;
+    expect(first.priceCode).toBe("LIC");
+    expect(first.priceCodeMappingId).toBe(MAPPING_ID);
+    expect(first.priceCodeDeclaredByName).toBe("Ada Manager");
+    expect(first.priceCodeDeclaredAt).toBe("2026-09-05T09:00:00.000Z");
+    // And the readable sentence beside it, for a panel or a report.
+    expect(first.raw).toMatchObject({
+      priceCodeMapping: {
+        mappingId: MAPPING_ID,
+        attribution:
+          'Priced as "licensee price" because this house mapped the sender\'s code LIC by Ada Manager on 2026-09-05.',
+      },
     });
   });
 
@@ -231,7 +262,7 @@ describe("parseEdi832 — the constructed fixture", () => {
       "ST*832*1~BCT*SC*C1~CUR*SE*USD~LIN*1*VP*X1~DTM*007*20260701~PID*F****A WINE~PO4*12*750*ML~CTP**LIC*10*1*EA~CTP**MSR*20*1*EA~CTT*1~SE*9*1~";
     const r = parseEdi832(two, {
       ...BASE,
-      priceBasisByCode: { LIC: "licensee price", MSR: "suggested retail" },
+      priceBasisByCode: { LIC: said("licensee price"), MSR: said("suggested retail") },
     });
     expect(r.sightings).toHaveLength(0);
     expect(r.refusals[0].reason).toBe("unmapped_price_basis");

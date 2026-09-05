@@ -1,8 +1,10 @@
 # 0126 — A price behind a licence is not a posting
 
-- **Status:** Proposed. Built read-only and inert: a catalogue endpoint, a parser and a FOIA source
-  entry. Nothing was armed, no credential is stored, no request was sent, and the two questions the
-  evidence forces are the founder's (Q1, Q2 below).
+- **Status:** Proposed. **Q2 and Q3 answered by the founder on 2026-09-05 and built; Q1 is open and
+  narrowed** — he is asking about sanctioned APIs and a sign-in hand-over instead, and **no mirror
+  of any kind is built** while that answer is awaited. What exists: a read-only catalogue endpoint,
+  the 832 parser, the FOIA source entry, and the manager price-code mapping (§7). Nothing is armed,
+  no credential is stored, and no request was sent.
 - **Date:** 2026-09-05
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** class C, distributor feed, Illinois, Michigan, FOIA, EDI 832, EDI 810, licensee
@@ -196,6 +198,67 @@ beside the postings. `MarketIndexPanel.tsx` was not touched; two other builders 
 The new Michigan FOIA source **does** appear on that panel today without any change to it, because
 the panel already renders every withheld source with its reason.
 
+### 7. A manager states what a code means, and every row it admits names the statement
+
+The founder's answer to Q3, verbatim: **"Manager maps it, recorded on every row."** Built as
+`supabase/migrations/20260905240000_a_manager_states_what_a_code_means.sql` plus
+`distributor-feed/price-code-mappings.ts` (pure), `price-code-mappings.service.ts` (the writes) and
+three routes on the existing read-only controller.
+
+**The statement.** One row of `distributor_price_code_mappings` per (house, sender, code field,
+code): the meaning in the manager's own words, the **evidence** they had, the manager's id AND
+their name as they were named when they said it, and the time. `price_basis` has **no default at
+any layer** — table, DTO or UI — for the reason `mcp_tool_grants.writes` has none (ADR 0114 §3): a
+default here would be this product naming a trade level nobody told it, against a house's real
+money. `code_field` is a CHECK with one member, `edi_832_ctp02`, because the 832 is the only format
+this repo parses; **there is no CSV feed path in `distributor-feed`**, and adding a second format
+means adding a CHECK member in a migration, which is a decision rather than a typo.
+
+**The safe refusal is still the default, and nothing is seeded.** A code with no live mapping is
+still `unmapped_price_basis`, still refused, still counted. `DistributorEntry` **lost** its
+`priceBasisByCode` field in this pass rather than keeping it empty: a per-distributor map shipped in
+a config file is the rejected alternative below, and leaving the field there was an invitation to
+fill it in.
+
+**Every row a mapping admits names it, in a column.**
+`vendor_price_observations.price_code_mapping_id` — a real column with an `ON DELETE RESTRICT`
+foreign key, not a JSONB key — so the question "which statement let this price in" is one indexed
+query:
+
+```sql
+SELECT v.* FROM public.vendor_price_observations v
+  JOIN public.distributor_price_code_mappings m ON m.id = v.price_code_mapping_id
+ WHERE m.id = $1;
+```
+
+The parser stamps `priceCodeMappingId`, `priceCodeDeclaredByName`, `priceCodeDeclaredAt` and the
+sender's own `priceCode` on the sighting, plus a readable attribution sentence on `raw`.
+
+**A withdrawal marks; it never deletes.** Withdrawing needs all three of who, when and why — a
+CHECK, because a statement that stopped working and cannot say why leaves the rows it admitted
+unexplainable. The withdrawn row **stays**, freeing the code for a corrected statement through a
+partial unique index on the live ones, so both readings survive side by side. The mark on the rows
+is **derived** — the same join with `m.withdrawn_at IS NOT NULL` — rather than a flag stamped on
+each row: a stamped flag needs a backfill that can half-succeed and can then disagree with the
+mapping it is supposed to reflect. One place holds the truth, and the withdrawal rewrites nothing.
+
+**Two live meanings for one code is a refusal, not a choice.** The database forbids it and
+`liveMappingsByCode` refuses it a second time rather than trusting the index — because the one
+thing the parser must never do is pick between two trade levels, and a reader that silently took
+the newest would be doing exactly that. A conflicted code is **removed** from the parser's map, so
+the line is refused as unmapped, which is the true answer: nobody has said which reading is the
+trade level.
+
+**Proven against a real Postgres.** `$SP/pglite-probe/p4ar-code-mappings.mjs` (PGlite, PG 18.3):
+**24/24 OK**. The migration's own `DO` block ran with a user and a restaurant present, so its
+assertions were exercised rather than skipped; every CHECK bites from outside it too (blank
+meaning, blank evidence, lowercase code, padded code, unknown code field, blank sender); the partial
+index refuses a second live mapping while a **different house may read the same code differently**;
+a half-withdrawal and a backdated one are refused; deleting a mapping that admitted rows raises
+**23001** (`restrict_violation` — measured, not assumed: it is not 23503); the withdrawal marks
+**2** rows by join and deletes **none of 3**; and the withdrawn code is mappable again with both
+statements still on the table.
+
 ## Alternatives rejected
 
 **Mirror the portal with the house's own credentials, as the founder's call describes.** It is the
@@ -217,6 +280,26 @@ pure function with no producer and no schedule, and it encodes three refusals th
 written down whatever arrives — particularly that a `CTP02` code means nothing without the sender's
 own guide. It is recorded as having **no live producer**, in the registry and in the fixture's
 provenance, so nobody mistakes its existence for evidence that a distributor sends one.
+
+**Refuse always (Q3's other option).** Simplest, safest, and it was this pass's own default: a code
+nobody can vouch for is never priced. Rejected by the founder, and the reason it deserved to lose is
+that the refusal has no exit — a manager holding their distributor's own implementation guide, able
+to read the meaning off page 7, had no way to tell the product and would watch a valid catalogue
+produce zero rows forever. The safety it bought was real but it was bought by making the product
+unable to learn something a person already knew.
+
+**Mudavym maintains the mappings — a code table shipped in the registry.** Cheaper for every house
+after the first, and it is what the first draft of `distributor-feed.registry.ts` was shaped for
+(`priceBasisByCode`, empty, per distributor). Rejected: a trade level is negotiated per licence, so
+one house's `CON` is not another's — the PGlite probe demonstrates two houses reading the same code
+differently and the schema permits it deliberately. A meaning shipped centrally would be this
+product asserting, for every house at once, a term of an agreement it is not party to and has never
+read. The field was deleted rather than left empty, because an empty field is an invitation.
+
+**Stamp a `mapping_withdrawn` flag on each admitted row.** It makes the mark literal and needs no
+join. Rejected: it is a backfill that can half-succeed, and the day it disagrees with the mapping it
+reflects there is no way to tell which is right. The join cannot drift, and "marked, not deleted" is
+satisfied by a row that still points at a statement now marked withdrawn.
 
 **Fabricate a beverage-distributor 832 to make the fixture look real.** Rejected outright. The one
 constructed fixture names its distributor `A DISTRIBUTOR THAT DOES NOT EXIST` and describes every
@@ -241,6 +324,11 @@ could not be verified because michigan.gov refuses this environment.
   `michiganRowsFromWorkbook` + `parseMichigan` for every source key it accepts. It is correct today
   because Michigan's spirits book is the only uploadable source, and it becomes wrong the moment a
   second one exists — which the FOIA answer would be. Named in the draft's §4 and here.
+- **One new table and one new column** (2026-09-05, Q3): `distributor_price_code_mappings` (RLS on,
+  anon/authenticated revoked, in-file assertions exercised) and
+  `vendor_price_observations.price_code_mapping_id`. Nothing writes the column yet — no ingest path
+  for a distributor catalogue exists, because no distributor was found to send one — so it is
+  dormant by design and the parser that would fill it is proved by fixture.
 - **`SourceEntry` gains two optional fields** (`intake: "foia"`, `standingRequest`). No migration:
   neither the registry nor `standingRequest` is in a database.
 - **One shared file gained two lines**: `app.module.ts` registers `DistributorFeedModule`.
@@ -265,11 +353,23 @@ could not be verified because michigan.gov refuses this environment.
    price — at the cost of putting each house in breach of an agreement it signed, with this product
    as the beneficiary. Nothing was built either way. Build it, or is the invoice path the answer for
    Illinois?
+
+   **STILL OPEN, and narrowed by the founder on 2026-09-05:** he is asking instead about
+   **sanctioned APIs and a sign-in hand-over** — a route the distributor itself offers rather than
+   one taken around it. An answer is coming. Until it lands, **no mirror of any kind is built**:
+   there is still no declare route, no credential column and no fetcher, and the catalogue still
+   carries `offerable: false`.
 2. **Michigan's schedules are FOIA-exempt for a year. Is a twelve-month-lagged wine and beer series
    worth a quarterly request?** The draft is written and excludes the embargoed year so it cannot be
    denied whole. Each cycle costs a letter, a fee estimate, a wait of up to fifteen business days,
    and a format nobody has seen. What arrives is history, never a price to buy against. File it, file
    it once to see the format and then decide, or leave it?
+
+   **ANSWERED, 2026-09-05: a standing quarterly request, filed as a source.** That is what the
+   register holds — `michigan-lcc-filed-beer-wine-schedules`, `intake: "foia"`, cadence carrying
+   both rules' own wording, `maxAgeDays: 480` documented as the embargo's arithmetic. The status
+   stays `not_yet_filed` until a person files it, because a drafted letter recorded as a filed
+   request is an intention reported as an action.
 3. **A `CTP02` code means nothing without the sender's own implementation guide. Should the product
    ever accept a price whose trade level was inferred?** Today it refuses, and a house whose
    distributor sent a perfectly good catalogue would get zero rows until somebody typed the mapping
@@ -277,8 +377,12 @@ could not be verified because michigan.gov refuses this environment.
    Refuse always, or let a manager map a code themselves with the mapping recorded against their
    name on every row it admits?
 
+   **ANSWERED and BUILT, 2026-09-05. The founder: *"Manager maps it, recorded on every row."*** See
+   the section below.
+
 ## Review trail
 
 | Date | Reviewer | Note |
 |---|---|---|
+| 2026-09-05 | Claude (build, Q3 — the manager maps the code) | **Q3 ANSWERED by the founder in his own words — *"Manager maps it, recorded on every row"* — and BUILT.** `20260905240000_a_manager_states_what_a_code_means.sql`: `distributor_price_code_mappings` (one statement per house per sender per code — the meaning, the **evidence**, the manager's id AND the name they bore when they said it, the time; **no DEFAULT on `price_basis` at any layer**, asserted in-file; `code_field` a CHECK with one member because **there is no CSV feed path in this repo**), plus `vendor_price_observations.price_code_mapping_id` as a **column** with an `ON DELETE RESTRICT` foreign key, so "which statement let this price in" is one indexed query rather than a JSONB hunt. **A withdrawal marks and never deletes:** all three of who/when/why or the CHECK refuses it, the withdrawn row STAYS and a partial unique index frees the code for a corrected statement, and the mark on the admitted rows is the JOIN to `withdrawn_at` — derived rather than stamped, because a stamped flag is a backfill that can half-succeed and then disagree with the mapping it reflects. **The safe refusal is still the default**: nothing is seeded, and `DistributorEntry` LOST its `priceBasisByCode` field rather than keeping it empty, because a per-distributor map shipped in a config file is the rejected alternative "Mudavym maintains the mappings" — a trade level is negotiated per licence, and the probe demonstrates two houses reading the same code differently. **Two live meanings for one code is refused twice** (the index, and `liveMappingsByCode` again) and the code is REMOVED from the parser's map, so the line is refused as unmapped — the one thing the parser must never do is pick between two trade levels. **Proven against a real Postgres** (`$SP/pglite-probe/p4ar-code-mappings.mjs`, PGlite / PG 18.3): **24/24 OK**, the in-file `DO` block EXERCISED (a user and a restaurant exist in the fixture, so the skip branch was not taken), every CHECK biting from outside it as well, a different house mapping the same code differently, deleting a mapping that admitted rows raising **23001** — `restrict_violation`, measured, not the 23503 this probe first expected — and the withdrawal marking **2** rows by join while deleting **none of 3**. **Q2 also answered** (a standing quarterly request, filed as a source — which is what the register already holds, `status` still `not_yet_filed` because nobody has filed it) and **Q1 narrowed**: the founder is asking about sanctioned APIs and a sign-in hand-over, so **no mirror of any kind was built** and the catalogue still carries `offerable: false`. Verification: `npx jest --runInBand --forceExit src/distributor-feed src/price-index` from `apps/api-gateway` — **284 passed / 24 suites**, of which **24 cases in 1 suite are new here**; gateway `tsc --noEmit -p tsconfig.spec.json` — my files clean, the 9 remaining error lines all in `communications/`, `procurement/` and `ux-optimizer/`, three directories this pass was told to keep out of; web `tsc --noEmit` **0 errors**; `check_new_tables_are_locked_down`, `check_fk_targets_exist`, `check_read_columns_exist`, `check_queried_tables_exist`, `check_no_seeded_defaults`, `check_order_capture_contract` and `check_migration_versions_unique` all **exit 0**; migration prefix uniqueness empty. **No row was written to any database and no route was called on a live gateway.** |
 | 2026-09-05 | Claude (research + build, Illinois class C and the Michigan FOIA source) | **Both of the founder's premises were measured and both were wrong, in opposite directions.** Illinois: there is no feed to declare — Breakthru's buyer portal publishes `Disallow: /` for everything but its login, both distributors' terms of use forbid automated access, and Southern Glazer's separately forbids giving "any other person" access with your credentials, so a credential mirror puts the house in breach. LibDib's public OpenAPI (70,801 B, HTTP 200) was read in full: **the string `price` appears zero times**, correcting this register's "most promising class-C connection". And the industry answers the question differently anyway — SGWS's documented EDI set on two independent trading-partner pages is 850/856/810(/997) with **no 832**, Restaurant365 ticks Multi-Invoice and leaves Order Guides blank for all three wine-and-spirits distributors it lists, and MarginEdge says in one sentence "We update your order guides based on your invoices". Michigan: **MCL 436.1609a embargoes every filed net cash price from FOIA for one year**, so the standing quarterly request the founder called for can never return anything current — ADR 0117 Q19's "public records" premise is corrected here. Built: `distributor-feed/` (registry with the verbatim robots and terms per distributor, a read-only catalogue endpoint, `offerable: false` with its reason), `parse-edi832.ts` with two recorded fixtures (one real published sample that correctly admits **nothing**, one constructed and labelled as such), the `intake: "foia"` source with `status: "not_yet_filed"` and a 480-day bound documented as an embargo's arithmetic not a freshness allowance, and two corrected house-facing sentences. **Declined and argued**: the class-C line in `MarketIndexPanel`, because a class-C row is tenant-keyed and that panel draws the state-keyed register — `comparisonClassOf` already maps `api_catalog` to `quoted` and already calls that class "ADR 0117 classes A and C", so the code answered the placement fork before the brief posed it. `npx jest --runInBand --forceExit src/price-index src/distributor-feed` from `apps/api-gateway` on the tree reported here: **214 passed / 20 suites**, of which **45 in 3 suites are new here**. Nothing was armed, no credential is stored, no page on a visit-time-restricted host was fetched, and **no request was sent**. Three founder questions. |

@@ -193,6 +193,31 @@ the two registers that would actually leak are refused at the gateway as well.
   allowed to fall through to the "none" row — an outage must not read as a fact
   about the restaurant.
 
+- **A licensed distributor connection, defined and not offered** *(ADR 0126,
+  2026-09-05; endpoint only, no component reads it yet)*. `GET
+  /distributor-feed/:jurisdiction` (or `me`) returns, per distributor measured
+  for this house's state, the verbatim `robots.txt` rule, the verbatim terms
+  clause, the day it was measured, the evidence URLs, and one sentence saying
+  what is true today. Every row is `connectable: false` and the connection
+  itself carries `offerable: false` with its reason: no Illinois distributor
+  publishes a feed a house could connect, and two forbid an automated reader in
+  their own terms. There is no declare route, no credential column and no
+  fetcher.
+- **A manager states what a sender's price code means** *(ADR 0126 §7, the
+  founder 2026-09-05: "Manager maps it, recorded on every row"; endpoint only)*.
+  `GET/POST /distributor-feed/codes/:distributorKey` and
+  `POST /distributor-feed/codes/:distributorKey/:mappingId/withdraw`, all three
+  manager-or-owner through `assertCanManageRestaurant`. An EDI 832 prices each
+  line under a `CTP02` code whose meaning X12 leaves to the two trading
+  partners, so the person holding their own distributor's guide says what it
+  means — once, with the evidence they had, under their name. **Nothing is
+  seeded and there is no default**: a code nobody has mapped is still refused,
+  and a code with two live meanings is refused rather than resolved by recency.
+  Every price the statement admits carries its id in a real column, so one query
+  finds them all; withdrawing needs who, when and why, keeps the statement,
+  frees the code for a corrected one, and **marks** the rows it admitted by join
+  without deleting or rewriting one.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -859,3 +884,20 @@ that reach this register:
    founder question in ADR 0118 rather than defaulted either way. If the founder
    wants the stronger version it is one call beside the upsert in
    `setHouseGrantAccess`.
+12. **Draw the price-code register** (ADR 0126 §7, answered and built 2026-09-05
+    — *"Manager maps it, recorded on every row"*). The gateway half is done:
+    three manager-gated routes, a table whose every CHECK was exercised against
+    a real Postgres, and a parser that stamps the statement's id, the manager's
+    name and the day on every row it admits. **What has no surface yet** is the
+    part a manager touches — a register on this page listing what this house has
+    said each sender's codes mean, the evidence beside each, a control to
+    withdraw one with its reason, and the count of prices that statement
+    admitted shown before the withdrawal is confirmed (the endpoint returns that
+    count, and returns `null` rather than 0 when it could not be read). Until it
+    is drawn, the capability exists and no person can reach it, which is stated
+    here rather than implied to be live.
+
+    It has no urgency on its own: nothing ingests a distributor catalogue today,
+    because no distributor was found to send one (item 11). The register becomes
+    reachable the day a house has a file — and the parser it feeds is proved
+    against fixtures rather than against any distributor's real bytes.

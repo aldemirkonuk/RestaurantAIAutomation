@@ -68,6 +68,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { PriceCodeMeaning, attributionFor } from "./price-code-mappings";
 
 /**
  * `api_catalog` / tier 3 — read from the CHECK constraint, not chosen.
@@ -128,6 +129,22 @@ export interface FeedSighting {
   unitVolumeMl: number;
   /** WHICH published number this is, in the house's own mapping's words. */
   priceBasis: string;
+  /** The sender's own code, verbatim, that the mapping resolved. */
+  priceCode: string;
+  /**
+   * The manager statement that admitted this row's trade level — the id of a
+   * `distributor_price_code_mappings` row (ADR 0126 Q3, the founder:
+   * "Manager maps it, recorded on every row").
+   *
+   * It is on the sighting, not only in `raw`, because it becomes
+   * `vendor_price_observations.price_code_mapping_id`, a real column with a
+   * RESTRICT foreign key — so every row a mapping admitted is one indexed query
+   * away, and a withdrawal marks them all by join without rewriting one.
+   */
+  priceCodeMappingId: string | null;
+  /** Who said what the code meant, as they were named when they said it. */
+  priceCodeDeclaredByName: string | null;
+  priceCodeDeclaredAt: string | null;
   contentHash: string;
   raw: Record<string, unknown>;
 }
@@ -175,12 +192,16 @@ export interface Edi832Options {
   distributorKey: string;
   distributorName: string;
   /**
-   * `CTP02` code -> the words that go in `price_basis`. Supplied per house,
-   * because the code list is per trading partner. An empty map refuses every
-   * row, which is the correct behaviour for a house that has not been told what
-   * its distributor's codes mean.
+   * `CTP02` code -> what a manager of THIS house said it means, with the id of
+   * the statement. Supplied per house, because the code list is per trading
+   * partner and the trade level is per licence.
+   *
+   * An empty map refuses every row, and that is the DEFAULT: nothing is seeded
+   * and no distributor ships with a meaning. Build it from
+   * `liveMappingsByCode` over `distributor_price_code_mappings`
+   * (ADR 0126 Q3).
    */
-  priceBasisByCode: Readonly<Record<string, string>>;
+  priceBasisByCode: Readonly<Record<string, PriceCodeMeaning>>;
   /** When the file reached us. Our clock; the caller passes it so tests can pin it. */
   receivedAt: string;
   /** Used only when the document carries no `CUR`. Absent = refuse. */
@@ -497,7 +518,8 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
       continue;
     }
 
-    const priceBasis = opts.priceBasisByCode[chosen.code];
+    const meaning = opts.priceBasisByCode[chosen.code];
+    const priceBasis = meaning.priceBasis;
     if (!run.effectiveDate || effectiveDate > run.effectiveDate) {
       run.effectiveDate = effectiveDate;
     }
@@ -517,10 +539,24 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
       packSize: packRaw,
       unitVolumeMl,
       priceBasis,
+      priceCode: chosen.code,
+      // The whole point of ADR 0126 Q3: the row names the statement that let
+      // it in. A wrong mapping is then one query, and reversing it is a
+      // withdrawal rather than a hunt through JSONB.
+      priceCodeMappingId: meaning.mappingId,
+      priceCodeDeclaredByName: meaning.declaredByName,
+      priceCodeDeclaredAt: meaning.declaredAt,
       contentHash: "",
       raw: {
         ediItemIds: ids,
         ctp02: chosen.code,
+        priceCodeMapping: {
+          mappingId: meaning.mappingId,
+          priceBasis: meaning.priceBasis,
+          declaredByName: meaning.declaredByName,
+          declaredAt: meaning.declaredAt,
+          attribution: attributionFor(meaning, chosen.code),
+        },
         po4: { pack: packRaw, size: sizeRaw, unit: unitCode },
         catalogNumber: run.catalogNumber,
         catalogVersion: run.catalogVersion,

@@ -90,9 +90,16 @@ describe("every distributor entry", () => {
     }
   });
 
-  it("has an EMPTY price-basis map, so the parser refuses every row until a guide is read", () => {
+  it("carries NO code map at all, because Mudavym does not maintain the meanings", () => {
+    // Amended 2026-09-05 (ADR 0126 Q3, the founder: "Manager maps it, recorded
+    // on every row"). This assertion used to read
+    // `expect(Object.keys(e.priceBasisByCode)).toHaveLength(0)` — an empty map
+    // waiting to be filled in from a distributor guide. Shipping meanings here
+    // would assert one trade level for every house at once, out of an
+    // agreement this product is not party to. The field is gone; the meanings
+    // live in `distributor_price_code_mappings`, per house, per sender, signed.
     for (const e of entries) {
-      expect(Object.keys(e.priceBasisByCode)).toHaveLength(0);
+      expect(e).not.toHaveProperty("priceBasisByCode");
     }
   });
 });

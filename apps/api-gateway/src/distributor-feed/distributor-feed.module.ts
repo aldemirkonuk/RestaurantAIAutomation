@@ -4,6 +4,8 @@ import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { DistributorFeedController } from "./distributor-feed.controller";
 import { DistributorFeedService } from "./distributor-feed.service";
+import { PriceCodeMappingsService } from "./price-code-mappings.service";
+import { OrganizationsModule } from "../organizations/organizations.module";
 
 /**
  * AuthModule is required, not optional: the controller is guarded by
@@ -11,14 +13,18 @@ import { DistributorFeedService } from "./distributor-feed.service";
  * declaring the controller — the same reason PriceIndexModule and
  * VendorIntelModule import it.
  *
- * No schedule, no fetch service and no writer. Nothing in this module reaches
- * the network or a database except the one read of `restaurants.state_province`
- * that scopes the catalogue to the caller's own jurisdiction.
+ * `OrganizationsModule` is imported for `assertCanManageRestaurant`: stating
+ * what a distributor's price code means is a manager-or-owner act, and so is
+ * withdrawing one (ADR 0126 Q3).
+ *
+ * No schedule and no fetcher. Nothing here reaches the network. The only
+ * database writes in the module are the manager's own statements about price
+ * codes and their withdrawals; the catalogue itself is read-only.
  */
 @Module({
-  imports: [DatabaseModule, ConfigModule, AuthModule],
+  imports: [DatabaseModule, ConfigModule, AuthModule, OrganizationsModule],
   controllers: [DistributorFeedController],
-  providers: [DistributorFeedService],
-  exports: [DistributorFeedService],
+  providers: [DistributorFeedService, PriceCodeMappingsService],
+  exports: [DistributorFeedService, PriceCodeMappingsService],
 })
 export class DistributorFeedModule {}

@@ -104,6 +104,17 @@ buyer's own invoices**. Mudavym already records those (ADR 0117 class A,
 on `vendor_price_observations` as `api_catalog` / tier 3 — never on `price_index_postings`, which has
 no restaurant column and whose `restaurant_id IS NULL` rows are read by every house in the state.
 
+**A code in an 832 means whatever the two trading partners agreed, so a manager says which**
+(2026-09-05, ADR 0126 §7; the founder: *"Manager maps it, recorded on every row"*). `CTP02` is a
+Price Identifier Code X12 leaves to the sender and the receiver — CDW's published guide defines
+`C01` as literally "CDW Price", SPS Commerce's MSSS guide uses `CON` and `CAT` out of a list its own
+guide says holds 164 — so there is no universal "the licensee price" and none is shipped. A manager
+of the house states what one sender's code means, once, with the evidence they had, under their
+name (`distributor_price_code_mappings`); a code nobody has mapped is refused; a code with two live
+meanings is refused rather than resolved by recency; and every price the statement admits names it
+in `vendor_price_observations.price_code_mapping_id`, so a wrong statement is one query and its
+withdrawal marks those rows without deleting one.
+
 **Two published EDI 832 implementation guides were fetched and are the parser's only spec**, since
 neither the standard's summary pages nor any distributor publishes the segment positions:
 CDW's X12/V4010/832 (55,216 B, sha256 `6d44bb14…`) and SPS Commerce's MSSS guide v2.6

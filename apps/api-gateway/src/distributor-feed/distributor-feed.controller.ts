@@ -20,13 +20,15 @@
  * reason `price-index.controller.ts` declares `status` first.
  */
 
-import { Controller, Get, Param, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { DistributorFeedService } from "./distributor-feed.service";
+import { PriceCodeMappingsService } from "./price-code-mappings.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 @ApiTags("Distributor Feed")
 @ApiBearerAuth()
@@ -34,7 +36,116 @@ import { DistributorFeedService } from "./distributor-feed.service";
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("owner", "manager")
 export class DistributorFeedController {
-  constructor(private readonly service: DistributorFeedService) {}
+  constructor(
+    private readonly service: DistributorFeedService,
+    private readonly mappings: PriceCodeMappingsService,
+    private readonly organizations: OrganizationsService,
+  ) {}
+
+  /**
+   * What this house has said one sender's price codes mean (ADR 0126 Q3).
+   *
+   * Read is manager-gated like the writes, and for the same reason ADR 0114
+   * gave for `payment_methods`: a read posture and a write posture that
+   * disagree is a defect, and these rows name a person and their evidence.
+   */
+  @Get("codes/:distributorKey")
+  @ApiOperation({
+    summary:
+      "The price-code meanings a manager of this house has stated for one sender, live and withdrawn",
+  })
+  async codesFor(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("distributorKey") distributorKey: string,
+  ) {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "read this house's distributor price-code mappings",
+    );
+    const out = await this.mappings.forSender(user.restaurantId, distributorKey);
+    return { success: true, ...out };
+  }
+
+  /**
+   * A manager states what a code means. Once, with evidence, under their name.
+   *
+   * There is no default and nothing seeded: until this is called, every priced
+   * line under that code is refused as `unmapped_price_basis`, which is the
+   * behaviour before this route existed and stays the behaviour after it.
+   */
+  @Post("codes/:distributorKey")
+  @ApiOperation({
+    summary:
+      "State what one of a sender's price-identifier codes means for this house — recorded against your name, and stamped on every row it admits",
+  })
+  async declareCode(
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; fullName?: string; email?: string },
+    @Param("distributorKey") distributorKey: string,
+    @Body() body: { priceCode?: string; priceBasis?: string; evidence?: string },
+  ) {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "state what a distributor price code means",
+    );
+    const outcome = await this.mappings.declare({
+      restaurantId: user.restaurantId,
+      distributorKey,
+      priceCode: body?.priceCode ?? "",
+      priceBasis: body?.priceBasis ?? "",
+      evidence: body?.evidence ?? "",
+      declaredBy: user.userId,
+      // The name AS THE TOKEN CARRIES IT. Never a placeholder: if the session
+      // resolves no name the service refuses, because an unsigned attestation
+      // is the thing this whole decision exists to avoid.
+      declaredByName: (user.fullName ?? user.email ?? "").trim(),
+    });
+    return { success: outcome.ok, ...outcome };
+  }
+
+  /**
+   * A manager withdraws a statement.
+   *
+   * The rows it already admitted are MARKED, never deleted: the foreign key is
+   * ON DELETE RESTRICT and the mark is the join to `withdrawn_at`. The count of
+   * those rows is returned, because "how far did this go" is the first question
+   * anyone asks — and it is `null`, never 0, when it could not be counted.
+   */
+  @Post("codes/:distributorKey/:mappingId/withdraw")
+  @ApiOperation({
+    summary:
+      "Withdraw a price-code meaning. Nothing is deleted: the rows it admitted keep naming it and are marked by the withdrawal",
+  })
+  async withdrawCode(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("mappingId") mappingId: string,
+    @Body() body: { reason?: string },
+  ) {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "withdraw a distributor price-code mapping",
+    );
+    const outcome = await this.mappings.withdraw({
+      mappingId,
+      restaurantId: user.restaurantId,
+      withdrawnBy: user.userId,
+      reason: body?.reason ?? "",
+    });
+    const admitted = await this.mappings.rowsAdmittedBy(mappingId);
+    return {
+      success: outcome.ok,
+      ...outcome,
+      rowsAdmitted: admitted.count,
+      rowsAdmittedUnreadable: admitted.unreadable,
+      note:
+        admitted.count === null
+          ? "The prices this mapping admitted could not be counted. That is unknown, not none."
+          : `${admitted.count} price ${admitted.count === 1 ? "row names" : "rows name"} this mapping. None was deleted; each is now marked by the withdrawal and findable with one query on price_code_mapping_id.`,
+    };
+  }
 
   @Get("catalog")
   @ApiOperation({

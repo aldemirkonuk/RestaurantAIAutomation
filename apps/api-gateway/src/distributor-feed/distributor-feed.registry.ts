@@ -112,13 +112,21 @@ export interface DistributorEntry {
    */
   unbuilt: { reason: string; measuredOn: string } | null;
   /**
-   * The `CTP02` price-identifier codes this distributor's own implementation
-   * guide defines, and what each means. EMPTY on every entry today, because no
-   * distributor guide was obtained — and an empty map makes `parseEdi832`
-   * refuse every row, which is the correct posture for a house that has not
-   * been told what its distributor's codes mean.
+   * THERE IS DELIBERATELY NO CODE MAP ON THIS ROW.
+   *
+   * An earlier draft of this file carried a per-distributor `CTP02` map, empty
+   * on every entry, waiting for someone to fill it in from a distributor's own
+   * implementation guide. The founder settled that on 2026-09-05 (ADR 0126 Q3):
+   * *"Manager maps it, recorded on every row."* A code map shipped here would
+   * be Mudavym asserting a trade level for every house at once, out of a
+   * document it does not have and an agreement it is not party to — the exact
+   * alternative that answer rejected.
+   *
+   * The meanings live in `distributor_price_code_mappings`, one statement per
+   * house per sender per code, each naming the manager who made it and the
+   * evidence they had. Read them with `PriceCodeMappingsService.forSender` and
+   * `liveMappingsByCode`. A code nobody has mapped is still refused.
    */
-  priceBasisByCode: Readonly<Record<string, string>>;
 }
 
 /**
@@ -199,7 +207,6 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
         "The public site is corporate only — its advertised sitemap holds 60 URLs and not one product, price or catalogue path — and the buyer portal is closed to machines by its own robots.txt and terms. No API, EDI catalogue or export is documented anywhere.",
       measuredOn: "2026-09-05",
     },
-    priceBasisByCode: Object.freeze({}),
   },
 
   "southern-glazers-il": {
@@ -230,7 +237,6 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
         "No 832 price/sales catalogue is documented for Southern Glazer's by either EDI provider whose trading-partner page was read; Restaurant365 lists it as Multi-Invoice with the Order Guides column blank. An EDI 810 feed is the house's own paper (ADR 0117 class A) and is already covered by the invoice path, not by a new connection.",
       measuredOn: "2026-09-05",
     },
-    priceBasisByCode: Object.freeze({}),
   },
 
   "rndc-il": {
@@ -258,7 +264,6 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
         "No documented feed of any kind. The absence of a robots.txt is not consent, and no terms of use were located to read, so nothing here is treated as permitted.",
       measuredOn: "2026-09-05",
     },
-    priceBasisByCode: Object.freeze({}),
   },
 
   "libdib-national": {
@@ -285,7 +290,6 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
         "The one distributor-side API whose documentation is public turns out to publish no price. This corrects the price-source register's earlier reading of it as 'the most promising class-C connection': the specification was read in full on 2026-09-05 and contains no price, cost, catalog or wholesale field.",
       measuredOn: "2026-09-05",
     },
-    priceBasisByCode: Object.freeze({}),
   },
 
   "provi-marketplace": {
@@ -313,7 +317,6 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
         "No public or buyer-facing API, no developer documentation, no export. The customer-specific pricing Provi advertises reaches Provi from the distributor's ERP and stops there.",
       measuredOn: "2026-09-05",
     },
-    priceBasisByCode: Object.freeze({}),
   },
 };
 
