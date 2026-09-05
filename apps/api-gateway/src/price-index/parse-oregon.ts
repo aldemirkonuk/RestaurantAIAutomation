@@ -22,7 +22,6 @@ import {
   PostingSighting,
   asNumber,
   asPositiveInt,
-  contentHash,
 } from "./price-index.types";
 import { CASE_CONSISTENCY_TOLERANCE, parseSizeToMl } from "./normalize";
 

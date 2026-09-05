@@ -10,7 +10,6 @@ import { createHmac, createHash } from "crypto";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import {
-  CALIFORNIA_URL,
   CaliforniaPosting,
 } from "./parse-california";
 import { IOWA_URL, IowaRow } from "./parse-iowa";

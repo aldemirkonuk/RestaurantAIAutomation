@@ -1191,11 +1191,22 @@ def _scaffold(tmp: Path) -> None:
     (tmp / _TEAM_CMD).mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "team").mkdir(parents=True, exist_ok=True)
     (tmp / _TEAM.hooks).write_text(CLEAN_TEAM_HOOKS, encoding="utf-8")
-    for rel, body in zip(
-        _TEAM.renderers,
-        (CLEAN_TEAM_NEXT, CLEAN_TEAM_DESK, CLEAN_TEAM_MYSHIFTS, CLEAN_TEAM_OPS, CLEAN_TEAM_PERF),
-    ):
-        (tmp / rel).write_text(body, encoding="utf-8")
+    # Every renderer the /team tuple names gets a clean body: `zip` against a
+    # five-body tuple silently stopped at the fifth file once the parity build
+    # (0bc70f76) grew the tuple to twelve, and the self-test then reported
+    # `cannot-check: anchor file is missing` for a file that exists on disk.
+    _team_bodies = {
+        "TeamNext.tsx": CLEAN_TEAM_NEXT,
+        "ManagerShiftDesk.tsx": CLEAN_TEAM_DESK,
+        "MyShifts.tsx": CLEAN_TEAM_MYSHIFTS,
+        "MyShiftsNext.tsx": CLEAN_TEAM_MYSHIFTS,
+        "OpsRulesPanel.tsx": CLEAN_TEAM_OPS,
+        "PerformancePanel.tsx": CLEAN_TEAM_PERF,
+        "PerformanceCard.tsx": CLEAN_TEAM_PERF,
+    }
+    for rel in _TEAM.renderers:
+        (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / rel).write_text(_team_bodies.get(rel.name, CLEAN_TEAM_NEXT), encoding="utf-8")
     (tmp / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
         CLEAN_PERF_GATEWAY, encoding="utf-8"
     )
