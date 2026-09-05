@@ -23,7 +23,7 @@
 
 import { ServiceUnavailableException } from "@nestjs/common";
 import axios from "axios";
-import { StripeClient } from "./stripe.client";
+import { FORBIDDEN_PATHS, StripeClient } from "./stripe.client";
 import { StripeConfigService } from "./stripe-config.service";
 
 jest.mock("axios");
@@ -52,16 +52,38 @@ function makeClient(secret: string | null = "sk_test_key") {
 beforeEach(() => jest.clearAllMocks());
 
 describe("StripeClient — the money-moving resources are unreachable", () => {
-  const forbidden = [
-    "payment_intents",
-    "charges",
-    "subscriptions",
-    "invoices",
-    "refunds",
-    "transfers",
-    "payouts",
-    "checkout/sessions",
-  ];
+  /**
+   * THE LIST ITSELF, not a copy of it.
+   *
+   * This was a hand-written array of eight, and the guard it tests has ten:
+   * `subscription_items` and `invoiceitems` were enforced in the shipped code
+   * and asserted nowhere. A test that restates the thing it is testing drifts
+   * from it silently, and the drift is invisible precisely because both look
+   * right on their own. Iterating the export makes an entry added tomorrow
+   * covered on the same commit.
+   */
+  const forbidden = FORBIDDEN_PATHS;
+
+  it("covers every entry the guard actually enforces", () => {
+    // A floor, not an equality: the point is that nothing is skipped, and a
+    // count asserted exactly would have to be edited by the same person who
+    // added the entry, which is the coupling this test exists to remove.
+    expect(forbidden.length).toBeGreaterThanOrEqual(10);
+    for (const p of [
+      "payment_intents",
+      "charges",
+      "subscriptions",
+      "subscription_items",
+      "invoices",
+      "invoiceitems",
+      "refunds",
+      "transfers",
+      "payouts",
+      "checkout/sessions",
+    ]) {
+      expect(forbidden).toContain(p);
+    }
+  });
 
   it.each(forbidden)("refuses to call /%s, and sends nothing", async (path) => {
     const { client, post } = makeClient();
@@ -89,15 +111,39 @@ describe("StripeClient — the money-moving resources are unreachable", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("refuses a sub-path of a forbidden resource too", async () => {
+  it.each(forbidden)("refuses a sub-path of /%s too", async (path) => {
+    // `/charges/ch_1` must be as unreachable as `/charges`. The prefix rule is
+    // what makes that true, and it had only ever been asserted for one resource.
     const { client, post } = makeClient();
     await expect(
       (
         client as unknown as {
           get: (p: string, q: Record<string, unknown>) => Promise<unknown>;
         }
-      ).get("payment_intents/pi_123", {}),
-    ).rejects.toThrow(/ADR 0110/);
+      ).get(`${path}/id_123`, {}),
+    ).rejects.toThrow(/takes money in exactly one place/);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("refuses a forbidden path however it is cased or slashed", async () => {
+    // `assertAllowed` normalises a leading slash and lower-cases. Both are
+    // load-bearing: `/Charges` and `//charges` are the same resource to Stripe,
+    // and neither normalisation was asserted anywhere.
+    const { client, post } = makeClient();
+    for (const path of [
+      "/charges",
+      "//charges",
+      "CHARGES",
+      "Payment_Intents",
+    ]) {
+      await expect(
+        (
+          client as unknown as {
+            post: (p: string, b: Record<string, unknown>) => Promise<unknown>;
+          }
+        ).post(path, {}),
+      ).rejects.toThrow(/takes money in exactly one place/);
+    }
     expect(post).not.toHaveBeenCalled();
   });
 

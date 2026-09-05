@@ -114,7 +114,7 @@ const STRIPE_BASE_URL = "https://api.stripe.com/v1";
  * the entry from the array instead would have opened the resource to every
  * future method silently, which is precisely what the deny-list exists to stop.
  */
-const FORBIDDEN_PATHS = [
+export const FORBIDDEN_PATHS = [
   "payment_intents",
   "charges",
   "subscriptions",
