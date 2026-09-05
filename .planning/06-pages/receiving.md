@@ -161,7 +161,7 @@ applies (see dashboard.md §7).
 - PAGE_MAP's entry-point list omits this route (see §2) — the atlas undercounts
   orphans; worth a regeneration note there rather than a fix here.
 - ~~**`markDelivered` could be run on an order the door had already received.**~~
-  ✅ **Resolved 2026-09-05** (founder: *"harden it in the procurement service for every
+  **Resolved 2026-09-05** (founder: *"harden it in the procurement service for every
   caller"*). The door and this control book stock under **different idempotency keys** —
   `door-receipt:{eventId}` versus `order-delivered-live:{orderId}` — so nothing
   reconciled them: a door count of 3 on a twelve-bottle order followed by anyone tapping

@@ -102,13 +102,17 @@ export interface JurisdictionRule {
  * margin is therefore exactly one re-derivation interval — the number the
  * cadence forces, not a round one somebody liked.
  *
- * It follows that changing the cadence changes this number.
- * `retention-rules.spec.ts` asserts the two stay tied.
+ * It follows that changing the cadence changes this number — so it is DERIVED
+ * from the cadence, not declared beside it. (The first cut declared two equal
+ * literals and a test that they matched; the audit of 2026-09-05 pointed out
+ * that such a test only catches a later hand edit, not a structural tie.)
+ * `raw-mail-retention.spec.ts` still asserts the equality, now as documentation.
  */
-export const RETENTION_MARGIN_DAYS = 92;
 
 /** The longest gap between two quarterly derivations, in days. See above. */
 export const LONGEST_QUARTER_DAYS = 92;
+
+export const RETENTION_MARGIN_DAYS: number = LONGEST_QUARTER_DAYS;
 
 /**
  * The rule table. Four jurisdictions are researched; everything else is

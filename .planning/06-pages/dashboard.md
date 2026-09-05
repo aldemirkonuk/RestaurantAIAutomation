@@ -585,7 +585,7 @@ the two or three actions worth doing before service, each of which actually happ
    carries both and a decision about the auto-send gate. Until then it is disabled
    and says why, which is the honest state, not a placeholder.
 15. ~~**Decide whether `markDelivered` should refuse an already-delivered order itself.**~~
-   ✅ **CLOSED 2026-09-05 — founder: "harden it in the procurement service for every
+   **CLOSED 2026-09-05 — founder: "harden it in the procurement service for every
    caller."** `markDelivered` now reads the order's state before any write and refuses a
    second delivery with `409 { reason: "order_already_delivered", orderId, status,
    deliveredAt, message }`; the same rule is the UPDATE's own `status=not.in.(...)` WHERE
