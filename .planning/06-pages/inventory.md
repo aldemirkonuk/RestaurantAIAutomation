@@ -406,3 +406,14 @@ Two constraints from the ADR that land on this page's work:
 Registry of every source examined, with the result of the 2026-09-04 fetch against each:
 [`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md). Dry-run
 proof (writes nothing): `scripts/fetch_price_sightings.py`.
+
+**Update 2026-09-04 — the public-list side (steps 2–3) is now built, as its own
+register.** The item above is class A (this page's own paper) and is unchanged. Separately,
+`price_index_postings` (`supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`)
+and the gateway `price-index/` module now hold the class-B/D/E **index** — California live,
+Iowa/Oregon control-state shelf lines, Michigan withheld. It is keyed by **state, not
+restaurant**, so it never touches this page's tenant-scoped bookkeeping; a house's index
+line is read at `GET /price-index/:state`. The food-unit and `'BOTTLE'` constraints above
+still bind class A; the index register sidesteps them by storing each posted price **as
+posted** (its own unit and pack, no 750 ml normalisation) rather than reducing it to a
+comparable — because an index line is shown, never averaged against a vendor quote.

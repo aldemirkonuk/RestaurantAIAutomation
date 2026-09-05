@@ -16,6 +16,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
+import { PriceIndexModule } from "./price-index/price-index.module";
 import { PosHubModule } from "./pos-hub/pos-hub.module";
 import { SimposModule } from "./simpos/simpos.module";
 import { LogsModule } from "./logs/logs.module";
@@ -89,6 +90,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
+    PriceIndexModule, // Public price-index register (posted lists / shelf prices), state-scoped (ADR 0117)
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     AskAiModule, // Ask AI (FUTURES §8): ask → propose → confirm → execute
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)

@@ -113,12 +113,22 @@
     `vpo_source_type_check` and `vpo_trust_tier_check`
     (`20260805154027_vendor_price_observations.sql:112-118`), **re-read, so again
     no migration**. `source_ref` is the page URL plus the product, `source_url` the
-    page, plus the content hash. `observed_at` is **the page's own date when the
-    page states one** (`readPageStatedDate`, which requires an explicit label so a
-    vintage or a copyright year is never mistaken for provenance) and otherwise the
-    fetch time carrying `raw.undated = true` and `raw.dateBasis =
-    'fetch_time_undated'`; `effective_date` stays NULL unless the vendor claimed
-    one. `is_outlier` is the **same** `isOutlierAgainstPriors` at the **same**
+    page, plus the content hash. **`observed_at` is when WE saw it — our fetch
+    clock, always** — and the page's own claimed date, when it makes one, goes to
+    **`effective_date`** (`readPageStatedDate`, which requires an explicit label so
+    a vintage or a copyright year is never mistaken for provenance). A page that
+    claims no date carries `raw.undated = true`, `raw.dateBasis =
+    'fetch_time_undated'` and a NULL `effective_date`; both dates are on every row
+    either way (`raw.fetchedAt`, `raw.pageStatedDate`). **This is a correction to
+    this build's first cut**, which put the claimed date into `observed_at`: the
+    comparison windows on `observed_at`, so a page claiming "prices effective 1
+    July" would have dropped a sighting read TODAY out of a 30-day window, and a
+    forward claim would have held a stale price inside one. The window must be a
+    fact about our reading, which we control and can audit, never a claim printed
+    on a page we do not control — which is also what the column's own comment
+    (`…vendor_price_observations.sql:75-78`) and this ADR's own provenance table
+    (`fetched_at -> observed_at`, `issued_at -> effective_date`) already said.
+    `is_outlier` is the **same** `isOutlierAgainstPriors` at the **same**
     `MIN_OUTLIER_SAMPLE` of 5, imported from `procurement/own-paper-sighting.ts`
     and re-exported rather than forked. This closes the scrape half of the gap
     `notifications.md` §13.25(b) named as the one that matters most.
@@ -480,6 +490,67 @@ and not an implementation detail.
    (see the Status note)? A batch pass can re-judge a row after later evidence
    arrives; the write-time writer cannot.
 
+   **ANSWERED by the founder, 2026-09-04: BOTH. Built the same day; Q7 is
+   CLOSED.**
+
+   **The reconciliation of the two writers**, stated so neither is mistaken for
+   the other:
+
+   * **Write time protects.** It is the only judge that exists in the hours
+     between a bad parse landing and any batch running. Without it a
+     lost-decimal $2175 sits in the ladder all day. It is decided against the
+     priors that happen to be on the register at that instant, and it is
+     recorded as `outlier_basis = 'write_time'`.
+   * **The re-judge corrects.** It is the only judge that can look twice. A row
+     flagged against four neighbours stays flagged forever under the write-time
+     writer, even after forty more arrive that prove it ordinary; nothing but a
+     pass over the group can clear it. Recorded as `outlier_basis = 'rejudge'`.
+   * **The re-judge wins where they disagree**, because it saw more. It
+     overwrites a write-time verdict for exactly that reason, and the row keeps
+     the reason and the timestamp of whichever judge spoke last.
+   * **They share one test and one floor.** `isOutlierAgainstPriors` /
+     `flagOutliers` at 3.5 robust deviations, `MIN_OUTLIER_SAMPLE = 5`, imported
+     in both places, never re-implemented. A second copy of a dispersion rule is
+     a second answer to the same question.
+   * **Neither is ever a bound.** No price is clamped, rounded, rejected or
+     refused for being extreme by either judge. A flagged row is written,
+     stored and visible; the flag only keeps it out of the "cheaper than usual"
+     ladder.
+
+   **All three writers are now screened.** The manual observation
+   (`vendor-intel/vendor-comparison.service.ts`) was the last one taking the
+   column DEFAULT of `false`; it now takes the same test as the own-paper mirror
+   and the site sweep, restricted to its own comparison class.
+
+   **What the build added, and where:**
+
+   * `apps/api-gateway/src/vendor-intel/outlier-rejudge.ts` — the pure pass.
+   * `apps/api-gateway/src/vendor-intel/outlier-rejudge.service.ts` — the cron,
+     **OFF by default** behind `PRICE_OUTLIER_REJUDGE_ENABLED`, plus the status
+     record. `GET /vendor-intel/outlier-rejudge/status` and
+     `POST /vendor-intel/outlier-rejudge/run` (both owner-only; the hand-run is
+     gated on the same flag, or the flag is not a switch).
+   * `supabase/migrations/20260905000000_an_outlier_verdict_names_its_reason.sql`
+     — `outlier_reason`, `outlier_judged_at`, `outlier_basis`
+     (`write_time` | `rejudge`), all nullable, RLS untouched, `is_outlier`
+     untouched. NULL is the honest value for every row written before a judge
+     existed, and it is what separates "judged clean" from the DEFAULT of a row
+     nobody has looked at.
+
+   **A CONSEQUENCE THAT IS THE FOUNDER'S TO ACCEPT OR OVERRULE.** The re-judge
+   groups by `(tenant scope, product identity, comparison class)`, with market
+   rows (`restaurant_id IS NULL`) forming their own group. That is deliberately
+   NARROWER than the reader, which reads `restaurant_id.is.null OR
+   restaurant_id.eq.<tenant>` — each house sees market rows unioned with its
+   own. A market row therefore sits in as many reader-groups as there are
+   houses, and `is_outlier` is ONE boolean on ONE row: it cannot physically
+   carry a different verdict per house. Judging a market row against its own
+   class of market rows is the only verdict that is true for every reader of it;
+   judging it inside one tenant's union would let one house's invoices decide
+   what every other house is allowed to see. The alternative — a per-tenant
+   verdict table instead of a column — is a larger change and was not made
+   unasked.
+
 ## The index register, built (2026-09-04)
 
 This is the concrete shape of steps 2 and 3. Classes D and E were always going to be
@@ -553,6 +624,8 @@ never beside a vendor quote.
 |---|---|---|
 | 2026-09-04 | Claude (research) | Created. Sources fetched and measured the same day; the leading candidate attacked and demoted from class B to class D before being recorded. Registry: `.planning/07-reference/price-sources.md`. Proof: `scripts/fetch_price_sightings.py` |
 | 2026-09-04 | Claude (build, index register) | Steps 2+3 BUILT on `feat/mudavym-design-p4`: `price_index_postings` migration (applied to a live local PG — RLS on, anon/authenticated NONE, uniqueness present, assertion NOTICE fired, idempotent), the gateway `price-index/` module (California LIVE via the app's anonymous JWT path; Iowa/Oregon class-D shelf lines; Michigan WITHHELD with the 403 evidence and no fabricated parser), a fetch job defaulting OFF behind `PRICE_INDEX_FETCH_ENABLED` with the staleness gate, and `GET /price-index/:state` + `/status`. 40 tests pass, gateway tsc + eslint clean on the module. Fixtures recorded in `.planning/07-reference/price-sources.md` and the module's `__fixtures__/`. |
+| 2026-09-04 | Claude (build, sweep, correction) | Founder's second call, applied to `vendor-site-sighting.ts` and its tests on top of `115d2260`: `observed_at` = our fetch clock, the page's claimed date = `effective_date`, `raw.fetchedAt` beside both, `undated` unchanged. The comparison's 30-day window therefore reads our read date and never a claimed effective date. `jest src/vendor-intel` 137 pass. |
 | 2026-09-04 | Claude (build, sweep) | Q1 answered by the founder and BUILT: the scheduled vendor-site sweep (OFF by default), tier-4 labelling with the undated flag and the shared outlier test, and the class gate that keeps a tier-4 row out of `items`. 30 new tests in `vendor-intel` (136 in the directory, all green); the gate proven against a copy of HEAD, where the same rows produced a fabricated 50% saving. Dry run against `www.wine.com` and `www.klwines.com`: robots honoured, both 403 at the page. The gateway on :4000 was DOWN for this session, so nothing was curl-verified. |
 | 2026-09-04 | Claude (build) | Step 1 BUILT on `feat/mudavym-design-p4`: `own-paper-sighting.ts` + `recordOwnPaperSighting`, both `price_history` call sites mirrored, idempotent on the existing `(source_ref, content_hash)` index, `is_outlier` written by `flagOutliers` at write time (founder's instruction; the divergence from this ADR's own batch-pass wording is recorded in the Status). 14 tests pass; `GET /vendor-intel/below-average` still 200 with `scanned.observations` 0 locally, the register being empty in this environment. Two new founder questions (Q6, Q7). |
+| 2026-09-04 | Claude (build) | **Q7 ANSWERED (BOTH) and CLOSED.** The third writer (`recordManualObservation`) is now screened with the same function and floor as the other two, restricted to its own comparison class. The nightly re-judge is BUILT (`vendor-intel/outlier-rejudge.ts` + `.service.ts`), OFF by default behind `PRICE_OUTLIER_REJUDGE_ENABLED`, judging the readers' own trailing-30-day window, with `GET /vendor-intel/outlier-rejudge/status`. Migration `20260905000000_an_outlier_verdict_names_its_reason.sql` adds `outlier_reason` / `outlier_judged_at` / `outlier_basis` (all nullable; `is_outlier` and RLS untouched). 309 tests pass across `src/vendor-intel` + `src/analytics/engine`; the disarmed status route verified live on :4000. One founder-visible consequence recorded under Q7: a market row's verdict is necessarily platform-wide. |
 | 2026-09-04 | Claude (market research, TR + UK) | **Q4 researched, not decided.** ~65 fetch attempts recorded in `.planning/07-reference/price-sources.md` §"Türkiye and the United Kingdom, 2026-09-04". Verified: GİB ÖTV (III)(A) PDF, HMRC duty rates, hal.gov.tr HKS (daily, TL/kg, live today), Defra wholesale fruit and veg CSV, ONS `d7bv` JSON, TÜİK/Metro/Bizim Toptan robots.txt, five Turkish producers, five UK trade portals, WSTA, Liv-ex, AHDB terms. Unverified and named as such: resmigazete.gov.tr and mevzuat.gov.tr (TLS/DNS), TCMB EVDS, İBB Swagger, Booker, Brakes, Venus, all three UK grocers' robots.txt. Found the class-A USD-default defect above. Q5 updated (quote requested); Q8–Q12 filed in the registry. No code changed. |

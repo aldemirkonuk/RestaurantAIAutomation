@@ -1861,3 +1861,15 @@ built here:
    Registry with today's fetch result per source:
    [`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md).
    Proof (dry run, writes nothing): `scripts/fetch_price_sightings.py`.
+
+   **Update 2026-09-04 — the separate-line side is now built.** The third bullet's
+   "separate line, never this column" is now a real register:
+   `price_index_postings` (`supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`)
+   plus the gateway `price-index/` module — **California live** (class-B beer posting),
+   **Iowa/Oregon** control-state shelf lines (class D), **Michigan withheld** (403, no
+   parser). Keyed by state, never restaurant, so it can never enter a house's ladder;
+   read at `GET /price-index/:state?product=` and drawn as its own labelled line. This
+   does **not** fill the `quote` column on this page's registers — that is still class A,
+   still 0 rows — it is the neighbour line ADR 0111 always intended. Beer is the only
+   category live today; wine still waits on a class-B or class-C wine source (NY SLA
+   unverified; Wine-Searcher quote pending, Q5).
