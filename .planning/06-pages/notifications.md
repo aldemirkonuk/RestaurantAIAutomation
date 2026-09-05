@@ -1060,8 +1060,9 @@ calls `createSystemAction`.
 | **Invoice certified** (`type: invoice_received`) | `invoice-confirmed.producer.ts` — `procurement_documents` where `status = 'verified'`, with amount, vendor and the tie-out. Never says approved, accepted or paid: verify "asserts only that the transcription is right" (`documents.controller.ts:305-310`), and a spec pins that vocabulary | **Built, NOT armed.** `*/15 * * * *`. This is §13.19's matching-good case; the two existing `invoice_received` producers still fire only on a discrepancy |
 | **Sale record** (`type: service_closed`) | `sale-record.producer.ts` — one line per settled service day from `pos_checks` (`voided = false`), with checks, revenue, covers and the best seller by revenue. **No POS ⇒ no row**, asked of `GoalsService.getPosRevenueWindow` whose `posConnected` is the one place that decides it (`analytics/goals.service.ts`, `getPosRevenueWindow` over `hasPosHistory` — **no line number on purpose: that file moved twice during the 2026-09-03 session, so grep the function names**). A connected POS with zero checks also writes nothing — a closed Monday and a failed import look identical | **Built, NOT armed.** Checked hourly (`0 * * * *`); a day is summarised once `service-day.ts` says it has settled. **Measured on production `exzueerziesmczwlhomd` 2026-09-03: `pos_checks` holds 173 rows and `restaurants.operating_hours` is now non-NULL on 2 of them** — so both settle rules can fire, and the row names which one decided. (The migration header's "every existing row keeps NULL" was true on 2026-09-02 and is not any more.) |
 | **Market price** (`type: price_change`) | `market-price.producer.ts` — calls `VendorComparisonService.belowTrailingAverage` (the box's own read), narrows to products **this house buys** (distinct `master_wine_id` on this restaurant's order items), and applies a 10% floor (`MARKET_SIGNAL_DROP_PCT`) and a 60% implausibility ceiling. One line per product per week | **Built, NOT armed, and MUTE if it were.** Once a day on the tenant's wall clock (`MARKET_SIGNAL_LOCAL_HOUR`, default 10). Measured on production 2026-09-03: `vendor_price_observations` holds **0 rows**, so nothing can fire regardless of arming — `GET /notifications/producers/status` says exactly that per producer (`willWrite: false`, `silentReason`), and the run row's `withheld_reason` distinguishes "nothing has been observed" from "nothing is cheap" |
-| **Tool grant suspended** (`type: grant_suspended`) | `grant-suspended.producer.ts` — sweeps `mcp_tool_grants` where `needs_reconsent_at IS NOT NULL`, scoped to this house through `restaurant_mcp_connections.restaurant_id` (the grants table carries no `restaurant_id` of its own). The stamp is `McpConnectionsService.reconcileGrants` (`mcp-connections.service.ts:720-798`), which runs from `writeProbe` (`:1582`) alone. The sentence names the server, the tool, what changed in the server's own words (`needs_reconsent_reason`, e.g. "the server changed readOnlyHint true to false"), when the change was SEEN, and that only a manager re-consenting on `/connections` clears it. Metadata carries `connectionId`, `tool`, `previousHash` (the grant's `tool_list_hash`), `currentHash` (hashed from the connection's current `probe_tools`), `changedAt` and `changedAtSource`. **The only producer that narrows its own audience**: owners and managers only, resolved through `user_restaurant_access` (`role IN ('owner','manager')`, `is_active = true`) and intersected with the sweep's audience so quiet hours still decide delivery. A failed role read THROWS — neither "tell everybody" nor "tell nobody" is honest | **Built, NOT armed.** `*/15 * * * *` — a permission the house did not change is already being refused. Dedupe `grant:<grantId>:<toolListHash>`, so a standing suspension is written once however many times it is swept, and a re-consent (revoke-then-insert, `mcp-connections.service.ts:648-651`) followed by a fresh change is a new row with a new id and a new hash, and is said again. A tool WITHDRAWN by the server is reported as a revocation, not a suspension; a tool ADDED is not reported at all, because it suspends nothing (`tool-classification.ts:172-176`) |
-| *(all seven)* | `notification-producers.service.ts` holds the two crons; `producer-ledger.service.ts` is the only thing that writes. Every emission claims a row in `notification_producer_claims` (UNIQUE `(restaurant_id, producer, dedupe_key, user_id)`, migration `20260903143000`) BEFORE it writes, so two gateway instances cannot both speak. Each producer opens and closes a `notification_producer_runs` row per tenant per sweep, carrying `withheld_reason` — the producer's own sentence for a legitimate no-op, so a zero is never reported as health | The claim is **per person**, not per event, so quiet hours DEFER a reader instead of losing them the record. The row's `created_at` is then the delivery time, which is why every producer carries `metadata.occurredAt` and says the real time in words |
+| **Tool grant suspended** (`type: grant_suspended`) | `grant-suspended.producer.ts` — sweeps `mcp_tool_grants` where `needs_reconsent_at IS NOT NULL`, scoped to this house through `restaurant_mcp_connections.restaurant_id` (the grants table carries no `restaurant_id` of its own). The stamp is `McpConnectionsService.reconcileGrants` (`mcp-connections.service.ts:720-798`), which runs from `writeProbe` (`:1582`) alone. The sentence names the server, the tool, what changed in the server's own words (`needs_reconsent_reason`, e.g. "the server changed readOnlyHint true to false"), when the change was SEEN, and that only a manager re-consenting on `/connections` clears it. Metadata carries `connectionId`, `tool`, `previousHash` (the grant's `tool_list_hash`), `currentHash` (hashed from the connection's current `probe_tools`), `changedAt` and `changedAtSource`. **The only producer that narrows its own audience**: owners and managers only, resolved through `user_restaurant_access` (`role IN ('owner','manager')`, `is_active = true`) and intersected with the sweep's audience so quiet hours still decide delivery. A failed role read THROWS — neither "tell everybody" nor "tell nobody" is honest | **Built, NOT armed.** `*/15 * * * *` — a permission the house did not change is already being refused. Dedupe `grant:<grantId>:<toolListHash>`, so a standing suspension is written once however many times it is swept, and a re-consent (revoke-then-insert, `mcp-connections.service.ts:648-651`) followed by a fresh change is a new row with a new id and a new hash, and is said again. A tool WITHDRAWN by the server is reported as a revocation, not a suspension; a tool ADDED is now the **eighth** producer's line, not this one's, because it suspends nothing (`tool-classification.ts:172-176`). **Extended 2026-09-04 (founder): a suspension still standing is RE-SAID once a week, to OWNERS only** — key `grant:<grantId>:<hash>:week<N>`, audience narrowed a second time through `role IN ('owner')`, each line carrying `daysElapsed` and `weekOfSuspension` in its title and metadata. Week 0 is unchanged byte for byte, so a suspension already reported stays reported. Bounded at `MAX_REPEATS = 12` — a quarter — after which the run row keeps naming it and the inbox stops repeating it |
+| **A tool was added** (`type: mcp_tool_added`, producer `added_tool`) | `added-tool.producer.ts` — the founder's 2026-09-04 answer to §13.30. An addition is an **information line, not a suspension**: the gate does not refuse it and no grant moves, which is exactly why the seventh producer is right not to speak about it (`tool-classification.ts:181-190`). Names the server, the tool and its declared classification; `unknown` is rendered as a **write**, never as read-only (`declaredClassification`, `tool-classification.ts:61-72`). Owners and managers only, same resolution and same THROW-on-failure as the seventh. Metadata carries `grantTouched: false` and says in words that nothing was granted | **Built, NOT armed.** `*/15 * * * *`. Dedupe `server:<connectionId>:tool:<name>:<firstSeenHash>`. **Needed a durable memory and there was none**: `user_mcp_connections.probe_tools` is overwritten by every probe (`probe_tools: outcome.tools`, `mcp-connections.service.ts:1666`), so nothing could tell an added tool from an old one. `notification_mcp_tool_sightings` (migration `20260904230000`) is the producer's own ledger — a table here rather than a column on `user_mcp_connections` so that **no hunk is needed in `mcp-connections/`**, which is under another builder's edit. The first sweep of a server SEEDS a baseline and announces nothing; a removed tool closes its run silently; a re-added tool opens a new run, so it is a new event and is said again. A probe that did not ANSWER closes nothing — a failed probe says nothing about what a server offers |
+| *(all eight)* | `notification-producers.service.ts` holds the two crons; `producer-ledger.service.ts` is the only thing that writes. Every emission claims a row in `notification_producer_claims` (UNIQUE `(restaurant_id, producer, dedupe_key, user_id)`, migration `20260903143000`) BEFORE it writes, so two gateway instances cannot both speak. Each producer opens and closes a `notification_producer_runs` row per tenant per sweep, carrying `withheld_reason` — the producer's own sentence for a legitimate no-op, so a zero is never reported as health | The claim is **per person**, not per event, so quiet hours DEFER a reader instead of losing them the record. The row's `created_at` is then the delivery time, which is why every producer carries `metadata.occurredAt` and says the real time in words |
 
 ### Writes
 
@@ -1409,6 +1410,64 @@ sibling's implementation differs, the sibling's file is the truth.
          (`vendor-comparison.service.ts:260`), which still writes `is_outlier`
          at its `false` default.
 
+       **The third writer is now screened too, and the batch pass exists,
+       2026-09-04 (later the same day).** ADR 0117's Q7 — *should the batch
+       outlier pass still be built alongside the write-time one?* — was answered
+       **BOTH**, and both halves are on `feat/mudavym-design-p4`:
+
+       * **The manual observation is no longer exempt.**
+         `VendorComparisonService.recordManualObservation` now runs the SAME
+         `isOutlierAgainstPriors` at the SAME five-value floor as the other two
+         writers, over sightings of the same product **in the same comparison
+         class** (`comparisonClassOf`), so five scraped page prices can never
+         make a quoted one look deviant. It is never a bound: the typed number
+         is stored exactly as entered, and the verdict is returned to the caller
+         so the person who typed it is told the row was set aside rather than
+         discovering later that it never reached the ladder. Measured against a
+         copy of HEAD's file, the pre-fix writer put a $2175 typed price — four
+         priors near $20 on the register — in with **no verdict on it at all**.
+       * **The nightly re-judge**
+         (`apps/api-gateway/src/vendor-intel/outlier-rejudge.ts` and
+         `outlier-rejudge.service.ts`), **OFF by default** behind
+         `PRICE_OUTLIER_REJUDGE_ENABLED`. It re-runs the MAD test over exactly
+         the window the readers use — `belowTrailingAverage`'s trailing
+         `windowDays ?? 30` — grouped by `(tenant scope, product identity,
+         comparison class)`, and sets or clears `is_outlier`. It never touches a
+         group below the five-value floor, never touches a mixed-currency or
+         unrecognised-class group, and one product's failed write never stops
+         another's. Why both: **write time protects** (it is the only judge that
+         exists in the hours between a bad parse landing and any batch running),
+         **the re-judge corrects** (a row flagged against four neighbours stays
+         flagged forever once forty more arrive that prove it ordinary — only a
+         pass over the group can clear it).
+       * **The verdict is now legible.** Migration
+         `20260905000000_an_outlier_verdict_names_its_reason.sql` adds
+         `outlier_reason`, `outlier_judged_at` and `outlier_basis`
+         (`write_time` | `rejudge`), all **nullable**, because a NULL is the
+         honest value for the rows written before any judge existed — and it is
+         what finally separates "judged clean" from the column DEFAULT of a row
+         nobody has ever looked at. `is_outlier` itself is unchanged, so this
+         box's `.eq("is_outlier", false)` filter behaves exactly as before.
+       * **`GET /vendor-intel/outlier-rejudge/status`** (owner-only) carries
+         armed-or-not, the last run, rows judged, flags set and cleared, groups
+         left alone by reason, and a SENTENCE saying why it is quiet. Verified
+         live on :4000: `armed: false`, `lastRun: null`, and the sentence *"No
+         stored outlier verdict has been revisited, so every flag on the
+         register is the one its writer set when the row landed."* An empty flip
+         count from a switched-off job must never read as agreement.
+       * **The readers are UNCHANGED.** They still filter `is_outlier` and
+         nothing else; the proof that a flip actually reaches this box is
+         `outlier-rejudge.spec.ts` — *"the cleared row then reaches the reader,
+         which is the point"* — which applies a flip and re-runs
+         `priceBelowAverage` through the same filter.
+       * **Still open, deliberately:** the re-judge groups market rows
+         (`restaurant_id IS NULL`) **on their own**, which is narrower than the
+         reader's `restaurant_id.is.null OR restaurant_id.eq.<tenant>` union.
+         `is_outlier` is one boolean on one row and cannot carry a different
+         verdict per house; judging a market row inside one tenant's union would
+         let that house's invoices decide what every other house may see. Filed
+         as a founder-visible consequence in ADR 0117 rather than hidden.
+
     b3. **The register's first fill is BUILT, 2026-09-04.** The mirror b2 below
        calls "the whole of step one" now exists. Both `price_history` writers
        (`procurement.service.ts` receipt verification and order confirmation)
@@ -1533,7 +1592,7 @@ sibling's implementation differs, the sibling's file is the truth.
 
 26. ~~**Arming these producers is a founder decision**~~ — **DECIDED 2026-09-03:
     the founder said arm all of them.** `NOTIFICATION_PRODUCERS_ENABLED=true` on
-    the gateway is the ONE switch and it arms all six for the deployment; there
+    the gateway is the ONE switch and it arms all eight for the deployment; there
     is deliberately no per-producer switch, because six env vars is six ways to
     have half a house watched and no way to see which half. The status route
     states this in `armingNote` and, per producer, in `willWrite` +
@@ -1591,20 +1650,50 @@ sibling's implementation differs, the sibling's file is the truth.
     nothing stops a fourth page growing its own again — a guard is the shape that would,
     and is not built.
 
-30. **A tool being ADDED to a connected server is reported nowhere.** The
-    grant-suspension producer (§11) can only speak about rows
-    `reconcileGrants` writes, and it deliberately writes none for an addition:
-    per-tool fingerprints exist precisely so "a server adding an unrelated tool
-    must not suspend a grant nobody touched"
-    (`mcp-runtime/tool-classification.ts:172-176`). A house that would like to
-    know its server grew a `delete_everything` tool it never granted therefore
-    learns it only by opening `/connections`. Closing this needs a decision
-    first — a new tool is not a permission change, so it is not this register's
-    event — and then somewhere durable to compare a probe's list against the
-    previous one. Filed 2026-09-04, not built, not faked.
+30. ~~**A tool being ADDED to a connected server is reported nowhere.**~~
+    **CLOSED 2026-09-04 by the founder's call and the eighth producer**
+    (`notifications/producers/added-tool.producer.ts`, §11). The decision this
+    item said was needed first was made: an addition is an **information line,
+    not a suspension** — no grant is created, changed or suspended, and the row
+    says so in `metadata.grantTouched: false`. The durable comparison it also
+    asked for is `notification_mcp_tool_sightings` (migration
+    `20260904230000`), built as the producer's OWN table rather than a column on
+    `user_mcp_connections`, so nothing in `mcp-connections/` — under another
+    builder's edit — had to change. Measured before deciding:
+    `user_mcp_connections.probe_tools` already holds a tools/list result
+    (`20260903104500:89-92`) but every probe OVERWRITES it
+    (`mcp-connections.service.ts:1666`), so no previous list existed anywhere in
+    the schema. Fourteen tests, including the founder's two by name — a tool is
+    written once and never again for the same first sighting, and a
+    removed-then-re-added tool is written again.
+
 31. **`grant_suspended` has no register on the rebuilt page yet.** `KIND_BY_TYPE`
     in `notifications/next/nt-format.ts` does not carry the type, so these rows
     fall to *Other* — the exact way a new register goes invisible that the map's
     own comment warns about. The one-line patch is written out in the pass
     report; it was not applied because that file is under concurrent edit by the
     day-strip builder. Web-only, blocking nothing in the gateway.
+
+32. ~~**A suspension is said once and then never again.**~~ **CLOSED 2026-09-04
+    (founder): a suspension still standing is re-said weekly, to owners only.**
+    `grant-suspended.producer.ts`, key `grant:<grantId>:<hash>:week<N>`, seven
+    tests. Two properties worth naming because they are easy to get wrong: the
+    week arithmetic is on `needs_reconsent_at`, NOT on when this producer first
+    spoke, so a house that arms the producer late hears the true age of the
+    suspension rather than the age of our knowledge of it; and the repeats
+    escalate to `role IN ('owner')` rather than re-pinging every manager weekly,
+    which is the founder's call and is stated in each row's
+    `metadata.audience`. Bounded at twelve weeks — the run row and
+    `/connections` keep carrying it after that, the day book stops.
+33. **`mcp_tool_added` has no register on the rebuilt page yet**, exactly as
+    `grant_suspended` does not (§13.31). Same one-line patch, same file under
+    the same concurrent edit, same reason it was not applied here. Both types
+    fall to *Other* until the page owner adds them; the producers deliberately
+    did not invent a type the map already carries.
+34. **An added tool's classification is the server's word, and nobody checks
+    it.** `declaredClassification` reads `readOnlyHint` and treats anything else
+    as a write, which is the right default and is not verification: a server may
+    declare `readOnlyHint: true` on a tool that writes. Nothing in this product
+    can tell. The line says what was DECLARED and by whom, never what the tool
+    does — and `confirmClassification` (`tool-classification.ts:128`) is where a
+    human's verdict would land if the founder ever wants one.

@@ -58,7 +58,10 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   *Not yet filed* for a rule this page does not recognise and the dark *Change a rule*.
   Every entry under **Schedule it** carries *Put it on the day-book*, which prints the
   drafted calendar line (title · date · type · note naming the rule) and opens
-  `/calendar?new=<json>`. Every entry under **Goals slipping** carries *See where the
+  `/calendar?new=<json>` — which the calendar **reads** since 2026-09-04, so the entry
+  arrives already filled in and the manager only checks and saves it
+  (`pages/calendar/next/CalendarNext.tsx:66-106`; the draft stays printed here so a
+  person sees what is being carried across). Every entry under **Goals slipping** carries *See where the
   goal stands* — a deep link to the reports desk, naming the goal in words — plus the
   levers the rule points at, taken from the gateway's own metric→category table.
 - **The day strip is the house's, and shows a full calendar month** (2026-09-04):
@@ -154,6 +157,35 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   being watched — goal X, due …"** and carries a `watched` stamp; the goal sheet warns about the
   exact duplicate rather than only about the figure. A goal with a NULL source was set by hand
   and watches nothing — the page never infers a watch from a shared metric.
+
+### Added 2026-09-04 — the book of scenarios on the goal sheet (ADR 0120)
+
+- **Start from a scenario**, above the "Held on" block. On this page the measure
+  is already chosen — the rule knows which figure its own prescription moves — so
+  the book is an OVERRIDE rather than the starting point, and the default option
+  is *"This entry's own measure: <label>"*.
+- **It states what the override costs.** A goal held on a different figure is not
+  this rule's goal, so the write drops `source_rule_key`; the sheet says so
+  before the button is pressed (*"this goal will not record which entry it came
+  from — so this entry will not show as watched"*), and the duplicate warnings
+  below it switch to the new figure. Keeping the provenance across a swap would
+  make the "this entry is being watched" line a guess.
+- **It never fills the target.** Same rule as `rec-forward.ts` already carried:
+  the rule states a gap, not a number the house should be held to. The scenario
+  adds the operator RANGE beside it — quoted in the source's own words with the
+  source's URL and date — plus the standing caveat that a range is a fact about
+  the houses in that report and not about this one.
+- **A quarter scenario keeps the period the manager chose**, and says so: this
+  sheet only mints a week or a month (`deadlineFor`), and silently narrowing a
+  quarterly scenario to a month would change what the goal means.
+- **A scenario naming a measure this page does not carry is REFUSED with a
+  sentence**, never coerced onto the nearest one — that is the two catalogues
+  having drifted, and a drift must read as words rather than as a different
+  write.
+- **Dark, honestly:** `scenarios === undefined` reads "Reading the book of
+  scenarios"; `null` reads one line saying it could not be read and that the
+  entry's own measure is still offered. There is no bundled copy to fall back
+  to.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_recommendations`)
 
@@ -622,13 +654,14 @@ on each entry:
 
 Each entry there carries **Put it on the day-book** (`rec-daybook.ts`). It prints the
 drafted line in full — title, date, type, note naming the rule — and then opens
-`/calendar?new=<url-safe JSON>`. **Two things it does not claim.** First, the calendar
-does not read that link yet: `pages/calendar/next/CalendarNext.tsx:190-214` reads
-`openModal` and `date` and nothing else, and `SheetTarget`'s create arm
-(`EventSheet.tsx:63-65`) is `{ mode; date; startTime }` with no title, type or note. So
-the copy says the calendar *opens on the date with the details to fill*, never that it
-is prefilled; the ready patch for the calendar builder is in this pass's report, and
-when it lands only `DAYBOOK_LANDING` changes. Second, the date is the day the strip has
+`/calendar?new=<url-safe JSON>`. **What it claims, and what it still does not.** The
+calendar reads that link since 2026-09-04: `readNewParam`
+(`pages/calendar/next/CalendarNext.tsx:66-106`) validates every field and the create arm
+of `SheetTarget` carries a `prefill` (`EventSheet.tsx:63-76`) that seeds title, type and
+note (`:112-115,134`). So the copy now says the entry arrives *already filled in, for
+you to check and save* — filled in, never *filed*: nothing is written until the manager
+saves, and a type outside the gateway's enum is dropped rather than seeded. Second, the
+date is the day the strip has
 selected, or today — **not** the weekday named inside `weekday_gap`'s observation.
 Reading "Tuesday" back out of "Friday is reliably your strongest day; Tuesday the
 weakest" would be parsing a sentence written for a reader as if it were a field, which
@@ -894,11 +927,13 @@ dashboard.md §7.
 
 **Filed 2026-09-04, with the fifth pass (§1b), and why each is not yet closed:**
 
-- **The calendar cannot be prefilled from a link.** `CalendarNext.tsx:190-214` reads
-  `openModal` and `date` only, and `SheetTarget`'s create arm carries no title, type or
-  note. *Why not yet:* `pages/calendar/next/**` is another builder's this wave; the
-  ready patch is in the pass's report and is four small hunks. Until it lands the
-  control says the calendar opens with the details to fill, and prints them.
+- ~~**The calendar cannot be prefilled from a link.**~~ **CLOSED 2026-09-04.** The
+  calendar reads `?new=` (`CalendarNext.tsx:66-106`, consumed at `:233-250`) and seeds
+  the create sheet through `SheetTarget.prefill` (`EventSheet.tsx:63-76,112-115,134`),
+  with six tests in `CalendarNext.test.tsx`. `DAYBOOK_LANDING` changed with it, as the
+  patch said it would. What is still open is narrower and is filed under `calendar.md`
+  §9: the hand-over carries title, type and note only — no time, vendor, repeat or
+  reminder — because this page has no measured value for any of them.
 - **`/reports` reads nothing off the URL.** No `useSearchParams`, no `URLSearchParams`,
   no `location.search` anywhere under `apps/web/src/pages/reports/` (re-grepped
   2026-09-04). Both forward doors — the cutting link and now the goal link — therefore
@@ -1165,11 +1200,11 @@ execution, no first-fired timestamp — in the same way.
    surface reachable only via the command palette. *Blocker: founder decision — no ADR
    exists either way; add to `OPEN-DECISIONS.md`.* The redesign deliberately adds no
    nav entry.
-5. **Teach the calendar to read `?new=`.** The patch is specified in the 2026-09-04
-   report: extend `SheetTarget`'s create arm with an optional `prefill`, seed
-   `EventSheet`'s `title` / `typeName` / `description` from it, and parse the param in
-   `CalendarNext`'s existing deep-link effect. Owned by the calendar builder; when it
-   lands, `rec-daybook.ts` `DAYBOOK_LANDING` is the one string that changes here.
+5. ~~**Teach the calendar to read `?new=`.**~~ **DONE 2026-09-04** by the calendar
+   builder, as specified: `prefill` on `SheetTarget`'s create arm, seeded into
+   `EventSheet`'s `title` / `typeName` / `description`, parsed by `readNewParam` in
+   `CalendarNext`'s existing deep-link effect. `DAYBOOK_LANDING` was the one string
+   that changed here.
 6. Correct the stale `v3.0-TECH-DEBT.md:493` line ("Recommendations entirely read-only")
    — actions shipped; the page's real problem was auth, and that is now fixed.
 7. **Build the digest sender, or retire the preference.** `recommendation_digest_prefs`
@@ -1276,3 +1311,20 @@ execution, no first-fired timestamp — in the same way.
     hatch what its loaded pages cover, because there is no `GET /notifications/counts`;
     a day older than the oldest loaded row is `unknown`, and while a day filter is on
     every other day is. Said on the page; closing it is a gateway route.
+
+29. **The twelve scenarios this page can offer but not hold** (ADR 0120). The
+    book lists them greyed, each naming the measure it would take, so the gap is
+    visible on the sheet rather than only in a note: prime cost, food-cost
+    ratio, labour ratio, pour cost, waste, days of stock, table turns, RevPASH,
+    vendor concentration, on-time delivery, cash days, staff turnover. Two of
+    them already have a rule on this page that fires about them —
+    `vendor_concentration` and `staff_spread` — so the entry can name the
+    problem and the sheet cannot hold a goal on it, which is the sharpest
+    version of the gap. Closing order and the measured state of each is in
+    `reports.md` §13.22.
+30. **A scenario chosen here cannot record that it came from this entry.**
+    Dropping `source_rule_key` on a swap is honest but lossy: the goal keeps no
+    trace of the recommendation that started it. A second column
+    (`origin_rule_key`, "where the conversation started", distinct from "what
+    this goal watches") would keep both facts. New column, new decision — filed,
+    not built.
