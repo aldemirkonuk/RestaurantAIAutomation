@@ -8,10 +8,13 @@
  *
  * ONE REGISTER, TWO DOORS. This is not a second store of terms. It reads and
  * writes the SAME rows through the SAME routes as
- * `pages/settings/next/VendorTermsSection.tsx`, and it imports that section's
- * formatters (`settings/next/st-format.ts`) rather than restating them, so a
- * cutoff cannot read one way here and another way there. The link at the foot
- * takes the reader to the whole-house view.
+ * `pages/settings/next/VendorTermsSection.tsx`, and it takes the formatters
+ * both doors speak from `lib/mudavym/format.ts` rather than restating them, so
+ * a cutoff cannot read one way here and another way there. Until 2026-09-04
+ * those formatters were imported from `settings/next/st-format.ts` — one page
+ * reaching into another page's module; they were hoisted to the shared library
+ * and `st-format.ts` re-exports them, so nothing about the output moved. The
+ * link at the foot takes the reader to the whole-house view.
  *
  * THE RULE IT INHERITS: a term is a claim, and every claim shows its source.
  * `Cell` takes the whole `TermCell` and branches on `source`, so no code path
@@ -36,7 +39,7 @@ import {
   fmtWeekdays,
   fmtWhen,
   type TermSource,
-} from '../../settings/next/st-format';
+} from '@/lib/mudavym/format';
 import type {
   SetVendorTermsBody,
   TermCell,

@@ -12,19 +12,32 @@
    (`minmax(var(--mdv-ds-min), 1fr)`), and below it the strip scrolls
    horizontally instead of shrinking the day number out of legibility.
 
-   Measured 2026-09-04 against the two shells this strip is mounted in:
+   Measured live 2026-09-04 against the two shells this strip is mounted in,
+   with September on screen, so THIRTY cells, not 31 (`getBoundingClientRect`
+   off the rendered strip and its first cell). Both shells sit to the right of
+   the app's fixed 260px sidebar (`md:pl-[260px]`), which is what actually
+   governs the line at 1280 — not the wrap's own cap.
 
-     /recommendations  `.rc-wrap` is max-width 1120 + 16px padding, so the
-                       content line is 1088px at BOTH 1440 and 1280 (the wrap
-                       caps first). Strip inner = 1088 − 2 (border) − 10
-                       (padding) = 1076px; 31 cells with 30 gaps of 2px leave
-                       1016px, i.e. 32.7px a cell — over the 30px floor.
-     /notifications    the shell is max-w-[1180px] with 24px padding at ≥640,
-                       so the line is 1132px and a cell is 34.2px.
+     viewport   /recommendations               /notifications
+                `.rc-wrap`: max-width 1120,    max-w-[1180px],
+                16px padding                   24px padding at >=640
+       1440     strip 1088px, cell 33.9px      strip 1132px, cell 35.4px
+       1280     strip  988px, cell 30.6px      strip  972px, cell 30.1px
 
-   The floor bites at a viewport of about 1034px on /recommendations
-   (990px of cells + 60px of gaps + 22px of chrome + 32px of page padding);
-   under that the strip scrolls. That is the deliberate trade: a legible 30px
+   The arithmetic those numbers come out of: strip inner = strip − 2 (border)
+   − 10 (padding) = strip − 12, and the cells share what the 29 gaps of 2px
+   leave. 1088 − 12 − 58 = 1018 over 30 cells = 33.9px; 988 − 12 − 58 = 918
+   over 30 = 30.6px. The 1120 cap is only reached from a 1380 viewport up
+   (1120 + the 260 sidebar); below that the line is viewport − 260 − 32. On
+   /notifications the 1180 cap is reached exactly at 1440 (1440 − 260 = 1180);
+   below that the line is viewport − 260 − 48.
+
+   The floor bites where a cell would fall under 30px, and this was measured
+   rather than derived: /recommendations scrolls from a 1260 viewport down
+   (1262 is the last width that does not), /notifications from 1276 down (1278
+   is the last). A 31-day month costs one more cell and one more gap; that
+   arithmetic (unmeasured, because September was on screen) puts the two at
+   about 1294 and 1310. That is the deliberate trade: a legible 30px
    number behind a scrollbar beats an illegible 24px one that fits.
 
    MOTION. `ink` only — cubic-bezier(0.16, 1, 0.3, 1) at 160ms, the micro-state

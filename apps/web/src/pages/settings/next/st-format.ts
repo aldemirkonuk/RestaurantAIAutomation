@@ -20,7 +20,28 @@
 
 import { getErrorMessage } from '@/services/api/client';
 
-export const EM = '—';
+/**
+ * The half of this file that /providers also speaks now lives in
+ * `lib/mudavym/format.ts` (hoisted 2026-09-04). It is re-exported here rather
+ * than left as a second import for every caller: this page had thirty-odd
+ * `st-format` imports and none of them was wrong, so the move is a change of
+ * WHERE the shared words live, not of who may say them.
+ *
+ * `EM` is re-exported because half of this file's own sentences use it.
+ */
+export {
+  EM,
+  SOURCE_LABEL,
+  WEEKDAY_INITIALS,
+  WEEKDAY_NAMES,
+  fmtCutoff,
+  fmtExact,
+  fmtMoney,
+  fmtWeekdays,
+  fmtWhen,
+  type TermSource,
+} from '@/lib/mudavym/format';
+import { EM } from '@/lib/mudavym/format';
 
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
@@ -321,68 +342,6 @@ export function keptTally(connectionsOn = false): string {
 
 /* ── The vendor-terms vocabulary ─────────────────────────────────────────── */
 
-/**
- * Where one term came from. The gateway's four sources
- * (`vendor-terms/vendor-terms.service.ts`) collapse into three words on the
- * page, because "stated by a person" and "already on the vendor record" are
- * both the house's own answer — they differ only in which form somebody typed
- * it into, and the row says which.
- */
-export type TermSource = 'stated' | 'vendor_record' | 'inferred' | 'unknown';
-
-export const SOURCE_LABEL: Record<TermSource, string> = {
-  stated: 'stated by the house',
-  vendor_record: 'on the vendor record',
-  inferred: 'inferred',
-  unknown: 'unknown',
-};
-
-export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-export const WEEKDAY_NAMES = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-];
-
-/** "Monday, Wednesday and Friday" — or the sentence for an empty statement. */
-export function fmtWeekdays(days: number[] | null | undefined): string {
-  if (!days) return EM;
-  if (days.length === 0) return 'no fixed days';
-  if (days.length === 7) return 'every day';
-  const names = [...days].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[d] ?? String(d));
-  if (names.length === 1) return names[0];
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
-/**
- * Money, in the house's own currency.
- *
- * `restaurants.currency` is `DEFAULT 'USD'`, so a house that never set one is
- * indistinguishable from a house in dollars. The caller passes `isDefault` and
- * the register prints the caveat once, at the top, rather than beside every
- * figure — which would be true and unreadable.
- */
-export function fmtMoney(value: number | null | undefined, currency: string): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return EM;
-  try {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: value % 1 === 0 ? 0 : 2,
-    }).format(value);
-  } catch {
-    // An unknown ISO code from the column. The number is still true.
-    return `${value.toLocaleString('en-GB')} ${currency}`;
-  }
-}
-
-/** "closes 14:00, the day before" / "closes 11:00 on the day". */
-export function fmtCutoff(time: string | null, offsetDays: number | null): string {
-  if (!time) return EM;
-  if (offsetDays === null || offsetDays === undefined) return time;
-  if (offsetDays === 0) return `${time}, same day`;
-  if (offsetDays === 1) return `${time}, the day before`;
-  return `${time}, ${offsetDays} days before`;
-}
-
 /** "23 of 118" — a share that always shows its denominator. */
 export function fmtShare(part: number, whole: number): string {
   if (!Number.isFinite(whole) || whole <= 0) return EM;
@@ -402,29 +361,6 @@ export function errText(e: unknown): string {
 }
 
 /* ── Dates ───────────────────────────────────────────────────────────────── */
-
-/** Relative "last written" for a provenance line. EM when there is no date. */
-export function fmtWhen(iso: string | null | undefined): string {
-  if (!iso) return EM;
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return EM;
-  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (s < 90) return 'just now';
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return h === 1 ? 'an hour ago' : `${h} hours ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return d === 1 ? 'yesterday' : `${d} days ago`;
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-/** Absolute date, for a `title=` on the relative one. */
-export function fmtExact(iso: string | null | undefined): string | undefined {
-  if (!iso) return undefined;
-  const t = new Date(iso);
-  return Number.isFinite(t.getTime()) ? t.toLocaleString() : undefined;
-}
 
 /** "expires in 5 days" / "expired" — an invite's own clock. */
 export function fmtExpiry(iso: string | null | undefined): string {

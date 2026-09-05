@@ -213,17 +213,25 @@ export function CopyWeekPanel({
  * from an unknown number. The gateway half is `dto/team.dto.ts`'s `channels`
  * and the `NO_SENDER` gate in `team.controller.ts`.
  *
- * WHAT THE STRIP CAN AND CANNOT SAY. There is exactly one durable read-receipt
- * store on this page and it is `schedule_receipts` (baseline `:5293-5298`,
- * written by `POST …/schedules/:id/acknowledge`) — and it records that someone
- * opened the PUBLISHED WEEK, not that they read a note. Nothing anywhere
- * records a sent crew message: `broadcast` writes a notification row per
- * recipient and returns its reach, and no route reads those back for a
- * manager. So the strip shows two different things and never blends them: who
- * has opened the published week (durable, named), and what this page sent just
- * now (a receipt from the response, marked as not persisted). §13 of the page
- * note carries the request for a `team_notes` store that would make the second
- * one durable.
+ * WHAT THE STRIP CAN AND CANNOT SAY. Rewritten 2026-09-04: this paragraph used
+ * to say that nothing anywhere recorded a sent crew message and that a
+ * `team_notes` store was still only a §13 request. Both stopped being true the
+ * same day — migration `20260904180000` created `team_notes` and
+ * `team_note_recipients`, and `notes.service.ts` reads them back (`list`,
+ * `:55`) — so the paragraph was describing an absence that had been filled.
+ *
+ * There are now TWO durable receipt stores on this page, and the strip keeps
+ * them in separate columns because they are separate facts:
+ *
+ *   `schedule_receipts`              opening the PUBLISHED WEEK. Written by
+ *   (baseline `:5293-5298`)          `POST …/schedules/:id/acknowledge`.
+ *   `team_note_recipients.opened_at` reading ONE NOTE. Written by
+ *   (`notes.service.ts:227`)         `markOpened`; NULL means unopened.
+ *
+ * Blending them would make "saw the roster" and "read the message" the same
+ * fact. Neither column ever reports a failed read as a zero: an unreadable
+ * note register says whether anything was said is unknown, and a receipt list
+ * that has not answered shows an em dash, not 0 of N.
  */
 
 /**

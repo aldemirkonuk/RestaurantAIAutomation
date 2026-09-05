@@ -104,7 +104,10 @@ const DAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
  * How far back the till window must be asked for, to cover a whole month.
  *
  * `GET /analytics/pos-revenue/:rid?days=N` counts back from today and the
- * gateway clamps N to 1–365 (`analytics.controller.ts:757-760`). Reading a
+ * gateway clamps N to 1–365 — `analytics.controller.ts:792-795`, the clamp
+ * itself on `:794`, inside `getPosRevenue` (`:788`, routed at `:773`).
+ * Re-measured 2026-09-04; the `:757-760` this line used to cite is the
+ * Wine-360 `@ApiOperation`, not the clamp. Reading a
  * month that ended in March therefore needs a longer window than one that ends
  * today — and a month more than 365 days back cannot be covered at all, which
  * is why every day of it comes back `unknown` rather than `none`. Nothing here

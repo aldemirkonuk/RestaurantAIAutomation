@@ -16,16 +16,18 @@ import { fingerprintToolList } from "../../mcp-runtime/tool-classification";
  *
  * THE EVENT, AND WHO STAMPS IT
  * ----------------------------
- * `McpConnectionsService.reconcileGrants` (mcp-connections.service.ts:720-798)
- * runs from exactly one place — `writeProbe` (:1582), the single point a fresh
+ * `McpConnectionsService.reconcileGrants` (mcp-connections.service.ts:817-895;
+ * every line citation in this header re-measured 2026-09-04, the whole set
+ * having drifted when that file grew above them) runs from exactly one place —
+ * `writeProbe` (:1656), the single point a fresh
  * `tools/list` lands. It compares every live grant against that list and writes
  * one of two outcomes onto `public.mcp_tool_grants`:
  *
  *   * the tool is GONE — `revoked_at` and `needs_reconsent_at` are both stamped
- *     (:756-763), because a grant naming a tool the server no longer offers is
+ *     (:853-860), because a grant naming a tool the server no longer offers is
  *     a permission with no subject;
  *   * the tool's DECLARATION MOVED — only `needs_reconsent_at` is stamped
- *     (:785-791), and `needs_reconsent_reason` carries
+ *     (:882-888), and `needs_reconsent_reason` carries
  *     `describeAnnotationChange`'s words ("the server changed readOnlyHint true
  *     to false"), never a hash mismatch.
  *
@@ -41,16 +43,16 @@ import { fingerprintToolList } from "../../mcp-runtime/tool-classification";
  *
  *   1. `ProducerLedgerService.emit` needs a `ProducerAudience` — the awake/
  *      asleep split for the whole house on the house's own wall clock
- *      (`audienceFor`, producer-ledger.service.ts:160-178) — and it needs the
+ *      (`audienceFor`, producer-ledger.service.ts:183-201) — and it needs the
  *      tenant's IANA zone to compute it. `reconcileGrants` has a
  *      `connectionId` and nothing else; it does not even read `restaurant_id`.
  *   2. Quiet hours are a DEFERRAL, not a drop: a member inside their window is
  *      deliberately left unclaimed so a LATER SWEEP serves them
- *      (producer-ledger.service.ts:41-49). An emit with no later sweep behind
+ *      (producer-ledger.service.ts:48-49). An emit with no later sweep behind
  *      it would silently lose every manager who was asleep at probe time —
  *      which is precisely the hour an unattended probe runs.
  *   3. `emit` does not open or close a `notification_producer_runs` row; the
- *      caller does (`runOne`, notification-producers.service.ts:303-337). An
+ *      caller does (`runOne`, notification-producers.service.ts:340-374). An
  *      emit from inside a probe would write inbox rows that no run ledger
  *      accounts for, and `/notifications` would show a producer that has never
  *      run while its notifications arrive.
@@ -70,10 +72,10 @@ import { fingerprintToolList } from "../../mcp-runtime/tool-classification";
  *
  *   * the same suspension can never be written twice, on any number of sweeps,
  *     because neither half of the key moves while the grant sits suspended
- *     (`reconcileGrants` leaves an already-suspended grant alone, :772 — a
+ *     (`reconcileGrants` leaves an already-suspended grant alone, :869 — a
  *     flapping server cannot re-fire this either);
  *   * a re-consent followed by a fresh change DOES write again, because
- *     `grantTool` is revoke-then-insert (mcp-connections.service.ts:648-651):
+ *     `grantTool` is revoke-then-insert (mcp-connections.service.ts:683-687):
  *     the new grant is a new row with a new id AND a new list hash.
  *
  * MANAGERS AND OWNERS ONLY, AND WHY THAT NEEDED A NEW READ
@@ -107,7 +109,7 @@ import { fingerprintToolList } from "../../mcp-runtime/tool-classification";
  * A tool being ADDED to a server is not reported here, because it does not
  * suspend anything: `reconcileGrants` deliberately compares per-tool
  * fingerprints so "a server adding an unrelated tool must not suspend a grant
- * nobody touched" (tool-classification.ts:172-176). There is no row to sweep,
+ * nobody touched" (tool-classification.ts:177-178). There is no row to sweep,
  * and inventing one would mean this producer holding its own opinion about a
  * server's tool list. Filed in the page note §13 rather than faked.
  */
