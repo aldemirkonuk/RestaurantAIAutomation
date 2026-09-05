@@ -1749,3 +1749,18 @@ sibling's implementation differs, the sibling's file is the truth.
     can tell. The line says what was DECLARED and by whom, never what the tool
     does — and `confirmClassification` (`tool-classification.ts:128`) is where a
     human's verdict would land if the founder ever wants one.
+35. **Correction to `29e439c4`'s commit message — the two-clock test's clocks
+    are not three years apart.** A commit message cannot be edited once pushed,
+    so the correction is filed here, where that commit's producers live. The
+    message says the hermetic-clock proof runs *"a three-sweep sequence under
+    two clocks three years apart"*. The clocks are `2025-01-15T09:00:00Z` and
+    `2027-11-02T22:30:00Z` (`notifications/producers/market-price.producer.spec.ts:203-204`, `:200-201` before this pass added three comment lines above them):
+    **1,021 days — two years, nine months and eighteen days.** The same test's
+    own comment said something different and also wrong — *"two clocks a year
+    apart"* — so the two statements about this test disagreed with each other
+    and neither matched the code. The comment is corrected in place
+    (`market-price.producer.spec.ts:182-187`, the 16 tests in that file still
+    pass); the message stands as written and is corrected only here. Nothing
+    about the proof changes: what makes it hermetic is that BOTH runs execute
+    the whole three-sweep sequence and assert identical tallies, not the size of
+    the gap between them.

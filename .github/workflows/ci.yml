@@ -612,6 +612,34 @@ jobs:
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
+      # ADR 0122, added 2026-09-04. The two guards above ask whether the CODE
+      # names a relation that exists. This asks whether a MIGRATION does.
+      # 29e439c4 shipped `REFERENCES public.user_mcp_connections(id)` against a
+      # table 20260903151000 had already renamed to restaurant_mcp_connections;
+      # the file could not apply, and `supabase db reset` would have stopped on
+      # it and taken every later migration with it. Measured against a tree
+      # holding the pre-fix file, check_queried_tables_exist (which reads
+      # TypeScript, and in which the string REFERENCES does not occur) and
+      # check_fk_repoint_by_referenced_column (which reads SQL, for one
+      # unrelated shape) both exited 0.
+      #
+      # schema-parity.yml WOULD have gone red -- it is a required status and it
+      # really does run `supabase db reset`. But it runs after the push, costs a
+      # full round trip, and reports the migration that failed rather than the
+      # rename that made it fail. This is the same fact in a second, naming both
+      # halves, before the push. Stdlib Python, no install step, no secret.
+      #
+      # Exit 2 = could not check: an unparseable statement, dynamic DDL that
+      # would shrink the guard's model of the schema, or a corpus with zero
+      # foreign keys in it. Never green.
+      - name: Every foreign key names a table that exists when it is written
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_fk_targets_exist.py
+
+      - name: ...and the FK guard's own failure path fires
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_fk_targets_exist.py --self-test
+
       # OD-72/OD-73 ratchet, added 2026-08-26. Both were closed by one-time
       # sweeps, and the class came back the NEXT DAY: OD-73's row records
       # "0 public tables remain RLS-off", verified against the live database,
@@ -932,8 +960,8 @@ jobs:
       # scripts/test_docgen.py is NOT here: measured in a clean venv it errors at
       # collection (it imports cv2/PIL/jinja2 through scripts/docgen). It stays
       # unguarded and is named here so that is a known gap, not a forgotten one.
-      - name: scripts/ unit tests (simulator, operating hours)
-        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py -q -p no:cacheprovider
+      - name: scripts/ unit tests (simulator, operating hours, FK targets)
+        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:

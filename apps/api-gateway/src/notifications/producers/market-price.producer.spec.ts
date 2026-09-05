@@ -179,9 +179,12 @@ describe("MarketPriceProducer", () => {
     // fell inside, the sweep suppressed, and the assertion above went red
     // having changed nothing. The test was measuring the calendar.
     //
-    // Running the WHOLE sequence under two clocks a year apart proves the
-    // outcome is a property of the code. If either stamp escapes to the wall
-    // clock again, exactly one of these two runs breaks.
+    // Running the WHOLE sequence under two clocks 1,021 days apart --
+    // 2025-01-15 and 2027-11-02, two years nine months and eighteen days --
+    // proves the outcome is a property of the code. If either stamp escapes to
+    // the wall clock again, exactly one of these two runs breaks.
+    // (This comment said "a year apart" and 29e439c4's message said "three
+    // years apart"; neither was the gap. Corrected 2026-09-04.)
     const runUnder = async (startAt: Date) => {
       const { db, notifications, sweepAt } = build([rankedItem()], {}, startAt);
       bought(db);

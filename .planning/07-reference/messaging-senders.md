@@ -17,12 +17,16 @@ unread one is the fault this repo already has a name for
 
 **Retire-to-write (CLAUDE.md §4).** This file exists so the sender survey lives
 in exactly one place. It **absorbs** what would otherwise have been written three
-times: the provider paragraph in `communications.md` §13.9, the sender paragraph
-in `team.md` §13.7a/7c, and the "Plivo SMS" row that is currently the only place
-in the product where a message vendor is named at all
-(`apps/web/src/pages/AdminPanel.tsx:823`). Those keep one-line pointers here and
-stop carrying their own copies. Nothing is deleted by this file; the three
-pointers are the retirement.
+times, and the three pointers are the retirement. Corrected 2026-09-04 after an
+audit found two of the three cited wrongly and the third not written at all:
+
+| Absorbed from | The pointer, as it actually stands |
+|---|---|
+| `06-pages/communications.md` **§13 item 14**, *"The house's text sender"* (`:670-671`) | present. **Not §13.9** — that item is *"The Mudavym sending subdomain"* (`:644`), a different subject, and this file said so until today. |
+| `06-pages/team.md` **§13 item 7d** (`:659-660`) | present. **Not 7a/7c** — those are the founder's own paragraphs (`:632`, `:640`); 7d is the line that points here. |
+| `apps/web/src/pages/AdminPanel.tsx:825`, the "Plivo SMS" row — still the only place in the PRODUCT where a message vendor is named | written 2026-09-04, `:823-824`, as a comment above the row. Until then this paragraph claimed a pointer that did not exist, which is the same shape as the fault this file's opening paragraph names. |
+
+Nothing is deleted by this file.
 
 **All fetch dates below: 2026-09-04.**
 
@@ -233,11 +237,11 @@ text. This is the checklist ADR 0121's guardrail tables are written against.
 | Guard | Letter (built) | A text needs |
 |---|---|---|
 | Book-only recipients | `providers.contact_email` / `primary_contact->>'email'` / `provider_contacts.email`, no free-text To (ADR 0118 D3) | the same over `contact_phone` / `provider_contacts.phone`, which today reaches **4 vendors and 0 crew** |
-| Commitment guard | `COMMITMENT_PATTERNS` over the body, blocks (`letters/house-letters.service.ts:273`) | identical, and it matters more: a text is shorter and reads as more casual |
+| Commitment guard | `COMMITMENT_PATTERNS` over the body, blocks (`letters/house-letters.service.ts:276` tests, `:282` blocks) | identical, and it matters more: a text is shorter and reads as more casual |
 | Round count | `max_rounds` as a stated fact, not a block (ADR 0118 D5) | the same counter, over the same `procurement_conversations` rows |
-| Undo | 2 minutes as a row, `status='HOUSE_QUEUED'` with `scheduled_send_at` (`house-letters.service.ts:72,413`) | a text is read within seconds; the undo window is worth less and the cost of a wrong send is higher |
+| Undo | 2 minutes as a row, `status='HOUSE_QUEUED'` with `scheduled_send_at` (`house-letters.service.ts:72` names the status, `:419-420` writes the pair) | a text is read within seconds; the undo window is worth less and the cost of a wrong send is higher |
 | The seal | on the shared Mudavym sending domain only | a shared sending **number** is the same shared-reputation object as a shared sending domain |
-| Unresolved merge token | added guard, `{{ anything }}` (`house-letters.service.ts:119,282`) | identical |
+| Unresolved merge token | added guard, `{{ anything }}` (`house-letters.service.ts:127` is the pattern, `:286` tests it, `:291` blocks) | identical |
 | Provenance chips | `inserted_insights`, server-reverified | a 160-character message cannot carry a provenance chip. This is the one guard that does not transfer, and it is the reason a text should carry sentences and not figures |
 
 ---

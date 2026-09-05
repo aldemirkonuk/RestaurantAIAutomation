@@ -373,6 +373,12 @@ export function Providers() {
         // record "no fixed days" for a vendor whose days we simply could not
         // see — the exact shape of [[absence-reported-as-health]].
         toast.warning('Delivery days were not saved: the vendor-terms register could not be read.')
+      } else if (vendorDeliveryDays === null) {
+        // Same artefact, different cause: the read has not come back. The
+        // dialog holds Save for exactly this, so reaching here means something
+        // called the handler another way; refuse the write rather than trust
+        // the empty selection.
+        toast.warning('Delivery days were not saved: they had not been read yet.')
       } else {
         await setVendorTerms(providerId, {
           deliveryWeekdays: weekdayNamesToIndices(data.deliveryDays),
@@ -1566,6 +1572,12 @@ export function Providers() {
             : undefined
         }
         deliveryWeekdaysError={vendorTermsError}
+        // The third state. `vendorDeliveryDays === null` with no error is the
+        // read still in flight, and it is NOT the same as a read that came back
+        // empty: while it is in flight the dialog seeds `[]`, which reads as a
+        // person having ticked nothing, and Save would write "no fixed days"
+        // over days the register holds.
+        deliveryWeekdaysPending={vendorDeliveryDays === null && !vendorTermsError}
       />
       <VendorSearchModal
         open={showVendorSearch}

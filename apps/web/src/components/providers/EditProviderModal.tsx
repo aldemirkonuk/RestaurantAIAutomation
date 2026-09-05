@@ -102,6 +102,19 @@ interface EditProviderModalProps {
   deliveryWeekdays?: string[]
   /** Why the terms could not be read. Rendered verbatim when present. */
   deliveryWeekdaysError?: string | null
+  /**
+   * True while the terms register is being READ — the third state, and the one
+   * that was missing.
+   *
+   * `deliveryWeekdays === undefined` means two different things: the read
+   * FAILED (there is an error to render) or the read has not COME BACK yet
+   * (there is not). Only the first was handled, so for the whole flight of
+   * `GET /vendor-terms` the picker seeded `[]`, looked ticked-off-by-a-person,
+   * and Save wrote "no fixed days" over days the register held. In flight, the
+   * picker AND Save are disabled and say so; an empty selection is a statement,
+   * and this dialog must not make one on the register's behalf.
+   */
+  deliveryWeekdaysPending?: boolean
 }
 
 const WINE_LIBRARY: Record<string, string[]> = {
@@ -253,6 +266,7 @@ export function EditProviderModal({
   provider,
   deliveryWeekdays,
   deliveryWeekdaysError,
+  deliveryWeekdaysPending,
 }: EditProviderModalProps) {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -352,7 +366,9 @@ export function EditProviderModal({
         paymentTerms: (provider as any).paymentTerms || '',
         // The vendor-terms register, never `regionsCovered` — that column is the
         // vendor's TERRITORY and reading it here is what round-tripped the
-        // delivery-days defect.
+        // delivery-days defect. `[]` while the read is in flight is inert
+        // rather than harmless: `deliveryWeekdaysPending` holds Save until the
+        // register answers and this effect re-seeds.
         deliveryDays: deliveryWeekdays ?? [],
         minimumOrder: (provider as any).minimumOrder ?? null,
         notes: provider.notes || '',
@@ -479,6 +495,11 @@ export function EditProviderModal({
     // lookup can resolve in the same tick as the click. Dismissing the
     // warning clears pendingMatch and Save proceeds.
     if (pendingMatch) return
+    // The delivery-days read has not landed, so `formData.deliveryDays` is `[]`
+    // by default rather than by anyone's choice. Saving here writes that empty
+    // selection into the terms register as "no fixed days". The button is
+    // disabled for this too; this is the keyboard and programmatic path.
+    if (deliveryWeekdaysPending) return
     onSave(formData)
     handleClose()
   }
@@ -1259,7 +1280,13 @@ export function EditProviderModal({
                         </div>
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Days</label>
-                          {deliveryWeekdaysError ? (
+                          {deliveryWeekdaysPending ? (
+                            <p className="text-sm text-amber-700 mb-2" role="status">
+                              Delivery days have not been read yet. Nothing below has been ticked
+                              off by anyone, so the picker and Save are held until the vendor-terms
+                              register answers.
+                            </p>
+                          ) : deliveryWeekdaysError ? (
                             <p className="text-sm text-amber-700 mb-2" role="status">
                               The vendor-terms register could not be read ({deliveryWeekdaysError}), so
                               these days are not shown. Nothing below has been ticked off; saving now
@@ -1279,7 +1306,7 @@ export function EditProviderModal({
                                 <button
                                   key={day}
                                   onClick={() => toggleDeliveryDay(day)}
-                                  disabled={!!deliveryWeekdaysError}
+                                  disabled={!!deliveryWeekdaysError || !!deliveryWeekdaysPending}
                                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                                     isSelected ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                   }`}
@@ -1653,7 +1680,13 @@ export function EditProviderModal({
               </div>
 
               {/* ── Footer ────────────────────────────────────────────── */}
-              <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-white">
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-white">
+                {deliveryWeekdaysPending && (
+                  <p className="mr-auto text-sm text-amber-700" role="status">
+                    Delivery days have not been read yet &mdash; saving is held so this form
+                    cannot write an empty selection over them.
+                  </p>
+                )}
                 <button
                   onClick={handleClose}
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-all hover:bg-gray-50"
@@ -1662,7 +1695,13 @@ export function EditProviderModal({
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-6 py-2 text-sm font-semibold bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-all"
+                  disabled={!!deliveryWeekdaysPending}
+                  title={
+                    deliveryWeekdaysPending
+                      ? 'Delivery days have not been read yet'
+                      : undefined
+                  }
+                  className="px-6 py-2 text-sm font-semibold bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
                 >
                   Save Changes
                 </button>
