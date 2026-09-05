@@ -242,4 +242,26 @@ describe('the states that are not an approval', () => {
     mount([]);
     expect(screen.getByText(/Nothing is waiting on you\./i)).toBeInTheDocument();
   });
+
+  it('names who is being paid', () => {
+    // `GET /procurement/orders/pending` joins `providers` since 2026-09-05.
+    // Until then this row named the wine and the total and never the vendor —
+    // on the one panel in the house where a person approves money.
+    mount([order({ providerName: 'Vinifera Imports' })]);
+    expect(screen.getByText(/Vinifera Imports · requested/i)).toBeInTheDocument();
+  });
+
+  it('says the vendor is not named rather than leaving the slot blank', () => {
+    // `null` is the join answering nothing; the key ABSENT is a route that does
+    // not join. The card can do nothing different about the two, and a blank in
+    // that slot reads as "no vendor" — which is the absence-reported-as-health
+    // fault this whole change is about — so both print the words.
+    mount([order({ providerName: null })]);
+    expect(screen.getByText(/Vendor not named · requested/i)).toBeInTheDocument();
+
+    const bare = order();
+    delete (bare as { providerName?: unknown }).providerName;
+    mount([bare]);
+    expect(screen.getAllByText(/Vendor not named · requested/i).length).toBeGreaterThan(0);
+  });
 });

@@ -284,6 +284,123 @@ export async function cancelOrder(
   }
 }
 
+/* ===========================================================================
+ * ALREADY DELIVERED — 409, AND THE EARLIER DELIVERY TO SHOW INSTEAD
+ * ===========================================================================
+ * Founder, 2026-09-05 (batch 46): a second delivery of an already-delivered
+ * order answers **409 Conflict, not 400** — *"the request is well-formed, the
+ * order's state conflicts with it, and the door and the one-tap rail must be
+ * able to tell 'already done' from 'you sent nonsense' and show the earlier
+ * delivery instead of an error."*
+ *
+ * So every surface that can reach a delivery refusal reads it through THIS
+ * parser and prints `summary`. One parser, because four screens each poking at
+ * `err.response.data.earlierDelivery.receivedByName` is four chances to render
+ * `undefined` as a person's name; and because the gateway shape is asserted in
+ * exactly one place on this side.
+ *
+ * A 409 is never retried. That is the whole point of it not being a 500: the
+ * request was fine, and repeating it cannot change the answer.
+ */
+export interface EarlierDelivery {
+  deliveredAt: string | null;
+  receivedBy: string | null;
+  receivedByName: string | null;
+  /** Why there is no name, when one was wanted. Distinguishes a failed lookup
+   *  from an order nobody signed for — they are not the same fact. */
+  receivedByNameReason: string | null;
+  quantityReceived: number | null;
+  /**
+   * The unit `quantityReceived` is stated in, or `null` — a REFUSAL, not a
+   * default. `procurement_orders.quantity_received` has four writers: three
+   * write the order's own unit and the receiving door writes bottles, and the
+   * row does not say which. For `case`/`pack`/`split_case` the two differ by
+   * the pack size, so the gateway states no unit and `summary` omits the count
+   * rather than printing one that could be off by twelve.
+   */
+  unitType: string | null;
+  /** Why the unit is, or is not, stated. Always present. */
+  quantityUnitWhy: string;
+  bottlesTotal: number | null;
+  /** "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in." */
+  summary: string;
+}
+
+export interface AlreadyDeliveredRefusal {
+  reason: 'order_already_delivered';
+  orderId: string;
+  orderNumber: string | null;
+  status: string | null;
+  /** The whole refusal sentence: what happened, why, and what to do instead. */
+  message: string;
+  earlierDelivery: EarlierDelivery | null;
+}
+
+/**
+ * Read a delivery refusal off an error, or `null` if this is not one.
+ *
+ * Structural rather than trusting the status alone: a proxy can answer 409 with
+ * an HTML page, and a screen that printed `undefined` from one would be
+ * inventing a delivery. Every field is checked before it is believed, and a body
+ * that carries the reason but no `earlierDelivery` yields `earlierDelivery:
+ * null` — which callers render as the refusal sentence alone, never as a
+ * delivery with blanks in it.
+ */
+export function alreadyDeliveredRefusal(
+  error: unknown
+): AlreadyDeliveredRefusal | null {
+  const res = (error as { response?: { status?: unknown; data?: unknown } } | null)?.response;
+  if (!res || res.status !== 409) return null;
+  const body = res.data as Record<string, unknown> | null | undefined;
+  if (!body || typeof body !== 'object') return null;
+  if (body.reason !== 'order_already_delivered') return null;
+
+  const raw = body.earlierDelivery as Record<string, unknown> | null | undefined;
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+  // `summary` is the one field a caller PRINTS, so a body without a usable one
+  // is treated as carrying no earlier delivery at all rather than rendering an
+  // empty line where a fact belongs.
+  const summary = raw ? str(raw.summary) : null;
+
+  return {
+    reason: 'order_already_delivered',
+    orderId: str(body.orderId) ?? '',
+    orderNumber: str(body.orderNumber),
+    status: str(body.status),
+    message: str(body.message) ?? 'That order has already been delivered.',
+    earlierDelivery:
+      raw && summary
+        ? {
+            deliveredAt: str(raw.deliveredAt),
+            receivedBy: str(raw.receivedBy),
+            receivedByName: str(raw.receivedByName),
+            receivedByNameReason: str(raw.receivedByNameReason),
+            quantityReceived: num(raw.quantityReceived),
+            unitType: str(raw.unitType),
+            quantityUnitWhy: str(raw.quantityUnitWhy) ?? '',
+            bottlesTotal: num(raw.bottlesTotal),
+            summary,
+          }
+        : null,
+  };
+}
+
+/**
+ * The words a screen shows in place of an error when a delivery was refused.
+ *
+ * The refusal sentence and, when the gateway could say it, the earlier delivery
+ * on its own line. Never one without the other where both exist: the sentence
+ * says why nothing changed, the summary says what already did.
+ */
+export function alreadyDeliveredWords(refusal: AlreadyDeliveredRefusal): string {
+  return refusal.earlierDelivery
+    ? `${refusal.earlierDelivery.summary} ${refusal.message}`
+    : refusal.message;
+}
+
 /**
  * Mark order as delivered.
  *

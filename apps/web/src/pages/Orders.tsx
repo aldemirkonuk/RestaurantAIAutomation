@@ -47,6 +47,7 @@ import { Wine as WineType } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { inventoryApi, getInventory } from '../services/api'
+import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '../services/api/orders'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useWinesByIds } from '../hooks/queries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
@@ -745,7 +746,16 @@ Shadow stock has been moved to Live Stock.`)
       // The gateway refuses a second delivery with a whole sentence and a 409
       // (`delivered-once.ts`), and "Please try again" is the one instruction
       // that must not follow it — it tells a person to repeat exactly what the
-      // house just declined to do. The server's own words when it sent any.
+      // house just declined to do.
+      //
+      // On a 409 the desk shows the EARLIER DELIVERY first (founder, 2026-09-05,
+      // batch 46): who booked it in, when, and how much. That is the answer the
+      // person tapping actually wanted; the refusal sentence follows it.
+      const refused = alreadyDeliveredRefusal(error)
+      if (refused) {
+        alert(alreadyDeliveredWords(refused))
+        return
+      }
       alert(getErrorMessage(error) || 'Failed to mark order as delivered.')
     }
   }

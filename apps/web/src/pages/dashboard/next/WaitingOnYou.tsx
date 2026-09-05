@@ -25,6 +25,7 @@ import { Link } from 'react-router-dom';
 import { Seal } from '@/components/mudavym';
 import { SealedApproveDie } from '@/components/orders/SealedApproveDie';
 import type { Order } from '@/services/api/types';
+import { vendorLine } from '@/lib/mudavym/vendor';
 import { formatNumber } from '@/lib/utils';
 import { DASH, approveLabel, money, timeAgo } from './format';
 
@@ -104,8 +105,19 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                   <span className="block truncate text-[13px] text-inkm-1">
                     {o.wineName ?? 'Unnamed wine'}
                   </span>
-                  <span className="block text-[11px] text-inkm-3">
-                    requested {timeAgo(o.requestedAt)}
+                  {/*
+                    WHO IS BEING PAID. `GET /procurement/orders/pending` joins
+                    `providers` since 2026-09-05; before that this row named the
+                    wine and the total and never the vendor, on the one panel in
+                    the house where a person approves money.
+
+                    `null` is the join finding nothing and the key being ABSENT
+                    is a route that does not join — `vendorLine` keeps them
+                    apart so a screen never reports "no vendor" about a query
+                    that did not ask.
+                  */}
+                  <span className="block truncate text-[11px] text-inkm-3">
+                    {vendorLine(o)} · requested {timeAgo(o.requestedAt)}
                   </span>
                 </span>
                 <span

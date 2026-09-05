@@ -72,6 +72,7 @@
  */
 import { ProcurementOrderStatus } from "./dto/procurement.dto";
 import { statusInWords } from "./order-transitions";
+import { readQuantityReceived } from "./quantity-received-unit";
 
 /** The `reason` code on the 409 body, so a client can branch without parsing prose. */
 export const DELIVERY_REFUSED_ALREADY_ARRIVED = "order_already_delivered";
@@ -188,4 +189,209 @@ export function refuseLostDeliveryRace(input: {
     `delivery at once: exactly one of them wins. Reload the order to see what ` +
     `was recorded.`
   );
+}
+
+/* ===========================================================================
+ * THE EARLIER DELIVERY, CARRIED IN THE REFUSAL
+ * ===========================================================================
+ * Founder, 2026-09-05 (batch 46), on whether a second delivery is 400 or 409:
+ *
+ *   *"A second delivery of an already-delivered order answers 409 Conflict,
+ *   not 400 — the request is well-formed, the order's state conflicts with it,
+ *   and the door and the one-tap rail must be able to tell 'already done' from
+ *   'you sent nonsense' and show the earlier delivery instead of an error."*
+ *
+ * **400 was rejected.** The distinction is not pedantry about status codes: a
+ * client cannot render *"delivered on the 4th by Ada"* from a 400, because a 400
+ * says the request was malformed and the only honest response to one is to stop
+ * and show an error. 409 says the request was fine and the world has moved, and
+ * the world it has moved to is exactly what the person wanted to know. So the
+ * status carries the distinction and the BODY carries the answer — a refusal
+ * that says only "no" makes the receiver walk to a manager to find out whether
+ * the wine is on the shelf.
+ *
+ * Every field below is a fact off the order row. Nothing is derived, defaulted
+ * or filled in: a `null` here means the row holds nothing, and the ONE case
+ * where "we could not find out" differs from "there is nothing" —
+ * `receivedByName` — carries its own reason rather than reading as an absence.
+ */
+export interface EarlierDelivery {
+  /** When it was booked in. `null` = the row records no time. */
+  deliveredAt: string | null;
+  /** Who signed for it, as `public.users.user_id`. `null` = nobody recorded. */
+  receivedBy: string | null;
+  /**
+   * That person's name.
+   *
+   * `null` covers two DIFFERENT things and they must not be confused, which is
+   * why `receivedByNameReason` exists: either there is no `receivedBy` at all,
+   * or there is one and the lookup could not answer. A page that printed
+   * "by nobody" for the second would be reporting a failed read as a fact —
+   * [[absence-reported-as-health]] on the one line a receiver reads.
+   */
+  receivedByName: string | null;
+  /** Why no name, when one was wanted. `null` when the question did not arise. */
+  receivedByNameReason: string | null;
+  /** How much was booked. Meaningless without `unitType`; see below. */
+  quantityReceived: number | null;
+  /**
+   * The unit `quantityReceived` is stated in — **or `null`, which is a refusal
+   * and never a default**.
+   *
+   * `procurement_orders.quantity_received` has four writers and they do not
+   * agree: three write the order's own unit, and `recordDoorReceipt` writes
+   * BOTTLES. Nothing on the row records which one wrote it. For a
+   * non-multiplying unit both produce the same number, so it can be stated; for
+   * `case`, `pack` or `split_case` the two differ by the pack size and every
+   * answer is a guess, so this is `null` and `quantityUnitWhy` says so. That
+   * rule is `quantity-received-unit.ts` `readQuantityReceived`, IMPORTED rather
+   * than restated — an earlier draft of this file printed "5 cases (60 bottles)"
+   * off the order's `unit_type` alone, which is exactly the silent
+   * multiplication ADR 0011 forbids.
+   */
+  unitType: string | null;
+  /** Why the unit is, or is not, stated. Always present. */
+  quantityUnitWhy: string;
+  /** Bottles in the whole ORDER (`bottles_total`) — a different fact from the count. */
+  bottlesTotal: number | null;
+  /** The one line every surface prints, so four surfaces cannot word it four ways. */
+  summary: string;
+}
+
+/**
+ * "12 bottles", or nothing at all.
+ *
+ * NOTHING is printed when the unit could not be placed. A count under a guessed
+ * unit is worse than no count: "5" read as cases when the door meant bottles is
+ * off by the pack size, and a receiver acts on it. The refusal travels instead,
+ * in `quantityUnitWhy`, which the summary defers to.
+ */
+export function quantityInWords(
+  quantityReceived: number | null,
+  unitType: string | null,
+): string | null {
+  if (quantityReceived == null || !Number.isFinite(quantityReceived)) return null;
+  if (!unitType) return null;
+  return `${quantityReceived} ${unitType}${quantityReceived === 1 ? "" : "s"}`;
+}
+
+/**
+ * The one line a page prints in place of an error: who took it in, and when.
+ *
+ * Deliberately says *"by someone this house could not look up"* rather than
+ * dropping the clause when the name read failed. A dropped clause is
+ * indistinguishable from an order nobody signed for, and the two are not the
+ * same fact.
+ */
+export function describeEarlierDelivery(input: {
+  deliveredAt: string | null;
+  receivedBy: string | null;
+  receivedByName: string | null;
+  quantityReceived: number | null;
+  unitType: string | null;
+}): string {
+  const when = deliveredWhenInWords(input.deliveredAt);
+  const who = input.receivedByName
+    ? ` by ${input.receivedByName}`
+    : input.receivedBy
+      ? " by someone this house could not look up"
+      : " — the record names nobody";
+  const what = quantityInWords(input.quantityReceived, input.unitType);
+  return `Delivered ${when}${who}${what ? `, ${what} booked in` : ""}.`;
+}
+
+/**
+ * Build the body a caller renders, from one `procurement_orders` row.
+ *
+ * Pure. Two things are resolved OUTSIDE it and passed in, for opposite reasons:
+ * the receiver's name needs a database read (`resolveReceiverName`), and the
+ * count's unit needs the house's one reading of a column with four disagreeing
+ * writers — `readQuantityReceived`, called here rather than reimplemented.
+ */
+export function earlierDeliveryOf(input: {
+  deliveredAt: string | null;
+  receivedBy: string | null;
+  receivedByName: string | null;
+  receivedByNameReason: string | null;
+  /** The RAW column value and the order's RAW `unit_type`. Read, never guessed. */
+  quantityReceived: unknown;
+  unitType: string | null;
+  bottlesTotal: number | null;
+}): EarlierDelivery {
+  const reading = readQuantityReceived(input.quantityReceived, input.unitType);
+  return {
+    deliveredAt: input.deliveredAt,
+    receivedBy: input.receivedBy,
+    receivedByName: input.receivedByName,
+    receivedByNameReason: input.receivedByNameReason,
+    quantityReceived: reading.quantity,
+    unitType: reading.uom,
+    quantityUnitWhy: reading.why,
+    bottlesTotal: input.bottlesTotal,
+    summary: describeEarlierDelivery({
+      deliveredAt: input.deliveredAt,
+      receivedBy: input.receivedBy,
+      receivedByName: input.receivedByName,
+      quantityReceived: reading.quantity,
+      unitType: reading.uom,
+    }),
+  };
+}
+
+/**
+ * The minimum a supabase client has to look like to name a receiver.
+ *
+ * Structural, so this module stays free of Nest and of `DatabaseService`, and so
+ * the resolver can be tested with an object literal rather than a service mock.
+ */
+export interface ReceiverNameReader {
+  from(table: string): {
+    select(columns: string): {
+      eq(
+        column: string,
+        value: string,
+      ): { maybeSingle(): Promise<{ data: any; error: any }> };
+    };
+  };
+}
+
+/**
+ * Name the person who took the delivery in.
+ *
+ * `users.user_id` / `users.name` is the house idiom for this
+ * (`vendor-terms.service.ts` `resolveActors`, `approval-thresholds.service.ts`),
+ * and `auth.users` is a DISJOINT table — `received_by` holds a
+ * `public.users.user_id`, which is what the JWT carries.
+ *
+ * A FAILED READ IS REPORTED, NEVER RETURNED AS "no name". supabase-js resolves
+ * `{ data, error }` and never throws, so an unreadable `users` table arrives as
+ * a populated `error` with `data` null — the exact shape of "this user does not
+ * exist". The two are told apart here and the difference survives into the body.
+ */
+export async function resolveReceiverName(
+  client: ReceiverNameReader,
+  receivedBy: string | null,
+): Promise<{ name: string | null; reason: string | null }> {
+  if (!receivedBy) return { name: null, reason: null };
+  try {
+    const { data, error } = await client
+      .from("users")
+      .select("user_id, name")
+      .eq("user_id", receivedBy)
+      .maybeSingle();
+    if (error)
+      return {
+        name: null,
+        reason: `the people register could not be read (${error.message})`,
+      };
+    const name = (data as { name?: string | null } | null)?.name ?? null;
+    return name
+      ? { name, reason: null }
+      : { name: null, reason: "this house holds no name for that person" };
+  } catch (err: any) {
+    return {
+      name: null,
+      reason: `the people register could not be read (${err?.message ?? String(err)})`,
+    };
+  }
 }

@@ -122,15 +122,25 @@ renders outside DashboardLayout, so it carries no WineOps wordmark at all.
 
 ## 9. Gaps
 
-**The credit-note draft cannot name the vendor it is addressed to — measured
-2026-09-05.** `normalizeDoorOrder` read `providerName` off the shared `Order` type;
-`OrderResponseDto` carries `providerId` and no name, so `GET /procurement/orders/:id`
-has never supplied one and the letter has always begun "To the vendor: order ORD-…".
-Two `DoorModel.test.ts` cases had asserted the vendor's name from a FIXTURE that
-supplied one, so the suite proved a sentence the wire cannot produce; both now pin the
-absence. `providerName` is `null` in the view model, said out loud rather than read from
-a key that is not there. The fix is a gateway shape change on a route four surfaces
-share — `.planning/v3.0-TECH-DEBT.md`, "The orders wire", item 1. *Blocker: founder.*
+**~~The credit-note draft cannot name the vendor it is addressed to~~ — CLOSED
+2026-09-05, batch 40.** `GET /procurement/orders/:id` now selects
+`provider:provider_id(name)` in the same statement as the order and
+`OrderResponseDto.providerName` carries it, so the letter opens
+`To Vinifera Imports:` instead of `To the vendor:`. When the join answers nothing the
+draft says so in words — `VENDOR_NOT_NAMED`, exported from `DoorModel.ts` so the test
+asserts the sentence rather than a paraphrase — because this letter LEAVES THE BUILDING
+and an unaddressed one has to admit it is unaddressed. `composeDoorNotes` already
+budgeted 60 characters for a vendor name (`VENDOR_MAX`), so the 500-character `notes`
+cap holds WITH the distributor's name in it; the "longest real names" case now asserts
+both "Château Pichon" and "Southern Glazer" and still measures under `NOTES_MAX`.
+
+The original measurement, kept: `normalizeDoorOrder` read `providerName` off the shared
+`Order` type; `OrderResponseDto` carried `providerId` and no name, so the letter had
+always begun "To the vendor: order ORD-…". Two `DoorModel.test.ts` cases had asserted
+the vendor's name from a FIXTURE that supplied one, so the suite proved a sentence the
+wire could not produce; those two were flipped to pin the ABSENCE on 2026-09-05 and are
+flipped again here to pin the NAME. `.planning/v3.0-TECH-DEBT.md`, "The orders wire",
+item 1. ~~*Blocker: founder.*~~ **Decided and built.**
 
 **The shared `Order` type's widening cast is gone.** `normalizeDoorOrder` used
 `raw as Order & { unitType?: unknown; bottlesTotal?: unknown }` because the shared type
@@ -140,9 +150,11 @@ deleted and both reads are type-checked.
 
 - Inherits `/receiving`'s reachability problem (receiving.md §9): the only path to
   this URL is a page nothing links to.
-- One recorded against this page in `v3.0-TECH-DEBT.md` since 2026-09-05: "The orders
-  wire", item 1 — the vendor name the credit-note draft cannot print. (The line here
-  used to read "none recorded"; it was true when written and is not now.)
+- ~~One recorded against this page in `v3.0-TECH-DEBT.md` since 2026-09-05: "The orders
+  wire", item 1 — the vendor name the credit-note draft cannot print.~~ **Closed the
+  same day (batch 40); item 1 is struck through in the register.** (The line here read
+  "none recorded" before that entry, then named it; it names none against this page
+  again.)
 
 ## 10. Maturity
 

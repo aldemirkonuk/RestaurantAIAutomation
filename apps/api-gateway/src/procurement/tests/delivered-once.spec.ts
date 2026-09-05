@@ -182,6 +182,12 @@ function makeDb(opts: {
   order: Row;
   /** Forced on every SELECT, to exercise "a failed read is not an absence". */
   readError?: Record<string, any> | null;
+  /**
+   * The people register. Absent = it holds no row for the receiver (a real
+   * case: a user removed from the house). `"unreadable"` = the query itself
+   * fails, which is a DIFFERENT fact and must not read as "no name".
+   */
+  users?: Row[] | "unreadable";
 }) {
   const store: Record<string, Row[]> = {
     procurement_orders: [{ ...opts.order }],
@@ -196,12 +202,26 @@ function makeDb(opts: {
     ],
     inventory_events: [],
     calendar_events: [],
+    users:
+      opts.users === "unreadable"
+        ? []
+        : (opts.users ?? [{ user_id: USER_A, name: "Ada Lovelace" }]),
   };
   const calls: Calls = { rpc: [], orderUpdates: [], notFilters: [] };
 
   const supabase: any = {
     from: (table: string) =>
-      new FakeQuery(store, table, calls, opts.readError ?? null),
+      new FakeQuery(
+        store,
+        table,
+        calls,
+        // A table-scoped failure, so "the order reads fine but the people
+        // register does not" is expressible — which is the case the body's
+        // `receivedByNameReason` exists for.
+        table === "users" && opts.users === "unreadable"
+          ? { code: "42501", message: "permission denied for table users" }
+          : (opts.readError ?? null),
+      ),
     rpc: async (name: string, args: Row) => {
       calls.rpc.push({ name, args });
       return { data: null, error: null };
@@ -341,6 +361,174 @@ describe("markDelivered — an order is delivered once", () => {
     expect(thrown.message).toBe(body.message);
   });
 
+  // -------------------------------------------------------------------------
+  // 409, and the earlier delivery in the body (founder, batch 46)
+  // -------------------------------------------------------------------------
+  it("answers 409 Conflict, never 400 — the request was well formed", async () => {
+    // The founder's words, rejecting 400: the request is well-formed and it is
+    // the ORDER'S STATE that conflicts with it. A 400 would tell a caller it
+    // sent nonsense, and there is nothing a caller could send differently.
+    const { db } = makeDb({
+      order: { ...baseOrder, status: "DELIVERED", delivered_at: "2026-09-04T14:05:00.000Z" },
+    });
+    let thrown: any;
+    try {
+      await service(db).markDelivered(REST, ORDER, USER_B);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown.getStatus()).toBe(409);
+    expect(thrown.getStatus()).not.toBe(400);
+  });
+
+  it("carries the earlier delivery so a caller can show it instead of an error", async () => {
+    const { db } = makeDb({
+      order: {
+        ...baseOrder,
+        status: "DELIVERED",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        received_by: USER_A,
+        quantity_received: 5,
+        unit_type: "case",
+        bottles_total: 60,
+      },
+    });
+
+    let thrown: any;
+    try {
+      await service(db).markDelivered(REST, ORDER, USER_B);
+    } catch (e) {
+      thrown = e;
+    }
+
+    const body = thrown.getResponse();
+    expect(body.orderNumber).toBe("ORD-2026-00042");
+
+    // The exact key set, asserted rather than sampled. Four surfaces read this
+    // body (two web pages, the one-tap rail, the mobile outbox) and none of
+    // them is type-checked against the gateway, so this list IS the contract.
+    expect(Object.keys(body.earlierDelivery).sort()).toEqual(
+      [
+        "bottlesTotal",
+        "deliveredAt",
+        "quantityReceived",
+        "quantityUnitWhy",
+        "receivedBy",
+        "receivedByName",
+        "receivedByNameReason",
+        "summary",
+        "unitType",
+      ].sort(),
+    );
+
+    // A CASE ORDER CANNOT STATE THE COUNT'S UNIT, AND SAYS SO.
+    //
+    // `quantity_received` has four writers: three write the order's own unit
+    // and `recordDoorReceipt` writes BOTTLES, and nothing on the row records
+    // which. For `case` the two differ by the pack size, so the unit is
+    // REFUSED — `quantity-received-unit.ts`, imported rather than restated.
+    // An earlier draft of this file printed "5 cases (60 bottles)" from the
+    // order's `unit_type` alone; that is the silent multiplication ADR 0011
+    // forbids, and this assertion is what stops it coming back.
+    expect(body.earlierDelivery).toMatchObject({
+      deliveredAt: "2026-09-04T14:05:00.000Z",
+      receivedBy: USER_A,
+      receivedByName: "Ada Lovelace",
+      receivedByNameReason: null,
+      quantityReceived: 5,
+      unitType: null,
+      bottlesTotal: 60,
+    });
+    expect(body.earlierDelivery.quantityUnitWhy).toMatch(
+      /cannot be placed in a unit/i,
+    );
+    // The count is left OUT of the sentence rather than printed under a guess.
+    expect(body.earlierDelivery.summary).toBe(
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace.",
+    );
+    // Not "5 cases", and not a bare "5 booked in" either.
+    expect(body.earlierDelivery.summary).not.toMatch(/case/i);
+    expect(body.earlierDelivery.summary).not.toMatch(/booked in/i);
+  });
+
+  it("states the unit when the order's own unit cannot multiply", async () => {
+    // A bottle order: the door's bottle count and the desk's order-unit count
+    // are the same number, so the unit is stated and the sentence carries it.
+    const { db } = makeDb({
+      order: {
+        ...baseOrder,
+        status: "DELIVERED",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        received_by: USER_A,
+        quantity_received: 12,
+        unit_type: "bottle",
+      },
+    });
+    let thrown: any;
+    try {
+      await service(db).markDelivered(REST, ORDER, USER_B);
+    } catch (e) {
+      thrown = e;
+    }
+    const earlier = thrown.getResponse().earlierDelivery;
+    expect(earlier.unitType).toBe("bottle");
+    expect(earlier.summary).toBe(
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.",
+    );
+  });
+
+  it("says a name could not be looked up rather than reporting no name", async () => {
+    // A failed read of `users` and an order nobody signed for both leave
+    // `receivedByName` null. Reporting them the same way is
+    // [[absence-reported-as-health]] on the one line a receiver reads, so the
+    // reason travels with the null.
+    const { db } = makeDb({
+      order: {
+        ...baseOrder,
+        status: "DELIVERED",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        received_by: USER_A,
+        quantity_received: 12,
+      },
+      users: "unreadable",
+    });
+
+    let thrown: any;
+    try {
+      await service(db).markDelivered(REST, ORDER, USER_B);
+    } catch (e) {
+      thrown = e;
+    }
+    const earlier = thrown.getResponse().earlierDelivery;
+    expect(earlier.receivedBy).toBe(USER_A);
+    expect(earlier.receivedByName).toBeNull();
+    expect(earlier.receivedByNameReason).toMatch(/could not be read/i);
+    expect(earlier.summary).toContain("could not look up");
+    expect(earlier.summary).not.toContain("names nobody");
+  });
+
+  it("says the record names nobody when it genuinely does", async () => {
+    const { db } = makeDb({
+      order: {
+        ...baseOrder,
+        status: "DELIVERED",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        received_by: null,
+        quantity_received: 12,
+      },
+    });
+    let thrown: any;
+    try {
+      await service(db).markDelivered(REST, ORDER, USER_B);
+    } catch (e) {
+      thrown = e;
+    }
+    const earlier = thrown.getResponse().earlierDelivery;
+    expect(earlier.receivedBy).toBeNull();
+    expect(earlier.receivedByNameReason).toBeNull();
+    expect(earlier.summary).toContain("names nobody");
+  });
+
   it("refuses a partly-received order, naming the door as the way to finish", async () => {
     const { db, calls } = makeDb({
       order: {
@@ -451,6 +639,14 @@ describe("markDelivered — two confirmations at once, one winner", () => {
     expect(err).toBeInstanceOf(ConflictException);
     expect(err.getStatus()).toBe(409);
     expect(err.message).toMatch(/someone else/i);
+
+    // The loser gets the SAME body shape as an ordinary refusal — the WINNER's
+    // delivery. A caller must not have to tell the two 409s apart to render.
+    const racedBody = err.getResponse();
+    expect(racedBody.reason).toBe("order_already_delivered");
+    expect(racedBody.earlierDelivery.summary).toMatch(/^Delivered on /);
+    expect(racedBody.earlierDelivery.quantityReceived).toBe(12);
+    expect(racedBody.earlierDelivery.unitType).toBe("bottle");
 
     // One winner in the row, one live movement in the ledger.
     expect(store.procurement_orders[0].status).toBe("DELIVERED");

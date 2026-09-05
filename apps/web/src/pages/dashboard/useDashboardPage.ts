@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { formatLocalDateKey, parseCalendarDateString } from '../../lib/calendar-dates'
 import { DollarSign, Package, ShoppingCart, AlertTriangle } from 'lucide-react'
 import { formatMoney, formatNumber as fmtNumber } from '../../lib/utils'
+import { vendorLine } from '../../lib/mudavym/vendor'
 import { formatVolume } from '../../utils/volumeUtils'
 import { useDashboardData } from '../../hooks/useDashboardData'
 import { useCalendarEvents, useWines } from '../../hooks/queries'
@@ -58,8 +59,10 @@ function generateRemindersFromRealData(
   // signature used to say `totalPrice` and `providerName`, which
   // GET /procurement/orders has never sent, so the reminder below printed
   // "$0" over every pending order and "Unknown provider" over every
-  // delivery (measured 2026-09-05).
-  pendingOrders: Array<{ id?: string; inventoryId?: string; wineName?: string; quantity?: number; status?: string; totalCost?: number }>,
+  // delivery (measured 2026-09-05). `providerName` IS sent as of the same
+  // day — the orders routes join `providers` — so the delivery reminder names
+  // the vendor again, through `vendorLine` so an unnamed one says so.
+  pendingOrders: Array<{ id?: string; inventoryId?: string; wineName?: string; quantity?: number; status?: string; totalCost?: number; providerName?: string | null }>,
   inventory: Array<{ wineId?: string; wineName?: string; shadowStock?: number }>
 ): Reminder[] {
   const reminders: Reminder[] = []
@@ -76,7 +79,7 @@ function generateRemindersFromRealData(
     reminders.push({ 
       id: `order_${order.id}`, 
       title: (order.status === 'pending' || order.status === 'PENDING') ? `Approve ${order.wineName || 'Order'} Reorder` : `Confirm ${order.wineName || 'Order'} Delivery`, 
-      subtitle: `${order.quantity || 0} bottles · ${(order.status === 'pending' || order.status === 'PENDING') ? (typeof order.totalCost === 'number' ? `$${order.totalCost.toLocaleString()}` : 'no total on this order') : 'vendor not named by this route'}`, 
+      subtitle: `${order.quantity || 0} bottles · ${(order.status === 'pending' || order.status === 'PENDING') ? (typeof order.totalCost === 'number' ? `$${order.totalCost.toLocaleString()}` : 'no total on this order') : vendorLine(order)}`,
       priority: 'high', 
       completed: false, 
       dueTime: 'Today', 

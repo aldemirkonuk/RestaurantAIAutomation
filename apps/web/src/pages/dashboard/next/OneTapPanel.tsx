@@ -61,6 +61,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Hand, Lock, PenLine, Undo2, UserRound } from 'lucide-react';
 import { HoldToApprove } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '@/services/api/client';
+import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
 import { DELIVERY_WITHOUT_ORDER, dispositionOf } from './one-tap-acts';
 import {
   armToDraw,
@@ -222,6 +223,15 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
       }
       return challenge;
     } catch (err) {
+      // The mint refuses an already-arrived order too, and now with the same
+      // 409 body as the write (`one-tap-actions.service.ts`). Shown as the
+      // delivery it is: the seal was withheld because there is nothing left to
+      // seal, which is a fact about the order, not about the seal.
+      const refused = alreadyDeliveredRefusal(err);
+      if (refused) {
+        setFailureNote(alreadyDeliveredWords(refused));
+        return null;
+      }
       const failure = failureOf(err);
       setFailureNote(
         failure.status === 400 || failure.status === 403
@@ -250,6 +260,20 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         await read();
         return res.data ?? null;
       } catch (err) {
+        // ALREADY DELIVERED IS ANSWERED, NOT FRAMED AS A FAILURE.
+        //
+        // Founder, 2026-09-05 (batch 46): the refusal is a 409 so this rail can
+        // *"tell 'already done' from 'you sent nonsense' and show the earlier
+        // delivery instead of an error."* Before that it could not — the branch
+        // below printed the gateway's sentence for a 400 or a 403 and dressed
+        // everything else as "Marking it done was refused", so a manager whose
+        // colleague had already booked the truck in read a failure notice
+        // instead of who took it in and when.
+        const refused = alreadyDeliveredRefusal(err);
+        if (refused) {
+          setFailureNote(alreadyDeliveredWords(refused));
+          throw err;
+        }
         const failure = failureOf(err);
         setFailureNote(
           failure.status === 400 || failure.status === 403

@@ -43,6 +43,7 @@ import {
 } from '../../../services/api/documents';
 import { getOrder } from '../../../services/api/orders';
 import { ink, settle } from '../../../lib/mudavym/motion';
+import { vendorClause } from '../../../lib/mudavym/vendor';
 import {
   EM,
   GE,
@@ -619,11 +620,18 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   here read `totalPrice`, which the route has never sent, so the
                   typeof guard was always false and the "ordered $X" clause
                   silently vanished from every receipt — the route HAD the
-                  figure and this line dropped it. The vendor clause is gone
-                  with `providerName`: the DTO carries `providerId` only, so
-                  that clause could never render either (2026-09-05).
+                  figure and this line dropped it.
+
+                  The vendor clause is back and REAL: `GET
+                  /procurement/orders/:id` joins `providers` since 2026-09-05.
+                  `vendorClause` prints nothing when there is no name — this is
+                  a running sentence with no slot to leave empty, and "Vendor
+                  not named" appended to every row of a receipts feed is news
+                  about the query, not about the pairing. `vendor.ts` argues
+                  that choice against the list rows, which do say the words.
                 */}
                 Against order {orderQ.data.orderNumber ?? doc.order_id.slice(0, 8)}
+                {vendorClause(orderQ.data)}
                 {typeof orderQ.data.totalCost === 'number'
                   ? ` · ordered ${fmtMoney(orderQ.data.totalCost)}`
                   : ''}

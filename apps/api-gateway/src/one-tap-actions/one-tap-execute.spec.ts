@@ -34,6 +34,8 @@ function harness(options: {
   action: Row | null;
   order?: Row | null;
   orderError?: { message: string } | null;
+  /** The people register, for naming who took an earlier delivery in. */
+  user?: Row | null;
   redeemThrows?: Error;
   deliverThrows?: Error;
   updateError?: { message: string } | null;
@@ -65,6 +67,7 @@ function harness(options: {
             if (options.orderError) return { data: null, error: options.orderError };
             return { data: options.order ?? null, error: null };
           }
+          if (table === "users") return { data: options.user ?? null, error: null };
           return { data: null, error: null };
         },
         single: async () => {
@@ -245,6 +248,79 @@ describe("the first real one-tap action — confirming a delivery", () => {
     ).rejects.toThrow(/already booked in as delivered/);
     expect(h.calls).toEqual([]);
     expect(h.updates).toHaveLength(0);
+  });
+
+  it("answers 409 with the earlier delivery, not 400", async () => {
+    // Founder, 2026-09-05 (batch 46), rejecting 400: the request is well-formed
+    // and it is the order's STATE that conflicts with it, and this rail must be
+    // able to *show the earlier delivery instead of an error*. Until this it
+    // threw BadRequest, and `OneTapPanel` printed a gateway sentence only for a
+    // 400 or 403 — so the refusal a manager most needs to read plainly was the
+    // one the desk dressed up as a failure.
+    const h = harness({
+      action: DELIVERY_CARD,
+      order: {
+        ...ORDER,
+        status: "DELIVERED",
+        order_number: "ORD-2026-00042",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        received_by: "user-7",
+        quantity_received: 12,
+        unit_type: "bottle",
+      },
+      user: { user_id: "user-7", name: "Ada Lovelace" },
+    });
+
+    let thrown: any;
+    try {
+      await h.service.executeAction("act-1", "rest-A", "user-1", {} as any, "seal-token");
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown.getStatus()).toBe(409);
+    expect(thrown.getStatus()).not.toBe(400);
+    const body = thrown.getResponse();
+    expect(body.reason).toBe("order_already_delivered");
+    expect(body.orderId).toBe("ord-9");
+    expect(body.orderNumber).toBe("ORD-2026-00042");
+    expect(body.earlierDelivery.summary).toBe(
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.",
+    );
+    // The seal is never minted or spent, and nothing is recorded — the whole
+    // reason this check stays ahead of `markDelivered`'s own.
+    expect(h.calls).toEqual([]);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("refuses a partly-received order before the seal is spent", async () => {
+    // This one used to PASS the mint and be refused downstream, after the
+    // one-shot seal had been redeemed — so the card could not be retried and
+    // the manager was left with a spent seal and no delivery.
+    const h = harness({
+      action: DELIVERY_CARD,
+      order: {
+        ...ORDER,
+        status: "PARTIALLY_RECEIVED",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        quantity_received: 3,
+        unit_type: "bottle",
+      },
+    });
+
+    let thrown: any;
+    try {
+      await h.service.executeAction("act-1", "rest-A", "user-1", {} as any, "seal-token");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown.getStatus()).toBe(409);
+    expect(thrown.message).toMatch(/receiving door/i);
+    const earlier = thrown.getResponse().earlierDelivery;
+    expect(earlier.quantityReceived).toBe(3);
+    // `unit_type: "bottle"` does not multiply, so the count's unit is stated.
+    expect(earlier.unitType).toBe("bottle");
+    expect(h.calls).toEqual([]);
   });
 
   it("refuses a delivery card that names no order", async () => {

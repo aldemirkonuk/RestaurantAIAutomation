@@ -67,6 +67,7 @@ vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
 }));
 
 import { LedgerRow } from './LedgerRow';
+import { RECURRENCE_UNREAD } from './recurrence';
 import { ResponsesSheet, REJECT_SEAL_NOTE } from './ResponsesSheet';
 import {
   NO_ANSWER_YET,
@@ -142,6 +143,8 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     stage: 'pending',
     status: 'pending',
     recurring: false,
+    // Not read: this fixture is a hand-built row, not a wire payload.
+    recurrence: RECURRENCE_UNREAD,
     recurrenceLabel: null,
     requestedAt: '2026-09-01T10:00:00Z',
     approvedAt: null,

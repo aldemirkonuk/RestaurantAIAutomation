@@ -833,6 +833,82 @@ export class OrderResponseDto {
   wineName?: string;
 
   /**
+   * The vendor's NAME, joined from `providers` on `provider_id`.
+   *
+   * The same three states as the price pair below, and for the same reason:
+   *   * a string — the provider row was read and carries this name;
+   *   * `null` — the route joined `providers` and got nothing back. The
+   *     provider row is gone, or `provider_id` is null. That is a fact about
+   *     this order, and the screens print "the vendor is not named on this
+   *     order" rather than a blank;
+   *   * **the key ABSENT** — this route does not join `providers` at all, so
+   *     it knows nothing either way. Only `GET /procurement/orders`,
+   *     `/orders/history`, `/orders/pending` and `/orders/:id` join it today.
+   *
+   * A consumer must never read the absent case as "no vendor" — that is the
+   * absence-reported-as-health fault (ADR 0020). Before this field existed,
+   * four surfaces read a `providerName` the wire had never sent: the receiving
+   * door's credit-note letter was addressed "To the vendor" and named nobody
+   * on every order it had ever opened.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "Kavaklidere Saraplari",
+    description:
+      "The vendor's name, joined from providers on provider_id. null = the join was made and returned no name. Key ABSENT = this route does not join providers.",
+  })
+  providerName?: string | null;
+
+  /**
+   * `procurement_orders.quantity_received` — what has actually been booked
+   * against this order so far.
+   *
+   * Three states, as everywhere else on this DTO: a number; `null` (the column
+   * was read and is empty — nothing has been received); the key ABSENT (this
+   * route did not read the column). A screen that pre-fills a physical count
+   * MUST tell `null` from absent: the phone used to read
+   * `order.quantityReceived ?? order.quantity` against a key the wire never
+   * sent, so a partially-received order pre-filled the receiver's count from
+   * the ORDERED quantity.
+   *
+   * IT TRAVELS WITH `quantityReceivedUom` AND IS UNSAFE WITHOUT IT. The column
+   * has four writers and they do not agree on its unit — see
+   * `quantity-received-unit.ts`, which carries the measurement.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 3,
+    description:
+      "Units received against this order so far, in quantityReceivedUom. null = the column was read and is empty. Key ABSENT = this route does not read it. Never use it without its unit.",
+  })
+  quantityReceived?: number | null;
+
+  /**
+   * The unit `quantityReceived` is stated in — ADR 0070.
+   *
+   * A unit when the row can state one; `null` when it CANNOT, which is a
+   * refusal and not a default. The column is a single integer written in the
+   * order's own unit by three code paths and in bottles by the receiving door,
+   * and nothing on the row records which wrote it — so on an order placed in
+   * cases the two readings differ by the pack size and neither is knowledge.
+   * On an order whose unit does not multiply (bottle, each, keg, liter, or
+   * absent) both writers produce the same number and the unit is stated.
+   *
+   * The key is ABSENT exactly when `quantityReceived` is absent: they are one
+   * fact and never travel apart.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "bottle",
+    description:
+      "The unit quantityReceived is stated in. null = this row cannot state it (the column has two writers with two units and the row does not say which), so the count must not be used as a pre-fill. Travels with quantityReceived: both stated, both null-able, or both keys absent.",
+  })
+  quantityReceivedUom?: string | null;
+
+  /**
    * The unit the agreed price is stated in — ADR 0119, read from the LINE.
    *
    * THREE VALUES, AND THE THIRD ONE IS THE POINT:
@@ -923,6 +999,81 @@ export class OrderResponseDto {
       "Freight or carriage agreed for this line, positive, for the whole line. A cost component, never a price variance.",
   })
   freight?: number | null;
+
+  /*
+   * ===========================================================================
+   * THE RECURRENCE (ADR 0125's addendum, founder 2026-09-05)
+   * ===========================================================================
+   * Six keys that travel together: all six stated, or all six ABSENT. The
+   * distinction is the point of the whole group.
+   *
+   *   a value        this order repeats, and this is the rule
+   *   null           this route READ the recurrence columns and this order does
+   *                  not repeat
+   *   key absent     this route does not read them, and knows nothing either way
+   *
+   * Reading absent as "does not repeat" is the fault this whole group exists to
+   * remove. `.planning/v3.0-TECH-DEBT.md` "The orders wire" item 2:
+   * `useOrdersNextData.toRow` set `recurring = false` unconditionally, so the
+   * rebuilt page's Recurring station could never fill and every order fell into
+   * "one-time" — and nothing on the wire could have told it otherwise.
+   *
+   * `GET /procurement/orders` and `GET /procurement/orders/:id` select `*` and
+   * therefore send all six. A route that selects a column list sends none.
+   */
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "weekly",
+    description:
+      "How often this order repeats: daily, weekly, biweekly, monthly or quarterly. null = this route read the recurrence and this order does not repeat. Key ABSENT = this route does not read it. There is no second flag; procurement_orders.is_recurring is tombstoned.",
+  })
+  recurrenceFrequency?: string | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 1,
+    description:
+      "What the rule is anchored to. Weekly/biweekly: a weekday, 0 = Monday to 6 = Sunday. Monthly/quarterly: a day of the month, 1 to 28 — 28 so that every month has one. null = no anchor stated, and the series runs from its start date.",
+  })
+  recurrenceAnchorDay?: number | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "2026-09-12",
+    description:
+      "The next date this order comes round, YYYY-MM-DD. DERIVED, never typed: nextOccurrenceOn() in order-recurrence.ts is the only thing that advances it. null on a paused or ended series.",
+  })
+  recurrenceNextDueOn?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "active",
+    description:
+      "active, paused or ended. Paused keeps its place in the calendar and can be resumed; ended is over. A recurrence never approves anything — every occurrence is born PENDING and is sealed by a person.",
+  })
+  recurrenceStatus?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      "The order carrying the rule this one was minted from. Set on a CHILD, null on the parent and on every order that does not recur.",
+  })
+  recurrenceParentOrderId?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "2026-09-12",
+    description:
+      "The occurrence date this child was minted for. Travels with recurrenceParentOrderId: both set or both null. A partial unique index over the pair is what stops two orders being raised for one occurrence.",
+  })
+  recurrenceOccurrenceOn?: string | null;
 }
 
 export class OrderListResponseDto {

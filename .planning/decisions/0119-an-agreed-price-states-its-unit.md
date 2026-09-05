@@ -25,6 +25,22 @@
   not two, and that the ledger row's em dash had siblings: `"$0"` on the dashboard's
   approval seal, `"$NaN"` on the provider card, and a whole spend engine summing zeroes
   (`06-pages/orders.md` §13.16).
+  **`OrderResponseDto` grew three more keys the same day (2026-09-05, batch 40), and
+  they follow THIS ADR's three-state rule rather than inventing another:**
+  `providerName` (joined from `providers` on the list, history, pending and detail
+  routes) and the pair `quantityReceived` / `quantityReceivedUom`. In each, a value is a
+  value, `null` means the route ASKED and learned nothing, and the KEY BEING ABSENT
+  means the route did not ask — the distinction phase 2 established for `priceUom` and
+  the fees, now applied to a join and to a column read. `mapOrderRow` decides which by
+  testing whether the ROW carries the field (`"provider_name" in row`,
+  `"quantity_received" in row`) rather than by testing its value, since a route that
+  does not join and a vendor that cannot be named must not serialise alike.
+  `quantityReceivedUom` is the interesting one: `procurement_orders.quantity_received`
+  has four writers and two units (three write the order's unit, the receiving door
+  writes bottles), so the unit is STATED only where the arithmetic makes the two agree
+  and is `null` on a case order — a refusal, in the shape ADR 0011 requires and this ADR
+  borrowed for the price pair. That defect is reported, not repaired; the LIVE-DEFECT entry in
+  `v3.0-TECH-DEBT.md` stands.
 - **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided, phases 0-1 built) · 2026-09-05 (phase 2, the read side, built) · 2026-09-05 (Q2/Q3/Q4/Q6 decided and built)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** agreed price, price unit, unit of measure, case price, bottle price,

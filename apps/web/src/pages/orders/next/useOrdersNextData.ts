@@ -28,6 +28,12 @@ import {
   type PriceUnitReading,
   type PriceUom,
 } from './price-unit';
+import {
+  isRecurring,
+  readRecurrence,
+  recurrenceLabel,
+  type RecurrenceReading,
+} from './recurrence';
 
 export type Stage = 'pending' | 'approved' | 'ordered' | 'delivered';
 export const STAGES: Stage[] = ['pending', 'approved', 'ordered', 'delivered'];
@@ -144,7 +150,17 @@ export interface OrderRowVM {
   total: number | null;
   stage: Stage | 'cancelled';
   status: OrderStatus;
+  /**
+   * Does this order repeat? A MEASURED fact since 2026-09-05 — it was a
+   * hardcoded `false` before that, because the route sent nothing. False here
+   * now means either "read, and it does not" or "this route did not say"; read
+   * `recurrence.read` to tell those apart, and never print "none" off this
+   * boolean alone.
+   */
   recurring: boolean;
+  /** The whole reading, three-state. See `recurrence.ts`. */
+  recurrence: RecurrenceReading;
+  /** "recurs weekly, next 12 Sep". Null when there is nothing true to say. */
   recurrenceLabel: string | null;
   requestedAt: string | null;
   approvedAt: string | null;
@@ -196,6 +212,13 @@ export interface OrdersNextData {
   /** Station counts. Null while unknown (loading with no cache, or errored). */
   counts: Record<Stage, number | null>;
   recurringCount: number | null;
+  /**
+   * How many rows CARRIED a recurrence reading, out of `rows.length`. Null
+   * while unknown. The Recurring station may say "none" only when this equals
+   * the row count and `recurringCount` is zero; anything less and it says what
+   * it does not know instead. See `emptyStationSentence`.
+   */
+  recurrenceReadCount: number | null;
   cancelledCount: number | null;
   month: MonthFigure;
   /**
@@ -305,25 +328,29 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
   const computedTotal = agreement && agreement.ok ? agreement.total : null;
 
   /*
-   * The route sends NO vendor name, NO producer, NO recurrence and NO notes.
-   * All four were read off the shared `Order` type until 2026-09-05, and all
-   * four were `undefined` on every live row:
+   * The route sends NO producer and NO notes. Both were read off the shared
+   * `Order` type until 2026-09-05 and both were `undefined` on every live row:
    *
    *   providerName  the vendor was ALREADY resolved from `providerId` through
    *                 the providers query, so the page was right by accident —
    *                 `rawProvider` never once won that `??`.
    *   producer      always null, so the row's producer line never rendered.
-   *   recurrence    always absent, so `recurring` was always false: the page's
-   *                 RECURRING STATION HAS ALWAYS BEEN EMPTY and every order
-   *                 fell into "one-time". Kept false, but as a stated fact
-   *                 about the route rather than a fact about the order —
-   *                 `06-pages/orders.md` §13.12 owns the station.
    *   notes         always null, so the note clause never rendered.
    *
    * Reading them again would need the route to send them; asserting them from
    * absence is the fault this whole pass exists to remove.
+   *
+   * RECURRENCE IS NO LONGER ON THAT LIST. It was, and it was the worst of the
+   * four: `const recurring = false` meant the Recurring station could never
+   * fill and every order fell into "one-time". `GET /procurement/orders` now
+   * sends six recurrence keys (ADR 0125's addendum; the founder's decision of
+   * 2026-09-05, "build recurrence on the order"), and `readRecurrence` reads
+   * them with the same three-state discipline as the price unit — a value, a
+   * null, or the key absent. `recurring` is now a MEASURED fact, and the
+   * station may say "none" only when it has one.
    */
-  const recurring = false;
+  const recurrence = readRecurrence(o as unknown as Record<string, unknown>);
+  const recurring = isRecurring(recurrence);
   return {
     id: o.id,
     orderNumber: o.orderNumber ?? null,
@@ -343,7 +370,8 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     stage: stageOf(status),
     status,
     recurring,
-    recurrenceLabel: null,
+    recurrence,
+    recurrenceLabel: recurrenceLabel(recurrence),
     requestedAt: o.requestedAt ?? null,
     approvedAt: o.approvedAt ?? null,
     deliveredAt: o.deliveredAt ?? null,
@@ -393,6 +421,7 @@ export function useOrdersNextData(): OrdersNextData {
       delivered: null,
     };
     let recurringCount: number | null = null;
+    let recurrenceReadCount: number | null = null;
     let cancelledCount: number | null = null;
     const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
@@ -400,6 +429,17 @@ export function useOrdersNextData(): OrdersNextData {
       const oneTime = rows.filter((r) => !r.recurring);
       for (const s of STAGES) counts[s] = oneTime.filter((r) => r.stage === s).length;
       recurringCount = rows.filter((r) => r.recurring).length;
+      /*
+       * HOW MANY ROWS ACTUALLY ANSWERED THE QUESTION.
+       *
+       * `recurringCount === 0` on its own has two meanings — "none of these
+       * repeats" and "this route never said" — and the station is not allowed
+       * to print the first when it only has grounds for the second. This count
+       * is what tells them apart, and `emptyStationSentence` is what turns it
+       * into words. Before 2026-09-05 the answer was ALWAYS the second one and
+       * the station showed nothing without saying so.
+       */
+      recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
       cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
 
       const now = new Date();
@@ -443,6 +483,7 @@ export function useOrdersNextData(): OrdersNextData {
       rows,
       counts,
       recurringCount,
+      recurrenceReadCount,
       cancelledCount,
       month,
       hasData: known,

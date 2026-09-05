@@ -40,13 +40,41 @@ export default function ReceivingScreen() {
   const orderedQty: number = order?.quantity ?? 0;
   const poUnitPrice: number | null =
     order?.finalPrice ?? order?.negotiatedPrice ?? order?.quotedPrice ?? null;
-  // `quantityReceived` is a COLUMN on procurement_orders, not a key on the
-  // wire: `mapOrderRow` does not map it, so `OrderResponseDto` has never
-  // carried it and this read has always fallen through to the ordered
-  // quantity. Named here rather than left as a phantom `??` that looks like
-  // it works: a partially-received order still pre-fills from what was
-  // ORDERED, and the fix is on the gateway (v3.0-TECH-DEBT, 2026-09-05).
-  const stockedQty: number = order?.quantity ?? 0;
+  // WHAT WAS ACTUALLY BOOKED, when the wire can say so in this screen's unit.
+  //
+  // `quantityReceived` used to be a COLUMN and not a wire key, so this read
+  // fell through to the ORDERED quantity and a partially-received order
+  // pre-filled the receiver's count with the whole delivery. `mapOrderRow` now
+  // sends it (2026-09-05) — WITH ITS UNIT, which is the half that makes it
+  // usable: `procurement_orders.quantity_received` is written in the order's
+  // own unit by the desk and in BOTTLES by the receiving door, so on an order
+  // placed in cases the gateway sends `quantityReceivedUom: null` rather than
+  // guess. This screen counts in the order's own unit (`countedUom` defaults
+  // to it), so the pre-fill is taken ONLY when the wire states a unit and that
+  // unit is this order's. Otherwise it falls back to the ordered quantity and
+  // says why, out loud, under the count — a wrong default that looks right is
+  // worse than an honest one that is high.
+  const orderUom = (order?.unitType ?? "").trim().toLowerCase();
+  const receivedUom = (order?.quantityReceivedUom ?? "").trim().toLowerCase();
+  const receivedIsUsable =
+    typeof order?.quantityReceived === "number" &&
+    order.quantityReceived > 0 &&
+    receivedUom !== "" &&
+    // An absent order unit means bottles on both sides — the column's own
+    // default — so an empty `orderUom` matches a stated "bottle".
+    (receivedUom === orderUom || (orderUom === "" && receivedUom === "bottle"));
+  const stockedQty: number = receivedIsUsable
+    ? (order?.quantityReceived as number)
+    : (order?.quantity ?? 0);
+  const stockedNote: string | null = receivedIsUsable
+    ? `Pre-filled from ${order?.quantityReceived} already received on this order.`
+    : typeof order?.quantityReceived === "number" &&
+        order.quantityReceived > 0 &&
+        receivedUom === ""
+      ? "Something has already been received against this order, but the wire " +
+        "cannot say in which unit — the door records bottles and the desk " +
+        "records the order's unit. Counting from the ordered quantity instead."
+      : null;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
@@ -259,6 +287,18 @@ export default function ReceivingScreen() {
                       <Stepper label="+" onPress={() => setAcceptedRaw(acceptedQty + 1)} disabled={sealed} />
                     </View>
                   </View>
+
+                  {/*
+                    Where the pre-filled count came from, or why it could not
+                    come from what was already received. Rendered only when
+                    there is something to say — an order nobody has booked
+                    against needs no sentence.
+                  */}
+                  {stockedNote ? (
+                    <AppText variant="caption" tone="tertiary">
+                      {stockedNote}
+                    </AppText>
+                  ) : null}
 
                   {/* REJECTED */}
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>

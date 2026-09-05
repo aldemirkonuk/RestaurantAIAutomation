@@ -42,7 +42,13 @@ import { useContextMenu } from '../../hooks/useContextMenu'
 import { getWineTypeColor, Wine as WineType } from '../../data/wineData'
 import { QuickGmailModal } from '../emails/QuickGmailModal'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
-import { getOrdersNeedingApproval, getOrders, markOrderDelivered } from '../../services/api/orders'
+import {
+  getOrdersNeedingApproval,
+  getOrders,
+  markOrderDelivered,
+  alreadyDeliveredRefusal,
+  alreadyDeliveredWords,
+} from '../../services/api/orders'
 import {
   getOneTapActions,
   executeOneTapAction,
@@ -50,6 +56,7 @@ import {
 } from '../../services/api/dashboard'
 import type { Order, OrderStatus } from '../../services/api/types'
 import { canonicalStatus } from '../../lib/mudavym/status'
+import { vendorLine } from '../../lib/mudavym/vendor'
 import { useAuthStore } from '../../stores'
 import { useWines } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
@@ -368,28 +375,38 @@ function generateRealActions(
      *     order ever fetched and this branch produced no cards at all.
      *     `canonicalStatus` is the repo's one wire-to-UI mapper
      *     (`lib/mudavym/status.ts`) and is what the comparison now goes
-     *     through. It does NOT arm anything new: the two fetches above ask
-     *     for PENDING/APPROVAL_NEEDED and CONFIRMED, which canonicalise to
-     *     'pending', 'pending_approval' and 'ordered' — still none of them
-     *     'approved' or 'in_transit'. The card is now correctly written and
-     *     still unreachable; widening the fetch is a founder's call, filed in
-     *     `.planning/v3.0-TECH-DEBT.md`.
+     *     through.
      *
-     * (b) `totalPrice`, `unitPrice`, `providerName`, `wineId` and `createdAt`
-     *     are names the route has never sent. `order.totalPrice ||
-     *     order.quantity * (order.unitPrice || 0)` was therefore `0`, so the
-     *     card printed "$0" as the invoice price AND "$0" as the negotiated
-     *     price — and `negotiatedPrice` is dispatched as `cost` on the
-     *     inventory-update event when the delivery is confirmed, so a zero
-     *     was being WRITTEN, not merely shown. The figures are now the DTO's
-     *     own `totalCost` / `finalPrice`, and `null` when the route did not
-     *     carry them, which the card renders as words rather than as a
-     *     number.
+     *     THE CARD IS NOW REACHABLE, and that is a founder's decision of
+     *     2026-09-05, not a side effect: "widen the one-tap fetch to CONFIRMED
+     *     and IN_TRANSIT so the sealed deliver path goes live". The fetches
+     *     below ask for exactly those two states, and this filter names the
+     *     two canonical forms they map to — CONFIRMED to 'ordered',
+     *     IN_TRANSIT to 'in_transit'. The set is deliberately the fetches'
+     *     own set: an entry here that nothing fetches is a branch that reads
+     *     as armed and is dead, which is the defect this comment is about.
+     *     Double-delivery is refused by `delivered-once.ts` at the gateway,
+     *     for every caller, so a card raised twice cannot book twice.
+     *
+     * (b) `totalPrice`, `unitPrice`, `wineId` and `createdAt` are names the
+     *     route has never sent. `order.totalPrice || order.quantity *
+     *     (order.unitPrice || 0)` was therefore `0`, so the card printed "$0"
+     *     as the invoice price AND "$0" as the negotiated price — and
+     *     `negotiatedPrice` is dispatched as `cost` on the inventory-update
+     *     event when the delivery is confirmed, so a zero was being WRITTEN,
+     *     not merely shown. The figures are now the DTO's own `totalCost` /
+     *     `finalPrice`, and `null` when the route did not carry them, which
+     *     the card renders as words rather than as a number.
+     *
+     *     `providerName` was on that list until 2026-09-05 and is now REAL:
+     *     the orders routes join `providers`. The supplier line names the
+     *     vendor again, through `vendorLine`, so an order whose vendor could
+     *     not be read says so instead of printing a placeholder.
      */
     ordersToProcess
       .filter((o) => {
         const s = canonicalStatus(o.status)
-        return s === 'approved' || s === 'in_transit'
+        return s === 'ordered' || s === 'in_transit'
       })
       .slice(0, 3)
       .forEach((order, index: number) => {
@@ -408,9 +425,9 @@ function generateRealActions(
           wine,
           details: { 
             expectedQty: order.quantity, 
-            invoicePrice, 
+            invoicePrice,
             negotiatedPrice: invoicePrice == null ? null : invoicePrice * 0.97,
-            supplier: 'Not named by this route',
+            supplier: vendorLine(order),
             orderId: order.id
           },
           timestamp: new Date(order.requestedAt || now.getTime() - (index + 1) * 1000 * 60 * 15),
@@ -540,15 +557,26 @@ export function OneTapActionCenter() {
     const fetchOrders = async () => {
       setOrdersLoading(true)
       try {
-        // Fetch pending orders, recent in-transit orders, and server actions
-        const [pendingOrders, allOrders, serverRows] = await Promise.all([
+        // Pending approvals, the two states a delivery can actually arrive
+        // from, and the server's own action rows.
+        //
+        // THE THIRD FETCH IS THE ONE THAT MAKES THE DELIVER PATH LIVE
+        // (founder, 2026-09-05). `getOrders` maps the UI word to the wire
+        // enum — 'ordered' is CONFIRMED, 'in_transit' is IN_TRANSIT — and
+        // until this pass only CONFIRMED was asked for while the card's own
+        // filter named neither, so the delivery card had no reachable input
+        // at all. Two calls rather than one because `OrderFilterDto.status`
+        // takes a single value; both are `.catch`ed to an empty list so a
+        // failure of one does not empty the desk.
+        const [pendingOrders, confirmedOrders, inTransitOrders, serverRows] = await Promise.all([
           getOrdersNeedingApproval(restaurantId).catch(() => [] as Order[]),
           getOrders({ status: 'ordered' as OrderStatus }, restaurantId).catch(() => [] as Order[]),
+          getOrders({ status: 'in_transit' as OrderStatus }, restaurantId).catch(() => [] as Order[]),
           getOneTapActions(restaurantId).catch(() => [] as any[]),
         ])
 
         // Combine and dedupe
-        const combinedOrders = [...pendingOrders, ...allOrders]
+        const combinedOrders = [...pendingOrders, ...confirmedOrders, ...inTransitOrders]
         const uniqueOrders = combinedOrders.filter(
           (order, index, self) => self.findIndex(o => o.id === order.id) === index
         )
@@ -672,6 +700,18 @@ export function OneTapActionCenter() {
   }
 
   const failureMessage = (error: unknown, fallback: string) => {
+    // ALREADY DELIVERED IS NOT A FAILURE, AND IS CHECKED FIRST.
+    //
+    // The founder's 409 (2026-09-05, batch 46) exists so this card can tell
+    // "already done" from "you sent nonsense" and SHOW the earlier delivery.
+    // Printed before the generic branches below, because the card's job here is
+    // to answer the receiver's actual question — is the wine on the shelf, and
+    // who took it in — not to report that a request did not go through. The
+    // card is restored by the caller and the tap is never repeated: a 409 says
+    // the request was fine, so repeating it cannot change the answer.
+    const refused = alreadyDeliveredRefusal(error)
+    if (refused) return alreadyDeliveredWords(refused)
+
     const status = (error as { response?: { status?: number } })?.response?.status
     if (status === 401 || status === 403) return 'Your session no longer has access to this action.'
     if (status === 404) return 'That action no longer exists on the server.'

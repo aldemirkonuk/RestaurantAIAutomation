@@ -3,6 +3,14 @@ import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
 import { RecurringOrdersService } from "./recurring-orders.service";
 import { RecurringOrdersController } from "./recurring-orders.controller";
+// Recurrence ON THE ORDER (founder, 2026-09-05; ADR 0125's addendum). Distinct
+// from `RecurringOrdersService` above, which owns the `recurring_orders`
+// TEMPLATE table: a template repeats four facts, an order repeats the whole
+// agreement. Registered here rather than left as a class Nest cannot construct —
+// slice 1 of ADR 0104 D12 shipped exactly that mistake, and the first route to
+// inject one would have failed at boot with a DI error CI cannot see.
+import { OrderRecurrenceService } from "./order-recurrence.service";
+import { OrderRecurrenceController } from "./order-recurrence.controller";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
@@ -56,6 +64,7 @@ import { DeliverySpineService } from "./canonical/delivery-spine.service";
   controllers: [
     ProcurementController,
     RecurringOrdersController,
+    OrderRecurrenceController,
     DocumentsController,
     ReceivingController,
     CreditsController,
@@ -64,6 +73,7 @@ import { DeliverySpineService } from "./canonical/delivery-spine.service";
   providers: [
     ProcurementService,
     RecurringOrdersService,
+    OrderRecurrenceService,
     DocumentIntakeService,
     DocumentExtractorService,
     ReceivingService,

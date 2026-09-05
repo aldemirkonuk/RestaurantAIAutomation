@@ -28,10 +28,12 @@ import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
+import { RecurrenceSheet } from './RecurrenceSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
 import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
+import { emptyStationSentence } from './recurrence';
 import { useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
@@ -115,6 +117,8 @@ export default function OrdersNext() {
    * instance per row would be one disabled query subscription per row.
    */
   const [responsesFor, setResponsesFor] = useState<string | null>(null);
+  /** Which order's recurrence is open. One sheet for the page, as above. */
+  const [recurrenceFor, setRecurrenceFor] = useState<string | null>(null);
 
   const visibleRows = useMemo(() => {
     const byDate = (a: OrderRowVM, b: OrderRowVM) =>
@@ -127,6 +131,11 @@ export default function OrdersNext() {
   const responsesRow = useMemo(
     () => (responsesFor === null ? null : (data.rows.find((r) => r.id === responsesFor) ?? null)),
     [data.rows, responsesFor],
+  );
+
+  const recurrenceRow = useMemo(
+    () => (recurrenceFor === null ? null : (data.rows.find((r) => r.id === recurrenceFor) ?? null)),
+    [data.rows, recurrenceFor],
   );
 
   const selectedRows = useMemo(
@@ -251,6 +260,17 @@ export default function OrdersNext() {
           />
         )}
 
+        {/* The recurrence sheet, keyed off the row for the same reason the
+            answers sheet is: one instance for the page, and it follows the
+            order out of the book rather than describing one that has gone. */}
+        {recurrenceRow && (
+          <RecurrenceSheet
+            open
+            onClose={() => setRecurrenceFor(null)}
+            row={recurrenceRow}
+          />
+        )}
+
         {/* ── the gateway, when it cannot be reached, is said plainly ──── */}
         {data.isError && (
           <div
@@ -315,9 +335,27 @@ export default function OrdersNext() {
               </p>
             ) : visibleRows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
-                {station === null
-                  ? 'The book is open and empty — no active orders.'
-                  : `Nothing sits at ${station} right now.`}
+                {/*
+                  * THE RECURRING STATION SAYS "NONE" ONLY FROM A MEASURED READ.
+                  *
+                  * Until 2026-09-05 this station was structurally empty — the
+                  * route sent no recurrence and `toRow` set `recurring = false`
+                  * for every order — and it printed "Nothing sits at recurring
+                  * right now", which is a claim about the ORDERS made from a
+                  * fact about the ROUTE. `emptyStationSentence` is handed the
+                  * two counts and says which of the four cases this actually
+                  * is; the one it will not say is "there are none" off a book
+                  * that never answered.
+                  */}
+                {station === 'recurring'
+                  ? emptyStationSentence(
+                      data.hasData,
+                      data.rows.length,
+                      data.recurrenceReadCount ?? 0,
+                    )
+                  : station === null
+                    ? 'The book is open and empty — no active orders.'
+                    : `Nothing sits at ${station} right now.`}
               </p>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -332,6 +370,7 @@ export default function OrdersNext() {
                     bulkRunning={bulkRunning}
                     approval={data.approvalByOrder?.get(row.id)}
                     onOpenResponses={() => setResponsesFor(row.id)}
+                    onOpenRecurrence={() => setRecurrenceFor(row.id)}
                     approvalGateError={data.approvalGateError}
                   />
                 ))}

@@ -99,8 +99,27 @@ export interface ProcurementOrder {
   orderNumber?: string;
   wineName?: string;
   providerId?: string;
+  /**
+   * The vendor's name, joined from `providers` (2026-09-05). A name; `null`
+   * (the route joined and found none); or the key ABSENT (this route does not
+   * join). `/procurement/orders/:id` and `/orders/pending` — the two this app
+   * calls — both join it.
+   */
+  providerName?: string | null;
   quantity?: number;
   unitType?: string;
+  /**
+   * What has been booked against this order so far. A number; `null` (read,
+   * and nothing received); or the key absent.
+   *
+   * NEVER READ IT WITHOUT `quantityReceivedUom`. The column is written in the
+   * order's unit by the desk and in bottles by the receiving door, so on an
+   * order placed in cases the unit key is `null` and the number must not be
+   * used as a count pre-fill. See `quantity-received-unit.ts` on the gateway.
+   */
+  quantityReceived?: number | null;
+  /** The unit `quantityReceived` is in, or `null` when this row cannot say. */
+  quantityReceivedUom?: string | null;
   quotedPrice?: number;
   negotiatedPrice?: number;
   finalPrice?: number;

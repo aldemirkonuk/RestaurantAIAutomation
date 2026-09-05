@@ -155,7 +155,7 @@ function writer(script: {
   w.ensureFolderPath = jest.fn(async () => {
     if (script.throwOn === "folder") throw new Error(script.message ?? "no");
     return script.folder ?? { id: "folder-1", name: "folder" };
-  });
+  }) as unknown as typeof w.ensureFolderPath;
   w.uploadJson = jest.fn(async (_t: string, p: { body: string }) => {
     if (script.throwOn === "upload") throw new Error(script.message ?? "no");
     lastBody = p.body;

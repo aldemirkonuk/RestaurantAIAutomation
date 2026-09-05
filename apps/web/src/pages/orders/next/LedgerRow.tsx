@@ -23,6 +23,7 @@ import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
+import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
 import * as ordersApi from '@/services/api/orders';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
@@ -69,6 +70,13 @@ export interface LedgerRowProps {
    * three distinct states: answers, none, or unreadable.
    */
   onOpenResponses?: () => void;
+  /**
+   * Open the recurrence sheet for this order. Offered on every row, including
+   * one that already repeats — the sheet is where a rule is read, paused and
+   * ended as well as set, and it prints its own refusal for an order nobody
+   * has approved rather than the row hiding the control and saying nothing.
+   */
+  onOpenRecurrence?: () => void;
   /** Why the gate could not be read. Said in words above the ceremony. */
   approvalGateError?: string | null;
 }
@@ -97,6 +105,7 @@ export function LedgerRow({
   bulkRunning,
   approval,
   onOpenResponses,
+  onOpenRecurrence,
   approvalGateError,
 }: LedgerRowProps) {
   const approve = useApproveOrder();
@@ -154,6 +163,16 @@ export function LedgerRow({
       { orderId: row.id },
       {
         onError: (err) => {
+          // An order already delivered is not a refused request, and this desk
+          // stops calling it one (founder, 2026-09-05, batch 46): a 409 carries
+          // the earlier delivery, so the row shows who booked it in and when
+          // rather than "the gateway refused". Nothing retries — repeating a
+          // well-formed request cannot change the order's state.
+          const refused = alreadyDeliveredRefusal(err);
+          if (refused) {
+            setDeliverError(alreadyDeliveredWords(refused));
+            return;
+          }
           const msg = (err as { message?: string })?.message ?? 'request failed';
           setDeliverError(`Not recorded — the gateway refused (${msg}).`);
         },
@@ -198,7 +217,25 @@ export function LedgerRow({
             </span>
             <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
               {row.providerName ?? EM}
-              {row.recurring ? ` · ${row.recurrenceLabel}` : ''}
+              {/*
+                * "recurs weekly, next 12 Sep". The clause is rendered whenever
+                * the reading produced a sentence — which covers the rule AND
+                * the case where the wire named a rule this build cannot read
+                * (the label then says so, rather than the row quietly reading
+                * as one-time). `row.recurring` alone would hide that second
+                * case, which is the shape of every absence-as-health bug this
+                * page has already had once.
+                */}
+              {row.recurrenceLabel ? ` · ${row.recurrenceLabel}` : ''}
+              {/*
+                * A CHILD SAYS WHOSE OCCURRENCE IT IS. It carries no rule of its
+                * own — it is one Tuesday of somebody else's standing order —
+                * and without this the row is indistinguishable from an order a
+                * person raised by hand.
+                */}
+              {row.recurrence.parentOrderId && row.recurrence.occurrenceOn
+                ? ` · one occurrence of a recurring order`
+                : ''}
             </span>
           </span>
           <span
@@ -433,6 +470,30 @@ export function LedgerRow({
                   }}
                 >
                   The vendor&rsquo;s answers
+                </button>
+              )}
+              {onOpenRecurrence && (
+                <button
+                  type="button"
+                  data-testid="open-recurrence"
+                  onClick={onOpenRecurrence}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginBottom: 10,
+                    padding: '7px 12px',
+                    borderRadius: 9,
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: `border-color ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  {row.recurring ? 'The repeating rule' : 'Make this repeat'}
                 </button>
               )}
               {isPendingStage && (

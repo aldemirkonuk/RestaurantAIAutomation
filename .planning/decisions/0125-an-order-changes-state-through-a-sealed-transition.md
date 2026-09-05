@@ -433,6 +433,112 @@ and the one-at-a-time notice is what ships.
 | tsc | both apps, `-p tsconfig.spec.json` for the gateway | **0 errors** |
 | guards | the twelve, plus prefix uniqueness | **all exit 0**; `check_decision_claims.sh` **231 checked, 231 holding**; `check_gateway_boots.sh` PASS |
 
+## Addendum — 2026-09-05: an order is delivered once, and the refusal is a 409 that shows the earlier delivery
+
+**Neighbouring decision, recorded here because it consumes this ADR's table.**
+`markDelivered` is the only writer of `procurement_orders.status = 'DELIVERED'`
+and it never asked this table anything. It still does not ask the whole of it,
+deliberately — see "why not the whole table" below — but it now refuses a second
+delivery for every caller, using **this** module's
+`ORDER_GOODS_ARRIVED_STATUSES`, imported and never restated, so the rule that
+stops a cancellation and the rule that stops a second delivery cannot drift.
+
+### The founder's decision on the status (2026-09-05, batch 46)
+
+> *"A second delivery of an already-delivered order answers 409 Conflict, not
+> 400 — the request is well-formed, the order's state conflicts with it, and the
+> door and the one-tap rail must be able to tell 'already done' from 'you sent
+> nonsense' and show the earlier delivery instead of an error."*
+
+**Rejected: 400.** The first build of this refusal answered 409 from the deliver
+route and **400** from the one-tap seal-mint and execute, because 400 was the
+contract `be80f8b5` had already shipped there and changing an exception class on
+a live endpoint is not a builder's call. It was filed as a founder question and
+answered against 400 on two grounds, and the second is the one with teeth:
+
+1. **400 is a claim about the request, and the claim is false.** Nothing about
+   the request was malformed; there is nothing a caller could send instead. 409
+   says the world moved, which is what happened.
+2. **A 400 cannot be rendered as an answer.** The only honest response to "you
+   sent nonsense" is an error notice. The founder's requirement is that these
+   surfaces *show the earlier delivery*, and that is a fact the refusal has to
+   carry. Measured on the tree before the change: `OneTapPanel.tsx` printed the
+   gateway's sentence only for `status === 400 || status === 403` and framed
+   everything else as *"Marking it done was refused"* — so the refusal a manager
+   most needs to read plainly was the one the rail dressed up as a failure; and
+   the mobile outbox printed *"Marked delivered didn't go through"* over an
+   order that HAD gone through.
+
+### What the 409 carries
+
+`{ reason: "order_already_delivered", orderId, orderNumber, status,
+deliveredAt, message, earlierDelivery }`, where `earlierDelivery` is
+`{ deliveredAt, receivedBy, receivedByName, receivedByNameReason,
+quantityReceived, unitType, bottlesTotal, summary }` — built in exactly one
+place (`procurement/delivered-once.ts` `earlierDeliveryOf`) and thrown by both
+ends, so the seal-mint, the execute, the deliver route and the lost-race branch
+all hand a caller the same shape.
+
+Three things about that body are decisions:
+
+* **The quantity states its unit.** `quantityReceived` is in the ORDER's own
+  `unit_type`, which travels beside it, with `bottlesTotal` when the unit
+  multiplies. A bare count is the unitless quantity [ADR 0119](0119-an-agreed-price-states-its-unit.md)
+  spent a whole pass removing, and `summary` renders "5 cases (60 bottles)"
+  rather than "5" or an invented "60".
+* **A name that could not be looked up is not "no name".** `received_by` holds a
+  `public.users.user_id`; the name is resolved through the house idiom
+  (`users.user_id` / `users.name`). A failed read of `users` and an order nobody
+  signed for both leave `receivedByName` null, so `receivedByNameReason` travels
+  with it and `summary` says *"by someone this house could not look up"* rather
+  than *"the record names nobody"*. Reporting the first as the second is
+  [[absence-reported-as-health]] on the one line a receiver reads.
+* **`summary` exists so four surfaces cannot word it four ways.** Two web pages,
+  the one-tap rail and the mobile outbox print it verbatim.
+
+### Why not the whole table
+
+`markDelivered` asks only "have the goods arrived", not `canTransition`. Two
+measured reasons: `ORDER_TRANSITIONS` forbids `PENDING → DELIVERED`, which the
+deliver route performs today on real orders never formally approved; and it
+**permits** `DELIVERED → DELIVERED`, because `sameStateIsPermitted` is true for
+any non-terminal state — which is right for `verifyReceipt` and the door
+rewriting PARTIALLY_RECEIVED, and is exactly the move a delivery must refuse.
+Enforcing the whole table here would refuse work the house does and permit the
+one thing this pass exists to stop.
+
+### Still open, and still the founder's
+
+A **CANCELLED** order can still be delivered. This table treats CANCELLED as
+terminal and would refuse it; the delivery guard does not, because
+cancel-then-deliver was left to its own decision by
+[ADR 0073](0073-a-delivery-event-is-closed-by-its-order-id.md) and goods arriving
+against a cancelled order is a real event somebody has to be able to record.
+
+### Verification of this addendum (my runs, the commands named)
+
+| What | Command | Result |
+|---|---|---|
+| the refusal, the body, the race | `cd apps/api-gateway && npx jest --testPathPattern "procurement/tests/delivered-once" --runInBand` | **18 passed** |
+| the one-tap end, now 409 | `... npx jest src/one-tap-actions --runInBand` | **47 passed** |
+| gateway, both touched modules | `... npx jest src/procurement src/one-tap-actions` | **908 passed, 3 skipped, 0 failed** (50 suites) |
+| the web parser | `cd apps/web && npx vitest run src/services/api/orders.deliverOnce.test.ts` | **8 passed** |
+| the rail and the door | `... npx vitest run src/pages/receiving/next src/pages/dashboard/next` | **5 files, 125 passed** |
+| the Action Center | `... npx vitest run src/components/notifications/OneTapActionCenter.test.tsx` | **16 passed** |
+| tsc | gateway `tsconfig.json` **0 errors**; web **0 errors**; gateway `tsconfig.spec.json` 24, **0 in procurement or one-tap**; mobile 481, **0 outside test files** | |
+| guards | `check_read_errors_not_swallowed`, `check_web_reads_gateway_dto_keys`, `check_route_exposure` | **exit 0, 0, 0** |
+| pre-fix control (first build) | `git show HEAD:…/procurement.service.ts` into a same-depth probe | **8 of 14 failed**; two concurrent deliveries both resolved 200 |
+
+**Not run, and said rather than implied:** the mobile parser's test
+(`apps/mobile/src/api/__tests__/deliveredOnce.test.ts`) is written and
+**unexecuted** — no jest binary is installed for the mobile workspace in this
+checkout. Mobile `tsc` covers its types. And **the receiving door cannot reach
+this refusal at all**: measured, `apps/web/src/pages/receiving/next` and
+`services/api/receiving.ts` post only to `/procurement/receiving/*` and
+`/procurement/documents`, never to `/procurement/orders/:id/deliver`. Nothing
+was added there rather than a render path being invented for a call that does
+not exist.
+
 ## Review trail
 
 | Date | Who | What |
@@ -442,3 +548,131 @@ and the one-at-a-time notice is what ships.
 | 2026-09-05 | Sonnet (audit of `bdce73f4`) | Verified Q1-Q3 and every count but one. Raised three findings, all upheld: the web/gateway `DECLINE_INTENTS` pairing was asserted by a comment and held by nothing; Q3 shipped with no regression test in either language; and the sweep count in the table above was wrong. |
 | 2026-09-05 | Claude (p4ap, audit fixes) | All three fixed. (1) The pairing is now a real claim — row `ADR-0125` in `CLAIMS.jsonl`, whose verify command extracts both arrays, sorts and compares, and fails on drift OR on either declaration disappearing; the comment in `responses.ts` names the row instead of a guard that did not exist. (2) Regression cases added in both languages, each proven against a pre-fix copy. **Writing them found a real defect in the shipped Q3 change**: `CONFIRMED -> NEGOTIATING` was added to the transition table and was UNREACHABLE from `syncOrderState`, because the terminal early-return fired before the decline branch was consulted — so the one case ADR 0125 Q3 is actually about, a vendor that confirmed and then went short, did nothing at all. `isDecline` now computes above that guard, `declineMayRewindFrom = ["CONFIRMED"]` is the only state a decline may rewind out of, and the gateway path now notifies a manager (it never did; only the Python path had). (3) **The sweep count was wrong by 167 tests and 6 suites** — the table said 1014 passed / 60 suites where the same command now reports 1181 passed / 66 suites. Part of that gap is the branch moving under it (`fb7248ec`, `0e4b67ed`, the `origin/main` merge `6c5a6510`) and part was wrong when written; the honest statement is that the figure was not re-measured on the tree it was published against, and the corrected one carries the commit it was measured on. |
 | 2026-09-05 | Claude (p4ao, delivered-once) | Consumed this ADR's `ORDER_GOODS_ARRIVED_STATUSES` to refuse a second delivery for every caller; founder answered 409-not-400 (batch 46) and the refusal now carries the earlier delivery, rendered by the one-tap rail, the Action Center, both Orders desks and the mobile outbox. |
+
+---
+
+## Addendum — 2026-09-05: an order that repeats says so on itself
+
+**The founder, batch 40:** *"Build recurrence on the order"* — a recurrence rule on the
+order with its next date and the seal on each recurrence's approval; the station fills
+from a real column.
+
+Filed here rather than as a new ADR because **recurrence adds no state to the twelve and
+no edge to the transition table**. What it adds is a REASON an order exists, and a rule
+that mints the next one — and every order it mints enters the graph at PENDING, exactly
+where a hand-placed order enters it. If recurrence had needed a thirteenth state, or a
+new edge, it would have been its own decision.
+
+### The problem, measured on the tree 2026-09-05
+
+`.planning/v3.0-TECH-DEBT.md` "The orders wire" item 2: `useOrdersNextData.toRow` set
+`recurring = false` unconditionally, with a comment explaining that the route sent
+nothing, so `/orders`' Recurring station **could not ever fill** and every order fell
+into "one-time".
+
+Two things were already in the ground and neither was what the founder asked for:
+
+| What exists | What it is | Measured |
+|---|---|---|
+| `procurement_orders.is_recurring`, `.cron_schedule` | baseline columns since `20260805000000` | **zero writers, zero readers** on this table in any language. `grep -rn "is_recurring\|cron_schedule" apps/api-gateway/src apps/web/src apps/mobile services/agent-orchestrator packages \| grep -v node_modules` → 13 lines, of which **2** name `procurement_orders` and both are column inventories in test fixtures (`providers/retroactive-order.spec.ts:248-249`, `procurement/verify-receipt.spec.ts:63,77`). The other 11 are `calendar_events`, `scheduled_reminders` and `provider_promotions`. |
+| `recurring_orders` + `RecurringOrdersService` + `recurring_order_agent.py` | a TEMPLATE table (inventory id, provider id, quantity, frequency) with a cron that materialises orders, a reminder cron, and a `propose_only` Python agent | 1,321 lines of service; its own header records **0 production rows on 2026-09-01** |
+
+### The decision, and the four things it turns on
+
+**1. A recurrence lives on the ORDER, not on a template — because an order carries the
+whole agreement.** `recurring_orders` can only repeat four facts. An order carries the
+agreed price AND the unit it is stated in (ADR 0119), the allowance, the deposit and the
+freight. A recurrence on the order repeats *that*. The two systems are left standing side
+by side deliberately; which survives is Q1 below.
+
+**2. Explicit columns, not an RRULE.** The five frequencies are the five
+`recurring_orders.frequency` has had since `20260901180000`; `calculateNextOrderDate` is
+90 lines of already-tested arithmetic over them, including the two cases a naive
+implementation gets wrong (month-end clamping, and the UTC-vs-local drift that made a
+monthly rule land on the 2nd west of Greenwich). `grep -rn "rrule" apps/api-gateway/src`
+returns nothing, so an RRULE means writing a parser — a second implementation of that
+arithmetic, in a string. **Rejected also because an unparsed rule is `cron_schedule`
+wearing a different hat**: `"0 8 31 * *"` is a monthly order that skips February entirely
+and nothing about the string says so.
+
+**3. The next date is DERIVED, not typed.** `recurrence_next_due_on` is stored so the
+generator finds its work with an index probe and the day book can show it without
+recomputing a series per row — but the caller never sends one. `SetOrderRecurrenceDto`
+has no such field; the gateway takes a RULE plus a START, snaps the start onto the anchor
+(`firstOccurrenceOn`), and every advance afterwards is `nextOccurrenceOn(previous)`. The
+generator re-derives before it writes and refuses a series whose stored date it cannot
+reproduce (counted as `drifted`).
+
+**4. A generated order is born PENDING, and a recurrence never approves anything.**
+`createOrder` writes PENDING; ADR 0116's gate reads PENDING orders; this ADR's table
+permits PENDING → APPROVED; the `approve` seal is minted over a PENDING order. So the
+child enters the graph in the one state where every existing control already applies, and
+`approveOrder` is not imported by the recurrence service at all —
+`order-recurrence.service.spec.ts` asserts a whole generator run never calls it.
+
+### What the build found that the design did not predict
+
+**(a) `createOrder`'s dedup merge would have eaten every child, silently.**
+`procurement.service.ts:723-800` folds a second order for the same restaurant + inventory
++ provider into the existing open one, unless that one is in a terminal status. A
+recurrence's parent matches that triple *by construction* and sits in APPROVED, which is
+not one of the seven. So each due occurrence would have UPDATED its own parent's quantity
+and price, created no child, written no lineage columns, tripped no index — and the
+generator would have counted `created: 1`. `provenance.recurrence` is therefore an
+exemption from the merge as well as the carrier of the lineage, and a service argument
+rather than a DTO field so a client cannot claim its way past the guard.
+
+**(b) `ON DELETE SET NULL` collided with a "both or neither" CHECK, and the probe caught
+it.** The child constraint was first written symmetrically. Deleting a parent made the
+referential action rewrite the child's `recurrence_parent_order_id` to NULL while
+`recurrence_occurrence_on` stayed set, the CHECK refused *that rewrite*, and the DELETE
+failed with 23514 naming the CHILD's row for a statement about the PARENT — so a parent
+that had ever produced a child could never be deleted. The rule is now one-directional
+(a parent implies an occurrence, not the reverse), which is also the truthful shape: an
+orphaned child keeps the record of which Tuesday it was raised for.
+
+**(c) A CHECK constraint PASSES when it evaluates to NULL, and two of these did.**
+`recurrence_frequency = 'weekly'` with a NULL status made the completeness CHECK's second
+branch `NULL IN (...)` → NULL, the whole expression `false OR NULL` → NULL, and Postgres
+ACCEPTED the write. The same trap let an `recurrence_anchor_day` be set with no rule at
+all. Both are now `COALESCE(..., false)` with explicit `IS NOT NULL` guards. **No
+TypeScript test could have caught either** — the arithmetic is Postgres's.
+
+### Two questions this addendum does NOT answer
+
+Both are the founder's, and neither was assumed.
+
+**Q5 — Does `recurring_orders` retire?** Two recurrence systems now stand side by side,
+and three schedulers touch the older one: `executeDueRecurringOrders` (08:00, mints
+orders), `sendRecurringOrderReminders` (06:00, flag-gated), and
+`recurring_order_agent.py` (propose_only, and it ALSO advances `next_order_date` — so it
+and the 08:00 cron race, and whichever runs first makes the other skip). The Python agent
+is **refused rather than repointed** in this pass: repointing it presumes the answer to
+this question. *Recommendation: retire `recurring_orders` once one real standing order
+has run on the new path, and repoint the agent then — not before.*
+
+**Q6 — Should ending a recurrence be sealed?** Built as a plain write with an audit row
+naming who and when. The argument: the seal guards an act that spends money or destroys
+the record of money spent, and ending a recurrence does neither — every occurrence it
+would have raised stops at the approval gate anyway. A seal here would be ceremony with
+nothing behind it, which this ADR already says teaches operators to mash controls. *This
+changes the day a recurrence auto-approves; the two decisions are one decision.*
+
+### Verification of this addendum (my runs, the commands named)
+
+| What | Command | Result |
+|---|---|---|
+| the rule and its arithmetic, incl. three forced timezones | `cd apps/api-gateway && npx jest src/procurement/order-recurrence.spec.ts` | **43 passed** |
+| the writes, the generator, the migration/service agreement | `... npx jest src/procurement/order-recurrence.service.spec.ts` | **45 passed** |
+| gateway, all of procurement | `... npx jest src/procurement` | **969 passed, 3 skipped, 0 failed** (51 suites, 1 skipped) |
+| the migration on real Postgres | `cd $SP/pglite-probe && node p4ay-order-recurrence.mjs` | **27 ok, 0 failed** (Docker is down; PGlite) |
+| the station, through `toRow` on the real payload | `cd apps/web && npx vitest run src/pages/orders/next/Recurrence.test.tsx` | **27 passed** |
+| web, all orders suites | `... npx vitest run src/pages/orders` | **7 files, 131 passed** |
+| tsc | both apps | **0 errors** |
+| migration prefix uniqueness | `ls supabase/migrations \| cut -c1-14 \| sort \| uniq -d` | **empty** |
+
+## Review trail
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-05 | Claude (p4ay, recurrence on the order) | Built the founder's batch-40 decision as an addendum to this ADR: nine additive columns with four CHECKs and a partial unique index, a pure rule module, a service with set/pause/resume/end and an 08:15 generator that records every run's count, six DTO keys mirrored onto the web type, and the Recurring station filled from a measured read. The PGlite probe found two defects no TypeScript test could — an `ON DELETE SET NULL` that made a parent undeletable, and two CHECKs that Postgres accepted because they evaluated to NULL. Filed TECH-DEBT 3b: `recurring_orders.auto_approve` calls `approveOrder` with no seal challenge. |

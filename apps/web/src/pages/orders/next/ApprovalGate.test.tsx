@@ -54,6 +54,7 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 }));
 
 import { LedgerRow } from './LedgerRow';
+import { RECURRENCE_UNREAD } from './recurrence';
 import type { ApprovalGateRow, OrderRowVM } from './useOrdersNextData';
 
 function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
@@ -87,6 +88,8 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     stage: 'pending',
     status: 'pending',
     recurring: false,
+    // Not read: this fixture is a hand-built row, not a wire payload.
+    recurrence: RECURRENCE_UNREAD,
     recurrenceLabel: null,
     requestedAt: '2026-09-01T10:00:00Z',
     approvedAt: null,

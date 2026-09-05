@@ -314,8 +314,37 @@ export interface Order {
   completedAt?: string;
   isEmergency?: boolean;
   priorityLevel?: number;
-  /** Joined from `inventory.wine_name`. There is no producer and no vendor name. */
+  /** Joined from `inventory.wine_name`. There is no producer on the wire. */
   wineName?: string;
+  /**
+   * The vendor's NAME, joined from `providers` on `provider_id` (2026-09-05).
+   * THREE values, and the third one matters: a name; `null` (the route joined
+   * and got nothing — print "the vendor is not named on this order", never a
+   * blank); or the KEY ABSENT (this route does not join `providers`, so it
+   * knows nothing either way). `/procurement/orders`, `/orders/history`,
+   * `/orders/pending` and `/orders/:id` all join it.
+   *
+   * This key used to be declared here and never sent, which is how the
+   * receiving door's credit-note letter came to be addressed "To the vendor"
+   * on every order it had ever opened.
+   */
+  providerName?: string | null;
+  /**
+   * `procurement_orders.quantity_received` — what has been booked against this
+   * order so far. A number; `null` (read, and nothing received); or the KEY
+   * ABSENT (this route does not read the column).
+   *
+   * NEVER USE IT WITHOUT `quantityReceivedUom`. The column has four writers
+   * and two units; on an order placed in cases the reading is ambiguous by the
+   * pack size and the unit key is `null` to say so.
+   */
+  quantityReceived?: number | null;
+  /**
+   * The unit `quantityReceived` is stated in — ADR 0070. A unit; `null` (this
+   * row CANNOT state it — a refusal, not a default); or the key absent
+   * alongside `quantityReceived`.
+   */
+  quantityReceivedUom?: string | null;
   /**
    * The unit `finalPrice` is stated in — ADR 0119, read from the order LINE.
    * THREE values: a unit; `null` (the line was read and states none, which is
@@ -327,6 +356,35 @@ export interface Order {
   priceUom?: string | null;
   /** Bottles in one `priceUom`. Travels with it: both, neither, or both absent. */
   pricePackSize?: number | null;
+  /**
+   * The recurrence, six keys that travel together — ADR 0125's addendum,
+   * 2026-09-05. Read with the same three-state discipline as `priceUom`:
+   *
+   *   a value      this order repeats, and this is the rule
+   *   null         this route READ the recurrence and this order does not repeat
+   *   key absent   this route does not read it, and knows nothing either way
+   *
+   * This closes `.planning/v3.0-TECH-DEBT.md` "The orders wire" item 2. Until
+   * this landed, `Order` declared a `recurrence` key `OrderResponseDto` has
+   * never sent, so `useOrdersNextData.toRow` set `recurring = false` for every
+   * row and the rebuilt page's Recurring station could never fill. The key is
+   * now the DTO's own name, and `scripts/check_web_reads_gateway_dto_keys.py`
+   * is what stops it drifting again.
+   *
+   * Only `/procurement/orders` and `/procurement/orders/:id` carry them — both
+   * select `*`. A route that selects a column list sends none of the six.
+   */
+  recurrenceFrequency?: string | null;
+  /** Weekly/biweekly: a weekday, 0 = Monday. Monthly/quarterly: 1..28. */
+  recurrenceAnchorDay?: number | null;
+  /** The next date this order comes round, YYYY-MM-DD. Derived, never typed. */
+  recurrenceNextDueOn?: string | null;
+  /** active | paused | ended. */
+  recurrenceStatus?: string | null;
+  /** Set on a CHILD occurrence; null on the order that carries the rule. */
+  recurrenceParentOrderId?: string | null;
+  /** The occurrence this child was raised for. Travels with the parent id. */
+  recurrenceOccurrenceOn?: string | null;
 }
 
 export interface CreateOrderRequest {

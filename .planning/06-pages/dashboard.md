@@ -324,10 +324,30 @@ it reads as a rendering fault. Two new cases in `WaitingOnYou.seal.test.tsx` pin
 The full consumer audit is `06-pages/orders.md` §13.16; the guard is
 `scripts/check_web_reads_gateway_dto_keys.py`.
 
-**The vendor name on the queue and the day panel is gone, not fixed.** Both printed the
-literal word "vendor" off `providerName`, which the route does not send. The clause is
-removed rather than faked; `v3.0-TECH-DEBT.md` "The orders wire" item 1 carries the two
-ways to get a real name. *Blocker: founder.*
+**~~The vendor name on the queue and the day panel is gone, not fixed.~~ FIXED
+2026-09-05, batch 40.** Both had printed the literal word "vendor" off `providerName`,
+which the route did not send; the clause was removed rather than faked, and the founder
+then chose the gateway join. `/orders/pending` and `/orders/history` now select
+`provider:provider_id(name)` in the statement they were already making, and both panels
+print the name through `apps/web/src/lib/mudavym/vendor.ts` — `Vendor not named` where
+the join answered nothing or the route does not join, never a blank, because a blank in
+that slot reads as "there is no vendor". This matters most on **Waiting on you**: it is
+the panel a manager approves money from, and it had been naming the wine and the total
+and not the payee. `v3.0-TECH-DEBT.md` "The orders wire" item 1 is struck through.
+~~*Blocker: founder.*~~
+
+**The delivery card the one-tap desk raises is reachable for the first time (same
+batch).** Not a defect of this page's own code but of the component it hosts:
+`OneTapActionCenter` fetched PENDING/APPROVAL_NEEDED and CONFIRMED while its filter
+accepted `approved` and `in_transit` — disjoint sets, so **zero** API-derived delivery
+cards had ever been produced and every one on screen came from `localStorage`. It now
+fetches CONFIRMED and IN_TRANSIT and filters on those two. Measured live on
+`/dashboard` (Browser-pane network log, 2026-09-05): two calls,
+`?status=CONFIRMED` and `?status=IN_TRANSIT`, where before there was one. Both answer
+**500 — `column procurement_order_items_1.price_uom does not exist`** against the local
+gateway, which reads PRODUCTION where ADR 0119 phase 1's migration is unmerged, so no
+card could be rendered live here to photograph; the path is proved by the render tests
+instead. That 500 is an ENVIRONMENT blocker, not a defect of this page.
 
 - `pages/Dashboard.tsx:267` fetches `'/api/v1/calendar/ical-token'` **relative to the SPA
   origin**, bypassing `VITE_API_GATEWAY_URL` — works only where the web host proxies the
@@ -632,6 +652,20 @@ the two or three actions worth doing before service, each of which actually happ
    **The one-tap refusal stays, and stays first**, widened to the same set: the seal is
    minted and redeemed *before* `markDelivered` runs, so a refusal arriving only from the
    service would burn a one-shot seal on an act the house was always going to decline.
+   **It answers 409, not 400 — founder, 2026-09-05, batch 46:** *"a second delivery of an
+   already-delivered order answers 409 Conflict, not 400 — the request is well-formed, the
+   order's state conflicts with it, and the door and the one-tap rail must be able to tell
+   'already done' from 'you sent nonsense' and show the earlier delivery instead of an
+   error."* **400 was rejected.** The first build kept 400 here because it was the contract
+   `be80f8b5` shipped; the founder overruled it, and the measurement says why the rail in
+   particular needed it: `OneTapPanel.tsx` printed the gateway's sentence only for a 400 or
+   403 and framed everything else as *"Marking it done was refused"*, so the one refusal a
+   manager most needs to read plainly was the one this desk dressed up as a failure. Both
+   ends now throw `409 { reason, orderId, orderNumber, status, deliveredAt, message,
+   earlierDelivery }`, and the rail prints the earlier delivery — *"Delivered on 2026-09-04
+   at 14:05 UTC by Ada Lovelace, 72 bottles booked in."* — ahead of the sentence, on the
+   mint refusal and on the execute refusal alike. Nothing retries: a 409 says the request
+   was fine, so repeating it cannot change the answer.
    **What the double-booking actually was, measured** rather than repeated: a second
    `markDelivered` on the same order did **not** double-book the live ledger —
    `apply_stock_movement` returns the existing transaction for a seen

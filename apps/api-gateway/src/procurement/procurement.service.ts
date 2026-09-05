@@ -40,6 +40,7 @@ import {
   toBottleOperands,
 } from "./invoice-match";
 import { readAliasedQuantity } from "./quantity-aliases";
+import { readQuantityReceived } from "./quantity-received-unit";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
@@ -119,8 +120,10 @@ import { toPostgrestInList } from "./order-status";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
+  earlierDeliveryOf,
   refuseLostDeliveryRace,
   refuseSecondDelivery,
+  resolveReceiverName,
 } from "./delivered-once";
 
 const UUID_RE =
@@ -302,6 +305,62 @@ interface ProcurementOrderRow {
   is_emergency: boolean | null;
   priority_level: number | null;
   wine_name?: string | null;
+  /**
+   * The vendor's name, flattened off the `providers` embed by the routes that
+   * join it. OPTIONAL ON PURPOSE, and `mapOrderRow` tests for the KEY rather
+   * than for the value: a route that does not join must emit no
+   * `providerName` at all, and a route that joins and finds nothing must emit
+   * `null`. Collapsing the two would report "this order has no vendor" about
+   * a query that never asked.
+   */
+  provider_name?: string | null;
+  /**
+   * `quantity_received`, present on every route that selects `*`. Read through
+   * the key test for the same reason as `provider_name` — a route that selects
+   * a column list has not learned the column is empty.
+   */
+  quantity_received?: number | null;
+  /**
+   * The recurrence rule this order carries, and the occurrence it was minted
+   * for (ADR 0125's addendum, 2026-09-05). All six are OPTIONAL and read
+   * through the key test, for exactly the reason `provider_name` is: a route
+   * that selected a column list has not learned that this order does not
+   * repeat — it has learned nothing about recurrence, and the wire has to say
+   * which of the two it means.
+   *
+   * `recurrence_frequency IS NULL` on a route that DID read them is the real
+   * answer "this order does not repeat". There is no second flag:
+   * `procurement_orders.is_recurring` exists in the baseline, has never been
+   * written or read in any language, and is tombstoned in
+   * `20260905235800_an_order_that_repeats_says_so_on_itself.sql`.
+   */
+  recurrence_frequency?: string | null;
+  recurrence_anchor_day?: number | null;
+  recurrence_next_due_on?: string | null;
+  recurrence_status?: string | null;
+  recurrence_parent_order_id?: string | null;
+  recurrence_occurrence_on?: string | null;
+}
+
+/**
+ * Flatten a `provider:provider_id(name)` embed to a name or an explicit null.
+ *
+ * PostgREST returns a to-one embed as an object, `null` when the parent's FK is
+ * null, and — when a client or a schema cache reads the relationship the other
+ * way — as a one-element array. All three are handled here rather than at three
+ * call sites, because the failure mode of getting it wrong is silent: an array
+ * would read as a truthy object with no `name`, and every row would report a
+ * vendor that could not be named.
+ *
+ * Returns `null`, never `undefined`: a route that CALLS this has joined, so
+ * "the join found nothing" is a fact it has learned. Absence is expressed by
+ * not setting `provider_name` at all.
+ */
+function embeddedProviderName(embed: unknown): string | null {
+  const one = Array.isArray(embed) ? (embed[0] ?? null) : embed;
+  if (!one || typeof one !== "object") return null;
+  const name = (one as { name?: unknown }).name;
+  return typeof name === "string" && name.trim() !== "" ? name : null;
 }
 
 @Injectable()
@@ -536,9 +595,35 @@ export class ProcurementService {
         /** The total printed on the invoice, stored verbatim in final_confirmed_cost. */
         invoiceTotal?: number | null;
       };
+      /**
+       * This order is one occurrence of a recurrence carried by another order
+       * (the founder, 2026-09-05; ADR 0125's addendum). Two things follow, and
+       * the second is the load-bearing one:
+       *
+       *   - the lineage columns are written, so the child names its parent and
+       *     the occurrence it was minted for, and the partial unique index
+       *     `ux_procurement_orders_recurrence_occurrence` can refuse a second
+       *     child for the same Tuesday;
+       *   - THE DEDUP MERGE IS SKIPPED. A recurrence's parent is by construction
+       *     the same restaurant + inventory + provider, and it sits in APPROVED,
+       *     which is not one of the seven statuses the merge treats as terminal.
+       *     Without this exemption every due occurrence would have UPDATED its
+       *     own parent instead of creating a child — no new order, no lineage
+       *     columns, no index collision, and a generator counting one success.
+       *
+       * A service argument and deliberately not a DTO field, for the same reason
+       * `source` is: a client must not be able to claim an order is a recurrence
+       * child in order to escape the dedup guard.
+       */
+      recurrence?: {
+        parentOrderId: string;
+        /** The occurrence date this child is for, YYYY-MM-DD. */
+        occurrenceOn: string;
+      };
     },
   ): Promise<OrderResponseDto> {
     const fulfilled = provenance?.alreadyFulfilled;
+    const recurrence = provenance?.recurrence ?? null;
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
       await this.databaseService.supabase
@@ -701,8 +786,15 @@ export class ProcurementService {
     // second, separate purchase, and folding it into a live pending order would
     // silently replace that order's quantity and price with the invoice's — one
     // delivery recorded, one real order destroyed, no trace of either.
+    //
+    // Skipped for the same reason, one turn stronger, for an occurrence of a
+    // recurrence: its parent is BY CONSTRUCTION the same restaurant + inventory
+    // + provider, and an APPROVED parent is not in TERMINAL_STATUSES, so the
+    // merge would fire on every single occurrence — overwriting the standing
+    // order with a copy of itself and never creating the child at all. See
+    // `provenance.recurrence`.
     let existing: any | undefined;
-    if (!fulfilled) {
+    if (!fulfilled && !recurrence) {
       const { data: existingRows, error: existingError } =
         await this.databaseService.supabase
           .from("procurement_orders")
@@ -840,6 +932,19 @@ export class ProcurementService {
       created_by: asUuid(userId),
       source: provenance?.source ?? null,
       recurring_order_id: asUuid(provenance?.recurringOrderId),
+      // The lineage of a recurrence occurrence: which order carries the rule,
+      // and which occurrence this is. Both keys are ALWAYS written, never
+      // spread in conditionally — `scripts/check_order_capture_contract.py`
+      // forbids the conditional spread, and for a good reason: a key that is
+      // sometimes absent makes "this order does not recur" and "this writer
+      // forgot to say" the same row.
+      //
+      // Both null together or both set together; the CHECK constraint
+      // `procurement_orders_recurrence_child_check` refuses the halfway state,
+      // because a child with a parent and no occurrence date slips past the
+      // partial unique index that stops two orders being raised for one Tuesday.
+      recurrence_parent_order_id: asUuid(recurrence?.parentOrderId),
+      recurrence_occurrence_on: recurrence?.occurrenceOn ?? null,
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -2007,10 +2112,21 @@ export class ProcurementService {
     // constrains it to lines of orders already scoped by the `.eq` below, and a
     // second tenant predicate on the child would be a second place for the two
     // scopes to disagree.
+    //
+    // `provider:provider_id(name)` is the SAME argument one table over, and it
+    // is the reason four surfaces printed the literal word "vendor". PostgREST
+    // resolves it through `procurement_orders_provider_id_fkey`
+    // (`20260805000000_baseline_from_production.sql:13158`), the ONLY foreign
+    // key between the two tables — measured with
+    // `grep -n "ALTER TABLE ONLY public.procurement_orders" -A 2 <baseline> |
+    // grep "REFERENCES public.providers"`, which returns exactly one row — so
+    // the join is unambiguous and needs no disambiguating hint. It is a
+    // to-ONE embed on an indexed primary key, so it costs one hash/index join
+    // over the page's own rows, not a round trip per order.
     let supabaseQuery = this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name), procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name), procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
         { count: "exact" },
       )
       .eq("restaurant_id", restaurantId);
@@ -2050,6 +2166,10 @@ export class ProcurementService {
           row.inventory?.wine_name ||
           (row.inventory as any)?.wine?.name ||
           null,
+        // Set unconditionally on this route: the embed rode in the statement
+        // that succeeded, so a missing name is the vendor's absence and not
+        // this query's silence.
+        provider_name: embeddedProviderName(row.provider),
       };
       // `read: true` unconditionally, because the embed above is part of the
       // same statement: if it had failed, `error` was thrown four lines up and
@@ -2084,9 +2204,13 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
   ): Promise<OrderResponseDto> {
+    // The vendor's name rides in the same statement as the order (see
+    // `listOrders` for why the join is unambiguous). This is the route the
+    // receiving door, the phone's receiving screen and the receipts pairing
+    // line all read, and all three wanted the name.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name)")
+      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .single();
@@ -2105,6 +2229,7 @@ export class ProcurementService {
       ...row,
       wine_name:
         row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      provider_name: embeddedProviderName(row.provider),
     };
 
     return this.mapOrderRow(orderRow);
@@ -3568,15 +3693,18 @@ export class ProcurementService {
     //
     // AN ORDER IS DELIVERED ONCE (founder, 2026-09-05). The same read now also
     // carries the state, so the question "has this already arrived" is answered
-    // BEFORE anything is written. `status`, `delivered_at`, `quantity_received`
-    // and `order_number` are here for that: the first decides, the rest are the
-    // words the refusal is made of. See `delivered-once.ts` for what a second
-    // delivery actually did, measured rather than assumed.
+    // BEFORE anything is written. `status` decides; `delivered_at`,
+    // `received_by`, `quantity_received`, `unit_type`, `bottles_total` and
+    // `order_number` are the EARLIER DELIVERY the refusal hands back, because
+    // the founder's 409 (batch 46) exists so a caller can show what already
+    // happened instead of an error. See `delivered-once.ts` for the decision and
+    // for what a second delivery actually did, measured rather than assumed.
     const { data: existingOrder, error: existingError } =
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "quantity, status, delivered_at, quantity_received, order_number",
+          "quantity, status, delivered_at, received_by, quantity_received, " +
+            "unit_type, bottles_total, order_number",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -3625,26 +3753,60 @@ export class ProcurementService {
     }
 
     if (ORDER_GOODS_ARRIVED_STATUSES.includes(currentStatus)) {
+      const quantityReceived =
+        existingRow.quantity_received == null
+          ? null
+          : Number(existingRow.quantity_received);
       const sentence = refuseSecondDelivery({
         orderId,
         orderNumber: existingRow.order_number ?? null,
         status: currentStatus,
         deliveredAt: existingRow.delivered_at ?? null,
-        quantityReceived:
-          existingRow.quantity_received == null
-            ? null
-            : Number(existingRow.quantity_received),
+        quantityReceived,
       });
+
+      // Named here and not left to the caller: the page that must print
+      // "delivered on the 4th by Ada" has no way to turn a `user_id` into a
+      // person, and shipping the id would either leak a uuid onto a receiving
+      // screen or make every surface invent its own lookup.
+      const receiver = await resolveReceiverName(
+        this.databaseService.supabase as any,
+        existingRow.received_by ?? null,
+      );
+
       this.logger.warn("Refused a second delivery", {
         restaurantId,
         orderId,
         status: currentStatus,
+        receiverNamed: receiver.name != null,
       });
+
+      // 409, not 400 (founder, batch 46): the request is well formed and it is
+      // the order's STATE that conflicts with it, so the body carries that
+      // state rather than an error. A caller shows the earlier delivery and does
+      // not retry.
       throw new ConflictException({
         reason: DELIVERY_REFUSED_ALREADY_ARRIVED,
         orderId,
+        orderNumber: existingRow.order_number ?? null,
         status: currentStatus,
         deliveredAt: existingRow.delivered_at ?? null,
+        earlierDelivery: earlierDeliveryOf({
+          deliveredAt: existingRow.delivered_at ?? null,
+          receivedBy: existingRow.received_by ?? null,
+          receivedByName: receiver.name,
+          receivedByNameReason: receiver.reason,
+          // RAW, both of them: `earlierDeliveryOf` asks
+          // `quantity-received-unit.ts` which unit this column is in, and that
+          // reading refuses to state one for a multiplying unit rather than
+          // guessing between the door's bottles and the desk's cases.
+          quantityReceived: existingRow.quantity_received ?? null,
+          unitType: existingRow.unit_type ?? null,
+          bottlesTotal:
+            existingRow.bottles_total == null
+              ? null
+              : Number(existingRow.bottles_total),
+        }),
         message: sentence,
       });
     }
@@ -3693,10 +3855,17 @@ export class ProcurementService {
         // words, and an unread state must reach the sentence as "could not be
         // read back" rather than as silence. `readOrderStatus(undefined)`
         // returns null, which is exactly that branch.
+        // The same columns the pre-read takes, so the loser of a race hands
+        // back the SAME earlier-delivery body as an ordinary refusal — the
+        // winner's delivery, which is exactly what the person who lost wants to
+        // see. A caller must not have to tell the two 409s apart to render.
         const { data: raced, error: racedError } =
           await this.databaseService.supabase
             .from("procurement_orders")
-            .select("status, order_number")
+            .select(
+              "status, delivered_at, received_by, quantity_received, " +
+                "unit_type, bottles_total, order_number",
+            )
             .eq("restaurant_id", restaurantId)
             .eq("id", orderId)
             .maybeSingle();
@@ -3705,6 +3874,10 @@ export class ProcurementService {
           any
         >;
         const racedStatus = readOrderStatus(racedRow.status);
+        const racedReceiver = await resolveReceiverName(
+          this.databaseService.supabase as any,
+          racedRow.received_by ?? null,
+        );
         this.logger.warn("A concurrent delivery won this order", {
           restaurantId,
           orderId,
@@ -3716,7 +3889,22 @@ export class ProcurementService {
         throw new ConflictException({
           reason: DELIVERY_REFUSED_ALREADY_ARRIVED,
           orderId,
+          orderNumber:
+            racedRow.order_number ?? existingRow.order_number ?? null,
           status: racedStatus,
+          deliveredAt: racedRow.delivered_at ?? null,
+          earlierDelivery: earlierDeliveryOf({
+            deliveredAt: racedRow.delivered_at ?? null,
+            receivedBy: racedRow.received_by ?? null,
+            receivedByName: racedReceiver.name,
+            receivedByNameReason: racedReceiver.reason,
+            quantityReceived: racedRow.quantity_received ?? null,
+            unitType: racedRow.unit_type ?? null,
+            bottlesTotal:
+              racedRow.bottles_total == null
+                ? null
+                : Number(racedRow.bottles_total),
+          }),
           message: refuseLostDeliveryRace({
             orderId,
             orderNumber:
@@ -4896,10 +5084,19 @@ export class ProcurementService {
     });
   }
 
+  /**
+   * `GET /procurement/orders/pending` — the dashboard's approvals queue.
+   *
+   * It joins `providers` for the same reason `listOrders` does, and this is
+   * the route where the omission was most expensive: "Waiting on you" is the
+   * panel a manager approves money from, and it named the wine and the total
+   * without ever naming who was being paid. The status filter caps the page,
+   * so the to-one join is over a handful of rows.
+   */
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name)")
+      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
       .eq("restaurant_id", restaurantId)
       .in("status", [
         ProcurementOrderStatus.PENDING,
@@ -4922,6 +5119,7 @@ export class ProcurementService {
           row.inventory?.wine_name ||
           (row.inventory as any)?.wine?.name ||
           null,
+        provider_name: embeddedProviderName(row.provider),
       };
       return this.mapOrderRow(orderRow);
     });
@@ -4943,12 +5141,27 @@ export class ProcurementService {
    * the wire shape is identical, and the object literal keeps every key
    * explicit — which is both the house rule for write payloads
    * (`check_order_capture_contract.py` cannot read a `...(x ? {} : {})`) and
-   * the reason a reader of this method can see all twenty fields at once.
+   * the reason a reader of this method can see every field at once.
+   *
+   * `providerName`, `quantityReceived` and `quantityReceivedUom` follow the
+   * same three-state rule but take their "was this read?" answer from the KEY
+   * being present on the row rather than from an argument — see the comments
+   * at each. A route that neither joins `providers` nor selects `*` therefore
+   * emits none of them, which is the honest report of a query that did not ask.
    */
   private mapOrderRow(
     row: ProcurementOrderRow,
     priceUnit: AgreedPriceUnitReading = { read: false },
   ): OrderResponseDto {
+    // Read once. Both DTO keys come from the same reading, so computing it
+    // twice would be two chances for them to disagree.
+    const receivedRead = "quantity_received" in row;
+    const received = readQuantityReceived(row.quantity_received, row.unit_type);
+    // The same discipline for the recurrence. `recurrence_frequency` is the key
+    // that decides for all six, because it is the one column whose NULL means
+    // "does not repeat" — the other five are NULL on a non-recurring order too,
+    // and testing any of them would answer a different question.
+    const recurrenceRead = "recurrence_frequency" in row;
     return {
       id: row.id,
       orderNumber: row.order_number,
@@ -4970,6 +5183,52 @@ export class ProcurementService {
       isEmergency: row.is_emergency ?? undefined,
       priorityLevel: row.priority_level ?? undefined,
       wineName: row.wine_name ?? undefined,
+      // THE KEY TEST, NOT THE VALUE TEST. `"provider_name" in row` is true only
+      // for a route that joined `providers` and set the field — including when
+      // it set it to `null`. `row.provider_name ?? undefined` would have
+      // collapsed "we joined and there is no name" into "we did not join", and
+      // a screen cannot tell those apart on the wire. Same reasoning as the
+      // price pair below, expressed with `in` because this one rides on the
+      // row rather than on a reading argument.
+      providerName:
+        "provider_name" in row ? (row.provider_name ?? null) : undefined,
+      // `quantity_received` and its unit, together or not at all (ADR 0070).
+      // Present on every route that selects `*`; absent on the ones that select
+      // a column list, which have not learned the column is empty. The unit is
+      // derived from the ROW — `quantity-received-unit.ts` carries the
+      // measurement of the four writers and why a multiplying unit is refused
+      // rather than guessed.
+      quantityReceived: receivedRead ? received.quantity : undefined,
+      quantityReceivedUom: receivedRead ? received.uom : undefined,
+      // The recurrence, as SIX keys that travel together (ADR 0125's addendum).
+      // The key test again, and here it closes the exact hole the rebuilt page
+      // was left with: `useOrdersNextData` set `recurring = false` because the
+      // wire said nothing, and a page cannot tell "this order does not repeat"
+      // from "this route does not read recurrence" unless the wire distinguishes
+      // them. `undefined` is the second; `null` is the first.
+      //
+      // ONE READING, SIX KEYS. `recurrenceRead` is computed once above and
+      // spent on all six, so a route can never send a rule with no status or a
+      // next date with no rule. Written out rather than spread from a helper:
+      // six keys a reader can see are worth more than one line they cannot.
+      recurrenceFrequency: recurrenceRead
+        ? (row.recurrence_frequency ?? null)
+        : undefined,
+      recurrenceAnchorDay: recurrenceRead
+        ? (row.recurrence_anchor_day ?? null)
+        : undefined,
+      recurrenceNextDueOn: recurrenceRead
+        ? (row.recurrence_next_due_on ?? null)
+        : undefined,
+      recurrenceStatus: recurrenceRead
+        ? (row.recurrence_status ?? null)
+        : undefined,
+      recurrenceParentOrderId: recurrenceRead
+        ? (row.recurrence_parent_order_id ?? null)
+        : undefined,
+      recurrenceOccurrenceOn: recurrenceRead
+        ? (row.recurrence_occurrence_on ?? null)
+        : undefined,
       // Both keys, always written, and both `undefined` when the line was not
       // read — absence on the wire, never a null that would read as "the line
       // states no unit". See `AgreedPriceUnitReading`.

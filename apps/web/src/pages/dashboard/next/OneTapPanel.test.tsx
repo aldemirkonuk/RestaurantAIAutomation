@@ -223,15 +223,39 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     );
   });
 
-  it('confirms nothing when the seal is not issued', async () => {
+  it('confirms nothing when the seal is not issued, and shows the earlier delivery', async () => {
+    // 409, not 400 (founder, 2026-09-05, batch 46). The mint refuses an
+    // already-arrived order and hands back WHAT HAPPENED, so this rail can
+    // *"tell 'already done' from 'you sent nonsense'"*. Before that it printed
+    // the sentence only for a 400/403 and framed the rest as a failure.
     serve([deliveryCard]);
     api.post.mockImplementation(async (path: string) => {
       if (String(path).endsWith('/seal-challenge')) {
-        const err = Object.assign(new Error('Request failed'), {
-          response: { status: 400 },
-          message: 'That order is already booked in as delivered, so nothing was changed.',
+        throw Object.assign(new Error('Request failed with status code 409'), {
+          isAxiosError: true,
+          response: {
+            status: 409,
+            data: {
+              reason: 'order_already_delivered',
+              orderId: 'ord-9',
+              orderNumber: 'PO-2026-0007',
+              status: 'DELIVERED',
+              deliveredAt: '2026-09-04T14:05:00.000Z',
+              earlierDelivery: {
+                deliveredAt: '2026-09-04T14:05:00.000Z',
+                receivedBy: 'user-7',
+                receivedByName: 'Ada Lovelace',
+                receivedByNameReason: null,
+                quantityReceived: 72,
+                unitType: 'bottle',
+                bottlesTotal: 72,
+                summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 72 bottles booked in.',
+              },
+              message:
+                'That order is already booked in as delivered, so nothing was changed. Booking it twice would double the stock.',
+            },
+          },
         });
-        throw err;
       }
       return { data: {} };
     });
@@ -242,12 +266,63 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     fireEvent.keyDown(die, { key: 'Enter' });
     fireEvent.keyDown(die, { key: 'Enter' });
 
+    // Who took it in, and when — before the sentence saying nothing changed.
     await waitFor(() =>
-      expect(screen.getByText(/already booked in as delivered/)).toBeInTheDocument(),
+      expect(screen.getByText(/Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace/)).toBeInTheDocument(),
     );
+    expect(screen.getByText(/already booked in as delivered/)).toBeInTheDocument();
     expect(
       api.post.mock.calls.filter((c: unknown[]) => String(c[0]).endsWith('/execute')),
     ).toHaveLength(0);
+  });
+
+  it('shows the earlier delivery when the EXECUTE is the end that refuses', async () => {
+    // The mint can succeed and the write still lose a race, so both ends of the
+    // rail carry the same body and both render it the same way.
+    serve([deliveryCard]);
+    api.post.mockImplementation(async (path: string) => {
+      if (String(path).endsWith('/seal-challenge')) return { data: { challenge: 'seal-token' } };
+      throw Object.assign(new Error('Request failed with status code 409'), {
+        isAxiosError: true,
+        response: {
+          status: 409,
+          data: {
+            reason: 'order_already_delivered',
+            orderId: 'ord-9',
+            orderNumber: 'PO-2026-0007',
+            status: 'DELIVERED',
+            deliveredAt: '2026-09-04T14:05:00.000Z',
+            earlierDelivery: {
+              deliveredAt: '2026-09-04T14:05:00.000Z',
+              receivedBy: 'user-7',
+              receivedByName: 'Ada Lovelace',
+              receivedByNameReason: null,
+              quantityReceived: 72,
+              unitType: 'bottle',
+              bottlesTotal: 72,
+              summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 72 bottles booked in.',
+            },
+            message: 'An order is delivered once. Nothing was changed.',
+          },
+        },
+      });
+    });
+    draw();
+    await waitFor(() => expect(screen.getByText('Confirm the Barolo delivery')).toBeInTheDocument());
+
+    const die = screen.getByRole('button', { name: 'Hold to confirm the delivery' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(screen.getByText(/Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace/)).toBeInTheDocument(),
+    );
+    // Never dressed as a failure of the request.
+    expect(screen.queryByText(/Marking it done was refused/)).not.toBeInTheDocument();
+    // And never repeated: one execute attempt, no retry.
+    expect(
+      api.post.mock.calls.filter((c: unknown[]) => String(c[0]).endsWith('/execute')),
+    ).toHaveLength(1);
   });
 
   it('says how much was booked, from what the gateway recorded', async () => {

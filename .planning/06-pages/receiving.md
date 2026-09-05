@@ -282,7 +282,19 @@ delivery day while the request behind it is rejected.
 8. ~~**Two paths book the same delivery under two idempotency keys.**~~ **DONE
    2026-09-05** — the half that could be closed without a decision. `markDelivered` now
    refuses an order the door has already received (§9), so the 3 + 12 = 15 case cannot
-   be reached from any caller. **What is NOT closed and is still P11:** neither
+   be reached from any caller. **The refusal is a 409 that carries the earlier delivery**
+   (founder, batch 46): *"a second delivery of an already-delivered order answers 409
+   Conflict, not 400 — the request is well-formed, the order's state conflicts with it,
+   and the door and the one-tap rail must be able to tell 'already done' from 'you sent
+   nonsense' and show the earlier delivery instead of an error."* **400 was rejected.**
+   The body carries `earlierDelivery` — when, who took it in (named from `users`, and
+   saying *"could not look up"* rather than *"nobody"* when the register cannot be read),
+   and how much **in the order's own unit** with the bottle count beside it. Measured and
+   worth stating plainly: **this page cannot reach that refusal.** `receiving/next` and
+   `services/api/receiving.ts` post only to `/procurement/receiving/*` and
+   `/procurement/documents`; nothing here calls `/procurement/orders/:id/deliver`, so no
+   render path was added here for a call that does not exist. The surfaces that DO reach
+   it are the one-tap rail, the Action Center, both Orders desks and the mobile outbox. **What is NOT closed and is still P11:** neither
    `recordDoorReceipt` nor `verifyReceipt` releases shadow stock or `in_transit_quantity`
    — only `markDelivered` and `releaseOrderShadowStock` do — so the door→verify flow, the
    flow the two-stage design exists for, still leaks a reservation for every delivery it

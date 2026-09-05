@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -31,9 +32,21 @@ import {
   readOrderStatus,
   statusInWords,
 } from "../procurement/order-transitions";
+import {
+  DELIVERY_REFUSED_ALREADY_ARRIVED,
+  earlierDeliveryOf,
+  resolveReceiverName,
+} from "../procurement/delivered-once";
 
 /** Every column the seal path reads off an order, for `check_read_columns_exist.py`. */
-const ORDER_SEAL_COLUMNS = "id, restaurant_id, status, quantity, bottles_total";
+// Widened 2026-09-05 (founder, batch 46) past what the seal args need: the
+// refusal this path throws carries the EARLIER DELIVERY, and a page cannot
+// print "delivered on the 4th by Ada" from columns nobody read. The seal's
+// argument hash is unchanged — `deliverySealArgs` names its four fields
+// explicitly and ignores everything else on the row.
+const ORDER_SEAL_COLUMNS =
+  "id, restaurant_id, status, quantity, bottles_total, unit_type, " +
+  "order_number, delivered_at, received_by, quantity_received";
 
 /**
  * One-Tap Actions Service
@@ -408,19 +421,55 @@ export class OneTapActionsService {
     // Widened to the whole goods-have-arrived set for the same reason. A
     // PARTIALLY_RECEIVED or COMPLETED order passed this check before and would
     // now be refused downstream — after the seal was spent.
+    //
+    // 409, NOT 400 (founder, 2026-09-05, batch 46). This used to throw
+    // BadRequest, and 400 was rejected in words: *"the request is well-formed,
+    // the order's state conflicts with it, and the door and the one-tap rail
+    // must be able to tell 'already done' from 'you sent nonsense' and show the
+    // earlier delivery instead of an error."* The rail literally could not: it
+    // printed the gateway's sentence only for a 400 or 403 and framed
+    // everything else as a failure, so the one refusal a manager most needs to
+    // read plainly was the one it dressed up. Both refusals now carry the SAME
+    // body as `markDelivered`'s, so a caller renders one shape whichever end
+    // refused it.
     const arrived = readOrderStatus(order.status);
-    if (arrived === ProcurementOrderStatus.DELIVERED) {
-      throw new BadRequestException(
-        "That order is already booked in as delivered, so nothing was changed. Booking it twice would double the stock.",
-      );
-    }
     if (arrived !== null && ORDER_GOODS_ARRIVED_STATUSES.includes(arrived)) {
-      throw new BadRequestException(
-        `That order is ${statusInWords(arrived)} — its wine has already been ` +
-          `counted in, so nothing was changed. Confirming delivery from a card ` +
-          `would book the whole order on top of what the receiving door has ` +
-          `already recorded. Finish it at the receiving door instead.`,
+      const receiver = await resolveReceiverName(
+        this.dbService.supabase as any,
+        (order as any).received_by ?? null,
       );
+      const earlierDelivery = earlierDeliveryOf({
+        deliveredAt: (order as any).delivered_at ?? null,
+        receivedBy: (order as any).received_by ?? null,
+        receivedByName: receiver.name,
+        receivedByNameReason: receiver.reason,
+        // RAW: `earlierDeliveryOf` asks `quantity-received-unit.ts` which unit
+        // this column is in, and refuses to state one it would have to guess.
+        quantityReceived: (order as any).quantity_received ?? null,
+        unitType: (order as any).unit_type ?? null,
+        bottlesTotal:
+          order.bottles_total == null ? null : Number(order.bottles_total),
+      });
+      // The DELIVERED wording is kept verbatim from `be80f8b5` — it is the
+      // sentence this desk has shipped and the one its spec pins. The other two
+      // arrived states get their own, because "already booked in" is not what
+      // happened to a partly-received order.
+      const message =
+        arrived === ProcurementOrderStatus.DELIVERED
+          ? "That order is already booked in as delivered, so nothing was changed. Booking it twice would double the stock."
+          : `That order is ${statusInWords(arrived)} — its wine has already been ` +
+            `counted in, so nothing was changed. Confirming delivery from a card ` +
+            `would book the whole order on top of what the receiving door has ` +
+            `already recorded. Finish it at the receiving door instead.`;
+      throw new ConflictException({
+        reason: DELIVERY_REFUSED_ALREADY_ARRIVED,
+        orderId: order.id,
+        orderNumber: (order as any).order_number ?? null,
+        status: arrived,
+        deliveredAt: (order as any).delivered_at ?? null,
+        earlierDelivery,
+        message,
+      });
     }
 
     return {
