@@ -449,3 +449,9 @@ recorded here rather than in a chat log, because a decision that is not written 
 |---|---|---|
 | 2026-09-05 | Claude (parent) | Migration `20260906020000` PROVEN on PGlite after the commit that said it was not: `p4-scratch/pglite-probe/p4at-reopen.mjs` applies the real chain `20260904200000 -> 20260905160000 -> 20260905180000 -> 20260906020000` on stubbed parents (users, restaurants, mcp_seal_challenges): applies, idempotent, the five reopen columns exist, both reopen CHECKs present — 7 passed / 0 failed. |
 | 2026-09-05 | Claude (parent) | Correction: the commit message of d965ae4e said "gateway tsc: 0 errors"; that was measured with tsconfig.json only. Under tsconfig.spec.json two test-file type errors existed at that tip (an archive spec mock, a main-merged notifications spec), fixed in 7bbc37c9. The ADR's own review row above ("clean of my files") was accurate. |
+
+## The census, on the founder's word (2026-09-05, batch 56)
+
+Asked directly whether the fifteen houses this ADR's census counts are real, independently
+owned restaurants or test tenants, the founder answered **"All real."** The census stands as
+counted; the jurisdiction-by-jurisdiction figures above are figures about real houses.

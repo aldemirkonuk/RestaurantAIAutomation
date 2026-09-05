@@ -449,3 +449,33 @@ invoice feed or an order-guide equivalent — starting with Southern Glazer's, w
 an EDI programme. The owned price market stays a note until there are three to five
 independent houses in one jurisdiction and the database has a third visibility state, one
 enforcement point and an RLS policy. The founder decides; nothing in this section is built.
+
+## Q1 CLOSED, and three more answers (founder, 2026-09-05, batch 56)
+
+**Q1 — "Invoices + the built 810 ingest, and a letter for a feed."** No mirror and no
+session hand-over of any kind. For Illinois: class A (the house's own invoices) plus a surface
+and a producer for the EDI 810/832 ingest that already exists; the house sends its Sales
+Consultant a letter asking for an invoice feed or order-guide equivalent. Rejected: a
+house-armed session hand-over (escapes the credential clause on its words and lands on two
+broader clauses plus 720 ILCS 5/17-51); hold everything for Illinois because Provi covers it.
+
+**The letter — "The house signs; SGWS first, asking for 810."** A real Illinois house's
+owner signs on their own letterhead with Mudavym named as the software; Southern Glazer's
+first (a documented EDI programme); the ask is an EDI 810 invoice feed, not an 832 catalogue.
+Rejected: Mudavym signs on the house's written authority; no letter yet. The draft
+(`p4-scratch/p4be/p4be-law.md`) moves into `07-reference/` as a document for the house to
+sign; this product never sends it.
+
+**The census — "All real."** Asked whether the fifteen census houses, and specifically the
+Illinois trio (YARDOM, YAREN, Yaren's Fine Dine) and ADMIN 1 / Sim Bistro, are real
+independently owned restaurants or test tenants, the founder answered that they are all
+real. Recorded as his statement; the memory note of 2026-08 that counted one real tenant is
+superseded by it for the purpose of this decision. Consequence he accepted with the option:
+the contributor floors researched in `p4be-market.md` apply as written, and the register's
+tenancy boundary (nine hand-written filters and no RLS policy) must be fixed before any
+cross-house read — dispatched as its own build.
+
+**The surface — "Build the ingest route and the panel."** An upload route that accepts a
+house-obtained 832 or an 810 through the existing document door, the manager's code mapping
+(0e4b67ed) applied, and a /connections panel that says per distributor what is true today.
+Rejected: mark the pieces dormant on purpose.
