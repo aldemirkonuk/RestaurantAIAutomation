@@ -182,7 +182,7 @@ Seams:
 
 > **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens):** as a stand-in for a real POS, SimPOS under-reports on three axes measured against 44 closed checks — every seeded button is a hard-coded $45 (`simpos.service.ts:91-96`), the webhook carries no money, table, server or covers (`:401-415`; NULL on 44 of 44 `pos_checks`), and it never reads the venue's operating hours (`restaurants.operating_hours`, ADR 0093) — all 44 checks rang after the published close without a warning.
 >
-> **Closed 2026-09-05 (#310).** All three, plus the wine-only line flag and two UI defects. What a stand-in is FOR is exercising what a real provider exercises, and on those axes it now does: nullable prices rendered as "unpriced", a category per button (uncategorised is not wine), ADR 0011's money/table/server/covers on every close, and `hours_state` stamped from the shared `isOpenAt` — recorded, never refused. `20260905120000_simpos_behaves_like_a_pos.sql` is additive and unbackfilled: the 53 existing $45 rows keep their price, because a figure a human may since have corrected is not ours to erase.
+> **Closed 2026-09-05 (#310).** All three, plus the wine-only line flag and two UI defects. What a stand-in is FOR is exercising what a real provider exercises, and on those axes it now does: nullable prices rendered as "unpriced", a category per button (uncategorised is not wine), ADR 0011's money/table/server/covers on every close, and `hours_state` stamped from the shared `isOpenAt` — recorded, never refused. `20260905174500_simpos_behaves_like_a_pos.sql` is additive and unbackfilled: the 53 existing $45 rows keep their price, because a figure a human may since have corrected is not ours to erase.
 
 ## §8 Where it's going
 
