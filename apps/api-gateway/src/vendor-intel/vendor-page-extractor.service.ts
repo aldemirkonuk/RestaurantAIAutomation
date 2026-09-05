@@ -21,6 +21,11 @@ import {
   isOutlierAgainstPriors,
   readPageStatedDate,
 } from "./vendor-site-sighting";
+import {
+  PageSizeEvidence,
+  readBottleSize,
+  readPageSizeEvidence,
+} from "./bottle-size";
 import { hashWineIdentity } from "./wine-identity";
 import {
   SsrfBlockedError,
@@ -66,6 +71,7 @@ export function emptyRefusalCounts(): ScrapeRefusalCounts {
     bad_price: 0,
     bad_pack: 0,
     no_bottle_volume: 0,
+    volume_conflict: 0,
     unnormalisable: 0,
   };
 }
@@ -82,6 +88,12 @@ export interface ExtractionRunResult {
   refusals: ScrapeRefusalCounts;
   /** Rows written with `is_outlier` true. Written, never dropped. */
   flaggedOutliers: number;
+  /**
+   * Where each admitted row's bottle size was read, counted by source.
+   * Zeroed, never absent: an absent key and a zero read identically and only
+   * one of them means "measured and none".
+   */
+  volumeSources: Record<string, number>;
   /** When we fetched. Always stated, so `observed_at` can be read against it. */
   fetchedAt: string;
   /** The page's own stated date, or null — the `undated` flag's other half. */
@@ -172,6 +184,7 @@ export class VendorPageExtractorService {
       rejected: 0,
       refusals: emptyRefusalCounts(),
       flaggedOutliers: 0,
+      volumeSources: {},
       fetchedAt: new Date().toISOString(),
       pageStatedDate: null,
       crawlDelaySeconds: null,
@@ -321,10 +334,15 @@ export class VendorPageExtractorService {
       httpStatus: result.httpStatus,
       fetchedAt: result.fetchedAt,
       pageStatedDate: result.pageStatedDate,
+      // Read ONCE per page, off the markup rather than the model's text. See
+      // `bottle-size.ts`: `htmlToText` drops the contents of <script>, so the
+      // JSON-LD every serious merchant publishes has never reached the model.
+      sizeEvidence: readPageSizeEvidence(html),
     });
     result.observationsWritten = written.written;
     result.refusals = written.refusals;
     result.flaggedOutliers = written.flaggedOutliers;
+    result.volumeSources = written.volumeSources;
     for (const w of written.warnings) result.warnings.push(w);
     return result;
   }
@@ -373,15 +391,19 @@ export class VendorPageExtractorService {
       httpStatus: number | null;
       fetchedAt: string;
       pageStatedDate: string | null;
+      /** What the PAGE says about sizes, parsed once. See `bottle-size.ts`. */
+      sizeEvidence?: PageSizeEvidence | null;
     },
   ): Promise<{
     written: number;
     refusals: ScrapeRefusalCounts;
     flaggedOutliers: number;
+    volumeSources: Record<string, number>;
     warnings: string[];
   }> {
     const refusals = emptyRefusalCounts();
     const warnings: string[] = [];
+    const volumeSources: Record<string, number> = {};
 
     const candidates = items.map((item) => ({
       item,
@@ -405,6 +427,33 @@ export class VendorPageExtractorService {
     let flaggedOutliers = 0;
 
     for (const { item, signatureHash } of candidates) {
+      // THE SIZE READ. The model is asked for `volumeMl` and reports it when
+      // the page's TEXT prints one; this read looks at the markup as well, in
+      // the precedence `bottle-size.ts` documents, and refuses on a
+      // contradiction rather than picking. The model's own answer is kept as
+      // the fallback for the manual `POST /vendor-intel/scrape` path, which
+      // has no markup of its own, and it is used only when the markup read
+      // found nothing at all — never to overrule the page.
+      const reading = ctx.sizeEvidence
+        ? readBottleSize(ctx.sizeEvidence, {
+            productName: item.name,
+            price: item.price,
+          })
+        : null;
+      const conflict =
+        reading && !reading.read && reading.reason === "volume_conflict"
+          ? { message: reading.message, candidates: reading.candidates }
+          : null;
+      const readMl = reading && reading.read ? reading.ml : null;
+      // A pack the size statement itself names ("6 x 75cl") corrects the
+      // model's default of 1 — `validateItem` assigns 1 whenever the model
+      // reported nothing, so a 1 carries no information. It never OVERRULES a
+      // pack the model actually read; that disagreement is recorded instead.
+      const packFromPage =
+        reading && reading.read ? reading.packFromStatement : null;
+      const packSize =
+        packFromPage !== null && item.packSize === 1 ? packFromPage : item.packSize;
+
       const provisional = decideScrapeSighting({
         restaurantId: ctx.restaurantId,
         url: ctx.url,
@@ -415,8 +464,32 @@ export class VendorPageExtractorService {
         signatureHash,
         price: item.price,
         currency: item.currency,
-        packSize: item.packSize,
-        unitVolumeMl: item.volumeMl,
+        packSize,
+        unitVolumeMl: readMl ?? item.volumeMl,
+        volume:
+          reading && reading.read
+            ? {
+                source: reading.source,
+                statement: reading.statement,
+                locator: reading.locator,
+                candidates: reading.candidates.map((c) => ({
+                  source: c.source,
+                  ml: c.ml,
+                  statement: c.statement,
+                  locator: c.locator,
+                })),
+                nonStandardFormat: reading.nonStandardFormat,
+                notes: reading.notes,
+              }
+            : readMl === null && item.volumeMl
+              ? {
+                  source: "model_text",
+                  statement: `${item.volumeMl}ml, as the model read the page text`,
+                  locator: "extraction model",
+                  notes: reading ? reading.notes : [],
+                }
+              : null,
+        volumeConflict: conflict,
         pageStatedDate: ctx.pageStatedDate,
         fetchedAt: ctx.fetchedAt,
         contentHash: ctx.contentHash,
@@ -427,6 +500,9 @@ export class VendorPageExtractorService {
           vintage: item.vintage,
           inStock: item.inStock,
           warnings: item.warnings,
+          // Both packs when they disagree, so the choice above is auditable.
+          modelPackSize: item.packSize,
+          packFromPageStatement: packFromPage,
         },
       });
 
@@ -447,11 +523,15 @@ export class VendorPageExtractorService {
         : false;
       if (isOutlier) flaggedOutliers += 1;
 
+      const source =
+        reading && reading.read ? reading.source : item.volumeMl ? "model_text" : "none";
+      volumeSources[source] = (volumeSources[source] ?? 0) + 1;
+
       rows.push({ ...provisional.row, is_outlier: isOutlier });
     }
 
     if (rows.length === 0)
-      return { written: 0, refusals, flaggedOutliers, warnings };
+      return { written: 0, refusals, flaggedOutliers, volumeSources, warnings };
 
     const { data, error } = await this.databaseService.supabase
       .from("vendor_price_observations")
@@ -467,12 +547,13 @@ export class VendorPageExtractorService {
       );
       // A failed write is NOT "nothing was found". Say which, on the result.
       warnings.push(`Register write failed: ${error.message}`);
-      return { written: 0, refusals, flaggedOutliers: 0, warnings };
+      return { written: 0, refusals, flaggedOutliers: 0, volumeSources, warnings };
     }
     return {
       written: (data ?? []).length,
       refusals,
       flaggedOutliers,
+      volumeSources,
       warnings,
     };
   }

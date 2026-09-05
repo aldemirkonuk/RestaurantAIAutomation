@@ -83,6 +83,14 @@ export type ScrapeRefusalReason =
   | "bad_price"
   | "bad_pack"
   | "no_bottle_volume"
+  /**
+   * Added 2026-09-04 with `bottle-size.ts`. A page that states TWO different
+   * bottle sizes for one row and a page that states NONE are different facts,
+   * and the standing fault in this codebase is letting a system report absence
+   * as health. A conflict counted as `no_bottle_volume` would read as "that
+   * merchant does not print sizes", which is the opposite of what happened.
+   */
+  | "volume_conflict"
   | "unnormalisable";
 
 export interface ScrapeSightingInput {
@@ -107,6 +115,32 @@ export interface ScrapeSightingInput {
   packSize: number | null | undefined;
   /** The bottle's volume as PRINTED. No default: absent is a refusal. */
   unitVolumeMl: number | null | undefined;
+  /**
+   * How the volume above was read, and the page's own words for it.
+   *
+   * Filled by `readBottleSize` (`bottle-size.ts`). Every one of these lands in
+   * `raw.volume` on the row, so a person looking at a sighting six months from
+   * now can see not only that it says 750ml but WHERE on the vendor's page
+   * that 750 came from and what the page actually wrote. ADR 0117's rule is
+   * that a sighting names its unit; naming the unit without naming where the
+   * unit was read is half a provenance.
+   */
+  volume?: {
+    source: string;
+    statement: string;
+    locator: string;
+    /** Every place the page stated a size for this row, agreeing or not. */
+    candidates?: Array<{ source: string; ml: number; statement: string; locator: string }>;
+    /** True when the volume is not a format the EU Annex or trade knows. */
+    nonStandardFormat?: boolean;
+    /** Notes from the read — e.g. that the structured data named another product. */
+    notes?: string[];
+  } | null;
+  /**
+   * Set when the page stated two different sizes for this row. Refused before
+   * the missing-volume check, so a contradiction never renders as an absence.
+   */
+  volumeConflict?: { message: string; candidates: unknown[] } | null;
   /** The page's own stated date, ISO, or null when the page states none. */
   pageStatedDate: string | null;
   /** When we fetched. Always known; never stands in silently for the above. */
@@ -299,6 +333,17 @@ export function decideScrapeSighting(
     };
   }
 
+  // A CONTRADICTION IS NOT AN ABSENCE. Checked before the missing-volume leg
+  // so the two never collapse into one count: `no_bottle_volume` means the
+  // page printed no size, `volume_conflict` means it printed two that disagree.
+  if (input.volumeConflict) {
+    return {
+      write: false,
+      reason: "volume_conflict",
+      message: input.volumeConflict.message,
+    };
+  }
+
   const unitVolumeMl = positiveInt(input.unitVolumeMl);
   if (unitVolumeMl === null) {
     return {
@@ -415,6 +460,11 @@ export function decideScrapeSighting(
         pageStatedDate: statedOk ? statedOk.toISOString() : null,
         dateBasis,
         undated: dateBasis === "fetch_time_undated",
+        // WHERE the unit came from, in the page's own words. Absent only when
+        // the caller did not read the markup at all (the manual `POST
+        // /vendor-intel/scrape` path can still hand a volume straight in), and
+        // absent is stated rather than implied.
+        volume: input.volume ?? null,
       },
     },
   };

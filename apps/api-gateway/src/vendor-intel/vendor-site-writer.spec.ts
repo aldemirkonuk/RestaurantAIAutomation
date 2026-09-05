@@ -11,6 +11,7 @@
 
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
 import { ExtractedItem } from "./vendor-page-extraction";
+import { readPageSizeEvidence } from "./bottle-size";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 
@@ -100,7 +101,9 @@ const ctx = {
 const write = (
   service: any,
   items: ExtractedItem[],
-  over: Partial<Record<keyof typeof ctx, any>> = {},
+  // `sizeEvidence` joins the context in 2026-09-04's size read, so this is no
+  // longer keyed to `ctx` alone.
+  over: Record<string, any> = {},
 ) => service.writeObservations(items, { ...ctx, ...over });
 
 describe("what reaches the register", () => {
@@ -241,5 +244,108 @@ describe("the outlier flag", () => {
     const out = await write(service, [item()]);
     expect(out.written).toBe(1);
     expect(captured.rows[0].is_outlier).toBe(false);
+  });
+});
+
+/**
+ * The size read, reaching the register.
+ *
+ * Added 2026-09-04 with `bottle-size.ts`. Until then the ONLY source of
+ * `unit_volume_ml` was the extraction model, and the only thing the model was
+ * shown was `htmlToText(html)` — which drops the contents of `<script>`, and
+ * with it every schema.org statement a merchant publishes. These cases run the
+ * writer with the page evidence attached, which is what `extractFromUrl` now
+ * hands it.
+ */
+describe("where the unit came from, on the row", () => {
+  const LD = (extra: Record<string, unknown>) =>
+    `<html><head><title>Chablis 1er Cru</title></head><body>
+      <script type="application/ld+json">${JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: "Chablis 1er Cru",
+        offers: { "@type": "Offer", price: 42, priceCurrency: "USD" },
+        ...extra,
+      })}</script>
+    </body></html>`;
+
+  it("reads a size the model never saw, and says where it read it", async () => {
+    const html = LD({
+      additionalProperty: [
+        { "@type": "PropertyValue", name: "Bottle Volume", value: "37.5 cl" },
+      ],
+    });
+    const { service, captured } = makeService({});
+    // The model reports NOTHING, exactly as it must when the size is inside a
+    // <script> it was never shown.
+    const out = await write(service, [item({ volumeMl: null })], {
+      sizeEvidence: readPageSizeEvidence(html),
+    });
+    expect(out.written).toBe(1);
+    expect(captured.rows[0].unit_volume_ml).toBe(375);
+    expect(captured.rows[0].raw.volume).toMatchObject({
+      source: "structured_offer",
+      statement: "37.5 cl",
+    });
+    expect(captured.rows[0].raw.volume.locator).toContain("Bottle Volume");
+    expect(out.volumeSources).toEqual({ structured_offer: 1 });
+    // And the price is now normalised as a HALF bottle, which is the whole
+    // point: at 375ml this is $84/750ml, not $42.
+    expect(captured.rows[0].normalized_unit_price).toBeCloseTo(84, 6);
+  });
+
+  it("refuses a contradiction as `volume_conflict`, never as an absence", async () => {
+    const html = `${LD({
+      additionalProperty: [{ name: "Bottle Volume", value: "75 cl" }],
+    })}<span title="Bottle size cl: 150">1.5L</span>`;
+    const { service, captured } = makeService({});
+    const out = await write(service, [item({ volumeMl: 750 })], {
+      sizeEvidence: readPageSizeEvidence(html),
+    });
+    expect(out.written).toBe(0);
+    expect(captured.rows).toHaveLength(0);
+    expect(out.refusals.volume_conflict).toBe(1);
+    expect(out.refusals.no_bottle_volume).toBe(0);
+  });
+
+  it("takes a pack out of the size statement when the model defaulted to 1", async () => {
+    // `validateItem` assigns packSize 1 whenever the model reported nothing, so
+    // a 1 carries no information; "6 x 75cl" on the page does.
+    const html = `<script type="application/json">${JSON.stringify({
+      title: "Chablis 1er Cru",
+      options: ["Format"],
+      variants: [{ id: 1, title: "6 x 75cl", options: ["6 x 75cl"], price: 25200 }],
+    })}</script>`;
+    const { service, captured } = makeService({});
+    await write(service, [item({ volumeMl: null, packSize: 1, price: 252 })], {
+      sizeEvidence: readPageSizeEvidence(html),
+    });
+    expect(captured.rows[0].pack_size).toBe(6);
+    expect(captured.rows[0].unit_volume_ml).toBe(750);
+    // Both packs on the row, so the choice is auditable rather than silent.
+    expect(captured.rows[0].raw.modelPackSize).toBe(1);
+    expect(captured.rows[0].raw.packFromPageStatement).toBe(6);
+  });
+
+  it("keeps the model's own read when the markup says nothing, and labels it", async () => {
+    // The manual `POST /vendor-intel/scrape` path has no markup evidence at
+    // all; the row must still say where its unit came from.
+    const { service, captured } = makeService({});
+    const out = await write(service, [item({ volumeMl: 750 })], {
+      sizeEvidence: readPageSizeEvidence("<p>A lovely wine.</p>"),
+    });
+    expect(out.written).toBe(1);
+    expect(captured.rows[0].unit_volume_ml).toBe(750);
+    expect(captured.rows[0].raw.volume).toMatchObject({ source: "model_text" });
+    expect(out.volumeSources).toEqual({ model_text: 1 });
+  });
+
+  it("still refuses when neither the markup nor the model has a size", async () => {
+    const { service } = makeService({});
+    const out = await write(service, [item({ volumeMl: null })], {
+      sizeEvidence: readPageSizeEvidence("<p>A lovely wine.</p>"),
+    });
+    expect(out.written).toBe(0);
+    expect(out.refusals.no_bottle_volume).toBe(1);
   });
 });

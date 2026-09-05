@@ -40,6 +40,7 @@ function runResult(
     rejected: 0,
     refusals: emptyRefusalCounts(),
     flaggedOutliers: 0,
+    volumeSources: {},
     fetchedAt: "2026-09-04T10:00:00.000Z",
     pageStatedDate: null,
     crawlDelaySeconds: null,
