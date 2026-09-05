@@ -306,7 +306,7 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
 7. **Density, responsiveness, accessibility baselines.**
 
    **2026-09-05 — the census (sketch 102).** Every overlay in the web app — 141 sites folded
-   into 117 — now has this policy's shape or a reason it has none: 31 built, 10 migrate (eight of them on /inventory, whose flag turns on the same component), 12 owed, 7 target, 42 retire, 15 delete after the founder's four rulings that day (F1 ratified, F2, F5, F7). Specimens at the primitive's real widths, and seven forks for the founder, in
+   into 117, plus three the founder's rulings added — now has this policy's shape or a reason it has none: 31 built, 10 migrate (eight of them on /inventory, whose flag turns on the same component), 12 owed, 7 target, 42 retire, 15 delete after the founder's four rulings that day (F1 ratified, F2, F5, F7). Specimens at the primitive's real widths, and seven forks for the founder, in
    `.planning/sketches/102-modal-census/README.md`; ADR 0112 carries the summary.
 
 ## 4. Candidate directions (fork — founder call, OD-106)

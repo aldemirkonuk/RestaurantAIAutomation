@@ -175,7 +175,7 @@ spectrum, not a shape (see Consequences).
 
 `.planning/sketches/102-modal-census/` reads every place `apps/web/src` opens something over the
 page — a house `<Sheet>`/`<Panel>`/`<Popover>`, a `fixed inset-0` wrapper, or a Radix `*Content` —
-and gives each one this ADR's shape or a reason it has none. 141 sites fold into 117 overlays:
+and gives each one this ADR's shape or a reason it has none. 141 sites fold into 117 overlays, and the founder's rulings of 2026-09-05 added three owed sheets (120 rows):
 
 | Status | Count | Meaning |
 |---|---|---|

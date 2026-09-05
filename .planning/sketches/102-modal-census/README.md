@@ -12,7 +12,7 @@ tags: [modal, sheet, panel, popover, census, mudavym, design-system, adr-0112]
 
 The founder, 2026-09-05: *"finalize all modal windows for all pages."* Sketch 099 drew the three
 shapes on the first pages that used them; ADR 0112 built the primitive. This sketch reads **every**
-place the web app opens something over the page — 120 sites on 21 pages plus the shell — and gives each
+place the web app opens something over the page — 141 sites, folded into 117 overlays plus the three the founder's rulings added (120 rows), on 21 pages plus the shell — and gives each
 one the shape the policy gives it, or a reason it has none.
 
 ## How to view
@@ -39,7 +39,7 @@ page's ground). Filter by shape and by status.
 
 | | |
 |---|---|
-| Overlay sites read | 120 |
+| Overlay sites read · census rows | 141 · 120 |
 | Built on the primitive | 31 |
 | Migrate — legacy inside a house-flagged page today | 10 |
 | Owed — an act the rebuilt page does not yet offer | 12 |
@@ -209,7 +209,8 @@ page's ground). Filter by shape and by status.
 Tree: feat/mudavym-design-p4 @ origin tip, read 2026-09-05. Every `.tsx` under `apps/web/src` (tests and stories excluded) was scanned
 for a JSX `<Sheet>` / `<Panel>` / `<Popover>` whose import resolves to `components/mudavym`, a
 `fixed inset-0` or `position: fixed` wrapper, and a Radix `*Content`. That gave 141 sites across
-25 house files and 69 legacy files; each site was then read by hand for what it does and who opens
+25 house files and 69 legacy files, folded into 117 overlays; the founder's rulings of 2026-09-05
+added three owed sheets, so the census holds 120 rows. Each site was then read by hand for what it does and who opens
 it. Page-local components that merely share a name (`ReportsNext`'s cutting `Sheet`, the dashboard
 rail's `Panel`, the door's local `Panel`) were excluded; files nobody imports were checked twice
 (`rg` for their basename across `apps/web/src`). The house branches inside the eight shell files

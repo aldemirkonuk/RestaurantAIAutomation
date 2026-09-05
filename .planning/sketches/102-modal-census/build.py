@@ -8,11 +8,11 @@ import sys, os, json, html, collections, re
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import census as C
 esc = lambda s: html.escape(str(s), quote=True)
-STATUS_WORD = dict(built="Built", migrate="Migrate", owed="Owed", target="Target", retire="Retires", delete="Delete", none="Not a shape")
-STATUS_GLOSS = dict(built="on the primitive today", migrate="renders legacy inside a house page today", owed="the rebuilt page owes this act",
+STATUS_WORD = dict(built="Built", migrate="Migrate", owed="Owed", target="Target", retire="Retires", delete="Delete", none="Not a shape", pattern="Behaviour")
+STATUS_GLOSS = dict(pattern="a behaviour the best products have, proposed for the house", built="on the primitive today", migrate="renders legacy inside a house page today", owed="the rebuilt page owes this act",
                     target="page not yet rebuilt; shape decided", retire="retires with the legacy page", delete="unreachable — delete", none="paint or a label, no shape")
 SHAPE_W = dict(sheet="440", panel="620", popover="320")
-DRAWN = ("built", "migrate", "owed", "target")
+DRAWN = ("built", "migrate", "owed", "target", "pattern")
 
 # ── body rows ─────────────────────────────────────────────────────────────
 def row(r):
@@ -140,6 +140,7 @@ code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
 .st-built{border-color:var(--seal-ring);color:var(--seal-deep)}
 .st-migrate,.st-owed{border-color:var(--ink-4);color:var(--ink-1)}
 .st-retire,.st-none{color:var(--ink-3);border-style:dashed}
+.st-pattern{border-color:var(--seal);color:var(--seal-deep);background:var(--seal-tint)}
 .st-delete{color:var(--ink-3);text-decoration:line-through}
 .sh{padding:2px 7px;border-radius:999px;background:var(--paper-1);text-transform:uppercase;letter-spacing:.1em;font-size:9px}
 .fk{color:var(--seal-deep)}
@@ -258,13 +259,13 @@ def page_section(pg):
 
 def body_html(for_artifact):
     c, shapes = counts()
-    nums = [(c["total"], "overlay sites read"), (len([p for p in C.PAGES if p["route"]!="shell"]), "pages with an overlay"),
+    nums = [(141, "overlay sites read"), (c["total"], "census rows"), (len([p for p in C.PAGES if p["route"]!="shell"]), "pages with an overlay"),
             (c["built"], "built"), (c["migrate"], "migrate"), (c["owed"], "owed"), (c["target"], "target"),
             (c["retire"], "retire"), (c["delete"], "delete"), (shapes["sheet"], "sheets drawn"), (shapes["panel"], "panels drawn"), (shapes["popover"], "popovers drawn")]
     h = [f'<div class="mudavym" id="mdv-root"><div class="banner">Sketch 102 · modal census — example data, not a tenant</div><div class="wrap">',
          '<div class="wordmark">Mudavym<span class="dot">.</span></div>',
          '<h1>Every overlay, in its shape<span class="dot">.</span></h1>',
-         '<p class="lede">The 141 sites where the web app opens something over the page, read from the tree on 2026-09-05 and folded into 117 overlays — each given the shape ADR 0112 gives it, or a reason it has none.</p>',
+         '<p class="lede">The 141 sites where the web app opens something over the page, read from the tree on 2026-09-05 and folded into 117 overlays, plus the three the founder\'s rulings that day added — each given the shape ADR 0112 gives it, or a reason it has none.</p>',
          '<div class="dbl"></div>',
          '<div class="nums">' + "".join(f'<div><span class="n">{n}</span><span class="k">{k}</span></div>' for n, k in nums) + '</div>',
          '<div class="rule"><p class="r">An object gets a sheet. A question gets a panel. A choice gets a popover.</p>'
@@ -272,7 +273,7 @@ def body_html(for_artifact):
          'A sheet arrives from the right so the list stays readable; a panel sits in the middle because it wants an answer; a popover hangs off the control it belongs to. '
          'The seal never sits in a popover (founder, 2026-09-04). Wax is for a real commitment; bulk gets the plain die.</p></div>',
          '<div class="ctl"><div class="g"><span class="gl">Shape</span>' + "".join(f'<button type="button" data-filter="shape" data-value="{v}" aria-pressed="{str(v=="all").lower()}">{l}</button>' for v, l in [("all","All"),("sheet","Sheet"),("panel","Panel"),("popover","Popover")]) + '</div>'
-         '<div class="g"><span class="gl">Status</span>' + "".join(f'<button type="button" data-filter="status" data-value="{v}" aria-pressed="{str(v=="all").lower()}">{l}</button>' for v, l in [("all","All"),("built","Built"),("migrate","Migrate"),("owed","Owed"),("target","Target"),("retire","Retires"),("delete","Delete")]) + '</div>'
+         '<div class="g"><span class="gl">Status</span>' + "".join(f'<button type="button" data-filter="status" data-value="{v}" aria-pressed="{str(v=="all").lower()}">{l}</button>' for v, l in [("all","All"),("built","Built"),("migrate","Migrate"),("owed","Owed"),("target","Target"),("pattern","Behaviours"),("retire","Retires"),("delete","Delete")]) + '</div>'
          '<div class="g"><span class="gl">Ground</span>' + "".join(f'<button type="button" data-filter="ground" data-value="{v}" aria-pressed="{str(v=="auto").lower()}">{l}</button>' for v, l in [("auto","Follow the viewer"),("paper","Paper"),("charcoal","Charcoal")]) + '</div></div>',
          '<p style="max-width:80ch">Every specimen is drawn at the primitive\'s real width — 440 for a sheet, 640 wide, 620 for a panel, 320 for a popover — with the head, the close-in-words and the footer exactly as <code>sheet.css</code> draws them. Four specimens are pinned to charcoal on purpose: that is the portal carrying the page\'s ground, demonstrated rather than described.</p>']
     for pg in C.PAGES: h.append(page_section(pg))
@@ -283,7 +284,7 @@ def body_html(for_artifact):
              + "".join(f'<li><span class="fn">{esc(n)}</span><div><span class="ft">{esc(t)}</span><p>{esc(d)}</p>{("<p><b>Answered " + esc(C.ANSWERS[n]) + "</b></p>") if n in C.ANSWERS else ""}</div></li>' for n, t, d in C.FORKS) + '</ol>')
     h.append('<div class="sec-h"><span class="sec-n">Method</span><h2>How this was read</h2></div>'
              f'<p>The tree is <b>{esc(C.META["tree"])}</b>. Every <code>.tsx</code> under <code>apps/web/src</code> (tests and stories excluded) was scanned for three things: a JSX <code>&lt;Sheet&gt;</code>, <code>&lt;Panel&gt;</code> or <code>&lt;Popover&gt;</code> whose import resolves to <code>components/mudavym</code>; a <code>fixed inset-0</code> or <code>position: fixed</code> wrapper; and a Radix <code>*Content</code>. '
-             'That gave 141 sites in 25 house files and 69 legacy files. Each site was then read by hand for what it does and who opens it; page-local components that merely share a name (<code>ReportsNext</code>\'s cutting <code>Sheet</code>, the dashboard rail\'s <code>Panel</code>, the door\'s local <code>Panel</code>) were excluded, and files nobody imports were checked twice. '
+             'That gave 141 sites in 25 house files and 69 legacy files, folded into 117 overlays; the founder\'s rulings of 2026-09-05 added three owed sheets (a one-tap action of your own, the carry sheet\'s auction-lot start, certifications on file), so the census holds 120 rows. Each site was then read by hand for what it does and who opens it; page-local components that merely share a name (<code>ReportsNext</code>\'s cutting <code>Sheet</code>, the dashboard rail\'s <code>Panel</code>, the door\'s local <code>Panel</code>) were excluded, and files nobody imports were checked twice. '
              'The house branches inside the eight shell files count once each here, not as separate legacy sites. Widths, motion tokens and the close-in-words rule are read from <code>components/mudavym/Sheet.tsx</code> and <code>sheet.css</code>.</p>'
              '<p>Status words: <b>Built</b> is on the primitive today. <b>Migrate</b> is a legacy overlay that renders inside a house-flagged page right now. <b>Owed</b> is an act the legacy page had that the rebuilt page does not yet offer. <b>Target</b> is a page not yet rebuilt whose overlay takes its shape now. <b>Retires</b> means the act already lives in something built. <b>Delete</b> is code nobody imports.</p>')
     h.append('<div class="foot"><b>Example data, not a tenant.</b> Every name, figure and date in the specimens is invented for the drawing. '
@@ -336,7 +337,7 @@ tags: [modal, sheet, panel, popover, census, mudavym, design-system, adr-0112]
 
 The founder, 2026-09-05: *"finalize all modal windows for all pages."* Sketch 099 drew the three
 shapes on the first pages that used them; ADR 0112 built the primitive. This sketch reads **every**
-place the web app opens something over the page — {c["total"]} sites on {len([p for p in C.PAGES if p["route"]!="shell"])} pages plus the shell — and gives each
+place the web app opens something over the page — 141 sites, folded into 117 overlays plus the three the founder's rulings added ({c["total"]} rows), on {len([p for p in C.PAGES if p["route"]!="shell"])} pages plus the shell — and gives each
 one the shape the policy gives it, or a reason it has none.
 
 ## How to view
@@ -363,7 +364,7 @@ page's ground). Filter by shape and by status.
 
 | | |
 |---|---|
-| Overlay sites read | {c["total"]} |
+| Overlay sites read · census rows | 141 · {c["total"]} |
 | Built on the primitive | {c["built"]} |
 | Migrate — legacy inside a house-flagged page today | {c["migrate"]} |
 | Owed — an act the rebuilt page does not yet offer | {c["owed"]} |
@@ -406,7 +407,8 @@ page's ground). Filter by shape and by status.
 Tree: {C.META["tree"]}. Every `.tsx` under `apps/web/src` (tests and stories excluded) was scanned
 for a JSX `<Sheet>` / `<Panel>` / `<Popover>` whose import resolves to `components/mudavym`, a
 `fixed inset-0` or `position: fixed` wrapper, and a Radix `*Content`. That gave 141 sites across
-25 house files and 69 legacy files; each site was then read by hand for what it does and who opens
+25 house files and 69 legacy files, folded into 117 overlays; the founder's rulings of 2026-09-05
+added three owed sheets, so the census holds {c["total"]} rows. Each site was then read by hand for what it does and who opens
 it. Page-local components that merely share a name (`ReportsNext`'s cutting `Sheet`, the dashboard
 rail's `Panel`, the door's local `Panel`) were excluded; files nobody imports were checked twice
 (`rg` for their basename across `apps/web/src`). The house branches inside the eight shell files
