@@ -676,3 +676,12 @@ changes the day a recurrence auto-approves; the two decisions are one decision.*
 | Date | Who | What |
 |---|---|---|
 | 2026-09-05 | Claude (p4ay, recurrence on the order) | Built the founder's batch-40 decision as an addendum to this ADR: nine additive columns with four CHECKs and a partial unique index, a pure rule module, a service with set/pause/resume/end and an 08:15 generator that records every run's count, six DTO keys mirrored onto the web type, and the Recurring station filled from a measured read. The PGlite probe found two defects no TypeScript test could — an `ON DELETE SET NULL` that made a parent undeletable, and two CHECKs that Postgres accepted because they evaluated to NULL. Filed TECH-DEBT 3b: `recurring_orders.auto_approve` calls `approveOrder` with no seal challenge. |
+
+## Founder answer, 2026-09-05 (batch 53) — the recurrence addendum's Q5
+
+**"Retire after one real standing order runs on the new path."** `recurring_orders` and
+its three schedulers (including `recurring_order_agent.py`, which races the 08:00 cron)
+stay dark and untouched until a real house's recurrence has generated a child on the new
+path; then the Python agent is repointed and `recurring_orders` retired in its own PR.
+Nothing races today: the old rows number zero in production. Rejected: retire now (the
+new path has never run against a real house); keep both indefinitely.

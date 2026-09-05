@@ -670,3 +670,9 @@ is quoted from another session.
   attributable to whoever holds `ADMIN_API_KEY`. See the risk above.
 - It does not claim the end will be noticed. It arrives on a date and nothing
   announces it (`dashboard.md` §13.23).
+
+## Review trail, continued (parent, 2026-09-05)
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-05 | Claude (parent) | Correction: the commit message of 7a8d864c said "gateway and web tsc: 0 errors"; measured with tsconfig.json only. Under tsconfig.spec.json one pre-existing test-file type error (a main-merged notifications spec) stood at that tip, unrelated to this commit, fixed in 7bbc37c9. Batch 53 answered question 2: a notification to the founder when the window ends unnamed — being built. |

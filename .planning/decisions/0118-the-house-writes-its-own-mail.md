@@ -1225,3 +1225,12 @@ The original five, as they were asked:
    this question is currently moot on either retention choice, and today's
    answer should say so rather than build toward a use case nobody has asked
    for.
+
+## Founder answer, 2026-09-05 (batch 53) — D16 question 1
+
+**"As built, owner's name printed; Shared Drive later."** The archive lives in the
+grant-holder's Drive, and that person's name is printed on /connections beside the
+archive so the house knows whose it is; a Google Workspace Shared Drive is the upgrade
+path when a house has one. Rejected: require a Shared Drive (most small houses have no
+Workspace); Mudavym-held only (the opposite of batch 45). The name on /connections is
+owed by the archive builder if not already rendered.
