@@ -17,6 +17,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
 import { PriceIndexModule } from "./price-index/price-index.module";
+import { CommodityModule } from "./commodity/commodity.module";
 import { DistributorFeedModule } from "./distributor-feed/distributor-feed.module";
 import { PosHubModule } from "./pos-hub/pos-hub.module";
 import { SimposModule } from "./simpos/simpos.module";
@@ -94,6 +95,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     PriceIndexModule, // Public price-index register (posted lists / shelf prices), state-scoped (ADR 0117)
+    CommodityModule, // Class-E index-series register: FAO + ONS d7bu, a context line, and one dark alert (ADR 0117; commodity-signals-plan.md phase 0)
     DistributorFeedModule, // Class-C distributor connections: read-only catalogue of what each portal actually publishes (ADR 0126)
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     AskAiModule, // Ask AI (FUTURES §8): ask → propose → confirm → execute

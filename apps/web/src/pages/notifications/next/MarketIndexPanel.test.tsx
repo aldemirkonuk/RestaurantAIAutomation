@@ -24,6 +24,18 @@ vi.mock('./useHouseIndex', () => ({
   useHouseIndex: () => mockIndex.current,
 }));
 
+/**
+ * The commodity context section draws inside this box (2026-09-05). It is
+ * stubbed to a ready-and-empty register here so that these assertions stay
+ * about the POSTED-PRICE register they were written for; the commodity
+ * section's own contract is tested in `MarketIndexPanel.commodity.test.tsx`.
+ */
+const mockCommodity = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./useHouseCommodity', () => ({
+  COMMODITY_POLL_MS: 300_000,
+  useHouseCommodity: () => mockCommodity.current,
+}));
+
 import MarketIndexPanel from './MarketIndexPanel';
 
 const READY = {
@@ -65,6 +77,22 @@ function line(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mockIndex.current = { ...READY };
+  // 'loading' on purpose: this file's assertions are about the POSTED-PRICE
+  // register, and a commodity section in any other state renders a second
+  // role="status" that `getByRole('status')` would find alongside the one the
+  // assertion means. Its own states are covered in
+  // `MarketIndexPanel.commodity.test.tsx`.
+  mockCommodity.current = {
+    state: 'loading',
+    failure: null,
+    jurisdiction: null,
+    requested: null,
+    series: [],
+    fetchArmed: false,
+    silence: null,
+    noExposureRecorded: false,
+    refresh: vi.fn(),
+  };
 });
 
 describe('MarketIndexPanel — the index line is its own labelled register', () => {

@@ -666,6 +666,91 @@ why the rebasing case matters:** the same index on two bases differs by roughly 
 which a step guard would read as a crash. A base change is a new series, not a new
 observation.
 
+#### Phase 0 — BUILT, 2026-09-05, on the founder's *"both: the line now, the alert behind a flag"*
+
+The founder answered §11's fork with **both**, so phase 0 shipped the context line and phase
+1's rule was built **dark** alongside it rather than deferred. What follows is what was
+actually built and what was measured while building it; the four corrections this pass makes
+to this document's own numbers are marked **CORRECTION**.
+
+**Built.** One migration, `20260905235000_an_index_series_is_not_a_price.sql`, creating
+`commodity_index_series`, `commodity_index_observations` and `house_item_commodity_exposure`
+as §7-§8 describe them — RLS on, `anon`/`authenticated` revoked in the same file, every FK
+inside `public`, and an in-file `DO` block that **probes five CHECKs by inserting and
+observing the refusal** rather than trusting that they were created. Proven on PGlite
+(Docker is down) by `p4-scratch/pglite-probe/p4bb-commodity-register.mjs`: applied twice
+(idempotent), RLS true on all three, **0 anon/authenticated grants**, all six FKs in
+`public`, and the real FAO / ONS / USDA rows admitted while a currency on an index number, a
+price with no currency, an armed series with no threshold, a second live exposure for one
+triple, a pass-through above 1 and a retirement with no reason were each refused by name.
+
+The gateway module is `apps/api-gateway/src/commodity/` — registry, two parsers, a
+three-gate admission, a fetch service behind `COMMODITY_INDEX_FETCH_ENABLED` (off), a read
+service, `GET /commodity-index/status` and `GET /commodity-index/me`. The web draws it inside
+the existing labelled index box (`MarketIndexPanel.tsx` + `useHouseCommodity.ts`), extending
+that register rather than opening a fourth box.
+
+**CORRECTION 1 — the shell-egg parser was NOT built, and deliberately.** This section says
+the USDA AMS index "gets a parser written against a real recorded fixture". Writing one
+requires bytes from a host whose `robots.txt` returns 403, and §3c's own rule — *no scheduled
+fetcher may be pointed at that host* — was read here as also barring the one-off read that
+would have produced the fixture. **This task did not contact `www.ams.usda.gov` at all.** The
+series is registered with `admission = 'upload_only'`, the 403 as its `withheld_reason` and
+`armed = false`, and the panel names the 403. The parser and the upload wiring are owed, and
+whether a one-off read for a fixture is permitted where a fetcher is not is founder question
+Q7 below.
+
+**CORRECTION 2 — the FAO CSV states no date at all**, which this document does not say and
+which decides a column. Measured on the fetched bytes: line 1 is the title, line 2 the base,
+line 3 the header, and there is no release date, revision date or "generated on" line
+anywhere. So FAO is `issued_at_basis = 'fetch_date'` and its line reads **"read on"**, while
+ONS — which stamps a series `releaseDate` AND a per-observation `updateDate` — reads
+**"issued"**. Two series, two words, both measured, both pinned by tests.
+
+**CORRECTION 3 — §9b's step guard for FAO is 7.8 % by nearest rank, not by interpolation.**
+Re-measured through the shipped code on the full 440-row series: an interpolated p99 is
+**7.49 %**, which lies BETWEEN two real observed steps (6.98 % and 7.80 %) and would refuse a
+7.80 % month the market printed. The implementation therefore uses **nearest rank** for the
+guard — landing on 7.80 %, this document's own figure — and keeps interpolation for the rise
+threshold, which is what lands on the budget. The asymmetry is documented at
+`quantileCeilingRank`.
+
+**CONFIRMATION — §9b's FAO row reproduces exactly.** Different code, re-fetched bytes, same
+answers: **3.7 % / 8.5 % / 15.4 %** for four, two and one fire a year, and **63 / 38 / 27 / 9**
+fires at flat thresholds of 10 / 15 / 20 / 30 %. The re-fetched CSV's sha256 is also
+byte-identical to the one recorded here.
+
+**CORRECTION 4 — the threshold calibration job is NOT built as a job.** The arithmetic is
+shipped and tested (`deriveThreshold`, `quantileCeilingRank`, `movesOverHistory`), and nothing
+schedules it or writes `rise_threshold` to a row. No series is armed today, and the migration's
+CHECK refuses arming one without a derived threshold, so the dark rule's honest verdict on
+every house right now is `no series in the register is armed`. The job is owed.
+
+**Also not built:** the exposure mapping for the top N house items by spend. The controller
+has **no POST at all** — asserting a mapping puts a person's name on a join a rule later fires
+on, and that act belongs in front of a reviewer. `noExposureRecorded` is true on every house
+and the panel says so in words.
+
+**The dark alert.** `commodity_exposure_rising` is built and **cannot reach a person**:
+`CommodityModule` imports no `NotificationsModule`, so there is no service to notify with, and
+a test asserts it. Behind `COMMODITY_ALERT_DARK` (off; an allow-list) it writes one
+`neural_footprint_event` row per evaluation — verdict in `choice`, working in `internal_state`,
+`dark: true` / `reached_a_person: false` in `context`, **`outcome` NULL always**, because
+whether a fire was right needs a numerator this product does not have. **Two of the nine
+conditions are not evaluated** — coverage and storability — and are named on every decision,
+every ledger row and the report line, rather than skipped into looking satisfied. Q3 is
+unchanged and is what unblocks them.
+
+**Verified.** `npx jest src/commodity` — **78 passed, 6 suites**. `npx vitest run
+src/pages/notifications/next` — **120 passed of 122**, the two failures in `nt-book.test.ts`,
+which is byte-identical to `HEAD`. Gateway `tsc --noEmit` under both `tsconfig.json` and
+`tsconfig.spec.json`: **0 errors in `src/commodity`**. Web `tsc --noEmit`: 0 errors in the
+touched files. Seven guards exit 0. **`check_gateway_boots.sh` FAILS on this tree and the
+cause is not this work**: `dist/price-index/price-index.module.js`, untouched here, crashes
+with the same `Cannot access 'IntegrationsOauthService' before initialization` from an
+untracked `communications/archive/` require cycle. So **this module's Nest DI is UNPROVEN**,
+and that is stated rather than assumed.
+
 ### Phase 1 — the rule and the sentence
 
 `commodity_exposure_rising` as §9, behind a flag defaulting off, with the storability question

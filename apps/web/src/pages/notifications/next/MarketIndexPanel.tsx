@@ -45,9 +45,10 @@
  * every state posted list and control-state shelf price is.
  */
 
-import { Hourglass, Landmark, RotateCw, Sprout, TriangleAlert } from 'lucide-react';
+import { Globe, Hourglass, Landmark, RotateCw, Sprout, TriangleAlert } from 'lucide-react';
 import { EM, MONO, SANS, SERIF } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
+import { CommoditySeriesVM, useHouseCommodity } from './useHouseCommodity';
 
 /** The class, in the words a reader knows. An unmapped class prints its key. */
 const CLASS_LABEL: Record<string, string> = {
@@ -207,6 +208,250 @@ function LabelledSection({
   );
 }
 
+/**
+ * A published commodity or market index series — the CONTEXT LINE.
+ *
+ * The founder, 2026-09-05: *"Both: the line now, the alert behind a flag"*.
+ * This is the line, and its whole discipline is that it makes no claim. It
+ * states what a series last printed and who printed it. It never says a price
+ * will rise, it is never placed beside a vendor quote, and it is never
+ * converted into one.
+ *
+ * WHY IT LIVES INSIDE THIS BOX. A class-E index series needs its own TABLE for
+ * five measured reasons (it is not a price, has no currency, carries a unit
+ * longer than `price_index_postings` allows, names a commodity class rather
+ * than a product, and can be world-scoped where the postings table's `state`
+ * regex has no code for "everywhere"). But it is the same KIND of thing a
+ * reader is looking at here — a published reference — so it draws as another
+ * labelled section of this register rather than as a third box.
+ *
+ * FOUR THINGS EVERY LINE MUST CARRY, and none of them is decoration:
+ *
+ *   the PERIOD    the observation's own, never our clock. A world index's
+ *                 August number is August's, whatever day we read it
+ *   the BASE      an index number without one cannot be compared to anything,
+ *                 including its own earlier self, and a rebasing looks exactly
+ *                 like a fifty-percent crash
+ *   whose DATE    "issued" is a claim about the PUBLISHER. FAO's CSV states no
+ *                 date of any kind, so its rows say "read on"; ONS stamps one
+ *                 on every observation, so its rows say "issued". Rendering
+ *                 both as "issued" would manufacture provenance in the one
+ *                 place a reader looks for it
+ *   the UNIT      verbatim, the issuer's own string
+ */
+function CommodityLine({ s }: { s: CommoditySeriesVM }) {
+  const label = s.valueKind === 'price' ? 'Public price series' : 'Public index';
+  return (
+    <li className="py-2" style={{ borderTop: '1px solid var(--paper-2)' }}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span
+          className="min-w-0 flex-1 text-[12.5px] font-semibold"
+          style={{ fontFamily: SANS, color: 'var(--ink-1)' }}
+        >
+          {s.seriesTitle}
+        </span>
+        <span
+          className="shrink-0 text-[12px] font-semibold"
+          style={{ fontFamily: MONO, color: 'var(--ink-1)' }}
+        >
+          {/* An index number is NOT money and is never formatted as money: no
+              currency symbol, no thousands grouping that would imply one. */}
+          {s.latest ? s.latest.value.toLocaleString('en-US') : EM}
+        </span>
+      </div>
+
+      {s.latest ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          {s.unit}
+          {s.basePeriod ? ` · base ${s.basePeriod}` : ''} · {monthOf(s.latest.periodStart)}
+          {s.latest.vintage ? ` · ${s.latest.vintage}` : ''}
+        </p>
+      ) : (
+        <p
+          role="status"
+          className="mt-0.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          {/* Never an empty row and never a zero: the endpoint's own sentence
+              says WHICH silence this is. */}
+          {s.note ??
+            'This register returned no observation for this series and gave no reason. That is unknown, not "the index has not moved".'}
+        </p>
+      )}
+
+      {/* One expression, one text node: the issuer, the word and the date are
+          a single sentence about provenance and must not be splittable. */}
+      <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+        {`${label} · ${s.issuer}${
+          s.latest
+            ? ` · ${dateLabel(s.latest.issuedAtBasis)} ${dayOfUtc(s.latest.issuedAt)}`
+            : ''
+        }`}
+      </p>
+
+      {s.stale === true && s.staleReason ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          Held back as out of date: {s.staleReason}
+        </p>
+      ) : null}
+
+      {s.exposures.length > 0 ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          {s.exposures.length === 1
+            ? 'Somebody here mapped one of this house’s items to this series.'
+            : `Somebody here mapped ${s.exposures.length} of this house’s items to this series.`}{' '}
+          {s.exposures.every((e) => e.passThroughBasis === 'unset')
+            ? 'This house has never measured how much of a move in it reaches an invoice, so no figure for that is given.'
+            : 'The share expected to reach an invoice was typed by a person and carries its basis.'}
+        </p>
+      ) : null}
+
+      {s.withheld ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          Not fetched: {s.withheld.reason}
+          {s.withheld.measuredOn ? ` (measured ${s.withheld.measuredOn})` : ''}
+        </p>
+      ) : null}
+
+      {/* The licence travels with the number, because for one of these series
+          it is a condition of using it at all, and for another it is unstated
+          and that is a fact a reader is entitled to. */}
+      <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+        {s.redistribution === 'attribution_required' && s.attribution
+          ? s.attribution
+          : s.licence === 'unstated'
+            ? 'This publisher states no licence for this series. Recorded as unstated, never as permitted.'
+            : s.licence}
+      </p>
+    </li>
+  );
+}
+
+/**
+ * A period is a MONTH (or a day, or a quarter) — not an instant.
+ *
+ * `dayOf` renders a date; this renders the PERIOD the issuer published for,
+ * which is the thing a reader must not confuse with when we read it. It is
+ * built from the parts for the same reason `dayOf` is: `new Date('2026-08-01')`
+ * parses as UTC midnight and renders as July west of Greenwich, which would
+ * silently move an issuer's own month.
+ */
+function monthOf(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso || EM;
+  const t = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (!Number.isFinite(t.getTime())) return iso;
+  return t.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+}
+
+/**
+ * An INSTANT, rendered in UTC and never in the reader's own zone.
+ *
+ * `issued_at` on an observation is a `timestamptz` — a moment, not a day — and
+ * `dayOf` renders a moment in the browser's zone. That is right for something
+ * that happened to this house and wrong for a PUBLICATION: ONS stamps
+ * `2026-08-18T23:00:00.000Z`, which a reader in California sees as the 18th and
+ * a reader in Sydney sees as the 19th, so the same issuer's same act would be
+ * dated two different days on two screens.
+ *
+ * UTC is not the issuer's own zone either — the register does not record one,
+ * and this is stated rather than papered over — but it is the SAME frame for
+ * every reader, which is the property that matters when the number beside it is
+ * being cited as evidence.
+ */
+function dayOfUtc(iso: string): string {
+  const t = new Date(iso);
+  if (!Number.isFinite(t.getTime())) return EM;
+  return t.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/** The commodity section: every series that speaks for this house. */
+function CommoditySection() {
+  const c = useHouseCommodity();
+
+  if (c.state === 'loading') return <div className="nt-skel mt-3 h-12" aria-hidden />;
+
+  return (
+    <section
+      aria-labelledby="nt-commodity"
+      className="mt-3 rounded-lg p-3"
+      style={{ border: '1px solid var(--paper-2)', background: 'var(--paper-1)' }}
+    >
+      <h3
+        id="nt-commodity"
+        className="flex items-start gap-1.5 text-[11px] uppercase tracking-[0.14em]"
+        style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
+      >
+        <Globe size={12} strokeWidth={1.75} aria-hidden className="mt-[2px] shrink-0" />
+        <span>
+          Commodity and market index
+          {c.jurisdiction ? ` · ${c.jurisdiction}` : ''}
+        </span>
+      </h3>
+      <p
+        className="mt-1 text-[11.5px]"
+        style={{ fontFamily: SERIF, fontStyle: 'italic', color: 'var(--ink-2)' }}
+      >
+        Published series for markets this house buys into. Context, not a forecast: none of
+        these says what this house will pay, and none is compared with a vendor quote.
+      </p>
+
+      {c.state === 'unreadable' && (
+        <p
+          role="status"
+          className="mt-1.5 inline-flex items-start gap-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          <TriangleAlert size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+          {c.failure?.forbidden
+            ? `The index-series register refused this account (${c.failure.status ?? 'refused'}). It is owner and manager only, so nothing is claimed here either way.`
+            : `The index-series register could not be read (${c.failure?.message ?? 'no reason given'}). This section is unknown, not empty.`}
+        </p>
+      )}
+
+      {c.state === 'ready' && c.series.length > 0 && (
+        <ul className="mt-1.5">
+          {c.series.map((s) => (
+            <CommodityLine key={s.seriesKey} s={s} />
+          ))}
+        </ul>
+      )}
+
+      {c.state === 'ready' && c.series.length === 0 && (
+        <p
+          role="status"
+          className="mt-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          {c.silence ??
+            'The register returned no series for this house and gave no reason. That is unknown, not "no index covers you".'}
+        </p>
+      )}
+
+      {/* A house with no mapping sees the series and this sentence, rather than
+          a panel that quietly implies the series is about its own eggs. Nothing
+          proposes a mapping: the category leader's own product infers item-level
+          exposures and publishes no accuracy figure of any kind. */}
+      {c.state === 'ready' && c.series.length > 0 && c.noExposureRecorded && (
+        <p
+          role="status"
+          className="mt-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          No one here has said which of this house&rsquo;s items any of these series moves, so
+          none of these numbers is about anything you buy yet. That mapping is typed by a
+          person and is never guessed.
+        </p>
+      )}
+    </section>
+  );
+}
+
 /** A publisher that exists for this state and cannot be read — named, not hidden. */
 function Withheld({ source }: { source: HouseIndexSource }) {
   return (
@@ -310,6 +555,14 @@ export function MarketIndexPanel() {
           <LabelledSection key={g.source.key} source={g.source} lines={g.lines} />
         ))}
 
+      {/* The commodity and market index context line (2026-09-05, the founder's
+          "both: the line now, the alert behind a flag"). Drawn WHATEVER the
+          posted-price register above is doing, including when it could not be
+          read: the two are separate endpoints over separate tables, and hiding
+          one behind the other's failure would make a working register look
+          silent. */}
+      <CommoditySection />
+
       {/* A book somebody carried in that nobody has admitted yet (ADR 0128).
           Drawn whether or not there are lines: a jurisdiction can hold a new
           book while an older admitted edition is still on the screen, and a
@@ -360,8 +613,10 @@ export function MarketIndexPanel() {
         one exists — a public index of another market the house buys from, in its own labelled
         box. Every line is shown as published: its own unit, basis and pack, never reduced to a
         bottle. None of them is ever placed beside, ranked against or averaged with a vendor
-        quote, and a produce line is never read as a drinks price. This box reads public lists; it
-        never places an order.
+        quote, and a produce line is never read as a drinks price. The commodity and market index
+        section is context and not a forecast: an index number is not a price, it is never
+        rendered as money, and nothing here says what this house will pay. This box reads public
+        lists; it never places an order.
       </p>
     </section>
   );

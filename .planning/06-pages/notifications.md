@@ -48,6 +48,16 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 - Posted-price index box says when a hand-carried price book is **waiting for a
   second pair of eyes**, and that nothing is drawn from it until an owner or
   manager admits it (ADR 0128, 2026-09-05)
+- **Commodity and market index context line** inside the same labelled box: the
+  newest observation of every published index series that speaks for this house,
+  each carrying its issuer, its own period, the base it is stated against, its
+  unit, its licence and whose date it is. Context, never a claim -- it says what
+  a publisher printed and never what this house will pay, and it is never placed
+  beside or averaged with a vendor quote (`commodity-signals-plan.md` phase 0,
+  2026-09-05)
+- A house with **no exposure mapped** sees the series and a sentence saying none
+  of these numbers is about anything it buys yet. Nothing proposes a mapping:
+  a mapping is a person's assertion and is never inferred
 
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
@@ -1950,3 +1960,120 @@ exist, are guarded and are sealed, and nothing in `apps/web` calls them — a
 manager cannot yet confirm or refuse from the product, and the label says a book
 is waiting without offering the gesture that would clear it. That is the
 honest gap; it is filed as a defect below rather than described as done.
+
+### 13.34 The commodity context line, and one alert built dark (commodity-signals-plan.md phase 0, 2026-09-05)
+
+**The founder's call, verbatim: *"Both: the line now, the alert behind a
+flag"*.** Both halves are built. This section records the line; the alert is at
+the end, because it is the part that reaches nobody.
+
+**Why a third register in one box, rather than a third box.** The founder's
+batch-37 call was *"a seperate table for index series"*, and it is structurally
+required rather than a preference: measured against
+`20260904200000_a_posted_price_names_its_state.sql`, **five separate columns of
+`price_index_postings` each refuse an index series on their own** --
+`price NUMERIC(12,2) NOT NULL` (an FAO index of 133.3 is not a price, and two
+decimals round away precision an issuer published), `currency CHAR(3) NOT NULL
+DEFAULT 'USD'` (an index number has no currency, and the default would stamp
+one), `price_unit VARCHAR(24)` (ONS's own unit string is **26 characters**),
+`product_name NOT NULL` (a series names a commodity class, not a product), and
+`state ~ '^[A-Z]{2}-[A-Z0-9]{1,3}$'` (the FAO index is global and there is no
+ISO code for everywhere). So: three new tables and a second endpoint. But it is
+the same KIND of thing a reader is looking at -- a published reference, not a
+quote -- so it draws as another labelled section of the index box rather than as
+a fourth box on the page.
+
+**The two series, and why these two.** Not the two most useful; the two that
+pass this repository's own politeness rules.
+
+| Series | Measured 2026-09-05 | Why it is here |
+|---|---|---|
+| **FAO Food Price Index** | `robots.txt` **200**, 1,056 B, seven `Disallow` lines, **no crawl-delay, nothing matching the `/media/docs/` path**. CSV **200, 48,006 B**, sha256 `746104cf...c62f`, 444 lines, base `2014-2016=100`, last row **`2026-08,133.3`** | Keyless, monthly, dated by period, and it serves **every** house rather than one jurisdiction |
+| **ONS `d7bu`** | `robots.txt` **404** (unrestricted per RFC 9309, the reading already applied to `ilcc.illinois.gov`). JSON **200, 125,504 B**, sha256 `e8fba154...f1b`, 463 months, `2026 JUL = 144.0` | OGL v3.0, keyless, and an `updateDate` on **every** observation |
+
+Both robots readings were re-read independently by the plan's author at
+14:12-14:15Z after an audit found that log incomplete (`p4as-fetch-log.md`
+rows 75-76) and **the two sets of measurements agree in every particular**.
+This task's own log is `p4-scratch/p4bb-fetch-log.md`.
+
+**The measured difference that decides a column, and it is not symmetry.**
+**The FAO CSV states no date of any kind** -- no release date, no revision date,
+no "generated on" line; line 1 is the title, line 2 is the base, line 3 is the
+header. **ONS states two**, a series `releaseDate` and a per-observation
+`updateDate`. So under ADR 0117 Q27 the FAO line prints **"read on"** and the
+ONS line prints **"issued"**, and both are pinned by a test. Stamping our read
+date and calling it the issuer's would manufacture provenance in the one place a
+reader looks for it.
+
+**Three gates, catching three different failures.** Collapsing them into one
+"is this file OK" boolean is how a live 200 gets read as freshness.
+
+1. **The base**, read back out of the file and compared with the register's.
+   FAO serves a **second live CSV path** returning HTTP 200, well-formed, 14,225
+   bytes, on base **2002-2004=100**, whose last row is **`Mar-18`**. Neither path
+   is disallowed by robots. **A base change is a new series, not a new
+   observation** -- the same index on two bases differs by roughly fifty percent,
+   which a step guard reads as a crash.
+2. **Staleness**, aged from the **newest observation's own period**, never from
+   the HTTP status and -- on ONS above all -- never from the issuer's release
+   date: four ONS RPI series return 200 with a fresh `releaseDate` and a last
+   observation of **2025 JAN**. The arithmetic is `price-index/staleness.ts`'s
+   `refuseStale`, imported rather than rewritten.
+3. **The admission**, which is where the best source in the plan is refused.
+
+**The source that is registered and never fetched.** The USDA AMS Daily National
+Shell Egg Index is the series the founder's own example is about. Its host's
+`robots.txt` returned **HTTP 403** on 2026-09-04 and again on 2026-09-05, and
+this repository's own rule -- recorded in `price-sources.md` for K&L Wine
+Merchants, Majestic and Tesco -- is that a host whose crawl rules cannot be READ
+may not be fetched. **This task did not contact that host at all.** So the
+series is registered with `admission = 'upload_only'`, the 403 as its
+`withheld_reason`, and no parser: building one would have required bytes it may
+not go and get. The panel names the 403 rather than hiding the series. Wiring it
+to the Michigan upload path is phase 1's work and is filed below, not claimed.
+
+**What is NOT built here, stated so the absence reads as a decision.** No route
+creates an exposure mapping. The controller has **no POST at all**: asserting a
+mapping puts a person's name on a join that a rule later fires on, and phase 0
+ships the register and the line, not the act. So `noExposureRecorded` is true on
+every house today and the panel says so in words.
+
+**The alert, dark.** `commodity_exposure_rising` is built and **cannot reach a
+person**, and the guarantee is structural rather than conditional:
+`CommodityModule` does not import `NotificationsModule`, so there is no service
+to notify with, and a test asserts that. Behind `COMMODITY_ALERT_DARK` (off; an
+allow-list, so a typo leaves it off) it evaluates the rule and writes ONE row per
+evaluation to `neural_footprint_event` -- verdict in `choice`, working in
+`internal_state`, `dark: true` and `reached_a_person: false` in `context`, and
+**`outcome` NULL on every row**, because NULL means unknown in that table and
+whether a fire was RIGHT needs a numerator of confirmed invoice rises that does
+not exist (`vendor_price_observations` and `price_history` each held 0 rows in
+production on 2026-09-04).
+
+**The threshold is derived, and copying `market-signal.ts` would have been wrong
+by a factor of eight.** That producer uses one global `DEFAULT_DROP_THRESHOLD =
+0.1`. Re-measured here on the full 440-row FAO series through the shipped code:
+the rise that produces **about twice a year is 8.5 %** on FAO, against 35.7 % on
+retail eggs and 67.8 % on wholesale eggs. So the operator sets a **budget** and
+the code reads the percentage off the series' own history at that quantile.
+**The shipped implementation reproduces the plan's §9b table exactly** -- FAO
+3.7 % / 8.5 % / 15.4 % for four, two and one fire a year, and the flat-threshold
+firing counts 63 / 38 / 27 / 9 at 10 / 15 / 20 / 30 % -- which is an independent
+confirmation of that table, computed by different code from re-fetched bytes.
+
+**One number was corrected by that re-measurement.** The plan states FAO's step
+guard (p99 month-on-month) as **7.8 %**; an interpolated quantile gives
+**7.49 %**, which sits BETWEEN two real observed steps (6.98 % and 7.80 %) and
+would refuse a 7.80 % month the market actually printed. The guard therefore
+uses **nearest rank**, which lands on 7.80 % -- the plan's own figure -- while
+the rise threshold keeps interpolation, which is what lands on the budget. The
+asymmetry is deliberate and is documented at `quantileCeilingRank`.
+
+**Two of the rule's nine conditions are NOT evaluated, and every decision says
+so by name.** Coverage (the house's days of inventory for the mapped item) and
+storability (how long the item keeps). Measured: **zero shelf-life columns
+across every migration in this repository.** A rule that silently skipped an
+unevaluable condition would be reporting absence as health -- a condition nobody
+could check, rendered as one that passed -- so `unevaluated` rides on every
+decision, on every ledger row and in the report line. Where shelf life comes
+from is the plan's Q3 and it is the founder's.

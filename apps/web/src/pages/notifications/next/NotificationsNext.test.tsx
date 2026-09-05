@@ -64,6 +64,19 @@ vi.mock('./useHouseIndex', () => ({
   useHouseIndex: () => mockIndex.current,
 }));
 
+/**
+ * The commodity index-series register is a THIRD read, over its own tables, and
+ * it draws inside the same box (2026-09-05). Mocked to ready-and-empty here for
+ * the reason above: the day-book's assertions must never be answered by a
+ * commodity line. Its own contract is covered in
+ * `MarketIndexPanel.commodity.test.tsx`.
+ */
+const mockCommodity = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./useHouseCommodity', () => ({
+  COMMODITY_POLL_MS: 300_000,
+  useHouseCommodity: () => mockCommodity.current,
+}));
+
 import NotificationsNext from './NotificationsNext';
 
 function row(over: Partial<Notification>): Notification {
@@ -163,6 +176,22 @@ beforeEach(() => {
   mockData.current = base([]);
   mockMarket.current = { ...EMPTY_MARKET };
   mockIndex.current = { ...EMPTY_INDEX };
+  // 'loading' on purpose: this file's assertions are about the POSTED-PRICE
+  // register, and a commodity section in any other state renders a second
+  // role="status" that `getByRole('status')` would find alongside the one the
+  // assertion means. Its own states are covered in
+  // `MarketIndexPanel.commodity.test.tsx`.
+  mockCommodity.current = {
+    state: 'loading',
+    failure: null,
+    jurisdiction: null,
+    requested: null,
+    series: [],
+    fetchArmed: false,
+    silence: 'No index series in this register speaks for this house.',
+    noExposureRecorded: false,
+    refresh: vi.fn(),
+  };
 });
 
 describe('NotificationsNext — the day-book', () => {
