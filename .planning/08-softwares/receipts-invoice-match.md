@@ -109,8 +109,8 @@ template is what wires it in.
 |---|---|
 | `canonical/canonical-types.ts:1` | Three layers in one object; every layer-1 field a `FieldEnvelope` carrying value, source, confidence, page/bbox and `as_printed`. Field names are EN 16931 BT/BG ids. |
 | `canonical/canonical-invariants.ts:1` | 16 invariants (`INVARIANTS`, `:955`). Each returns `{ id, rule, path, holds, expected, found, explanation }`; `holds` is TRI-STATE — `null` means "ran, nothing to test", counted separately by `summarise` (`:987`) so untestable never inflates a pass rate. |
-| `canonical/from-parsed-document.ts:1` | `ParsedDocument → CanonicalDocument`. Pure; `ParsedDocument` is not modified. Leaves the VAT breakdown empty rather than inventing a row that would pass. |
-| `canonical/canonical-document.service.ts:1` | `buildFromDocumentId` (`:117`) and `persistRevision` (`:204`, INSERT-only). Rebuilds from the COLUMNS, not from `procurement_documents.extracted`, because `editLine` never rewrites that snapshot. Every read checks `error` before `data` (ADR 0067). |
+| `canonical/from-parsed-document.ts:1` | `ParsedDocument → CanonicalDocument`. Pure; `ParsedDocument` is not modified. Fills BG-23 from what the page printed and leaves it EMPTY when it printed no rate — it never derives a rate by dividing the tax by a subtotal. |
+| `canonical/canonical-document.service.ts:1` | `buildFromDocumentId` and `persistRevision` (INSERT-only). Rebuilds from the COLUMNS, not from `procurement_documents.extracted`, because `editLine` never rewrites that snapshot — EXCEPT for the four fields that have no column at all (`vendorName`, `deliveredDate`, `taxBreakdown`, and each line's `lineKind`, keyed on `line_no`), which the snapshot is the only source of. `resolveParties` reads `providers` and `restaurants` for BG-4/BG-7. Every read checks `error` before `data` (ADR 0067). |
 | `canonical/cli.ts:1` | stdin → invariants → JSON, so `scripts/canonical_corpus_run.py` grades the product's own code rather than a second implementation. |
 | `canonical/__fixtures__/synthetic-documents.ts:1` | 9 documents, every one labelled SYNTHETIC. They are the invariants' only proof today — see §5. |
 
@@ -119,6 +119,25 @@ Two rules from ADR 0103 are enforced here rather than described: `received` is
 `ParsedDocument` prices per invoiced unit, so the real `1 cs × 12 şişe` price base cannot
 survive a round trip through it. That gap is named in
 `from-parsed-document.ts` rather than papered over.
+
+**The extraction contract, after the first render against real documents
+(2026-09-05, PR #PRNUM — the nine findings in `v3.0-TECH-DEBT.md`).**
+`SYSTEM_PROMPT` and `ParsedDocument` gained three fields, and each one closed a rule that
+could not be tested without it:
+
+| Field | Why it exists |
+|---|---|
+| `deliveredDate` (BG-13 / BT-72) | Transcribe ONLY if printed as a delivery date (`DELIVERED`, `TESLİM TARİHİ`, an irsaliye date presented as the delivery). It is not `docDate`: a Turkish fatura is issued days after the despatch it bills, and every ADR 0103 A8 clock runs from delivery. |
+| `taxBreakdown[] {rate, taxableBase, amount, category?}` (BG-23) | One row per printed rate; a single tax line WITH a rate and a base is one row, not an absence. Without it `vat_breakdown_present`, `vat_category_taxable_base`, `vat_category_tax_amount` and `vat_total_matches_breakdown` were untestable on every document. |
+| `lineKind ∈ {goods, deposit, fee}` | Real paper prints a returnable-container deposit AS A LINE. A line that IS the deposit gets `lineKind: "deposit"` and NO `deposit` amount; the line-level `deposit` field stays what it always was — a deposit charged ON a goods line in addition to its net. Both go through the mapper in opposite directions. |
+
+Two consequences worth naming. A `deposit` line leaves BT-106 and is carried as ONE BG-21
+charge coded **`7161`** (`DEPOSIT_REASON_CODE`), whether the paper stated it as a line, a
+subtotal, or both — counted twice it invented ₺180 of goods nobody billed. And
+`total_without_vat` (BR-CO-13) now reports **UNTESTABLE** whenever BT-109's envelope says
+`computed`: the mapper fills BT-109 by that very formula so the sheet cannot print
+"Before tax —" beneath a listed charge, and a rule that graded its own arithmetic would
+be green for ever.
 
 ## §4 Automation
 
