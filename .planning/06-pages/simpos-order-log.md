@@ -80,7 +80,7 @@ Both gates, same as [[simpos-terminal]] §8:
 
 ---
 
-- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** the log shows lines and prices but no check total — the bridge sends none (`simpos.service.ts:401-415`; defect 4) — and times in the viewer's timezone, not the venue's (defect 12).
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** ~~the log shows lines and prices but no check total — the bridge sends none (`simpos.service.ts:401-415`; defect 4) — and times in the viewer's timezone, not the venue's (defect 12).~~ **Both fixed (#310).** Times render in the venue's zone and name it (`lib/venueTime.ts`); with no venue timezone the log still renders but says the clock is the reader's, because a silent fallback is the defect. Each closed check now carries a `hours_state` chip when it rang outside the published hours — or when the question could not be answered, which is a different chip and deliberately not silence. An unpriced line renders "unpriced", never `$0.00`.
 
 ## 10. Maturity — **partial**, and *absent in production*
 
