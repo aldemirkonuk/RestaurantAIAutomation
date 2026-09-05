@@ -54,6 +54,8 @@ import {
   definitionForChannel,
   requirementFor,
 } from "./text-senders.catalogue";
+import { TextTransportRegistry } from "./providers/text-transport.registry";
+import { TextUsageService } from "./text-usage.service";
 
 /** The states `house_text_senders.state` may hold. Mirrors the CHECK. */
 export type SenderState =
@@ -115,6 +117,17 @@ export type SendRefusal =
   | "no_consent"
   | "channel_unsupported_in_market"
   | "read_failed"
+  // The house is past its stated allowance with no credits and no own keys.
+  // A MONEY refusal, distinct from every other kind, because the two ways out
+  // of it are things the house can do and the others are not (OD-23).
+  | "allowance_spent"
+  // Whether the house is within its allowance could not be READ. Not the same
+  // as being past it, and never folded into `allowance_spent`.
+  | "allowance_unknown"
+  // No provider account is connected to this sender, or its credential cannot
+  // be used. `transport_not_built` used to cover this case AND the case where
+  // no adapter existed at all; those are now separate facts.
+  | "no_provider_account"
   | "transport_not_built";
 
 export interface SendOutcome {
@@ -130,7 +143,11 @@ export interface SendOutcome {
 export class TextSenderService {
   private readonly logger = new Logger(TextSenderService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly transports: TextTransportRegistry,
+    private readonly usage: TextUsageService,
+  ) {}
 
   private get sb() {
     return this.db.client;
@@ -281,7 +298,8 @@ export class TextSenderService {
       };
     }
 
-    const wantsWhatsapp = consent.channel === "whatsapp" || consent.channel === "any";
+    const wantsWhatsapp =
+      consent.channel === "whatsapp" || consent.channel === "any";
     const wantsSms = consent.channel === "sms" || consent.channel === "any";
 
     if (wantsWhatsapp && whatsapp && whatsapp.state === SENDABLE_STATE) {
@@ -364,12 +382,102 @@ export class TextSenderService {
       };
     }
 
+    // ── The three questions between a chosen channel and a message ───────
+    //
+    // ORDER MATTERS AND IT IS NOT ARBITRARY. The transport is resolved BEFORE
+    // the money gate, because whether the house is on its own provider account
+    // is what decides whether the money gate applies at all: a house paying
+    // Meta or Twilio directly is not spending Mudavym's allowance, and asking
+    // the meter first would refuse a house that owes us nothing.
+    const sender =
+      chosen.channel === "whatsapp" ? readout.whatsapp : readout.sms;
+    if (!sender) {
+      // Unreachable: `choose` only names a channel whose sender is connected.
+      // Kept because `choose` is one edit away from being looser, and the
+      // honest answer to "which sender" being nothing is a refusal, not a
+      // crash.
+      return {
+        sent: false,
+        refusal: "no_sender",
+        channel: chosen.channel,
+        words:
+          "The channel chosen for this person has no sender row behind it, so nothing was attempted.",
+      };
+    }
+
+    const transport = await this.transports.resolve(
+      params.restaurantId,
+      sender.id,
+    );
+    if (transport.state !== "ready") {
+      return {
+        sent: false,
+        refusal:
+          transport.state === "unreadable"
+            ? "read_failed"
+            : "no_provider_account",
+        channel: chosen.channel,
+        words: `${chosen.why} ${transport.words}`,
+      };
+    }
+
+    const gate = await this.usage.gate({
+      restaurantId: params.restaurantId,
+      ownKeys: transport.ownKeys,
+    });
+    if (gate.verdict === "refused") {
+      return {
+        sent: false,
+        refusal: "allowance_spent",
+        channel: chosen.channel,
+        words: gate.words,
+      };
+    }
+    if (gate.verdict === "unknown") {
+      return {
+        sent: false,
+        refusal: "allowance_unknown",
+        channel: chosen.channel,
+        words: gate.words,
+      };
+    }
+
+    // ── And here is where it still stops ─────────────────────────────────
+    //
+    // The adapter can BUILD the request; nothing dispatches it. That is not a
+    // stub waiting for a fetch call to be pasted in — three registrations, a
+    // Meta business verification and a signed Twilio LOA stand between this
+    // line and a delivered message (`.planning/07-reference/`
+    // META-TECH-PROVIDER-CHECKLIST.md and TWILIO-ISV-CHECKLIST.md say exactly
+    // what each one needs), and none of them has been done. `buildRequest` is
+    // called anyway, deliberately: it is where the provider's own constraints
+    // live — an over-long WhatsApp body, a closed 24-hour window, an
+    // alphanumeric Türkiye sender carrying no opt-out — and a message that
+    // would be refused by the provider is better refused here, in the house's
+    // language, than reported as sent.
+    try {
+      transport.transport.buildRequest(transport.credential, {
+        toE164: consents.get(params.recipientUserId)?.phone ?? "",
+        body: params.body,
+        // No conversation window is tracked in this build. `null` says so,
+        // and the WhatsApp adapter refuses on it with a sentence that
+        // distinguishes "we do not know" from "the window is closed".
+        windowOpen: null,
+      });
+    } catch (err) {
+      return {
+        sent: false,
+        refusal: "transport_not_built",
+        channel: chosen.channel,
+        words: `${chosen.why} ${(err as Error).message}`,
+      };
+    }
+
     return {
       sent: false,
       refusal: "transport_not_built",
       channel: chosen.channel,
-      words:
-        `${chosen.why} No message left: this build records the sender and the consent and does not yet hold a provider credential for a per-house sender, so nothing was handed to a transport. Nothing has been queued and nothing will arrive later.`,
+      words: `${chosen.why} ${gate.words} The request this house's provider would receive was built and checked, and then NOT sent: this build has no dispatch, by decision, because no registration behind these senders has been completed. Nothing has been queued and nothing will arrive later.`,
     };
   }
 
@@ -594,7 +702,11 @@ export class TextSenderService {
   async myConsent(
     restaurantId: string,
     userId: string,
-  ): Promise<{ consent: PersonConsent | null; readable: boolean; reason: string | null }> {
+  ): Promise<{
+    consent: PersonConsent | null;
+    readable: boolean;
+    reason: string | null;
+  }> {
     const { data, error } = await this.sb
       .from("person_text_consents")
       .select("user_id, phone, channel, consented_at")

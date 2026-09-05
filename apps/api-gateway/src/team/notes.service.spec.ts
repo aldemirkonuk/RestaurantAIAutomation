@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { NotesService } from "./notes.service";
 import { TextSenderService } from "../communications/text/text-sender.service";
+import { textCollaborators } from "../communications/text/testing/text-collaborators";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
@@ -67,7 +68,12 @@ function svc(db: StubDb) {
     // answer from a failed read, which the receipts have to keep apart.
     devicesByUser: jest.fn(async () => new Map<string, number>()),
   } as any;
-  const text = new TextSenderService(asDatabaseService(db));
+  const co = textCollaborators(asDatabaseService(db));
+  const text = new TextSenderService(
+    asDatabaseService(db),
+    co.transports,
+    co.usage,
+  );
   return {
     notes: new NotesService(asDatabaseService(db), team, notifications, push, text),
     notifications,

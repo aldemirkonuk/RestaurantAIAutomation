@@ -27,16 +27,50 @@
  */
 
 import { Module, forwardRef } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
 import { DatabaseModule } from "../../database/database.module";
 import { AuthModule } from "../../auth/auth.module";
 import { OrganizationsModule } from "../../organizations/organizations.module";
+import { CryptoModule } from "../../common/crypto/crypto.module";
+import { SealModule } from "../../common/seal/seal.module";
 import { TextSenderService } from "./text-sender.service";
 import { TextSendersController } from "./text-senders.controller";
+import { TextCreditsController } from "./credits/text-credits.controller";
+import { TextUsageService } from "./text-usage.service";
+import { TextCredentialsService } from "./providers/text-credentials.service";
+import { TextTransportRegistry } from "./providers/text-transport.registry";
 
+/**
+ * WHY `CryptoModule`. A house's own provider token is stored encrypted the way
+ * an OAuth refresh token is, and `TokenCryptoService` is the ONE implementation
+ * of that (`common/crypto`). A second AES helper in this module would be a
+ * second answer to "how is a secret at rest", and the two would drift on the
+ * day one of them rotated a key format.
+ *
+ * WHY `SealModule`. `POST /communications/text-credits/purchase` changes what
+ * the house is charged, which ADR 0107 puts behind a redeemed seal. Imported
+ * rather than reimplemented, for the same reason `BillingModule` imports it.
+ *
+ * WHY `ConfigModule`. The PLATFORM path's provider credential is a deployment
+ * secret read from the environment and never stored per tenant, so
+ * `TextCredentialsService` needs `ConfigService`.
+ */
 @Module({
-  imports: [DatabaseModule, forwardRef(() => AuthModule), OrganizationsModule],
-  controllers: [TextSendersController],
-  providers: [TextSenderService],
-  exports: [TextSenderService],
+  imports: [
+    DatabaseModule,
+    forwardRef(() => AuthModule),
+    OrganizationsModule,
+    CryptoModule,
+    SealModule,
+    ConfigModule,
+  ],
+  controllers: [TextSendersController, TextCreditsController],
+  providers: [
+    TextSenderService,
+    TextUsageService,
+    TextCredentialsService,
+    TextTransportRegistry,
+  ],
+  exports: [TextSenderService, TextUsageService],
 })
 export class TextSendersModule {}

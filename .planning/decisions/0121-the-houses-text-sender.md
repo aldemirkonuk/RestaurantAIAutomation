@@ -1,6 +1,14 @@
 # 0121 — The house's text sender
 
-- **Status:** **Accepted 2026-09-05 in the three parts the founder decided; the rest stays Proposed.**
+- **Status:** **Accepted 2026-09-05 in FIVE parts the founder decided; the rest stays Proposed.**
+  Parts 4 and 5 were added later the same day and are written up in
+  "Who pays for a message" below: (4) the **standing** — Mudavym registers directly
+  with Meta as a **Tech Provider** and with Twilio as an **ISV**, rejecting Twilio
+  for both legs and rejecting Twilio-first-then-migrate; (5) the **billing model** —
+  a monthly allowance per plan set from measured usage after a quarter, then either
+  Mudavym credits at provider cost plus a stated platform fee, or the house's own
+  provider account with Mudavym billing only the platform. **Nothing sends because
+  of either.** OD-23 is answered on its message-billing half only and is NOT struck.
   Accepted: (1) *"a crew text exists and build it next"* — founder question 1 is
   answered yes, and P0's honesty work shipped with it; (2) the first market is
   **both** — Türkiye WhatsApp-first and the US on SMS, which closes founder
@@ -669,6 +677,153 @@ answered here at all — it is question 2 below, and it is the founder's.
 
 ---
 
+---
+
+## Who pays for a message — the standing, and the billing model (added 2026-09-05)
+
+The founder's two decisions of 2026-09-05, verbatim in intent and quoted where
+they were quoted.
+
+### The standing
+
+> **Mudavym registers directly with Meta as a Tech Provider** — the houses' own
+> WhatsApp Business Accounts sit under Mudavym's app, with no per-message
+> middleman — **and with Twilio as an ISV for SMS**: hosted SMS for a house's own
+> number, or a number bought per house.
+
+**Rejected, and why each was rejected.**
+
+1. **Twilio for both legs.** A perpetual markup on every WhatsApp message
+   (Twilio adds $0.005 per message in each direction) and, worse structurally,
+   a **WABA bound to Twilio** — Twilio's own guidance is that "all senders on the
+   same Twilio account must share one WABA" in the self-signup flow, which a
+   multi-tenant deployment cannot use at all.
+2. **Twilio first, migrate to Meta later.** Two builds of the WhatsApp leg, and
+   the migration is the expensive half: asset migration between partners is a
+   documented but manual Meta process, per house.
+
+### Who pays (OD-23's message-billing half, answered)
+
+> Each plan includes a **monthly message allowance**, set from **measured usage
+> after one quarter**, generous at first. Past it, the house either **buys
+> Mudavym credits** — provider cost passed through plus a stated platform fee,
+> with the meter visible — or **connects its own Twilio / Meta account** and pays
+> them directly while Mudavym bills only the platform.
+
+**Rejected:** allowance + credits only (it forces a house with its own provider
+relationship to buy through us); and pass-through from the first message (it puts
+a meter in front of a manager on day one, for a channel they have not yet chosen
+to use).
+
+**The founder's worry, to design against, in his words:** a manager who says
+*"I'll just use my own phone"*. Price is not what keeps them in — coverage and
+convenience are. That is why the refusal sentence names both ways to continue
+rather than only the one that bills us, and why the allowance is generous at
+first rather than tight.
+
+### What the build makes true
+
+- `plan_message_allowances` — **ships EMPTY, by that decision.** The number comes
+  from a quarter of measurement that has not happened, so every house today reads
+  **"no allowance stated"**, and *an unstated allowance does not refuse.* It
+  cannot, honestly. `monthly_allowance` is nullable and NULL is never rendered as
+  0; a `DEFAULT 0` would have refused every message on this deployment on the
+  strength of a number nobody chose, which is what
+  `restaurants.subscription_tier DEFAULT 'pilot'` already did one column over.
+- `house_message_meter` — one row per outbound text, **written whether or not it
+  counted against anything**, carrying the month in the HOUSE's timezone (Meta
+  applies its rate cards "based on WhatsApp Business account timezone"), a
+  `counts_against_allowance` flag with **no default** and a written reason, and a
+  `provider_cost_state` with **no default**.
+- `house_message_credits` — money in minor units with the currency on every row.
+  A purchase redeems a seal at `POST /communications/text-credits/purchase`
+  (ADR 0107), bound to **the amount and the currency** so a gesture held over one
+  figure cannot be spent on another. A debit names the meter row it paid for.
+- The refusal, when a house is past a **stated** allowance with no credits and no
+  own keys: it says nothing was sent, that **nothing has been queued and nothing
+  will arrive later**, and names the two ways to carry on. A failed read is a
+  **third** verdict — `unknown` — because treating it as allowed spends money we
+  cannot account for and treating it as refused silences a house over our outage.
+
+### Six measured findings from the provider docs, 2026-09-05
+
+Fetched or retrieved this day and logged in `p4-scratch/p4bc-fetch-log.md`. The
+two checklists carry the full working: `07-reference/META-TECH-PROVIDER-CHECKLIST.md`
+and `07-reference/TWILIO-ISV-CHECKLIST.md`.
+
+1. **A Meta Tech Provider has no credit line and cannot invoice for API usage.**
+   "Unlike Solution Partners, however, Tech Providers do not have credit lines.
+   Instead, clients onboarded by Tech Providers must provide their own payment
+   method after onboarding is complete. Meta will then bill these clients for API
+   usage, and the Tech Provider will bill for other services." **On the WhatsApp
+   leg the standing the founder chose forces bring-your-own-billing** — credits
+   can cover the SMS leg and the platform fee, never a WhatsApp message. This is
+   founder question 7 below.
+2. **The binding onboarding cap is 10 new houses per rolling 7 days**, rising to
+   200 after Business Verification + App Review + Access Verification, and beyond
+   that by applying to become a Meta Business Partner. The 2026-09-05 draft above
+   named the right worry (a structural ceiling) at the wrong number: the
+   portfolio's 2-numbers-raisable-to-20 cap and its 20-WABA cap are real, and
+   under the Tech Provider shape they bind **the house**, not Mudavym, because
+   each house owns its own portfolio.
+3. **Business Verification gates App Review, not the reverse** — "Your business
+   must be verified before you can start the app review process" — and App Review
+   itself averages **about 24 hours**. The long pole is verification.
+4. **Embedded Signup v2 is deprecated on 2026-10-15.** Six weeks out. Anything
+   built against v2 is built against a dead interface; v4 is the target.
+5. **The US 10DLC fees are $4.50 + $41.50, not "$44 + $15".** $4.50 one-time to
+   register a Brand with TCR, plus $41.50 Standard Brand vetting charged
+   automatically during registration; $11 brand appeal, $12.50 Authentication
+   Plus, $66–$96/yr political vetting. Campaign fees are monthly and Twilio's
+   docs point at a support article rather than stating them. Also new: **a tax ID
+   caps at five Standard/Low-Volume Brands** and a Brand at five Campaigns.
+6. **Hosted SMS is US and Canada only, and refuses mobile numbers.** So
+   `path = 'bring_your_own'` for SMS **does not exist outside North America**:
+   in Türkiye the equivalent is an alphanumeric Sender ID on wet-signed, stamped
+   paperwork, and it is one-way. Worse for the product: **Twilio's automatic STOP
+   handling does not work on an alphanumeric sender** — "You must provide other
+   instructions" — so a Turkish opt-out must ride in the message body and be
+   honoured by us. `TwilioAdapter` refuses to build a message on an alphanumeric
+   sender whose body carries no opt-out.
+
+### What still does not send, and why the refusal moved rather than disappearing
+
+Nothing dispatches. `TextTransportRegistry` returns an adapter only when a live
+credential resolves, `house_text_sender_credentials` holds zero rows, and there
+is **no HTTP call anywhere below it** — asserted by a test that reads the adapter
+sources with comments stripped and fails if `fetch`, `axios` or an `http` import
+ever appears.
+
+What changed is that `transport_not_built` stopped being one word for every
+reason. A house with a connected sender and no provider account now hears
+**`no_provider_account`** — something the house can act on. "The transport is not
+built" is something only we can act on. Collapsing them told a manager our
+problem in place of theirs.
+
+`buildRequest` is still called on the send path, deliberately: it is where the
+provider's own constraints live — an over-long WhatsApp body, a closed 24-hour
+window, an alphanumeric sender with no opt-out — and a message the provider would
+refuse is better refused in the house's language than reported as sent.
+
+### The strongest argument against the billing model
+
+**An allowance that cannot refuse is not an allowance.** Everything above ships
+with `plan_message_allowances` empty, which means the gate's only reachable
+verdicts today are `allowed` and `unknown`. The refusal path — the sentence that
+carries the whole design — is unreachable on this deployment and will stay
+unreachable until somebody writes a number with a source. A guard whose failing
+branch has never run in production is a guard with an untested edge, and the first
+time it runs it will run against a real house's real messages.
+
+Two things answer part of that and one does not. The refusal branch is covered by
+tests, and the constraint that a stated allowance carries a twenty-character
+provenance means the number cannot be seeded by somebody in a hurry. What is not
+answered is that the *first* house to hit a stated allowance is the first live
+exercise of the sentence, and the honest mitigation is to set the first allowance
+deliberately, on one house, watching — not to set it across the fleet from a
+quarter's aggregate.
+
+
 ## What only the founder can decide
 
 1. ~~**Does a crew text exist at all, or does the crew stay on inbox and push?**~~
@@ -689,7 +844,11 @@ answered here at all — it is question 2 below, and it is the founder's.
    right?* The 88.6% figure still could not be fetched from TurkStat on
    2026-09-05, and the recommendation that Türkiye is WhatsApp-first still rests
    on it. The founder answering "both" does not make that figure fetched.
-3. **NARROWED, NOT CLOSED, 2026-09-05.** The founder answered the *mechanism* —
+3. **ANSWERED ON ITS MONEY AXIS, 2026-09-05 (second pass).** *Who pays* is settled
+   — allowance, then credits or the house's own keys; see "Who pays for a message"
+   above for the words and the rejected alternatives. What follows was the state
+   before that answer and is kept because the cost analysis in it still stands.
+   **NARROWED, NOT CLOSED, 2026-09-05 (first pass).** The founder answered the *mechanism* —
    *"the house must either brings their own name and we have to make sure the
    connection is secure or with mudavym help buys per house and bills with
    info"* — and both are built as states. He did not answer **who pays**, which
@@ -709,6 +868,29 @@ answered here at all — it is question 2 below, and it is the founder's.
    pressure to allow a free-text number will be higher — and the consequence of
    allowing it is that the message leaves the book, the round count and the
    guardrails at once.
+7. **Does Mudavym stay a Tech Provider, or pursue Solution Partner status?**
+   This is the sharpest consequence of the standing, and it was not visible when
+   the standing was chosen. A **Tech Provider has no credit line and cannot
+   invoice for API usage**: Meta bills each house directly for WhatsApp, and
+   Mudavym bills only for everything else. So the "buy Mudavym credits" half of
+   the billing model can cover the SMS leg and the platform fee, and **cannot
+   cover a WhatsApp message** — the leg that carries Türkiye. A Solution Partner
+   has a credit line, can share it so customers "bypass payment method
+   collection", and can invoice directly; Meta's own docs say becoming one "is a
+   lengthy process". The three ways out are: accept it (WhatsApp is
+   bring-your-own-billing, credits are for SMS), pursue Solution Partner, or
+   create a **Multi-Partner Solution** with a Solution Partner who shares their
+   credit line with houses onboarded through the joint solution. Nothing in this
+   build depends on the answer; every surface that would name a price is absent
+   until it exists.
+8. **Who sets the first allowance, on which house, and when?** The number comes
+   from a quarter of measured usage, and `plan_message_allowances` ships empty so
+   that "no allowance stated" is true rather than convenient. The consequence is
+   that the refusal sentence — the load-bearing one — is unreachable in
+   production until somebody writes a number. Setting it fleet-wide from an
+   aggregate makes the first live exercise of that sentence happen on every house
+   at once.
+
 6. **Where does the text composer live?** A second mode on `/communications`
    beside the letter, or its own surface. Retire-to-write says adding one costs
    retiring one.
@@ -756,3 +938,4 @@ answered here at all — it is question 2 below, and it is the founder's.
 | 2026-09-04 | — | Created. Research only; no code, no migration, no build. |
 | 2026-09-05 | Claude (build pass) | **Accepted in three parts and built to the edge of a send.** Three tables (`house_text_senders`, `person_text_consents`, `team_note_deliveries`), one `TextSenderService` that refuses every time and names which half is missing, the P0 broadcast-honesty fix, and three surfaces. Two research corrections to the 2026-09-04 draft, both from primary sources fetched 2026-09-05: the US 10DLC timeline is **13-20 business days** (brand minutes to 3-5 days, campaign 10-15), not "several days or even several weeks"; and a **Meta business portfolio is capped at 2 phone numbers, raisable to 20** — the WhatsApp analogue of the 100-campaign TCR cap, which would have limited a single-portfolio deployment to 20 houses. Two findings the draft did not have: Twilio's US guidelines list **"shared phone numbers"** among the restricted use cases (so a1 is a carrier prohibition, not only a STOP-scope objection), and a US campaign **is rejected if consent is a condition of buying or holding an account**. The Türkiye Sender ID requirement turned out to be **wet-signed, stamped paperwork on the house's own letterhead** (company/brand registration certificate, LOA, authorization letter, NOC), which no form in this product can automate. |
 | 2026-09-04 | Claude (audit correction) | **Four citations in `07-reference/messaging-senders.md` were wrong; re-measured against the worktree and corrected.** The commitment guard is `letters/house-letters.service.ts:276` (the test) and `:282` (the block), not `:273`. The unresolved-merge-token guard is `:127` (the pattern), `:286` (the test), `:291` (the block), not `:119,282`. The undo window is `:72` (the status word) and `:419-420` (the row that carries `status` and `scheduled_send_at` together), not `:72,413`. All three verified identical at `902ee67f`, at `HEAD` and in the worktree, so the drift was in the citation, not in the file. The retire-to-write paragraph also named the wrong absorbed items: the pointer in `communications.md` is **§13 item 14** (`:670-671`), not §13.9 — §13.9 is *"The Mudavym sending subdomain"* (`:644`); the pointer in `team.md` is **§13 item 7d** (`:659-660`), not 7a/7c. The third pointer, at `AdminPanel.tsx`, **had never been written**: the paragraph claimed a retirement that had not happened. It is written now (`AdminPanel.tsx:823-824`, above the "Plivo SMS" row at `:825`), so the claim is true rather than merely corrected. |
+| 2026-09-05 | Claude (transport + billing pass) | **The standing and the billing model accepted, and built to the edge of a dispatch.** Two migrations (`house_text_sender_credentials`; `plan_message_allowances` + `house_message_meter` + `house_message_credits`), one transport interface with two adapters proven against doc-sourced fixtures, a per-house credential store reusing `TokenCryptoService`, the meter and the refusal, and a sealed `POST /communications/text-credits/purchase` — added to `check_money_routes_are_sealed.py`'s scope **in the same pass**, because that guard's own header records that the last money route went unsealed by being outside a census. Six research corrections, each from the provider's current docs on 2026-09-05: a **Tech Provider has no credit line and cannot invoice for API usage**, which settles the WhatsApp leg's billing by construction and becomes founder question 7; the binding cap is **10 new houses per rolling 7 days**, not the portfolio's 20-number ceiling, which under this shape binds the house; **Business Verification gates App Review** and App Review averages ~24h; **Embedded Signup v2 dies 2026-10-15**; US 10DLC fees are **$4.50 + $41.50**, not "$44 + $15", and a tax ID caps at five Brands; and **Hosted SMS is US/CA only and refuses mobile numbers**, so bring-your-own-number does not exist outside North America, while **STOP does not work on an alphanumeric sender** so a Türkiye opt-out must ride in the body. `transport_not_built` was split: a connected sender with no provider account now says so, because that is a fact the house can act on. Two sources could NOT be read and are named rather than smoothed over — `www.facebook.com` is `Disallow: /` (Business Verification's document list) and `business.whatsapp.com` disallows this agent by name (the per-country WhatsApp rate card), so **no WhatsApp per-message rate appears anywhere in this pass's output**. |

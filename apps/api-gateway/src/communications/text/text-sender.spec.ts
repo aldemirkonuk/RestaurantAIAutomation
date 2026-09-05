@@ -6,6 +6,7 @@ import {
   type StubDb,
 } from "../../team/testing/supabase-stub";
 import { TextSenderService } from "./text-sender.service";
+import { textCollaborators } from "./testing/text-collaborators";
 import {
   TEXT_SENDER_DEFINITIONS,
   requirementFor,
@@ -36,12 +37,36 @@ function seed(errors: Record<string, { message: string }> = {}): StubDb {
     {
       house_text_senders: [],
       person_text_consents: [],
+      // The three tables the transport and the meter read. EMPTY, deliberately:
+      // no house on this deployment has a provider credential, and an empty
+      // meter is what a house with no allowance and no messages looks like.
+      house_text_sender_credentials: [],
+      house_message_meter: [],
+      house_message_credits: [],
+      plan_message_allowances: [],
+      restaurants: [
+        {
+          id: RID,
+          subscription_tier: "pilot",
+          timezone: "Europe/Istanbul",
+          currency: null,
+        },
+      ],
     },
     errors,
   );
 }
 
-const svc = (db: StubDb) => new TextSenderService(asDatabaseService(db));
+/**
+ * The service and the two collaborators it gained with the transport and the
+ * meter (ADR 0121 addendum). The stub holds no credential and no meter rows, so
+ * every assertion below still describes a house that cannot send — which is the
+ * state of every house on this deployment.
+ */
+const svc = (db: StubDb, env: Record<string, string> = {}) => {
+  const co = textCollaborators(asDatabaseService(db), env);
+  return new TextSenderService(asDatabaseService(db), co.transports, co.usage);
+};
 
 /**
  * The file with its comments removed.
@@ -71,7 +96,9 @@ describe("TextSenderService — nothing sends, and it says why", () => {
   });
 
   it("a FAILED read is not an empty house, and the refusal says so in words", async () => {
-    const db = seed({ "house_text_senders:select": { message: "connection reset" } });
+    const db = seed({
+      "house_text_senders:select": { message: "connection reset" },
+    });
     const readout = await svc(db).readout(RID);
     expect(readout.readable).toBe(false);
     expect(readout.reason).toBe("connection reset");
@@ -88,7 +115,9 @@ describe("TextSenderService — nothing sends, and it says why", () => {
   });
 
   it("a failed CONSENT read stops the send rather than treating silence as agreement", async () => {
-    const db = seed({ "person_text_consents:select": { message: "statement timeout" } });
+    const db = seed({
+      "person_text_consents:select": { message: "statement timeout" },
+    });
     db.tables.house_text_senders.push({
       id: "s1",
       restaurant_id: RID,
@@ -110,7 +139,18 @@ describe("TextSenderService — nothing sends, and it says why", () => {
     expect(out.words).toContain("withdrawal");
   });
 
-  it("even with a connected sender AND a consent, it refuses — because no transport exists", async () => {
+  /**
+   * WHY THIS ASSERTION CHANGED ON 2026-09-05 (ADR 0121 addendum).
+   *
+   * It used to expect `transport_not_built` here, because there was one refusal
+   * for every reason a message could not leave. There are now two facts and
+   * they are different: this house has a CONNECTED sender and NO PROVIDER
+   * ACCOUNT behind it — nobody has run Meta's Embedded Signup or signed a
+   * Twilio LOA for it — which is something a house can act on. "The transport
+   * is not built" is something only we can act on. Collapsing them told a
+   * manager our problem in place of theirs.
+   */
+  it("with a connected sender and a consent but NO provider account, it names that", async () => {
     const db = seed();
     db.tables.house_text_senders.push({
       id: "s1",
@@ -138,11 +178,75 @@ describe("TextSenderService — nothing sends, and it says why", () => {
       body: "x",
     });
     expect(out.sent).toBe(false);
-    expect(out.refusal).toBe("transport_not_built");
+    expect(out.refusal).toBe("no_provider_account");
     expect(out.channel).toBe("whatsapp");
+    expect(out.words).toContain("No provider account is connected");
     // The one thing a caller must be able to rely on: nothing is queued, so
     // nothing arrives later and surprises somebody.
-    expect(out.words).toContain("nothing will arrive later");
+    expect(out.words).toContain("nothing was queued");
+  });
+
+  it("with a provider account wired too, it STILL refuses — nothing dispatches", async () => {
+    // The end of the road, and the assertion that keeps ADR 0121's "nothing
+    // sends" true after the adapters landed. Everything a send needs is present
+    // here except the one thing this build deliberately does not have.
+    const db = seed();
+    db.tables.house_text_senders.push({
+      id: "s1",
+      restaurant_id: RID,
+      channel: "whatsapp",
+      path: "bring_your_own",
+      state: "connected",
+      identity: "+905550000000",
+      identity_kind: "e164",
+      market: "TR",
+      created_at: "2026-09-05T00:00:00Z",
+    });
+    db.tables.person_text_consents.push({
+      id: "c1",
+      user_id: SAM,
+      restaurant_id: RID,
+      phone: "+905551111111",
+      channel: "any",
+      consented_at: "2026-09-05T00:00:00Z",
+      withdrawn_at: null,
+    });
+    db.tables.house_text_sender_credentials.push({
+      id: "cr1",
+      sender_id: "s1",
+      restaurant_id: RID,
+      provider: "meta_cloud",
+      // The PLATFORM path: the sender sits under Mudavym's own Meta Tech
+      // Provider app and the credential is a deployment secret read from the
+      // environment, never a per-tenant row. Chosen here over the house path so
+      // the test needs no ciphertext and no encryption key — the house path's
+      // decrypt failure is its own case above.
+      owner: "platform",
+      account_ref: "waba-1",
+      sender_ref: "pn-1",
+      service_ref: null,
+      access_token_encrypted: null,
+      token_expires_at: null,
+      api_version: null,
+      connected_by: null,
+      connected_at: "2026-09-05T00:00:00Z",
+      revoked_at: null,
+    });
+    const out = await svc(db, {
+      META_WHATSAPP_SYSTEM_TOKEN: "not-a-real-token",
+    }).send({
+      restaurantId: RID,
+      recipientUserId: SAM,
+      body: "x",
+    });
+    expect(out.sent).toBe(false);
+    expect(out.refusal).toBe("transport_not_built");
+    expect(out.channel).toBe("whatsapp");
+    // No conversation window is tracked in this build, and the adapter refuses
+    // on that rather than guessing. The sentence keeps OUR ignorance apart from
+    // the house's situation: an unread window is not a closed one.
+    expect(out.words).toContain("could not be read");
+    expect(out.words).not.toContain("window is closed");
   });
 
   it("a revoked sender is not sendable, and drops out of the readout", async () => {
@@ -271,10 +375,22 @@ describe("TextSenderService — the person's consent", () => {
 
   it("re-consenting at a new number leaves the old consent on the record", async () => {
     const db = seed();
-    await svc(db).consent({ restaurantId: RID, userId: SAM, phone: "+1", channel: "sms" });
-    await svc(db).consent({ restaurantId: RID, userId: SAM, phone: "+2", channel: "whatsapp" });
+    await svc(db).consent({
+      restaurantId: RID,
+      userId: SAM,
+      phone: "+1",
+      channel: "sms",
+    });
+    await svc(db).consent({
+      restaurantId: RID,
+      userId: SAM,
+      phone: "+2",
+      channel: "whatsapp",
+    });
     expect(db.tables.person_text_consents).toHaveLength(2);
-    const live = db.tables.person_text_consents.filter((r: any) => !r.withdrawn_at);
+    const live = db.tables.person_text_consents.filter(
+      (r: any) => !r.withdrawn_at,
+    );
     expect(live).toHaveLength(1);
     expect(live[0].phone).toBe("+2");
   });

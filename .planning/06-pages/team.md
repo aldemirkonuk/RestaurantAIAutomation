@@ -54,6 +54,11 @@ Manager Shift Desk (owner/manager):
 - Certifications; coverage-rule templates; time-off management
 - Sales ingest + per-member performance panel
 - Broadcast a message to the team; shift import/export
+- Crew text (ADR 0121): the composer's text leg in its three states. **Nothing
+  sends** — since 2026-09-05 the refusal names WHICH half is missing rather than
+  one word for all of them: `no_sender`, `no_consent`, `no_provider_account`
+  (a sender is connected but nobody has run Meta's Embedded Signup or signed a
+  Twilio LOA for it), `allowance_spent`, `allowance_unknown`, `transport_not_built`
 - Invite team members; switch branches
 
 My Shifts (staff, read-only):
@@ -624,10 +629,28 @@ sales-ingest based, which is the permitted kind. Keep them apart.
 ## 13. Roadmap
 
 0. **The crew text's transport** — ADR 0121. The states, the consents and the
-   receipts exist; the send does not. What is missing is a per-house provider
-   credential and, before it, the sealed act that submits a registration. The
-   registration playbook per market is ADR 0121's own section; the sender rows
-   live on `/connections`, the consent on `/profile`.
+   receipts exist; the send does not. **Updated 2026-09-05 (ADR 0121 addendum):**
+   the credential store, the two provider adapters and the money gate now exist —
+   `house_text_sender_credentials`, `MetaCloudAdapter`, `TwilioAdapter`,
+   `TextTransportRegistry` and `TextUsageService` — and **there is still no
+   dispatch**, by decision and by test: a spec reads the adapter sources with
+   comments stripped and fails if `fetch`, `axios` or an `http` import ever
+   appears. What is missing is not code, it is **registration**: Meta Business
+   Verification, App Review for two Advanced-access permissions, and a Twilio ISV
+   Primary Business Profile, each written out step by step in
+   [`07-reference/META-TECH-PROVIDER-CHECKLIST.md`](../07-reference/META-TECH-PROVIDER-CHECKLIST.md)
+   and [`07-reference/TWILIO-ISV-CHECKLIST.md`](../07-reference/TWILIO-ISV-CHECKLIST.md).
+   Nothing on either checklist has been done. The sender rows live on
+   `/connections`, the consent on `/profile`, and the meter behind
+   `GET /communications/text-credits/meter`.
+
+0a. **The crew text's money, answered 2026-09-05** — OD-23's message-billing half.
+   Each plan includes a monthly allowance set from measured usage after a quarter;
+   past it the house buys credits or connects its own provider account.
+   `plan_message_allowances` ships **empty**, so `/team`'s composer must print
+   *"no allowance stated"* and must never render it as 0 — and an unstated
+   allowance does not refuse. When it does refuse, the sentence says nothing was
+   queued and names both ways to carry on.
 
 1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:279-286`)
    — turns the performance panel from a data-entry chore into a by-product. Blocked

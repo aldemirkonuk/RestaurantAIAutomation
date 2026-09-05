@@ -49,6 +49,18 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **Scheduled Reports** tab: create, list and delete recurring report schedules (🚧 the send itself is feature-flagged off server-side — no mailer)
 - **Procurement History** tab: audit trail of outbound procurement emails, labelled by type
 - Filter by channel: all / email / SMS
+- **The text sender's money meter** (ADR 0121 addendum, 2026-09-05, OD-23's
+  message-billing half): `GET /communications/text-credits/meter` returns the
+  month **in the house's own timezone**, messages counted and messages the
+  provider charges nothing for, the plan's allowance and the credit balance in
+  minor units with its currency. Three states this page must render as written
+  rather than as numbers: `allowance: null` is **"no allowance stated"** and never
+  0; `usedThisMonth: null` means the count could not be READ and is never "none";
+  and a ledger holding two currencies is flagged rather than summed. Buying
+  credits is `POST /communications/text-credits/purchase` and is **sealed** —
+  bound to the amount and the currency, so a hold obtained for one figure cannot
+  be spent on another. **No payment is taken by that route**; charging an
+  instrument is `/billing`'s job and is deliberately not wired to it.
 
 ### Redesign feature summary (behind the flag)
 
@@ -740,6 +752,33 @@ lands, this route is open.
 4. `GmailTemplateBuilder.tsx:1349,1417,1464` previews mail branded "WineOps AI" (§7).
 
 ## 13. Roadmap
+
+0. **The text sender's transport, and what stands between it and a message**
+   (ADR 0121 addendum, 2026-09-05). The provider abstraction now exists —
+   `communications/text/providers/`: one `TextTransport` interface, a
+   `MetaCloudAdapter` and a `TwilioAdapter` whose request and response shapes are
+   proven against fixtures transcribed from the providers' own published pages
+   (`provider-fixtures.ts` carries the URL and fetch date for every shape), and a
+   `TextCredentialsService` that stores a house's own token encrypted at rest with
+   the same `TokenCryptoService` the OAuth grants use. **Nothing dispatches**, and
+   that is enforced by a test rather than promised: the adapter sources are read
+   with comments stripped and the suite fails if `fetch`, `axios` or an `http`
+   import appears. What is missing is registration, not code — the two checklists
+   under `07-reference/` say exactly what Meta and Twilio ask for, and **nothing
+   on either has been done**.
+
+0a. **What could not be established, so that nobody fills it in later by
+   accident.** No WhatsApp per-message rate appears anywhere in this work:
+   `business.whatsapp.com`, which hosts the rate cards, disallows this agent by
+   name in its `robots.txt`, and `www.facebook.com` (the Business Verification
+   document list) is `Disallow: /`. The design carries that absence rather than a
+   guess — `house_message_meter.provider_cost_state` records **not_reported_yet**
+   until a provider says otherwise, which is also the true state at send time on
+   Twilio, whose `price` "is populated after the message has been sent/received".
+   Twilio's UK sender-ID rules were not established either, and
+   `TWILIO-ISV-CHECKLIST.md` §6 is deliberately empty: "not checked" and "not
+   required" render identically to a house and only one of them is true.
+
 
 1. **Decide what a generated report is** — a renderer that fills `pdf_url`, or delete the generate button. Blocker: founder decision; nothing in `.planning/decisions/` defines a report artifact. Everything below depends on this.
 2. **Make Regenerate honest** — either subscribe an agent to `email.summarize.requested` (`email_parsing_agent.py:81-84`) or remove the button. One line of Python or one of TSX; today it lies for free.

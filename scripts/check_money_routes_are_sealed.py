@@ -76,7 +76,13 @@ SEAL_SERVICE = SRC / "common" / "seal" / "seal-challenge.service.ts"
 # module here is how a future money surface joins the rule; the guard cannot
 # discover one on its own, and pretending otherwise would be the same
 # absence-as-health mistake one level up.
-MONEY_MODULES = ("payment-methods", "billing")
+# `communications/text` joined on 2026-09-05 (ADR 0121 addendum, OD-23): the
+# credit ledger behind the message allowance is money, and `POST
+# .../text-credits/purchase` is a route that changes what a house is charged. It
+# is added HERE, in the same pass that built it, rather than left for a later
+# census — the whole point of this guard's header is that a money surface
+# outside its scope is exactly how the last one went unsealed.
+MONEY_MODULES = ("payment-methods", "billing", "communications/text/credits")
 
 # Where a seal may be redeemed FROM. The walk resolves injected providers only
 # within these directories; anything else is an unresolved hop and is listed.
@@ -126,6 +132,17 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "route writes nothing about an instrument: it inserts one short-lived "
         "challenge row bound to this actor, act and instrument, behind the same "
         "manager-or-owner check the writes run."
+    ),
+    (
+        "communications/text/credits/text-credits.controller.ts",
+        "sealChallenge",
+    ): (
+        "The mint itself, for the same circular reason as the payment-methods "
+        "row above. It moves no money and creates no credit: it inserts one "
+        "short-lived challenge row bound to this actor, this house AND the "
+        "amount and currency asked for, behind the same manager-or-owner check "
+        "the purchase runs. Binding the amount into the seal's arguments is what "
+        "stops a gesture obtained for one figure being spent on another."
     ),
 }
 
