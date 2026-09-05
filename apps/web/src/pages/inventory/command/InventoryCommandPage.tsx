@@ -1460,13 +1460,25 @@ export function InventoryCommandPage() {
             // price in". The WAC rollup excludes sample lots by name.
             ...(volumeFields?.isSample
               ? { costPerBottle: 0, costProvenance: "sample" as const }
-              : { costPerBottle: volumeFields?.costPerBottle }),
+              : volumeFields?.costPerBottle === null ||
+                  volumeFields?.costPerBottle === undefined
+                ? // The modal can now say "I don't know" (POS lens defect 6), and
+                  // this is what that means on the wire: the key is absent, so
+                  // `resolveLotCost` writes unit_cost NULL with no provenance —
+                  // the same honest shape the bulk door already produced. Sending
+                  // 0 here is what made the two UI-added wines carry `0.0 /
+                  // 'manual'`: a price nobody typed, labelled as typed.
+                  {}
+                : { costPerBottle: volumeFields.costPerBottle }),
           } as any);
           setShowAddWine(false);
           toast.success(
             volumeFields?.isSample
               ? `${wine.name} added as a free sample — excluded from cost basis`
-              : `${wine.name} added to inventory`,
+              : volumeFields?.costPerBottle === null ||
+                  volumeFields?.costPerBottle === undefined
+                ? `${wine.name} added — cost recorded as unknown, not $0`
+                : `${wine.name} added to inventory`,
           );
           void refetchInventory();
         }}

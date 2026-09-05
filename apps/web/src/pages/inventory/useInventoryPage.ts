@@ -338,6 +338,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       (sum, item) => sum + (item.shadowStock || 0),
       0,
     );
+<<<<<<< HEAD
     const critical = inventory.filter(
       (item) =>
         classifyStock(item.liveStock, item.threshold).key === "critical",
@@ -351,6 +352,23 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     const unknown = inventory.filter(
       (item) => classifyStock(item.liveStock, item.threshold).key === "unknown",
     ).length;
+=======
+    // One pass, one classification per item — the counts cannot disagree with
+    // each other, and `atPar` is counted rather than folded into `healthy` so
+    // the five bands still sum to `total`. A wine exactly at par is NOT below
+    // par (see lib/inventoryStatus.ts and the shared fixture): the alert path
+    // will not act on it, so the chip must not claim it needs acting on.
+    const bands = { critical: 0, low: 0, atPar: 0, healthy: 0, unknown: 0 };
+    for (const item of inventory) {
+      const key = classifyStock(item.liveStock, item.threshold).key;
+      if (key === "critical") bands.critical += 1;
+      else if (key === "low") bands.low += 1;
+      else if (key === "at_par") bands.atPar += 1;
+      else if (key === "healthy") bands.healthy += 1;
+      else bands.unknown += 1;
+    }
+    const { critical, low, atPar, healthy, unknown } = bands;
+>>>>>>> origin/main
     const needsReconciliation = inventory.filter(
       (item) => (item.shadowStock || 0) > 0,
     ).length;
@@ -361,6 +379,10 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       shadowTotal,
       critical,
       low,
+<<<<<<< HEAD
+=======
+      atPar,
+>>>>>>> origin/main
       healthy,
       unknown,
       needsReconciliation,
