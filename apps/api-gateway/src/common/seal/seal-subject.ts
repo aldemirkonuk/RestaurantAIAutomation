@@ -60,12 +60,26 @@
  * every house in that jurisdiction's screens, and the person who reads them
  * cannot undo it.
  */
+/**
+ * `house_mail_export` (added 2026-09-05, ADR 0118 D16) is the seal on the
+ * house's own copy of its mail: choosing where it is kept, and running the
+ * export that writes it there. Its subject is the RESTAURANT, because the act is
+ * on the whole book rather than on one reply, and its args carry the mode and
+ * the connection — so a seal minted to send this house's mail to one Drive
+ * cannot be spent to send it to another. It is sealed rather than role-gated
+ * because both directions are irreversible by the next request: exporting
+ * copies every vendor reply the house holds into storage Mudavym does not
+ * control, and un-choosing an armed archive puts the deletion back on a window
+ * with nothing kept.
+ */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
   "mcp_tool_grant",
   "procurement_order",
   "payment_method",
   "price_index_upload",
+  "house_mail_export",
+  "text_credit_purchase",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -90,6 +104,19 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // the market of every house in its jurisdiction, and "a different upload"
       // would name the file transfer rather than the thing that goes on screens.
       return "price book";
+    case "house_mail_export":
+      // "mail archive", not "export": the refusals then read "a different mail
+      // archive", which is the true thing. Calling it an export would make a
+      // refused CHOICE and a refused RUN say the same sentence about two
+      // different acts.
+      return "mail archive";
+    case "text_credit_purchase":
+      // "credit purchase", not "credits": the act being sealed is SPENDING
+      // money on message credits, and a refusal that said "a different credits"
+      // would name the balance rather than the purchase. Its subject is the
+      // RESTAURANT — there is no purchase row until the seal is redeemed, the
+      // same shape `payment_method`'s `create` seal has for the same reason.
+      return "credit purchase";
   }
 }
 

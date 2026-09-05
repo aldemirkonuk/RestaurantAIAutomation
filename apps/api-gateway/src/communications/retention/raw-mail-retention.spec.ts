@@ -39,6 +39,7 @@ import {
 import { RawMailRetentionService } from "./raw-mail-retention.service";
 import type { DatabaseService } from "../../database/database.service";
 import type { NotificationsService } from "../../notifications/notifications.service";
+import type { HouseMailArchiveService } from "../archive/house-mail-archive.service";
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const OTHER_HOUSE = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
@@ -156,6 +157,61 @@ function notifier() {
   return { service, calls };
 }
 
+/**
+ * ADR 0118 D16 — the sweep asks the archive whether a copy exists before it
+ * deletes, and REFUSES when it cannot ask. Every test below that is not about
+ * the archive gets a house that chose nothing, which is what every house on this
+ * deployment is today: `mode: "none"`, `armed: false`, so the window behaves
+ * exactly as D12-D15 decided and these assertions stay about D12-D15.
+ *
+ * It is a stub with real methods rather than `undefined`, because `undefined` is
+ * now a REFUSAL and not a neutral default — that distinction is the point of the
+ * change and `the-sweep-waits-for-the-export.spec.ts` is where it is proved.
+ */
+function noArchive(): HouseMailArchiveService {
+  return {
+    settingsFor: async (restaurantId: string) => ({
+      restaurantId,
+      mode: "none",
+      chosen: false,
+      armed: false,
+      armedAt: null,
+      refusedBecause: null,
+      chosenBy: null,
+      chosenAt: null,
+      connectionId: null,
+      driveFolderId: null,
+      driveFolderPath: null,
+      price: { minorUnits: null, currency: null, unit: null, decision: null },
+      says: "Nobody has chosen for this restaurant yet.",
+    }),
+    exportedAmong: async () => new Set<string>(),
+    disclosureFor: async () => ({
+      mode: "none",
+      chosen: false,
+      armed: false,
+      says: "Nobody has chosen for this restaurant yet.",
+      intro: "intro",
+      options: { ownCloud: "a", mudavym: "b", none: "c" },
+      paidTierRefusal: "OD-23 is open.",
+      jurisdictionNote: null,
+      layout: "layout",
+    }),
+    runExport: async () => ({
+      restaurantId: "",
+      trigger: "revocation" as const,
+      mode: "none" as const,
+      armed: false,
+      considered: 0,
+      exported: 0,
+      failed: 0,
+      outcomes: [],
+      error: null,
+      says: "nothing",
+    }),
+  } as unknown as HouseMailArchiveService;
+}
+
 const HOUSE_ROW = { id: HOUSE, country: "Türkiye", state_province: null };
 
 describe("the rule table", () => {
@@ -226,7 +282,7 @@ describe("deriving the window", () => {
       restaurants: [HOUSE_ROW],
       procurement_credits: { error: { message: "connection reset" } },
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     await expect(service.computeWindow(HOUSE)).rejects.toThrow(
       /disputes could not be read/i,
@@ -242,7 +298,7 @@ describe("deriving the window", () => {
       restaurants: [HOUSE_ROW],
       procurement_credits: [],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const derived = await service.computeWindow(HOUSE);
     expect(derived.basisKind).toBe("no_dispute_recorded");
@@ -275,7 +331,7 @@ describe("deriving the window", () => {
         { order_id: ORDER, created_at: claimOpened },
       ],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const derived = await service.computeWindow(HOUSE);
     expect(derived.basisKind).toBe("dispute_span");
@@ -300,7 +356,7 @@ describe("deriving the window", () => {
         },
       ],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const derived = await service.computeWindow(HOUSE);
     // A range, not a number, and the reason is the assertion's own honesty:
@@ -321,7 +377,7 @@ describe("deriving the window", () => {
       restaurants: [{ id: HOUSE, country: "Türkiye", state_province: null }],
       procurement_credits: [],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     await service.deriveWindow(HOUSE);
     const written = rec.inserts.find(
@@ -355,7 +411,7 @@ describe("deriving the window", () => {
       restaurants: [{ id: HOUSE, country: null, state_province: null }],
       procurement_credits: [],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const derived = await service.deriveWindow(HOUSE);
     expect(derived.jurisdiction).toBe("UNKNOWN");
@@ -382,7 +438,7 @@ describe("the sweep", () => {
         },
       ],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const run = await service.sweepHouse(HOUSE);
     expect(run.considered).toBe(1);
@@ -403,7 +459,7 @@ describe("the sweep", () => {
 
   it("records a count even when the house has no window derived yet", async () => {
     const { rec, db } = build({ house_mail_retention_windows: [] });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const run = await service.sweepHouse(HOUSE);
     expect(run.deleted).toBe(0);
@@ -427,7 +483,7 @@ describe("the sweep", () => {
         { id: "a1", storage_path: `${HOUSE}/m1/deadbeef-invoice.pdf` },
       ],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     await service.sweepHouse(HOUSE);
 
@@ -471,7 +527,7 @@ describe("revocation", () => {
       conversation_attachments: [],
     });
     const notify = notifier();
-    const service = new RawMailRetentionService(db, notify.service);
+    const service = new RawMailRetentionService(db, notify.service, noArchive());
 
     const run = await service.sweepForRevokedGrant({
       connectionId: GRANT,
@@ -513,7 +569,7 @@ describe("revocation", () => {
       procurement_conversations: { error: { message: "timeout" } },
     });
     const notify = notifier();
-    const service = new RawMailRetentionService(db, notify.service);
+    const service = new RawMailRetentionService(db, notify.service, noArchive());
 
     const run = await service.sweepForRevokedGrant({
       connectionId: GRANT,
@@ -531,7 +587,7 @@ describe("revocation", () => {
       procurement_conversations: [{ id: "m1", restaurant_id: HOUSE }],
       conversation_attachments: [],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const run = await service.sweepForRevokedGrant({
       connectionId: OTHER_GRANT,
@@ -559,7 +615,7 @@ describe("the disclosure the consent screen reads", () => {
         },
       ],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const disclosure = await service.disclosureFor(HOUSE);
     expect(disclosure.figureDays).toBe(300);
@@ -577,7 +633,7 @@ describe("the disclosure the consent screen reads", () => {
       procurement_credits: [],
       house_mail_retention_windows: [],
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     const disclosure = await service.disclosureFor(HOUSE);
     expect(disclosure.figureFrom).toBe("measured_now");
@@ -596,7 +652,7 @@ describe("the disclosure the consent screen reads", () => {
       procurement_credits: [],
       house_mail_retention_windows: { error: { message: "permission denied" } },
     });
-    const service = new RawMailRetentionService(db);
+    const service = new RawMailRetentionService(db, undefined, noArchive());
 
     await expect(service.disclosureFor(HOUSE)).rejects.toThrow(
       /will not print a figure it cannot source/i,

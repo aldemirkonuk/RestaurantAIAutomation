@@ -1,6 +1,12 @@
 # 0118 — The house writes its own mail
 
 - **Status:** Proposed — built behind `mudavym_design_communications`, founder review open
+  - **2026-09-05 (batch 45):** amended with **D16** — the house is offered its own
+    copy of the mail. **A (`own_cloud`, export to the house's Drive) is built end to
+    end**; **B (`mudavym_archive`, billed) is designed and NOT armed**, gated on OD-23,
+    and refuses in words on every path rather than silently doing nothing. Migration
+    `20260905233000_a_house_keeps_its_own_copy_of_its_mail.sql`; the retention sweep
+    now READS `house_mail_exports` before it deletes anything.
   - **2026-09-04 (later the same day):** the send scope now exists. The founder
     said "add the gmail send integration now", and `gmail_send` is declared in
     `INTEGRATION_DEFINITIONS` — a separate integration requesting
@@ -555,6 +561,114 @@ the consent screen says so before the grant.*
   disclosure for a model nobody has asked for would be a promise about a feature
   that does not exist.
 
+### D16 — The house is offered its own copy: export to its cloud, or a billed Mudavym archive (founder, 2026-09-05)
+
+D12-D15 gave a mirrored reply a WINDOW and a TOMBSTONE and gave the house
+nothing to keep. Asked, on the back of the Türkiye finding in D14 — that TTK
+6102 Art. 82(1)(b) requires a trader to keep the commercial letters it RECEIVED
+for ten years — what a house is supposed to do about that, the founder answered:
+
+> For this decision, can we just connect or let the customer know there's two
+> options, either connect to your Google Drive or any kind of cloud? They they
+> could store their, um, own service, own files, or our file direction where we
+> could store them for themselves, and then we will bill them. Accordingly. how
+> is it being done now?
+
+So the house is offered both, and by default it is offered neither:
+
+| | What it is | State on this deployment |
+|---|---|---|
+| **A `own_cloud`** | The raw mail and its attachments are EXPORTED to the house's own cloud through the Drive grant it already holds. Mudavym keeps only the facts once the window ends. | **Built, end to end.** |
+| **B `mudavym_archive`** | Mudavym keeps the mail past the window in an archive of its own, and bills per GB-month. | **Designed — table, refusal, consent copy — and NOT armed.** Gated on OD-23. |
+| **- `none`** | The window applies exactly as D12-D15 decided. | The default, and it is now STATED rather than defaulted into. |
+
+**How it was done before this build, measured.** The raw mail sits in
+`procurement_conversations.message_text`, `.content` and `.email_headers`,
+written by `rabbitmq-bridge.service.ts:740-768`; the attachment bytes sit in the
+private `vendor-attachments` bucket on Mudavym's own Supabase, written at
+`:855-898`. **Nothing exported any of it.** `grep -rn "drive/v3\|googleapis.com/upload"`
+over `apps/api-gateway/src` and `services/` returned zero matches on 2026-09-05:
+the `google_drive` grant had existed since ADR 0114 and no code had ever called
+Drive. The house's only copy outside Mudavym was the message still sitting in the
+mailbox it was read from. There was no tier, no bill and no export path.
+
+**The scope was measured, not widened.** `google_drive` already carries
+`https://www.googleapis.com/auth/drive.file`
+(`integrations-oauth.constants.ts:96`), Google's create-and-manage scope for
+files the app itself creates. It can create a folder, write a file, and read back
+only what it wrote — which is exactly the read the verification needs. **No scope
+is added by this build and none is asked for.** What the grant's own consent copy
+does not yet say is that the house's vendor mail will be written into it; that is
+founder question 2 below.
+
+**The export is a sealed act on the house.** `house_mail_export` joins
+`SEAL_SUBJECT_KINDS` (ADR 0107, as the founder generalised it on 2026-09-04 from
+tool calls to order approval and payments), its subject is the RESTAURANT rather
+than a row, and its args carry the mode and the connection — so a seal minted to
+send this house's mail to one Drive cannot be spent to send it to another. Both
+writes redeem: choosing an archive, and running an export now. The daily job at
+03:10 carries NO seal and says so: `house_mail_export_runs.seal_id` is NULL on a
+scheduled run, because what a cron inherits is the sealed act that ARMED the mode,
+and borrowing that seal id onto every run would make one approval look like a
+thousand.
+
+**One file per conversation, one hash, one read-back.** The layout is
+`Mudavym mail archive/<restaurant> (<id>)/<vendor>/<YYYY-MM>/<conversation id>.json`
+and the document holds the body, the headers and every attachment inline as
+base64 with its own sha256. Attachments as sibling objects was the first shape
+and it was dropped for a stated reason: the guarantee is a content hash READ BACK
+out of the house's storage, and a hash over a document whose attachments live
+elsewhere proves the text arrived and says nothing about the bytes. **A 200 from
+Drive is the provider's claim; the bytes coming back and hashing to what was sent
+is the evidence**, and a mismatch is recorded as a failure.
+
+**The export row is the sweep's PRECONDITION, not a log.** With an armed archive
+the sweep reads `house_mail_exports` and will not tombstone a conversation that
+has no `status = 'exported'` row; it holds it, counts it in
+`house_mail_retention_sweeps.held_for_export`, and says why in words. **A failed
+export is a FAILURE with a stated cause, per conversation** — `status = 'failed'`
+demands `failure_reason` at the database level — never "nothing to export". And a
+sweep that cannot CONSULT the archive at all does not delete: "I could not check
+whether a copy exists" and "no copy is needed" are two different facts, and only
+one of them permits an irreversible deletion.
+
+**The one place that rule does not hold, stated rather than hidden.** A
+REVOCATION still deletes. D15 is the founder's own answer about a person
+WITHDRAWING consent to a copy of their mailbox, and blocking that deletion on a
+failed export would leave their mail inside Mudavym after they revoked — the
+exact thing D15 forbids — and would put the length of the delay in Google's
+hands. So a revocation runs one last export, records every failure per
+conversation, and deletes anyway, and `says` states what did and did not reach
+the house's copy. This is founder question 3.
+
+**B is designed and refuses to arm, in the schema as well as in an `if`.**
+`house_mail_archive_settings_paid_tier_arms_only_with_a_price` makes a
+`mudavym_archive` row unarmenable while `price_minor_units`, `price_currency`,
+`price_unit` and `price_decision` are NULL, and OD-23 leaves all four NULL. The
+house's ASK is still recorded — the founder can see who wants it — and every path
+(the settings write, the export run, the consent screen) says the same sentence
+naming OD-23. **The one outcome this cannot produce is a silent free tier**, and
+the second is a silent no-op: an unarmed run still writes its count.
+
+**The parent's reading of OD-23, to be struck or confirmed.** OD-23 was answered
+on 2026-09-05 for MESSAGING: each plan includes an allowance, and past it a house
+buys Mudavym credits (provider cost passed through plus a stated platform fee,
+meter visible) or connects its own provider account and pays them directly. The
+p4 parent's reading is that the archive is billed through that same credits path,
+per GB-month at storage cost plus fee. **That reading is the parent's, not the
+founder's words**, so B stays gated and the billing itself is NOT built here — the
+credits ledger belongs to another pass. Confirm it or strike it.
+
+**Türkiye is answered per state, and never with a compliance claim we cannot
+make.** With an armed archive, the consent screen says the exported file is the
+copy this restaurant keeps for its ten years. Without one, it says — in as many
+words — that Mudavym holds a mirror and deletes it on the window, so the copy
+satisfying Art. 82 is the one still in the mailbox, and keeping it is the
+restaurant's own responsibility. A GB or US house is never shown the Turkish
+sentence; the UNKNOWN row inherits it, because D14 gives UNKNOWN the strictest
+rule.
+
+
 ## Alternatives rejected
 
 1. **Send through `GmailService`, and put the house's name in the From
@@ -628,6 +742,41 @@ the consent screen says so before the grant.*
     it would rebuild inside our own database the record the discard exists to
     avoid keeping — who writes to this person. `house_inbox_cursors` keeps
     counts only, and a count identifies nobody.
+
+### Rejected for D16 (the archive, 2026-09-05)
+
+12. **Export only — no Mudavym-kept archive at all.** The cheapest honest
+    answer, and it was refused by the founder's own words: he asked for "our
+    file direction where we could store them for themselves, and then we will
+    bill them". Export-only also fails the house that has no cloud and does not
+    want one, which on a restaurant deployment is most of them. What it would
+    have bought is not having to touch pricing — and OD-23 is open either way,
+    so the saving is imaginary.
+13. **Archive only — Mudavym keeps everything, nobody exports.** Simpler: one
+    bucket, one bill, no Google call, no `drive.file` scope in play. Refused
+    because it makes Mudavym the single point of failure for a legal duty that
+    is the HOUSE's. Under D14 a Turkish trader must keep its received commercial
+    letters for ten years; a house whose only copy is inside a vendor it may
+    stop paying has not satisfied that, it has rented it. Export puts the file
+    somewhere Mudavym cannot reach, cannot delete, and does not need to be alive
+    for.
+14. **Arm the Mudavym archive now, price it later.** Ship the storage, start the
+    meter when OD-23 lands. Refused twice over: a house would be told its mail is
+    kept and then handed a bill it never agreed to, and the alternative — never
+    billing for the months already stored — is a free tier created by omission.
+    `house_mail_archive_settings_paid_tier_arms_only_with_a_price` is that
+    refusal in the schema, so it survives somebody deleting the `if`.
+15. **Block a revocation's deletion until its export succeeds.** Symmetric with
+    the window sweep and therefore tempting. Refused: it inverts D15, leaves a
+    person's mirrored mail inside Mudavym after they withdrew consent, and puts
+    the length of that delay in Google's hands. Filed as founder question 3
+    rather than settled, because the asymmetry is a real cost and not a
+    tidy answer.
+16. **Split the attachments into sibling objects beside a small JSON.** The
+    obvious layout, and it breaks the only guarantee this build has: the export
+    is verified by hashing the bytes read back, and a hash over a document whose
+    attachments live elsewhere proves the text arrived and says nothing about
+    the bytes. One file, one hash, one read-back.
 
 ## Consequences
 
@@ -783,6 +932,58 @@ the consent screen says so before the grant.*
   ring closes. `scripts/check_gateway_boots.sh` is what proves it — tsc and jest
   cannot see a Nest injector.
 
+### From the archive half (D16, 2026-09-05)
+
+- **THE SWEEP NOW REFUSES WHEN IT CANNOT CONSULT THE ARCHIVE.** With no
+  `HOUSE_MAIL_ARCHIVE` provider in the injector, `sweepHouse` deletes nothing and
+  records why. That is deliberate — "I could not check whether a copy exists" is
+  not "no copy is needed" — but it means a wiring mistake now STOPS retention
+  rather than quietly widening it. The failure direction is the safe one and the
+  cost is real: a house's mail would sit past its window while nobody noticed,
+  which is a storage-limitation problem of its own (GDPR Art. 5(1)(e)). The
+  sweep row carries `error` in words on every such run, so it is visible.
+- **A HOUSE THAT CHOSE THE PAID ARCHIVE STILL HAS ITS MAIL DELETED ON THE
+  WINDOW.** `mudavym_archive` never arms while OD-23 is open, and an unarmed mode
+  changes nothing. This is the honest outcome — the person consented to the
+  window, and the choice screen said in words that the archive is not running —
+  but it will look wrong to a house that believes it opted into keeping. The
+  alternative, holding the mail indefinitely on the strength of an unpriced tier,
+  is worse. `house_mail_retention_sweeps.archive_mode` records which mode was in
+  force so this is auditable after the fact.
+- **THE `google_drive` CONSENT COPY DOES NOT YET MENTION VENDOR MAIL.** Its
+  `dataHandling.landsIn` says "Nothing from Drive is copied into Mudavym" — still
+  true — and describes what is written OUT as "inventory exports and menu scans".
+  Arming `own_cloud` writes this house's vendor correspondence into that Drive,
+  which is more than that sentence describes. Deliberately not edited here: it is
+  a consent change on a grant people already hold, and founder question 2 is
+  whether it needs re-consent or only a copy amendment.
+- **THE ARCHIVE IS ONE PERSON'S DRIVE, AND THE HOUSE'S MAIL GOES INTO IT.**
+  `integration_oauth_connections` is `UNIQUE (user_id, integration_id)`, so a
+  Drive grant belongs to a PERSON. An armed `own_cloud` archive therefore writes
+  every vendor reply the house holds — including replies mirrored under a second
+  person's mailbox grant — into one colleague's personal Drive. That is founder
+  question 1, and it is the sharpest open edge in this half.
+- **`held_for_export` AND `archive_mode` ARE NULLABLE, AND NULL IS NOT ZERO.**
+  NULL means the sweep ran before the archive existed and evaluated none; 0 means
+  it evaluated one and held nothing back. Any aggregate over these columns that
+  coalesces NULL to 0 will report pre-archive sweeps as archive-aware ones. The
+  column comments say so; nothing enforces it.
+- **`RetentionModule` NOW IMPORTS `ArchiveModule`, AND THE EDGE ONLY RUNS ONE
+  WAY.** The first shape had `raw-mail-retention.service.ts` import
+  `HouseMailArchiveService` directly and `check_gateway_boots.sh` refused it with
+  `ReferenceError: Cannot access 'IntegrationsOauthService' before
+  initialization` — a NODE require ring (integrations-oauth -> retention ->
+  archive -> integrations-oauth) that `forwardRef` cannot open, because it defers
+  Nest's graph and not `require`. `house-mail-archive.port.ts` is the fix: a leaf
+  file with a token and four method signatures, so the sweep asks by name and
+  never requires the archive's implementation. tsc and jest both passed on the
+  broken shape; only the boot guard saw it.
+- **NOTHING IS BILLED, AND NO BILLING TABLE WAS ADDED.** Measured 2026-09-05:
+  `billing_customers` and `billing_webhook_events` are the only `billing_*`
+  tables in `supabase/migrations`; there is no line-item or metered-usage shape
+  to write a GB-month into. B's billing hook is therefore a documented seam and a
+  refusal, not a ledger write. Whichever pass answers OD-23 owns building it.
+
 ## What only the founder can decide
 
 1. **What does a Mudavym address cost, and who may take one?** OD-23. Sharper
@@ -839,6 +1040,41 @@ the consent screen says so before the grant.*
    colleague's mirrored correspondence without that colleague acting. If the
    founder means the stronger version, it is one call added beside the upsert in
    `setHouseGrantAccess`.
+
+### Founder-only questions from the archive half (D16, 2026-09-05) — OPEN
+
+1. **Whose Drive is the house's archive?** A `google_drive` grant is
+   `UNIQUE (user_id, integration_id)` — it belongs to a PERSON. An armed
+   `own_cloud` archive writes every vendor reply the HOUSE holds into that one
+   person's Drive, including replies mirrored out of a second person's mailbox.
+   When that person leaves, the house's ten-year record leaves with them. Three
+   shapes: (a) as built — one nominated person's Drive, and the consent screen
+   says whose; (b) require a Shared Drive, which `drive.file` can write to but
+   which not every Google Workspace tier has; (c) refuse `own_cloud` unless the
+   connected account is a shared/house account. **Recommendation: (a) now with
+   the owner's name printed on /connections, and (b) as the upgrade when a house
+   asks** — (c) blocks the common case for a problem the house can see coming.
+2. **Does arming `own_cloud` need RE-CONSENT on the Drive grant?** `drive.file`
+   already permits it and no scope is widened, but the grant's own copy says the
+   app writes "inventory exports and menu scans" — it does not say "this house's
+   vendor correspondence". **Recommendation: amend `google_drive`'s
+   `dataHandling` copy to name mail export, and treat the sealed choice on
+   /connections as the consent** — a forced re-consent on a scope that did not
+   change teaches people that re-consent means nothing. Say if you want the
+   stronger version.
+3. **May a revocation delete mail that never reached the house's copy?** As
+   built, yes: a revocation runs one last export, records each failure, and
+   deletes anyway, because D15 says the mail goes immediately when a person
+   withdraws consent. The alternative holds that person's mail inside Mudavym
+   until Google cooperates. **Recommendation: keep it as built** — the person's
+   withdrawal outranks the house's convenience, and the house was told at arming
+   time that a failed export is reported per conversation.
+4. **Is the parent's reading of OD-23 for the archive right?** OD-23 was
+   answered for MESSAGING (plan allowance, then Mudavym credits at cost plus a
+   stated fee, or bring your own provider). The p4 parent's reading is that the
+   archive bills through the same credits path, per GB-month. That reading is
+   the parent's, not your words, so B stays gated. **Confirm it, or say what the
+   archive should cost and who pays** — until then no house can turn it on.
 
 ## Superseded: the recommendation this section used to carry (2026-09-05)
 

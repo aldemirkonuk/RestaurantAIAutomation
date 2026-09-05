@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -7,6 +8,11 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
+import {
+  HOUSE_MAIL_ARCHIVE,
+  type ArchiveMode as HouseMailArchiveMode,
+  type HouseMailArchivePort,
+} from "../archive/house-mail-archive.port";
 import {
   JURISDICTION_RULES,
   RETENTION_DISCLOSURE_COPY,
@@ -109,6 +115,18 @@ export interface SweepRun {
   windowDays: number | null;
   notice: string | null;
   error: string | null;
+  /**
+   * Which archive was in force (ADR 0118 D16). NULL means the archive could not
+   * be resolved at all, which is NOT the same as 'none' and is never written as
+   * one — `house_mail_retention_sweeps.archive_mode` keeps that distinction too.
+   */
+  archiveMode: HouseMailArchiveMode | null;
+  /**
+   * How many expired replies this sweep REFUSED to delete because the house has
+   * an armed archive and their raw mail has not reached it. NULL when no archive
+   * was evaluated; 0 means one was and nothing was held. Different facts.
+   */
+  heldForExport: number | null;
   /** What happened, in words. Never a bare boolean, never a silent skip. */
   says: string;
 }
@@ -137,8 +155,32 @@ export interface RetentionDisclosure {
   split: string;
   revocation: string;
   windowIntro: string;
+  /**
+   * The house's own archive (ADR 0118 D16). NULL only when the archive service
+   * is not in this injector, and the page prints that rather than the absence:
+   * a consent screen that silently omits the archive section would tell a person
+   * the mail simply goes, which is exactly the silence this ADR ended.
+   */
+  archive: ArchiveDisclosure | null;
   /** Which grants this disclosure is about. The page must not hard-code it. */
   appliesTo: string[];
+}
+
+export interface ArchiveDisclosure {
+  mode: HouseMailArchiveMode;
+  /** FALSE means nobody has been asked, which is not a recorded `none`. */
+  chosen: boolean;
+  armed: boolean;
+  says: string;
+  intro: string;
+  options: { ownCloud: string; mudavym: string; none: string };
+  /** Non-null while OD-23 is open, which is every deployment today. */
+  paidTierRefusal: string | null;
+  /** Set only where the statute reaches the correspondence itself (TR, UNKNOWN). */
+  jurisdictionNote: string | null;
+  layout: string;
+  /** Why the archive could not be described, when it could not be. */
+  unavailableBecause: string | null;
 }
 
 @Injectable()
@@ -156,6 +198,20 @@ export class RawMailRetentionService {
      * in `says`.
      */
     @Optional() private readonly notifications?: NotificationsService,
+    /**
+     * ADR 0118 D16 — the house's own archive.
+     *
+     * Optional ONLY so the existing specs can construct this service with one
+     * or two arguments. When it IS absent the sweep does not pretend a house has
+     * no archive: `archiveFor` returns a NULL mode, `heldForExport` stays NULL,
+     * and `says` states that the archive could not be consulted. What it never
+     * does is delete raw mail while unable to tell whether a copy exists —
+     * `sweepHouse` refuses in that case, because "I could not check" and "there
+     * is nothing to check" are the two facts this repo keeps confusing.
+     */
+    @Optional()
+    @Inject(HOUSE_MAIL_ARCHIVE)
+    private readonly archive?: HouseMailArchivePort,
   ) {}
 
   // =========================================================================
@@ -389,6 +445,57 @@ export class RawMailRetentionService {
   }
 
   async sweepHouse(restaurantId: string): Promise<SweepRun> {
+    // THE ARCHIVE IS CONSULTED FIRST, AND A SWEEP THAT CANNOT CONSULT IT DOES
+    // NOT DELETE (ADR 0118 D16). "I could not check whether this house keeps a
+    // copy" and "this house keeps no copy" are two different facts, and only
+    // one of them permits an irreversible deletion.
+    let archive: {
+      mode: HouseMailArchiveMode;
+      armed: boolean;
+      says: string;
+    } | null = null;
+    if (!this.archive) {
+      return this.recordSweep({
+        restaurantId,
+        reason: "window_expired",
+        connectionId: null,
+        considered: 0,
+        deleted: 0,
+        attachmentsDeleted: 0,
+        windowDays: null,
+        notice: null,
+        archiveMode: null,
+        heldForExport: null,
+        error:
+          "The mail-archive service was not available in this injector, so the sweep could not find out whether this house keeps its own copy.",
+        says: "Nothing was swept for this house: the archive it may or may not keep could not be consulted, and a sweep that cannot tell whether a copy exists must not delete the only one. No mail was deleted, and that is recorded rather than passed over.",
+      });
+    }
+    try {
+      const settings = await this.archive.settingsFor(restaurantId);
+      archive = {
+        mode: settings.mode,
+        armed: settings.armed,
+        says: settings.says,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return this.recordSweep({
+        restaurantId,
+        reason: "window_expired",
+        connectionId: null,
+        considered: 0,
+        deleted: 0,
+        attachmentsDeleted: 0,
+        windowDays: null,
+        notice: null,
+        archiveMode: null,
+        heldForExport: null,
+        error: `The house's archive setting could not be read: ${message}`,
+        says: `Nothing was swept for this house: whether it keeps its own copy of the mail could not be read (${message}). No mail was deleted.`,
+      });
+    }
+
     const { data: windows, error: windowError } = await this.db.supabase
       .from("house_mail_retention_windows")
       .select("figure_days, derived_at")
@@ -404,6 +511,8 @@ export class RawMailRetentionService {
         attachmentsDeleted: 0,
         windowDays: null,
         notice: null,
+        archiveMode: archive.mode,
+        heldForExport: null,
         error: `The house's window could not be read: ${windowError.message}`,
         says: `Nothing was swept for this house: its retention window could not be read (${windowError.message}). No mail was deleted, and that is recorded rather than passed over.`,
       });
@@ -420,6 +529,8 @@ export class RawMailRetentionService {
         attachmentsDeleted: 0,
         windowDays: null,
         notice: null,
+        archiveMode: archive.mode,
+        heldForExport: null,
         error: null,
         says:
           "No window has been derived for this house yet, so nothing was deleted. A house with no derivation is not a house with a window of zero, and the sweep refuses to invent one.",
@@ -449,6 +560,8 @@ export class RawMailRetentionService {
         attachmentsDeleted: 0,
         windowDays: figureDays,
         notice: null,
+        archiveMode: archive.mode,
+        heldForExport: null,
         error: `The house's mirrored rows could not be read: ${rowsError.message}`,
         says: `Nothing was swept for this house: its mirrored replies could not be read (${rowsError.message}). No mail was deleted.`,
       });
@@ -460,10 +573,46 @@ export class RawMailRetentionService {
       return typeof at === "string" && at < cutoff;
     });
 
-    const outcome = await this.deleteRawFor(
-      expired.map((r) => String(r.id)),
-      "window_expired",
-    );
+    const expiredIds = expired.map((r) => String(r.id));
+
+    // WITH AN ARMED ARCHIVE, ONLY AN EXPORTED REPLY MAY GO. The export row is
+    // the precondition and not a log: a reply whose copy has not reached the
+    // house's own storage is HELD, counted, and named — never deleted and never
+    // reported as "nothing to do".
+    let deletable = expiredIds;
+    let heldForExport = 0;
+    if (archive.armed && archive.mode === "own_cloud") {
+      try {
+        const exported = await this.archive.exportedAmong(expiredIds);
+        deletable = expiredIds.filter((id) => exported.has(id));
+        heldForExport = expiredIds.length - deletable.length;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return this.recordSweep({
+          restaurantId,
+          reason: "window_expired",
+          connectionId: null,
+          considered: candidates.length,
+          deleted: 0,
+          attachmentsDeleted: 0,
+          windowDays: figureDays,
+          notice: null,
+          archiveMode: archive.mode,
+          heldForExport: expiredIds.length,
+          error: `The archive's export records could not be read: ${message}`,
+          says: `Nothing was deleted for this house: it keeps its own copy of the mail and the record of which replies have reached that copy could not be read (${message}). All ${expiredIds.length} expired repl${expiredIds.length === 1 ? "y is" : "ies are"} held.`,
+        });
+      }
+    }
+
+    const outcome = await this.deleteRawFor(deletable, "window_expired");
+
+    const heldSentence =
+      heldForExport > 0
+        ? ` ${heldForExport} more ${heldForExport === 1 ? "was" : "were"} past the window and ${heldForExport === 1 ? "was" : "were"} NOT deleted, because this house exports its mail to its own cloud and ${heldForExport === 1 ? "that reply has" : "those replies have"} no verified copy there yet.`
+        : archive.armed && archive.mode === "own_cloud"
+          ? " Every expired reply had a verified copy in this house's own cloud before it went."
+          : "";
 
     return this.recordSweep({
       restaurantId,
@@ -474,8 +623,10 @@ export class RawMailRetentionService {
       attachmentsDeleted: outcome.attachmentsDeleted,
       windowDays: figureDays,
       notice: null,
+      archiveMode: archive.mode,
+      heldForExport,
       error: outcome.error,
-      says: `${candidates.length} mirrored repl${candidates.length === 1 ? "y" : "ies"} still holding raw mail were looked at against a ${figureDays}-day window; ${outcome.deleted} were past it and had their body, headers and attachment bytes deleted. The order's own facts on all ${candidates.length} are untouched.`,
+      says: `${candidates.length} mirrored repl${candidates.length === 1 ? "y" : "ies"} still holding raw mail were looked at against a ${figureDays}-day window; ${outcome.deleted} were past it and had their body, headers and attachment bytes deleted.${heldSentence} The order's own facts on all ${candidates.length} are untouched.`,
     });
   }
 
@@ -509,6 +660,8 @@ export class RawMailRetentionService {
         attachmentsDeleted: 0,
         windowDays: null,
         notice: null,
+        archiveMode: null,
+        heldForExport: null,
         error: `The grant's mirrored rows could not be read: ${rowsError.message}`,
         says: `The grant was revoked but its mirrored mail could NOT be deleted: the rows could not be read (${rowsError.message}). The mail is still there.`,
       });
@@ -522,6 +675,45 @@ export class RawMailRetentionService {
     const restaurantId =
       params.restaurantId ||
       ((found[0]?.restaurant_id as string | null) ?? null);
+
+    // ONE LAST EXPORT, AND THE DELETION HAPPENS EITHER WAY.
+    //
+    // This is the one place the export-before-delete rule does NOT block, and
+    // the reason is D15 rather than convenience. D15 is the founder's own
+    // answer — "stop reads and delete the raw mail" — about a person WITHDRAWING
+    // consent to a copy of their mailbox. Holding that deletion until an export
+    // succeeded would leave a person's mail inside Mudavym after they revoked,
+    // which is the exact thing D15 forbids, and it would put the length of the
+    // delay in Google's hands. So the archive gets one last pass, every failure
+    // is recorded per conversation, and the mail goes regardless — and `says`
+    // states what did and did not reach the house's own copy rather than
+    // implying everything did. ADR 0118 D16 files this as a founder question.
+    let archiveSays = "";
+    let archiveMode: HouseMailArchiveMode | null = null;
+    if (restaurantId && ids.length && this.archive) {
+      try {
+        const settings = await this.archive.settingsFor(restaurantId);
+        archiveMode = settings.mode;
+        if (settings.armed && settings.mode === "own_cloud") {
+          const run = await this.archive.runExport({
+            restaurantId,
+            trigger: "revocation",
+            sealId: null,
+            conversationIds: ids,
+          });
+          archiveSays =
+            run.failed > 0
+              ? ` This house keeps its own copy: one last export ran and wrote ${run.exported} of ${run.considered}. ${run.failed} could NOT be written and ${run.failed === 1 ? "that reply is" : "those replies are"} being deleted here without ever reaching the house's own cloud, because a revocation does not wait.`
+              : ` This house keeps its own copy: one last export ran and wrote all ${run.exported} out to its own cloud before the deletion.`;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        archiveSays = ` This house keeps its own copy and the last export could NOT run (${message}), so the mail deleted here did not reach that copy. The deletion still happened, because a revocation does not wait.`;
+      }
+    } else if (restaurantId && ids.length && !this.archive) {
+      archiveSays =
+        " Whether this house keeps its own copy could not be checked: the archive service was not available in this injector. The deletion still happened, because a revocation does not wait.";
+    }
 
     const outcome = await this.deleteRawFor(ids, "grant_revoked");
 
@@ -543,8 +735,10 @@ export class RawMailRetentionService {
       attachmentsDeleted: outcome.attachmentsDeleted,
       windowDays: null,
       notice,
+      archiveMode,
+      heldForExport: null,
       error: outcome.error,
-      says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately. Every order fact those replies produced stays on this restaurant's own record.`,
+      says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately.${archiveSays} Every order fact those replies produced stays on this restaurant's own record.`,
     });
   }
 
@@ -785,8 +979,43 @@ export class RawMailRetentionService {
       split: RETENTION_DISCLOSURE_COPY.split,
       revocation: RETENTION_DISCLOSURE_COPY.revocation,
       windowIntro: RETENTION_DISCLOSURE_COPY.windowIntro,
+      archive: await this.archiveDisclosure(restaurantId, live.jurisdiction),
       appliesTo: ["gmail_read"],
     };
+  }
+
+  /**
+   * The archive half of the disclosure.
+   *
+   * A FAILURE HERE IS PRINTED, NOT OMITTED. The whole point of ADR 0118 was
+   * that the consent screen answered a retention question with silence; an
+   * archive section that vanishes when the read fails would reproduce that fault
+   * one section down. So the shape is always returned and
+   * `unavailableBecause` carries the reason.
+   */
+  private async archiveDisclosure(
+    restaurantId: string,
+    jurisdiction: JurisdictionCode,
+  ): Promise<ArchiveDisclosure | null> {
+    if (!this.archive) return null;
+    try {
+      const block = await this.archive.disclosureFor(restaurantId, jurisdiction);
+      return { ...block, unavailableBecause: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        mode: "none",
+        chosen: false,
+        armed: false,
+        says: "Whether this restaurant keeps its own copy of the mail could not be read, so nothing here should be taken as a statement that it does or does not.",
+        intro: "",
+        options: { ownCloud: "", mudavym: "", none: "" },
+        paidTierRefusal: null,
+        jurisdictionNote: null,
+        layout: "",
+        unavailableBecause: message,
+      };
+    }
   }
 
   // =========================================================================
@@ -861,6 +1090,11 @@ export class RawMailRetentionService {
         attachments_deleted: run.attachmentsDeleted,
         window_days: run.windowDays,
         notice: run.notice,
+        // NULL means the archive was not evaluated on this run; 0 means it was
+        // and nothing was held. The column comment says the same, and the two
+        // must never be collapsed by a `?? 0` here.
+        archive_mode: run.archiveMode,
+        held_for_export: run.heldForExport,
         error: run.error,
       });
     if (error) {

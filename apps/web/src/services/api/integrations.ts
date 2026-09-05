@@ -76,8 +76,37 @@ export interface RetentionDisclosure {
   split: string
   revocation: string
   windowIntro: string
+  /**
+   * The house's own archive of the mail (ADR 0118 D16). Optional because a
+   * gateway deployed before 2026-09-05 does not send it, and NULLABLE because
+   * the gateway itself sends null when the archive service is absent — the page
+   * prints that state rather than omitting the section, since a section that
+   * vanishes on a failed read is the silence this ADR ended.
+   */
+  archive?: ArchiveDisclosure | null
   /** Which grants this disclosure covers. Never hard-code an id against it. */
   appliesTo: string[]
+}
+
+/**
+ * What the consent screen prints about keeping the mail past the window. Every
+ * sentence is the SERVER's; nothing on the page composes one (ADR 0118 D16).
+ */
+export interface ArchiveDisclosure {
+  mode: 'own_cloud' | 'mudavym_archive' | 'none'
+  /** FALSE means nobody has been asked, which is not a recorded `none`. */
+  chosen: boolean
+  armed: boolean
+  says: string
+  intro: string
+  options: { ownCloud: string; mudavym: string; none: string }
+  /** Non-null while OD-23 is open, which is every deployment today. */
+  paidTierRefusal: string | null
+  /** Set only where the statute reaches the correspondence itself. */
+  jurisdictionNote: string | null
+  layout: string
+  /** Why the archive could not be described, when it could not be. */
+  unavailableBecause: string | null
 }
 
 export interface IntegrationCatalogEntry {

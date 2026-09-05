@@ -29,6 +29,7 @@ import { Module, forwardRef } from "@nestjs/common";
 import { DatabaseModule } from "../../database/database.module";
 import { AuthModule } from "../../auth/auth.module";
 import { NotificationsModule } from "../../notifications/notifications.module";
+import { ArchiveModule } from "../archive/archive.module";
 import { RawMailRetentionService } from "./raw-mail-retention.service";
 import { RawMailRetentionCron } from "./raw-mail-retention.cron";
 import { RetentionController } from "./retention.controller";
@@ -38,6 +39,16 @@ import { RetentionController } from "./retention.controller";
     DatabaseModule,
     forwardRef(() => AuthModule),
     forwardRef(() => NotificationsModule),
+    /**
+     * ADR 0118 D16 — the sweep must ask the archive which replies already have
+     * a verified copy in the house's own cloud BEFORE it deletes anything, and
+     * a revocation runs one last export before it deletes anyway. The edge runs
+     * retention -> archive and never back: `ArchiveModule` imports Database,
+     * Config, Crypto, Seal and a forwardRef to Auth, none of which reach this
+     * module, so it closes no ring that `IntegrationsModule -> RetentionModule`
+     * does not already have.
+     */
+    ArchiveModule,
   ],
   controllers: [RetentionController],
   providers: [RawMailRetentionService, RawMailRetentionCron],

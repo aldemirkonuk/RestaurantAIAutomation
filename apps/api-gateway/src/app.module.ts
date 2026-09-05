@@ -32,6 +32,7 @@ import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { RetentionModule } from "./communications/retention/retention.module";
+import { ArchiveModule } from "./communications/archive/archive.module";
 import { TextSendersModule } from "./communications/text/text-senders.module";
 import { WinesModule } from "./wines/wines.module";
 import { StorageLocationsModule } from "./storage-locations/storage-locations.module";
@@ -124,6 +125,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     SettingsModule, // Restaurant settings and feature flags
     IntegrationsModule, // Third-party OAuth grants (Drive, Excel) + scope disclosure
     RetentionModule, // How long mirrored vendor mail is kept, and the sweep that deletes it
+    ArchiveModule, // The house's own copy of that mail: its choice, its export, its counts (ADR 0118 D16)
     TextSendersModule, // The house's own WhatsApp/SMS sender + each person's consent (ADR 0121)
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     McpConnectionsModule, // Model-context (MCP) servers declared per user + restaurant

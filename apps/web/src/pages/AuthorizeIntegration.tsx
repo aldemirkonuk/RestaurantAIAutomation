@@ -8,6 +8,7 @@ import {
   Clock,
   ExternalLink,
   Loader2,
+  CloudUpload,
   Lock,
   Scale,
   ShieldCheck,
@@ -382,6 +383,68 @@ export default function AuthorizeIntegration() {
                         </p>
                       </div>
                     </div>
+
+                    {/*
+                      THE HOUSE'S OWN COPY (ADR 0118 D16). Every sentence here
+                      is the SERVER's — the offer, the refusal and the
+                      jurisdiction note all come down the disclosure route, for
+                      the same reason the figure above does: a page that writes
+                      its own privacy sentence is right on the day it is written
+                      and silently wrong afterwards. The section is rendered
+                      whenever the gateway sends the block, INCLUDING when it
+                      could not read the setting — a section that disappears on
+                      a failed read is the silence this ADR ended, one section
+                      further down.
+                    */}
+                    {retention.archive && (
+                      <div
+                        className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4"
+                        data-testid="archive-disclosure"
+                      >
+                        <CloudUpload className="mt-0.5 h-4 w-4 shrink-0 text-wine-500" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            Keeping your own copy
+                          </p>
+                          {retention.archive.unavailableBecause ? (
+                            <p className="mt-1 text-xs leading-relaxed text-[#8B6363]">
+                              {retention.archive.says}{' '}
+                              {retention.archive.unavailableBecause}
+                            </p>
+                          ) : (
+                            <>
+                              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                                {retention.archive.intro}
+                              </p>
+                              <ul className="mt-2 space-y-1.5">
+                                <li className="text-xs leading-relaxed text-gray-500">
+                                  {retention.archive.options.ownCloud}
+                                </li>
+                                <li className="text-xs leading-relaxed text-gray-500">
+                                  {retention.archive.options.mudavym}
+                                </li>
+                                <li className="text-xs leading-relaxed text-gray-500">
+                                  {retention.archive.options.none}
+                                </li>
+                              </ul>
+                              {retention.archive.paidTierRefusal && (
+                                <p className="mt-2 text-xs leading-relaxed text-[#8B6363]">
+                                  {retention.archive.paidTierRefusal}
+                                </p>
+                              )}
+                              <p className="mt-2 text-xs font-medium leading-relaxed text-gray-700">
+                                {retention.archive.says}
+                              </p>
+                              {retention.archive.jurisdictionNote && (
+                                <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+                                  {retention.archive.jurisdictionNote}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">

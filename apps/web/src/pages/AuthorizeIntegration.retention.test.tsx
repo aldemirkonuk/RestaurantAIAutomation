@@ -21,6 +21,15 @@
  *      mail is kept, the Continue button is disabled: a button that still works
  *      when the answer could not be loaded is the same silence with a step in
  *      front of it.
+ *   8. THE HOUSE'S OWN COPY IS OFFERED, AND THE PAID TIER SAYS IT IS NOT ON
+ *      (ADR 0118 D16). Both ways of keeping the mail past the window are
+ *      printed, the Mudavym archive carries its OD-23 refusal beside the offer,
+ *      and a house nobody asked reads as a default rather than as a decision.
+ *   9. A TURKISH HOUSE WITH NO ARCHIVE IS TOLD THE TEN-YEAR DUTY IS ITS OWN.
+ *      A silent compliance claim would be worse than the silence in 1-7.
+ *  10. AN ARCHIVE THAT COULD NOT BE READ STILL RENDERS ITS SECTION, with the
+ *      reason. A section that vanishes on a failed read is this ADR's own fault
+ *      one section further down.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
@@ -101,6 +110,27 @@ const TR_DISCLOSURE = {
   revocation:
     'If you disconnect this grant, every piece of raw mail already mirrored under it is deleted.',
   windowIntro: "It is the longest dispute this restaurant has actually recorded, plus a margin.",
+  archive: {
+    mode: 'none' as const,
+    chosen: false,
+    armed: false,
+    says: 'Nobody has chosen for this restaurant yet, so the third answer applies: the mail is deleted when the window runs out and nothing is exported. That is a default, not a decision.',
+    intro:
+      "You can also keep the mail itself, past the window, in storage this restaurant controls.",
+    options: {
+      ownCloud:
+        "Export it to this restaurant's own cloud. Every mirrored reply is written as one file into a folder in the Google Drive this restaurant has already connected.",
+      mudavym:
+        'Or Mudavym keeps it past the window in an archive of its own, and bills for the storage. This is not switched on: see below.',
+      none: 'Or neither, which is what happens if nothing is chosen.',
+    },
+    paidTierRefusal:
+      "Mudavym's own archive is a paid tier and its price is not decided: OD-23 is open, and no ADR fixes a figure. Arming it without a price would be a free tier nobody agreed to give away.",
+    jurisdictionNote:
+      'This restaurant\u2019s rule is T\u00fcrkiye\u2019s, and TTK 6102 Art. 82 requires a trader to keep the commercial letters it received for ten years. Keeping it is this restaurant\u2019s own responsibility, and nothing here does it for you.',
+    layout: 'Mudavym mail archive/<restaurant>/<vendor>/<YYYY-MM>/<id>.json',
+    unavailableBecause: null,
+  },
   appliesTo: ['gmail_read'],
 }
 
@@ -207,5 +237,62 @@ describe('the consent screen states how long the mail is kept', () => {
     })
     const button = screen.getByRole('button', { name: /Continue to Google/ })
     expect((button as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('offers both ways of keeping the mail, with the paid tier NOT on', async () => {
+    renderAt('gmail_read')
+    await screen.findByTestId('archive-disclosure')
+    expect(screen.getByText(/Keeping your own copy/)).toBeTruthy()
+    // The export offer.
+    expect(
+      screen.getByText(/Export it to this restaurant's own cloud/),
+    ).toBeTruthy()
+    // The paid offer AND its refusal, together, so nobody chooses a tier
+    // believing it is running.
+    expect(screen.getByText(/bills for the storage/)).toBeTruthy()
+    expect(screen.getByText(/OD-23 is open/)).toBeTruthy()
+    expect(
+      screen.getByText(/free tier nobody agreed to give away/),
+    ).toBeTruthy()
+  })
+
+  it('says nobody was ASKED rather than printing a chosen "none"', async () => {
+    renderAt('gmail_read')
+    await screen.findByTestId('archive-disclosure')
+    expect(screen.getByText(/a default, not a decision/)).toBeTruthy()
+  })
+
+  it('tells a Türkiye house with no archive that the ten-year duty is its own', async () => {
+    renderAt('gmail_read')
+    await screen.findByTestId('archive-disclosure')
+    expect(screen.getByText(/TTK 6102 Art. 82/)).toBeTruthy()
+    expect(
+      screen.getByText(/this restaurant\u2019s own responsibility/),
+    ).toBeTruthy()
+  })
+
+  it('still renders the archive section when the setting could not be read', async () => {
+    vi.mocked(integrationsApi.getRetentionDisclosure).mockResolvedValue({
+      ...TR_DISCLOSURE,
+      archive: {
+        ...TR_DISCLOSURE.archive,
+        says: 'Whether this restaurant keeps its own copy of the mail could not be read.',
+        unavailableBecause: 'connection reset',
+      },
+    } as never)
+    renderAt('gmail_read')
+    await screen.findByTestId('archive-disclosure')
+    expect(screen.getByText(/could not be read/)).toBeTruthy()
+    expect(screen.getByText(/connection reset/)).toBeTruthy()
+  })
+
+  it('shows no archive section on a gateway that does not send one', async () => {
+    const { archive: _dropped, ...withoutArchive } = TR_DISCLOSURE
+    vi.mocked(integrationsApi.getRetentionDisclosure).mockResolvedValue(
+      withoutArchive as never,
+    )
+    renderAt('gmail_read')
+    await screen.findByTestId('retention-disclosure')
+    expect(screen.queryByTestId('archive-disclosure')).toBeNull()
   })
 })

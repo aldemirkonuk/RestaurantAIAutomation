@@ -130,6 +130,34 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   screen says all of this BEFORE the grant, from
   `GET /communications/retention/disclosure`, and disables Continue for a
   mirroring grant when it cannot read the figure
+- **A house can keep its own copy of the mail, and it is offered both ways**
+  (ADR 0118 D16). `own_cloud` exports every mirrored reply to the house's own
+  Google Drive through the `drive.file` grant it already holds — no scope
+  widened; `mudavym_archive` is a billed tier that is **recorded and never
+  armed** while OD-23 is open, refusing in words on every path; `none` is
+  today's behaviour, now stated rather than defaulted into. **No row at all**
+  means nobody was asked, which the disclosure reports differently from a
+  recorded `none`
+- **One file per conversation, verified by reading it back.** The layout is
+  `Mudavym mail archive/<restaurant> (<id>)/<vendor>/<YYYY-MM>/<conversation id>.json`
+  and the document carries the body, the headers and every attachment inline as
+  base64 with its own sha256. The export is confirmed by downloading the file and
+  re-hashing it: a 200 is Drive's claim, the matching hash is the evidence, and a
+  mismatch is recorded as a failure
+- **The retention sweep READS the export table before it deletes.** With an armed
+  archive, a reply past its window with no `status = 'exported'` row is HELD, not
+  deleted, counted in `house_mail_retention_sweeps.held_for_export`, and named in
+  words. A sweep that cannot consult the archive at all deletes nothing. A
+  REVOCATION is the one exception and says so: it exports what it can, records
+  each failure per conversation, and deletes anyway, because D15 is about a
+  person withdrawing consent
+- **Choosing an archive and running an export are sealed acts on the house**
+  (ADR 0107; seal kind `house_mail_export`, subject = the restaurant). The daily
+  03:10 job carries no seal and records NULL rather than borrowing the arming one
+- **A Turkish house is told the truth about Art. 82 either way.** With an armed
+  archive, the exported file is the copy it keeps for ten years; without one, the
+  consent screen says Mudavym holds a mirror it deletes on the window and the
+  duty is the restaurant's own. A GB or US house is never shown that sentence
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
 
@@ -588,6 +616,29 @@ chrome per dashboard.md §7.
   re-opened in the builder** — the row is a record, not a document the workshop
   can reload (ADR 0083).
 
+### The house's own archive (ADR 0118 D16, 2026-09-05)
+
+- **The archive is ONE PERSON's Drive.** `integration_oauth_connections` is
+  `UNIQUE (user_id, integration_id)`, so an armed `own_cloud` archive writes every
+  vendor reply the house holds — including replies mirrored under a second
+  person's mailbox grant — into one colleague's personal Drive, and it leaves with
+  them. Founder question 1 on ADR 0118.
+- **`google_drive`'s consent copy does not mention vendor mail.** Its
+  `dataHandling` describes what the app writes out as "inventory exports and menu
+  scans"; arming `own_cloud` writes correspondence. No scope is widened and the
+  copy is still narrower than the act. Founder question 2.
+- **A house that chose the paid archive still loses its mail on the window.**
+  `mudavym_archive` cannot arm while OD-23 is open, and an unarmed mode changes
+  nothing. Correct, and it will read as a bug to whoever chose it; the choice
+  screen says so at the time.
+- **A wiring mistake now STOPS retention rather than widening it.** With no
+  `HOUSE_MAIL_ARCHIVE` provider the sweep refuses and records why. The safe
+  direction, and it means mail can sit past its window with nothing but the sweep
+  row's `error` to say so.
+- **Nothing is billed and no billing table exists.** `billing_customers` and
+  `billing_webhook_events` are the only `billing_*` tables in the migrations;
+  there is no line-item or metered shape to write a GB-month into.
+
 ## 10. Maturity
 
 **hollow.**
@@ -802,3 +853,22 @@ lands, this route is open.
     `procurement_conversations`, so every house on this deployment derives
     `no_dispute_recorded`. The scenario harness (ADR 0093) is where a real
     dispute span can be produced without touching production.
+
+18. **Answer OD-23 for the archive, then arm B** — `mudavym_archive` is built
+   as far as it can be: the settings row, the refusal, the consent copy and the
+   run counts all exist, and
+   `house_mail_archive_settings_paid_tier_arms_only_with_a_price` refuses to arm
+   until `price_minor_units`, `price_currency`, `price_unit` and
+   `price_decision` are on the row. What is missing is the price and the ledger
+   to bill it through — there is no line-item or metered-usage table on this
+   deployment. Whichever pass answers OD-23 owns both.
+19. **A second cloud for `own_cloud`** — the mode is named for any cloud and
+   only Google Drive is wired. `DriveArchiveWriter` is the whole provider
+   surface (four calls: search folder, create folder, multipart upload, read
+   back); a OneDrive sibling is that interface again against Graph, and
+   `house_mail_exports.destination` is where a second value goes. Not started,
+   and nobody has asked.
+20. **Print the archive's owner on /connections** — the consent screen states
+   the archive's state, but the page that CHOOSES it must name whose Drive the
+   house's mail goes into (ADR 0118 founder question 1). The gateway already
+   returns `connectionId` on `GET /communications/archive`.
