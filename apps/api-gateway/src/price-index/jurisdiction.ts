@@ -318,13 +318,46 @@ const MARKET_SILENCE: Record<string, string> = {
     "with no prices behind it. The ÖTV excise schedule is a tax, not a price, and is " +
     "not shown here as one. This house's own invoices are the price register available " +
     "to it.",
+  // Reworded 2026-09-05 on the founder's Q24 call. The old sentence stopped at
+  // "none found", which was true of DRINK and false of the market as a whole:
+  // one UK source was found, it is real, and the founder chose to show it. A
+  // sentence that says nothing was found, beside a box that is showing
+  // something, teaches the reader to distrust both.
   GB:
-    "No market price is published in the United Kingdom. There is no price-posting " +
+    "No drinks price is published in the United Kingdom. There is no price-posting " +
     "regime — every drinks wholesaler measured prices per trade account — and the " +
     "national open-data catalogue holds no dataset of alcohol prices. HMRC's duty rates " +
-    "are a tax, not a price, and are not shown here as one. This house's own invoices " +
-    "are the price register available to it.",
+    "are a tax, not a price, and are not shown here as one. What was found is Defra's " +
+    "wholesale produce list for England and Wales, shown separately and labelled as " +
+    "produce: a market this house also buys from, never a stand-in for a wine price. " +
+    "For drink, this house's own invoices are the price register available to it.",
 };
+
+/**
+ * The sentence for a jurisdiction whose only fetchable source is one whose rows
+ * get their own labelled box — today the produce index (ADR 0117 Q24).
+ *
+ * It exists because the generic "has a fetchable posted list, but the scheduled
+ * fetch is off" would be wrong twice over for a UK house: Defra publishes no
+ * POSTED LIST (there is no posting regime in the UK at all), and the reader
+ * would be told a drinks source is waiting to be switched on when none exists.
+ * Arming is named exactly — an environment variable on the deployment — because
+ * a reader who cannot find the switch will assume the product is broken.
+ */
+export function unarmedDisplaySilenceFor(
+  jurisdiction: string,
+  category: string,
+  shortIssuer: string,
+  extent: string,
+  flag: string,
+): string {
+  const market = marketSilenceFor(jurisdiction);
+  const own =
+    `${category} (${shortIssuer}, ${extent}) is the one public list found for this house, ` +
+    `and it has not been read yet: the scheduled fetch is off until ${flag} is set on the ` +
+    `deployment. No line is drawn rather than showing a price nobody fetched.`;
+  return market ? `${market} ${own}` : own;
+}
 
 export function marketSilenceFor(jurisdiction: string): string | null {
   return MARKET_SILENCE[countryOf(jurisdiction)] ?? null;

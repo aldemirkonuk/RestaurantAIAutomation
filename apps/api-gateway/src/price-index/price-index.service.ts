@@ -26,6 +26,7 @@ import {
   jurisdictionCovers,
   marketSilenceFor,
   priceScopeOf,
+  unarmedDisplaySilenceFor,
 } from "./jurisdiction";
 import { noSourceSentence } from "./silence-notes";
 import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
@@ -33,7 +34,7 @@ import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 /** The columns the endpoint reads. Named explicitly so the read-column guard
  *  can verify every one exists in supabase/migrations/. */
 const SELECT_COLUMNS =
-  "id, source_key, source_class, state, region, issuer, issued_at, fetched_at, price_basis, product_name, brand, producer, package_desc, container_type, size_value, size_unit, price, currency, price_unit, pack, container_charge, is_promotion, source_status, attribution, source_url, source_ref";
+  "id, source_key, source_class, state, region, issuer, issued_at, issued_at_basis, fetched_at, price_basis, product_name, brand, producer, package_desc, container_type, size_value, size_unit, price, currency, price_unit, pack, container_charge, is_promotion, source_status, attribution, source_url, source_ref";
 
 export interface IndexLine {
   id: string;
@@ -43,6 +44,13 @@ export interface IndexLine {
   region: string | null;
   issuer: string;
   issuedAt: string;
+  /**
+   * Whose clock `issuedAt` came from: 'issuer_stated', 'fetch_date', or null
+   * for a row written before the column existed (ADR 0117 Q27). The panel
+   * prints "issued" only for the first; anything else is "read on", because a
+   * date we chose must never be rendered as one a publisher chose.
+   */
+  issuedAtBasis: string | null;
   fetchedAt: string;
   priceBasis: string;
   productName: string;
@@ -77,6 +85,13 @@ export interface StateIndexResult {
     withheld: { reason: string; measuredOn: string } | null;
     /** We read them and there is no price in them. Never the same fact. */
     silent: { kind: string; reason: string; measuredOn: string } | null;
+    /**
+     * What a reader is to be told this source IS, when its rows are drawn.
+     * Present only on a source whose rows get their own labelled box — today
+     * the produce index (ADR 0117 Q24). Absent means "draw it as a drinks
+     * posting", which is what every other source is.
+     */
+    display: { category: string; shortIssuer: string; extent: string } | null;
     rows: number;
   }>;
   /** Words, never an empty list mistaken for "nothing costs anything". */
@@ -91,6 +106,7 @@ export interface SourceStatus {
   cadence: string;
   withheld: { reason: string; measuredOn: string } | null;
   silent: { kind: string; reason: string; measuredOn: string } | null;
+  display: { category: string; shortIssuer: string; extent: string } | null;
   rows: number;
   lastFetchedAt: string | null;
   silentBecause: string | null;
@@ -292,6 +308,29 @@ export class PriceIndexService {
       return market ? `${market} ${named}` : named;
     }
 
+    // When every source that COULD be fetched here is one whose rows get their
+    // own labelled box (the produce index), the generic "posted list" sentence
+    // is wrong twice: the UK has no posting regime, and there is no drinks
+    // source waiting to be switched on. Say what was actually found, and name
+    // the switch. (2026-09-05, ADR 0117 Q24)
+    const fetchable = sourcesForState.filter(
+      (s) => !s.withheld && !s.silent && s.parse,
+    );
+    if (
+      !this.armed() &&
+      fetchable.length > 0 &&
+      fetchable.every((s) => s.display)
+    ) {
+      const d = fetchable[0].display!;
+      return unarmedDisplaySilenceFor(
+        state,
+        d.category,
+        d.shortIssuer,
+        d.extent,
+        PRICE_INDEX_FETCH_FLAG,
+      );
+    }
+
     if (!this.armed()) {
       return `${state} has a fetchable posted list, but the scheduled fetch is off (${PRICE_INDEX_FETCH_FLAG}). No index line has been recorded yet.`;
     }
@@ -308,6 +347,7 @@ export class PriceIndexService {
         cadence: s.cadence,
         withheld: s.withheld ?? null,
         silent: s.silent ?? null,
+        display: s.display ?? null,
         rows: await this.countFor(s.key, state),
       });
     }
@@ -346,6 +386,7 @@ export class PriceIndexService {
         cadence: s.cadence,
         withheld: s.withheld ?? null,
         silent: s.silent ?? null,
+        display: s.display ?? null,
         rows,
         lastFetchedAt,
         silentBecause: s.withheld
@@ -392,6 +433,10 @@ function mapLine(row: Record<string, unknown>): IndexLine {
     region: (row.region as string) ?? null,
     issuer: String(row.issuer),
     issuedAt: String(row.issued_at),
+    // NULL stays NULL. A row written before the basis column existed has no
+    // basis, and coercing it to 'issuer_stated' here would be this codebase's
+    // standing fault moved from the DDL into the mapper.
+    issuedAtBasis: (row.issued_at_basis as string) ?? null,
     fetchedAt: String(row.fetched_at),
     priceBasis: String(row.price_basis),
     productName: String(row.product_name),

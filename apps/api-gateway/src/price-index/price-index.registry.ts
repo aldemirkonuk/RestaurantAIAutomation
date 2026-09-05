@@ -84,6 +84,24 @@ export interface SourceEntry {
     reason: string;
     measuredOn: string;
   };
+  /**
+   * How a reader is to be told WHAT this source is, when its rows are drawn.
+   *
+   * Added 2026-09-05 on the founder's Q24 call — *"show it, labelled as
+   * produce, in its own box"*. A class-E row is not a drinks posting, and a
+   * heading that only said "Public index" would let a reader take a cabbage
+   * price for a wine one. The three strings are the publication's own words,
+   * not ours: its category, the short name it is known by, and the extent it
+   * states for itself. A source WITHOUT a `display` draws in the drinks box.
+   */
+  display?: {
+    /** "Wholesale produce" — what the numbers are OF. */
+    category: string;
+    /** "Defra" — the issuer as a reader knows it, not the legal name. */
+    shortIssuer: string;
+    /** "England and Wales" — the extent the publication claims. */
+    extent: string;
+  };
   /** Turn a fetched payload into a ParseRun. Absent when withheld or silent. */
   parse?: (rows: unknown[], fetchedAt: string) => ParseRun;
   /**
@@ -203,6 +221,22 @@ export const SOURCES: Record<string, SourceEntry> = {
     // Measured 2026-09-05: newest row 31/08/2026, five days old.
     maxAgeDays: 21,
     fixture: "defra-wholesale-fruit-veg-2026-09-01.sample.csv",
+    // SHOWN, on the founder's call of 2026-09-05 (ADR 0117 Q24): *"show it,
+    // labelled as produce, in its own box"* — an honest index of a market the
+    // house also buys from, never beside a wine quote, with the label saying
+    // what it is. `display` is what the panel titles that box with.
+    //
+    // Nothing here decides whether the fetch RUNS. Arming this source is one
+    // thing and one thing only: setting the environment variable
+    // `PRICE_INDEX_FETCH_ENABLED` to "true" or "1" on the deployment — a switch
+    // the founder flips, not a code change and not a toggle in the product.
+    // Until then the box shows the register's own sentence saying so, which is
+    // the truth about why it is empty.
+    display: {
+      category: "Wholesale produce",
+      shortIssuer: "Defra",
+      extent: "England and Wales",
+    },
     parse: (rows, fetchedAt) => parseDefra(rows as DefraRow[], fetchedAt),
   },
 

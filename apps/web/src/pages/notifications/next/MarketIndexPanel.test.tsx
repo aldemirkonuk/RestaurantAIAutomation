@@ -44,6 +44,7 @@ function line(over: Record<string, unknown> = {}) {
     sourceClass: 'retail_reference',
     issuer: 'Iowa Alcoholic Beverages Division',
     issuedAt: '2026-09-01',
+    issuedAtBasis: 'issuer_stated',
     priceBasis: 'retail_shelf',
     productName: 'Templeton Rye 4yr',
     brand: 'Templeton',
@@ -55,6 +56,8 @@ function line(over: Record<string, unknown> = {}) {
     sizeUnit: 'ml',
     packageDesc: null,
     sourceUrl: 'https://iowaabd.com',
+    sourceKey: 'iowa-liquor-products',
+    fetchedAt: '2026-09-05T06:00:00.000Z',
     ...over,
   };
 }
@@ -73,14 +76,14 @@ describe('MarketIndexPanel — the index line is its own labelled register', () 
     render(<MarketIndexPanel />);
 
     // The heading names the CLASS actually held, not a generic "index".
-    expect(screen.getByRole('heading', { name: /Control-state shelf price · US-IA/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Retail reference · US-IA/ })).toBeTruthy();
     expect(screen.getByText(/Templeton Rye 4yr/)).toBeTruthy();
     expect(screen.getByText('$34.99')).toBeTruthy();
     // Posted unit and basis, not a 750ml normalisation of them.
     expect(screen.getByText(/750ml · per bottle · to retail_shelf/)).toBeTruthy();
     expect(
       screen.getByText(
-        /Control-state shelf price · Iowa Alcoholic Beverages Division · issued Sep 1, 2026/,
+        /Retail reference · Iowa Alcoholic Beverages Division · issued Sep 1, 2026/,
       ),
     ).toBeTruthy();
   });
@@ -92,7 +95,7 @@ describe('MarketIndexPanel — the index line is its own labelled register', () 
       screen.getByText(/never compared with a price a vendor gave this house/),
     ).toBeTruthy();
     expect(
-      screen.getByText(/never placed beside, ranked against or averaged with a vendor quote/),
+      screen.getByText(/is ever placed beside, ranked against or averaged with a vendor quote/),
     ).toBeTruthy();
   });
 
@@ -104,6 +107,51 @@ describe('MarketIndexPanel — the index line is its own labelled register', () 
     };
     render(<MarketIndexPanel />);
     expect(screen.getByRole('heading', { name: /State posted list · US-CA/ })).toBeTruthy();
+  });
+
+  it('says "read on", never "issued", for a row dated by our own read', () => {
+    // ADR 0117 Q27. A merchant shop publishes no date, so the register files
+    // the day WE read the page under `issued_at` and labels it `fetch_date`.
+    // Printing that as "issued" would put our clock in the one place a reader
+    // looks for the publisher's.
+    //
+    // PROVED AGAINST THE PRE-FIX PANEL, 2026-09-05: a verbatim `git show HEAD:`
+    // copy was written to a same-depth probe (`__PrefixProbePanel.tsx`), this
+    // spec repointed at it, run, and both files deleted. HEAD failed this case
+    // and the two beside it, rendering a Berry Bros row as
+    // "Control-state shelf price · GB-ENG" with "issued Sep 5, 2026" — a class
+    // label that is false for a merchant and our own read date presented as the
+    // shop's publication.
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'GB-ENG',
+      lines: [
+        line({
+          issuer: 'Berry Bros. & Rudd',
+          issuedAt: '2026-09-05',
+          issuedAtBasis: 'fetch_date',
+          currency: 'GBP',
+        }),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/Retail reference · Berry Bros\. & Rudd · read on Sep 5, 2026/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/issued Sep 5, 2026/)).toBeNull();
+  });
+
+  it('a row written before the basis column existed gets the weaker wording', () => {
+    // NULL basis means nobody recorded whose date it is. An unknown is never
+    // upgraded by rendering, so it reads "read on" rather than "issued".
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-IA',
+      lines: [line({ issuedAtBasis: null })],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/· read on Sep 1, 2026/)).toBeTruthy();
+    expect(screen.queryByText(/· issued Sep 1, 2026/)).toBeNull();
   });
 
   it('a date-only issue date is not shifted a day by the browser’s timezone', () => {
@@ -265,5 +313,164 @@ describe('MarketIndexPanel — loading and refusal are not emptiness', () => {
     expect(screen.getByRole('status').textContent).toMatch(
       /could not be read \(socket hang up\). This box is unknown, not empty/,
     );
+  });
+});
+
+/**
+ * Q24, 2026-09-05. The founder, shown that the only public UK source found is
+ * Defra's wholesale produce list: *"Show it, labelled as produce, in its own
+ * box"* — an honest index of a market the house also buys from, never beside a
+ * wine quote, with the label saying what it is.
+ *
+ * PROVED AGAINST THE PRE-FIX COMPONENT, 2026-09-05. A probe copy of HEAD's
+ * `MarketIndexPanel.tsx` (renamed only) was rendered with these exact rows and
+ * then deleted; the run is in ADR 0117's review trail. It measured:
+ *
+ *   ulCount            1        both rows in ONE list
+ *   headings           ["Control-state shelf price · GB-ENG"]
+ *   produceLabel       absent   the word "produce" appeared nowhere
+ *   list text          "Templeton Rye 4yr · Templeton $34.99 750ml · per bottle
+ *                       … cabbage, hearts £0.62 — · per kg …"
+ *
+ * So the pre-fix panel put a GBP 0.62 cabbage directly beneath a $34.99 bottle
+ * of rye, in one list, under a heading announcing the whole box as a
+ * CONTROL-STATE SHELF PRICE — which the produce rows are not. That is what
+ * these assertions stop.
+ */
+const PRODUCE_SOURCE = {
+  key: 'defra-wholesale-fruit-veg',
+  sourceClass: 'public_index',
+  issuer: 'Department for Environment, Food & Rural Affairs',
+  cadence: 'fortnightly (a new edition roughly every second Monday)',
+  withheld: null,
+  display: {
+    category: 'Wholesale produce',
+    shortIssuer: 'Defra',
+    extent: 'England and Wales',
+  },
+  rows: 55,
+};
+
+function produceLine(over: Record<string, unknown> = {}) {
+  return line({
+    id: 'p1',
+    sourceKey: 'defra-wholesale-fruit-veg',
+    sourceClass: 'public_index',
+    issuer: 'Department for Environment, Food & Rural Affairs',
+    issuedAt: '2026-08-31',
+    issuedAtBasis: 'issuer_stated',
+    priceBasis: 'average wholesale market price',
+    productName: 'cabbage, hearts',
+    brand: null,
+    price: 0.62,
+    currency: 'GBP',
+    priceUnit: 'per kg',
+    sizeValue: null,
+    sizeUnit: null,
+    sourceUrl: 'https://www.gov.uk/government/statistical-data-sets/wholesale-fruit-and-vegetable-prices-weekly-average',
+    fetchedAt: '2026-09-05T06:00:00.000Z',
+    ...over,
+  });
+}
+
+describe('MarketIndexPanel — the produce index draws in its own box (Q24)', () => {
+  beforeEach(() => {
+    mockIndex.current = { ...READY };
+  });
+
+  it('titles the box with the category, the issuer, the extent and OUR read date', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'GB-ENG',
+      lines: [produceLine()],
+      sources: [PRODUCE_SOURCE],
+    };
+    render(<MarketIndexPanel />);
+    // "read on", never "issued": the date is a claim about us, and it is the
+    // one date this box can always stand behind.
+    expect(
+      screen.getByRole('heading', {
+        name: /Wholesale produce · Defra · England and Wales · read on Sep 5, 2026/,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('says in words that it is not a drinks price', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'GB-ENG',
+      lines: [produceLine()],
+      sources: [PRODUCE_SOURCE],
+    };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/not a drinks price and is never compared with one/i),
+    ).toBeTruthy();
+  });
+
+  it('keeps a produce row OUT of the drinks list, in its own section', () => {
+    // The pre-fix panel put both rows in one <ul> under one heading. Here the
+    // rye is in the drinks list and the cabbage is not.
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'GB-ENG',
+      lines: [line(), produceLine()],
+      sources: [PRODUCE_SOURCE],
+    };
+    const { container } = render(<MarketIndexPanel />);
+    const lists = container.querySelectorAll('ul');
+    expect(lists.length).toBe(2);
+    const drinksList = lists[0].textContent ?? '';
+    const produceList = lists[1].textContent ?? '';
+    expect(drinksList).toContain('Templeton Rye 4yr');
+    expect(drinksList).not.toContain('cabbage');
+    expect(produceList).toContain('cabbage, hearts');
+    expect(produceList).not.toContain('Templeton Rye 4yr');
+  });
+
+  it('does not announce the whole register as the produce class', () => {
+    // The main heading names the DRINKS class held. With only produce rows it
+    // must not read "Public index · GB-ENG" as though a drinks list existed.
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'GB-ENG',
+      lines: [produceLine()],
+      sources: [PRODUCE_SOURCE],
+    };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByRole('heading', { name: /Posted price index · GB-ENG/ }),
+    ).toBeTruthy();
+  });
+
+  it('prints the endpoint sentence naming the produce list and the switch when nothing is fetched yet', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'GB-ENG',
+      lines: [],
+      sources: [PRODUCE_SOURCE],
+      silence:
+        'No drinks price is published in the United Kingdom. What was found is Defra\'s wholesale produce list for England and Wales, shown separately and labelled as produce. Wholesale produce (Defra, England and Wales) is the one public list found for this house, and it has not been read yet: the scheduled fetch is off until PRICE_INDEX_FETCH_ENABLED is set on the deployment.',
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/labelled as produce/)).toBeTruthy();
+    expect(
+      screen.getByText(/PRICE_INDEX_FETCH_ENABLED is set on the deployment/),
+    ).toBeTruthy();
+    // and no produce box, because there is nothing in it
+    expect(screen.queryByRole('heading', { name: /Wholesale produce/ })).toBeNull();
+  });
+
+  it('draws a drinks posting exactly as before when no source is labelled', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-IA',
+      lines: [line()],
+      sources: [{ ...PRODUCE_SOURCE, key: 'iowa-liquor-products', display: null }],
+    };
+    const { container } = render(<MarketIndexPanel />);
+    expect(container.querySelectorAll('ul').length).toBe(1);
+    expect(screen.queryByRole('heading', { name: /Wholesale produce/ })).toBeNull();
+    expect(screen.getByText(/Templeton Rye 4yr/)).toBeTruthy();
   });
 });

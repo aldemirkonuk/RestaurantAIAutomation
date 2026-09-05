@@ -140,16 +140,39 @@ describe("forState — the United Kingdom", () => {
     expect(res.sources.map((s) => s.key)).not.toContain(
       "defra-wholesale-fruit-veg",
     );
+    // Reworded 2026-09-05 (Q24): "no DRINKS price", because one UK source was
+    // found and is now shown — saying nothing was found beside a box that is
+    // showing something teaches the reader to distrust both.
     expect(res.silence).toContain(
-      "No market price is published in the United Kingdom",
+      "No drinks price is published in the United Kingdom",
     );
+    expect(res.silence).toContain("labelled as produce");
   });
 
-  it("says the fetch is off for England — Defra is fetchable, so that is the true reason", async () => {
+  it("names the produce list and the switch, not a 'posted list', when the fetch is off", async () => {
+    // Q24, 2026-09-05. The generic sentence said "England has a fetchable
+    // POSTED LIST" — wrong twice for a UK house: there is no posting regime in
+    // the UK at all, and the source waiting is produce, not drink.
     delete process.env.PRICE_INDEX_FETCH_ENABLED; // off, the default
     const res = await new PriceIndexService(emptyRegister()).forState("England");
+    expect(res.silence).toContain("Wholesale produce (Defra, England and Wales)");
     expect(res.silence).toContain("scheduled fetch is off");
-    expect(res.silence).toContain("PRICE_INDEX_FETCH_ENABLED");
+    expect(res.silence).toContain("PRICE_INDEX_FETCH_ENABLED is set on the deployment");
+    expect(res.silence).not.toContain("posted list");
+    // and it still says the drinks half of the truth
+    expect(res.silence).toContain("No drinks price is published");
+  });
+
+  it("titles the produce source for the panel, and leaves drinks sources untitled", async () => {
+    const res = await new PriceIndexService(emptyRegister()).forState("England");
+    const defra = res.sources.find((s) => s.key === "defra-wholesale-fruit-veg")!;
+    expect(defra.display).toEqual({
+      category: "Wholesale produce",
+      shortIssuer: "Defra",
+      extent: "England and Wales",
+    });
+    const hmrc = res.sources.find((s) => s.key === "hmrc-alcohol-duty-rates")!;
+    expect(hmrc.display).toBeNull();
   });
 
   it("keeps the discontinued ONS series visible with the reason it is dead", async () => {

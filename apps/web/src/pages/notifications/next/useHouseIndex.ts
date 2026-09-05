@@ -40,9 +40,18 @@ import { num } from './nt-format';
 /** One posted line, exactly as the register holds it. */
 export interface HouseIndexLine {
   id: string;
+  /** Which registry source wrote this row — the key the box title is looked up by. */
+  sourceKey: string;
   sourceClass: string;
   issuer: string;
   issuedAt: string | null;
+  /**
+   * Whose clock `issuedAt` came from (ADR 0117 Q27). 'issuer_stated' is a date
+   * the publisher printed; 'fetch_date' is the day we read the page because
+   * nobody published one; null is a row written before the register recorded a
+   * basis. Only the first may be rendered as "issued".
+   */
+  issuedAtBasis: string | null;
   priceBasis: string | null;
   productName: string;
   brand: string | null;
@@ -54,6 +63,11 @@ export interface HouseIndexLine {
   sizeUnit: string | null;
   packageDesc: string | null;
   sourceUrl: string | null;
+  /**
+   * When WE read it. The produce box is titled with this rather than with the
+   * issuer's date, because "read on" is a claim about us and is always true.
+   */
+  fetchedAt: string | null;
 }
 
 /** A publisher for this jurisdiction, and why it is quiet if it is. */
@@ -63,6 +77,12 @@ export interface HouseIndexSource {
   issuer: string;
   cadence: string | null;
   withheld: { reason: string; measuredOn: string } | null;
+  /**
+   * Present only on a source whose rows get their own labelled box — today the
+   * produce index (ADR 0117 Q24, the founder's *"show it, labelled as produce,
+   * in its own box"*). Absent means the rows draw as drinks postings.
+   */
+  display: { category: string; shortIssuer: string; extent: string } | null;
   rows: number | null;
 }
 
@@ -99,9 +119,11 @@ function str(v: unknown): string | null {
 function lineOf(raw: Record<string, unknown>): HouseIndexLine {
   return {
     id: String(raw.id ?? ''),
+    sourceKey: str(raw.sourceKey) ?? '',
     sourceClass: str(raw.sourceClass) ?? 'unstated',
     issuer: str(raw.issuer) ?? 'Issuer not named on the line',
     issuedAt: str(raw.issuedAt),
+    issuedAtBasis: str(raw.issuedAtBasis),
     priceBasis: str(raw.priceBasis),
     productName: str(raw.productName) ?? 'Unnamed product',
     brand: str(raw.brand),
@@ -113,16 +135,25 @@ function lineOf(raw: Record<string, unknown>): HouseIndexLine {
     sizeUnit: str(raw.sizeUnit),
     packageDesc: str(raw.packageDesc),
     sourceUrl: str(raw.sourceUrl),
+    fetchedAt: str(raw.fetchedAt),
   };
 }
 
 function sourceOf(raw: Record<string, unknown>): HouseIndexSource {
   const w = (raw.withheld ?? null) as Record<string, unknown> | null;
+  const d = (raw.display ?? null) as Record<string, unknown> | null;
   return {
     key: String(raw.key ?? ''),
     sourceClass: str(raw.sourceClass) ?? 'unstated',
     issuer: str(raw.issuer) ?? 'Issuer not named',
     cadence: str(raw.cadence),
+    display: d
+      ? {
+          category: str(d.category) ?? 'Public index',
+          shortIssuer: str(d.shortIssuer) ?? 'Issuer not named',
+          extent: str(d.extent) ?? '',
+        }
+      : null,
     withheld: w
       ? {
           reason: str(w.reason) ?? 'no reason recorded',

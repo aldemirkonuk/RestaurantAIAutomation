@@ -28,21 +28,56 @@
  *
  * In every one of them the box prints WORDS from the endpoint. It never prints
  * an empty list and never prints a zero.
+ *
+ * TWO BOXES, NOT ONE (added 2026-09-05 on the founder's Q24 call:
+ * *"show it, labelled as produce, in its own box"*). The register now holds a
+ * kind of row that is not a drinks posting at all — Defra's wholesale fruit and
+ * vegetable prices, the only public UK source found that carries an issuer, a
+ * date, a unit and a currency. It is an honest index of a market the house also
+ * buys from, and it is NOT a wine price. So it draws in its own titled section,
+ * and the title says what it is before the reader reaches a number:
+ *
+ *     Wholesale produce · Defra · England and Wales · read on 5 Sep 2026
+ *
+ * The two sections never sit side by side, and neither sits beside the
+ * vendor-quote box. A source earns its own box by carrying `display` from the
+ * registry; everything without one draws as a drinks posting, which is what
+ * every state posted list and control-state shelf price is.
  */
 
-import { Landmark, RotateCw, TriangleAlert } from 'lucide-react';
+import { Landmark, RotateCw, Sprout, TriangleAlert } from 'lucide-react';
 import { EM, MONO, SANS, SERIF } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
 
 /** The class, in the words a reader knows. An unmapped class prints its key. */
 const CLASS_LABEL: Record<string, string> = {
   posted_wholesale_list: 'State posted list',
-  retail_reference: 'Control-state shelf price',
+  // Was 'Control-state shelf price' until 2026-09-05, when class D stopped
+  // being only Iowa and Oregon: a merchant shop's shelf price is the same class
+  // (ADR 0117), and calling a Berry Bros line a control-state price would be
+  // false on the face of it. The issuer's own name is printed beside this, so
+  // the reader still sees which kind of retail it is.
+  retail_reference: 'Retail reference',
   public_index: 'Public index',
 };
 
 function classLabel(sourceClass: string): string {
   return CLASS_LABEL[sourceClass] ?? sourceClass;
+}
+
+/**
+ * How the line says when its price was true.
+ *
+ * "issued" is a claim about the PUBLISHER: it says someone stamped this date on
+ * this price. Only `issuer_stated` earns it. A `fetch_date` row carries the day
+ * WE read the shop's page because the shop published no date at all, and
+ * printing that as "issued" would manufacture provenance in the one place a
+ * reader looks for it. A null basis is a row written before the register
+ * recorded one, so it gets the weaker wording too — an unknown is never
+ * upgraded by rendering.
+ */
+function dateLabel(basis: string | null): string {
+  return basis === 'issuer_stated' ? 'issued' : 'read on';
 }
 
 function money(value: number | null, currency: string): string {
@@ -76,11 +111,20 @@ function dayOf(iso: string | null): string {
   return t.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function Line({ item }: { item: HouseIndexLine }) {
+function Line({ item, labelled = false }: { item: HouseIndexLine; labelled?: boolean }) {
   const size =
     item.sizeValue !== null
       ? `${item.sizeValue}${item.sizeUnit ?? ''}`
       : (item.packageDesc ?? EM);
+  // A container size is a fact about a BOTTLE. A price per kilogram has no
+  // container, so the register stores null — and printing an em dash for it
+  // would say "we do not know this bottle's size" about a row that has no
+  // bottle. On a labelled source the unknown is dropped instead of shown.
+  const showSize = !labelled || size !== EM;
+  // "to X" names the TRADE LEVEL a posting is filed for ("to Retailers"). A
+  // produce row's basis is the kind of number it is, not who it is for, so the
+  // preposition would assert a trade relationship the issuer never stated.
+  const basis = item.priceBasis ?? EM;
   return (
     <li className="py-2" style={{ borderTop: '1px solid var(--paper-2)' }}>
       <div className="flex items-baseline justify-between gap-2">
@@ -99,13 +143,67 @@ function Line({ item }: { item: HouseIndexLine }) {
         </span>
       </div>
       <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
-        {size} · {item.priceUnit ?? EM} · to {item.priceBasis ?? EM}
+        {showSize ? `${size} · ` : ''}
+        {item.priceUnit ?? EM} · {labelled ? basis : `to ${basis}`}
         {item.region ? ` · ${item.region}` : ''}
       </p>
       <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
-        {classLabel(item.sourceClass)} · {item.issuer} · issued {dayOf(item.issuedAt)}
+        {classLabel(item.sourceClass)} · {item.issuer} · {dateLabel(item.issuedAtBasis)}{' '}
+        {dayOf(item.issuedAt)}
       </p>
     </li>
+  );
+}
+
+/**
+ * A run of rows from ONE source that carries its own label — the produce index
+ * today. The title is the source's own words (category, short issuer, extent)
+ * plus OUR read date, never the issuer's: "read on" is a claim about us and is
+ * the one date this box can always stand behind.
+ */
+function LabelledSection({
+  source,
+  lines,
+}: {
+  source: HouseIndexSource;
+  lines: HouseIndexLine[];
+}) {
+  const d = source.display!;
+  const readOn = lines.map((l) => l.fetchedAt).find(Boolean) ?? null;
+  return (
+    <section
+      aria-labelledby={`nt-index-${source.key}`}
+      className="mt-3 rounded-lg p-3"
+      // Its own ground again, one step in from the drinks box, so the eye reads
+      // it as a neighbour and never as a continuation of the list above.
+      style={{ border: '1px solid var(--paper-2)', background: 'var(--paper-1)' }}
+    >
+      <h3
+        id={`nt-index-${source.key}`}
+        className="flex items-start gap-1.5 text-[11px] uppercase tracking-[0.14em]"
+        style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
+      >
+        {/* `shrink-0` and a top-aligned box: the title wraps at 1440 and an
+            inline icon would otherwise be carried onto the second line, where
+            it reads as a bullet against "England and Wales". */}
+        <Sprout size={12} strokeWidth={1.75} aria-hidden className="mt-[2px] shrink-0" />
+        <span>
+          {d.category} · {d.shortIssuer} · {d.extent} · read on {dayOf(readOn)}
+        </span>
+      </h3>
+      <p
+        className="mt-1 text-[11.5px]"
+        style={{ fontFamily: SERIF, fontStyle: 'italic', color: 'var(--ink-2)' }}
+      >
+        A market this house also buys from. It is not a drinks price and is never
+        compared with one.
+      </p>
+      <ul className="mt-1.5">
+        {lines.map((l) => (
+          <Line key={l.id} item={l} labelled />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -123,9 +221,22 @@ function Withheld({ source }: { source: HouseIndexSource }) {
 export function MarketIndexPanel() {
   const m = useHouseIndex();
   const withheld = m.sources.filter((s) => s.withheld);
+
+  // A source with `display` gets its own titled section (Q24). Everything else
+  // is a drinks posting and stays in the main list. Splitting on the SOURCE
+  // rather than on the class keeps the rule where the evidence is: the registry
+  // decides what a source is, the panel only draws it.
+  const labelled = m.sources.filter((s) => s.display);
+  const labelledKeys = new Set(labelled.map((s) => s.key));
+  const drinkLines = m.lines.filter((l) => !labelledKeys.has(l.sourceKey));
+  const labelledSections = labelled
+    .map((s) => ({ source: s, lines: m.lines.filter((l) => l.sourceKey === s.key) }))
+    .filter((g) => g.lines.length > 0);
+
   // The heading names the class actually held, so a control-state shelf line is
   // never announced as a state posted list.
-  const heading = m.lines.length > 0 ? classLabel(m.lines[0].sourceClass) : 'Posted price index';
+  const heading =
+    drinkLines.length > 0 ? classLabel(drinkLines[0].sourceClass) : 'Posted price index';
 
   return (
     <section
@@ -175,7 +286,7 @@ export function MarketIndexPanel() {
         </p>
       )}
 
-      {m.state === 'ready' && m.lines.length > 0 && (
+      {m.state === 'ready' && drinkLines.length > 0 && (
         <>
           <p
             className="mt-1.5 text-[12px]"
@@ -185,12 +296,19 @@ export function MarketIndexPanel() {
             never compared with a price a vendor gave this house.
           </p>
           <ul className="mt-1.5">
-            {m.lines.map((l) => (
+            {drinkLines.map((l) => (
               <Line key={l.id} item={l} />
             ))}
           </ul>
         </>
       )}
+
+      {/* Produce and anything else the registry labels: its own titled box,
+          below the drinks list, never beside it. (Q24, 2026-09-05) */}
+      {m.state === 'ready' &&
+        labelledSections.map((g) => (
+          <LabelledSection key={g.source.key} source={g.source} lines={g.lines} />
+        ))}
 
       {m.state === 'ready' && m.lines.length === 0 && (
         <p
@@ -209,10 +327,12 @@ export function MarketIndexPanel() {
         className="mt-2.5 pt-2 text-[10.5px]"
         style={{ fontFamily: SANS, color: 'var(--ink-4)', borderTop: '1px solid var(--paper-2)' }}
       >
-        A state-published or control-state list, kept as its own register (ADR 0117). It is shown
-        as posted — its own unit, basis and pack, never reduced to a bottle — and it is never
-        placed beside, ranked against or averaged with a vendor quote. This box reads a public
-        list; it never places an order.
+        A state-published or control-state list, kept as its own register (ADR 0117), and — where
+        one exists — a public index of another market the house buys from, in its own labelled
+        box. Every line is shown as published: its own unit, basis and pack, never reduced to a
+        bottle. None of them is ever placed beside, ranked against or averaged with a vendor
+        quote, and a produce line is never read as a drinks price. This box reads public lists; it
+        never places an order.
       </p>
     </section>
   );
