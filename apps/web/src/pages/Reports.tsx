@@ -389,6 +389,11 @@ export function Reports() {
       "red" | "white" | "sparkling" | "rose" | "dessert"
     >();
     mapApiWinesToUiWines(orderWines).forEach((wine) => {
+      // A wine whose type is unknown is LEFT OUT rather than bucketed. These
+      // per-type spend totals are what the charts draw, and putting an
+      // unclassified bottle in an arbitrary bucket is how "26 of 27 are Red"
+      // became a chart nobody questioned (Antalya night).
+      if (wine.type === "unknown") return;
       map.set(wine.id, wine.type);
     });
     return map;
@@ -510,13 +515,15 @@ export function Reports() {
    * Is a POS connected, and is it sending? Read so the empty-state banner can
    * name the RIGHT gap rather than always blaming the connection (defect 9).
    * A failed status read is its own case — never a guess in either direction.
+   *
+   * `enabled` + the id in the key are load-bearing: AuthContext writes
+   * `activeRestaurantId` to localStorage only after /auth/me returns, so an
+   * ungated query throws "No restaurant ID available" on mount and — with
+   * `retry: false` and no id to invalidate on — stays failed. The banner would
+   * then say "we could not check whether your POS is connected" forever, which
+   * is the honest branch reporting a dishonest thing. Measured on the
+   * /inventory chip and fixed there too.
    */
-  // `enabled` + the id in the key: AuthContext writes `activeRestaurantId` to
-  // localStorage only after /auth/me returns, so an ungated query throws "No
-  // restaurant ID available" on mount and — with `retry: false` and no id to
-  // invalidate on — stays failed. The banner would then say "we could not check
-  // whether your POS is connected" forever, which is the honest branch reporting
-  // a dishonest thing. Measured on the /inventory chip and fixed there too.
   const activeRestaurantIdForPos = getActiveRestaurantId();
   const posStatusQuery = useQuery({
     queryKey: ["pos-hub", "status", "reports-banner", activeRestaurantIdForPos],
