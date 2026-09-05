@@ -26,8 +26,31 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { cleanup, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+
+/**
+ * ADR 0121 — the text-consent row reads whether this house has a sender. The
+ * fixture is the deployment's MEASURED state: no sender, no consent, and a
+ * transport that is not built.
+ */
+vi.mock('../../../services/api/textSenders', () => ({
+  getTextSenders: () =>
+    Promise.resolve({
+      senders: { whatsapp: null, sms: null },
+      readable: true,
+      reason: null,
+      transport: {
+        built: false,
+        words: 'No provider credential for a per-house sender exists on this deployment.',
+      },
+      myConsent: { consent: null, readable: true, reason: null },
+      crewConsents: null,
+    }),
+  giveTextConsent: vi.fn(() => Promise.resolve({ consent: null, words: 'Recorded.' })),
+  withdrawTextConsent: vi.fn(() => Promise.resolve({ withdrawn: 0, words: 'Nothing to withdraw.' })),
+}));
 
 vi.mock('./useProfileNextData', () => ({
   useProfileNextData: () => mockData.current,
@@ -296,10 +319,15 @@ function base(over: Record<string, unknown> = {}) {
 }
 
 function draw() {
+  // A fresh client per render: the text-consent row is a real query and a
+  // shared cache would leak one test's answer into the next.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
-    <MemoryRouter>
-      <ProfileNext />
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <ProfileNext />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

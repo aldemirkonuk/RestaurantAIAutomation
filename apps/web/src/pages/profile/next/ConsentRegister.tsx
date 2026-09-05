@@ -43,9 +43,15 @@
  */
 
 import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldQuestion } from 'lucide-react';
 import { EM, MONO, SANS, fmtDay } from './pf-format';
 import { Btn, ConnectionRow, Note, Register, RetryLink, StatusLine } from './pf-ui';
+import {
+  getTextSenders,
+  giveTextConsent,
+  withdrawTextConsent,
+} from '../../../services/api/textSenders';
 import type { McpServerVM, ProfileNextData } from './useProfileNextData';
 
 /** How many people, in words a row can carry. */
@@ -54,6 +60,191 @@ function others(liveCount: number, mine: boolean): string {
   if (rest === 0) return 'Nobody else here has agreed.';
   if (rest === 1) return 'One other person here has agreed.';
   return `${rest} other people here have agreed.`;
+}
+
+/**
+ * "The house may text me at this number" (ADR 0121; ADR 0114 person-consents).
+ *
+ * WHY IT LIVES IN THIS REGISTER RATHER THAN A NEW ONE. Retire-to-write applies
+ * to surfaces as well as documents, and ADR 0114's whole justification was a
+ * surface count that FELL. This register already answers exactly one question —
+ * what has this person agreed to, which nobody else may agree to for them — and
+ * a phone number the house may reach you at is that question with a different
+ * object. A seventh register would have raised the count to state a rule this
+ * one already states.
+ *
+ * WHAT IT REFUSES TO DO
+ * --------------------
+ *   - It never pre-fills the number from the profile. A person's account phone
+ *     and the number they are willing to be texted at are different facts, and
+ *     pre-filling one as the other collects a consent for an address they never
+ *     chose.
+ *   - It never defaults to agreed. An unread register says so; it does not
+ *     print "you have not agreed" about a question that was never asked.
+ *   - Withdrawing is a row, not a delete: a revocation has to be recorded and
+ *     honoured, and a deleted row records nothing.
+ *   - It never claims the text will arrive. The house may have no sender at
+ *     all, and the row says which of the two is missing.
+ */
+function TextConsentRow() {
+  const qc = useQueryClient();
+  const [phone, setPhone] = useState('');
+  const [channel, setChannel] = useState<'whatsapp' | 'sms' | 'any'>('any');
+  const [msg, setMsg] = useState<{ tone: 'error' | 'done'; text: string } | null>(null);
+
+  const q = useQuery({
+    queryKey: ['profile-text-consent'],
+    queryFn: getTextSenders,
+    staleTime: 120_000,
+  });
+
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ['profile-text-consent'] });
+  };
+
+  const give = useMutation({
+    mutationFn: () => giveTextConsent({ phone: phone.trim(), channel }),
+    onSuccess: (r) => {
+      setMsg({ tone: 'done', text: r.words });
+      setPhone('');
+      done();
+    },
+    onError: (e) =>
+      setMsg({ tone: 'error', text: `Nothing changed — ${String((e as Error).message)}` }),
+  });
+
+  const take = useMutation({
+    mutationFn: withdrawTextConsent,
+    onSuccess: (r) => {
+      setMsg({ tone: 'done', text: r.words });
+      done();
+    },
+    onError: (e) =>
+      setMsg({ tone: 'error', text: `Nothing changed — ${String((e as Error).message)}` }),
+  });
+
+  if (q.isLoading) {
+    return <Note>Reading whether you have agreed to be texted…</Note>;
+  }
+  if (q.isError || !q.data) {
+    return (
+      <StatusLine tone="error">
+        Whether you have agreed to be texted could not be read. This is an unread
+        row, not a "no" — nothing is being claimed about what you agreed to.{' '}
+        <RetryLink onClick={() => void q.refetch()} />
+      </StatusLine>
+    );
+  }
+
+  const vm = q.data;
+  const mine = vm.myConsent.consent;
+  const connected = [vm.senders.whatsapp, vm.senders.sms].filter(
+    (s) => s && s.state === 'connected',
+  ).length;
+
+  return (
+    <ConnectionRow
+      title="The house may text me at this number"
+      subtitle={
+        mine ? (
+          <span style={{ fontFamily: MONO, fontSize: 11.5 }}>
+            {mine.phone} · {mine.channel === 'any' ? 'either channel' : mine.channel} ·
+            agreed {fmtDay(mine.consentedAt)}
+          </span>
+        ) : (
+          <span style={{ fontFamily: SANS, fontSize: 11.5 }}>
+            You have not agreed. Nobody has agreed on your behalf, and nobody can.
+          </span>
+        )
+      }
+      state={mine ? 'connected' : 'available'}
+      reason={
+        mine
+          ? null
+          : connected === 0
+            ? 'This house has no text sender, so agreeing changes nothing today. It is recorded for the day it does.'
+            : null
+      }
+      controls={
+        mine ? (
+          <Btn
+            onClick={() => take.mutate()}
+            disabled={take.isPending}
+            aria-label="Withdraw your agreement to be texted"
+          >
+            {take.isPending ? 'Withdrawing…' : 'Withdraw'}
+          </Btn>
+        ) : null
+      }
+      detail={
+        <>
+      {!vm.myConsent.readable && (
+        <StatusLine tone="error">
+          Your own agreement could not be read ({vm.myConsent.reason}). Nothing
+          below is being claimed about it.
+        </StatusLine>
+      )}
+
+      {!mine && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+          <input
+            aria-label="The number this house may text you at"
+            placeholder="The number you want to be reached at"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            style={{
+              fontFamily: MONO,
+              fontSize: 12,
+              padding: '5px 7px',
+              minWidth: 220,
+              flex: '1 1 220px',
+            }}
+          />
+          <select
+            aria-label="Which channel"
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'sms' | 'any')}
+            style={{ fontFamily: SANS, fontSize: 12, padding: '5px 7px' }}
+          >
+            <option value="any">Either</option>
+            <option value="whatsapp">WhatsApp only</option>
+            <option value="sms">SMS only</option>
+          </select>
+          <Btn
+            onClick={() => give.mutate()}
+            disabled={give.isPending || phone.trim().length < 5}
+          >
+            {give.isPending ? 'Recording…' : 'I agree'}
+          </Btn>
+        </div>
+      )}
+
+      <Note>
+        {connected === 0 ? (
+          <>
+            This house has <em>no text sender of its own</em>, so agreeing
+            changes nothing today — it is recorded so that it means something the
+            day the house has one. Nothing reaches you from a number shared with
+            other restaurants.
+          </>
+        ) : (
+          <>
+            This house has {connected === 1 ? 'a sender' : 'two senders'} of its
+            own. {vm.transport.built ? '' : vm.transport.words}
+          </>
+        )}{' '}
+        Withdrawing is yours alone and takes effect on the next send; the
+        withdrawal itself is kept on the record, because a revocation that leaves
+        no trace cannot be honoured.
+      </Note>
+
+      {msg && <StatusLine tone={msg.tone}>{msg.text}</StatusLine>}
+        </>
+      }
+      detailOpen
+      detailLabel="What agreeing means"
+    />
+  );
 }
 
 export function ConsentRegister({ data }: { data: ProfileNextData }) {
@@ -89,13 +280,16 @@ export function ConsentRegister({ data }: { data: ProfileNextData }) {
       title="What may act as you"
       lead={
         <Note>
-          The house declares which model-context servers it attaches; you decide,
-          one by one, whether any of them may act in <em>your</em> name. Nothing
-          here is a manager&rsquo;s to give or take away — withdrawing touches
-          neither the house&rsquo;s attachment nor anybody else&rsquo;s agreement.
+          The house declares what it attaches — a model-context server, a text
+          sender — and you decide, one by one, whether any of it may act in{' '}
+          <em>your</em> name or reach <em>your</em> phone. Nothing here is a
+          manager&rsquo;s to give or take away — withdrawing touches neither the
+          house&rsquo;s attachment nor anybody else&rsquo;s agreement.
         </Note>
       }
     >
+      <TextConsentRow />
+
       {data.mcpState === 'loading' && <Note>Reading what the house has declared…</Note>}
 
       {data.mcpState === 'error' && (

@@ -40,6 +40,26 @@ vi.mock('../../../services/api/team', () => ({
   getTeamNotes: () => Promise.resolve(api.notes),
   createTeamNote: api.createTeamNote,
   openTeamNote: vi.fn(() => Promise.resolve({ recorded: true, alreadyOpen: false })),
+  /**
+   * ADR 0121 — the crew-text leg reads whether this house has a sender. The
+   * fixture is the MEASURED state of every house on this deployment: none, and
+   * a transport that is not built. A stub reporting a connected sender would
+   * make the composer's disabled control look like a bug in the test rather
+   * than the product's true answer.
+   */
+  getTextSenders: () =>
+    Promise.resolve({
+      senders: { whatsapp: null, sms: null },
+      readable: true,
+      reason: null,
+      transport: {
+        built: false,
+        words:
+          'No provider credential for a per-house sender exists on this deployment.',
+      },
+      myConsent: { consent: null, readable: true, reason: null },
+      crewConsents: 0,
+    }),
   getTimeOff: () => Promise.resolve(api.timeOff),
   getMyWeek: () => Promise.resolve(api.myWeek),
   getMemberPerformance: () => Promise.resolve({ hasData: false }),

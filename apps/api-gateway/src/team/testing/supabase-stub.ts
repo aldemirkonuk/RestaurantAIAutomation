@@ -342,5 +342,14 @@ class Builder implements PromiseLike<any> {
 
 /** A `DatabaseService`-shaped object over a stub db. */
 export function asDatabaseService(db: StubDb): any {
-  return { supabase: db.supabase, getClient: () => db.supabase };
+  // All THREE accessors the real `DatabaseService` exposes. `client` is an
+  // alias some services use (`database.service.ts:37`), and a stub that
+  // offered only two of the three would fail any service that picked the
+  // third — which is a divergence in the harness reported as a defect in the
+  // code under test.
+  return {
+    supabase: db.supabase,
+    client: db.supabase,
+    getClient: () => db.supabase,
+  };
 }

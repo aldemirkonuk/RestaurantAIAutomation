@@ -478,14 +478,38 @@ export class TeamController {
       ? targets.filter((m: any) => m.user_id && wants(m, "push"))
       : [];
     const pushIds = pushable.map((m: any) => m.user_id);
-    if (pushIds.length) {
-      await this.push.sendToUsers(pushIds, {
-        title: dto.title ?? "Message from your manager",
-        body: dto.message,
-        priority: "high",
-        data: { type: "team_broadcast", actionUrl: "/team" },
-      });
-    }
+    /**
+     * WHAT THE PUSH ACTUALLY DID, 2026-09-05 (ADR 0121 P0).
+     *
+     * Until today this call was fire-and-forget and the route returned
+     * `notified: pushIds.length` — a count of ROSTER ENTRIES that had a user id
+     * and had not opted out. `ExpoPushService.sendToUsers` returned silently
+     * when the device read came back empty AND when it FAILED, so a broadcast
+     * to the eleven-person crew reported **notified: 11** against
+     * `mobile_devices` holding **0 rows**, and delivered nothing. Measured
+     * against production on 2026-09-04 (ADR 0121, §"What the numbers say").
+     *
+     * `sendToUsers` now returns its outcome and this route reports THAT. The
+     * strongest claim available is `accepted_by_service`: Expo took the ticket.
+     * Nothing here knows whether a handset showed it, and `notified` must never
+     * again mean "we counted the roster".
+     */
+    const pushResult = pushIds.length
+      ? await this.push.sendToUsers(pushIds, {
+          title: dto.title ?? "Message from your manager",
+          body: dto.message,
+          priority: "high",
+          data: { type: "team_broadcast", actionUrl: "/team" },
+        })
+      : {
+          outcome: may("push")
+            ? ("no_recipients" as const)
+            : ("no_recipients" as const),
+          tokens: 0,
+          detail: may("push")
+            ? "Nobody on this send has an account that could carry a push, or everybody addressed has switched push off."
+            : "The caller did not ask for push.",
+        };
 
     // Counted, not sent: how many people COULD have been reached on a removed
     // channel is the size of what this decision withholds, and reporting 0
@@ -516,15 +540,50 @@ export class TeamController {
     const emailed = 0;
     const texted = 0;
 
+    /**
+     * `notified` IS NOW A DELIVERY FACT, NOT A ROSTER COUNT.
+     *
+     * It is the number of registered DEVICES the payload was handed to — zero
+     * whenever nobody has one, whenever the device read failed, and whenever
+     * push was not asked for. The old value (`pushIds.length`) counted people
+     * who might in principle have had a device, which on this deployment was
+     * eleven people and zero devices.
+     *
+     * `addressedForPush` keeps the old number available under a name that says
+     * what it is, so nothing that legitimately wanted "how many were aimed at"
+     * has to go back to reading `notified` for it.
+     */
+    const notified = pushResult.tokens;
+
     return {
       audience,
-      recipients: { targeted: targets.length, notified: pushIds.length },
+      recipients: {
+        targeted: targets.length,
+        addressedForPush: pushIds.length,
+        notified,
+      },
       suppressed,
       withheldByCaller,
       withheldByProduct,
       channels: allowed.filter((c) => !NO_SENDER.includes(c as "email" | "sms")),
       preferencesUnavailable,
-      notified: pushIds.length,
+      notified,
+      addressedForPush: pushIds.length,
+      /**
+       * The whole outcome, in the four words that are actually different:
+       * `accepted_by_service` | `no_device_registered` | `read_failed` |
+       * `no_recipients`. A surface that prints only a number cannot say "the
+       * device list could not be read", and that sentence is the difference
+       * between a quiet crew and a broken one.
+       */
+      push: {
+        outcome: pushResult.outcome,
+        devices: pushResult.tokens,
+        detail: pushResult.detail,
+        delivered: false,
+        deliveredNote:
+          "Nothing here proves delivery. A push service accepting a ticket is not a handset showing a notification, and this route will not claim one.",
+      },
       emailed,
       texted,
       inbox: may("inbox"),

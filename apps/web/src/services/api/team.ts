@@ -350,6 +350,29 @@ export interface TeamNoteRecipient {
   openedAt: string | null
 }
 
+/**
+ * What happened to ONE person on ONE channel (ADR 0121 P0).
+ *
+ * `acceptedByService` is not a delivery and `readFailed` is a fact about this
+ * system rather than about the crew. The old `notified` count could say none of
+ * that: it counted roster entries, and reported eleven against zero devices.
+ */
+export interface TeamNoteDelivery {
+  memberId: string
+  name: string | null
+  channel: 'inbox' | 'push' | 'whatsapp' | 'sms'
+  state:
+    | 'delivered'
+    | 'accepted_by_service'
+    | 'no_device_registered'
+    | 'no_consent'
+    | 'no_sender'
+    | 'declined'
+    | 'read_failed'
+    | 'failed'
+  detail: string
+}
+
 export interface TeamNote {
   id: string
   weekStart: string
@@ -361,6 +384,8 @@ export interface TeamNote {
   recipients: TeamNoteRecipient[]
   openedCount: number
   addressedCount: number
+  /** `null` means the RECEIPT READ failed — never an absence of receipts. */
+  deliveries: TeamNoteDelivery[] | null
 }
 
 export interface TeamNotesReadout {
@@ -370,7 +395,30 @@ export interface TeamNotesReadout {
   readable: boolean
   reason: string | null
   namesReadable?: boolean
+  /** Whether the DELIVERY record could be read, separately from the notes. */
+  receiptsReadable?: boolean
+  receiptsReason?: string | null
 }
+
+/* ── The house's text senders (ADR 0121) ─────────────────────────────── */
+
+/**
+ * RE-EXPORTED, NOT REDECLARED. The house's sender is one object read by
+ * `/connections`, `/team` and `/profile`; its client lives in
+ * `services/api/textSenders.ts` and this line is the pointer. A second
+ * declaration here would be the fourth-catalogue mistake ADR 0114 closed as
+ * G20, one product over.
+ */
+export {
+  getTextSenders,
+  giveTextConsent,
+  withdrawTextConsent,
+} from './textSenders'
+export type {
+  HouseTextSender,
+  PersonTextConsent,
+  TextSendersReadout,
+} from './textSenders'
 
 export async function getTeamNotes(weekStart: string, rid?: string): Promise<TeamNotesReadout> {
   const { data } = await apiClient.get<TeamNotesReadout>(`${base(rid)}/notes`, {
@@ -389,6 +437,26 @@ export async function createTeamNote(
     addressed: number
     delivered: { inbox: boolean; push: number }
     channels: string[]
+    /**
+     * The tally, computed from the receipt rows rather than from the roster
+     * (ADR 0121 P0). `written: false` means the note went out and the record of
+     * what happened to whom did not, which the strip has to be able to say.
+     */
+    receipts: {
+      written: boolean
+      error: string | null
+      total: number
+      byState: {
+        delivered: number
+        acceptedByService: number
+        noDeviceRegistered: number
+        noConsent: number
+        noSender: number
+        readFailed: number
+        failed: number
+      }
+      note: string
+    }
   }
 }
 

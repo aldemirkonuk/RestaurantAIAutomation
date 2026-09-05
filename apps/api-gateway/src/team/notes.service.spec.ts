@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { NotesService } from "./notes.service";
+import { TextSenderService } from "../communications/text/text-sender.service";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
@@ -40,6 +41,12 @@ function seed(errors: Record<string, { message: string }> = {}): StubDb {
       team_settings: [],
       team_notes: [],
       team_note_recipients: [],
+      // ADR 0121 — the delivery record, and the two tables the crew text
+      // resolves against. Present and EMPTY, which is the true state of this
+      // deployment: no house has a sender and nobody has consented.
+      team_note_deliveries: [],
+      house_text_senders: [],
+      person_text_consents: [],
       notifications: [],
     },
     errors,
@@ -49,11 +56,23 @@ function seed(errors: Record<string, { message: string }> = {}): StubDb {
 function svc(db: StubDb) {
   const team = new TeamService(asDatabaseService(db));
   const notifications = { persistForRestaurant: jest.fn(async () => ({ inserted: 0 })) } as any;
-  const push = { sendToUsers: jest.fn(async () => undefined) } as any;
+  const push = {
+    sendToUsers: jest.fn(async () => ({
+      outcome: "no_device_registered",
+      tokens: 0,
+      detail: "no devices",
+    })),
+    // Empty map, not null: "nobody has a device" is the measured production
+    // state (`mobile_devices` held 0 rows on 2026-09-04), and it is a different
+    // answer from a failed read, which the receipts have to keep apart.
+    devicesByUser: jest.fn(async () => new Map<string, number>()),
+  } as any;
+  const text = new TextSenderService(asDatabaseService(db));
   return {
-    notes: new NotesService(asDatabaseService(db), team, notifications, push),
+    notes: new NotesService(asDatabaseService(db), team, notifications, push, text),
     notifications,
     push,
+    text,
   };
 }
 
@@ -81,7 +100,7 @@ describe("NotesService — a note survives the page that wrote it", () => {
     ]);
   });
 
-  it("delivers to the inbox and the phone, and to nothing else", async () => {
+  it("delivers to the inbox, hands nothing to a push service nobody can receive on, and emails nobody", async () => {
     const db = seed();
     const { notes, notifications, push } = svc(db);
     const res: any = await notes.create(MANAGER, RID, {
@@ -91,11 +110,82 @@ describe("NotesService — a note survives the page that wrote it", () => {
     } as any);
 
     expect(notifications.persistForRestaurant).toHaveBeenCalled();
-    expect(push.sendToUsers).toHaveBeenCalled();
+    // CHANGED 2026-09-05 (ADR 0121 P0), and the change is the point. The stub
+    // has no registered devices, which is production's own state
+    // (`mobile_devices`: 0 rows, 2026-09-04). Handing a payload to a push
+    // service for a crew with no devices is what let the old code report a
+    // delivery, so the send is skipped and every person gets a receipt saying
+    // why.
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+    // `channels` records what was USED, so a house with no connected sender
+    // lists two — while the receipts below still carry a text row per person
+    // saying the house has no sender. The note says what it could not do
+    // instead of leaving the text out and letting its absence read as
+    // "nobody wanted one".
     expect(res.channels).toEqual(["inbox", "push"]);
-    // The service takes no mailbox and no SMS sender at all, so "it does not
-    // email" is a property of the constructor, not of a branch.
-    expect(res.delivered).toMatchObject({ inbox: true, push: 1 });
+    // The service takes no mailbox and no shared SMS sender at all, so "it does
+    // not email" is a property of the constructor, not of a branch.
+    expect(res.delivered).toMatchObject({ inbox: true, push: 0 });
+  });
+
+  /**
+   * The fault ADR 0121 measured, as a test: eleven people, zero devices, and a
+   * route that reported eleven notified. These assertions fail on the pre-fix
+   * tree because `team_note_deliveries` did not exist and `create` returned no
+   * `receipts` key at all.
+   */
+  it("writes one receipt per person per channel, whether or not anything was delivered", async () => {
+    const db = seed();
+    const { notes } = svc(db);
+    const res: any = await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam", "m-ray"],
+    } as any);
+
+    // 2 people x 4 channels (inbox, push, and BOTH text channels reported as
+    // having no sender rather than one picked to stand in for the other).
+    expect(res.receipts.written).toBe(true);
+    expect(res.receipts.total).toBe(8);
+    expect(db.tables.team_note_deliveries).toHaveLength(8);
+
+    // Nothing claims a delivery it did not make: the inbox rows are the only
+    // `delivered` ones, push is `no_device_registered` and the text is
+    // `no_sender` because this house has none.
+    expect(res.receipts.byState.delivered).toBe(2);
+    expect(res.receipts.byState.acceptedByService).toBe(0);
+    expect(res.receipts.byState.noDeviceRegistered).toBe(2);
+    expect(res.receipts.byState.noSender).toBe(4);
+
+    const sender = db.tables.team_note_deliveries.find(
+      (r: any) => r.channel === "whatsapp",
+    );
+    expect(sender).toBeDefined();
+    if (!sender) throw new Error("no whatsapp delivery row was written");
+    expect(sender.state).toBe("no_sender");
+    expect(sender.detail).toContain("no connected text sender");
+  });
+
+  it("reads the receipts back, and says so when it cannot", async () => {
+    const db = seed();
+    await write(db);
+    const ok: any = await svc(db).notes.list(MANAGER, RID, WEEK);
+    expect(ok.receiptsReadable).toBe(true);
+    expect(ok.notes[0].deliveries).not.toBeNull();
+    expect(ok.notes[0].deliveries.length).toBe(8);
+
+    // A failed receipt read is NOT a note with no receipts. `null` is the only
+    // honest value, and the flag carries the gateway's own sentence.
+    const broken = seed({ "team_note_deliveries:select": { message: "connection reset" } });
+    await svc(broken).notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam"],
+    } as any);
+    const bad: any = await svc(broken).notes.list(MANAGER, RID, WEEK);
+    expect(bad.receiptsReadable).toBe(false);
+    expect(bad.receiptsReason).toBe("connection reset");
+    expect(bad.notes[0].deliveries).toBeNull();
   });
 
   it("refuses a note that names nobody on this roster, and writes nothing", async () => {

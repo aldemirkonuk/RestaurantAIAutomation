@@ -123,7 +123,24 @@ function harness(db: StubDb) {
   const notifications = {
     persistForRestaurant: jest.fn(async () => ({ inserted: 0 })),
   } as any;
-  const push = { sendToUsers: jest.fn(async () => undefined) } as any;
+  /**
+   * The push stub models "everybody addressed has exactly one device", which is
+   * the only shape under which `notified` and the old roster count agree. The
+   * production shape — `mobile_devices` holding 0 rows against an 11-person
+   * crew — is a SEPARATE test below (`pushNothing`), because that is the case
+   * the old code got wrong and a stub that always reported success would have
+   * hidden it here for another month.
+   */
+  const push = {
+    sendToUsers: jest.fn(async (userIds: string[]) => ({
+      outcome: "accepted_by_service" as const,
+      tokens: userIds.length,
+      detail: `Handed to Expo for ${userIds.length} registered device(s).`,
+    })),
+    devicesByUser: jest.fn(async (userIds: string[]) =>
+      new Map(userIds.map((id) => [id, 1])),
+    ),
+  } as any;
   // Neither a mailbox NOR an SMS sender is handed in, because the controller no
   // longer takes either. That is the strongest available form of "a crew
   // message never sends email or SMS": a future edit cannot reintroduce a send

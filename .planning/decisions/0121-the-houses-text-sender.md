@@ -1,7 +1,19 @@
 # 0121 — The house's text sender
 
-- **Status:** Proposed — research only, nothing built, founder decision open
-- **Date:** 2026-09-04
+- **Status:** **Accepted 2026-09-05 in the three parts the founder decided; the rest stays Proposed.**
+  Accepted: (1) *"a crew text exists and build it next"* — founder question 1 is
+  answered yes, and P0's honesty work shipped with it; (2) the first market is
+  **both** — Türkiye WhatsApp-first and the US on SMS, which closes founder
+  question 2 on the *market* and leaves its Türkiye-usage sub-question open; (3)
+  **both** ways of getting a number are built as states — the house brings its
+  own name, or Mudavym registers per house and bills with the information the
+  registrar needs (founder question 3, OD-23, is *narrowed*, not closed: who
+  pays is still open). Still Proposed: the WhatsApp transport itself, the
+  inbound webhook, templates behind the seal, the hand-off, and founder
+  questions 4, 5 and 6. **Nothing sends because of this pass** — see
+  "What shipped on 2026-09-05" below, which says exactly what does and does not
+  exist.
+- **Date:** 2026-09-04 (research); 2026-09-05 (the three decisions above)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** SMS, text sender, WhatsApp, Cloud API, 10DLC, TCR, brand, campaign,
   toll-free verification, alphanumeric sender ID, İYS, KVKK, PECR, TCPA, quiet hours,
@@ -373,6 +385,193 @@ says exactly that.
 
 ---
 
+## The registration playbook, per path, per market (added 2026-09-05)
+
+The founder's question, verbatim: *"can the house sends on their behalf?
+whatsapp business api? or sms sender? what do we need there"*. This section is
+the answer as a checklist a house could actually work through. Every fetch is
+dated **2026-09-05** unless a row says otherwise, and the rows that rest on a
+summary rather than a primary source say so in the row rather than in a
+footnote.
+
+### The one rule that shapes both paths
+
+**The identity registered is always the HOUSE's, in both paths.** "Mudavym
+registers for you" means Mudavym operates the submission; it never means
+Mudavym's name goes on the sender. Three independent rules force this and they
+are not negotiable by product design:
+
+- A regulatory bundle "must represent the actual end-user", and "Twilio audits
+  this" (`twilio-regulatory-compliance-bundles`, 2026-09-05).
+- An ISV registering Sender IDs "must provide your customers' business and
+  representative information, including a government ID for verification", and
+  each Sender ID needs its own registration (Twilio Sender ID registration
+  guidance, 2026-09-05).
+- Sharing one brand's campaigns across customers "violates carrier policies";
+  the ISV pattern is one subaccount and one brand per customer (Twilio ISV
+  onboarding, 2026-09-05). This is the same conclusion §a2 above reached from
+  the fee schedule, arrived at independently from the provider's own
+  architecture guidance.
+
+So the two paths differ in **who does the typing and who holds the account**,
+never in whose business is on the registration.
+
+### WhatsApp Business (Cloud API)
+
+| | Bring your own | Mudavym registers |
+|---|---|---|
+| How the credential arrives | Meta's **Embedded Signup**: the house signs in to its own Meta account in Meta's window and, on success, the flow "returns the customer's WABA ID, business phone number ID, and an exchangeable token code" | The same Embedded Signup, operated by Mudavym as a **Tech Provider** against the house's own business portfolio |
+| What this platform never sees | The house's Meta password. There is no field for one anywhere (`text-senders.dto.ts`, asserted by a test) | Same |
+| Prerequisite on Mudavym | None | Meta **App Review** for advanced access: "You will not be able to onboard business customers until your app has been approved for advanced access", with `whatsapp_business_management` and `whatsapp_business_messaging` |
+| What the house provides | A phone number **not already active on WhatsApp**; a Meta business portfolio; a display name that passes Meta's review; an opt-in from every person it messages | Same, plus the business documents Meta Business Verification asks for |
+| Cost | Non-template replies inside an open 24-hour window are **free** ("All non-template messages are free"). Templates are charged per delivery at Meta's per-country rate | Same |
+| Time | Sender registration in minutes; **Meta Business Verification "can take several weeks"** | Same |
+| The cap while unverified | "Newly created business portfolios have a messaging limit of 250" per 24 hours, and verification is one of three ways to raise it to 2,000 | Same |
+
+**Two caps nobody had measured before this pass, and both bite the
+"Mudavym registers" path specifically.** Meta business accounts "are initially
+limited to 2 registered business phone numbers, but this limit can be increased
+to up to 20" (Meta's own WABA overview), and Twilio's guidance states the same
+ceiling with an exception path to 50. If every house's number sat under one
+Mudavym portfolio, **20 houses would be the ceiling** — the same structural
+failure as §a2's 100-campaign TCR cap, one platform over. It is avoided the same
+way: the WABA is the house's, not Mudavym's.
+
+**A third, quieter one:** "all senders on the same Twilio account must share one
+WABA" in the self-signup flow (Twilio, 2026-09-05). A multi-tenant deployment
+therefore cannot use self-signup for its houses at all; the Tech Provider path
+is not an optimisation, it is the only shape that works.
+
+### SMS, United States (10DLC)
+
+What the house provides, and every item is a rejection if it is wrong:
+
+1. The **legal business name exactly as it appears on EIN records**. A marketing
+   name is the most common brand rejection.
+2. EIN or business tax id, business type, registered address.
+3. A **live, publicly reachable** website. A staging URL or a 404 fails, because
+   a reviewer opens it.
+4. A named contact: first name, last name, corporate email, phone.
+5. A campaign use case and **at least two sample messages that match it**, each
+   carrying an opt-out line.
+6. The **opt-in flow in 40–2049 characters**, naming the method, the message
+   frequency, the "message and data rates may apply" disclosure, and a
+   **publicly accessible** link or screenshot of the opt-in itself. This field is
+   "the #1 reason campaigns get rejected".
+7. A privacy policy stating mobile information is **not** shared with third
+   parties for marketing, and terms carrying **HELP and STOP instructions in
+   bold**.
+
+**Fees** (Twilio's A2P 10DLC page, 2026-09-05): $44 one-time brand registration
+(Standard), $4 (Low-Volume Standard or Sole Proprietor); $15 one-time campaign
+vetting; then $1.50–$10 per campaign per month ($2 Sole Proprietor), plus the
+number's own rental. The recurring part is **per house** and does not amortise.
+
+**Time:** 13–20 business days end to end — brand in minutes to 3–5 business
+days, campaign in 10–15. This *corrects* the 2026-09-04 draft's "several days or
+even several weeks", which was Twilio's own sole-proprietor-transition wording
+and is vaguer than its ISV onboarding guidance. Nothing sends before the
+campaign is approved: unregistered traffic is blocked with error 30034.
+
+**One consent rule that binds this product's design, not just its paperwork:**
+"Consent must be voluntary. If customers must opt in to messaging to complete a
+purchase or create an account, the registration **will be rejected**." A crew
+text consent therefore may never be a condition of joining a roster or holding
+an account — which is why `person_text_consents` is a separate, withdrawable row
+and not a column on `team_members`.
+
+**And one that binds the shared number specifically:** Twilio's US SMS
+guidelines list **"shared phone numbers"** among the restricted use cases. The
+shared-Plivo shape this ADR refused on STOP-scope grounds is independently a
+listed prohibition at the carrier layer.
+
+### SMS, Türkiye (alphanumeric Sender ID)
+
+This is **paperwork, not an API call**, and that is the finding. What the
+operators require (Twilio's Türkiye Sender ID article, 2026-09-05):
+
+- A **company or brand registration certificate**.
+- A **Letter of Authorization** to the provider, a separate **authorization
+  letter**, and an **NOC letter** — each on the **house's own letterhead**,
+  signed by an authorized signatory, and **stamped**.
+- If the Sender ID does not match the company name, a formal document —
+  a trademark registration or an official website — showing the linkage.
+
+Required fields on the forms: the sender company's letterhead, the Sender ID
+requested, the legal company name, the name and title of the authorized
+signatory, the signature, the company stamp, and the date.
+
+Refusals, stated before a house applies: promotional traffic is not allowed; a
+Sender ID resembling a domain name is not allowed; P2P, gambling, political and
+religious content is prohibited; from **2026-04-01** a company without a local
+Turkish entity may not put a URL in a message; from **2026-11-18** unregistered
+Sender IDs are **blocked**. Provisioning takes about two weeks.
+
+**And the capability, which is the reason Türkiye is WhatsApp-first:**
+"Two-way SMS supported: **No**". An alphanumeric Sender ID is one-way by
+construction everywhere — "recipients cannot reply" — so a Turkish SMS sender
+can carry a notice and can never carry the conversation the founder's line
+("most conversations might just go with text") is about.
+
+**İYS remains the weakest citation in this document.** Prior consent for
+commercial electronic messages must be registered in İYS under Law 6563, and
+İYS's own pages are client-rendered and could not be fetched on 2026-09-04 or on
+2026-09-05. This row rests on a summary and should be closed before a Turkish
+sender goes live.
+
+---
+
+## What shipped on 2026-09-05, and what did not
+
+**Shipped.**
+
+- `house_text_senders` — the house's sender in ADR 0114's shape: the attachment
+  is the restaurant's (`declared_by … ON DELETE SET NULL`), six states with no
+  default, both paths as stated states, the fee and the timeline **kept as
+  sentences** so a house can read back what it was told, and a `vault_secret_ref`
+  that points at the encrypted record rather than holding a credential.
+- `person_text_consents` — the person's consent, withdrawable, with **no
+  approval axis at any layer**: the migration raises if `approved_at` /
+  `approval_status` / `pending` / `approved_by` ever appears. Withdrawal is a
+  timestamp and never a delete, because 47 CFR 64.1200(d)(3) and (d)(6) require
+  the request to be recorded and honoured for five years.
+- `team_note_deliveries` — **one row per recipient per channel, written whether
+  or not anything was delivered.** This is P0's real content: `broadcast`
+  reported `notified: 11` off the roster while `mobile_devices` held 0 rows.
+  `ExpoPushService.sendToUsers` now returns its outcome and the route reports
+  **devices handed to**, not people counted; `accepted_by_service` is kept
+  distinct from `delivered`, and `read_failed` from `no_device_registered`.
+- `TextSenderService` — one door, which chooses WhatsApp over SMS where both
+  exist (because a Turkish SMS cannot receive a reply), and **refuses every
+  time**, naming which half is missing. `SmsService` and `PLIVO_*` are
+  unreachable from it, asserted structurally rather than behaviourally.
+- The surfaces: two rows on `/connections` with both paths offered and both
+  disabled carrying the server's own reason; the crew-text leg on `/team`'s
+  composer in its three states; the person's consent on `/profile`'s
+  Register IV rather than a seventh register.
+
+**Not built, and the pages say so rather than implying it.**
+
+- **No transport.** No provider credential for a per-house sender exists on this
+  deployment, so `send()` returns `transport_not_built` even for a house with a
+  connected sender and a consenting person. A connected row is a record of a
+  registration, not a wired client, and sending on the strength of a row
+  somebody typed would be trusting a claim instead of a transport.
+- **No submission.** `POST /communications/text-senders/request` **records** a
+  request with its fee and timeline. There is no route that moves a row to
+  `submitted`, because submitting puts the house's legal identity in front of a
+  registrar and that is a sealed act. The seal is therefore **satisfied
+  vacuously in this pass** — nothing can submit — and that is stated here rather
+  than left to read as "the seal is enforced".
+- **No probe.** `last_probe_at` is `NULL` on every row and the surface says
+  "never probed", which is not "unreachable" and is certainly not health.
+- **No inbound.** `gateway-honesty.spec.ts:328` still asserts no inbound message
+  handler exists, and it still passes. When the transport lands, that assertion
+  is *replaced* by one requiring a guarded, tenant-scoped handler — never
+  deleted.
+
+---
+
 ## The strongest argument against this recommendation
 
 Written as an adversarial pass, not as a caveat.
@@ -472,21 +671,35 @@ answered here at all — it is question 2 below, and it is the founder's.
 
 ## What only the founder can decide
 
-1. **Does a crew text exist at all, or does the crew stay on inbox and push?**
-   ADR 0118 D6 says a staff broadcast is not a composer template, and the
-   composer writes to the vendor book only. A text sender does not automatically
-   change that. If crew texting is wanted, it is a second product with a
-   different legal footing (employees, not businesses) and a different consent.
-2. **Which market is the first text house — US, UK or Türkiye?** This changes the
-   entire build: 10DLC brand registration, or an alphanumeric sender ID, or
-   WhatsApp with no SMS at all. And with it: **is the Türkiye WhatsApp claim
-   right?** The document's strongest recommendation rests on a figure that could
-   not be fetched from its source.
-3. **Who pays for a sender?** OD-23 again, sharper than in ADR 0118: a mailbox
-   can be brought from home, but a text sender cannot — there is no "connect your
-   own number" for 10DLC, and a WhatsApp number must be one *not already on
-   WhatsApp*, which most restaurants' phones are. The house has to buy a number
-   or Mudavym has to.
+1. ~~**Does a crew text exist at all, or does the crew stay on inbox and push?**~~
+   **ANSWERED 2026-09-05: *"a crew text exists and build it next"*.** It is a
+   second product with its own consent, exactly as this row warned: the crew's
+   agreement is `person_text_consents`, not `notification_preferences`, and it
+   is per person, per number, withdrawable, and impossible for a manager to
+   grant. One thing this answer *added* that the question did not anticipate:
+   the US registrar refuses a campaign whose consent is a condition of holding
+   an account, so a crew text consent could never have been a roster column even
+   if the product had wanted one.
+2. **PARTLY ANSWERED 2026-09-05: the first market is *"both"*** — Türkiye
+   WhatsApp-first, the US on SMS. The build follows it: `market` is a required
+   column on every sender row, the catalogue answers for TR and US and returns
+   `null` (never an empty checklist) for anything else, and the Türkiye SMS row
+   states its own one-way limit rather than inheriting the US row's shape.
+   **Still open, and it is the sharper half:** *is the Türkiye WhatsApp claim
+   right?* The 88.6% figure still could not be fetched from TurkStat on
+   2026-09-05, and the recommendation that Türkiye is WhatsApp-first still rests
+   on it. The founder answering "both" does not make that figure fetched.
+3. **NARROWED, NOT CLOSED, 2026-09-05.** The founder answered the *mechanism* —
+   *"the house must either brings their own name and we have to make sure the
+   connection is secure or with mudavym help buys per house and bills with
+   info"* — and both are built as states. He did not answer **who pays**, which
+   is OD-23 and is still open. The narrowing sharpened it rather than softening
+   it: the fixed registration fee **recurs per house and does not amortise**
+   ($4–$44 brand + $15 vetting + $1.50–$10 a month in the US alone), so
+   "Mudavym registers for you" is a recurring per-tenant cost and not a one-time
+   onboarding favour. The build prints the fee and the timeline at request time
+   and keeps them on the row; it names no price to the house, because there is
+   none to name.
 4. **Is the hand-off acceptable as the answer to "use their connection"?** The
    product would prepare the message and the person would send it from their own
    phone, and the record would say the house did not send it. That is less than
@@ -541,4 +754,5 @@ answered here at all — it is question 2 below, and it is the founder's.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-04 | — | Created. Research only; no code, no migration, no build. |
+| 2026-09-05 | Claude (build pass) | **Accepted in three parts and built to the edge of a send.** Three tables (`house_text_senders`, `person_text_consents`, `team_note_deliveries`), one `TextSenderService` that refuses every time and names which half is missing, the P0 broadcast-honesty fix, and three surfaces. Two research corrections to the 2026-09-04 draft, both from primary sources fetched 2026-09-05: the US 10DLC timeline is **13-20 business days** (brand minutes to 3-5 days, campaign 10-15), not "several days or even several weeks"; and a **Meta business portfolio is capped at 2 phone numbers, raisable to 20** — the WhatsApp analogue of the 100-campaign TCR cap, which would have limited a single-portfolio deployment to 20 houses. Two findings the draft did not have: Twilio's US guidelines list **"shared phone numbers"** among the restricted use cases (so a1 is a carrier prohibition, not only a STOP-scope objection), and a US campaign **is rejected if consent is a condition of buying or holding an account**. The Türkiye Sender ID requirement turned out to be **wet-signed, stamped paperwork on the house's own letterhead** (company/brand registration certificate, LOA, authorization letter, NOC), which no form in this product can automate. |
 | 2026-09-04 | Claude (audit correction) | **Four citations in `07-reference/messaging-senders.md` were wrong; re-measured against the worktree and corrected.** The commitment guard is `letters/house-letters.service.ts:276` (the test) and `:282` (the block), not `:273`. The unresolved-merge-token guard is `:127` (the pattern), `:286` (the test), `:291` (the block), not `:119,282`. The undo window is `:72` (the status word) and `:419-420` (the row that carries `status` and `scheduled_send_at` together), not `:72,413`. All three verified identical at `902ee67f`, at `HEAD` and in the worktree, so the drift was in the citation, not in the file. The retire-to-write paragraph also named the wrong absorbed items: the pointer in `communications.md` is **§13 item 14** (`:670-671`), not §13.9 — §13.9 is *"The Mudavym sending subdomain"* (`:644`); the pointer in `team.md` is **§13 item 7d** (`:659-660`), not 7a/7c. The third pointer, at `AdminPanel.tsx`, **had never been written**: the paragraph claimed a retirement that had not happened. It is written now (`AdminPanel.tsx:823-824`, above the "Plivo SMS" row at `:825`), so the claim is true rather than merely corrected. |

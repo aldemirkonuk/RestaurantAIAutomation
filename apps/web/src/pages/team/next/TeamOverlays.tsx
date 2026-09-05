@@ -19,7 +19,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   ClipboardCopy,
   FileSpreadsheet,
@@ -33,11 +33,13 @@ import {
   createTeamNote,
   createSchedule,
   createTimeOff,
+  getTextSenders,
   publishSchedule,
   reviewTimeOff,
   type Shift,
   type TeamMember,
   type TeamNotesReadout,
+  type TextSendersReadout,
 } from '../../../services/api/team';
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport';
 import { EM, addDays, fmtDayShort, fmtWeekRange, resolveName } from './tm-format';
@@ -353,6 +355,116 @@ export function CrewNoteStrip({
 }
 
 /**
+ * The crew text, as a state rather than a switch (ADR 0121; the founder,
+ * 2026-09-05: *"a crew text exists and build it next"*).
+ *
+ * WHY IT IS NOT A TOGGLE. A toggle implies the sender is a choice this composer
+ * makes. It is not: a note reaches a person by text when THIS HOUSE has a
+ * connected sender AND THAT PERSON has consented, and neither of those is
+ * something the manager writing the note can decide here. A switch would let a
+ * manager turn something "on" that stays off, which is a control that appears
+ * to succeed — the one thing this product may not draw.
+ *
+ * THREE STATES, AND THE DISABLED ONES CARRY THE SENTENCE.
+ *
+ *   1. No sender.       The house has none, so nobody is texted. The control is
+ *                       off and names where to get one.
+ *   2. Sender, no one    A sender exists and nobody has agreed to be reached on
+ *      consented.        it. The control is off and names WHOSE decision that is
+ *                        — a manager cannot consent for anybody.
+ *   3. Sender and        The people who agreed will be reached by text; the ones
+ *      consents.         who did not are named as a number, not hidden.
+ *
+ * A FAILED READ IS A FOURTH THING and gets its own sentence, because "this
+ * house has no sender" and "we could not find out" are different facts.
+ */
+export function CrewTextLeg({ recipientCount }: { recipientCount: number }) {
+  const q = useQuery({
+    queryKey: ['team-next-text-senders'],
+    queryFn: getTextSenders,
+    staleTime: 120_000,
+  });
+  const vm: TextSendersReadout | undefined = q.data;
+
+  if (q.isLoading) {
+    return (
+      <div>
+        <span className="tm-label">Text</span>
+        <p className="tm-hint">Reading whether this house has a sender…</p>
+      </div>
+    );
+  }
+  if (q.isError || !vm || !vm.readable) {
+    return (
+      <div>
+        <span className="tm-label">Text</span>
+        <p className="tm-alert" role="alert">
+          Whether this house has a text sender could not be read
+          {vm?.reason ? ` (${vm.reason})` : ''}, so whether anybody would be texted
+          is unknown — not no.
+        </p>
+      </div>
+    );
+  }
+
+  const connected = [vm.senders.whatsapp, vm.senders.sms].filter(
+    (s) => s && s.state === 'connected',
+  );
+  const consented = vm.crewConsents;
+
+  const state: 'no_sender' | 'no_consent' | 'ready' =
+    connected.length === 0 ? 'no_sender' : (consented ?? 0) === 0 ? 'no_consent' : 'ready';
+
+  return (
+    <div>
+      <span className="tm-label">Text</span>
+      <div className="tm-actions" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
+        <button
+          type="button"
+          className="tm-ctl"
+          disabled={state !== 'ready'}
+          aria-disabled={state !== 'ready'}
+        >
+          {state === 'ready'
+            ? `Also text ${consented} of ${recipientCount}`
+            : 'Also text them'}
+        </button>
+      </div>
+      {state === 'no_sender' && (
+        <p className="tm-hint">
+          This house has no text sender of its own, so nobody is texted. A crew
+          text never leaves through a number shared with other restaurants:
+          on a shared sender one person replying STOP silences the platform for
+          every house on it. Connect one on /connections.
+        </p>
+      )}
+      {state === 'no_consent' && (
+        <p className="tm-hint">
+          This house has a sender and nobody has agreed to be texted on it yet.
+          Each person switches that on for themselves on /profile — nobody can
+          agree on their behalf, and a consent a manager could grant would not be
+          one.
+        </p>
+      )}
+      {state === 'ready' && (
+        <p className="tm-hint">
+          {consented} of {recipientCount} have agreed to be texted at a number
+          they gave. The rest are reached on the inbox and the phone only, and
+          the note&apos;s receipt says so person by person.
+          {vm.transport.built ? '' : ` ${vm.transport.words}`}
+        </p>
+      )}
+      {consented === null && connected.length > 0 && (
+        <p className="tm-hint">
+          How many people have agreed is not shown here — that count is a
+          manager&apos;s to see.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * The composer. Small, always targeted, and it writes a RECORD: the note, its
  * author, the people it named and a per-person receipt. `broadcast` without
  * `memberIds` used to mean the whole restaurant across four channels, and a
@@ -407,8 +519,10 @@ export function CrewNoteSheet({
       title={only ? 'A note to one person' : 'A note to the crew'}
       footer={
         <span>
-          Goes to the in-app inbox and the phone. It does not become an email: this house
-          has one mailbox and it is the one vendors are written from.
+          Goes to the in-app inbox and the phone, and by text to anybody who has
+          agreed and whom this house has a sender for. It does not become an
+          email: this house has one mailbox and it is the one vendors are
+          written from.
         </span>
       }
     >
@@ -440,6 +554,7 @@ export function CrewNoteSheet({
             </div>
           )}
         </div>
+        <CrewTextLeg recipientCount={n} />
         <label>
           <span className="tm-label">Note</span>
           <textarea
