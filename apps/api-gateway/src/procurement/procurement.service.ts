@@ -125,9 +125,33 @@ import {
   refuseSecondDelivery,
   resolveReceiverName,
 } from "./delivered-once";
+// The exact-key joiner, imported rather than re-implemented. `identity-join.ts`
+// is the pure half of ADR 0124's identity register — no Nest DI, no database,
+// no module wiring — so the one rule that decides whether a key names a bottle
+// lives in exactly one place and this file cannot drift from it.
+import {
+  IdentityKeyRow,
+  joinByExactKey,
+} from "../vendor-intel/identity-join";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The namespace ADR 0124's keys table records a library link under.
+ *
+ * Typed out here rather than imported: `vendor-intel`'s copy is a value on a
+ * private, unexported map inside `IdentityService`
+ * (`identity.service.ts:111`), and reaching into that module for it would be
+ * the wrong dependency for a writer that needs no service at all. The third
+ * copy is the backfill's own literal in
+ * `20260906060000_a_price_names_the_bottle_it_priced.sql`. Three spellings of
+ * one string is exactly the shape that rots quietly, so it is pinned by an
+ * executable row in `.planning/decisions/CLAIMS.jsonl` (`ADR-0124`) that
+ * compares all three and fails when any one of them moves — the same device
+ * ADR 0125's row uses for `DECLINE_INTENTS`.
+ */
+const MASTER_WINE_LIBRARY_NAMESPACE = "mudavym:master_wine_library";
 
 // The two terminal states of a calendar event, built from `CalendarEventStatus`
 // rather than restated as literals so a divergence is a compile error (ADR
@@ -1424,8 +1448,20 @@ export class ProcurementService {
       );
     }
 
+    // WHICH BOTTLE this price is a price of — ADR 0124 Q5, founder 2026-09-05:
+    // "Yes, identity_id on price_history now." Resolved here, at write time,
+    // through the SAME one-key rule the migration's backfill used, so a row
+    // written today is indistinguishable from a row the backfill would have
+    // written. Never suppresses the row: an unidentified price is a real
+    // observation, and NULL is the honest word for "no confirmed identity".
+    const identity = await this.resolveIdentityForPrice({
+      masterWineId: args.masterWineId,
+      orderId: args.orderId,
+      source: args.source,
+    });
+
     const notes =
-      [args.notes ?? null, seriesUnit.note, seriesCurrency.note]
+      [args.notes ?? null, seriesUnit.note, seriesCurrency.note, identity.note]
         .filter(Boolean)
         .join(" ") || null;
 
@@ -1435,6 +1471,14 @@ export class ProcurementService {
         .insert({
           restaurant_id: args.restaurantId,
           master_wine_id: args.masterWineId,
+          // The trade item, when the library link names exactly one — ADR 0124
+          // Q5. `master_wine_id` beside it is the WINE; one wine sold in 750 ml
+          // and in magnum is two trade items (GS1 GTIN Management Standard 1.1
+          // s2.3/s2.8), which is why the ladder groups on this column and not
+          // on that one. The key is named explicitly even when the value is
+          // null so the capture-contract guard can read what this write claims,
+          // and so `identity_id` never arrives by way of a conditional spread.
+          identity_id: identity.identityId,
           provider_id: args.providerId,
           price: Math.round(price * 100) / 100,
           quantity: args.quantity ?? 1,
@@ -1488,6 +1532,122 @@ export class ProcurementService {
         error: e?.message,
       });
     }
+  }
+
+  /**
+   * Which bottle is this price a price OF? — ADR 0124 Q5.
+   *
+   * WHY THE WRITER AND NOT ONLY THE MIGRATION
+   * -----------------------------------------
+   * `20260906060000_a_price_names_the_bottle_it_priced.sql` added
+   * `price_history.identity_id` and backfilled it once. A backfill is a
+   * one-time act; a writer that does not name the bottle makes every row
+   * written after it NULL forever, and the migration's own argument for landing
+   * the column now applies verbatim to landing this: *"a year of unjoinable
+   * rows costs the ladder."*
+   *
+   * THE SAME RULE, NOT A SECOND ONE
+   * -------------------------------
+   * The backfill's whole rule is `having count(distinct k.identity_id) = 1`
+   * over `('mudavym:master_wine_library', master_wine_id)`. `joinByExactKey` —
+   * imported, not re-implemented — is that rule in TypeScript: zero identities
+   * is `unknown_key`, one is `joined`, more than one is `ambiguous`. So a row
+   * this method writes and a row the backfill would have written for the same
+   * library link agree by construction rather than by inspection.
+   *
+   * WHAT NEVER HAPPENS HERE
+   * -----------------------
+   *  * **No guess.** An ambiguous key is a REFUSAL, which is ADR 0124's doctrine
+   *    and the migration's, applied unattended. Iowa's own file names more than
+   *    one product on 1,736 of its 9,118 UPCs; picking the first would be a coin
+   *    toss recorded as a fact.
+   *  * **No lost price.** Nothing this method returns can suppress the row. A
+   *    register that could not be read is UNKNOWN, never "this bottle has no
+   *    identity" (supabase-js resolves `{ data, error }` and never throws), so
+   *    the failure is said in words and the price is still written with
+   *    `identity_id` NULL.
+   *  * **No name-matching.** `proposeCandidates` produces SUGGESTIONS a person
+   *    confirms; it has no threshold above which it links, and a writer running
+   *    unattended is the last place its output belongs.
+   *
+   * The ordinary answer today is NULL, and that is a real zero rather than a
+   * silence: measured read-only on production 2026-09-05, `beverage_identities`
+   * holds 0 rows because every identity is an assertion somebody makes. NULL
+   * means "unidentified" and readers must PRINT that group rather than drop it —
+   * the column comment says so, and
+   * `scripts/check_price_history_reads_group_by_unit.py` fails any reader that
+   * groups on this column without also naming `unit`.
+   */
+  private async resolveIdentityForPrice(args: {
+    masterWineId: string | null;
+    orderId: string;
+    source: PriceHistorySource;
+  }): Promise<{ identityId: string | null; note: string | null }> {
+    // No wine, no library link, nothing to look up. The row is still written,
+    // and the existing warning below the insert already names this gap.
+    if (!args.masterWineId) return { identityId: null, note: null };
+
+    const { data, error } = await this.databaseService.supabase
+      .from("beverage_identity_keys")
+      .select("identity_id, key_namespace, key_class, key_value")
+      .eq("key_namespace", MASTER_WINE_LIBRARY_NAMESPACE)
+      .eq("key_value", args.masterWineId)
+      // One library row may legitimately name several identities (a 750 and a
+      // magnum), so this is not `maybeSingle()`. The cap is far above any
+      // honest fan-out and exists so a corrupt register cannot pull an
+      // unbounded read into an order write.
+      .limit(200);
+
+    if (error) {
+      // A read that failed told us NOTHING about this bottle. Reporting it as
+      // "no identity" would be `absence-reported-as-health` on a column whose
+      // NULL a reader is required to print as a finding.
+      this.logger.warn(
+        `price_history row for ${args.source} on order ${args.orderId} carries no identity: ` +
+          `the identity register could not be read (${error.message}). ` +
+          `That is UNKNOWN, not "this bottle has no identity". The price is written with identity_id NULL.`,
+      );
+      return {
+        identityId: null,
+        note: "Identity not resolved: the identity register could not be read when this price was recorded, so NULL here means unknown, not unidentified.",
+      };
+    }
+
+    const keys: IdentityKeyRow[] = ((data ?? []) as any[]).map((r) => ({
+      identityId: r.identity_id,
+      keyNamespace: r.key_namespace,
+      keyClass: r.key_class,
+      keyValue: r.key_value,
+    }));
+
+    const outcome = joinByExactKey(
+      { namespace: MASTER_WINE_LIBRARY_NAMESPACE, value: args.masterWineId },
+      keys,
+    );
+
+    if (outcome.outcome === "joined")
+      return { identityId: outcome.identityId, note: null };
+
+    if (outcome.outcome === "ambiguous") {
+      // The refusal is loud because it is actionable: somebody confirmed this
+      // library row against several trade items, and only a person can say
+      // which one this order bought.
+      this.logger.warn(
+        `price_history row for ${args.source} on order ${args.orderId} carries no identity: ` +
+          `${outcome.reason}`,
+      );
+      return {
+        identityId: null,
+        note: `Identity not resolved: the library link names ${outcome.identityIds.length} identities, and an ambiguous key is a refusal rather than a choice.`,
+      };
+    }
+
+    // `unknown_key` — nobody has confirmed an identity for this library row.
+    // Silent on purpose, and it is the only silent branch: it is the ordinary
+    // state of an empty register, so a warning here would fire on every price
+    // the platform records and teach whoever reads the log to ignore it. The
+    // NULL on the row carries the fact instead, and the reader must print it.
+    return { identityId: null, note: null };
   }
 
   /**
