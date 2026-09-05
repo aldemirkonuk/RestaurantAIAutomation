@@ -734,6 +734,10 @@ ANSWERS = {
   "F3": "A 640 sheet on /inventory, not a route.",
   "F4": "All of them get built, to their full purpose — functionality, endpoints, UI/UX, smoothness and above all the design (the founder's bar, 2026-09-05). Pause/resume the AI becomes a control on the responses sheet; a person's own one-tap action, an auction lot and certifications are drawn as owed sheets; assign-a-recommendation follows the same rule and awaits an explicit yes.",
   "F6": "HouseHeader's bell and user menu survive; Header.tsx's house branch is deleted, its legacy branch stays byte-identical.",
+  "F8": "Name the class now — six non-modal surfaces, two constraints (no scrim, no focus trap; never a form, never the seal).",
+  "F9": "Yes to both — detents on the phone, stacking capped at three with a breadcrumb.",
+  "F10": "Yes, with that exact line — undo-after for dismiss, archive, a removed shift, a note; money, sends and ledger rows keep the seal before.",
+  "F11": "All three — the manager's passcode, presence on shared records, and a two-person rule for money as the house's own rule — and 'any other possible security like that': a security-ceremonies research pass is running (F12).",
 }
 FORKS = [
   ("F1","Ratify the three shapes.","ADR 0112 is still Proposed. Everything drawn here assumes Sheet · Panel · Popover; if the founder wants one shape everywhere, this census is the list of what that costs (the sheet exists so the list stays readable; an anchored menu with no anchor has lost its meaning)."),
@@ -747,4 +751,5 @@ FORKS = [
   ("F9","The sheet on a phone.","A bottom sheet with detents (peek / half / full) as the right sheet's phone form, and sheet stacking capped at three with a breadcrumb — one decision covering Apple detents, Material sheets and Vaul snap points together."),
   ("F10","Undo after, for what can be undone.","Fire the routine act and offer Undo (dismiss, archive, a removed shift, a note); keep the seal before for money, sends and ledger rows. The adversary's fight #4: the line must be written down or it creeps."),
   ("F11","A second authority.","Two ceremonies the research surfaced that the house has not chosen between: a manager's passcode at the point of action (Toast) for staff → manager acts, and presence on shared records (Figma) so a split count is safe. Which acts get which."),
+  ("F12","Every other security ceremony like that.","The founder's addendum to F11: catalogue the rest — step-up re-authentication, passkeys, transaction binding, cooling-off release, limits per role, break-glass with a reason, recall windows, tamper-evident audit, device trust — and say which acts in the house get which. Research in flight; nothing decided."),
 ]

@@ -228,7 +228,7 @@ two bells · F7 the figure behind a dashboard number) are stated in full in the 
 - All seven forks are answered. Migration order: the ten `migrate` rows first (they render legacy
   inside house-flagged pages today), then the owed sheets, then the sixteen deletions.
 
-## Behaviours proposed (2026-09-05, from the sketch 102 research — Proposed, not decided)
+## Behaviours (2026-09-05, from the sketch 102 research — F8–F11 decided by the founder the same day; F12 open)
 
 The founder asked for SOTA overlay behaviours and "more access"; DESIGN-FOUNDATION §6f records
 the research and its adversary. Sixteen behaviours are drawn in sketch 102; they need four
@@ -256,4 +256,26 @@ house and not from a product: **a proposal is a layer, never an applied change**
 the config assistant, vendor terms); **approving from a notification lands in the panel with the
 seal, never on the tap**. And one the adversary struck: nothing here is attributed to Linear's
 agent resolving its own threads — that claim did not survive re-fetch; the rule is ADR 0113's.
+
+### Founder answers (2026-09-05, evening)
+
+- **F8 — the non-modal class is named.** Peek beside the list · the hover card · the undo toast ·
+  the bulk-select bar · the standard bottom sheet on a phone · the expanded ledger row. Two
+  constraints: no scrim and no focus trap; never a form and never the seal. They are not shapes
+  and do not count against the three.
+- **F9 — yes to both.** On a phone the right sheet is a bottom sheet with detents (peek · half ·
+  full; the grabber only when there is more than one). Stacked sheets are capped at three and
+  show their path. One decision covering Apple's detents, Material's sheets and Vaul's snap
+  points; `Sheet.tsx` gains the phone form and the stack, nothing else.
+- **F10 — undo after, with that exact line.** Dismiss an entry, archive a thread, remove a shift,
+  a note: the act fires and Undo is offered for a few seconds. Money, sends and ledger rows keep
+  the seal before. The list is closed; adding to it is an amendment here, not a builder's call.
+- **F11 — all three, as the house's own rules.** A manager's passcode at the point of action for
+  staff → manager acts (the manager's name goes on the line); presence on shared records; and a
+  two-person rule for money — the initiator is mechanically excluded from approving their own
+  payment (adopted on the house's word, not Mercury's unconfirmed page). The founder added:
+  *"any other possible security like that"* — opened as **F12**, a security-ceremonies research
+  pass (step-up re-authentication, passkeys, transaction binding, cooling-off release, limits per
+  role, break-glass with a reason, recall windows, tamper-evident audit, device trust) whose
+  output is a catalogue with a fit per act, to be decided act by act.
 
