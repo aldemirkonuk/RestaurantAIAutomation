@@ -1,6 +1,6 @@
 # 0112 — One modal policy: three shapes, one primitive, and the overlay wears the page's ground
 
-- **Status:** Proposed — built behind the existing per-page design flags, founder review open
+- **Status:** Locked — ratified by the founder 2026-09-05 at the sketch 102 census review; built behind the existing per-page design flags
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** modal, sheet, panel, popover, overlay, dialog, focus trap, scrim, ground, portal, shell, mudavym, design foundation
@@ -149,7 +149,9 @@ spectrum, not a shape (see Consequences).
   alone does not). And the centered `Panel` inherited `align-items: stretch`, so an overlay
   holding one sentence rendered as ~700px of empty paper. `.rp-ask` had that same latent
   shape, and it went with the rule on 2026-09-04.
-- **Revisit when:** a *second* anchored surface needs `modal`. One exception is a seam; two
+- **Revisit when:** a *second* anchored surface needs `modal`. (2026-09-05: a second *opener* of
+  the same component is not a second surface — the studio invite reuses `InviteTeamDialog`.) One
+  exception is a seam; two
   means the third shape is a spectrum and the policy should collapse to two modal shapes
   (Sheet, Panel), with menus staying as plain anchored elements inside their trigger's own
   stacking context — which is what they are today.
@@ -160,7 +162,8 @@ spectrum, not a shape (see Consequences).
 |---|---|---|
 | 2026-09-03 | — | Created (Proposed). Built, gated, 19 tests green. Founder ratification open. |
 | 2026-09-04 | — | **Migration complete for the two held pages.** `pages/calendar/next/EventSheet.tsx` → `Sheet`, `pages/reports/next/AskTheBook.tsx` → `Panel`; the per-page scrim/panel/keyframe CSS named above is deleted. Status unchanged (**Proposed**) — the founder has still not ratified the three-shape policy itself. Tests: `Sheet.test.tsx` 15, `shellOverlays.test.tsx` 25, `InviteTeamDialog.test.tsx` 5, calendar 44, reports 77, all green. |
-| 2026-09-05 | — | **Census (sketch 102).** Every overlay in the web app read and given a shape or a reason: 141 sites folded into 117 overlays — 31 built, 10 migrate, 10 owed, 7 target, 40 retire, 16 delete, 3 not a shape. Seven forks for the founder (F1–F7). Status unchanged (**Proposed**). |
+| 2026-09-05 | — | **Census (sketch 102).** Every overlay in the web app read and given a shape or a reason: 141 sites folded into 117 overlays — 31 built, 10 migrate, 12 owed, 7 target, 42 retire, 15 delete, 3 not a shape (after the 2026-09-05 rulings). Seven forks for the founder (F1–F7). |
+| 2026-09-05 | founder | **Ratified (F1) — status → Locked.** F2: the studio invite reuses `InviteTeamDialog` with a second opener. F5: the manual order starts in the owed 'A new order' sheet. F7: a dashboard figure expands in place, no overlay. F3: a 640 sheet. F4: every legacy act is rebuilt to its full purpose (the founder's bar recorded below). F6: HouseHeader's bell and menu survive. All seven answered. |
 
 ## Founder answers (2026-09-04)
 
@@ -178,9 +181,9 @@ and gives each one this ADR's shape or a reason it has none. 141 sites fold into
 |---|---|---|
 | Built | 31 | on the primitive today (the shell's eight, team's eleven, orders' three, settings' four, …) |
 | Migrate | 10 | legacy overlays that render **inside a house-flagged page today** — eight of them on `/inventory`, whose flag turns on the same component (`App.tsx:311`), plus `ConsentDialog` and `BranchProviderTransferModal` under `/settings` |
-| Owed | 10 | acts the legacy page had that the rebuilt page does not offer yet (a manual new order, a new vendor, the drafted reply's approval, the meeting-note prompt, the figure detail, the bell's approval panel, …) |
+| Owed | 9 | acts the legacy page had that the rebuilt page does not offer yet (a manual new order, a new vendor, the drafted reply's approval, the meeting-note prompt, the bell's approval panel, …) |
 | Target | 7 | pages not yet rebuilt whose overlays take their shape now (promotions, distributors, studio, admin health, the camera) |
-| Retires | 40 | acts that already live in something built |
+| Retires | 41 | acts that already live in something built, or — the dashboard figure — in an in-place expansion the founder chose over an overlay (F7) |
 | Delete | 16 | files nobody imports (the reports dashboard-builder set, two dev-only wine modals, the recurring-orders page, the template library, …) |
 
 Three findings the census surfaced, none of which changes the decision:
@@ -196,4 +199,32 @@ Three findings the census surfaced, none of which changes the decision:
 The seven forks (F1 ratify the three shapes · F2 the studio invite · F3 a delivery without an
 order — sheet or route · F4 the acts nothing recreates · F5 where a manual order starts · F6 the
 two bells · F7 the figure behind a dashboard number) are stated in full in the sketch's README. Published gallery: <https://claude.ai/code/artifact/23f77c68-7766-40c8-934a-cfa7148c7508>.
+
+## Founder answers (2026-09-05, at the census review)
+
+- **F1 — the three shapes are ratified.** This ADR moves from Proposed to **Locked**. The
+  alternatives were put again with their costs (two shapes: the invite form loses its anchored
+  position and the bell and switcher get no house shape; one shape: a scrim on a theme toggle and
+  the list under a record disappears) and refused.
+- **F2 — the studio invite reuses `InviteTeamDialog`** with a second opener. The rule this
+  records: *one component, however many openers, is one exception.* A second **component**
+  needing `Popover modal` is still the signal that collapses the policy.
+- **F5 — a manual order starts in the owed 'A new order' sheet** on `/orders` (search the
+  register, lines carrying the agreed price and unit from the vendor's row, a vendor; nothing is
+  sent by saving a draft). Rejected: starting only from a register row, or only through Ask AI.
+- **F7 — a dashboard figure expands in place** ('show the working' under the KPI row, like
+  DayDetail under the sales calendar). No overlay. The expansion is still to build on
+  `pages/dashboard/next/KpiRow.tsx`.
+- **F3 — a delivery without an order is a 640 sheet on `/inventory`**, not a route.
+- **F4 — every legacy act gets rebuilt, and the founder attached a bar to it, verbatim:**
+  *"everything we touch, they have must all fully serve to their purpose to their max capacity
+  meaning functionality, endpoints, UI UX, smoothness, and most importantly the design."* So:
+  pause/resume the AI on a thread becomes a control on the responses sheet; a person's own
+  one-tap action, an auction lot (a fourth start of the carry sheet) and certifications on file
+  are owed sheets, drawn in sketch 102; assign-a-recommendation follows the same rule but was not
+  on the option list — awaiting an explicit yes.
+- **F6 — `HouseHeader`'s `HouseBell` and `HouseUserMenu` survive.** `Header.tsx`'s house branch
+  (lines 147 and 351) is deleted; its legacy branch stays byte-identical.
+- All seven forks are answered. Migration order: the ten `migrate` rows first (they render legacy
+  inside house-flagged pages today), then the owed sheets, then the sixteen deletions.
 

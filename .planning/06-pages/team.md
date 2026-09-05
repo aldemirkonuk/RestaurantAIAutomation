@@ -321,13 +321,14 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/team` | Export the week | popover | Built | A control's own menu. | `pages/team/next/TeamOverlays.tsx:828 (ExportPopover)` |
 | `/team` | Shift actions | popover | Built | A row's own menu. | `pages/team/next/WeekGrid.tsx:424` |
 | `/team` | What changed here | sheet | Built | The audit trail of one record. | `pages/team/next/TeamRecord.tsx:273 (TrailSheet)` |
-| `/team` | Invite a team member | popover · modal | Built | Anchored under its button like a popover, but a form that commits — so it traps focus and dims. One exception is a seam; two would collapse the policy (fork F2). | `components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings` |
+| `/team` | Invite a team member | popover · modal | Built | Anchored under its button like a popover, but a form that commits — so it traps focus and dims. The one exception; the studio invite reuses this component (F2, 2026-09-05). | `components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings` |
+| `/team` | Certifications on file | sheet | Owed · fork F4 | One person's certificates are one record; opened from the roster row. | `pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05` |
 | `/team` | Desk row menu | — | Retires | Shift actions, Publish this week, Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:868` |
 | `/team` | Desk message composer | — | Retires | A note to the crew. | `pages/team/command/ManagerShiftDesk.tsx:981` |
 | `/team` | Desk confirm sheet | — | Retires | Publish this week · Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:1061` |
 | `/team` | Desk people sheet | — | Retires | People (the roster sheet). | `pages/team/command/ManagerShiftDesk.tsx:1132` |
 | `/team` | Desk editors | — | Retires | Edit this shift · On the roster. | `pages/team/command/editors.tsx:23` |
-| `/team` | Ops rules | — | Retires · fork F4 | The first-rule form is inline on the rebuilt page (ADR 0089). **Certifications** have no house surface — fork F4. | `pages/team/command/OpsRulesPanel.tsx:37` |
+| `/team` | Ops rules | — | Retires · fork F4 | The first-rule form is inline on the rebuilt page (ADR 0089). **Certifications** are built as the sheet drawn above (decided 2026-09-05, F4). | `pages/team/command/OpsRulesPanel.tsx:37` |
 | `/team` | Import shift configurations | — | Delete | No import route exists. Delete with the desk. | `components/team/ShiftImportModal.tsx:135 — opened only from the legacy desk` |
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].

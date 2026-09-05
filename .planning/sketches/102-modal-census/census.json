@@ -228,7 +228,7 @@
      ],
      "footer": "Rule all off · Read the whole book",
      "why": "A control's own menu. It never carries the seal (founder, 2026-09-04) — approving from here opens the panel first.",
-     "source": "components/layout/Header.tsx:147 · components/mudavym/HouseBell.tsx:127 — TWO implementations (fork F6)",
+     "source": "components/mudavym/HouseBell.tsx:127 survives; components/layout/Header.tsx:147 (the shell header's house branch) is deleted — decided 2026-09-05 (F6); its legacy branch stays byte-identical",
      "acts": null,
      "went": null,
      "fork": null
@@ -264,7 +264,7 @@
      ],
      "footer": null,
      "why": "A control's own menu.",
-     "source": "components/layout/Header.tsx:351 · components/mudavym/HouseUserMenu.tsx:79 — TWO implementations (fork F6)",
+     "source": "components/mudavym/HouseUserMenu.tsx:79 survives; components/layout/Header.tsx:351 is deleted — decided 2026-09-05 (F6)",
      "acts": null,
      "went": null,
      "fork": null
@@ -403,66 +403,91 @@
    "doc": "dashboard.md",
    "rebuilt": true,
    "flag": "mudavym_design_dashboard",
-   "verdict": "Four legacy modals. Three retire into surfaces the rebuilt page already has; the figure detail is owed, or becomes an in-place expansion (fork F7).",
+   "verdict": "Four legacy modals, none of which survives as an overlay: three retire into surfaces the rebuilt page already has, and the figure detail becomes an in-place expansion under the KPI row (decided 2026-09-05, F7 — still to build).",
    "overlays": [
     {
      "name": "The working behind a figure",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today",
+     "acts": "What one dashboard figure is made of: the orders, vendors and rows it summed",
+     "went": "Decided 2026-09-05 (F7): the KPI row expands in place — 'show the working' under the figure, like DayDetail under the sales calendar. Not an overlay; the expansion is still owed on KpiRow.tsx.",
+     "fork": "F7"
+    },
+    {
+     "name": "A one-tap action of your own",
      "status": "owed",
      "shape": "sheet",
      "wide": false,
      "modal": false,
      "seal": false,
-     "eyebrow": "Vendor spend · last 30 days",
-     "title": "₺ 84,200 paid on delivered orders",
+     "eyebrow": "The rail",
+     "title": "A one-tap action of your own",
      "action": null,
      "close": "Close",
      "body": [
       [
-       "fact",
-       "Orders summed",
-       "14"
-      ],
-      [
-       "fact",
-       "Vendors",
-       "6"
+       "field",
+       "What it does",
+       "Reorder Öküzgözü to par"
       ],
       [
        "sect",
-       "The rows"
+       "Runs"
       ],
       [
-       "item",
-       "Kavaklıdere · 24 Aug",
-       "order 118 · delivered",
-       false,
-       "₺ 12,000"
+       "chips",
+       [
+        "When I tap it",
+        true
+       ],
+       [
+        "On a threshold",
+        false
+       ],
+       [
+        "On a schedule",
+        false
+       ]
       ],
       [
-       "item",
-       "Sevilen · 21 Aug",
-       "order 116 · delivered",
-       false,
-       "₺ 9,840"
+       "fact",
+       "Threshold",
+       "2 bottles left · 6 is par"
       ],
       [
-       "item",
-       "Banfi · 19 Aug",
-       "order 114 · delivered",
-       false,
-       "$ 1,320"
+       "fact",
+       "Then",
+       "a draft order to Kavaklıdere — you hold to send"
       ],
       [
-       "quiet",
-       "Every figure on this page names the rows it summed (ADR 0020)."
+       "note",
+       "One tap runs the act; the seal still sits on any write it makes (ADR 0112, ADR 0125)."
+      ],
+      [
+       "btns",
+       [
+        "Put it on the rail",
+        true
+       ]
       ]
      ],
-     "footer": "Show the working",
-     "why": "A figure is one object; the reader wants what it is made of, not a question. The alternative is the house idiom — the KPI row expands in place — which is fork F7.",
-     "source": "pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today",
+     "footer": "An action names what it will do before it does it.",
+     "why": "A person's own act is one object on the rail; the rail stays producer-defined otherwise.",
+     "source": "components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05",
      "acts": null,
      "went": null,
-     "fork": "F7"
+     "fork": "F4"
     },
     {
      "name": "Add an important date",
@@ -499,7 +524,7 @@
      "why": null,
      "source": "components/dashboard/QuickActionsPanel.tsx:332",
      "acts": "A person-authored quick action: title, description, URL, icon, colour theme",
-     "went": "One-tap actions moved to the dashboard rail (OneTapPanel, producer-defined). A person's own bookmark is not recreated — fork F4.",
+     "went": "One-tap actions moved to the dashboard rail (OneTapPanel). A person's own action is built as the sheet drawn above (decided 2026-09-05, F4).",
      "fork": "F4"
     },
     {
@@ -529,7 +554,7 @@
    "doc": "orders.md",
    "rebuilt": true,
    "flag": "mudavym_design_orders",
-   "verdict": "Three house overlays are built. The manual 'new order' and its guard are owed (fork F5); six legacy modals retire into what is built; two dead files are deleted.",
+   "verdict": "Three house overlays are built. The manual 'new order' sheet and its guard are owed — the founder chose the sheet as the manual entry (F5, 2026-09-05); six legacy modals retire into what is built; two dead files are deleted.",
    "overlays": [
     {
      "name": "What was agreed",
@@ -747,7 +772,7 @@
       ]
      ],
      "footer": "Nothing is sent by saving a draft.",
-     "why": "The order being written is one object. Owed — unless the founder rules that orders start from a row, the palette or Ask AI (fork F5).",
+     "why": "The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext.",
      "source": "pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found",
      "acts": null,
      "went": null,
@@ -841,7 +866,7 @@
      "why": null,
      "source": "components/orders/CommsThreadDrawer.tsx:436",
      "acts": "One order's thread: DKIM state, Resume/Pause AI, a manual reply in the same email thread",
-     "went": "Vendor answers reads the thread; the composer writes. <b>Pause AI on a thread</b> is not recreated — fork F4.",
+     "went": "Vendor answers reads the thread; the composer writes. <b>Pause / resume the AI on this thread</b> becomes a control in the responses sheet's head (decided 2026-09-05, F4) — a switch, not an overlay.",
      "fork": "F4"
     },
     {
@@ -922,7 +947,7 @@
     },
     {
      "name": "Record an auction purchase",
-     "status": "delete",
+     "status": "retire",
      "shape": null,
      "wide": false,
      "modal": false,
@@ -936,7 +961,7 @@
      "why": null,
      "source": "components/orders/AuctionPurchaseModal.tsx:133 — nobody imports it",
      "acts": "Hammer price, buyer's premium, lot number, into inventory",
-     "went": "Not recreated anywhere. Delete unless the act is wanted — fork F4.",
+     "went": "Built as a fourth start of <b>Carry this bottle</b> on /inventory — 'An auction lot' (decided 2026-09-05, F4). The dead file is deleted once that start exists.",
      "fork": "F4"
     }
    ]
@@ -1050,6 +1075,97 @@
      "acts": null,
      "went": null,
      "fork": null
+    },
+    {
+     "name": "Carry this bottle · an auction lot",
+     "status": "owed",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The register",
+     "title": "Carry this bottle",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "Start from"
+      ],
+      [
+       "item",
+       "The library",
+       "",
+       false
+      ],
+      [
+       "item",
+       "A label photo",
+       ""
+      ],
+      [
+       "item",
+       "A menu scan",
+       ""
+      ],
+      [
+       "item",
+       "An auction lot",
+       "hammer price and premium make the cost",
+       true
+      ],
+      [
+       "two",
+       [
+        "Auction house",
+        "Sotheby's"
+       ],
+       [
+        "Lot",
+        "118"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Hammer price",
+        "$ 1,900"
+       ],
+       [
+        "Buyer's premium",
+        "25% · $ 475"
+       ]
+      ],
+      [
+       "fact",
+       "Cost per bottle",
+       "$ 395.83 · 6 bottles · written to the lot"
+      ],
+      [
+       "two",
+       [
+        "Auction date",
+        "28 Aug 2026"
+       ],
+       [
+        "Zone",
+        "Cellar · rack A"
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Carry it",
+        true
+       ]
+      ]
+     ],
+     "footer": "A lot's cost is the hammer plus the premium; the ledger keeps both (ADR 0070).",
+     "why": "The same sheet, a fourth start: an auction bottle is still one bottle entering the book.",
+     "source": "components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet",
+     "acts": null,
+     "went": null,
+     "fork": "F4"
     },
     {
      "name": "Place 14 bottles by their zones?",
@@ -1187,7 +1303,7 @@
       ]
      ],
      "footer": null,
-     "why": "Lines read as a table; 640 like the composer. Or a route under /receipts — fork F3.",
+     "why": "Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route.",
      "source": "components/inventory/ManualReceiptWorkspace.tsx:234",
      "acts": null,
      "went": null,
@@ -2950,7 +3066,7 @@
      "why": null,
      "source": "pages/Notifications.tsx:1705",
      "acts": "Categories, quick-start templates, a trigger: time-based, threshold or manual",
-     "went": "One-tap actions moved to the dashboard rail; a person-authored action is not recreated — fork F4.",
+     "went": "One-tap actions moved to the dashboard rail; a person-authored action is built as <b>A one-tap action of your own</b> on / (decided 2026-09-05, F4).",
      "fork": "F4"
     },
     {
@@ -2980,7 +3096,7 @@
    "doc": "recommendations.md",
    "rebuilt": true,
    "flag": "mudavym_design_recommendations",
-   "verdict": "The docket dismisses inline and schedules through a route. The old assignee picker has no house surface — fork F4.",
+   "verdict": "The docket dismisses inline and schedules through a route. The old assignee picker is rebuilt as the popover drawn here (F4 rule, 2026-09-05 — confirm).",
    "overlays": [
     {
      "name": "Who takes this?",
@@ -3011,7 +3127,7 @@
       ]
      ],
      "footer": null,
-     "why": "A choice from a short list, anchored to the entry's control. Only if assignment stays on the docket (fork F4).",
+     "why": "A choice from a short list, anchored to the entry's control. Built by the F4 rule of 2026-09-05 (every legacy act gets rebuilt to its full purpose) — this fifth act was not on the option list, so it is stated here for the founder to confirm.",
      "source": "pages/Recommendations.tsx:980 — not on the rebuilt docket",
      "acts": null,
      "went": null,
@@ -3889,11 +4005,76 @@
       ]
      ],
      "footer": null,
-     "why": "Anchored under its button like a popover, but a form that commits — so it traps focus and dims. One exception is a seam; two would collapse the policy (fork F2).",
+     "why": "Anchored under its button like a popover, but a form that commits — so it traps focus and dims. The one exception; the studio invite reuses this component (F2, 2026-09-05).",
      "source": "components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings",
      "acts": null,
      "went": null,
      "fork": null
+    },
+    {
+     "name": "Certifications on file",
+     "status": "owed",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The roster · Mehmet Kaya",
+     "title": "Certifications on file",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Alcohol service",
+       "issued 12 Mar 2026 · expires 12 Mar 2028",
+       true
+      ],
+      [
+       "item",
+       "Food handler",
+       "issued 3 Jan 2025 · expires 3 Jan 2027"
+      ],
+      [
+       "alert",
+       "Expiring",
+       "Food handler expires in 120 days. The roster will say so on the shift."
+      ],
+      [
+       "sect",
+       "Add one"
+      ],
+      [
+       "two",
+       [
+        "Type",
+        "Fire safety"
+       ],
+       [
+        "Issued",
+        "",
+        true
+       ]
+      ],
+      [
+       "field",
+       "Expires",
+       "",
+       true
+      ],
+      [
+       "btns",
+       [
+        "Put it on file",
+        true
+       ]
+      ]
+     ],
+     "footer": "A certificate is a fact with two dates; the schedule reads the second one.",
+     "why": "One person's certificates are one record; opened from the roster row.",
+     "source": "pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05",
+     "acts": null,
+     "went": null,
+     "fork": "F4"
     },
     {
      "name": "Desk row menu",
@@ -4006,7 +4187,7 @@
      "why": null,
      "source": "pages/team/command/OpsRulesPanel.tsx:37",
      "acts": "Coverage rules (day, period, minimum staff, role) and certifications (type, issued, expires)",
-     "went": "The first-rule form is inline on the rebuilt page (ADR 0089). <b>Certifications</b> have no house surface — fork F4.",
+     "went": "The first-rule form is inline on the rebuilt page (ADR 0089). <b>Certifications</b> are built as the sheet drawn above (decided 2026-09-05, F4).",
      "fork": "F4"
     },
     {
@@ -4206,7 +4387,7 @@
    "doc": "studio-certify.md",
    "rebuilt": false,
    "flag": null,
-   "verdict": "Not rebuilt. The same act as the team invite — reuse the one exception component, or collapse the policy (fork F2).",
+   "verdict": "Not rebuilt. The same act as the team invite: it reuses the one exception component with a second opener (decided 2026-09-05, F2).",
    "overlays": [
     {
      "name": "Invite a contributor",
@@ -4258,7 +4439,7 @@
       ]
      ],
      "footer": null,
-     "why": "The same shape as Invite a team member. A second component would be the 'second anchored modal' ADR 0112 says collapses the policy — so it is the same component with a second opener, or the founder collapses to two shapes.",
+     "why": "The same act as Invite a team member. Decided 2026-09-05 (F2): the same component — InviteTeamDialog's Popover modal — with a second opener; one component, however many openers, is one exception.",
      "source": "pages/studio/certify/InviteDialog.tsx:106 (Radix dialog today)",
      "acts": null,
      "went": null,

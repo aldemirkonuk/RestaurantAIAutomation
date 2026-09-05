@@ -12,7 +12,7 @@ tags: [modal, sheet, panel, popover, census, mudavym, design-system, adr-0112]
 
 The founder, 2026-09-05: *"finalize all modal windows for all pages."* Sketch 099 drew the three
 shapes on the first pages that used them; ADR 0112 built the primitive. This sketch reads **every**
-place the web app opens something over the page — 117 sites on 21 pages plus the shell — and gives each
+place the web app opens something over the page — 120 sites on 21 pages plus the shell — and gives each
 one the shape the policy gives it, or a reason it has none.
 
 ## How to view
@@ -39,15 +39,15 @@ page's ground). Filter by shape and by status.
 
 | | |
 |---|---|
-| Overlay sites read | 117 |
+| Overlay sites read | 120 |
 | Built on the primitive | 31 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 10 |
+| Owed — an act the rebuilt page does not yet offer | 12 |
 | Target — page not yet rebuilt, shape decided | 7 |
-| Retires with the legacy page | 40 |
-| Delete — nobody imports it | 16 |
+| Retires with the legacy page | 42 |
+| Delete — nobody imports it | 15 |
 | Not a shape (paint, a label) | 3 |
-| Drawn: sheets · panels · popovers | 26 · 22 · 10 |
+| Drawn: sheets · panels · popovers | 28 · 22 · 10 |
 
 ## Files
 
@@ -67,13 +67,13 @@ page's ground). Filter by shape and by status.
 
 ## The forks
 
-- **F1 — Ratify the three shapes.** ADR 0112 is still Proposed. Everything drawn here assumes Sheet · Panel · Popover; if the founder wants one shape everywhere, this census is the list of what that costs (the sheet exists so the list stays readable; an anchored menu with no anchor has lost its meaning).
-- **F2 — The studio invite.** Reuse the one exception component (Popover modal) with a second opener — my recommendation: one component, however many openers, is still one exception — or collapse the policy to two modal shapes as the ADR's revisit clause says.
-- **F3 — A delivery without an order.** A 640 sheet on /inventory (drawn), or a route under /receipts where the receipts desk already lives.
-- **F4 — Acts no house surface recreates.** Pause AI on a thread · a person-authored one-tap action or quick-action bookmark · an auction purchase · certifications on file · assign a recommendation to a person. One call per act: delete, or build the drawn shape.
-- **F5 — Where a manual order starts.** The owed 'A new order' sheet on /orders, or from a register row, the palette, or Ask AI — OrdersNext has no create path today.
-- **F6 — Two bells, two user menus.** Header.tsx's house branch and HouseHeader's HouseBell/HouseUserMenu both exist. Which survives when the house header lands on every page.
-- **F7 — The figure behind a dashboard number.** A sheet ('the working', drawn) or the house idiom — the KPI row expands in place.
+- **F1 — Ratify the three shapes.** ADR 0112 is still Proposed. Everything drawn here assumes Sheet · Panel · Popover; if the founder wants one shape everywhere, this census is the list of what that costs (the sheet exists so the list stays readable; an anchored menu with no anchor has lost its meaning). **Answered:** Ratified 2026-09-05 — ADR 0112 is Locked.
+- **F2 — The studio invite.** Reuse the one exception component (Popover modal) with a second opener — my recommendation: one component, however many openers, is still one exception — or collapse the policy to two modal shapes as the ADR's revisit clause says. **Answered:** Reuse InviteTeamDialog with a second opener. One component, however many openers, is one exception.
+- **F3 — A delivery without an order.** A 640 sheet on /inventory (drawn), or a route under /receipts where the receipts desk already lives. **Answered:** A 640 sheet on /inventory, not a route.
+- **F4 — Acts no house surface recreates.** Pause AI on a thread · a person-authored one-tap action or quick-action bookmark · an auction purchase · certifications on file · assign a recommendation to a person. One call per act: delete, or build the drawn shape. **Answered:** All of them get built, to their full purpose — functionality, endpoints, UI/UX, smoothness and above all the design (the founder's bar, 2026-09-05). Pause/resume the AI becomes a control on the responses sheet; a person's own one-tap action, an auction lot and certifications are drawn as owed sheets; assign-a-recommendation follows the same rule and awaits an explicit yes.
+- **F5 — Where a manual order starts.** The owed 'A new order' sheet on /orders, or from a register row, the palette, or Ask AI — OrdersNext has no create path today. **Answered:** The owed sheet on /orders is the manual entry.
+- **F6 — Two bells, two user menus.** Header.tsx's house branch and HouseHeader's HouseBell/HouseUserMenu both exist. Which survives when the house header lands on every page. **Answered:** HouseHeader's bell and user menu survive; Header.tsx's house branch is deleted, its legacy branch stays byte-identical.
+- **F7 — The figure behind a dashboard number.** A sheet ('the working', drawn) or the house idiom — the KPI row expands in place. **Answered:** The KPI row expands in place; no overlay.
 
 ## Pages that open nothing
 
@@ -87,33 +87,35 @@ page's ground). Filter by shape and by status.
 | `shell` | Ask AI | panel | Built | A question; the answer is a proposal the person still has to hold. | `components/askai/AskAiBar.tsx:166` |
 | `shell` | Keyboard shortcuts | panel | Built | A reference the reader consults and dismisses — a panel, never a sheet: there is no object. | `components/command/ShortcutsSheet.tsx:67` |
 | `shell` | Recently viewed | panel | Built | A list to jump from. | `components/command/RecentlyViewed.tsx:69` |
-| `shell` | The bell | popover | Built | A control's own menu. It never carries the seal (founder, 2026-09-04) — approving from here opens the panel first. | `components/layout/Header.tsx:147 · components/mudavym/HouseBell.tsx:127 — TWO implementations (fork F6)` |
-| `shell` | User menu | popover | Built | A control's own menu. | `components/layout/Header.tsx:351 · components/mudavym/HouseUserMenu.tsx:79 — TWO implementations (fork F6)` |
+| `shell` | The bell | popover | Built | A control's own menu. It never carries the seal (founder, 2026-09-04) — approving from here opens the panel first. | `components/mudavym/HouseBell.tsx:127 survives; components/layout/Header.tsx:147 (the shell header's house branch) is deleted — decided 2026-09-05 (F6); its legacy branch stays byte-identical` |
+| `shell` | User menu | popover | Built | A control's own menu. | `components/mudavym/HouseUserMenu.tsx:79 survives; components/layout/Header.tsx:351 is deleted — decided 2026-09-05 (F6)` |
 | `shell` | Theme | popover | Built | Dimming the whole page to pick 'Dark' is ceremony; this house rations ceremony. | `components/layout/ThemeMenu.tsx:65` |
 | `shell` | Switch location | popover | Built | A choice from a short list, hanging off the control that shows the choice. | `components/layout/RestaurantBranchSwitcher.tsx:80` |
 | `shell` | Mobile navigation scrim | — | Not a shape | Paint only (`.mdv-scrim`) — not a shape, and it never was one. | `components/layout/DashboardLayout.tsx:60` |
 | `shell` | Nav-rail hint | — | Not a shape | An anchored, non-interactive label, portalled only so it can wear the ground. Not a shape. | `components/layout/Sidebar.tsx:255` |
 | `shell` | Header search | — | Retires | The palette is the search. | `components/layout/Header.tsx:464` |
-| `/` | The working behind a figure | sheet | Owed · fork F7 | A figure is one object; the reader wants what it is made of, not a question. The alternative is the house idiom — the KPI row expands in place — which is fork F7. | `pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today` |
+| `/` | The working behind a figure | — | Retires · fork F7 | Decided 2026-09-05 (F7): the KPI row expands in place — 'show the working' under the figure, like DayDetail under the sales calendar. Not an overlay; the expansion is still owed on KpiRow.tsx. | `pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today` |
+| `/` | A one-tap action of your own | sheet | Owed · fork F4 | A person's own act is one object on the rail; the rail stays producer-defined otherwise. | `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05` |
 | `/` | Add an important date | — | Retires | The calendar's entry sheet — the house has one day-book (ADR 0111). | `components/dashboard/AddImportantDateModal.tsx:125` |
-| `/` | Edit a quick action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail (OneTapPanel, producer-defined). A person's own bookmark is not recreated — fork F4. | `components/dashboard/QuickActionsPanel.tsx:332` |
+| `/` | Edit a quick action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail (OneTapPanel). A person's own action is built as the sheet drawn above (decided 2026-09-05, F4). | `components/dashboard/QuickActionsPanel.tsx:332` |
 | `/` | Daily sales report (a day) | — | Retires | DayDetail expands in place under the sales calendar (pages/dashboard/next/SalesCalendar.tsx:217). | `pages/Dashboard.tsx:1414` |
 | `/orders` | What was agreed | panel | Built | A question the house asks before it writes a price. | `pages/orders/next/AgreementSheet.tsx:349` |
 | `/orders` | Make this order repeat | panel | Built | A commitment about the future — a question, answered once. | `pages/orders/next/RecurrenceSheet.tsx:222` |
 | `/orders` | Vendor answers | sheet · wide | Built | One order's correspondence is one object, read at 640 because letters are prose — the wide case ADR 0112 anticipated. | `pages/orders/next/ResponsesSheet.tsx:353` |
-| `/orders` | A new order | sheet | Owed · fork F5 | The order being written is one object. Owed — unless the founder rules that orders start from a row, the palette or Ask AI (fork F5). | `pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found` |
+| `/orders` | A new order | sheet | Owed · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. | `pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found` |
 | `/orders` | Add a vendor first | panel | Owed | A question with two answers. Travels with the new-order sheet. | `components/orders/OrderGuardModal.tsx:27` |
 | `/orders` | Wine config | — | Retires | What was agreed (unit · price · currency) on the ledger row. | `pages/Orders.tsx:2903` |
 | `/orders` | Reject this order? | — | Retires | Vendor answers — 'Hold to reject', with the reason in words. | `pages/Orders.tsx:3359 (SealedRejectDie)` |
-| `/orders` | Provider comms thread | — | Retires · fork F4 | Vendor answers reads the thread; the composer writes. **Pause AI on a thread** is not recreated — fork F4. | `components/orders/CommsThreadDrawer.tsx:436` |
+| `/orders` | Provider comms thread | — | Retires · fork F4 | Vendor answers reads the thread; the composer writes. **Pause / resume the AI on this thread** becomes a control in the responses sheet's head (decided 2026-09-05, F4) — a switch, not an overlay. | `components/orders/CommsThreadDrawer.tsx:436` |
 | `/orders` | AI-detected deal | — | Retires | An answer kind inside Vendor answers; 'what the AI read' survives as the provenance line. | `components/orders/DealApprovalModal.tsx:45` |
 | `/orders` | Active drafts | — | Retires | /communications lists threads with their drafts; approval is the panel drawn there. | `components/orders/ActiveConversationsPanel.tsx:65` |
 | `/orders` | AI draft ready | — | Retires | Drawn on /communications as **The house's reply, drafted** (owed). | `components/orders/DraftEmailApprovalPanel.tsx:130` |
 | `/orders` | Recurring order (page) | — | Delete | Recurrence lives on the order (Make this order repeat). Delete. | `pages/RecurringOrders.tsx:530 — nobody imports the page` |
-| `/orders` | Record an auction purchase | — | Delete · fork F4 | Not recreated anywhere. Delete unless the act is wanted — fork F4. | `components/orders/AuctionPurchaseModal.tsx:133 — nobody imports it` |
+| `/orders` | Record an auction purchase | — | Retires · fork F4 | Built as a fourth start of **Carry this bottle** on /inventory — 'An auction lot' (decided 2026-09-05, F4). The dead file is deleted once that start exists. | `components/orders/AuctionPurchaseModal.tsx:133 — nobody imports it` |
 | `/inventory` | Carry this bottle | sheet | Migrate | One bottle entering the book is one object; three ways to start, one sheet. | `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)` |
+| `/inventory` | Carry this bottle · an auction lot | sheet | Owed · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. | `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet` |
 | `/inventory` | Place 14 bottles by their zones? | panel | Migrate | A question about a batch. Bulk, so no wax — the plain die. | `components/inventory/AutoLocatePreviewModal.tsx:70` |
-| `/inventory` | A delivery without an order | sheet · wide | Migrate · fork F3 | Lines read as a table; 640 like the composer. Or a route under /receipts — fork F3. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
+| `/inventory` | A delivery without an order | sheet · wide | Migrate · fork F3 | Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
 | `/inventory` | POS buttons and stock | sheet | Migrate | One queue, worked line by line, the register still visible beneath. | `components/inventory/PosMappingPanel.tsx:294` |
 | `/inventory` | Write off 6 bottles? | panel · seal | Migrate | A ledger write is a real commitment — wax. | `components/inventory/RemoveFromInventoryModal.tsx:121` |
 | `/inventory` | The zones | sheet | Migrate | The zones are one object the house owns. | `components/inventory/StorageLocationManager.tsx:327` |
@@ -168,9 +170,9 @@ page's ground). Filter by shape and by status.
 | `/documents-reports` | Document preview | — | Retires | The reading pane. | `pages/DocumentsPage.tsx:985` |
 | `/notifications` | Approve from the bell | panel · seal | Owed | The bell is a menu; a commitment needs a room that cannot be dismissed by accident. | `ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built` |
 | `/notifications` | Notification detail | — | Retires | The row expands in place (`.nt-expand`); a sealed act opens the panel above. | `pages/Notifications.tsx:1513` |
-| `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is not recreated — fork F4. | `pages/Notifications.tsx:1705` |
+| `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is built as **A one-tap action of your own** on / (decided 2026-09-05, F4). | `pages/Notifications.tsx:1705` |
 | `/notifications` | Add vendor deadline | — | Delete | Cutoffs live in vendor terms (ADR 0116). Delete. | `components/notifications/VendorDeadlineSettings.tsx:184 — nobody imports it` |
-| `/recommendations` | Who takes this? | popover | Owed · fork F4 | A choice from a short list, anchored to the entry's control. Only if assignment stays on the docket (fork F4). | `pages/Recommendations.tsx:980 — not on the rebuilt docket` |
+| `/recommendations` | Who takes this? | popover | Owed · fork F4 | A choice from a short list, anchored to the entry's control. Built by the F4 rule of 2026-09-05 (every legacy act gets rebuilt to its full purpose) — this fifth act was not on the option list, so it is stated here for the founder to confirm. | `pages/Recommendations.tsx:980 — not on the rebuilt docket` |
 | `/settings` | Add a location | sheet | Built | One location being written. | `components/locations/AddLocationDialog.tsx:185 (opened at pages/settings/next/LocationsSection.tsx)` |
 | `/settings` | New chain | sheet | Built | One chain being written. | `components/locations/CreateChainDialog.tsx:121` |
 | `/settings` | Edit location | sheet | Built | One location's record. | `components/locations/EditLocationChainDialog.tsx:134` |
@@ -187,18 +189,19 @@ page's ground). Filter by shape and by status.
 | `/team` | Export the week | popover | Built | A control's own menu. | `pages/team/next/TeamOverlays.tsx:828 (ExportPopover)` |
 | `/team` | Shift actions | popover | Built | A row's own menu. | `pages/team/next/WeekGrid.tsx:424` |
 | `/team` | What changed here | sheet | Built | The audit trail of one record. | `pages/team/next/TeamRecord.tsx:273 (TrailSheet)` |
-| `/team` | Invite a team member | popover · modal | Built | Anchored under its button like a popover, but a form that commits — so it traps focus and dims. One exception is a seam; two would collapse the policy (fork F2). | `components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings` |
+| `/team` | Invite a team member | popover · modal | Built | Anchored under its button like a popover, but a form that commits — so it traps focus and dims. The one exception; the studio invite reuses this component (F2, 2026-09-05). | `components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings` |
+| `/team` | Certifications on file | sheet | Owed · fork F4 | One person's certificates are one record; opened from the roster row. | `pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05` |
 | `/team` | Desk row menu | — | Retires | Shift actions, Publish this week, Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:868` |
 | `/team` | Desk message composer | — | Retires | A note to the crew. | `pages/team/command/ManagerShiftDesk.tsx:981` |
 | `/team` | Desk confirm sheet | — | Retires | Publish this week · Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:1061` |
 | `/team` | Desk people sheet | — | Retires | People (the roster sheet). | `pages/team/command/ManagerShiftDesk.tsx:1132` |
 | `/team` | Desk editors | — | Retires | Edit this shift · On the roster. | `pages/team/command/editors.tsx:23` |
-| `/team` | Ops rules | — | Retires · fork F4 | The first-rule form is inline on the rebuilt page (ADR 0089). **Certifications** have no house surface — fork F4. | `pages/team/command/OpsRulesPanel.tsx:37` |
+| `/team` | Ops rules | — | Retires · fork F4 | The first-rule form is inline on the rebuilt page (ADR 0089). **Certifications** are built as the sheet drawn above (decided 2026-09-05, F4). | `pages/team/command/OpsRulesPanel.tsx:37` |
 | `/team` | Import shift configurations | — | Delete | No import route exists. Delete with the desk. | `components/team/ShiftImportModal.tsx:135 — opened only from the legacy desk` |
 | `/promotions` | The offer | sheet | Target | One offer is one object. | `pages/Promotions.tsx:336` |
 | `/promotions` | Offer menu | popover | Target | A row's own menu. | `pages/Promotions.tsx:328` |
 | `/distributors` | Distributor detail | sheet | Target | One distributor is one object. | `pages/distributors/command/DistributorDrawer.tsx:125` |
-| `/studio/certify` | Invite a contributor | popover · modal | Target · fork F2 | The same shape as Invite a team member. A second component would be the 'second anchored modal' ADR 0112 says collapses the policy — so it is the same component with a second opener, or the founder collapses to two shapes. | `pages/studio/certify/InviteDialog.tsx:106 (Radix dialog today)` |
+| `/studio/certify` | Invite a contributor | popover · modal | Target · fork F2 | The same act as Invite a team member. Decided 2026-09-05 (F2): the same component — InviteTeamDialog's Popover modal — with a second opener; one component, however many openers, is one exception. | `pages/studio/certify/InviteDialog.tsx:106 (Radix dialog today)` |
 | `/admin/health` | Live payload | sheet | Target | One response is one object; reading it wants the page beside it. | `pages/AdminHealth.tsx:226` |
 
 ## Method

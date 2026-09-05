@@ -288,7 +288,7 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    while a rebuilt page is mounted. Sketch 010's centered-sheet-for-providers is
    **superseded**: providers shipped a right sheet, the calendar copied it, and
    the ADR ratifies right-sheet-for-a-record on that measured evidence. Status
-   Proposed until the founder ratifies. The rest of item 4 (tab bar, table spec,
+   **Locked** — ratified 2026-09-05 at the sketch 102 census review. The rest of item 4 (tab bar, table spec,
    filter bar, export, status chips, the state triplet) is still open.
 
    **2026-09-04 — house-level components live under `components/mudavym`: the
@@ -306,9 +306,7 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
 7. **Density, responsiveness, accessibility baselines.**
 
    **2026-09-05 — the census (sketch 102).** Every overlay in the web app — 141 sites folded
-   into 117 — now has this policy's shape or a reason it has none: 31 built, 10 migrate (eight
-   on `/inventory`, whose flag turns on the same component), 10 owed, 7 target, 40 retire,
-   16 delete. Specimens at the primitive's real widths, and seven forks for the founder, in
+   into 117 — now has this policy's shape or a reason it has none: 31 built, 10 migrate (eight of them on /inventory, whose flag turns on the same component), 12 owed, 7 target, 42 retire, 15 delete after the founder's four rulings that day (F1 ratified, F2, F5, F7). Specimens at the primitive's real widths, and seven forks for the founder, in
    `.planning/sketches/102-modal-census/README.md`; ADR 0112 carries the summary.
 
 ## 4. Candidate directions (fork — founder call, OD-106)

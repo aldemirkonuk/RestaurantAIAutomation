@@ -279,8 +279,8 @@ def body_html(for_artifact):
     h.append('<div class="sec-h"><span class="sec-n">No overlay</span><h2>Pages that open nothing</h2></div>'
              '<p>Read for completeness: each of these routes renders no fixed-inset element, no Radix dialog and no house overlay. The door and the receipts desk are on this list on purpose.</p>'
              '<div class="nolist">' + "".join(f'<div>{esc(r)}</div>' for r in C.NO_OVERLAY) + '</div>')
-    h.append('<div class="sec-h"><span class="sec-n">The forks</span><h2>What only the founder can decide</h2></div><ol class="forks">'
-             + "".join(f'<li><span class="fn">{esc(n)}</span><div><span class="ft">{esc(t)}</span><p>{esc(d)}</p></div></li>' for n, t, d in C.FORKS) + '</ol>')
+    h.append('<div class="sec-h"><span class="sec-n">The forks</span><h2>What only the founder can decide</h2></div><p>All seven were answered on 2026-09-05. The fifth F4 act — assign a recommendation — was not on the option list and awaits an explicit yes.</p><ol class="forks">'
+             + "".join(f'<li><span class="fn">{esc(n)}</span><div><span class="ft">{esc(t)}</span><p>{esc(d)}</p>{("<p><b>Answered " + esc(C.ANSWERS[n]) + "</b></p>") if n in C.ANSWERS else ""}</div></li>' for n, t, d in C.FORKS) + '</ol>')
     h.append('<div class="sec-h"><span class="sec-n">Method</span><h2>How this was read</h2></div>'
              f'<p>The tree is <b>{esc(C.META["tree"])}</b>. Every <code>.tsx</code> under <code>apps/web/src</code> (tests and stories excluded) was scanned for three things: a JSX <code>&lt;Sheet&gt;</code>, <code>&lt;Panel&gt;</code> or <code>&lt;Popover&gt;</code> whose import resolves to <code>components/mudavym</code>; a <code>fixed inset-0</code> or <code>position: fixed</code> wrapper; and a Radix <code>*Content</code>. '
              'That gave 141 sites in 25 house files and 69 legacy files. Each site was then read by hand for what it does and who opens it; page-local components that merely share a name (<code>ReportsNext</code>\'s cutting <code>Sheet</code>, the dashboard rail\'s <code>Panel</code>, the door\'s local <code>Panel</code>) were excluded, and files nobody imports were checked twice. '
@@ -391,7 +391,7 @@ page's ground). Filter by shape and by status.
 
 ## The forks
 
-{chr(10).join(f"- **{a} — {b}** {c_}" for a, b, c_ in C.FORKS)}
+{chr(10).join(f"- **{a} — {b}** {c_}" + (f" **Answered:** {C.ANSWERS[a]}" if a in C.ANSWERS else " *(open)*") for a, b, c_ in C.FORKS)}
 
 ## Pages that open nothing
 

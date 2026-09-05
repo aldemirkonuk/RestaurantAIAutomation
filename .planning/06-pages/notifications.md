@@ -791,7 +791,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 |---|---|---|---|---|---|
 | `/notifications` | Approve from the bell | panel · seal | Owed | The bell is a menu; a commitment needs a room that cannot be dismissed by accident. | `ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built` |
 | `/notifications` | Notification detail | — | Retires | The row expands in place (`.nt-expand`); a sealed act opens the panel above. | `pages/Notifications.tsx:1513` |
-| `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is not recreated — fork F4. | `pages/Notifications.tsx:1705` |
+| `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is built as **A one-tap action of your own** on / (decided 2026-09-05, F4). | `pages/Notifications.tsx:1705` |
 | `/notifications` | Add vendor deadline | — | Delete | Cutoffs live in vendor terms (ADR 0116). Delete. | `components/notifications/VendorDeadlineSettings.tsx:184 — nobody imports it` |
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
