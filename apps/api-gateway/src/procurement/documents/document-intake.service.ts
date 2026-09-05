@@ -10,6 +10,13 @@ import { SourceChannel } from "./document-types";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
+// A pure reader, no Nest dependency and no network: the 832 the document door
+// stores and the 832 `distributor-feed` prices are read by ONE parser, so a
+// catalogue cannot be classified one way here and another way there.
+import {
+  looksLikeEdi832,
+  readEdi832Header,
+} from "../../distributor-feed/parse-edi832";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
 import {
   CanonicalDocumentService,
@@ -252,6 +259,17 @@ export class DocumentIntakeService {
    * the letters "ISA" somewhere). A PDF coerced through the EDI parser comes back
    * as a document with no lines and no total, which reads downstream as a vendor
    * who billed nothing rather than as a routing mistake.
+   *
+   * THE 832 IS ASKED ABOUT FIRST, AND IT IS NOT AN INVOICE (ADR 0126, batch 56).
+   * `looksLikeX12`'s `ST` alternation is `8[015][0-9]|997`, so a bare `ST*832`
+   * is not recognised at all, and an 832 inside an ISA envelope reaches
+   * `parseX12`'s `default` branch and comes back as "an unsupported set" — a
+   * house's real price catalogue stored as an unreadable document. It is a
+   * `price_list`, one of the twelve doc types this spine already admits, and it
+   * is stored as one. Its PRICES are a separate act with a separate failure
+   * mode: they are admitted only under the code meanings a manager of the house
+   * has stated (`distributor-feed/catalog-ingest.service.ts`), which is why
+   * this method reads the header and stops rather than returning lines.
    */
   private async route(
     input: IntakeInput,
@@ -259,10 +277,11 @@ export class DocumentIntakeService {
   ): Promise<ParsedDocument> {
     const mime = (input.mimeType || "").toLowerCase();
     const name = (input.filename || "").toLowerCase();
-    const isEdiName = /\.(edi|x12|810|856|812|txt|dat)$/.test(name);
+    const isEdiName = /\.(edi|x12|810|832|856|812|txt|dat)$/.test(name);
 
     if (mime.startsWith("text/") || isEdiName || input.text != null) {
       const text = bytes.toString("utf8");
+      if (looksLikeEdi832(text)) return this.priceCatalogue(text);
       if (looksLikeX12(text)) {
         const result = parseX12(text);
         if (result.documents.length) return result.documents[0];
@@ -315,6 +334,67 @@ export class DocumentIntakeService {
         `The extraction model could not be reached, so the document was stored unread: ${reason}`,
       );
     }
+  }
+
+  /**
+   * An EDI 832 price/sales catalogue, as a stored document.
+   *
+   * IT CARRIES NO LINES ON PURPOSE, and the warning says so. A `price_list`
+   * document's lines would be prices, and a price this house may see is one
+   * admitted under a code meaning a manager of the house has stated — a
+   * judgement `procurement_document_lines` has no column for and this parser
+   * has no standing to make. So the document records what the catalogue says
+   * about ITSELF (its number, its version, its sender, its currency, its
+   * effective date, how many lines it holds) and the prices are admitted
+   * separately, where the refusals can be named one by one.
+   *
+   * `currency` falls back to the empty string rather than "USD" when the file
+   * states none: `own-paper-sighting.ts`'s `?? "USD"` is the measured defect
+   * that stamps every Turkish and British sighting as dollars (ADR 0117), and a
+   * catalogue is exactly the document that would spread it. The warning names
+   * the absence.
+   */
+  private priceCatalogue(text: string): ParsedDocument {
+    const header = readEdi832Header(text);
+    const warnings = [
+      `This is an EDI 832 price/sales catalogue, not an invoice. It is stored as a price list and NOTHING on it has been priced by storing it: ${header.lineCount} catalogue ${header.lineCount === 1 ? "line was" : "lines were"} read, and each one is admitted to this house's price register only under a price code a manager of this house has stated the meaning of (ADR 0126).`,
+    ];
+    if (!header.currency)
+      warnings.push(
+        "The catalogue states no CUR currency segment. No currency was assumed — there is deliberately no USD default here — so every line will be refused until one is declared with the file.",
+      );
+    if (!header.catalogNumber)
+      warnings.push(
+        "The catalogue states no BCT02 number, so it cannot be told apart from another edition by its own header.",
+      );
+    return {
+      docType: "price_list",
+      docNumber: header.catalogNumber,
+      docDate: header.effectiveDate,
+      referencesDocNumber: null,
+      poNumber: null,
+      vendorName: header.senderName,
+      vendorAccount: null,
+      currency: header.currency ?? "",
+      subtotal: null,
+      freight: null,
+      fuelSurcharge: null,
+      splitCaseFee: null,
+      deliveryFee: null,
+      depositTotal: null,
+      tax: null,
+      otherCharges: null,
+      discountTotal: null,
+      total: null,
+      lines: [],
+      computedLinesTotal: null,
+      tieOutDelta: null,
+      tiesOut: null,
+      // Low, and it is about the PARSE, not the file: everything below the
+      // header was deliberately left unread here.
+      confidence: 0.4,
+      warnings,
+    };
   }
 
   private unreadable(reason: string): ParsedDocument {

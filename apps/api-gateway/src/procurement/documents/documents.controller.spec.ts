@@ -43,6 +43,9 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       mockDb as any,
       {} as any,
       {} as any,
+      // CatalogIngestService (ADR 0126). Only an 832 upload reaches it, and no
+      // test in this file uploads one.
+      {} as any,
     );
   });
 

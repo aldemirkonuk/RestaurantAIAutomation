@@ -69,6 +69,10 @@ PATTERNS = (
 # Files that are ALLOWED to name a currency literal, with the reason. Each entry
 # is a claim somebody has to be willing to write.
 ALLOWLIST: dict[str, str] = {
+    # A render test: the fixture STATES the distributor's own currency so the
+    # panel can be asserted to print the stated one and never a default. The
+    # literal is the test's premise, not a page's assumption (2026-09-05, p4bj).
+    "apps/web/src/pages/connections/next/DistributorFeedPanel.test.tsx": "a fixture that states the vendor's own currency so the assertion can check the panel prints it",
     # The table itself: naming USD is what it is for.
     "apps/web/src/lib/currency.ts": "the ISO 4217 table and the formatter that refuses to assume one",
     "apps/web/src/lib/countries.ts": "the one country table: `currency: 'USD'` there is Ecuador, El Salvador and the United States, which is the fact the table exists to hold",

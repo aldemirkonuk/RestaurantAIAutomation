@@ -1,10 +1,14 @@
 # 0126 — A price behind a licence is not a posting
 
-- **Status:** Proposed. **Q2 and Q3 answered by the founder on 2026-09-05 and built; Q1 is open and
-  narrowed** — he is asking about sanctioned APIs and a sign-in hand-over instead, and **no mirror
-  of any kind is built** while that answer is awaited. What exists: a read-only catalogue endpoint,
-  the 832 parser, the FOIA source entry, and the manager price-code mapping (§7). Nothing is armed,
-  no credential is stored, and no request was sent.
+- **Status:** Proposed. **All three founder questions answered on 2026-09-05, and all three built.**
+  ~~Q1 is open and narrowed — he is asking about sanctioned APIs and a sign-in hand-over instead~~ —
+  **Q1 CLOSED in batch 56: "Invoices + the built 810 ingest, and a letter for a feed."** **No mirror
+  and no session hand-over of any kind is built, and none will be under this decision.** What exists:
+  a read-only catalogue endpoint, the 832 parser, the FOIA source entry, the manager price-code
+  mapping (§7), and — from batch 56 — the catalogue ingest through the existing document door, the
+  `/connections` distributor panel and the house's invoice-feed request letter (see "BUILT,
+  2026-09-05" at the end). Nothing is armed, no credential is stored, and **no request and no letter
+  was sent**.
 - **Date:** 2026-09-05
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** class C, distributor feed, Illinois, Michigan, FOIA, EDI 832, EDI 810, licensee
@@ -479,3 +483,94 @@ cross-house read — dispatched as its own build.
 house-obtained 832 or an 810 through the existing document door, the manager's code mapping
 (0e4b67ed) applied, and a /connections panel that says per distributor what is true today.
 Rejected: mark the pieces dormant on purpose.
+
+### BUILT, 2026-09-05 — the three of them, and one correction
+
+**The ingest is the document door, not a second door.** `POST /procurement/documents` already
+hashed, deduplicated, stored and provenanced a file; it now recognises an 832 as well.
+`document-intake.service.ts` classifies it as a `price_list` — one of the twelve doc types the
+spine already admits — with its `BCT` number, its `N1*SU` sender, its `DTM*007` date and its
+`CUR` currency, **and no lines**, because a `price_list` line would be a price and a price this
+house may see is one a manager's statement admitted. What the door did before was measured
+rather than assumed (`document-intake-catalog.spec.ts`, first case, run against the UNCHANGED
+`parseX12`): `looksLikeX12` says true, the envelope reader never opens the `ST` — it warns *"SE
+encountered with no open ST"* — so the file produced **zero transactions and zero skips**, and
+`route()` answered "EDI file produced no readable transaction sets" with docType `unknown`,
+confidence 0 and **`currency: "USD"` stamped on a document whose currency nobody had read.**
+
+**The prices are admitted separately, and every refusal is named.**
+`distributor-feed/catalog-ingest.service.ts` reads the house's live statements, runs
+`parseEdi832`, writes the admitted rows to `vendor_price_observations` with
+`price_code_mapping_id` set and a `raw.handover` block carrying **who uploaded it, when, the
+file's sha256, the filename, the stored document id and the sender**. The report is per line:
+what was priced and under whose statement, and for each refused line the reason and the detail.
+`Edi832Run` gained `unmappedCodes` so the codes come back **by name** — the one refusal a person
+can fix. Three states are kept apart that a row count would collapse: **admitted**, **already
+recorded** (a 23505 on the `(source_ref, content_hash)` index — a re-upload after finally stating
+a code is the ordinary case) and **write failed**, which is never counted as admitted and comes
+back in the database's own words. A mapping read that FAILED refuses the whole document with the
+read's reason: parsing against an empty map would refuse every line as `unmapped_price_basis` and
+blame the distributor for our own database error.
+
+**The door stays open to staff; the price register does not.** `POST /procurement/documents`
+carries `JwtAuthGuard` and no role gate, and it must: a runner photographs paper at the delivery
+door, and a role check there would lose documents at the moment they arrive. So the gate sits on
+the act that writes prices — `CatalogIngestService.admit` calls
+`assertCanManageRestaurant` before it reads a mapping — which is the posture the price-code
+statements themselves already carry (§7) and the one ADR 0114 sets. It is **not** a thrown 403:
+the document is already stored by the time the check runs, and a throw would turn
+stored-and-not-priced into "your upload failed", so the refusal comes back as the catalogue's own
+answer naming the rule and saying the file is on the record. The upload is not sealed, and that is
+deliberate — an upload is not money, and the write it can cause is a price sighting a manager can
+see, question and have withdrawn.
+
+**The panel says what is true and offers the two ways in.**
+`apps/web/src/pages/connections/next/DistributorFeedPanel.tsx`, mounted on `/connections` between
+Register I and Register II — deliberately **not** a fifth register, because every row on it is
+something that cannot be attached. Per distributor: the robots rule and the terms clause
+verbatim, the day they were read, `connectable: false` and the measured reason. Then the two ways
+in: hand over a file you obtained (a real control, posting to the document door, printing the
+per-line report) and ask your Sales Consultant (the letter, as a download). A failed register read
+is named with the gateway's own sentence; `silence` is printed rather than an empty list.
+
+**The letter.** `.planning/07-reference/DISTRIBUTOR-INVOICE-FEED-LETTER.md`, served verbatim by
+`GET /distributor-feed/letter` from `feed-request-letter.ts`. It asks for an **EDI 810 invoice
+feed** or an order-guide equivalent — the scratch draft led with an 832, which is the thing
+nobody sends — names Mudavym as the software and the house as the signatory, and carries seven
+brackets this product does not hold and will not guess. **This product never sends it and has no
+route that could**, said in the file, on the panel and in the constant.
+`feed-request-letter.spec.ts` reads the reference document off disk and fails if the served text
+and the printed text ever differ.
+
+**The correction this pass owed.** The registry's `southern-glazers-il` row, this ADR's Illinois
+table and the sentence a house reads all quoted `southernglazers.com`'s Terms of Use as if they
+governed the **SG Proof buyer portal**. They do not: those Terms define "Website" in their own
+first paragraph as `southernglazers.com`, and `shop.sgproof.com` is a different host whose own
+terms **nobody has read** — the visit window was shut on both passes. The registry now says
+exactly that, and says an unread term is not a permissive one. Corrected in the same words in
+`price-sources.md`'s SGWS row. The corporate clause still stands where it says it applies.
+
+**Verification, on the tree this note describes.** `npx jest --runInBand --forceExit
+src/distributor-feed src/procurement/documents` from `apps/api-gateway` — **293 passed / 20
+suites**, of which **33 cases in 3 suites are new here** (against a measured baseline of 260 / 17
+run on the same command on the same tree before this pass). `npx vitest run src/pages/connections` from `apps/web` —
+**86 passed / 3 files**, of which **19 in 1 file are new** (baseline 67 / 2). Gateway
+`tsc --noEmit` on both `tsconfig.json` and `tsconfig.spec.json`: **0 errors**. Web `tsc --noEmit`:
+**0 errors**. `check_route_exposure`, `check_read_errors_not_swallowed`, `check_read_columns_exist`,
+`check_web_reads_gateway_dto_keys`, `check_no_seeded_defaults`, `check_fk_targets_exist`,
+`check_new_tables_are_locked_down`, `check_order_capture_contract` and `check_adr_numbers_unique`
+all **exit 0**. **No migration** — `vpo_source_type_check` already admits `api_catalog` and
+`price_code_mapping_id` already exists. **No row was written to any database and no route was
+called on a live gateway.**
+
+**Two things this pass could NOT verify, stated.** `scripts/check_gateway_boots.sh` **cannot run
+on this tree**: its `npx nest build` fails on a syntax error in
+`apps/api-gateway/src/commodity/commodity.service.spec.ts`, a file another builder has open and
+this pass may not touch. The equivalent check was run instead — `tsc` build (which excludes
+specs) plus the guard's own `NestFactory.createApplicationContext(AppModule)` runner with the
+same placeholder environment — and answered **BOOT_OK**, so the new `ProcurementModule` →
+`DistributorFeedModule` import and the controller's fifth dependency resolve. And
+`check_queried_tables_exist.py` **exits 1** on this tree for a reason that is not this pass's: the
+unresolvable-table set grew from 26 to 27, and the 27th is in
+`apps/api-gateway/src/analytics/goal-scenario-requests.service.ts`, an untracked file belonging to
+another builder. Every table this pass queries is a string literal.

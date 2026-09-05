@@ -29,6 +29,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { DistributorFeedService } from "./distributor-feed.service";
 import { PriceCodeMappingsService } from "./price-code-mappings.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { FEED_REQUEST_LETTER } from "./feed-request-letter";
 
 @ApiTags("Distributor Feed")
 @ApiBearerAuth()
@@ -154,6 +155,24 @@ export class DistributorFeedController {
   })
   catalog() {
     return { success: true, ...this.service.forJurisdiction(null) };
+  }
+
+  /**
+   * The letter a house sends its distributor asking for an invoice feed.
+   *
+   * A READ. It returns text for a person to print, complete and sign; there is
+   * no route on this gateway that sends it, no address field and no schedule,
+   * and the panel says so beside the download. Declared before `:jurisdiction`
+   * for the same reason `catalog` is — otherwise the word is captured as a
+   * jurisdiction and this route is unreachable.
+   */
+  @Get("letter")
+  @ApiOperation({
+    summary:
+      "The invoice-feed request letter, for the house to sign on its own letterhead. This product never sends it",
+  })
+  letter() {
+    return { success: true, letter: FEED_REQUEST_LETTER };
   }
 
   @Get(":jurisdiction")

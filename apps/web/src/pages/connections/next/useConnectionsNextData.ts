@@ -275,6 +275,94 @@ export interface ArchiveVM {
   }
 }
 
+/**
+ * One licensed distributor, as the register measured it (ADR 0126).
+ *
+ * Field-for-field against `DistributorCatalogueRow`
+ * (`distributor-feed.service.ts`) rather than invented, for the reason
+ * `ProviderStateVM` records above: a guessed shape renders a real answer as an
+ * absence, which is the exact fault this page exists to catch.
+ */
+export interface DistributorVM {
+  key: string;
+  distributor: string;
+  jurisdictions: string[];
+  portal: { name: string; url: string } | null;
+  mechanism: string;
+  automatedAccess: {
+    verdict: 'forbidden' | 'permitted_with_bounds' | 'unstated';
+    robots: string;
+    terms: string | null;
+    measuredOn: string;
+    evidence: string[];
+  };
+  availability: string;
+  unbuilt: { reason: string; measuredOn: string } | null;
+  connectable: boolean;
+}
+
+export interface DistributorCatalogueVM {
+  connection: {
+    label: string;
+    description: string;
+    offerable: boolean;
+    notOfferableBecause: string;
+    waysIn: Array<{
+      id: string;
+      label: string;
+      built: boolean;
+      how: string;
+      route: string;
+      needs: string;
+    }>;
+  };
+  requested: string;
+  jurisdiction: string | null;
+  distributors: DistributorVM[];
+  /** Words when the list is empty. Never an empty array left to speak for itself. */
+  silence: string | null;
+}
+
+export interface FeedLetterVM {
+  id: string;
+  filename: string;
+  subject: string;
+  signedBy: string;
+  firstAsk: string;
+  neverSent: string;
+  brackets: string[];
+  body: string;
+}
+
+/** What `POST /procurement/documents` says back about an 832's own lines. */
+export interface CatalogueAdmissionVM {
+  distributorKey: string | null;
+  sha256: string;
+  documentId: string | null;
+  uploadedByName?: string | null;
+  uploadedAt: string;
+  admitted: number;
+  refused?: number;
+  alreadyRecorded?: number;
+  writeFailed?: number;
+  writeFailures?: string[];
+  linesRead?: number;
+  unmappedCodes?: string[];
+  refusedWhole: string | null;
+  knownDistributorKeys?: string[];
+  sentence: string;
+  lines?: Array<{
+    admitted: boolean;
+    item: string;
+    reason: string | null;
+    detail: string | null;
+    priceBasis?: string;
+    priceCode?: string;
+    rawPrice?: number;
+    currency?: string;
+  }>;
+}
+
 export interface HouseGrantVM {
   connectionId: string;
   integrationId: string;
@@ -510,6 +598,40 @@ export function useConnectionsNextData() {
     staleTime: 60_000,
   })
 
+  /* read 9 — the distributors measured for THIS house's own state (ADR 0126).
+     `/me` rather than `/catalog`: the register holds entries for jurisdictions
+     this house is not in, and a list of Illinois distributors under a Michigan
+     house's address would be a page inventing a market. The gateway resolves
+     the state from `restaurants` and reports a FAILED read as a failure, which
+     arrives here in `silence`. */
+  const distributorsQ = useQuery({
+    queryKey: ['connections-next-distributors', rid],
+    queryFn: async (): Promise<DistributorCatalogueVM> => {
+      const { data } = await apiClient.get<DistributorCatalogueVM>(
+        '/distributor-feed/me',
+      );
+      return data;
+    },
+    enabled: on,
+    staleTime: 600_000,
+  });
+
+  /* read 10 — the invoice-feed letter the house signs. A constant on the
+     gateway, read rather than copied into this bundle so the text a house
+     downloads and the text `07-reference/DISTRIBUTOR-INVOICE-FEED-LETTER.md`
+     records cannot drift apart in a place nobody is testing. */
+  const letterQ = useQuery({
+    queryKey: ['connections-next-feed-letter'],
+    queryFn: async (): Promise<FeedLetterVM> => {
+      const { data } = await apiClient.get<{ letter: FeedLetterVM }>(
+        '/distributor-feed/letter',
+      );
+      return data.letter;
+    },
+    enabled: on,
+    staleTime: 3_600_000,
+  });
+
   /* ── writes ─────────────────────────────────────────────────────────── */
 
   const invalidate = useCallback(
@@ -540,6 +662,40 @@ export function useConnectionsNextData() {
       await apiClient.post('/calendar/ical-token/regenerate');
     },
     onSuccess: () => invalidate('connections-next-ical'),
+  });
+
+  /**
+   * Hand over a file the house already has (ADR 0126, batch 56).
+   *
+   * It posts to `/procurement/documents` — the SAME door every invoice goes
+   * through, not a door of this page's own. That is the decision, not an
+   * accident of routing: a second upload endpoint would be a second place for
+   * a document to be stored, deduplicated and provenanced, and the two would
+   * drift. An 810 is read as an invoice by the door itself; an 832 is stored
+   * as a price list and its lines are priced only under the code meanings this
+   * house has stated, which is what the `catalog` half of the answer reports.
+   */
+  const uploadDistributorFile = useMutation({
+    mutationFn: async (v: {
+      contentBase64: string;
+      filename: string;
+      distributorKey?: string | null;
+      declaredCurrency?: string | null;
+    }): Promise<{
+      documentId: string | null;
+      duplicate: boolean;
+      document: { docType?: string; warnings?: string[] } | null;
+      catalog?: CatalogueAdmissionVM;
+    }> => {
+      const { data } = await apiClient.post('/procurement/documents', {
+        contentBase64: v.contentBase64,
+        filename: v.filename,
+        source: 'upload',
+        ...(v.distributorKey ? { distributorKey: v.distributorKey } : {}),
+        ...(v.declaredCurrency ? { declaredCurrency: v.declaredCurrency } : {}),
+      });
+      return data;
+    },
   });
 
   const setHouseGrantAccess = useMutation({
@@ -895,8 +1051,11 @@ export function useConnectionsNextData() {
     houseGrants: toRegister(houseGrantsQ),
     catalog: toRegister(catalogQ),
     mailArchive: toRegister(archiveQ),
+    distributors: toRegister(distributorsQ),
+    feedLetter: toRegister(letterQ),
     tally,
     regenerateFeed,
+    uploadDistributorFile,
     setHouseGrantAccess,
     setConsent,
     grantSeal,

@@ -184,6 +184,17 @@ export interface Edi832Run {
   refusals: FeedRefusal[];
   /** Set when the WHOLE document was refused, with the sentence saying why. */
   refusedWhole: string | null;
+  /**
+   * Every `CTP02` this house has NOT mapped, by name, deduped and sorted.
+   *
+   * The refusal detail already names them inside a sentence; this is the same
+   * fact in a form a panel can act on, because the only thing that turns a
+   * refused catalogue into an admitted one is a manager stating what these
+   * particular codes mean. A report that said "0 rows admitted" without them
+   * would be telling a house it had a bad file when what it has is an unstated
+   * trade level (ADR 0126 Q3).
+   */
+  unmappedCodes: string[];
 }
 
 export interface Edi832Options {
@@ -299,7 +310,9 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
     sightings: [],
     refusals: [],
     refusedWhole: null,
+    unmappedCodes: [],
   };
+  const unmapped = new Set<string>();
 
   if (!opts.restaurantId || !opts.restaurantId.trim()) {
     run.refusedWhole =
@@ -492,6 +505,12 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
       }))
       .filter((c) => opts.priceBasisByCode[c.code] !== undefined);
     if (mapped.length === 0) {
+      // Named, not only counted. A manager cannot state what a code means
+      // until they are told which code was refused.
+      for (const s of ctps) {
+        const code = element(s, 2).toUpperCase();
+        if (code) unmapped.add(code);
+      }
       run.refusals.push({
         reason: "unmapped_price_basis",
         detail: `item ${itemId} is priced under ${ctps
@@ -567,7 +586,70 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
     run.sightings.push(sighting);
   }
 
+  run.unmappedCodes = [...unmapped].sort();
   return run;
+}
+
+/**
+ * Is this text an 832 price/sales catalogue?
+ *
+ * Uses the SAME segment reader the parser uses, so detection and parsing agree:
+ * a file whose delimiters this reader cannot split produces no `ST` segment and
+ * is therefore not claimed as a catalogue, rather than being claimed and then
+ * refused whole. `looksLikeX12` (`procurement/documents/x12/index.ts`) does not
+ * recognise 832 — its `ST` alternation is `8[015][0-9]|997` — and an 832 inside
+ * an ISA envelope reaches `parseX12`'s `default` branch, which reports it as an
+ * unsupported set. That is why the document door asks THIS question first.
+ */
+export function looksLikeEdi832(raw: string): boolean {
+  if (!raw) return false;
+  return segments(raw).some((s) => s.tag === "ST" && element(s, 1) === "832");
+}
+
+/** What a catalogue says about itself, before any line is admitted. */
+export interface Edi832Header {
+  catalogNumber: string | null;
+  catalogVersion: string | null;
+  /** `CUR02` only. Never a default, and never the caller's declared currency. */
+  currency: string | null;
+  /** `N1*SU` — the sender's own name for itself, or null when it named none. */
+  senderName: string | null;
+  /** The newest `DTM*007`/`DTM*128` anywhere in the document. */
+  effectiveDate: string | null;
+  /** How many `LIN` loops the file carries. Read, not admitted. */
+  lineCount: number;
+}
+
+/**
+ * Read a catalogue's header without admitting a single price.
+ *
+ * The document door needs this and nothing more: it stores the file, names its
+ * sender and its number, and stops. Admitting the lines needs the house's own
+ * code mappings and is a different call with a different failure mode, so the
+ * two are deliberately not one function — a header this can read is not a
+ * catalogue whose prices this house may see.
+ */
+export function readEdi832Header(raw: string): Edi832Header {
+  const segs = segments(raw ?? "");
+  const bct = segs.find((s) => s.tag === "BCT");
+  const cur = segs.find((s) => s.tag === "CUR");
+  const curCode = cur ? element(cur, 2).toUpperCase() : "";
+  const n1su = segs.find((s) => s.tag === "N1" && element(s, 1) === "SU");
+  let effectiveDate: string | null = null;
+  for (const s of segs) {
+    if (s.tag !== "DTM") continue;
+    if (!EFFECTIVE_DATE_QUALIFIERS.has(element(s, 1))) continue;
+    const d = readEdiDate(element(s, 2));
+    if (d && (!effectiveDate || d > effectiveDate)) effectiveDate = d;
+  }
+  return {
+    catalogNumber: (bct && element(bct, 2)) || null,
+    catalogVersion: (bct && element(bct, 3)) || null,
+    currency: /^[A-Z]{3}$/.test(curCode) ? curCode : null,
+    senderName: (n1su && element(n1su, 2)) || null,
+    effectiveDate,
+    lineCount: segs.filter((s) => s.tag === "LIN").length,
+  };
 }
 
 /** Tally refusals by reason, so a short report can name every dropped line. */

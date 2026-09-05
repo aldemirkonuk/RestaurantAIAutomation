@@ -236,6 +236,45 @@ the two registers that would actually leak are refused at the gateway as well.
   nameless account — `peopleFor` on the sibling house-grants route already
   returns an empty map on error, so a name-shaped hole would have told a house
   its record sits in nobody's Drive
+- **Licensed distributors — what yours will and will not send you** *(new
+  2026-09-05; ADR 0126, the founder's batch 56)*. A panel between Register I and
+  Register II — deliberately **not** a fifth register, because every distributor
+  on it is something that **cannot** be attached, and a register of nothing is a
+  worse lie than no register. Each row prints the distributor's **robots rule and
+  terms clause verbatim**, the **day they were read**, `connectable: false` and
+  the measured reason. There is no Connect control anywhere on it, and the page
+  says why in the gateway's own sentence
+- **A portal whose terms are UNREAD says so** *(the correction this pass owed)*.
+  The SG Proof row used to quote `southernglazers.com`'s Terms of Use as if they
+  governed the buyer portal; those Terms define "Website" as that corporate host,
+  and `shop.sgproof.com`'s own terms have never been read — its visit window was
+  shut on both passes. The row now says the portal's position is unknown, and
+  that an unread term is not a permissive one
+- **The two ways in, and both of them are real controls.** *Hand over a file you
+  already have* posts to `POST /procurement/documents` — the **same door every
+  invoice goes through**, not a second one — with the sender named for a
+  catalogue. *Ask your Sales Consultant* downloads the invoice-feed request
+  letter the house signs on its own letterhead. **Neither holds a distributor
+  login, and this product never sends the letter**, which the panel says beside
+  the control rather than leaving to be assumed
+- **A catalogue's answer is per line, and never a bare zero.** An EDI 832 comes
+  back with what was priced (and under whose statement), every refused line with
+  its reason, and — when the reason is a price code nobody at this house has
+  stated a meaning for — **the codes by name**, because that is the one refusal a
+  person can fix in five minutes. Three states are kept apart that a count would
+  collapse: admitted, already on the record at that exact price, and **could not
+  be written**, which is never counted as admitted. A mapping read that FAILED
+  refuses the whole document with the read's reason rather than refusing every
+  line as unmapped and blaming the distributor for our own failed read
+- **The door is open to staff; the price register is not.** The upload route
+  itself keeps no role gate — a runner photographs paper at the delivery door,
+  and a check there would lose documents as they arrive — so the gate sits on
+  the act that writes prices: `assertCanManageRestaurant` runs before a single
+  mapping is read. It is **not** a 403: the document is already stored when the
+  check runs, so the refusal comes back as the catalogue's own answer naming the
+  rule and saying the file is on the record. The upload is **not sealed**, on
+  purpose — an upload is not money, and the write it can cause is a price
+  sighting a manager can see, question and have withdrawn
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
@@ -448,7 +487,9 @@ manager; a staff member reaches the written refusal.
 | `apps/web/src/App.tsx:93` | the lazy import |
 | `apps/web/src/pages/connections/next/ConnectionsNext.tsx` | the page |
 | `apps/web/src/pages/connections/next/AttachmentRow.tsx` | the one row, plus the unread and loading states |
-| `apps/web/src/pages/connections/next/useConnectionsNextData.ts` | seven reads, six writes, the tally arithmetic |
+| `apps/web/src/pages/connections/next/useConnectionsNextData.ts` | ten reads, seven writes, the tally arithmetic (reads 9 and 10 and the catalogue upload are new 2026-09-05, ADR 0126) |
+| `apps/web/src/pages/connections/next/DistributorFeedPanel.tsx` | the licensed-distributor panel: the measurement per distributor, the two ways in, and the per-line admission report (2026-09-05) |
+| `apps/web/src/pages/connections/next/DistributorFeedPanel.test.tsx` | 19 render-contract tests for that panel |
 | `apps/web/src/pages/connections/next/cx-format.ts` | em dash, counts, dates, feed URL |
 | `apps/web/src/pages/connections/next/connections-next.css` | tokens only, both grounds |
 | `apps/web/src/pages/connections/next/fonts.ts` | Fraunces, injected once |
@@ -479,6 +520,9 @@ manager; a staff member reaches the written refusal.
 | GET | `/integrations/oauth/house-grants` | JWT + **manager/owner** | **new** — every personal grant recorded against this house |
 | PUT | `/integrations/oauth/house-grants/:id/access` | JWT + **manager/owner** | **new** — stop, or resume, the house using one |
 | GET | `/integrations/oauth/catalog` | JWT | the SAME route the other three surfaces read (G20) |
+| GET | `/distributor-feed/me` | JWT + **manager/owner** | **new 2026-09-05 (ADR 0126)** — the distributors measured for THIS house's own state, each with its robots rule, its terms clause, the day measured and `connectable: false`. A failed jurisdiction read comes back as `silence`, in words |
+| GET | `/distributor-feed/letter` | JWT + **manager/owner** | **new 2026-09-05** — the invoice-feed request letter the house signs. A READ: nothing on this gateway sends it, and there is no address field |
+| POST | `/procurement/documents` | JWT (the store); **manager/owner** for the catalogue half | **not new, and that is the decision.** The 832/810 hand-over uses the door every invoice already uses. New optional fields: `distributorKey` (which sender's price-code statements to read a catalogue against) and `declaredCurrency` (used only when the file states no `CUR`; there is no USD default). The answer gains a `catalog` block with the per-line admission report. Storing stays open to staff; `CatalogIngestService.admit` runs `assertCanManageRestaurant` before it prices anything, and refuses in the report rather than throwing a 403 over a file already stored |
 
 ## 5. Signals
 
@@ -729,6 +773,21 @@ a reader who looks only at "0 may call a tool" while the model-context register
 is unread would see the dash only in that cell.
 
 ## 13. Roadmap
+
+**Before everything below — the distributor panel's three open ends** (ADR 0126,
+batch 56; the panel itself shipped 2026-09-05). **(a)** There is no control on
+this page for *stating what a price code means*. The routes exist
+(`GET`/`POST /distributor-feed/codes/:distributorKey` and
+`POST …/:mappingId/withdraw`, ADR 0126 §7) and **nothing on any page calls
+them**, so a manager told by the report that `MSR` is unmapped has nowhere here
+to say what it means. That is the largest gap in the loop this pass built, and
+it is named rather than implied to be finished. **(b)** `declaredCurrency` is
+accepted by the door and is **not** offered by the panel, so a catalogue with no
+`CUR` — the published MSSS sample's shape, and therefore the common one — is
+refused whole with no way to answer it from this page. **(c)** The letter's
+brackets are listed but not filled: the house's licence and account number are
+not held anywhere in this product, and whether they should be is a decision, not
+an oversight.
 
 0. **The two text-sender flows** (ADR 0121, §9 G-C10/G-C11): host Meta's
    Embedded Signup for *bring your own*, and a registration sheet for

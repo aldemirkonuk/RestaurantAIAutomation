@@ -33,6 +33,12 @@ import { SealModule } from "../common/seal/seal.module";
 import { DeliveriesController } from "./deliveries.controller";
 import { CanonicalDocumentService } from "./canonical/canonical-document.service";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
+// The 832 catalogue half of the document door (ADR 0126, batch 56). Not
+// circular: DistributorFeedModule imports Database, Config, Auth and
+// Organizations, and nothing in that graph imports procurement — so no
+// forwardRef, and Nest resolves it at build time rather than injecting
+// `undefined` at runtime.
+import { DistributorFeedModule } from "../distributor-feed/distributor-feed.module";
 
 /**
  * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
@@ -59,6 +65,7 @@ import { DeliverySpineService } from "./canonical/delivery-spine.service";
     SettingsModule,
     OrganizationsModule,
     SealModule,
+    DistributorFeedModule,
     forwardRef(() => NotificationsModule),
   ],
   controllers: [
