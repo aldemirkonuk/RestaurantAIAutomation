@@ -124,7 +124,7 @@ something adjacent was measured, `no` means the fetch failed and the reason is s
 | **USDA My Market News / MARS API v1.2** | The machine face of everything above: terminal produce, dairy, poultry, eggs | daily | `https://marsapi.ams.usda.gov/services/v1.2` | yes, in the payload | **unread.** Search results describe a free key on registration; that page has now timed out on four consecutive days and **"free" remains second-hand** | unread | **no.** `/services/v1.2/reports` **403** unauthenticated (second day, key requirement confirmed by measurement); `mymarketnews.ams.usda.gov` timed out at 45 s and 60 s over HTTP/1.1 and HTTP/2; `marsapi.ams.usda.gov/robots.txt` **404** |
 | **BLS Public Data API v1** | PPI and CPI series, and the **AP average-price series which are prices in dollars, not index numbers** | monthly | `https://api.bls.gov/publicAPI/v1/timeseries/data/` | yes, in the payload, including a `"Preliminary"` footnote | **the terms page named by the FAQ, `bls.gov/bls/termsofservice.htm`, returned 404 — the terms are unread and are not asserted here** | **v1: 25 queries/day, 25 series, 10 years, no key. v2: 500/day, 50 series, 20 years, free annual key. Both 50 requests / 10 s** — quoted from `bls.gov/developers/api_faqs.htm` | **yes, and then a problem.** `APU0000708111` (*Eggs, grade A, large, per doz., US city average*) returned 2026 M07 = **2.189**, M02 = 2.500. `WPU017107` (*PPI, eggs for fresh use*) and `WPU0223` both returned clean. **Then `https://api.bls.gov/robots.txt` returned 200 with `User-agent: * / Disallow: /`** — see §3c and founder question Q1 |
 | **FAO Food Price Index** | A world index of food commodity prices, plus five sub-indices: cereals, vegetable oils, dairy, meat, sugar | **monthly**, on a published calendar | **CSV**, keyless: `www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv` | **yes** — the page states the release date and the next one; the CSV states its own base | **no licence declared on the page.** Footer is "© FAO 2026" with a general terms link. **Unstated, recorded as unstated** | `robots.txt` **200**: `*` disallows `/index.php`, `/t3lib/`, `/typo3/`, `/*?id=*` and two `user_upload` paths. **The CSV path is permitted; no crawl-delay is declared** | **yes.** August 2026 = **133.3**, released **2026-09-04**, next **2026-10-02**. CSV: 48,006 B, sha256 `746104cf…c62f`, 444 lines, base **2014-2016=100**, last row `2026-08,133.3` |
-| **ONS time series (JSON)** | UK CPI, including **`d7bu` — CPI INDEX 01: FOOD AND NON-ALCOHOLIC BEVERAGES 2015=100** | monthly | keyless per-series URL: `.../timeseries/d7bu/mm23/data` | **yes** — `releaseDate`, `nextRelease`, and an `updateDate` on **every observation** | **Open Government Licence v3.0** | `www.ons.gov.uk/robots.txt` returns **404** — unrestricted per RFC 9309, the same reading the registry already applies to `ilcc.illinois.gov` | **yes.** 125,504 B, 463 months, 2026 JUL = **144.0**, `unit: "Index, base year = 100"` |
+| **ONS time series (JSON)** | UK CPI, including **`d7bu` — CPI INDEX 01: FOOD AND NON-ALCOHOLIC BEVERAGES 2015=100** | monthly | keyless per-series URL: `.../timeseries/d7bu/mm23/data` | **yes** — `releaseDate`, `nextRelease`, and an `updateDate` on **every observation** | **Open Government Licence v3.0** | `www.ons.gov.uk/robots.txt` returns **404** (re-read 2026-09-05T14:12:41Z: 404, 101,929 B, an ONS "Page not found" page with zero `disallow` lines) — unrestricted per RFC 9309, the same reading the registry already applies to `ilcc.illinois.gov` | **yes.** 125,504 B, 463 months, 2026 JUL = **144.0**, `unit: "Index, base year = 100"` |
 | **USDA ERS Food Price Outlook** | **Forecasts** of annual food price change by category, plus the CPI and PPI series behind them | **monthly, on the 25th**; next **2026-09-25** | CSV and XLSX | yes | not stated on the page; a USDA work | not measured | **partial.** Both pages read. Its own documentation states it *"generates 95 percent forecast intervals"* — **the only source in this register that publishes an interval rather than a point** |
 | **Defra wholesale fruit and vegetable prices** | England and Wales wholesale produce, GBP per kg | fortnightly | CSV | yes, a date on every row | **OGL v3.0** | — | **Measured by the market-research builder on 2026-09-05 and already built as `parse-defra.ts`.** Cited, not re-fetched. See `price-sources.md` §"United Kingdom — one found" |
 | **EIA open data (diesel, natural gas)** | The input cost under every delivery and every kitchen | daily to monthly | REST v2, JSON | yes | *"EIA data is provided free of charge"* subject to its API Terms of Service and Copyrights and Reuse Policy | **free key required**; `api.eia.gov/robots.txt` answers `403 API_KEY_MISSING`; JSON max 5,000 rows, XML 300; throttle limits **not stated on the documentation page** | **partial.** Documentation read; no series pulled |
@@ -186,13 +186,22 @@ first.
 **`www.ams.usda.gov/robots.txt` returns HTTP 403.** Under this repo's own rule — recorded
 in `price-sources.md` for K&L Wine Merchants (*"Its crawl rules cannot be read, so nothing
 may be fetched"*) and for Majestic and Tesco — **no scheduled fetcher may be pointed at
-that host.** Three one-off research reads were made here, matching the 2026-09-04
-precedent that read `bh_fv020.txt` from the same host and recorded it; they are records,
-not a licence to crawl. The consequence is in §10: the shell-egg index takes the
+that host.** **Four one-off research requests across three distinct URLs** were made
+here (`ams_2140.pdf` was fetched twice, once to identify it and once to extract its text),
+matching the 2026-09-04 precedent that read `bh_fv020.txt` from the same host and recorded
+it; they are records, not a licence to crawl. **Corrected 14:12Z**: this paragraph said
+"three one-off research reads" until the fourth request was found by a sweep of the fetch
+log against the transcript. The consequence is in §10: the shell-egg index takes the
 **Michigan path** — a parser written against a real recorded fixture and an upload
 endpoint, never a fetch.
 
-**`api.bls.gov/robots.txt` returns 200 with `User-agent: * / Disallow: /`.** That is a
+**`api.bls.gov/robots.txt` returns 200, 26 bytes, whose entire body is `User-agent: *`
+and `Disallow: /`.** Read twice: once during the research run, and again at
+**2026-09-05T14:12:41Z** at an auditor's instruction, byte-identical, sha256
+`331ea9090db0c9f6f597bd9840fd5b171830f6e0b3ba1cb24dfa91f0c95aedc1`. **The first read was
+made and then omitted from the fetch log**, so until 14:12Z this section's central finding
+had no logged evidence behind it; the omission and the sweep that found its siblings are
+recorded in `p4-scratch/p4as-fetch-log.md` §"Correction". That is a
 `Disallow: /` on the host of a documented, key-issuing, rate-limited public API. The
 registry's existing precedent (Metro Türkiye: *"A polite fetcher may not read this source
 at all"*) says that closes it. The counter-reading is that robots.txt governs crawlers
@@ -200,10 +209,17 @@ and an API whose publisher documents it, publishes its limits and issues keys fo
 governed by its own terms instead. **This is genuinely the founder's call and it is Q1
 below. Nothing in this plan assumes an answer.**
 
-**The shortcut, declared per CLAUDE.md §0.5.** Seven requests were made to `api.bls.gov`
-**before** its `robots.txt` was read, and the read came back `Disallow: /`. The order was
-wrong. No further request was made to that host after the read, and every BLS number in
-this document comes from those seven.
+**The shortcut, declared per CLAUDE.md §0.5 — and corrected upward at 14:12Z.** Data
+requests were made to `api.bls.gov` **before** its `robots.txt` was read, and the read came
+back `Disallow: /`. The order was wrong. **This document first said "seven requests"; a
+recount against the four python scripts that ran puts the true figure at two GETs plus
+eleven or twelve POSTs — thirteen or fourteen data requests, against the v1 keyless tier's
+25-per-day limit.** The range is genuine: the script that raised `ValueError: could not
+convert string to float: '-'` does not say from its traceback whether it failed on the
+2016-2025 pull or the 2026 one, and that is not resolved by guessing. No data request was
+made to that host after the read; every BLS number in this document comes from those
+thirteen or fourteen, and the only later request was the 14:12Z re-read of `robots.txt`
+itself.
 
 ---
 
@@ -706,8 +722,11 @@ Numbered for this document. None is answered here.
    counter-reading is that robots.txt governs crawlers and an API is governed by its own
    terms. **This decides whether the richest source in this plan — the only one publishing
    an actual dollars-per-dozen price — is in or out**, and it sets a rule for every future API.
-   I made seven requests to that host before reading its robots.txt; the order was wrong and
-   I stopped after the read.
+   I made **thirteen or fourteen** data requests to that host before reading its
+   robots.txt, and I then omitted that robots read from the fetch log; both are corrected
+   in §3c and in the log's §"Correction". The order was wrong, the count I first reported
+   was too low, and I stopped after the read. **The finding itself is unchanged on a
+   re-read at 14:12Z**, so this question stands exactly as posed.
 2. **The alert, or the context line?** §11. An interruption that fires on a threshold, or a
    labelled series shown beside the order for that item with no claim attached. The evidence
    in §5d is genuinely uncomfortable for the first, and the second gives up the thing you
