@@ -1076,7 +1076,7 @@ behaviours and approach."* Three finders and an adversary ran per CLAUDE.md §3;
 and mobile · D implementation references · E the adversary's verdicts; the brief is beside them).
 Nothing in this subsection is built or decided: the sixteen behaviours that survived are **drawn**
 on the house's own surfaces in sketch 102's Behaviours section, and the four decisions they need
-were forks F8–F11 in [[0112-one-modal-policy-three-shapes-one-primitive|ADR 0112]] — **all four decided by the founder the same evening** (the non-modal class named; detents and a three-deep stack; undo-after with a closed list; all three second-authority ceremonies), with F12, a security-ceremonies catalogue, opened by his addendum.
+were forks F8–F11 in [[0112-one-modal-policy-three-shapes-one-primitive|ADR 0112]] — **all four decided by the founder the same evening** (the non-modal class named; detents and a three-deep stack; undo-after with a closed list; all three second-authority ceremonies), with F12, a security-ceremonies catalogue, opened by his addendum — researched the same night (`research/F-security-ceremonies.md`, 24 ceremonies; the lead's adversarial pass `G-security-adversary.md`), six of them drawn, and a fit per act proposed in ADR 0112 for the founder to decide act by act.
 
 **The numbers.** 72 patterns from the three angles plus 8 implementation rows; the adversary
 judged 96 rows against eight house rules: 51 keep · 40 adapt · 5 reject. Rejected: an OS-wide

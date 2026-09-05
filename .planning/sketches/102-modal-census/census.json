@@ -5193,6 +5193,239 @@
      "acts": null,
      "went": null,
      "fork": null
+    },
+    {
+     "name": "Step up before the money moves",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Order 118 · payment",
+     "title": "Your session is three hours old",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "quiet",
+       "Before ₺ 12,000 leaves the house, say who you are again. The hold is intent; this is identity."
+      ],
+      [
+       "field",
+       "Your passcode",
+       "••••",
+       false
+      ],
+      [
+       "btns",
+       [
+        "Use my passkey"
+       ]
+      ],
+      [
+       "hold",
+       "Then hold to release"
+      ]
+     ],
+     "footer": "Only before money or a config apply, and only when the session is older than two hours.",
+     "why": "A device left unlocked is the common failure; re-authentication at the moment of a real commitment closes it without touching routine work.",
+     "source": "GitHub sudo mode (https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/sudo-mode) — fetched, holds: two hours; password, passkey or 2FA · G: ADAPT",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "What the seal bound",
+     "status": "pattern",
+     "shape": "inplace",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Seal receipt · order 118",
+     "title": "Released ₺ 12,000 to Kavaklıdere",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Sealed by",
+       "Ayşe Yılmaz · 3 Sept · 14:07:41"
+      ],
+      [
+       "fact",
+       "Bound into the challenge",
+       "₺ 12,000 · Kavaklıdere · IBAN …0412 · order 118"
+      ],
+      [
+       "fact",
+       "Second person",
+       "Hasan Demir (manager) · 14:09"
+      ],
+      [
+       "fact",
+       "Chain",
+       "a9f3…41c0 → 7d2e…b8a1 · verified"
+      ],
+      [
+       "quiet",
+       "The challenge minted when the hold began carries the amount and the payee; a receipt that does not match them is not a seal (ADR 0112, 0125)."
+      ]
+     ],
+     "footer": null,
+     "why": "The provable seal made visible: what was bound, by whom, and the link to the record before it. Verifiable after the fact, not asserted.",
+     "source": "FIDO Secure Payment Confirmation (https://fidoalliance.org/white-paper-secure-payment-confirmation/) — fetched, holds: amount and payee signed by the authenticator (PSD2 dynamic linking) · AWS CloudTrail digest chain (https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-log-file-validation-intro.html) · G: KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A new bank detail waits",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Kavaklıdere · vendor terms",
+     "title": "Kavaklıdere's bank detail changed today",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Changed by",
+       "a letter from orders@kavaklidere… · 11:02 · read by the house"
+      ],
+      [
+       "fact",
+       "Was → is",
+       "IBAN …0412 → …7731"
+      ],
+      [
+       "alert",
+       "Held",
+       "The first payment to the new detail waits 24 hours and needs a second person. Whoever confirms the detail cannot release that payment."
+      ],
+      [
+       "quiet",
+       "Call the number on file — +90 312 000 00 00 — not the number in the letter."
+      ],
+      [
+       "hold",
+       "I called; hold to confirm the detail"
+      ]
+     ],
+     "footer": null,
+     "why": "Vendor-impersonation is the single highest-fraud act on the list; a rare ceremony is worth it precisely because it is rare. The house's own separation of duties in one line.",
+     "source": "City National Bank dual control and call-back (https://www.cnb.com/business-banking/insights/what-is-dual-approval.html) · UK Finance Confirmation of Payee (https://www.ukfinance.org.uk/policy-and-guidance/guidance/confirmation-payee) · G: ADAPT — bank-detail changes only, never every new vendor",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Held for a look",
+     "status": "pattern",
+     "shape": "inplace",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Ledger row · expanded",
+     "title": "Payment 3 of today · Sevilen · ₺ 3,600",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "alert",
+       "Held for a manager",
+       "Third payment to Sevilen today, four times its usual ₺ 900 — outside this house's own pattern of the last 90 days. A manager's day limit is ₺ 5,000 (ADR 0128)."
+      ],
+      [
+       "btns",
+       [
+        "Release (manager · seal)",
+        true
+       ],
+       [
+        "Ask Sevilen"
+       ],
+       [
+        "Leave it held"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A velocity check adds nothing to the common case and names its reason on the row when it trips — the house's rule for flags, applied to money.",
+     "source": "Stripe Radar rules and review (https://docs.stripe.com/radar/rules) · Ramp limits (https://support.ramp.com/hc/en-us/articles/10881975647763-Card-limits-and-spend-programs) · G: KEEP, silent on the common case",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The door tablet locks itself",
+     "status": "pattern",
+     "shape": "bottom",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The door · shared tablet",
+     "title": "Locked after 90 seconds",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "avatars",
+       "Elif was counting rack B · 14:01"
+      ],
+      [
+       "field",
+       "Your passcode",
+       "",
+       true
+      ],
+      [
+       "quiet",
+       "Whoever picks this up is not Elif until they say so. Her count is saved on this device and waits for her."
+      ]
+     ],
+     "footer": null,
+     "why": "A shared device left open hands every person's authority to whoever picks it up; an idle lock is what makes the passcode ceremony mean anything.",
+     "source": "Toast POS screen timeout (https://support.toasttab.com/en/article/Adjust-POS-Screen-Timeout) · Square passcodes at the point of sale (https://squareup.com/help/us/en/article/8357-require-passcodes-at-point-of-sale) · G: KEEP — the precondition for the manager's passcode",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Break the glass",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Owner only · order 118",
+     "title": "Bypass the two-person rule for this payment?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Why, in words (required)",
+       "Hasan is unreachable and the delivery is on the truck.",
+       false
+      ],
+      [
+       "quiet",
+       "Every owner is told the moment you hold. The trail marks this release in red and it cannot be made routine."
+      ],
+      [
+       "hold",
+       "Hold to break the glass"
+      ]
+     ],
+     "footer": null,
+     "why": "Emergency access exists in every serious system; the house's version is owner-only, written down, and loud — never a quiet backdoor.",
+     "source": "AWS Well-Architected break-glass procedures (https://docs.aws.amazon.com/wellarchitected/latest/devops-guidance/ag.sad.5-implement-break-glass-procedures.md) · G: ADAPT — rare, reasoned, told to everyone",
+     "acts": null,
+     "went": null,
+     "fork": null
     }
    ]
   }
@@ -5287,7 +5520,7 @@
   {
    "id": "F12",
    "title": "Every other security ceremony like that.",
-   "text": "The founder's addendum to F11: catalogue the rest — step-up re-authentication, passkeys, transaction binding, cooling-off release, limits per role, break-glass with a reason, recall windows, tamper-evident audit, device trust — and say which acts in the house get which. Research in flight; nothing decided."
+   "text": "The founder's addendum to F11. Twenty-four ceremonies catalogued (research/F), judged by the lead (research/G: 3 rejected — a retired ledger product, JIT sessions for staff, an out-of-band call per payment), six drawn above, and a fit per act proposed below. Decided act by act, not as a set."
   }
  ]
 }

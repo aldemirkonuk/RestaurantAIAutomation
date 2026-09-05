@@ -48,7 +48,7 @@ page's ground). Filter by shape and by status.
 | Delete — nobody imports it | 15 |
 | Not a shape (paint, a label) | 3 |
 | Drawn: sheets · panels · popovers | 28 · 22 · 10 |
-| Behaviours drawn from the research (nothing built) | 16 |
+| Behaviours drawn from the research (nothing built) | 22 |
 
 ## Files
 
@@ -58,7 +58,7 @@ page's ground). Filter by shape and by status.
 - **`census.py`** — the source of truth. Edit here.
 - **`census.json`** — the same data for tools (the page-doc subsections are generated from it).
 - **`build.py`** — the builder.
-- **`research/`** — the five research files behind the Behaviours section (three angles, the implementation references, the adversary's verdicts) and the adversary's brief.
+- **`research/`** — the research behind the Behaviours section: three angles (A–C), the implementation references (D), the adversary's verdicts (E), the security ceremonies (F) and the lead's own pass over them (G), plus the adversary's brief.
 
 ## What to look for
 
@@ -80,7 +80,7 @@ page's ground). Filter by shape and by status.
 - **F9 — The sheet on a phone.** A bottom sheet with detents (peek / half / full) as the right sheet's phone form, and sheet stacking capped at three with a breadcrumb — one decision covering Apple detents, Material sheets and Vaul snap points together. **Answered:** Yes to both — detents on the phone, stacking capped at three with a breadcrumb.
 - **F10 — Undo after, for what can be undone.** Fire the routine act and offer Undo (dismiss, archive, a removed shift, a note); keep the seal before for money, sends and ledger rows. The adversary's fight #4: the line must be written down or it creeps. **Answered:** Yes, with that exact line — undo-after for dismiss, archive, a removed shift, a note; money, sends and ledger rows keep the seal before.
 - **F11 — A second authority.** Two ceremonies the research surfaced that the house has not chosen between: a manager's passcode at the point of action (Toast) for staff → manager acts, and presence on shared records (Figma) so a split count is safe. Which acts get which. **Answered:** All three — the manager's passcode, presence on shared records, and a two-person rule for money as the house's own rule — and 'any other possible security like that': a security-ceremonies research pass is running (F12).
-- **F12 — Every other security ceremony like that.** The founder's addendum to F11: catalogue the rest — step-up re-authentication, passkeys, transaction binding, cooling-off release, limits per role, break-glass with a reason, recall windows, tamper-evident audit, device trust — and say which acts in the house get which. Research in flight; nothing decided. *(open)*
+- **F12 — Every other security ceremony like that.** The founder's addendum to F11. Twenty-four ceremonies catalogued (research/F), judged by the lead (research/G: 3 rejected — a retired ledger product, JIT sessions for staff, an out-of-band call per payment), six drawn above, and a fit per act proposed below. Decided act by act, not as a set. *(open)*
 
 ## Pages that open nothing
 
@@ -226,6 +226,12 @@ page's ground). Filter by shape and by status.
 | `behaviours` | Queued is never confirmed | inplace | Behaviour | The right vocabulary for the door: four states, each unmistakable. An absence (no signal) is reported as what it is. | `WhatsApp offline queue and tick ladder · adversary C24 KEEP` |
 | `behaviours` | Who else has this open | sheet | Behaviour | Concurrency is not the failure mode — invisibility is. A presence line on shared records makes a split count safe (fork F11). | `Figma presence and multiplayer (https://help.figma.com/hc/en-us/articles/360040449713) · adversary §6: MISSED — answers B's own concurrent-count gap` |
 | `behaviours` | The invoice beside the order, cell by cell | inplace | Behaviour | Both cited products do this in place, not in a popup — the founder's own 'side-by-side inside an overlay' ask is answered by rule 6: the row expands and shows its working. | `Ramp PO matching · Restaurant365 discrepancy view · Toast AI invoice scanning split view (https://support.toasttab.com/en/article/Get-Started-With-AI-Invoice-Scanning) · adversary B17/B-R2 KEEP` |
+| `behaviours` | Step up before the money moves | panel | Behaviour | A device left unlocked is the common failure; re-authentication at the moment of a real commitment closes it without touching routine work. | `GitHub sudo mode (https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/sudo-mode) — fetched, holds: two hours; password, passkey or 2FA · G: ADAPT` |
+| `behaviours` | What the seal bound | inplace | Behaviour | The provable seal made visible: what was bound, by whom, and the link to the record before it. Verifiable after the fact, not asserted. | `FIDO Secure Payment Confirmation (https://fidoalliance.org/white-paper-secure-payment-confirmation/) — fetched, holds: amount and payee signed by the authenticator (PSD2 dynamic linking) · AWS CloudTrail digest chain (https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-log-file-validation-intro.html) · G: KEEP` |
+| `behaviours` | A new bank detail waits | panel · seal | Behaviour | Vendor-impersonation is the single highest-fraud act on the list; a rare ceremony is worth it precisely because it is rare. The house's own separation of duties in one line. | `City National Bank dual control and call-back (https://www.cnb.com/business-banking/insights/what-is-dual-approval.html) · UK Finance Confirmation of Payee (https://www.ukfinance.org.uk/policy-and-guidance/guidance/confirmation-payee) · G: ADAPT — bank-detail changes only, never every new vendor` |
+| `behaviours` | Held for a look | inplace | Behaviour | A velocity check adds nothing to the common case and names its reason on the row when it trips — the house's rule for flags, applied to money. | `Stripe Radar rules and review (https://docs.stripe.com/radar/rules) · Ramp limits (https://support.ramp.com/hc/en-us/articles/10881975647763-Card-limits-and-spend-programs) · G: KEEP, silent on the common case` |
+| `behaviours` | The door tablet locks itself | bottom | Behaviour | A shared device left open hands every person's authority to whoever picks it up; an idle lock is what makes the passcode ceremony mean anything. | `Toast POS screen timeout (https://support.toasttab.com/en/article/Adjust-POS-Screen-Timeout) · Square passcodes at the point of sale (https://squareup.com/help/us/en/article/8357-require-passcodes-at-point-of-sale) · G: KEEP — the precondition for the manager's passcode` |
+| `behaviours` | Break the glass | panel · seal | Behaviour | Emergency access exists in every serious system; the house's version is owner-only, written down, and loud — never a quiet backdoor. | `AWS Well-Architected break-glass procedures (https://docs.aws.amazon.com/wellarchitected/latest/devops-guidance/ag.sad.5-implement-break-glass-procedures.md) · G: ADAPT — rare, reasoned, told to everyone` |
 
 ## Method
 

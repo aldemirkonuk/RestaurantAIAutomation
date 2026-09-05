@@ -279,3 +279,25 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   role, break-glass with a reason, recall windows, tamper-evident audit, device trust) whose
   output is a catalogue with a fit per act, to be decided act by act.
 
+### F12 — the security ceremonies (2026-09-05, Proposed; decided act by act)
+
+Research `sketches/102-modal-census/research/F-security-ceremonies.md` (24 ceremonies, sourced)
+and the lead's own adversarial pass `G-security-adversary.md` (3 rejected: a retired ledger
+product, time-boxed elevated sessions for staff, an out-of-band call per payment; Mercury's
+scheduling page 403s and is not cited). Six are drawn in sketch 102. The proposal, per act:
+
+| Act | Ceremonies proposed |
+|---|---|
+| Approve an order | the seal (built) · a second person above the tier threshold (ADR 0128) · a passkey-backed seal for owners and managers on their own devices |
+| Release a payment | the seal bound to amount and payee, with a receipt that shows what was bound and its chain link · the two-person rule (F11) · step-up re-authentication when the session is older than two hours · a velocity hold that names its reason on the row · every owner told on every move |
+| Add or change a vendor's bank detail | a call to the number on file (never the number in the letter) · the first payment to the new detail held 24 hours and needing a second person · whoever confirms the detail cannot release that payment |
+| Write off stock | the seal · above a per-role daily limit, a manager's passcode · the tamper-evident trail |
+| A price override by staff | the manager's passcode at the point of action (F11) · the device lock as its precondition |
+| Publish a week | the seal, kept — not on F10's closed list · re-publish exists · the trail marks a republished week |
+| A config change by the assistant | the seal on the proposal (ADR 0113) · step-up when the session is old · the sealed batch revocable for seven days (built 2026-09-04) |
+| A door delivery on a shared tablet | an idle lock returning to the passcode screen · a count correction within ten minutes as undo-after — an explicit addition to F10's list, the founder's to make |
+| A tool write | challenge-and-redeem (ADR 0107, built) · break-glass: owner-only, a written reason, every owner told, the trail marks it |
+
+Kept from the research's own fights: no blanket delay on every new vendor (they are known
+distributors); no mandatory comment on every second approval; no out-of-band call per payment.
+
