@@ -747,17 +747,26 @@ the two or three actions worth doing before service, each of which actually happ
 
 **Added 2026-09-05 — the experiment got an end and a reader.**
 
-23. **Nothing in the product raises the winner, and no screen shows both arms.**
-   `GET /ux/experiments/:key/both-arms` and `POST /ux/experiments/:key/winner` are
-   gateway routes behind `X-Admin-Key`; reading the figures and naming the arm are
-   both a `curl` today. That is deliberate for the READ — the founder is the only
-   audience and a page for one reader is a page to keep in step — but it is a real
-   gap for the WRITE: the end date arrives on its own and nothing anywhere raises
-   its hand to say so. The two shapes worth weighing are a line on `/admin/health`
-   (which is `requiredRole="owner"`, i.e. every house's owner, so it would need the
-   admin key forwarded from the server and not the browser) and a notification to
-   the founder's own address when `ends_at` passes with no winner named. *Blocker:
-   founder — it is a new surface, not a defect.*
+23. ~~**Nothing in the product raises the winner, and no screen shows both arms.**~~
+   **CLOSED 2026-09-05 (batch 53) — founder: "A notification to you when it ends
+   unnamed."** A ninth notification producer,
+   `notifications/producers/experiment-ended.producer.ts`, writes one durable
+   notice when a declared experiment is started, ended and has no winner named —
+   both arms' figures, the abandon-floor caveat, and `POST
+   /ux/experiments/:key/winner` with a note that it and the both-arms route need
+   `X-Admin-Key`. **Deduped on the experiment key** (`experiment:<key>:ended_unnamed`,
+   carrying no date and no count) so it fires once, against the same UNIQUE claim
+   index the other eight use. **It is not a tenant sweep:** `sweepFounder`, run once
+   per fast tick outside `runPerTenant`, into the one house named by
+   `DEFAULT_RESTAURANT_ID` — and with that unset it does not run and picks no house.
+   It never names or implies a winner (pinned by a case that greps the text for
+   leading/winning/ahead/better). Rejected in the same breath: a line on
+   `/admin/health`, which is `requiredRole="owner"` and would mean forwarding the
+   admin key into a page every house's owner can open; and doing nothing. **Off
+   until armed:** `NOTIFICATION_PRODUCERS_ENABLED` is unset on this deployment, so
+   it writes nothing yet. **It sends no mail** — no producer does; the notice says so
+   in words. Still open, filed as a fork in ADR 0127's second addendum: whether to
+   email it as well. The READ staying a `curl` is deliberate and unchanged.
 24. **`ux_experiment_state` cannot be applied to production from here, and the
    both-arms report is therefore unproven against real data.** Same standing
    blocker as item 11 and as ADR 0127's own: the local gateway points at production,

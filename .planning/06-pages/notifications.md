@@ -234,6 +234,23 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   `TYPE_CHOICES`:** the filter pills were left alone this pass (the coordinator's
   instruction was the register line only), so a *Connections* row is drawn and
   tallied correctly but cannot be filtered for. Filed, not built.
+- **A ninth producer, 2026-09-05: `experiment_ended_unnamed`** — the only one that
+  is NOT a tenant sweep. It writes one notice when a UX experiment's window closes
+  with no winner named (ADR 0127's second addendum; founder, batch 53: *"A
+  notification to you when it ends unnamed"*), carrying both arms' figures and the
+  route that names the winner. Three things make it the odd one out and all three
+  are deliberate: it runs **once per fast tick, outside `runPerTenant`**, because
+  its figures are cross-house and running it per tenant would put them in every
+  house's inbox; it writes into **one house only**, named by
+  `DEFAULT_RESTAURANT_ID`, and with that unset it does not run and picks no house;
+  and its `willWrite`/`silentReason` on
+  `GET /notifications/producers/status` is computed **ahead of the `served`
+  branch**, because the opt-in register does not gate it and printing the
+  scheduler's sentence over it would be a true sentence rendered where it is
+  false. **It needs no new register row**: it writes `type: "system_alert"`, which
+  `KIND_BY_TYPE` already maps to *System* and `nt-format.test.ts` already pins —
+  checked rather than assumed, precisely because the seventh producer's rows fell
+  to *Other* until somebody noticed. It sends no mail; the message says so.
 - **The filter offers no control that can only return nothing.** Every entry in
   `TYPE_CHOICES` was checked against a real write site on 2026-09-03 and each is
   cited in `nt-book.ts`. `ai_suggestion` is deliberately absent: it is a member
@@ -1098,7 +1115,7 @@ calls `createSystemAction`.
 | DELETE | `/notifications/:id` | JWT | `:263-276` | 204 |
 | GET | `/procurement/orders/pending`, `/procurement/orders` | JWT | `procurement.controller.ts` | Orders the action center turns into cards |
 | GET | `/inventory/:rid` (low stock) | JWT | `inventory` module | Low-stock actions |
-| GET | `/notifications/producers/status` | JWT (class) | `notifications.controller.ts:453` | The seven producers' own account of themselves: `armed` (env `NOTIFICATION_PRODUCERS_ENABLED`), `served` (does `runPerTenant` enumerate this house), `timeZone`, `armingNote`, and per producer `{cron, intervalMinutes, nextTickAt, lastRun, lastRunUnreadable, willWrite, silentReason}`. `willWrite` is three-state: `false` with a reason (disarmed / not served / the market register is empty / nothing is suspended), `null` when a source read failed, `true` otherwise. Tenant from the token, never a query. Verified live 2026-09-03: 200 with a session, **401 without one**. Re-verified live 2026-09-04 against the local gateway on :4000: **seven** producers, `armed: false`, `served: true`, `armingNote` reading "arms all 7 producers". `lastRun: null` (never run) and `lastRunUnreadable: "<why>"` (the ledger could not be read) are separate fields on purpose |
+| GET | `/notifications/producers/status` | JWT (class) | `notifications.controller.ts:453` | The **nine** producers' own account of themselves (this row said "seven" while there were eight, and is corrected here rather than re-counted silently; the ninth landed 2026-09-05): `armed` (env `NOTIFICATION_PRODUCERS_ENABLED`), `served` (does `runPerTenant` enumerate this house), `timeZone`, `armingNote`, and per producer `{cron, intervalMinutes, nextTickAt, lastRun, lastRunUnreadable, willWrite, silentReason}`. `willWrite` is three-state: `false` with a reason (disarmed / not served / the market register is empty / nothing is suspended), `null` when a source read failed, `true` otherwise. Tenant from the token, never a query. Verified live 2026-09-03: 200 with a session, **401 without one**. Re-verified live 2026-09-04 against the local gateway on :4000: **seven** producers, `armed: false`, `served: true`, `armingNote` reading "arms all 7 producers". `lastRun: null` (never run) and `lastRunUnreadable: "<why>"` (the ledger could not be read) are separate fields on purpose. **The ninth row (`experiment_ended_unnamed`) does not obey `served`** — it runs outside `runPerTenant`, so its `silentReason` names `DEFAULT_RESTAURANT_ID` instead of the opt-in flag |
 | GET | `/vendor-intel/below-average?windowDays=30` | JWT | `vendor-intel.controller.ts:95` | The market box's read, built in this same pass. **The market-price producer calls the same `VendorComparisonService.belowTrailingAverage`**, so the box and the book cannot disagree about the same bottle. A second `GET /notifications/market-signals/:rid` was specified in the brief and deliberately NOT built |
 
 ### Fed by

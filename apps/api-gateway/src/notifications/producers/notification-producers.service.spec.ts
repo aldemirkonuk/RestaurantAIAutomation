@@ -64,6 +64,21 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
   const grantSuspended = overrides.grantSuspended ?? stub("grant_suspended");
   (grantSuspended as any).suspendedGrantCount =
     overrides.suspendedGrantCount ?? recorder(async () => 0);
+  // The ninth producer is not a tenant sweep, so it gets a stub with the three
+  // methods the service actually calls on it. `founderHouseId` answers the
+  // TENANT by default, which makes "this is the founder's house" the ordinary
+  // case and the other two the ones a test opts into.
+  const experimentEnded = overrides.experimentEnded ?? {
+    founderHouseId: recorder(() =>
+      overrides.founderHouse === undefined ? TENANT.id : overrides.founderHouse,
+    ),
+    endedUnnamedCount:
+      overrides.endedUnnamedCount ?? recorder(async () => 0),
+    sweepFounder: recorder(async () => {
+      sweeps.push("experiment_ended_unnamed");
+      return emptyTally();
+    }),
+  };
   const config = { get: (k: string) => env[k] };
 
   const service = new NotificationProducersService(
@@ -79,10 +94,12 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     market as any,
     grantSuspended as any,
     addedTool as any,
+    experimentEnded as any,
   );
   return {
     service,
     sweeps,
+    experimentEnded,
     ledger,
     tenants,
     goals,
@@ -125,7 +142,57 @@ describe("arming", () => {
       "invoice_confirmed",
       "grant_suspended",
       "added_tool",
+      // LAST, and outside the per-tenant loop. It reports cross-house figures to
+      // one reader; running it inside would put them in every house's inbox.
+      "experiment_ended_unnamed",
     ]);
+  });
+
+  it("[REVERT-FAILS] the founder sweep runs ONCE, not once per tenant", async () => {
+    const { service, tenants, experimentEnded } = build({
+      NOTIFICATION_PRODUCERS_ENABLED: "true",
+    });
+    // Two tenants through the loop; the ninth producer must still speak once.
+    tenants.runPerTenant = recorder(async (_name: string, body: any) => {
+      await body(TENANT);
+      await body({ ...TENANT, id: "rest-2" });
+      return { tenants: 2, succeeded: 2, failed: 0 };
+    });
+    await service.sweepFast();
+    expect((experimentEnded as any).sweepFounder.calls).toHaveLength(1);
+    expect((experimentEnded as any).sweepFounder.calls[0][0]).toBe(TENANT.id);
+  });
+
+  it("[REVERT-FAILS] with no house named it does not pick one, and opens no run row", async () => {
+    const { service, ledger, experimentEnded } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { founderHouse: null },
+    );
+    const result = await service.runFounderSweep(
+      new Date("2026-09-03T12:00:00Z"),
+    );
+    // `null`, not a tally of zero: nobody named the inbox, so nothing was even
+    // attempted. A fallback restaurant here would deliver one tenant's product
+    // decision into another tenant's inbox.
+    expect(result).toBeNull();
+    expect((experimentEnded as any).sweepFounder.calls).toHaveLength(0);
+    expect(
+      ledger.openRun.calls.filter(
+        (c: any[]) => c[1] === "experiment_ended_unnamed",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a failing founder sweep does not cost the tenants their sweep", async () => {
+    const { service, sweeps, experimentEnded } = build({
+      NOTIFICATION_PRODUCERS_ENABLED: "true",
+    });
+    (experimentEnded as any).sweepFounder = recorder(async () => {
+      throw new Error("experiment register exploded");
+    });
+    await expect(service.sweepFast()).resolves.toBeUndefined();
+    expect(sweeps).toContain("goal_reached");
+    expect(sweeps).toContain("added_tool");
   });
 
   it("[REVERT-FAILS] a disarmed deployment writes no suspension notification", async () => {
@@ -201,7 +268,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all eight producers, their schedule and their next tick", async () => {
+  it("names all nine producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -214,24 +281,26 @@ describe("statusFor — what the page is allowed to say", () => {
       "invoice_confirmed",
       "grant_suspended",
       "added_tool",
+      "experiment_ended_unnamed",
       "sale_record",
       "market_price",
     ]);
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[7].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[6].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
+    expect(status.producers[8].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all eight, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all nine, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 8 producers/);
-    expect(status.producers).toHaveLength(8);
+    expect(status.armingNote).toMatch(/arms all 9 producers/);
+    expect(status.producers).toHaveLength(9);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 8 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 9 producers at once/s,
       );
     }
   });
@@ -245,10 +314,15 @@ describe("statusFor — what the page is allowed to say", () => {
     const market = status.producers.find((p) => p.producer === "market_price")!;
     expect(market.willWrite).toBe(false);
     expect(market.silentReason).toMatch(/no sighting this restaurant can see/);
-    // …and the other six are not tarred with it. The grant producer is given a
-    // suspension here so its own silence case does not mask this one.
+    // …and the others are not tarred with it. The grant producer is given a
+    // suspension here so its own silence case does not mask this one, and the
+    // ninth is excluded because it is legitimately silent whenever no experiment
+    // has ended unnamed — the stub answers 0 by default.
     for (const p of status.producers.filter(
-      (x) => x.producer !== "market_price" && x.producer !== "grant_suspended",
+      (x) =>
+        x.producer !== "market_price" &&
+        x.producer !== "grant_suspended" &&
+        x.producer !== "experiment_ended_unnamed",
     )) {
       expect(p.willWrite).toBe(true);
       expect(p.silentReason).toBeNull();
@@ -302,13 +376,64 @@ describe("statusFor — what the page is allowed to say", () => {
     expect(market.silentReason).toMatch(/could not be read/);
   });
 
-  it("a restaurant the scheduler skips makes every producer silent for that reason", async () => {
+  it("a restaurant the scheduler skips makes the eight tenant producers silent for that reason", async () => {
     const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
     const status = await service.statusFor("rest-99");
-    for (const p of status.producers) {
+    for (const p of status.producers.filter(
+      (x) => x.producer !== "experiment_ended_unnamed",
+    )) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(/restaurant_feature_flags/);
     }
+  });
+
+  it("[REVERT-FAILS] the ninth is NOT silenced by the opt-in register, and says its own reason", async () => {
+    // It runs outside `runPerTenant`, so whether the scheduler enumerates a
+    // restaurant does not decide whether it speaks. Printing the opt-in sentence
+    // over it would be a true statement about the other eight rendered where it
+    // is false — the reader would go and set a feature flag that changes nothing.
+    const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
+    const status = await service.statusFor("rest-99");
+    const ninth = status.producers.find(
+      (p) => p.producer === "experiment_ended_unnamed",
+    )!;
+    expect(ninth.willWrite).toBe(false);
+    expect(ninth.silentReason).not.toMatch(/restaurant_feature_flags/);
+    expect(ninth.silentReason).toMatch(/DEFAULT_RESTAURANT_ID, which is not this one/);
+  });
+
+  it("[REVERT-FAILS] the founder's own house is told the ninth will speak once a window closes", async () => {
+    const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
+    const silent = await service.statusFor("rest-1");
+    const mute = silent.producers.find(
+      (p) => p.producer === "experiment_ended_unnamed",
+    )!;
+    expect(mute.willWrite).toBe(false);
+    expect(mute.silentReason).toMatch(/No declared experiment has ended/);
+
+    const { service: loud } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { endedUnnamedCount: recorder(async () => 1) },
+    );
+    const status = await loud.statusFor("rest-1");
+    const ninth = status.producers.find(
+      (p) => p.producer === "experiment_ended_unnamed",
+    )!;
+    expect(ninth.willWrite).toBe(true);
+    expect(ninth.silentReason).toBeNull();
+  });
+
+  it("[REVERT-FAILS] an unreadable experiment register is unknown, not 'none ended'", async () => {
+    const { service } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { endedUnnamedCount: recorder(async () => null) },
+    );
+    const status = await service.statusFor("rest-1");
+    const ninth = status.producers.find(
+      (p) => p.producer === "experiment_ended_unnamed",
+    )!;
+    expect(ninth.willWrite).toBeNull();
+    expect(ninth.silentReason).toMatch(/could not be read/);
   });
 
   it("[REVERT-FAILS] reports disarmed and never-run as separate facts", async () => {

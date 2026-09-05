@@ -1,7 +1,8 @@
 # 0127 — A house sees one arm, and the arm it saw is written down
 
 - **Status:** Locked — the founder set the ratio on 2026-09-05, in session; both
-  open questions answered the same day (batch 45) and built — see the addendum
+  open questions answered the same day (batch 45) and built, and the ending given a
+  voice in batch 53 — see the two addenda
 - **Date:** 2026-09-05
 - **Decider:** Aldemir (founder)
 - **Keywords:** experiment, arm, assignment, ratio, hash, deterministic, per house, exposure, outcome, neural footprint, ux-optimizer, one-tap, note, die, seal, gesture, counts, verdict
@@ -326,6 +327,7 @@ name, running `--self-test`, and deleting it).
 | 2026-09-05 | Aldemir (founder) | "lets try both, 80 percent simple 20 percent signature" — ratio locked |
 | 2026-09-05 | — | Created. Two open questions carried to the founder: who may read both arms, and what ends the experiment. |
 | 2026-09-05 | Aldemir (founder), batch 45 | BOTH open questions answered and locked: the founder alone reads both arms' figures, and the experiment ends one quarter after its first exposure. Built the same day — see the addendum. |
+| 2026-09-05 | Aldemir (founder), batch 53 | The ending must ANNOUNCE itself: a notification to the founder when the window closes with no winner named. Attribution of the winner act left unattributable, deliberately. Built the same day — see the second addendum. |
 
 ## Open questions — the founder's, not an agent's
 
@@ -346,20 +348,38 @@ name, running `--self-test`, and deleting it).
 
 ### The decision
 
-Both open questions above were put to the founder the day they were filed. The
-answers, as they reached this pass through the batch brief:
+Both open questions above were put to the founder the day they were filed, as
+one question with three answers to choose between. The option he selected, in
+its own words, under the label **"You read both; a quarter ends it
+(Recommended)"**:
 
-> the founder alone may read BOTH arms' figures, and the experiment ends one
-> quarter after its first exposure
+> A founder-only report (admin role) shows both arms; the experiment ends on a
+> stated date one quarter after the first exposure, after which every house gets
+> the winning arm and the assignment rows are kept as history. Predictable, no
+> statistics theatre on tiny samples.
 
-**A note on the quotation.** ADR 0127's body quotes the founder verbatim
-("lets try both, 80 percent simple 20 percent signature") because that sentence
-was carried into the session. No verbatim sentence was carried for batch 45, so
-none is invented here: the block above is the decision as it was stated to this
-pass, not a transcript, and it is marked as such rather than dressed as one.
-`ExperimentSpec.founderWords` therefore still holds the ratio sentence and is
-unchanged; the winner act carries its own `words` field for the founder to fill
-when the arm is named.
+The two options he did not select were **"You read both; a sample rule ends
+it"** and **"Owners read their own arm only; you end it by hand"**. Both are
+argued against on their merits under *Options considered* below (15 and 16);
+they are named here because which options were on the table is part of what the
+chosen one means.
+
+**On "admin role".** The option says *role*; what was built is a *credential* —
+`ServiceKeyGuard` and the `X-Admin-Key` service key, not a new value on the JWT.
+The reasoning is D12 and option 13 below, and it is recorded as a deviation
+rather than folded in: this codebase has no platform-admin role, `role` is
+per-restaurant, and inventing a fourth value would have meant a tenancy
+migration for one report. The property the option asks for — the founder alone
+reads both arms, nobody else can — holds either way. If the founder meant a role
+literally, that is a one-line correction to make and this paragraph is where it
+is visible.
+
+**On `founderWords`.** `ExperimentSpec.founderWords` still holds the ratio
+sentence ("lets try both, 80 percent simple 20 percent signature") and is
+unchanged — it is the field that must never be read apart from the numbers it
+set. The words above belong to the ENDING, not the ratio, so they live here; the
+winner act carries its own `words` field for the founder to fill when the arm is
+finally named.
 
 ### What was built
 
@@ -676,3 +696,203 @@ is quoted from another session.
 | Date | Who | What |
 |---|---|---|
 | 2026-09-05 | Claude (parent) | Correction: the commit message of 7a8d864c said "gateway and web tsc: 0 errors"; measured with tsconfig.json only. Under tsconfig.spec.json one pre-existing test-file type error (a main-merged notifications spec) stood at that tip, unrelated to this commit, fixed in 7bbc37c9. Batch 53 answered question 2: a notification to the founder when the window ends unnamed — being built. |
+
+---
+
+## Addendum — 2026-09-05 (batch 53, second): the ending announces itself
+
+### The decision
+
+The first addendum closed both open questions and, in closing them, filed a cost
+against itself (`dashboard.md` §13.23):
+
+> "Nothing raises its hand when the window closes. The end arrives on a date and
+>  no notification, no page and no log announces it; a founder who does not call
+>  the route does not learn that the experiment ended."
+
+That was put back to the founder as a fork with three answers. He chose:
+
+> A notification to you when it ends unnamed
+
+— specifically, when `ends_at` passes with no winner named, a notification goes
+to the founder carrying both arms' figures and the route that names the winner.
+
+**Rejected, in his own framing of the fork:**
+
+1. **A line on `/admin/health`.** Rejected because that page is
+   `requiredRole="owner"` (`App.tsx`), which is every house's owner and not the
+   founder; serving the both-arms figures there would mean forwarding the admin
+   key server-side into a page a tenant can open, which is the disclosure D11's
+   gate exists to prevent. It also fails the actual problem: a page still has to
+   be visited, and the complaint was that nobody is told.
+2. **Nothing.** Rejected: an experiment that ends silently and a product with
+   two faces are the same state, and the whole point of giving the window a date
+   was that it should not need a person to remember it.
+
+**Fork 1 of the first addendum — attribution of the winner act — was put back
+and deliberately LEFT AS IT IS.** The founder's call: leave it. So it is said
+plainly here rather than left to be discovered: `X-Admin-Key` is a shared
+deployment secret, the winner row records the arm, the moment and the words but
+**names no person**, and no `named_by` column was added because the only value
+available on that path is "whoever held the key" and a column with a person's
+name on it holding that would look like an audit trail without being one.
+
+### What was built
+
+**D17. A ninth notification producer, `experiment_ended_unnamed`.**
+`notifications/producers/experiment-ended.producer.ts`, beside the other eight,
+under the same ledger, the same claim index and the same single arming switch
+(`NOTIFICATION_PRODUCERS_ENABLED`, which is **not set on this deployment**, so it
+ships off exactly like its neighbours). It speaks when, and only when, a declared
+experiment is `started`, `ended`, and `winnerArm === null`.
+
+**D18. It is NOT a tenant sweep, and the code says so at every seam.** The
+method is `sweepFounder`, not `sweepTenant`; it runs once per fast tick
+*outside* `runPerTenant`; and it writes into exactly one house, the one named by
+`DEFAULT_RESTAURANT_ID`. Running it inside the per-tenant loop would put
+cross-house figures into every house's inbox — the precise disclosure the
+both-arms route is gated to prevent. **With that env var unset it does not run
+at all and picks no house**: `runFounderSweep` returns `null`, which is a
+different answer from a tally of zero, and no run row is opened.
+
+**D19. Deduped on the experiment key, so it fires once.** The claim key is
+`experiment:<key>:ended_unnamed` — no date and no count in it, deliberately. A
+key carrying `endsAt` would repeat if the window were ever re-derived (which the
+frozen row exists to prevent, so the key must not depend on it); a key carrying
+the figures would fire again on every new number, which is a running tally and
+not an ending. The UNIQUE `(restaurant_id, producer, dedupe_key, user_id)` index
+on `notification_producer_claims` is what enforces it — an index, not a memory.
+
+**D20. Every run is counted.** It goes through `runOne`, so it opens and closes a
+`notification_producer_runs` row with the standard tally (considered, emitted,
+deferred, already-claimed, failed) and a `withheldReason` in words for every
+legitimate zero — "has not ended", "winner is already named", "already been
+reported". `audienceFor` is called *inside* the run body on purpose: it throws on
+a failed read, and a throw outside `runOne` would leave no row saying why the
+sweep produced nothing. It also reports itself on
+`GET /notifications/producers/status`, where its `willWrite`/`silentReason` pair
+is computed **ahead of the `served` branch** — it does not run through
+`runPerTenant`, so the opt-in register does not gate it, and printing the
+scheduler's sentence over it would be a true statement about the other eight
+rendered where it is false.
+
+**D21. It never names a winner and never implies one.** The message prints both
+arms' integers in the order the spec declares them, with no percentage of one set
+beside the other, no arrow, and no word like leading, winning, ahead or better —
+pinned by a case that greps the produced text for all of them. This is the
+surface most tempted to break ADR 0127 D10: a notice that arrived saying "the die
+won" would settle by announcement the one question the founder reserved.
+
+**D22. The figures are not recomputed.** It calls
+`UxOptimizerService.adminExperimentReport`, the same method the admin route
+serves — the pattern `market-price.producer.ts` set when it called
+`VendorComparisonService.belowTrailingAverage` rather than repeating its
+arithmetic. A side effect worth naming: that method DERIVES and freezes the
+window when it is knowable and unstored, so **an armed sweep stamps the end date
+even if the founder never reads the report** — the better failure mode, because
+the window then becomes real on a clock rather than on a page view. Deriving is
+not deciding; nothing on either path picks an arm.
+
+**D23. The address is resolved, recorded, and kept out of the row.**
+`RecipientResolverService.resolveRecipients({ restaurantId: DEFAULT_RESTAURANT_ID,
+roles: ["manager"], channels: ["email"] })` — `allowDefaultFallback` left at its
+default `true`, which is safe here for the one reason OD-87 gives: the fallback
+names the DEFAULT restaurant's manager and the restaurant being asked about IS
+the default restaurant. That is the only query in this gateway for which the
+fallback is not a cross-tenant leak. **The address itself is written to the log,
+never into the notification row**: the metadata carries `founderAddressCount` and
+the resolution path in words, because a personal address does not need to live in
+a database row to answer the question the row is for.
+
+**Measured, not guessed — which address it would use.** On this checkout
+`MANAGER_EMAIL` is set to the founder's own address, `aldemirkonuk2004@gmail.com`
+(read from `/Users/aldemirkonuk/Projects/wt-p4/.env`), and
+`DEFAULT_RESTAURANT_ID` is `e5d6d489-25fa-4082-9cad-3e9e74225517`. So the
+resolver's manager query runs against that restaurant and, if it yields no
+address of its own, falls back to that one. **Which of the two branches would
+actually answer is NOT claimed**: `resolveRecipients` returns the same shape
+either way and the distinction is not recoverable from its return value. Nothing
+was sent anywhere.
+
+**D24. It sends no mail.** No producer in that directory does. This one writes a
+durable inbox row like the other eight; adding an outbound channel would be a
+new send path arriving as a side effect of a measurement, and the founder asked
+for a producer. The message says so in words ("written to your inbox and not
+emailed") so nobody reads "goes to the founder's address" as "an email was sent".
+
+**D25. `type: "system_alert"`, not a new word.** Checked rather than assumed:
+`system_alert` is already mapped to the *System* register in
+`apps/web/src/pages/notifications/next/nt-format.ts` and pinned in
+`nt-format.test.ts`, and two existing gateway paths already write it. A new type
+would have fallen to *Other*, which is exactly how a new register goes invisible
+(`notifications.md` §1a records that happening to the seventh producer).
+
+### Consequences
+
+#### What becomes easier
+
+- The end of an experiment is now an event with a reader, not a date somebody has
+  to remember. The window also gets stamped by the sweep, so the date exists even
+  if nobody looks.
+- The next experiment inherits all of it: the producer iterates `EXPERIMENTS` and
+  is not written against `note_close_control` by name.
+
+#### What becomes harder, or is given up
+
+- **It is off.** `NOTIFICATION_PRODUCERS_ENABLED` is unset on this deployment
+  (measured: absent from both `.env` files read), so this producer writes nothing
+  until somebody arms all nine. That is the house rule for anything that reaches
+  a real inbox, and it means "the founder will be told" is true of the code and
+  not yet of the deployment.
+- **It depends on one env var for its whole reason to exist.** With
+  `DEFAULT_RESTAURANT_ID` unset it is silent, and the status row says so rather
+  than picking a house. That is the right failure, and it is still a failure.
+- **The notice arrives in an inbox, not an email.** If the founder does not open
+  `/notifications`, D24 means the same complaint §13.23 raised is only partly
+  answered. Whether to add mail is a fork, below.
+- **The winner act remains unattributable**, by the founder's own call. Said
+  here so it is a decision and not an omission.
+
+### How it was proven
+
+**Counts are from runs made on this tree, with the command named.**
+
+- `npx jest src/ux-optimizer src/notifications src/one-tap-actions` (from
+  `apps/api-gateway`) — **381 passed / 25 suites**, of which **26 are new** in
+  this pass (`experiment-ended.producer.spec.ts` 19 — a new file — and 7 added to
+  `notification-producers.service.spec.ts`).
+- **The new cases were proven to BITE, by mutation.** The producer is new at
+  HEAD, so "it fails against the pre-fix source" is only `Cannot find module` —
+  a weak proof, and it is labelled one. The real proof is ten one-change
+  mutations applied to same-depth throwaway copies, run, and deleted. **All ten
+  were caught, each by the case written for it**: the winner guard removed (it
+  speaks after a winner is named); the ended guard removed (it speaks while
+  running); the address written into the row; the dedupe key made to carry the
+  end date; a failed report read swallowed as "no experiment"; an unreadable
+  register counted as zero instead of null; the message made to call an arm
+  "leading"; the founder sweep moved inside `runPerTenant`; an unset
+  `DEFAULT_RESTAURANT_ID` given a fallback house; and the ninth producer put
+  under the `served` branch like the other eight.
+- `npx tsc --noEmit -p tsconfig.json` — grep-counted **zero** errors in
+  `notifications` and `ux-optimizer`. The worktree itself is not clean; see the
+  first addendum's note, which still holds.
+- `bash scripts/check_gateway_boots.sh` — **PASS**, which is the only thing that
+  can prove `NotificationsModule` importing `UxOptimizerModule` resolves. A plain
+  import, not a `forwardRef`: `UxOptimizerModule` imports Database, Config and
+  Auth, none of which import `NotificationsModule`, so it sits on no cycle.
+- **NOT verified live, and nothing was sent.** No notification was written, no
+  mail was sent, no production row was touched, and `ux_experiment_state` still
+  does not exist in production.
+
+### The fork this addendum leaves open
+
+**Should the notice also be emailed?** As built it is an inbox row and the
+message says so. Emailing it would mean a producer acquiring an outbound
+channel, which no producer in that directory has, and the address is already
+resolved and logged so the change is small. *Recommendation: leave it as an
+inbox row for now.* The reason is not squeamishness about the code: it is that
+`NOTIFICATION_PRODUCERS_ENABLED` is off, so the first thing to learn is whether
+an armed sweep behaves, and an outbound channel is a worse thing to be wrong
+about than a row nobody read. If the founder wants mail, it is one call to the
+existing `GmailService` behind the same producer.
+

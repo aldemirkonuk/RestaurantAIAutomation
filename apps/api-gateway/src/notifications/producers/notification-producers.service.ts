@@ -26,9 +26,10 @@ import {
 } from "./producer-clock";
 import { GrantSuspendedProducer } from "./grant-suspended.producer";
 import { AddedToolProducer } from "./added-tool.producer";
+import { ExperimentEndedProducer } from "./experiment-ended.producer";
 
 /**
- * The seven notification producers, and the two crons that run them.
+ * The nine notification producers, and the two crons that run them.
  *
  * WHAT THIS FILE OWNS
  * -------------------
@@ -168,6 +169,9 @@ export class NotificationProducersService {
     private readonly marketPrice: MarketPriceProducer,
     private readonly grantSuspended: GrantSuspendedProducer,
     private readonly addedTool: AddedToolProducer,
+    // The ninth. It is NOT run per tenant — see `runFounderSweep` and the
+    // producer's own header. It reports a fact about the product to one reader.
+    private readonly experimentEnded: ExperimentEndedProducer,
     // Optional for the same reason the ledger's is: the spec constructs this
     // service positionally, and production keeps the wall clock.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
@@ -203,6 +207,19 @@ export class NotificationProducersService {
     await this.tenants.runPerTenant(FAST_JOB, async (tenant) => {
       await this.runFastForTenant(tenant, at);
     });
+    // OUTSIDE the per-tenant loop, and once. The experiment-ended producer
+    // reports cross-house figures to one reader; running it inside the loop
+    // would put them in every house's inbox, which is the exact disclosure the
+    // both-arms route is gated to prevent. Its own failure must not look like a
+    // tenant's, so it is caught here rather than left to `runPerTenant`.
+    try {
+      await this.runFounderSweep(at);
+    } catch (error: any) {
+      this.logger.error(
+        `NOTIFICATION_PRODUCER_FOUNDER_SWEEP_FAILED — ${error?.message}. ` +
+          "The per-tenant producers in this sweep already ran and are unaffected.",
+      );
+    }
   }
 
   @Cron(DAILY_CRON, { name: DAILY_JOB })
@@ -329,6 +346,63 @@ export class NotificationProducersService {
     return out;
   }
 
+  // ==========================================================================
+  // THE ONE THAT IS NOT A TENANT
+  // ==========================================================================
+
+  /**
+   * The experiment-ended sweep. One house, named by env, or nothing.
+   *
+   * Returns `null` when it did not run, and that is a different answer from a
+   * tally of zero: `null` means nobody named the house this reports into, so no
+   * run row is opened and no claim is taken. It does NOT fall back to a
+   * restaurant of its own choosing — an anchor nobody named is a guess, and a
+   * guess delivers one tenant's product decision into another tenant's inbox.
+   *
+   * Public so a spec can drive it with a fixed clock.
+   */
+  async runFounderSweep(
+    now: Date = this.clock.now(),
+  ): Promise<ProducerTally | null> {
+    const houseId = this.experimentEnded.founderHouseId();
+    if (!houseId) {
+      this.logger.log(
+        `${ExperimentEndedProducer.PRODUCER} skipped — ` +
+          `${ExperimentEndedProducer.FOUNDER_HOUSE_ENV} is not set on this deployment, ` +
+          "so there is no inbox this producer may write to. It does not choose one.",
+      );
+      return null;
+    }
+
+    // Only for the sentence's dates and for quiet hours. A house the scheduler
+    // does not enumerate still gets this producer — it is the founder's inbox,
+    // not a served tenant's — so an unknown zone degrades the wording rather
+    // than cancelling the notice.
+    let timeZone = "UTC";
+    try {
+      const mine = (await this.tenants.list()).find((t) => t.id === houseId);
+      if (mine) timeZone = this.zoneOf(mine);
+      else
+        this.logger.warn(
+          `${ExperimentEndedProducer.PRODUCER} house=${houseId} is not enumerated by the ` +
+            "scheduler; using UTC for the dates in the notice. The notice is still written.",
+        );
+    } catch (e: any) {
+      this.logger.warn(
+        `${ExperimentEndedProducer.PRODUCER} could not read the tenant register (${e?.message}); ` +
+          "using UTC for the dates in the notice.",
+      );
+    }
+
+    // `audienceFor` is inside the run body on purpose: it throws on a failed
+    // read, and a throw outside `runOne` would leave no run row saying why the
+    // sweep produced nothing.
+    return this.runOne(houseId, ExperimentEndedProducer.PRODUCER, now, async () => {
+      const audience = await this.ledger.audienceFor(houseId, timeZone, now);
+      return this.experimentEnded.sweepFounder(houseId, timeZone, audience, now);
+    });
+  }
+
   /**
    * Open a run row, run the producer, close the row — whatever happens.
    *
@@ -424,6 +498,7 @@ export class NotificationProducersService {
       [InvoiceConfirmedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [GrantSuspendedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [AddedToolProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
+      [ExperimentEndedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
     ];
@@ -453,6 +528,15 @@ export class NotificationProducersService {
         await this.grantSuspended.suspendedGrantCount(restaurantId);
     }
 
+    // The ninth producer is not decided by the two questions above. It does not
+    // run through `runPerTenant`, so the opt-in register does not gate it, and
+    // it writes into exactly one house named by env.
+    const founderHouse = this.experimentEnded.founderHouseId();
+    let endedUnnamed: number | null = null;
+    if (armed && founderHouse !== null && founderHouse === restaurantId) {
+      endedUnnamed = await this.experimentEnded.endedUnnamedCount();
+    }
+
     const producers: ProducerStatus[] = [];
     for (const [producer, cron, interval] of rows) {
       let lastRun: any | null = null;
@@ -472,6 +556,35 @@ export class NotificationProducersService {
         silentReason =
           `${PRODUCERS_FLAG} is not set on this deployment. Setting it to "true" arms ` +
           `all ${rows.length} producers at once — there is no per-producer switch.`;
+      } else if (producer === ExperimentEndedProducer.PRODUCER) {
+        // AHEAD OF THE `served` BRANCHES ON PURPOSE. This producer runs outside
+        // `runPerTenant`, so whether the scheduler enumerates this restaurant
+        // does not decide whether it speaks — saying it did would be a true
+        // sentence about the other eight printed against the one it is false
+        // for. What decides is DEFAULT_RESTAURANT_ID.
+        if (founderHouse === null) {
+          willWrite = false;
+          silentReason =
+            `${ExperimentEndedProducer.FOUNDER_HOUSE_ENV} is not set on this deployment, so this ` +
+            "producer has no inbox to write to. It does not choose one.";
+        } else if (founderHouse !== restaurantId) {
+          willWrite = false;
+          silentReason =
+            "This producer reports a cross-house experiment to one reader and writes only into " +
+            `the house named by ${ExperimentEndedProducer.FOUNDER_HOUSE_ENV}, which is not this one. ` +
+            "It is not silent here because anything failed.";
+        } else if (endedUnnamed === null) {
+          willWrite = null;
+          silentReason =
+            "The experiment register could not be read, so whether an experiment has ended " +
+            "with no winner named is unknown.";
+        } else if (endedUnnamed === 0) {
+          willWrite = false;
+          silentReason =
+            "No declared experiment has ended with an unnamed winner. It speaks once a window " +
+            "closes — one quarter after that experiment's first exposure — and stops as soon as " +
+            "a winner is named (ADR 0127).";
+        }
       } else if (served === false) {
         willWrite = false;
         silentReason =

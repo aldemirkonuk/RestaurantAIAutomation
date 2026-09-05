@@ -10,6 +10,7 @@ import { PushModule } from "../push/push.module";
 import { AuthModule } from "../auth/auth.module";
 import { AnalyticsModule } from "../analytics/analytics.module";
 import { VendorIntelModule } from "../vendor-intel/vendor-intel.module";
+import { UxOptimizerModule } from "../ux-optimizer/ux-optimizer.module";
 import { ProducerLedgerService } from "./producers/producer-ledger.service";
 import { GoalReachedProducer } from "./producers/goal-reached.producer";
 import { CeilingHeldProducer } from "./producers/ceiling-held.producer";
@@ -19,6 +20,7 @@ import { SaleRecordProducer } from "./producers/sale-record.producer";
 import { MarketPriceProducer } from "./producers/market-price.producer";
 import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
 import { AddedToolProducer } from "./producers/added-tool.producer";
+import { ExperimentEndedProducer } from "./producers/experiment-ended.producer";
 import { NotificationProducersService } from "./producers/notification-producers.service";
 
 @Module({
@@ -42,6 +44,14 @@ import { NotificationProducersService } from "./producers/notification-producers
     // serves the page's market box — rather than repeating its arithmetic, so
     // the box and the book cannot disagree about the same bottle.
     forwardRef(() => VendorIntelModule),
+    // The experiment-ended producer asks `UxOptimizerService.adminExperimentReport`
+    // for both arms' figures — the SAME method `GET /ux/experiments/:key/both-arms`
+    // serves — rather than repeating the arithmetic, so the notice and the route
+    // cannot disagree about the same experiment. A plain import, not a forwardRef:
+    // UxOptimizerModule imports Database, Config and Auth, none of which import
+    // this module, so it sits on no cycle. `check_gateway_boots.sh` is what proves
+    // that, since tsc and jest cannot see a Nest injector.
+    UxOptimizerModule,
   ],
   controllers: [NotificationsController],
   providers: [
@@ -58,6 +68,7 @@ import { NotificationProducersService } from "./producers/notification-producers
     MarketPriceProducer,
     GrantSuspendedProducer,
     AddedToolProducer,
+    ExperimentEndedProducer,
     NotificationProducersService,
   ],
   exports: [
