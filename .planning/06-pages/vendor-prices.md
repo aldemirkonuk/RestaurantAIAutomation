@@ -258,3 +258,114 @@ and by the case in April is two honest rows that are not addable.
 ### 13.y The two identity migrations, proven on PGlite after their commit (parent, 2026-09-05)
 
 a276af97 said `20260906030000` and `20260906050000` had been executed nowhere. `p4-scratch/pglite-probe/p4aq-identity-chain.mjs` now applies the real chain `20260805154027 -> 20260904200000 -> 20260905140000 -> 20260906030000 -> 20260906050000` on stubbed leaf parents (users, restaurants, master_wine_library, restaurant_inventory, providers, vendor_catalogue): every file applies, the two new ones re-apply, all four `beverage_identit*` tables carry RLS, `asserted_for_restaurant_id` exists and `standing` is GENERATED ALWAYS — 9 passed / 0 failed.
+
+### 13.x The writer names the bottle too, not only the backfill (ADR 0124 Q5, 2026-09-05)
+
+The section above landed the column and backfilled it once. A backfill is a one-time
+act: `recordPriceHistory` — the table's only writer — did not name `identity_id` at all,
+so the column would have stopped filling the day it was created and every price recorded
+from 2026-09-05 onwards would carry NULL forever. Measured on the pre-fix file
+(`git show HEAD:apps/api-gateway/src/procurement/procurement.service.ts` at `c2c5725e`,
+298,781 bytes), `grep -c identity_id` returns **0** — absent from the whole file, not
+merely from the insert.
+
+`apps/api-gateway/src/procurement/procurement.service.ts` now resolves the bottle at
+write time through the **same** rule the backfill used, by **importing** `joinByExactKey`
+from `apps/api-gateway/src/vendor-intel/identity-join.ts` rather than writing a second
+implementation of it — nothing under `vendor-intel/` was edited. One distinct identity
+joins; more than one **refuses**, which is ADR 0124's ambiguity doctrine applied
+unattended; none stays NULL.
+
+**Nothing in that resolution can suppress the row.** A register that could not be read is
+UNKNOWN, never "this bottle has no identity" (supabase-js resolves `{ data, error }` and
+never throws), so the failure is logged in words, a sentence goes onto the row's `notes`,
+and the price is still written with `identity_id` NULL — a failed analytics read must not
+cost the house the record of what it paid. `unknown_key` is the single silent branch, and
+deliberately so: `beverage_identities` holds 0 rows in production, so a warning there
+would fire on every price the platform records and teach whoever reads the log to ignore
+it. The NULL on the row carries the fact instead, and
+`check_price_history_reads_group_by_unit.py` already fails any reader that groups on the
+column without also naming `unit`.
+
+The one thing that could still drift is the namespace literal, which now has three
+spellings — the writer's `MASTER_WINE_LIBRARY_NAMESPACE`, the private map inside
+`IdentityService`, and the migration's own literal. It is pinned by an executable
+`ADR-0124` row in `.planning/decisions/CLAIMS.jsonl` (the device ADR 0125 uses for
+`DECLINE_INTENTS`), which also asserts that both halves of the one-key rule are still
+written where they are cited. It was **proved to discriminate**: against copies of the
+three files with the writer's namespace drifted, or with the joiner's
+`identityIds.length === 1` altered, the command exits 1 where it exits 0 on the real tree.
+
+Proof: `apps/api-gateway/src/procurement/a-price-names-its-bottle.spec.ts`, 6 cases —
+a priced row names its bottle, an ambiguous key stays NULL with the refusal on the row, a
+failed register read still writes the price and says why in words, an unidentified wine
+stays NULL silently, and `identity_id` is named explicitly in all four states (never a
+conditional spread). Run against a same-depth copy of the pre-fix file, **5 of the 6
+fail** — only the transcription case passes, which is what it is for — and the failing key
+list prints the pre-fix eleven; the probe files were deleted afterwards. On this tree
+`npx jest src/procurement src/vendor-intel` is **1338 passed, 3 skipped, 1341 total**
+across 71 passing suites; gateway `tsc --noEmit -p tsconfig.json` is clean.
+
+### 13.z A shop that will not quote its own market's currency is not a source (2026-09-05, ADR 0117 Q29)
+
+The founder, asked whether to pin Hedonism to GBP with a `?currency=GBP` hint or
+a locale header: **"Not a source until it quotes GBP unprompted."**
+
+**Hedonism Wines (`hedonism-gb`, GB-ENG) stays unarmed**, and the reason on its
+row in `apps/api-gateway/src/vendor-intel/price-reference-shops.ts` now says why
+in its own words rather than borrowing another block's:
+
+> the shop's own structured data serves `priceCurrency: USD` and
+> `og:price:currency: USD` to an anonymous fetcher, on a London shop whose
+> jurisdiction here is GB-ENG — measured on the committed fixture
+> `hedonism-ruinart-2026-09-04.fixture.html`. A USD figure filed on a GB index
+> line is not the UK shelf price.
+
+It had been filed under `terms_unstated` with a detail beginning *"Not a terms
+problem but a CURRENCY one"*. It now has its own code,
+`quotes_another_market_currency`, so a reader can tell the one shop blocked on
+presentment currency from the two blocked on unread terms — and can count them.
+
+**The rejected path is recorded on the row**, not just in the ADR, because a
+cheaper idea that has already been turned down will otherwise be proposed again
+as new: sending a currency hint would make our own fetch configuration part of
+the price, and a hinted figure sitting beside an unprompted one on the same GB
+line is the comparison the register exists to prevent. *A price whose currency
+depends on what we sent is a price we half-made.*
+
+**It arms only on an anonymous observation.** Every unarmed block now carries a
+required `armsWhen` naming what must be SEEN for it to lift — Hedonism's demands
+`priceCurrency: GBP` served to a fetcher sending no market, locale or currency
+hint, and says outright that *"a GBP figure obtained by asking for GBP does not
+count"*. Blocks with no stated exit get deleted for looking stale; this one
+cannot be lifted by an opinion.
+
+**Wine Chateau (`winechateau-us-nj`) stays off until a house is in its market** —
+the founder confirmed it. Its exit is a fact about the estate, not the shop: a
+house recording `state_province` in New Jersey. Nothing Wine Chateau does can
+lift it and the row says so.
+
+**Where it shows.** `GET vendor-intel/shop-sweep/status` now returns
+`unarmedReason` and `armsWhen` beside the prose `detail` on every row, and the
+run notes append "It arms when …". `armedShopKeys` already refused to arm a key
+carrying a block whatever `PRICE_REFERENCE_SHOPS_ARMED` said — a test asserts
+that, so the block is the mechanism rather than a note about one.
+
+### 13.aa `vendor_catalogue.verified_at` is a stamp, not a badge (2026-09-05, ADR 0117 Q26)
+
+All seventeen stamps were cleared in production at 2026-09-05T20:35:56Z and
+`20260906040000_a_verification_names_its_source.sql` refuses a `verified_at`
+naming no `source_ref`. That leaves the column NULL on every row, and **the NULL
+is the dangerous part**: `if (!row.verified_at) → suspect` would turn the repair
+into a demotion of every vendor in the table, and `if (row.verified_at) →
+verified` was false on all seventeen.
+
+Measured on this tree: **nothing reads it.** It is declared on the distributor
+row type, returned by `search_distributors` and `vendor_catalogue_match`, and
+carried to the client unread — the page's "verified only" toggle filters
+`listing_tier === 'curated'`, which is a human-vetted listing and a different
+fact. So there was no reading to correct, only one to prevent. The rule is
+recorded where the column is declared
+(`distributor-discovery.service.ts`), and `scripts/check_verified_at_is_not_a_boolean.py`
+keeps it true: 13 in-scope files name the column, 0 test it, and the guard exits
+2 rather than passing if its scope ever stops matching anything.

@@ -81,7 +81,19 @@ export type ShopUnarmedReason =
   | "terms_unstated"
   | "fetch_refused"
   | "no_price_published"
-  | "serves_no_house";
+  | "serves_no_house"
+  /**
+   * The shop quotes a currency that is not its own market's to an anonymous
+   * visitor. ADR 0117 Q29, founder 2026-09-05: **"Not a source until it quotes
+   * GBP unprompted."**
+   *
+   * Its own code, added because it was being filed under `terms_unstated` with
+   * a detail that began "Not a terms problem but a CURRENCY one" — a reason
+   * that has to apologise for itself is the wrong reason, and it made the one
+   * shop blocked on presentment currency invisible to any count of shops
+   * blocked on terms.
+   */
+  | "quotes_another_market_currency";
 
 export interface ShopRobotsEvidence {
   /** The day the robots.txt below was fetched with the sweep's own agent. */
@@ -135,8 +147,23 @@ export interface ShopEntry {
   statesIssueDate: boolean;
   /** Where the price is machine-readable, in the order it was found. */
   priceMarkup: Array<"json_ld_offer" | "microdata" | "og_meta">;
-  /** Present when this shop must not be fetched, with the reason. */
-  unarmed?: { reason: ShopUnarmedReason; detail: string; measuredOn: string };
+  /**
+   * Present when this shop must not be fetched, with the reason and — the part
+   * that keeps a block honest — the exact re-measurement that would lift it.
+   *
+   * `armsWhen` exists because a block with no stated exit is a block somebody
+   * deletes in six months for looking stale. It names an observation, not an
+   * intention: a person can go and make it, and until they do the row stays as
+   * it is (`armedShopKeys` drops any key carrying this object, whatever the
+   * environment variable says).
+   */
+  unarmed?: {
+    reason: ShopUnarmedReason;
+    detail: string;
+    measuredOn: string;
+    /** What must be OBSERVED for this shop to be armable. Never a date. */
+    armsWhen: string;
+  };
 }
 
 /**
@@ -235,10 +262,12 @@ export const SHOPS: Readonly<Record<string, ShopEntry>> = Object.freeze({
     statesIssueDate: false,
     priceMarkup: ["json_ld_offer", "og_meta"],
     unarmed: {
-      reason: "terms_unstated",
+      reason: "quotes_another_market_currency",
       detail:
-        "Not a terms problem but a CURRENCY one, and it is refused for the same reason: the shop's own structured data serves `priceCurrency: USD` and `og:price:currency: USD` to an anonymous fetcher, on a London shop whose jurisdiction here is GB-ENG. A USD figure filed on a GB index line is not the UK shelf price. Until the presentment currency can be pinned to GBP (a market/locale header this fetcher does not send), the shop is registered and NOT fetched. Measured on the committed fixture `hedonism-ruinart-2026-09-04.fixture.html`.",
+        "ADR 0117 Q29, the founder 2026-09-05: \"Not a source until it quotes GBP unprompted.\" This is a London shop whose jurisdiction here is GB-ENG, and its own structured data serves `priceCurrency: USD` and `og:price:currency: USD` to an anonymous fetcher — measured on the committed fixture `hedonism-ruinart-2026-09-04.fixture.html`. A USD figure filed on a GB index line is not the UK shelf price. The rejected fix was to send a `?currency=GBP` hint or a locale header: a price whose currency depends on what we sent is a price we half-made, and it would be filed as the shop's own shelf price with no way for a reader to tell. So the shop is registered and NOT fetched, and it stays that way while its answer to an anonymous visitor is USD.",
       measuredOn: "2026-09-05",
+      armsWhen:
+        "hedonism.co.uk serves `priceCurrency: GBP` — in its JSON-LD offer or its `og:price:currency` — to an ANONYMOUS fetcher sending no market, locale or currency hint of any kind. Re-fetch a product page with the sweep's own agent, record the fixture, and only then remove this block. A GBP figure obtained by asking for GBP does not count and must not be recorded as if it did.",
     },
   },
   "winechateau-us-nj": {
@@ -263,8 +292,10 @@ export const SHOPS: Readonly<Record<string, ShopEntry>> = Object.freeze({
     unarmed: {
       reason: "serves_no_house",
       detail:
-        "New Jersey. The register is scoped to a house's own jurisdiction at read time, and no house in the estate is in NJ (3 Michigan, 3 Illinois, 3 California, 2 Türkiye, 1 UK, 2 with no state recorded — `price-sources.md`). Fetching it would write rows no house can see, which is the Iowa/Oregon asymmetry again. It stays registered because it is a committed fixture and the US half of the size reader's evidence.",
+        "New Jersey. The register is scoped to a house's own jurisdiction at read time, and no house in the estate is in NJ (3 Michigan, 3 Illinois, 3 California, 2 Türkiye, 1 UK, 2 with no state recorded — `price-sources.md`). Fetching it would write rows no house can see, which is the Iowa/Oregon asymmetry again. It stays registered because it is a committed fixture and the US half of the size reader's evidence. CONFIRMED by the founder 2026-09-05 (ADR 0117 Q29): it stays off until a house is in its market.",
       measuredOn: "2026-09-05",
+      armsWhen:
+        "A house in the estate records `state_province` in New Jersey. This is a fact about the estate, not about the shop: nothing Wine Chateau does can lift it, and nothing about it needs re-measuring. Until then a row fetched here would be visible to nobody.",
     },
   },
   "hitime-us-ca": {
@@ -320,6 +351,8 @@ export const SHOPS: Readonly<Record<string, ShopEntry>> = Object.freeze({
       detail:
         "Michigan is the estate's best-covered state (3 of 14 houses) and this is the one Michigan merchant whose robots.txt could be read on 2026-09-05 — and it declares the content-signals framework while stating no signal, alongside an express Article 4 reservation. That is an explicit 'neither granted nor restricted'. No page was fetched.",
       measuredOn: "2026-09-05",
+      armsWhen:
+        "merchantsfinewine.com states a content signal — any signal — in its robots.txt, or states terms elsewhere that a person has read and recorded here. Silence is not permission and does not become permission by ageing: re-reading the same 24 comment lines next year changes nothing.",
     },
   },
   "binnys-us-il": {
@@ -347,6 +380,8 @@ export const SHOPS: Readonly<Record<string, ShopEntry>> = Object.freeze({
       detail:
         "robots.txt answered 200 and permits the sitemap it advertises — and the sitemap itself answered HTTP 403 with a Cloudflare 'Attention Required!' body (4,574 bytes) to the same polite agent on 2026-09-05. That is a fact about our fetcher, not about Binny's prices, and Illinois (3 of 14 houses) therefore has no readable merchant shop today.",
       measuredOn: "2026-09-05",
+      armsWhen:
+        "the advertised sitemap answers 200 to the sweep's own agent. This is our fetcher's problem, not the shop's, so the observation to make is a plain re-fetch — and a 403 that persists is a measurement worth keeping, not a reason to try harder.",
     },
   },
   "klwines-us-ca": {
@@ -375,6 +410,8 @@ export const SHOPS: Readonly<Record<string, ShopEntry>> = Object.freeze({
       detail:
         "Its robots.txt is behind a challenge, so the shop's own crawl rules are unknown. Registered so the next person does not spend the request finding out again.",
       measuredOn: "2026-09-05",
+      armsWhen:
+        "its robots.txt answers 200 to the sweep's own agent, so the shop's crawl rules can be read before anything else is. A rule that cannot be fetched has not been honoured.",
     },
   },
   "kavaklidere-tr": {
@@ -408,6 +445,8 @@ export const SHOPS: Readonly<Record<string, ShopEntry>> = Object.freeze({
       detail:
         "Fetched 2026-09-05: the homepage is 170,717 bytes and contains no price signal at all — zero occurrences of the lira sign, of 'TL', of 'fiyat' and of a cart. That is what Turkish law predicts: Law 4250 art. 6 and the sales regulation md. 11/1 make consumer-facing online alcohol sale unlawful, so no Turkish shop publishes a price to fetch. (The statute was reachable only through secondary commentary on 2026-09-04 — `price-sources.md` records it as unverified at primary source — and the measured behaviour is what is asserted here.) The two Türkiye houses have no merchant-shop line, and this row is why.",
       measuredOn: "2026-09-05",
+      armsWhen:
+        "a Turkish merchant publishes a price to an anonymous visitor at all. Nothing here is about kavaklidere.com in particular: while Law 4250 art. 6 stands, no Turkish shop has a price to fetch, so this row is a fact about the market and it lifts when the market changes.",
     },
   },
 });
@@ -429,7 +468,13 @@ export const FETCHABLE_SHOP_KEYS: readonly string[] = Object.freeze(
 export function armedShopKeys(raw: string | null | undefined): {
   armed: string[];
   unknown: string[];
-  refused: Array<{ key: string; reason: ShopUnarmedReason; detail: string }>;
+  refused: Array<{
+    key: string;
+    reason: ShopUnarmedReason;
+    detail: string;
+    /** What must be observed for this key to become armable. */
+    armsWhen: string;
+  }>;
 } {
   const wanted = (raw ?? "")
     .split(",")
@@ -437,7 +482,12 @@ export function armedShopKeys(raw: string | null | undefined): {
     .filter(Boolean);
   const armed: string[] = [];
   const unknown: string[] = [];
-  const refused: Array<{ key: string; reason: ShopUnarmedReason; detail: string }> = [];
+  const refused: Array<{
+    key: string;
+    reason: ShopUnarmedReason;
+    detail: string;
+    armsWhen: string;
+  }> = [];
   for (const key of wanted) {
     const shop = SHOPS[key];
     if (!shop) {
@@ -445,7 +495,12 @@ export function armedShopKeys(raw: string | null | undefined): {
       continue;
     }
     if (shop.unarmed) {
-      refused.push({ key, reason: shop.unarmed.reason, detail: shop.unarmed.detail });
+      refused.push({
+        key,
+        reason: shop.unarmed.reason,
+        detail: shop.unarmed.detail,
+        armsWhen: shop.unarmed.armsWhen,
+      });
       continue;
     }
     armed.push(key);

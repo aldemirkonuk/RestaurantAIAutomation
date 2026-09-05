@@ -14,7 +14,12 @@ import {
   visitWindowOf,
   withinVisitWindow,
 } from "./shop-reference-sweep";
-import { SHOPS, FETCHABLE_SHOP_KEYS, shopsForJurisdiction } from "./price-reference-shops";
+import {
+  SHOPS,
+  FETCHABLE_SHOP_KEYS,
+  armedShopKeys,
+  shopsForJurisdiction,
+} from "./price-reference-shops";
 import { toRow } from "./shop-reference-sweep.service";
 import { PostingSighting } from "../price-index/price-index.types";
 
@@ -90,6 +95,10 @@ describe("the registry", () => {
       if (!shop.unarmed) continue;
       expect(shop.unarmed.detail.length).toBeGreaterThan(40);
       expect(shop.unarmed.measuredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // ADR 0117 Q29: a block with no stated exit is a block somebody deletes
+      // in six months for looking stale. Every one names the OBSERVATION that
+      // would lift it.
+      expect(shop.unarmed.armsWhen.length).toBeGreaterThan(40);
     }
     // Michigan, Illinois and Türkiye each hold houses and none has a shop that
     // may be fetched today. If that ever changes, this test changes with it.
@@ -216,5 +225,73 @@ describe("the silence sentences", () => {
     const sentences = Object.values(SHOP_SILENCE_SENTENCE);
     expect(new Set(sentences).size).toBe(sentences.length);
     for (const s of sentences) expect(s.length).toBeGreaterThan(40);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR 0117 Q29 — the founder, 2026-09-05: "Not a source until it quotes GBP
+// unprompted."
+//
+// PRE-FIX STATE, measured on this tree before the change: Hedonism's block read
+// `reason: "terms_unstated"` with a detail that opened "Not a terms problem but
+// a CURRENCY one". A reason that has to apologise for itself is the wrong
+// reason — and it made the one shop blocked on presentment currency
+// indistinguishable, to any count, from the two blocked on unread terms.
+// ---------------------------------------------------------------------------
+describe("a shop that will not quote its own market's currency", () => {
+  const hedonism = SHOPS["hedonism-gb"];
+
+  it("is blocked under its own reason, not under a terms one", () => {
+    expect(hedonism.unarmed?.reason).toBe("quotes_another_market_currency");
+    expect(hedonism.unarmed?.reason).not.toBe("terms_unstated");
+  });
+
+  it("records the founder's words and the evidence on the row", () => {
+    const detail = hedonism.unarmed?.detail ?? "";
+    expect(detail).toContain("Not a source until it quotes GBP unprompted");
+    // The measurement, so a reader can check the claim rather than take it.
+    expect(detail).toContain("priceCurrency: USD");
+    expect(detail).toContain("hedonism-ruinart-2026-09-04.fixture.html");
+  });
+
+  it("records the REJECTED path, so nobody re-proposes it as new", () => {
+    const detail = hedonism.unarmed?.detail ?? "";
+    expect(detail).toContain("?currency=GBP");
+    expect(detail).toContain("a price we half-made");
+  });
+
+  it("states an exit that is an anonymous observation, not a hint we send", () => {
+    const arms = hedonism.unarmed?.armsWhen ?? "";
+    expect(arms).toContain("ANONYMOUS");
+    expect(arms).toContain("GBP");
+    // The trap the exit exists to close.
+    expect(arms).toContain("A GBP figure obtained by asking for GBP does not count");
+  });
+
+  it("cannot be armed by the environment while the block stands", () => {
+    // `armedShopKeys` drops any key carrying an `unarmed` block, so the block
+    // is the mechanism and not a note about one.
+    const { armed, refused } = armedShopKeys("hedonism-gb,tanners-gb");
+    expect(armed).toEqual(["tanners-gb"]);
+    expect(refused.map((r) => r.key)).toEqual(["hedonism-gb"]);
+    expect(refused[0].reason).toBe("quotes_another_market_currency");
+    expect(refused[0].armsWhen).toContain("ANONYMOUS");
+  });
+
+  it("keeps Wine Chateau off until a house is in its market", () => {
+    const wc = SHOPS["winechateau-us-nj"];
+    expect(wc.unarmed?.reason).toBe("serves_no_house");
+    expect(wc.unarmed?.detail).toContain("CONFIRMED by the founder");
+    // The exit is a fact about the ESTATE, not about the shop — nothing Wine
+    // Chateau does can lift it, and the row says so.
+    expect(wc.unarmed?.armsWhen).toContain("New Jersey");
+  });
+
+  it("leaves the two GB shops that DO quote GBP fetchable", () => {
+    // The rule must not have swept up the shops it does not apply to.
+    for (const key of ["bbr-gb", "slurp-gb", "tanners-gb"]) {
+      expect(SHOPS[key].unarmed).toBeUndefined();
+      expect(SHOPS[key].currency).toBe("GBP");
+    }
   });
 });

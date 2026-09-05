@@ -61,6 +61,7 @@ import {
   SHOP_ARMED_KEYS_FLAG,
   SHOP_SWEEP_ENABLED_FLAG,
   ShopEntry,
+  ShopUnarmedReason,
   armedShopKeys,
 } from "./price-reference-shops";
 import {
@@ -100,6 +101,20 @@ export interface ShopSweepStatusRow {
   offerSources: Record<string, number>;
   silence: { reason: ShopSilenceReason; sentence: string } | null;
   detail: string | null;
+  /**
+   * The registry's own reason CODE when this shop is deliberately not fetched,
+   * and the observation that would lift it — ADR 0117 Q29, founder 2026-09-05.
+   *
+   * `detail` has always carried the prose. The code was not exposed, so a
+   * reader of this endpoint could not tell a shop blocked on TERMS from one
+   * blocked on the currency it quotes, and could not count either. `armsWhen`
+   * is here for the same reason it is on the registry row: a block whose exit
+   * is not stated is a block somebody deletes for looking stale.
+   *
+   * Both null for a shop that is not registered-unarmed.
+   */
+  unarmedReason: ShopUnarmedReason | null;
+  armsWhen: string | null;
   crawlDelaySeconds: number | null;
   visitTimeUtc: string | null;
 }
@@ -218,7 +233,10 @@ export class ShopReferenceSweepService {
         );
       }
       for (const r of refused) {
-        notes.push(`${r.key} is registered and unarmed (${r.reason}): ${r.detail}`);
+        notes.push(
+          `${r.key} is registered and unarmed (${r.reason}): ${r.detail}` +
+            (r.armsWhen ? ` It arms when ${r.armsWhen}` : ""),
+        );
       }
       return done(notes.length ? notes.join(" ") : null);
     } finally {
@@ -244,6 +262,11 @@ export class ShopReferenceSweepService {
       offerSources: {},
       silence: null,
       detail: null,
+      // A shop reaching this method is armed, so it carries no block and no
+      // exit. Both null rather than absent: `sweepShop` is the only builder of
+      // this row that is not the status map's, and the two must agree in shape.
+      unarmedReason: null,
+      armsWhen: null,
       crawlDelaySeconds: shop.robots.crawlDelaySeconds,
       visitTimeUtc: shop.robots.visitTimeUtc,
     };
@@ -520,6 +543,11 @@ export class ShopReferenceSweepService {
         detail: shop.unarmed
           ? `${shop.unarmed.detail} (measured ${shop.unarmed.measuredOn})`
           : null,
+        // ADR 0117 Q29. The code and its exit travel with the prose, so a
+        // reader can COUNT shops blocked on the currency they quote and can see
+        // what would lift each block without opening the registry.
+        unarmedReason: shop.unarmed?.reason ?? null,
+        armsWhen: shop.unarmed?.armsWhen ?? null,
         crawlDelaySeconds: shop.robots.crawlDelaySeconds,
         visitTimeUtc: shop.robots.visitTimeUtc,
       } satisfies ShopSweepStatusRow;
