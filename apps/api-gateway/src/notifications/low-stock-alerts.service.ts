@@ -8,6 +8,7 @@ import {
 import { Cron } from "@nestjs/schedule";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { CRITICAL_RATIO, classifyStock } from "../common/stock-status";
 import { NotificationsService } from "./notifications.service";
 import { GmailService } from "../communications/gmail.service";
 import { RecipientResolverService } from "../communications/recipient-resolver.service";
@@ -65,8 +66,12 @@ interface LowStockRow {
 export class LowStockAlertsService {
   private readonly logger = new Logger(LowStockAlertsService.name);
 
-  /** Wines at/under 50% of par are "critical"; between 50%–100% are "low". */
-  private readonly CRITICAL_RATIO = 0.5;
+  /**
+   * Wines at/under 50% of par are "critical"; below that and under par, "low".
+   * The number lives in `common/stock-status.ts` now — re-exported here only so
+   * the digest copy that quotes it cannot quote a different one.
+   */
+  private readonly CRITICAL_RATIO = CRITICAL_RATIO;
   /** Re-running the daily digest inside this window won't double-post. */
   private readonly DIGEST_DEDUPE_MINUTES = 12 * 60;
 
@@ -801,8 +806,24 @@ export class LowStockAlertsService {
     const currentStock = Number(raw.stock_live ?? raw.current_stock ?? 0);
     const threshold = Number(raw.threshold_min ?? raw.par_level ?? 10);
     if (!(threshold > 0)) return null;
-    const severity: "critical" | "low" =
-      currentStock <= threshold * this.CRITICAL_RATIO ? "critical" : "low";
+    // The same `classifyStock` the /inventory chip and /summary now use
+    // (common/stock-status.ts, pinned by datasets/sim/fixtures/below-par-cases.json).
+    // This service and the page disagreed on the lens run — it called Tsantali
+    // at 2/5 "critical" while /summary reported criticalCount 0 — and the only
+    // durable fix for two implementations of one rule is to stop having two.
+    const band = classifyStock(currentStock, threshold);
+    // Rows arrive from v_low_stock_items, which is already `stock < par`, so
+    // `at_par`/`healthy` cannot appear here. If one ever does — the view and
+    // this predicate having drifted — it is dropped rather than alerted on,
+    // and said so, because alerting a venue about a wine that is not low is
+    // how people learn to ignore alerts.
+    if (band !== "critical" && band !== "low") {
+      this.logger.warn(
+        `v_low_stock_items returned ${raw.wine_name ?? inventoryId} at ${currentStock}/${threshold}, which classifyStock calls '${band}' — not alerting. The view's predicate and common/stock-status.ts have drifted.`,
+      );
+      return null;
+    }
+    const severity: "critical" | "low" = band;
     return {
       inventoryId,
       wineId: raw.wine_id ?? raw.master_wine_id ?? inventoryId,
