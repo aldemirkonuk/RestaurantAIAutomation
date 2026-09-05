@@ -6,6 +6,10 @@ import { BillingConfigModule } from "./billing-config.module";
 import { BillingController } from "./billing.controller";
 import { BillingService } from "./billing.service";
 import { PaymentMethodMirrorService } from "./payment-method-mirror.service";
+// The seal on opening a card form (founder, 2026-09-05; ADR 0110 addendum,
+// G-PAY-SETUP). Not circular: SealModule imports DatabaseModule and nothing
+// else, and `PaymentMethodsModule` imports it the same way.
+import { SealModule } from "../common/seal/seal.module";
 
 /**
  * Stripe as the live payment provider — ADR 0110.
@@ -25,7 +29,13 @@ import { PaymentMethodMirrorService } from "./payment-method-mirror.service";
  * the reason `check_gateway_boots.sh` exists.
  */
 @Module({
-  imports: [DatabaseModule, AuthModule, OrganizationsModule, BillingConfigModule],
+  imports: [
+    DatabaseModule,
+    AuthModule,
+    OrganizationsModule,
+    BillingConfigModule,
+    SealModule,
+  ],
   controllers: [BillingController],
   providers: [BillingService, PaymentMethodMirrorService],
   exports: [BillingService],

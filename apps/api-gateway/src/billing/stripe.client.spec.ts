@@ -70,7 +70,11 @@ describe("StripeClient — the money-moving resources are unreachable", () => {
 
   it("still allows the four calls the build needs", async () => {
     const { client, post, get } = makeClient();
-    await client.createSetupIntent({ customerId: "cus_1", restaurantId: "r1" });
+    await client.createSetupIntent({
+      customerId: "cus_1",
+      restaurantId: "r1",
+      sealId: "seal-1",
+    });
     await client.listPaymentMethods("cus_1");
     await client.detachPaymentMethod("pm_1");
     expect(post).toHaveBeenCalledTimes(2);

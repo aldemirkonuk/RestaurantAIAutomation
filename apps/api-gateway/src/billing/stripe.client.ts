@@ -43,6 +43,12 @@ export interface StripeSetupIntent {
   status: string;
   livemode: boolean;
   payment_method: string | null;
+  /**
+   * Stripe echoes back whatever we stamped. Two keys matter here and both are
+   * OURS: `mudavym_restaurant_id` and `mudavym_seal_id` — see
+   * `createSetupIntent` and `BillingService.sealOnSetupIntent`.
+   */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface StripePaymentMethod {
@@ -232,10 +238,18 @@ export class StripeClient {
    * `usage: off_session` because the eventual use is a subscription charge the
    * operator will not be present for; `payment_method_types` is left to the
    * dashboard so enabling ACH is a Stripe setting, not a deploy.
+   *
+   * `sealId` is the id of the seal that was REDEEMED to mint this intent (ADR
+   * 0110 addendum, 2026-09-05). It is stamped into the intent's metadata
+   * because the attach happens on Stripe's origin and is recorded by a LATER
+   * request: the metadata is the only thing that survives the round trip and
+   * ties the two together. It is an id, never a token — see
+   * `SealChallengeService.assertRedeemed` for why knowing one buys nothing.
    */
   createSetupIntent(input: {
     customerId: string;
     restaurantId: string;
+    sealId: string;
     idempotencyKey?: string;
   }): Promise<StripeSetupIntent> {
     return this.post<StripeSetupIntent>(
@@ -243,7 +257,10 @@ export class StripeClient {
       {
         customer: input.customerId,
         usage: "off_session",
-        metadata: { mudavym_restaurant_id: input.restaurantId },
+        metadata: {
+          mudavym_restaurant_id: input.restaurantId,
+          mudavym_seal_id: input.sealId,
+        },
       },
       input.idempotencyKey,
     );

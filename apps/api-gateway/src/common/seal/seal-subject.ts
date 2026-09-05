@@ -95,7 +95,15 @@ export type SealRefusal =
   | "other_action"
   | "arguments_changed"
   | "expired"
-  | "raced";
+  | "raced"
+  // `unredeemed` is the ONLY reason here that is not a failure of a token
+  // being spent. It belongs to `assertRedeemed`, which asks the opposite
+  // question — "was this seal already spent, by this person, for this act?" —
+  // when a LATER request has to prove an earlier one was sealed. A seal that
+  // exists and was never spent proves nothing about the act now being trusted,
+  // and reading it as proof would be the absence-reported-as-health shape
+  // arriving through the one door that touches money.
+  | "unredeemed";
 
 export function refusalWords(
   reason: SealRefusal,
@@ -121,5 +129,7 @@ export function refusalWords(
       return "That seal has expired. Hold it again — a seal is short-lived on purpose, so one left open cannot be spent later. Nothing was changed.";
     case "raced":
       return "That seal was spent by another request a moment ago, so this one was refused. Exactly one act runs per seal.";
+    case "unredeemed":
+      return `That seal was issued and never spent, so nothing about this ${noun} was ever approved with it. Begin the hold again. Nothing was changed.`;
   }
 }

@@ -25,6 +25,21 @@ export interface SetupIntentResponse {
   apiVersion: string;
 }
 
+/**
+ * Which check ran before this reconciliation, said out loud.
+ *
+ * `sealed-intent` — the caller named the SetupIntent it had just confirmed, the
+ * provider was asked which seal that intent was minted against, and the seal was
+ * proven redeemed by THIS person for THIS house's register.
+ *
+ * `reconcile-only` — no intent was named, so nothing was proven about a person.
+ * This is the manager's refresh: it writes the provider's own current answer and
+ * cannot attach, prefer or invent an instrument. It is in the response because a
+ * reconciliation that skipped the seal check and reported the same shape as one
+ * that passed it would be [[absence-reported-as-health]] at the money seam.
+ */
+export type SyncProvenance = "sealed-intent" | "reconcile-only";
+
 /** What a reconciliation actually did — including when it did nothing. */
 export interface SyncResponse {
   syncedAt: string;
@@ -32,6 +47,8 @@ export interface SyncResponse {
   removed: number;
   /** Words whenever the numbers alone would be ambiguous. */
   note: string | null;
+  /** Which check ran. Never omitted, never inferred by the reader. */
+  provenance: SyncProvenance;
 }
 
 export interface WebhookResponse {

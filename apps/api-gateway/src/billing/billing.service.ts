@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -15,6 +16,7 @@ import {
 } from "./stripe-signature";
 import type {
   SetupIntentResponse,
+  SyncProvenance,
   SyncResponse,
   WebhookResponse,
 } from "./dto/billing.dto";
@@ -83,13 +85,25 @@ export class BillingService {
 
   /* ── 1. permission to store an instrument ───────────────────────────── */
 
-  async createSetupIntent(restaurantId: string): Promise<SetupIntentResponse> {
+  /**
+   * @param sealId the seal the CONTROLLER already redeemed for this act. It is
+   * stamped onto the intent so `POST /billing/sync` can prove, one request
+   * later, that the instrument it is about to record was sealed by a person.
+   * The redemption itself is not done here: this service does not know who is
+   * calling, and a service that redeemed on its own would be a second opinion
+   * about authority.
+   */
+  async createSetupIntent(
+    restaurantId: string,
+    sealId: string,
+  ): Promise<SetupIntentResponse> {
     this.assertConnected();
 
     const customerId = await this.customers.ensure(restaurantId);
     const intent = await this.stripe.createSetupIntent({
       customerId,
       restaurantId,
+      sealId,
     });
 
     if (!intent?.client_secret) {
@@ -110,7 +124,61 @@ export class BillingService {
 
   /* ── 2. reconcile on demand ─────────────────────────────────────────── */
 
-  async sync(restaurantId: string): Promise<SyncResponse> {
+  /**
+   * The seal id this house stamped on that SetupIntent, read back from the
+   * provider.
+   *
+   * WHY THE PROVIDER IS ASKED RATHER THAN THE BROWSER
+   * ------------------------------------------------
+   * The browser hands us a SetupIntent id and nothing else. If it also handed
+   * us the seal id, the pairing would be the caller's own claim about itself —
+   * the assertion model, one level down. Stripe holds the metadata we wrote
+   * when the seal was redeemed, so asking Stripe is the only reading of "this
+   * intent was minted against a seal" that the caller cannot author.
+   *
+   * The house is checked HERE and not by the caller, because an intent
+   * belonging to another restaurant must be refused before its metadata is
+   * treated as meaning anything at all.
+   *
+   * Returns null when the intent carries no seal id — an intent minted before
+   * this addendum, or one created in the Stripe dashboard. Null is a refusal
+   * the caller turns into the `absent` sentence; it is never read as "fine".
+   */
+  async sealOnSetupIntent(
+    restaurantId: string,
+    setupIntentId: string,
+  ): Promise<string | null> {
+    this.assertConnected();
+
+    const intent = await this.stripe.retrieveSetupIntent(setupIntentId);
+    const metadata = (intent?.metadata ?? {}) as Record<string, unknown>;
+
+    const house =
+      typeof metadata.mudavym_restaurant_id === "string"
+        ? metadata.mudavym_restaurant_id
+        : null;
+    if (house !== restaurantId) {
+      throw new ForbiddenException(
+        "That card form was opened by a different restaurant, so nothing on it can be recorded here. Nothing was changed.",
+      );
+    }
+
+    const sealId =
+      typeof metadata.mudavym_seal_id === "string"
+        ? metadata.mudavym_seal_id.trim()
+        : "";
+    return sealId.length > 0 ? sealId : null;
+  }
+
+  /**
+   * @param provenance which check the CONTROLLER ran before calling. Carried
+   * through into the response rather than derived here, so the answer names the
+   * check that actually happened instead of the one this method assumes.
+   */
+  async sync(
+    restaurantId: string,
+    provenance: SyncProvenance,
+  ): Promise<SyncResponse> {
     this.assertConnected();
 
     const customerId = await this.customers.find(restaurantId);
@@ -123,6 +191,7 @@ export class BillingService {
         kept: 0,
         removed: 0,
         note: "This restaurant has no account at the provider yet, so there is nothing to reconcile. Adding a card opens one.",
+        provenance,
       };
     }
 
@@ -142,6 +211,7 @@ export class BillingService {
         removed > 0
           ? `${removed} instrument(s) were on file here and no longer exist at the provider; they have been dropped.`
           : null,
+      provenance,
     };
   }
 

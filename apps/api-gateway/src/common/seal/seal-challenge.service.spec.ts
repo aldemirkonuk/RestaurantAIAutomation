@@ -185,7 +185,10 @@ describe("SealChallengeService — an order's seal", () => {
 
   it("redeems a good seal exactly once, and refuses the replay", async () => {
     const h = build([orderSeal()]);
-    await expect(redeemOrder(h)).resolves.toBeUndefined();
+    // The receipt names the row that was spent (2026-09-05): `setup-intent`
+    // stamps it onto the SetupIntent so `sync` can prove, one request later,
+    // that the attach it is recording was sealed.
+    await expect(redeemOrder(h)).resolves.toEqual({ sealId: "seal-order" });
     expect(h.seals[0].redeemed_at).toBeTruthy();
 
     await expect(redeemOrder(h)).rejects.toThrow(/already been spent/i);
@@ -295,7 +298,7 @@ describe("SealChallengeService — a payment method's seal", () => {
 
   it("redeems once and refuses the replay", async () => {
     const h = build([paySeal()]);
-    await expect(redeemPay(h)).resolves.toBeUndefined();
+    await expect(redeemPay(h)).resolves.toEqual({ sealId: "seal-pay" });
     await expect(redeemPay(h)).rejects.toThrow(/already been spent/i);
   });
 

@@ -24,6 +24,7 @@ import { BillingController } from "./billing.controller";
 import type { BillingService } from "./billing.service";
 import type { StripeConfigService } from "./stripe-config.service";
 import type { OrganizationsService } from "../organizations/organizations.service";
+import type { SealChallengeService } from "../common/seal/seal-challenge.service";
 
 function req(user: Record<string, unknown> | undefined) {
   return { user } as unknown as Request & {
@@ -59,6 +60,9 @@ function build(opts: { allow: boolean }) {
     {} as unknown as BillingService,
     config,
     organizations,
+    // The read is not sealed and never calls this — passing a stub proves it,
+    // because any redemption attempt would throw on an undefined method.
+    {} as unknown as SealChallengeService,
   );
   return { controller, organizations, config };
 }

@@ -670,6 +670,29 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_route_exposure.py
 
+      # ADR 0110's addendum. The seal on a card-on-file change was added to
+      # `payment-methods/**` and stopped at that module's edge: an instrument is
+      # actually attached through `billing/**`, which ran a role check and
+      # nothing else. The defect was a SCOPE boundary, not a typo, so the fix
+      # that survives the next one is a guard rather than a careful pass. Every
+      # non-GET route in the money modules must redeem a seal in its own call
+      # graph or carry an allow-list row with the sentence that makes the
+      # exemption true (the Stripe webhook's HMAC; the mint itself). Exit 2 when
+      # it cannot check -- including a stale allow-list row, which reads to a
+      # person exactly like a decision still in force.
+      - name: Every money route redeems a seal
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check_money_routes_are_sealed.py
+
+      - name: The money-route guard can actually fail
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check_money_routes_are_sealed.py --self-test
+
+      - name: Explain a money-route failure
+        if: ${{ failure() }}
+        run: |
+          echo "::notice::A route that can change which instrument this house is charged on must prove a PERSON asked, not just that a ROLE may. See billing.controller.ts for the pattern. If the route genuinely cannot be sealed -- a provider webhook, a read -- add it to ALLOWLIST in scripts/check_money_routes_are_sealed.py WITH the sentence that makes that true. Exit 2 means the guard could not check what it claims to; that is a failure, not a skip."
+
       # Three defects that shipped together and shared one shape: a table the
       # design depended on had no writer, or a fallback filled a gap with a
       # confident guess. None was visible in production (2 orders, 1 order line,

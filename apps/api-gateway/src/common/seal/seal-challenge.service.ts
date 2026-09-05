@@ -25,7 +25,7 @@ import {
  * for why a class static reads to that guard as unreadable).
  */
 const SEAL_COLUMNS =
-  "id, subject_kind, subject_id, actor_user_id, tool_name, args_hash, token_hash, expires_at, redeemed_at";
+  "id, subject_kind, subject_id, restaurant_id, actor_user_id, tool_name, args_hash, token_hash, expires_at, redeemed_at";
 
 /**
  * Mint one seal, spend it exactly once, for exactly one act.
@@ -131,9 +131,21 @@ export class SealChallengeService {
   /**
    * Spend one challenge, exactly once, for exactly this act.
    *
-   * Returns quietly when the seal is good. Every other path throws with a whole
-   * sentence naming the thing that did not match; none of them returns a
-   * boolean, because a boolean is a thing a caller can forget to check.
+   * Returns the id of the seal it SPENT when the seal is good. Every other path
+   * throws with a whole sentence naming the thing that did not match; none of
+   * them returns a boolean, because a boolean is a thing a caller can forget to
+   * check, and the id is not a status — it is the receipt.
+   *
+   * WHY THE ID COMES BACK (2026-09-05, the payment pipeline)
+   * -------------------------------------------------------
+   * Most callers ignore it: they redeem and then write, in one request, and the
+   * redemption IS the proof. One does not. `POST /billing/setup-intent` redeems
+   * a seal and hands the browser a client secret; the instrument is then
+   * attached on STRIPE's origin and only a LATER request — `POST /billing/sync`
+   * — records it here. Those are two requests with a card form between them, so
+   * the second one has to be able to prove the first was sealed. It does that by
+   * naming this id, which the first request stamped onto the SetupIntent's own
+   * metadata at the provider, and by asking `assertRedeemed` below.
    */
   async redeem(params: {
     restaurantId: string;
@@ -143,7 +155,7 @@ export class SealChallengeService {
     action: string;
     args: Record<string, unknown>;
     challenge: string | null | undefined;
-  }): Promise<void> {
+  }): Promise<{ sealId: string }> {
     const refuse = async (reason: SealRefusal): Promise<never> => {
       const sentence = refusalWords(reason, params.subjectKind);
       await this.fileRefusal(params, reason, sentence);
@@ -212,6 +224,103 @@ export class SealChallengeService {
       );
     }
     if ((spent ?? []).length === 0) return refuse("raced");
+    return { sealId: String(seal.id) };
+  }
+
+  /**
+   * Prove a seal was ALREADY spent, by this person, for this act, on this
+   * subject — the mirror of `redeem`, for the case where the act and the record
+   * of it are two different requests.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS IS NOT A SECOND REDEMPTION
+   * ---------------------------------------------------------------------------
+   * `redeem` spends. This one does not, and must not: the seal was spent by
+   * `POST /billing/setup-intent`, and a second spend would refuse the very
+   * request that is trying to prove the first one happened. What it asserts is
+   * that the row named by `sealId` is (a) a seal this house issued, (b) to this
+   * actor, (c) for this subject and act, over these arguments, and (d) REDEEMED.
+   *
+   * (d) is the whole point. A seal that exists and was never spent is a seal
+   * somebody minted and abandoned; treating its existence as approval is the
+   * [[absence-reported-as-health]] inversion at the one seam that touches money,
+   * so it has its own refusal (`unredeemed`) and its own sentence.
+   *
+   * ---------------------------------------------------------------------------
+   * THE ID IS NOT A SECRET, AND THAT IS WHY THE OTHER FIVE CHECKS EXIST
+   * ---------------------------------------------------------------------------
+   * A seal id travels through Stripe's metadata and comes back on a read. It is
+   * a uuid, not a token, so this method NEVER treats knowing one as authority:
+   * every field is compared against the caller's own scope, and the arguments
+   * are re-hashed. Knowing an id buys nothing that the actor and subject checks
+   * do not immediately take away.
+   */
+  async assertRedeemed(params: {
+    sealId: string | null | undefined;
+    restaurantId: string;
+    actorUserId: string;
+    subjectKind: SealSubjectKind;
+    subjectId: string;
+    action: string;
+    args: Record<string, unknown>;
+  }): Promise<void> {
+    const refuse = async (reason: SealRefusal): Promise<never> => {
+      const sentence = refusalWords(reason, params.subjectKind);
+      await this.fileRefusal(params, reason, sentence);
+      throw new ForbiddenException(sentence);
+    };
+
+    const sealId = (params.sealId ?? "").trim();
+    // No id at all is `absent`, not `unknown`: nothing named a seal, so the
+    // sentence has to be the one that tells the operator to begin the hold.
+    if (!sealId) return refuse("absent");
+
+    const { data, error } = await this.databaseService.supabase
+      .from("mcp_seal_challenges")
+      .select(SEAL_COLUMNS)
+      .eq("id", sealId)
+      .maybeSingle();
+
+    if (error) {
+      // NOT a refusal — the seal could not be CHECKED, which is a different
+      // fact from "the seal was bad". Same rule as `redeem`.
+      throw new InternalServerErrorException(
+        `The seal could not be checked, so nothing was changed: ${error.message}`,
+      );
+    }
+
+    const seal = (data as Record<string, unknown> | null) ?? null;
+    if (!seal) return refuse("unknown");
+
+    if (String(seal.restaurant_id) !== params.restaurantId) {
+      // A seal from another house is not this house's approval. `redeem` gets
+      // this for free — it is found by a 32-byte token nobody else holds —
+      // whereas this method is found by an id, so the house is checked here.
+      return refuse("other_subject");
+    }
+    if (String(seal.actor_user_id) !== params.actorUserId) {
+      return refuse("other_actor");
+    }
+    if (String(seal.subject_kind) !== params.subjectKind) {
+      return refuse("other_subject");
+    }
+    if (String(seal.subject_id) !== params.subjectId) {
+      return refuse("other_subject");
+    }
+    if (
+      String(seal.tool_name).trim().toLowerCase() !==
+      params.action.trim().toLowerCase()
+    ) {
+      return refuse("other_action");
+    }
+    if (String(seal.args_hash) !== hashCallArgs(params.args)) {
+      return refuse("arguments_changed");
+    }
+    if (!seal.redeemed_at) return refuse("unredeemed");
+    // `expires_at` is deliberately NOT checked. It bounds how long a seal may
+    // be SPENT, and this seal was already spent inside that window; refusing
+    // here would mean a card form left open for three minutes recorded nothing,
+    // with a sentence blaming the operator for the bank's 3-D Secure step.
   }
 
   /**

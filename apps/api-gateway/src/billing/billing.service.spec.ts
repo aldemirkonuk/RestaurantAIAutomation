@@ -236,10 +236,10 @@ function makeService(
 describe("BillingService — with no credential", () => {
   it("refuses a SetupIntent with the provider's stated reason, and calls nothing", async () => {
     const h = makeService({ secretKey: null });
-    await expect(h.service.createSetupIntent("r1")).rejects.toBeInstanceOf(
+    await expect(h.service.createSetupIntent("r1", "seal-1")).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    await expect(h.service.createSetupIntent("r1")).rejects.toThrow(
+    await expect(h.service.createSetupIntent("r1", "seal-1")).rejects.toThrow(
       /STRIPE_SECRET_KEY is not set/,
     );
     expect(h.stripeCalls).toEqual([]);
@@ -247,7 +247,7 @@ describe("BillingService — with no credential", () => {
 
   it("refuses a sync for the same reason", async () => {
     const h = makeService({ secretKey: null });
-    await expect(h.service.sync("r1")).rejects.toBeInstanceOf(
+    await expect(h.service.sync("r1", "reconcile-only")).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
     expect(h.stripeCalls).toEqual([]);
@@ -257,7 +257,7 @@ describe("BillingService — with no credential", () => {
 describe("BillingService — with a credential", () => {
   it("mints a SETUP intent, never a payment intent", async () => {
     const h = makeService();
-    const out = await h.service.createSetupIntent("r1");
+    const out = await h.service.createSetupIntent("r1", "seal-1");
     expect(out.clientSecret).toBe("seti_1_secret_abc");
     expect(out.mode).toBe("test");
     expect(h.stripeCalls).toEqual(["setup_intents:cus_1"]);
@@ -266,7 +266,7 @@ describe("BillingService — with a credential", () => {
 
   it("says so in words when a restaurant has no provider account yet", async () => {
     const h = makeService({ customerId: null });
-    const out = await h.service.sync("r1");
+    const out = await h.service.sync("r1", "reconcile-only");
     expect(out.kept).toBe(0);
     expect(out.note).toMatch(/no account at the provider yet/);
     expect(h.stripeCalls).toEqual([]);
@@ -274,7 +274,7 @@ describe("BillingService — with a credential", () => {
 
   it("reconciles the register against the provider's list", async () => {
     const h = makeService();
-    const out = await h.service.sync("r1");
+    const out = await h.service.sync("r1", "reconcile-only");
     expect(out.kept).toBe(1);
     expect(h.mirror.upserted).toHaveLength(1);
     expect(out.syncedAt).toEqual(expect.any(String));
