@@ -23,6 +23,18 @@
  * routine control would be the wrong die pressed on a decision the operator
  * cannot take back with a click.
  *
+ * THE HOLD HERE IS NOT A REDEEMED SEAL, AND SAYS SO (2026-09-04)
+ * -------------------------------------------------------------
+ * ADR 0110's addendum seals the three `/payment-methods` writes, `create`
+ * among them. This panel does not reach any of them: it confirms a SetupIntent
+ * on Stripe's origin and then calls `POST /billing/sync`
+ * (`useProfileNextData.ts`), and NOTHING in `apps/web` or `apps/mobile` calls
+ * `POST /payment-methods` — measured, not assumed. So minting a `create`
+ * challenge on this gesture would produce a token no request ever spends: a
+ * seal on the screen with no redemption behind it, which is the shape the
+ * addendum exists to remove. The gesture stays, the claim does not, and the
+ * gap is filed as G-PAY-SETUP in `profile.md` §9.
+ *
  * FOUR STATES, EACH REAL
  * ----------------------
  *   opening   the SetupIntent is being minted and Stripe.js fetched
@@ -270,6 +282,13 @@ export function StripeCardPanel({
             Holding authorises the house to be charged on this instrument later.
             It stores the card; it takes nothing now, and there is no price to
             take — this product cannot create a charge at all.
+          </Note>
+          <Note>
+            This hold is the house&rsquo;s ceremony, not a seal the server
+            redeems. The two acts on the rows below are sealed; adding a card is
+            not, because the card is attached on Stripe&rsquo;s origin and the
+            register is then reconciled, and neither of those two routes takes a
+            seal today (G-PAY-SETUP).
           </Note>
           {livemode !== null && (
             <p

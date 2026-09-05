@@ -87,6 +87,10 @@ interface Fixture {
   grantTool: unknown;
   revokeTool: unknown;
   probeServer: unknown;
+  /** Mints the one-time seal when a payment hold begins. */
+  paymentSeal: unknown;
+  setDefaultPayment: unknown;
+  removePayment: unknown;
 }
 
 const setHouseGrantAccess = { mutate: vi.fn(), isPending: false };
@@ -144,8 +148,36 @@ function base(): Fixture {
     grantTool: { mutate: vi.fn(), isPending: false },
     revokeTool: { mutate: vi.fn(), isPending: false },
     probeServer,
+    // Same rule as `grantSeal`: resolves a token by default so a test that
+    // completes a payment gesture does not silently take the failure path.
+    paymentSeal: vi.fn(async () => 'tok-pay'),
+    setDefaultPayment: {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      variables: undefined,
+    },
+    removePayment: {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      variables: undefined,
+    },
   };
 }
+
+/** One instrument as `GET /payment-methods` returns it. */
+const instrument = (over: Record<string, unknown> = {}) => ({
+  id: 'pm-1',
+  brand: 'visa',
+  last4: '4242',
+  expMonth: 4,
+  expYear: 2029,
+  isDefault: false,
+  ...over,
+});
 
 const server = (over: Record<string, unknown> = {}) => ({
   id: 's1',
@@ -669,6 +701,136 @@ describe('a manager may see, not approve', () => {
     expect(excel?.querySelectorAll('.cx-col-h').length).toBe(2);
     expect(excel?.querySelector('.cx-ctl-note')).toBeTruthy();
   });
+
+  /**
+   * Until 2026-09-04 both of these rows printed the same two hard-coded lines —
+   * "Create and edit files it made" and "Never mail, never other documents" —
+   * which are Drive's promise and are false for the send-only mailbox. The
+   * bullets now come from each integration's own catalogue entry, so the test
+   * is one render with both rows on it.
+   */
+  it('gives each unconnected integration ITS OWN permission bullets, never a neighbour’s', () => {
+    const d = base();
+    d.catalog = reg([
+      {
+        id: 'google_drive',
+        provider: 'google',
+        label: 'Google Drive',
+        providerLabel: 'Google',
+        description: 'Save exports to a folder in your Drive.',
+        available: true,
+        unavailableReason: null,
+        scopes: [
+          {
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            label: 'Create and manage files WineOps puts in your Drive',
+          },
+        ],
+        notRequested: ['Your Gmail messages'],
+      },
+      {
+        id: 'gmail_send',
+        provider: 'google',
+        label: 'Gmail — sending only',
+        providerLabel: 'Google',
+        description: 'Letters leave from your own mailbox.',
+        available: true,
+        unavailableReason: null,
+        scopes: [
+          {
+            scope: 'https://www.googleapis.com/auth/gmail.send',
+            label: 'Send mail as you — and nothing else',
+          },
+        ],
+        notRequested: ['Reading, searching or listing any message in your mailbox'],
+      },
+    ]);
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+
+    const rows = Array.from(container.querySelectorAll('.cx-row'));
+    const scopeOf = (title: string) =>
+      rows.find((r) => r.textContent?.includes(title))?.querySelector('.cx-scope')?.textContent ??
+      '';
+
+    const driveScope = scopeOf('Google Drive');
+    expect(driveScope).toContain('Create and manage files WineOps puts in your Drive');
+    expect(driveScope).toContain('Your Gmail messages');
+
+    const gmailScope = scopeOf('Gmail — sending only');
+    expect(gmailScope).toContain('Send mail as you');
+    expect(gmailScope).toContain('Reading, searching or listing any message in your mailbox');
+    // The three ways the old hard-coded pair was wrong about this integration.
+    expect(gmailScope).not.toMatch(/files/i);
+    expect(gmailScope).not.toMatch(/never mail/i);
+    expect(gmailScope).not.toMatch(/other documents/i);
+  });
+
+  it('shows the em dash rather than a guessed permission when the catalogue carries no scopes', () => {
+    const d = base();
+    d.catalog = reg([
+      {
+        id: 'gmail_send',
+        provider: 'google',
+        label: 'Gmail — sending only',
+        providerLabel: 'Google',
+        description: 'Letters leave from your own mailbox.',
+        available: true,
+        unavailableReason: null,
+      },
+    ]);
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+
+    const row = Array.from(container.querySelectorAll('.cx-row')).find((r) =>
+      r.textContent?.includes('Gmail — sending only'),
+    );
+    const scope = row?.querySelector('.cx-scope');
+    expect(scope?.querySelector('ul')).toBeNull();
+    expect(scope?.textContent).toContain('—');
+  });
+
+  it('describes a live personal grant by the scopes THAT grant holds', () => {
+    const d = base();
+    d.houseGrants = reg({
+      grants: [
+        grant({
+          integrationId: 'gmail_send',
+          label: 'Gmail — sending only',
+          scopes: ['https://www.googleapis.com/auth/gmail.send'],
+        }),
+      ],
+      unattributed: 0,
+    });
+    d.catalog = reg([
+      {
+        id: 'gmail_send',
+        provider: 'google',
+        label: 'Gmail — sending only',
+        providerLabel: 'Google',
+        description: 'Letters leave from your own mailbox.',
+        available: true,
+        unavailableReason: null,
+        scopes: [
+          {
+            scope: 'https://www.googleapis.com/auth/gmail.send',
+            label: 'Send mail as you — and nothing else',
+          },
+        ],
+        notRequested: ['Reading, searching or listing any message in your mailbox'],
+      },
+    ]);
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+
+    const row = Array.from(container.querySelectorAll('.cx-row')).find((r) =>
+      r.textContent?.includes("Selin Kara's"),
+    );
+    const scope = row?.querySelector('.cx-scope')?.textContent ?? '';
+    expect(scope).toContain('Send mail as you');
+    expect(scope).not.toMatch(/files it made/i);
+    expect(scope).not.toMatch(/cannot touch their mail/i);
+  });
 });
 
 describe('the sender identity', () => {
@@ -787,5 +949,140 @@ describe('the collapse — anchors and the acts that moved', () => {
     expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
     expect(screen.getByText(/Nothing on this page can add one today\./)).toBeInTheDocument();
     expect(screen.queryByText(/Adding a card happens on \/profile/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * G-PAY-SEAL and half of G-C9 — Register II can act again, and every act is
+ * held.
+ *
+ * The collapse moved the payment register here and left both controls
+ * disabled, because the client that performed them stayed on `/profile`. They
+ * are back, and they arrive sealed: ADR 0110's addendum made
+ * `PATCH /payment-methods/:id/default` and `DELETE /payment-methods/:id`
+ * redeem a one-time token, so a plain button here would be a control that
+ * always fails. Each test pins one half of that.
+ */
+describe('the payment register acts, and every act is held', () => {
+  const withCard = (over: Record<string, unknown> = {}) => {
+    const d = base();
+    d.payments = reg({
+      provider: { connected: true, reason: null },
+      methods: [instrument()],
+    });
+    return { ...d, ...over };
+  };
+
+  it('mints the seal when the hold BEGINS, and sends nothing yet', async () => {
+    const d = withCard();
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const hold = screen.getByRole('button', { name: 'Charge this first' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    await waitFor(() => expect(d.paymentSeal).toHaveBeenCalledTimes(1));
+    expect(d.paymentSeal).toHaveBeenCalledWith({ act: 'set_default', methodId: 'pm-1' });
+    expect(
+      (d.setDefaultPayment as { mutate: ReturnType<typeof vi.fn> }).mutate,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('carries the minted seal on the write, and seals each act separately', async () => {
+    const d = withCard();
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const charge = screen.getByRole('button', { name: 'Charge this first' });
+    fireEvent.keyDown(charge, { key: 'Enter' });
+    fireEvent.keyDown(charge, { key: 'Enter' });
+    await waitFor(() =>
+      expect(
+        (d.setDefaultPayment as { mutate: ReturnType<typeof vi.fn> }).mutate,
+      ).toHaveBeenCalledWith({ methodId: 'pm-1', challenge: 'tok-pay' }),
+    );
+
+    const remove = screen.getByRole('button', { name: 'Remove' });
+    fireEvent.keyDown(remove, { key: 'Enter' });
+    await waitFor(() =>
+      expect(d.paymentSeal).toHaveBeenCalledWith({ act: 'remove', methodId: 'pm-1' }),
+    );
+  });
+
+  it('removes nothing when the seal cannot be minted, and says why', async () => {
+    const d = withCard({ paymentSeal: vi.fn(async () => null) });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const remove = screen.getByRole('button', { name: 'Remove' });
+    fireEvent.keyDown(remove, { key: 'Enter' });
+    fireEvent.keyDown(remove, { key: 'Enter' });
+
+    expect(
+      await screen.findByText(/the seal could not be issued — nothing sent/i),
+    ).toBeInTheDocument();
+    expect(
+      (d.removePayment as { mutate: ReturnType<typeof vi.fn> }).mutate,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("reports a refused write on its own row, in the gateway's own sentence", () => {
+    const refusal =
+      'That seal has already been spent. A seal is good for exactly one act, so a repeat is a second approval rather than a retry — nothing was changed.';
+    const d = base();
+    d.payments = reg({
+      provider: { connected: true, reason: null },
+      methods: [instrument(), instrument({ id: 'pm-2', last4: '1881' })],
+    });
+    d.removePayment = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: { response: { status: 403, data: { message: refusal } } },
+      variables: { methodId: 'pm-2' },
+    };
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+
+    const alerts = container.querySelectorAll('.cx-ctl-alert');
+    // On ONE row, and the row it was refused for.
+    expect(alerts.length).toBe(1);
+    expect(alerts[0].textContent).toContain('already been spent');
+    const refusedRow = alerts[0].closest('.cx-row') as HTMLElement;
+    expect(within(refusedRow).getByText(/ending 1881/)).toBeInTheDocument();
+  });
+
+  it('offers no "charge this first" while the provider is not connected', () => {
+    const d = base();
+    d.payments = reg({
+      provider: { connected: false, reason: 'STRIPE_SECRET_KEY is not set' },
+      methods: [instrument()],
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    // Preferring an instrument is a fact about the Stripe customer, and there
+    // is no customer to state it to. Removal survives, because a row can
+    // outlive the credential that created it — and it is LIVE, which is the
+    // half of G-C9 this closes: the collapse left it disabled with a note
+    // saying the client had not been rebuilt here.
+    expect(screen.queryByRole('button', { name: 'Charge this first' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).not.toBeDisabled();
+  });
+
+  it('never offers a second "charge this first" on the instrument already charged first', () => {
+    const d = base();
+    d.payments = reg({
+      provider: { connected: true, reason: null },
+      methods: [instrument({ isDefault: true })],
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.queryByRole('button', { name: 'Charge this first' })).not.toBeInTheDocument();
+    expect(screen.getByText('Charged first')).toBeInTheDocument();
+    // The row is still actionable: the chip states what it IS, not that the
+    // register has gone read-only.
+    expect(screen.getByRole('button', { name: 'Remove' })).not.toBeDisabled();
   });
 });

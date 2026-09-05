@@ -236,8 +236,8 @@ from `apps/web/src/lib/mudavym/motion.ts`.
 | `pf-open` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the opening block — wordmark, role/location line, the name in Fraunces, the standing sentence — once on mount; opacity + 6px rise via `animate()` |
 | `pf-expand` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | a connection row's panel: "What you granted" / "What it would ask for" (Workspace), "Scopes, tools and dates" (a model-context server — opened for you when a check comes back, so the answer is where you are already looking), "Show the working" (the session row). CSS `grid-template-rows: 0fr → 1fr` (053's row-expand, the founder's named favourite) |
 | `pf-ink` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | hover/focus on rows, buttons and membership entries — border and ground only; nothing translates or scales |
-| `pf-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to delete this account** (Register VII) and, from 2026-09-03, under **Hold to put this card on file** (Register V), both inside `HoldToApprove`; an early release retreats on `tuck` (spring 380/32, ~300ms) and says what did not happen |
-| `pf-stamp` | `stamp` | sampled spring 500/26 (~11% overshoot) · 360ms | the seal landing when either hold completes — the only overshoot on the page, and the only **two** places the seal is pressed. Confirming a SetupIntent is the moment an instrument becomes chargeable, which is the one other act here that changes what the product may do TO the house rather than what it knows ABOUT it |
+| `pf-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to delete this account** (Register VII), **Hold to put this card on file** (Register V, from 2026-09-03) and **Charge this first** / **Remove** on every instrument row (Register V, from 2026-09-04), all inside `HoldToApprove`; an early release retreats on `tuck` (spring 380/32, ~300ms) and says what did not happen |
+| `pf-stamp` | `stamp` | sampled spring 500/26 (~11% overshoot) · 360ms | the seal landing when any of those holds completes — the only overshoot on the page, and now **four** places the seal is pressed. The ration was not loosened; the gateway moved: since ADR 0110's addendum the two payment-row acts REDEEM a one-time seal, so the die appears exactly where a server redeems one, plus the single irreversible act that has no server to ask |
 
 Deliberate non-motions: no stagger or arrival (an account page is a reference, not an
 event); no tally (the plan became a figure on 2026-09-03 and still does not animate — it
@@ -962,6 +962,47 @@ unmodified and green with the flag OFF, which is this pass's proof that producti
 untouched; 10 new with it ON). `tsc --noEmit` clean for this directory. Emoji grep over
 `pages/profile/next`: empty.
 
+### Sixth pass, 2026-09-04 — the payment register holds to approve, and proves it
+
+**What the founder asked.** "Extend to order approval and payments; settings stay
+asserted." The gateway half shipped first (`cd2b86d8`): `PATCH /payment-methods/:id/default`
+and `DELETE /payment-methods/:id` now REDEEM a one-time seal minted by
+`POST /payment-methods/seal-challenge`, bound to (this manager, this act, this
+instrument, and the brand and last four the manager was looking at). The page had not
+caught up, so every payment write on it was refused — G-PAY-SEAL.
+
+**What was built.** *Charge this first* and *Remove* are `HoldToApprove` now
+(`PaymentRegister.tsx`, `SealedControl`). `onChallenge` mints the seal for that act at the
+moment the gesture BEGINS — not with the write, because a token a request fetches for
+itself is the assertion model with extra steps — and `onApprove` hands it to the write,
+which carries it in `X-Seal-Challenge`
+(`useProfileNextData.ts`, `mintPaymentSeal` / `setDefaultPaymentMethod` / `removePaymentMethod`).
+A mint that fails approves nothing and the control says "The seal could not be issued —
+nothing sent". A 403 now reaches the operator as the gateway's own sentence: `spoken()`
+promotes `response.data.message` onto `.message`, because axios otherwise hands the row
+"Request failed with status code 403" — a status code standing in for the one refusal the
+seal exists to produce.
+
+**Motions: no new token.** `pour`, `tuck` and `stamp` arrive with `HoldToApprove`, and
+`MOTIONS.md` restates the rule they now follow: the seal appears exactly where the server
+redeems one, plus the single irreversible act that has no server to ask.
+
+**What stays open, and why.** `create` is sealed at the gateway and is NOT sealed here,
+because nothing in `apps/web` or `apps/mobile` calls `POST /payment-methods` at all —
+measured, not assumed. A card is attached by confirming a SetupIntent on Stripe's origin
+and then reconciling, and neither `POST /billing/setup-intent` nor `POST /billing/sync`
+redeems a seal (`billing.controller.ts:101-166`). Minting a `create` token on the panel's
+hold would put an unspent row in `mcp_seal_challenges` and draw a seal over a redemption
+that never happens. The panel and the register both say so in words, and the gap is filed
+as **G-PAY-SETUP**.
+
+**Proof.** `vitest run src/pages/profile/next` — **63 passed**. Against HEAD copies of the
+whole directory (`git show HEAD:` into a same-depth probe directory, never a git state
+change), **6 of them fail**: the converted "charged first" test and the five new ones.
+Live on `:4000`, `DELETE /payment-methods/<uuid>` and `PATCH /payment-methods/<uuid>/default`
+with no seal header both answer 403 carrying the whole refusal sentence; neither wrote
+anything, because an absent seal is refused before the instrument is read.
+
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).
 
@@ -1030,8 +1071,9 @@ restaurant id taken from the signed token rather than from a parameter:
 | POST | `/mcp-connections` | `addMcpServer` | `JwtAuthGuard`; 409 on the partial unique index over `(user, restaurant, lower(name))` where `revoked_at is null` |
 | DELETE | `/mcp-connections/:id` | `revokeMcpServer` | `JwtAuthGuard`; soft revoke, 404 when nothing live matched |
 | GET | `/payment-methods` | `useProfileNextData.ts` → `PaymentRegister` | `JwtAuthGuard`; returns `{provider, methods}` — the provider's state is what stops an empty register from lying |
-| POST | `/payment-methods` | not called by the page (a card is created by confirming a SetupIntent, not by posting a form) | `JwtAuthGuard` + `assertCanManageRestaurant`; **503 with the reason** while `STRIPE_SECRET_KEY` is unset |
-| DELETE | `/payment-methods/:id` | `removePaymentMethod` | `JwtAuthGuard` + `assertCanManageRestaurant`; **detaches at the provider first** |
+| POST | `/payment-methods` | **not called by anything** — not by this page, not by `/connections`, not by the mobile app (grep over `apps/web` and `apps/mobile`, 2026-09-04). A card is created by confirming a SetupIntent and reconciling | `JwtAuthGuard` + `assertCanManageRestaurant` + a REDEEMED seal; **503 with the reason** while `STRIPE_SECRET_KEY` is unset. Its seal is therefore unreachable from a browser — §9 G-PAY-SETUP |
+| DELETE | `/payment-methods/:id` | `removePaymentMethod` — "Remove" | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED seal** from `X-Seal-Challenge` (2026-09-04); **detaches at the provider first** |
+| POST | `/payment-methods/seal-challenge` | `mintPaymentSeal`, from `HoldToApprove`'s `onChallenge` — when the gesture begins, never with the write | `JwtAuthGuard` + `assertCanManageRestaurant`; mints a one-time, 120-second token bound to (actor, act, instrument, and that instrument's own brand and last four). Returned once and never stored in the clear |
 | POST | `/auth/logout` | `AuthContext.logout`, via the Security register's "Sign out of this browser" | JWT; blacklists the presented token only |
 
 **Added by the third pass (2026-09-03, ADR 0110)** — the `billing/` module, plus
@@ -1045,7 +1087,7 @@ because that file is outside this page's paths.
 | POST | `/billing/setup-intent` | `createSetupIntent` → `StripeCardPanel` | `JwtAuthGuard` + `assertCanManageRestaurant`; **503 with the reason** while `STRIPE_SECRET_KEY` is unset |
 | POST | `/billing/sync` | `syncPayments` — after a confirmation, and behind **Reconcile now** | `JwtAuthGuard` + `assertCanManageRestaurant`; DROPS instruments the provider no longer holds |
 | POST | `/billing/webhook` | Stripe | **`@Public()`** — authenticated by HMAC over the exact request bytes, not by a JWT. Fails closed with no `STRIPE_WEBHOOK_SECRET`. Always answers **200**, even on a refusal, so a permanently-wrong secret cannot become a retry storm; the body says `received: false` and names the failing check. Idempotent on the event id |
-| PATCH | `/payment-methods/:id/default` | `setDefaultPaymentMethod` — "Charge this first" | `JwtAuthGuard` + `assertCanManageRestaurant`; written at the provider **before** the local flag |
+| PATCH | `/payment-methods/:id/default` | `setDefaultPaymentMethod` — "Charge this first" | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED seal** from `X-Seal-Challenge` (2026-09-04); written at the provider **before** the local flag |
 
 **Added by the third pass (2026-09-03)** — the model-context runtime. Same module, same
 guard, same tenancy: both scopes come from the signed token and neither is a parameter.
@@ -1116,20 +1158,32 @@ Core, every role. No `S..` touches it directly (OD-48).
 
 ## 9. Gaps
 
-- **G-PAY-SEAL — the payment register's controls are buttons, not the seal
-  ceremony (added 2026-09-04, ADR 0110 addendum).** The gateway now REDEEMS a
-  seal on every payment-method write: `POST /payment-methods/seal-challenge`
-  mints a one-time, 120-second token bound to (this manager, this instrument,
-  this act, this card's own brand and last four), and `POST /payment-methods`,
-  `PATCH :id/default` and `DELETE :id` each spend it exactly once. What is
-  missing is the browser half: `PaymentRegister.tsx` renders plain `Btn`s and has
-  never rendered `HoldToApprove`, so those controls now receive a 403 whose
-  message is the whole sentence ("This payment method is sealed, and a seal must
-  be proven rather than asserted… Nothing was changed."), verified live on
-  `:4000`. *Why not yet:* `pages/profile/next` was being edited by another
-  builder in the same worktree while the seal was built, so the page was left
-  untouched rather than raced. The fix is one `HoldToApprove` per control with
-  `onChallenge` minting the act, and the exact patch is in the build report.
+- ~~**G-PAY-SEAL — the payment register's controls are buttons, not the seal
+  ceremony**~~ — **CLOSED 2026-09-04.** Gateway half in `cd2b86d8`; page half in
+  this pass (`PaymentRegister.tsx` `SealedControl`, `useProfileNextData.ts`
+  `mintPaymentSeal` / `setDefaultPaymentMethod` / `removePaymentMethod`). *Charge
+  this first* and *Remove* are `HoldToApprove`: the gesture mints the seal for its
+  own act when it BEGINS, the write carries it in `X-Seal-Challenge`, a mint that
+  fails approves nothing and says so, and a 403 reaches the operator as the
+  gateway's own sentence rather than as a status code. Six tests pin it, all six
+  failing against HEAD copies of the directory. See §1b, sixth pass.
+
+- **G-PAY-SETUP — adding a card is the one payment act with no redeemed seal, and
+  the sealed `create` route has no caller (added 2026-09-04).** ADR 0110's
+  addendum seals three writes; `POST /payment-methods` is one of them, and
+  **nothing in `apps/web` or `apps/mobile` calls it** — measured by grep over both
+  apps, not assumed. The real add-a-card path is `POST /billing/setup-intent` →
+  Stripe's own iframes → `POST /billing/sync` (`StripeCardPanel.tsx`,
+  `useProfileNextData.ts`), and both of those routes are role-gated and
+  seal-free (`billing.controller.ts:101-166`). So the act the addendum most wanted
+  to protect — "an attacker attaches their own instrument" — is protected on the
+  route nobody uses and unprotected on the route everybody uses. *Why not yet:*
+  the fix is in `apps/api-gateway/src/billing/**`, a module this pass's brief did
+  not name, and the subject and args for it are already defined
+  (`payment-seal.ts`: `create`'s subject is the house's register). The page states
+  the gap in words on the panel and in the register's lead rather than implying a
+  seal it does not have. **Founder's call: seal `POST /billing/setup-intent`, or
+  make the panel record through the sealed `create` route instead?**
 
 **G12a — nowhere to add a card while `mudavym_design_connections` is on (opened
 2026-09-04 by the collapse; the one thing this pass subtracted).** Register V moved to

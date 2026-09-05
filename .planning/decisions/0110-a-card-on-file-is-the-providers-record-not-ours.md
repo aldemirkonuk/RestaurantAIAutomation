@@ -256,16 +256,43 @@ to arrive. Doing this before money moves is the only order in which it is cheap.
   inferred. A `create` seal still cannot pay for a `remove`, because the act is
   part of the binding.
 
-**What is NOT built.** The `/profile` payment register's controls are still plain
-buttons, not the hold ceremony — `PaymentRegister.tsx` has never rendered
-`HoldToApprove`, and `pages/profile/next` was being edited by another builder in
-the same worktree during this pass, so it was left untouched rather than raced.
-The gateway therefore refuses those buttons today, in words. The patch that adds
-the ceremony is written out in the build report; it is a page change, not a
-gateway one.
-
 **Proven by** `payment-methods.seal.spec.ts` (14 cases, all failing against the
 pre-pass controller because it wrote with no seal at all) and, live on `:4000`, a
 403 carrying the whole sentence for a `DELETE` with no seal. A successful
 redemption is NOT proven live: the local Supabase has neither `payment_methods`
 nor `mcp_seal_challenges`.
+
+---
+
+### Addendum status — 2026-09-04, the browser half (G-PAY-SEAL)
+
+**The page caught up the same day.** What this addendum listed as NOT built —
+`PaymentRegister.tsx` rendering plain buttons the gateway would refuse — is
+built. *Charge this first* and *Remove* are `HoldToApprove` on both surfaces that
+carry the register: `/profile` Register V (`PaymentRegister.tsx`, `SealedControl`;
+hook `useProfileNextData.ts` — `mintPaymentSeal`, `setDefaultPaymentMethod`,
+`removePaymentMethod`) and `/connections` Register II (`ConnectionsNext.tsx`;
+hook `useConnectionsNextData.ts` — `paymentSeal`, `setDefaultPayment`,
+`removePayment`). On `/connections` the two controls did not exist to convert:
+the collapse had left them disabled placeholders, so this closed half of
+`connections.md` §9 G-C9 at the same time. The mint runs on `onChallenge` — when
+the gesture begins — the write carries `X-Seal-Challenge`, a mint that fails
+approves nothing and says so, and a 403 reaches the operator as this addendum's
+own sentence rather than as a status code.
+
+**Proven by** 106 page tests (63 `/profile`, 43 `/connections`), twelve of which
+fail against HEAD copies of the two directories, and by the two read-only refusal
+curls above re-run on the current tree.
+
+**One thing this addendum claims that the product does not yet deliver.**
+`create` is sealed here and **nothing calls it**: `POST /payment-methods` has no
+caller in `apps/web` or `apps/mobile` (grep, 2026-09-04). A card is attached by
+confirming a SetupIntent on Stripe's origin and then reconciling —
+`POST /billing/setup-intent` and `POST /billing/sync` — and neither redeems a
+seal. So the attack this addendum names in its own second paragraph, *"an
+attacker attaches their own instrument"*, is guarded on the route nobody uses.
+Sealing `/billing/setup-intent` needs no new subject: `payment-seal.ts` already
+defines `create`'s subject as the house's register. It was not done here because
+`apps/api-gateway/src/billing/**` was outside the pass's named modules. Filed as
+`profile.md` §9 **G-PAY-SETUP**, and it is a founder call whether to seal that
+route or to route the panel through the sealed `create` instead.

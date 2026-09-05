@@ -47,3 +47,24 @@ Still one motion in the table above. Two things arrived and neither adds one:
   house token because it is not a house gesture — it is the browser doing what a
   fragment link has always done, and inventing a token for it would imply the page
   had opinions about a scroll it does not drive.
+
+## The payment register acts again, 2026-09-04 — and the hold's motions are named
+
+Register II's two controls were disabled placeholders after the collapse; they
+are live now, and both are `HoldToApprove` because the gateway REDEEMS a
+one-time seal on each write (ADR 0110's addendum). That brings the shared
+ceremony's three tokens onto this page in a second place — the first was the
+re-consent hold, and the table above never named them, which this entry
+corrects rather than leaves standing:
+
+| id | token | curve / ms | when it fires |
+|---|---|---|---|
+| `cx-hold-pour` | `pour` | `linear` · 620ms | the İznik fill under a hold — **Charge this first**, **Remove**, **Re-consent `<tool>`** and **Hold to revoke `<server>`**. Linear on purpose: the operator times it against their own thumb |
+| `cx-hold-tuck` | `tuck` | spring 380/32 · ~300ms | the fill retreating when the gesture is released early, beside the words "Released at N% — nothing sent" |
+| `cx-hold-stamp` | `stamp` | sampled spring 500/26 · 360ms | the seal landing when a hold completes AND its one-time token was minted. A mint that fails resets the track instead and prints "The seal could not be issued — nothing sent", so the stamp is never drawn over an approval that did not happen |
+
+**Still nothing new was invented.** These are the shared component's tokens,
+listed here because a motions file that omits the only moving thing on a row is
+the same omission this page exists to argue against. The refused-write line
+(`.cx-ctl-alert`) does not animate: a refusal that faded in would be an event,
+and it is a fact about the row that stays true until something changes.

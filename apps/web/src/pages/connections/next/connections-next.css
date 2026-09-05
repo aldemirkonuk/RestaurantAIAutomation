@@ -310,6 +310,19 @@
   color: var(--ink-3);
   max-width: 180px;
 }
+/* What just happened to this row, in the server's own words. Ink, never a
+   colour: the house has no red, and a refusal is not the seal (ADR 0042). The
+   rule at the left is the same mark `.cx-unread` uses for a register that could
+   not be read, because a refused write and an unread register are the same kind
+   of fact — something did not happen and the reason is quoted, not summarised. */
+.mudavym .cx-ctl-alert {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-1);
+  max-width: 180px;
+  border-left: 2px solid var(--ink-3);
+  padding-left: 7px;
+}
 
 .mudavym .cx-linkbtn {
   font-family: inherit;

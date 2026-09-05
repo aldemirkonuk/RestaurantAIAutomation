@@ -36,6 +36,24 @@
  * card is removed there and this page goes on showing it forever. So the
  * provider row prints when a signed delivery last arrived, and never is never.
  *
+ * FOURTH PASS, 2026-09-04 — THE TWO ROW ACTS ARE HELD (ADR 0110's addendum)
+ * ------------------------------------------------------------------------
+ * The gateway now REDEEMS a one-time seal on every payment-method write, so
+ * "Charge this first" and "Remove" as plain buttons stopped being a weaker
+ * ceremony and started being controls that could not work: each received a 403
+ * carrying the whole refusal sentence. Both are `HoldToApprove` now — the
+ * gesture mints the seal for its own act, the write carries it in
+ * `X-Seal-Challenge`, and a mint that fails approves nothing and says so.
+ *
+ * `create` is NOT sealed here, and the reason is measured rather than assumed:
+ * nothing in `apps/web` or `apps/mobile` calls `POST /payment-methods` at all.
+ * A card is added by confirming a SetupIntent on Stripe's origin and then
+ * reconciling (`StripeCardPanel.tsx:200-222` → `POST /billing/sync`), and
+ * neither of those two routes redeems a seal. Minting a `create` token here
+ * would put an unspent row in `mcp_seal_challenges` and a seal on a control
+ * that approves nothing — the ceremony without the proof, which is the exact
+ * thing this pass removed. Filed as G-PAY-SETUP in `profile.md` §9.
+ *
  * WHAT IS STILL NOT HERE, PER §6: plan MANAGEMENT and any charge. The plan is
  * shown because the restaurant is on one and it already decides something real;
  * changing it is a restaurant decision with a price behind it (OD-23,
@@ -45,6 +63,7 @@
 
 import { useState } from 'react';
 import { CreditCard, KeyRound, Landmark, RefreshCw, Webhook } from 'lucide-react';
+import { HoldToApprove } from '../../../components/mudavym/HoldToApprove';
 import { EM, MONO, SANS, fmtDay, planLabel, roleLabel } from './pf-format';
 import {
   Btn,
@@ -70,6 +89,45 @@ const KIND_LABEL: Record<PaymentMethodVM['kind'], string> = {
   // filed as a card it is not.
   other: 'Instrument',
 };
+
+/**
+ * One sealed control on a payment row.
+ *
+ * THE HOLD IS NOT DECORATION HERE (founder, 2026-09-04; ADR 0110 addendum)
+ * -----------------------------------------------------------------------
+ * `PATCH /payment-methods/:id/default` and `DELETE /payment-methods/:id` now
+ * REDEEM a one-time seal, so a plain button on this row is not a weaker
+ * ceremony — it is a control that cannot work at all. `onChallenge` mints the
+ * token when the gesture BEGINS and `onApprove` receives it for the write; a
+ * mint that fails approves nothing and the control says so.
+ *
+ * `HoldToApprove` draws a full-width track, so it needs a box to be full width
+ * OF; without one it collapses to the label inside the row's flex strip. The
+ * width keeps "Charge this first" on a single line, because a clipped label
+ * would hide WHICH act the seal is for.
+ */
+function SealedControl({
+  label,
+  approvedLabel,
+  onChallenge,
+  onApprove,
+}: {
+  label: string;
+  approvedLabel: string;
+  onChallenge: () => Promise<string | null>;
+  onApprove: (challenge?: string | null) => void;
+}) {
+  return (
+    <div style={{ width: 190 }}>
+      <HoldToApprove
+        label={label}
+        approvedLabel={approvedLabel}
+        onChallenge={onChallenge}
+        onApprove={onApprove}
+      />
+    </div>
+  );
+}
 
 /** The standing of one fact, in the checklist idiom: name, then value or dash. */
 function Standing({ label, value }: { label: string; value: string }) {
@@ -354,7 +412,7 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
       <Rail
         title="Payment methods"
         icon={<Landmark size={12} aria-hidden />}
-        lead="Cards, bank debits and whatever else the provider holds for this restaurant. Each row is Stripe's answer, with the moment we last heard it."
+        lead="Cards, bank debits and whatever else the provider holds for this restaurant. Each row is Stripe's answer, with the moment we last heard it. Choosing which is charged first, and detaching one, are held rather than clicked: the gesture mints a one-time seal and the write carries it back, so the server can tell a person from a session. Adding one is not sealed — the card is attached on Stripe's own origin and the register is then reconciled, and neither of those two routes redeems a seal today (G-PAY-SETUP)."
       >
         {data.paymentsState === 'loading' && <Note>Reading the payment register…</Note>}
 
@@ -390,29 +448,31 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
               data.isManagerOrOwner ? (
                 <>
                   {!m.isDefault && providerConnected && (
-                    <Btn
-                      onClick={() =>
+                    <SealedControl
+                      label="Charge this first"
+                      approvedLabel="Charged first"
+                      onChallenge={() => data.mintPaymentSeal('set_default', m.id)}
+                      onApprove={(challenge) =>
                         void act(
-                          data.setDefaultPaymentMethod(m.id),
+                          data.setDefaultPaymentMethod(m.id, challenge),
                           'The provider now charges this instrument first.',
                         )
                       }
-                    >
-                      Charge this first
-                    </Btn>
+                    />
                   )}
-                  <Btn
-                    onClick={() =>
+                  <SealedControl
+                    label="Remove"
+                    approvedLabel="Removed"
+                    onChallenge={() => data.mintPaymentSeal('remove', m.id)}
+                    onApprove={(challenge) =>
                       void act(
-                        data.removePaymentMethod(m.id),
+                        data.removePaymentMethod(m.id, challenge),
                         providerConnected
                           ? 'Detached at the provider, then removed here.'
                           : 'Removed from the register.',
                       )
                     }
-                  >
-                    Remove
-                  </Btn>
+                  />
                 </>
               ) : undefined
             }

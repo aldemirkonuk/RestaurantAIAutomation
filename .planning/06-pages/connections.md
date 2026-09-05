@@ -106,6 +106,15 @@ the two registers that would actually leak are refused at the gateway as well.
   change. *(New this pass; ADR 0107 addendum of 2026-09-04.)*
 - **Register II — what the house pays with.** Instruments on file, or the stated
   reason none can exist. *(Empty by construction today: no provider key.)*
+- **Every change to how the house pays is HELD, and the server redeems the seal**
+  *(2026-09-04; ADR 0110's addendum)*. **Charge this first** and **Remove** are
+  hold-to-approve on every instrument row: the gesture mints a one-time token for
+  its own act when it begins, and the write carries it back to be spent exactly
+  once. A mint that fails approves nothing and says so; a refused write prints the
+  gateway's own sentence on the row it was refused for, never as a page-wide
+  banner and never as a status code. *Adding* a card is still not here, and is the
+  one payment act with no redeemed seal anywhere — see §9 G-C9 and `profile.md`
+  §9 G-PAY-SETUP.
 - **Register III — personal grants that act inside this house.** Every OAuth
   grant recorded against this restaurant, named with its owner, plus a count of
   live grants belonging to people who work here that carry no recorded
@@ -113,7 +122,23 @@ the two registers that would actually leak are refused at the gateway as well.
   **never** approve it.
 - **The catalogue** of what could be connected, read from the same route the
   other three surfaces read — an unconnected entry is drawn at the same weight
-  as a live one.
+  as a live one. **Four entries as of 2026-09-04**: Google Drive, Microsoft
+  Excel, and the house's mail as **two grants each asking for one thing** —
+  *Gmail — sending only* (`gmail.send`) and *Gmail — reading vendor replies only*
+  (`gmail.readonly`). The second is the founder's condition on the first: the send
+  grant stays send-only *on condition the house can also receive on its own
+  mailbox and have the whole comms there* (ADR 0118 D8). Both rows appear here
+  for free, because this register maps the catalogue rather than a hand-written
+  list — and until 2026-09-04 the **Connect button on both led nowhere**: see §13
+  item 7.
+- **Every catalogue row now states where what it fetches lands, and who can see
+  it** — a required four-part `dataHandling` block on the consent screen at
+  `/authorize/:id` (what we read · what we never read · where it lands · who can
+  see it), served from the same constant the scope list comes from. The reading
+  grant's answers are the load-bearing ones: mail from the vendors in this
+  house's book and nothing else; anything else discarded unread; landing in
+  `procurement_conversations`; visible to everyone who works in this restaurant
+  and nobody outside it.
 - **Register IV — set once for every house on this deployment.** Token
   encryption and the model provider, named and read-only. *(The model provider
   row claims nothing: no endpoint reports its state — see §9.)*
@@ -208,6 +233,41 @@ restaurant column, so a house has no public page and the row says so. Declaring
 a model-context server is not on this page yet — it stays on `/profile` until
 the register moves fully, and the control is disabled saying exactly that.
 
+### Second pass, 2026-09-04 — Register II can act again, and every act is held
+
+**What the founder asked.** "Extend to order approval and payments; settings stay
+asserted." The gateway half shipped first (`cd2b86d8`).
+
+**What was built.** Register II's two controls were disabled placeholders after the
+collapse, so the seal had nothing to sit on: they came back as `HoldToApprove`, not as
+buttons. `useConnectionsNextData.ts` gained `paymentSeal` (the mint, called from
+`onChallenge` when the gesture BEGINS), `setDefaultPayment` and `removePayment` (both
+carrying `X-Seal-Challenge`). `AttachmentRow` gained one prop, `alert`: a refused write
+prints the gateway's whole sentence in the control column with `role="status"`, keyed by
+the mutation's own `variables` so the refusal lands on the row it was refused for and on
+no other. `readError` moved from the data hook to `cx-format.ts`, because the page's own
+tests mock the hook wholesale and a sentence extractor imported from the mock would have
+made the test prove the fixture.
+
+**The structural idea.** The seal is not a weight the page chooses to apply; it is where
+the server redeems one. That is why *Remove* is a hold and *Regenerate* is not, and why
+this pass could not "just re-enable" the two controls — re-enabling them as buttons would
+have shipped two controls that fail every time.
+
+**Motions.** No new token. `pour`, `tuck` and `stamp` arrive with the shared
+`HoldToApprove`; `MOTIONS.md` now names them, which the table had omitted since the
+re-consent hold.
+
+**What was deliberately not built.** The card panel. Adding a card needs Stripe's own
+iframes, which is a ~400-line port bound to `/profile`'s hook and UI kit, into a directory
+another builder is live in — and it buys nothing while `STRIPE_SECRET_KEY` is unset. The
+row says so instead of pointing at a page that no longer holds it.
+
+**Proof.** `vitest run src/pages/connections/next/ConnectionsNext.test.tsx` — **43
+passed**; six of them fail against a HEAD copy of the whole directory (`git show HEAD:`
+into a same-depth probe, never a git state change). Live on `:4000`, both writes answer
+403 with the whole refusal sentence when no seal is sent, and neither writes anything.
+
 ## 2. Entry
 
 Sidebar, after Settings, in the bottom group
@@ -239,6 +299,9 @@ manager; a staff member reaches the written refusal.
 | GET | `/pos-hub/status/:restaurantId` | JWT | `unavailable: true` distinguishes a dead read from a quiet till (`pos-hub.service.ts:1230`) |
 | GET | `/billing/provider` | JWT + **manager/owner** | role gate added this pass (G19) |
 | GET | `/payment-methods` | JWT + **manager/owner** | role gate added this pass (G19) |
+| POST | `/payment-methods/seal-challenge` | JWT + **manager/owner** | `paymentSeal`, from `HoldToApprove`'s `onChallenge`. One-time, 120s, bound to (actor, act, instrument, its brand and last four); returned once and never stored in the clear (2026-09-04) |
+| PATCH | `/payment-methods/:id/default` | JWT + **manager/owner** + **a REDEEMED seal** | `setDefaultPayment` — "Charge this first". The seal rides in `X-Seal-Challenge`; written at the provider before the local flag (2026-09-04) |
+| DELETE | `/payment-methods/:id` | JWT + **manager/owner** + **a REDEEMED seal** | `removePayment` — "Remove". Detaches at the provider first, then drops the row (2026-09-04) |
 | GET | `/communications/sender-identity` | JWT | **new this pass** — the address and its scope, never a credential |
 | GET | `/calendar/ical-token` | JWT | provisions on read |
 | POST | `/calendar/ical-token/regenerate` | JWT | revokes every subscription |
@@ -294,20 +357,18 @@ because it is true, and it changes when the deployment's mailbox does.
 
 Each is rendered honestly on the page rather than hidden.
 
-- **G-PAY-SEAL — the payment register's controls are buttons, not the seal
-  ceremony (added 2026-09-04, ADR 0110 addendum).** The gateway now REDEEMS a
-  seal on every payment-method write: `POST /payment-methods/seal-challenge`
-  mints a one-time, 120-second token bound to (this manager, this instrument,
-  this act, this card's own brand and last four), and `POST /payment-methods`,
-  `PATCH :id/default` and `DELETE :id` each spend it exactly once. What is
-  missing is the browser half: `PaymentRegister.tsx` renders plain `Btn`s and has
-  never rendered `HoldToApprove`, so those controls now receive a 403 whose
-  message is the whole sentence ("This payment method is sealed, and a seal must
-  be proven rather than asserted… Nothing was changed."), verified live on
-  `:4000`. *Why not yet:* `pages/profile/next` was being edited by another
-  builder in the same worktree while the seal was built, so the page was left
-  untouched rather than raced. The fix is one `HoldToApprove` per control with
-  `onChallenge` minting the act, and the exact patch is in the build report.
+- ~~**G-PAY-SEAL — the payment register's controls are buttons, not the seal
+  ceremony**~~ — **CLOSED 2026-09-04.** Gateway half in `cd2b86d8`; page half in
+  this pass. On this page it closed together with half of G-C9 below, because the
+  two controls had to exist before they could be sealed: Register II's *Remove*
+  and *Charge this first* were disabled placeholders, and they came back as
+  `HoldToApprove` rather than as buttons. `paymentSeal` mints the one-time token
+  for its own act when the gesture BEGINS; the write carries it in
+  `X-Seal-Challenge` and spends it exactly once; a mint that fails approves
+  nothing and the control says so; a refusal prints the gateway's whole sentence
+  on the row it was refused for. Six tests pin it, six failing against a HEAD copy
+  of the directory. Proven live on `:4000`: both writes answer 403 with the
+  refusal sentence when no seal is sent, and neither writes anything.
 
 - **G-C1 — the POS bridge cannot be disconnected.** `pos-hub.controller.ts`
   carries no delete route of any shape, so "Disconnect" is disabled and the row
@@ -349,20 +410,26 @@ Each is rendered honestly on the page rather than hidden.
   *Still not here:* CHANGING a credential afterwards. `PUT /:id/secret` answers;
   what is missing is a button, and the declare panel says which.
 
-- **G-C9 — nothing on this page (or anywhere) can add or remove a card, opened
-  2026-09-04 by the collapse.** Register V left `/profile`, but
-  `profile/next/StripeCardPanel.tsx` did not: it mounts Stripe's own iframes and
-  is bound to that page's data hook (`ProfileNextData`) and UI kit (`pf-ui`), so
-  moving it means moving both. The row therefore renders **Add a card** disabled
-  saying *"the panel that mounts the provider's own card fields has not been
-  rebuilt here yet, and it is no longer on /profile"*, and **Remove** disabled
-  naming the provider's own dashboard. This is the one capability the collapse
-  subtracted, and it is written here rather than left to be discovered.
-  *Why not yet:* it is a ~400-line port into a directory another builder was live
-  in, and it buys nothing today — `STRIPE_SECRET_KEY` is unset on this
-  deployment, the create path 503s, and the control was already disabled carrying
-  that sentence. It becomes urgent the day a key is set. Mirror: `profile.md`
-  §9 G12a.
+- **G-C9 — nothing on this page can ADD a card; removing and preferring one work
+  again. Opened 2026-09-04 by the collapse, half-closed the same day.** Register V
+  left `/profile`, but `profile/next/StripeCardPanel.tsx` did not: it mounts
+  Stripe's own iframes and is bound to that page's data hook (`ProfileNextData`)
+  and UI kit (`pf-ui`), so moving it means moving both. **Add a card** therefore
+  stays disabled saying *"the panel that mounts the provider's own card fields has
+  not been rebuilt here yet, and it is no longer on /profile"*.
+  **What is closed:** *Remove* and *Charge this first* are live on every
+  instrument row and both are `HoldToApprove`, because the gateway REDEEMS a
+  one-time seal on each of those writes (ADR 0110's addendum) — a plain button
+  there would be a control that always fails, not a lighter ceremony. The write
+  client is `useConnectionsNextData.ts` (`paymentSeal`, `setDefaultPayment`,
+  `removePayment`); a refused write prints the gateway's own sentence on its own
+  row (`.cx-ctl-alert`), keyed by the mutation's `variables` so no untouched row
+  is told nothing changed.
+  *Why the add is still not yet:* it is a ~400-line port into a directory another
+  builder is live in, and it buys nothing today — `STRIPE_SECRET_KEY` is unset on
+  this deployment and the create path 503s. It becomes urgent the day a key is
+  set. Mirror: `profile.md` §9 G12a, and G-PAY-SETUP there for the seal the
+  add-a-card path does not carry.
 
 **Correction to the commit message (a9747074, 2026-09-04).** Its body says the two ungated
 reads were closed and "the old test pinned the defect and was replaced with its reason". There
@@ -497,6 +564,36 @@ is unread would see the dash only in that cell.
    `NOTIFICATION_PRODUCERS_ENABLED` is set. The register row, the gaps and the
    one tool-list case it deliberately cannot report (an ADDED tool) are in
    [`notifications.md`](notifications.md) §11 and §13.30.
+7a. ~~**The Connect button on a Gmail row led nowhere.**~~ **Fixed 2026-09-04 by
+   the `gmail_read` build.** This register maps the catalogue, so `gmail_send`
+   appeared here the morning it was declared — and every Connect row on this page
+   and on `/profile` links to `/authorize/:id`, where
+   `apps/web/src/pages/AuthorizeIntegration.tsx` held
+   `const VALID_IDS = ['google_drive', 'excel']` and checked the route parameter
+   against it **before reading the catalogue**. So the only route to consenting to
+   a sending grant ended at *"Unknown integration. That integration doesn't
+   exist."* The grant was unreachable and nothing failed. Same fault as a
+   hard-coded scope list, one layer out. Fixed by deleting the copy — the
+   catalogue the server returns decides, and an id it does not carry now gets a
+   sentence about **this deployment's catalogue** rather than about existence.
+   Proved by `apps/web/src/pages/AuthorizeIntegration.test.tsx` (5 passing; 5 of 5
+   fail against a `git show HEAD:` copy of the page, and a one-off run confirms
+   HEAD rendered the wall). Widening `IntegrationId` surfaced two more copies of
+   the same fault at compile time — an exhaustive icon map in
+   `components/settings/IntegrationsAuth.tsx` and a narrowed handler parameter in
+   `pages/profile/next/ConnectionsRegister.tsx:63` — both corrected in the same
+   change.
+7b. **The house cannot switch the inbox reader on from anywhere** (filed
+   2026-09-04 by the `gmail_read` build). `enable_house_inbox_read` is a real
+   column and a real gate, and no surface sets it.
+   `PUT /settings/feature-flags` was deliberately left alone: it carries
+   `JwtAuthGuard, TenantGuard` and **no role check**
+   (`settings.controller.ts:38-40`), so adding the key there would let any
+   authenticated member start reading a colleague's mailbox. Either that route
+   gains `assertCanManageRestaurant` — which also changes who may flip
+   `enable_ai_autonomous_send`, the founder's call — or this page grows a
+   manager-only control beside the reading grant's row. **Until one lands, the
+   reading grant can be consented to and nothing is read.**
 7. **Correct the unconnected row's permission bullets** (filed 2026-09-04 by the
    `gmail_send` build, which cannot touch `pages/**`). A third integration now
    exists — **Gmail, sending only**, one scope, `gmail.send`, declared in

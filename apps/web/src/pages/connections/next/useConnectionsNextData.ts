@@ -44,6 +44,7 @@ import { useCallback, useContext, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AuthContext } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
+import { readError } from './cx-format';
 
 /* ── view models ──────────────────────────────────────────────────────── */
 
@@ -209,6 +210,16 @@ export interface CatalogEntryVM {
   description: string;
   available: boolean;
   unavailableReason: string | null;
+  /**
+   * The integration's OWN scope disclosure and its "never asked for" list,
+   * straight off `INTEGRATION_DEFINITIONS` (`integrations-oauth.controller.ts:69-70`).
+   * The page's permission bullets are built from these and from nothing else,
+   * so one integration cannot print another's promise (`cx-permissions.ts`).
+   * Optional because a gateway that predates them sends neither, and an absent
+   * disclosure must render as the em dash rather than as a guess.
+   */
+  scopes?: Array<{ scope: string; label: string; reason?: string }> | null;
+  notRequested?: string[] | null;
 }
 
 /** A query as this page consumes it: never "empty" when it means "unread". */
@@ -224,22 +235,6 @@ export interface Register<T> {
 interface AxiosLikeError {
   response?: { status?: number; data?: { message?: string | string[] } };
   message?: string;
-}
-
-/**
- * The gateway's words, never ours.
- *
- * A message this file wrote would describe what we GUESS went wrong; the
- * gateway's message describes what did. Only the last-resort branch is ours,
- * and it says that it does not know.
- */
-function readError(e: unknown): string {
-  const err = e as AxiosLikeError;
-  const raw = err?.response?.data?.message;
-  if (Array.isArray(raw) && raw.length) return String(raw[0]);
-  if (typeof raw === 'string' && raw.trim()) return raw;
-  if (err?.message) return err.message;
-  return 'This register could not be read, and the reason did not come back with the failure.';
 }
 
 function isRefusal(e: unknown): boolean {
@@ -492,6 +487,68 @@ export function useConnectionsNextData() {
     onSuccess: () => invalidate('connections-next-mcp'),
   });
 
+  /* ── the payment register's two writes, both sealed ───────────────────
+   *
+   * G-C9, half-closed (2026-09-04). The collapse moved Register II here and
+   * left both controls disabled, because the client that performs them stayed
+   * behind on `/profile`. They are here now — and they arrive already sealed,
+   * because ADR 0110's addendum made `PATCH /payment-methods/:id/default` and
+   * `DELETE /payment-methods/:id` REDEEM a one-time token rather than trust the
+   * role alone. Adding a card is still not here: that needs Stripe's own card
+   * fields, which is a panel and not a request (see the row's stop note).
+   */
+
+  /**
+   * Mint the seal, when the hold BEGINS.
+   *
+   * Not a mutation, for the same reason `grantSeal` is not: it changes nothing
+   * the page renders. It returns null instead of throwing because
+   * `HoldToApprove` reads null as "do not approve" and says so on the control.
+   */
+  const paymentSeal = useCallback(
+    async (v: {
+      act: 'set_default' | 'remove';
+      methodId: string;
+    }): Promise<string | null> => {
+      try {
+        const { data } = await apiClient.post<{ challenge?: string }>(
+          '/payment-methods/seal-challenge',
+          { act: v.act, methodId: v.methodId },
+        );
+        return data?.challenge ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  /**
+   * The seal travels in a HEADER on both writes — it is not one of the
+   * arguments it is a seal over, and `DELETE` carries no body here at all.
+   * `payment-methods.controller.ts` reads `x-seal-challenge` on both.
+   */
+  const setDefaultPayment = useMutation({
+    mutationFn: async (v: { methodId: string; challenge?: string | null }) => {
+      await apiClient.patch(
+        `/payment-methods/${v.methodId}/default`,
+        {},
+        v.challenge ? { headers: { 'X-Seal-Challenge': v.challenge } } : undefined,
+      );
+    },
+    onSuccess: () => invalidate('connections-next-payments'),
+  });
+
+  const removePayment = useMutation({
+    mutationFn: async (v: { methodId: string; challenge?: string | null }) => {
+      await apiClient.delete(
+        `/payment-methods/${v.methodId}`,
+        v.challenge ? { headers: { 'X-Seal-Challenge': v.challenge } } : undefined,
+      );
+    },
+    onSuccess: () => invalidate('connections-next-payments'),
+  });
+
   const revokeTool = useMutation({
     mutationFn: async (v: { id: string; tool: string }) => {
       await apiClient.delete(
@@ -590,6 +647,9 @@ export function useConnectionsNextData() {
     grantTool,
     revokeTool,
     probeServer,
+    paymentSeal,
+    setDefaultPayment,
+    removePayment,
     refetchMcp,
   };
 }

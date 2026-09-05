@@ -145,3 +145,31 @@ export function probeWord(status: string | null | undefined): string {
       return 'Never called';
   }
 }
+
+/**
+ * The gateway's words, never ours.
+ *
+ * A message this file wrote would describe what we GUESS went wrong; the
+ * gateway's message describes what did. Only the last-resort branch is ours,
+ * and it says that it does not know.
+ *
+ * It lives here rather than in the data hook (moved 2026-09-04) because a
+ * refused WRITE needs it as much as a refused read, and the page's own tests
+ * mock the data hook wholesale — a sentence extractor imported from the mocked
+ * module would be the mock's, so the test proving the refusal reaches the
+ * operator would be testing the fixture. Axios hides the sentence in
+ * `response.data.message` and puts "Request failed with status code 403" on
+ * `.message`; printing the status code would be the empty-register failure
+ * wearing different clothes (ADR 0020).
+ */
+export function readError(e: unknown): string {
+  const err = e as {
+    response?: { data?: { message?: string | string[] } };
+    message?: string;
+  };
+  const raw = err?.response?.data?.message;
+  if (Array.isArray(raw) && raw.length) return String(raw[0]);
+  if (typeof raw === 'string' && raw.trim()) return raw;
+  if (err?.message) return err.message;
+  return 'This register could not be read, and the reason did not come back with the failure.';
+}

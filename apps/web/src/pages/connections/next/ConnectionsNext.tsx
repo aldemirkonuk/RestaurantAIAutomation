@@ -96,6 +96,7 @@ import {
   type RowChip,
   type RowPermission,
 } from './AttachmentRow';
+import { grantHolds, wouldAskFor } from './cx-permissions';
 import { HouseServerControls } from './HouseServerControls';
 import {
   DASH,
@@ -105,6 +106,7 @@ import {
   onDate,
   personName,
   probeWord,
+  readError,
   shortUrl,
   spelled,
   spelledLower,
@@ -173,6 +175,28 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   }, [hash, anchorReady]);
 
   const feed = feedUrl(d.ical.data?.token);
+
+  /**
+   * What the gateway said about the last attempt on THIS instrument.
+   *
+   * Keyed by the mutation's own `variables`, so a refusal is reported on the
+   * row it was refused for and on no other. A single page-level banner would
+   * put "nothing was changed" under a row that was never touched, which is the
+   * same class of lie as reporting absence as health — just pointed the other
+   * way.
+   */
+  const paymentAlert = (methodId: string): string | null => {
+    if (
+      d.setDefaultPayment.isError &&
+      d.setDefaultPayment.variables?.methodId === methodId
+    ) {
+      return readError(d.setDefaultPayment.error);
+    }
+    if (d.removePayment.isError && d.removePayment.variables?.methodId === methodId) {
+      return readError(d.removePayment.error);
+    }
+    return null;
+  };
 
   /**
    * The opening sentence, assembled from measurements rather than written.
@@ -750,7 +774,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           </p>
           <p className="cx-sec-k">
             kept for this restaurant · managers and owners may read and change ·
-            the read is role-gated at the server
+            the read is role-gated at the server · every change is held, and the
+            seal is redeemed once
           </p>
 
           {d.payments.loading ? (
@@ -829,8 +854,46 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 lastLabel="Last reconciled"
                 last={null}
                 lastDetail="The register records no reconcile timestamp per instrument."
-                controls={[{ label: 'Remove', disabled: true }]}
-                stopNote="Removal detaches at the provider first, and the client that does it has not been rebuilt here since this register left /profile. Until it is, an instrument is removed in the provider’s own dashboard — G-C9."
+                // BOTH ACTS ARE HELD, NOT CLICKED (founder, 2026-09-04; ADR
+                // 0110's addendum). The gateway redeems a one-time seal on each
+                // of these writes, so a button here would not be a lighter
+                // ceremony — it would be a control that always fails. The
+                // gesture mints the seal for its own act when it BEGINS, and
+                // the write carries the token back to be spent exactly once.
+                //
+                // "Charge this first" appears only while a provider is
+                // connected: preferring an instrument is a fact about the
+                // Stripe customer, and there is no customer to state it to
+                // otherwise. Removal is offered either way, because a row can
+                // outlive the credential that created it.
+                controls={[
+                  ...(m.isDefault || !d.payments.data?.provider.connected
+                    ? []
+                    : [
+                        {
+                          label: 'Charge this first',
+                          busy: d.setDefaultPayment.isPending,
+                          hold: {
+                            onChallenge: () =>
+                              d.paymentSeal({ act: 'set_default' as const, methodId: m.id }),
+                            onApprove: (challenge?: string | null) =>
+                              d.setDefaultPayment.mutate({ methodId: m.id, challenge }),
+                          },
+                        },
+                      ]),
+                  {
+                    label: 'Remove',
+                    busy: d.removePayment.isPending,
+                    hold: {
+                      onChallenge: () =>
+                        d.paymentSeal({ act: 'remove' as const, methodId: m.id }),
+                      onApprove: (challenge?: string | null) =>
+                        d.removePayment.mutate({ methodId: m.id, challenge }),
+                    },
+                  },
+                ]}
+                alert={paymentAlert(m.id)}
+                stopNote="Removal detaches the instrument at the provider first, then drops the row here — dropping the row alone would leave a live card the next reconcile faithfully restores. Adding one still is not here: that needs the provider’s own card fields, which is a panel rather than a request (G-C9)."
               />
             ))
           )}
@@ -894,11 +957,11 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       ) : null}
                     </>
                   }
-                  permissions={[
-                    { text: 'Create and edit files it made', can: true },
-                    { text: 'Cannot read their other documents', can: false },
-                    { text: 'Cannot touch their mail', can: false },
-                  ]}
+                  permissionsLabel="Holds"
+                  permissions={grantHolds(
+                    g.scopes,
+                    (d.catalog.data ?? []).find((c) => c.id === g.integrationId) ?? null,
+                  )}
                   lastLabel="Token expires"
                   last={g.tokenExpiresAt ? when(g.tokenExpiresAt) : null}
                   lastDetail="No per-use record is kept, so what this grant last did is not knowable from here."
@@ -962,10 +1025,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       </>
                     }
                     permissionsLabel="Would ask for"
-                    permissions={[
-                      { text: 'Create and edit files it made', can: true },
-                      { text: 'Never mail, never other documents', can: false },
-                    ]}
+                    permissions={wouldAskFor(c)}
                     lastLabel="Last action"
                     last={null}
                     lastDetail="Never connected by anyone here."

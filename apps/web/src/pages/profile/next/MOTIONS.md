@@ -5,23 +5,32 @@ page is a place people read and correct facts about themselves; it should feel
 like a well-kept book, not a dashboard. Nothing here counts, shimmers, slides
 or staggers.
 
-**The seal is pressed twice now, and that is a change.** Until 2026-09-03 the
-hold appeared exactly once, over deleting the account, and this file said so.
-The Stripe build (ADR 0110) added the second: confirming a SetupIntent is the
-moment an instrument becomes chargeable, which is the only other act on
-`/profile` that changes what the product may do TO the house rather than what it
-knows ABOUT it. Two seals on seven registers is still a ration — every other
-control on the page, including *Remove*, *Charge this first* and *Reconcile
-now*, is a plain button. If a third ever wants the die, the question to ask is
-whether it is irreversible or merely important; these two are the first.
+**The seal is pressed four times now, and the ration was not loosened — the
+gateway moved.** Until 2026-09-03 the hold appeared exactly once, over deleting
+the account. The Stripe build (ADR 0110) added the second: confirming a
+SetupIntent is the moment an instrument becomes chargeable. On 2026-09-04 the
+founder extended challenge-and-redeem to payments, and *Charge this first* and
+*Remove* became the third and fourth (ADR 0110's addendum): the gateway now
+REDEEMS a one-time seal on `PATCH /payment-methods/:id/default` and
+`DELETE /payment-methods/:id`, so a plain button there is not a lighter
+ceremony — it is a control that receives a 403 every time.
+
+That is the rule this file now states, and it is stricter than "ration the
+die", because it is not a taste question: **the seal appears exactly where the
+server redeems one, plus the one act that is irreversible here and has no
+server to ask** (deleting the account). *Reconcile now* stays a plain button
+because reconciling asks the provider what it holds and changes nothing we
+chose. The add-a-card hold is the odd one and says so in its own words: it is
+the ceremony without a redemption, because the write it precedes happens on
+Stripe's origin and the two routes behind it take no seal (G-PAY-SETUP).
 
 | id | token | curve · ms | fires |
 |---|---|---|---|
 | `pf-open` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the opening block — wordmark, role/location line, the name in Fraunces, the standing sentence — once on mount, opacity + 6px rise, via `animate()` |
 | `pf-expand` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | a connection row's panel opening — “What you granted” / “What it would ask for” on the Workspace rail, “Scopes and dates” on a model-context server, “Show the working” on the session row. CSS `grid-template-rows: 0fr → 1fr` (the founder's named favourite, 053's row-expand) |
 | `pf-ink` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | hover and focus on rows, buttons and membership entries — border colour and ground only; nothing translates, nothing scales |
-| `pf-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to delete this account** (Register VII) and, since 2026-09-03, under **Hold to put this card on file** (Register V, `StripeCardPanel`), both inside `HoldToApprove`. Deliberately linear: the operator is timing it against their own thumb. An early release retreats on `tuck` (spring 380/32, ~300ms) and says what did not happen |
-| `pf-stamp` | `stamp` | sampled spring 500/26 (~11% overshoot) · 360ms | the seal landing when either hold completes — the only motion on the page allowed to overshoot, and the only two places on the page the seal is pressed |
+| `pf-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to delete this account** (Register VII), under **Hold to put this card on file** (Register V, `StripeCardPanel`, since 2026-09-03) and, since 2026-09-04, under **Charge this first** and **Remove** on every instrument row (Register V, `SealedControl`) — all inside `HoldToApprove`. Deliberately linear: the operator is timing it against their own thumb. An early release retreats on `tuck` (spring 380/32, ~300ms) and says what did not happen |
+| `pf-stamp` | `stamp` | sampled spring 500/26 (~11% overshoot) · 360ms | the seal landing when any of those holds completes — the only motion on the page allowed to overshoot. On the two payment-row acts it lands only after the gateway's one-time seal has been minted; a mint that fails resets the track and prints "The seal could not be issued — nothing sent", so the stamp is never drawn over an approval that did not happen |
 
 ## Deliberate non-motions
 

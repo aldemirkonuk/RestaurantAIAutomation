@@ -91,6 +91,18 @@ export interface AttachmentRowProps {
   controls?: RowControl[];
   /** Required. A row with no control says who can stop it. */
   stopNote: string;
+  /**
+   * What just happened to THIS row, in the server's own words.
+   *
+   * Added 2026-09-04 with the sealed payment writes. A refused seal answers 403
+   * with a whole sentence naming the check that failed and saying nothing was
+   * changed; without a place to put it the row would go on looking exactly as
+   * it did before, which is the "absence reported as health" shape aimed at a
+   * write. It is `role="status"` so a screen reader hears the refusal, and it
+   * is deliberately not a chip: a chip is the row's standing state, and this is
+   * an account of one attempt.
+   */
+  alert?: string | null;
   nested?: boolean;
 }
 
@@ -115,6 +127,7 @@ export function AttachmentRow({
   lastDetail,
   controls = [],
   stopNote,
+  alert = null,
   nested = false,
 }: AttachmentRowProps) {
   return (
@@ -186,6 +199,11 @@ export function AttachmentRow({
             </button>
           ),
         )}
+        {alert ? (
+          <span className="cx-ctl-alert" role="status">
+            {alert}
+          </span>
+        ) : null}
         <span className="cx-ctl-note">{stopNote}</span>
       </div>
     </div>

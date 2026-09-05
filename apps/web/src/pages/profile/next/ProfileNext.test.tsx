@@ -53,8 +53,20 @@ const addMcpServer = vi.fn(() => Promise.resolve());
 const revokeMcpServer = vi.fn(() => Promise.resolve());
 const probeMcpServer = vi.fn(() => Promise.resolve());
 const setMcpSecret = vi.fn(() => Promise.resolve());
-const removePaymentMethod = vi.fn(() => Promise.resolve());
-const setDefaultPaymentMethod = vi.fn(() => Promise.resolve());
+const removePaymentMethod = vi.fn((_id: string, _challenge?: string | null) =>
+  Promise.resolve(),
+);
+const setDefaultPaymentMethod = vi.fn((_id: string, _challenge?: string | null) =>
+  Promise.resolve(),
+);
+/**
+ * Resolves a token by default, so a test that completes the gesture without
+ * caring about the seal does not silently exercise the failure path.
+ */
+const mintPaymentSeal = vi.fn(
+  (_act: 'set_default' | 'remove', _methodId: string): Promise<string | null> =>
+    Promise.resolve('tok-default'),
+);
 const syncPayments = vi.fn(
   (): Promise<{ syncedAt: string; kept: number; removed: number; note: string | null }> =>
     Promise.resolve({
@@ -231,6 +243,7 @@ function base(over: Record<string, unknown> = {}) {
     revokeMcpServer,
     probeMcpServer,
     setMcpSecret,
+    mintPaymentSeal,
     removePaymentMethod,
     setDefaultPaymentMethod,
     syncPayments,
@@ -825,8 +838,14 @@ describe('ProfileNext — a stored instrument says how stale it is', () => {
       paymentMethods: [{ ...CARD_ROW, isDefault: false }],
     });
     draw();
-    fireEvent.click(screen.getByRole('button', { name: 'Charge this first' }));
-    await waitFor(() => expect(setDefaultPaymentMethod).toHaveBeenCalledWith('pm-row-1'));
+    const hold = screen.getByRole('button', { name: 'Charge this first' });
+    // A HOLD, not a click. One press ARMS the gesture and mints the seal;
+    // nothing is sent until the second.
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    await waitFor(() =>
+      expect(setDefaultPaymentMethod).toHaveBeenCalledWith('pm-row-1', 'tok-default'),
+    );
     expect(
       await screen.findByText(/The provider now charges this instrument first/),
     ).toBeInTheDocument();
@@ -837,6 +856,103 @@ describe('ProfileNext — a stored instrument says how stale it is', () => {
     draw();
     expect(screen.queryByRole('button', { name: 'Charge this first' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * G-PAY-SEAL — the payment register holds to approve, and proves it.
+ *
+ * ADR 0110's addendum made `PATCH /payment-methods/:id/default` and
+ * `DELETE /payment-methods/:id` REDEEM a one-time seal. Every test here pins
+ * one half of what that means in the browser: the mint happens when the gesture
+ * BEGINS (not with the write), the write carries what was minted, a mint that
+ * fails approves nothing, and a refusal reaches the operator as the gateway's
+ * own sentence rather than as a status code.
+ */
+describe('ProfileNext — the payment register is sealed, not asserted', () => {
+  const withCard = (over: Record<string, unknown> = {}) =>
+    base({
+      paymentProvider: CONNECTED_PROVIDER,
+      paymentMethods: [{ ...CARD_ROW, isDefault: false }],
+      ...over,
+    });
+
+  it('mints the seal when the hold BEGINS, and sends nothing yet', async () => {
+    mockData.current = withCard();
+    draw();
+    const hold = screen.getByRole('button', { name: 'Charge this first' });
+
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    await waitFor(() => expect(mintPaymentSeal).toHaveBeenCalledTimes(1));
+    expect(mintPaymentSeal).toHaveBeenCalledWith('set_default', 'pm-row-1');
+    // The whole point of minting on the FIRST press: a token fetched by the
+    // same request it authorises is the assertion model with extra steps.
+    expect(setDefaultPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  it('names the act it is sealing — a remove seal cannot be a default seal', async () => {
+    mockData.current = withCard();
+    draw();
+    const hold = screen.getByRole('button', { name: 'Remove' });
+
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    await waitFor(() => expect(mintPaymentSeal).toHaveBeenCalledWith('remove', 'pm-row-1'));
+
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    await waitFor(() =>
+      expect(removePaymentMethod).toHaveBeenCalledWith('pm-row-1', 'tok-default'),
+    );
+  });
+
+  it('approves nothing when the seal cannot be minted, and says why', async () => {
+    mintPaymentSeal.mockResolvedValueOnce(null);
+    mockData.current = withCard();
+    draw();
+    const hold = screen.getByRole('button', { name: 'Charge this first' });
+
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    expect(
+      await screen.findByText(/the seal could not be issued — nothing sent/i),
+    ).toBeInTheDocument();
+    expect(setDefaultPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  it("shows the gateway's refusal sentence as itself, not as a status code", async () => {
+    const refusal =
+      'This payment method is sealed, and a seal must be proven rather than asserted. Begin the hold on the payment method: it issues a one-time seal that the write has to carry back. Nothing was changed.';
+    removePaymentMethod.mockRejectedValueOnce(new Error(refusal));
+    mockData.current = withCard();
+    draw();
+    const hold = screen.getByRole('button', { name: 'Remove' });
+
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    expect(await screen.findByText(new RegExp(refusal.slice(0, 60)))).toBeInTheDocument();
+    expect(screen.queryByText(/status code/i)).not.toBeInTheDocument();
+  });
+
+  it('never offers a payment control to a member who is not a manager', () => {
+    mockData.current = withCard({ isManagerOrOwner: false, role: 'staff' });
+    draw();
+    expect(screen.queryByRole('button', { name: 'Charge this first' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+  });
+
+  it('states which payment acts are sealed and which is not', () => {
+    // `POST /payment-methods` IS sealed at the gateway and has no caller at all:
+    // a card is attached on Stripe's origin and the register is then reconciled,
+    // and neither of those routes redeems a seal. Claiming one on the add-a-card
+    // gesture would be the ceremony without the proof — the exact thing this
+    // pass removed from the two acts that do have it.
+    mockData.current = base();
+    draw();
+    expect(
+      screen.getByText(/held rather than clicked: the gesture mints a one-time seal/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Adding one is not sealed/i)).toBeInTheDocument();
   });
 });
 

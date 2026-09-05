@@ -77,6 +77,17 @@
  * and `stripePublishableKey`, read from `import.meta.env` here rather than asked
  * of the gateway, because that variable is baked into this bundle and the
  * gateway has no view of the bundle that is running.
+ *
+ * FOURTH PASS, 2026-09-04 — THE PAYMENT WRITES ARE SEALED (ADR 0110 addendum)
+ * ---------------------------------------------------------------------------
+ * `PATCH /payment-methods/:id/default` and `DELETE /payment-methods/:id` now
+ * REDEEM a one-time seal rather than trusting the role alone, so both writes
+ * here take an optional `challenge` and carry it in `X-Seal-Challenge`.
+ * `mintPaymentSeal` is the mint, and it is called from `HoldToApprove`'s
+ * `onChallenge` — when the gesture begins, never at the moment of the write.
+ * The parameter is optional only so a caller that has not been converted still
+ * COMPILES and receives the gateway's refusal in words; it is not optional in
+ * practice, because the gateway refuses without it.
  *   PLAN     `GET /organizations/locations/:id` now selects and returns
  *            `subscription_tier` (organizations.service.ts). The page's most
  *            visible em dash is a figure.
@@ -291,6 +302,28 @@ export interface WorkspaceVM {
   notRequested: string[];
   /** Non-null exactly when the control is disabled. */
   blockedReason: string | null;
+}
+
+/**
+ * Promote the gateway's own sentence onto `.message`, and rethrow the SAME
+ * object.
+ *
+ * A sealed write answers 403 with a whole sentence — which check failed and
+ * that nothing was changed (`common/seal/seal-subject.ts:100-124`). Axios puts
+ * that sentence in `response.data.message` and "Request failed with status
+ * code 403" in `.message`, and every caller in this directory reads `.message`.
+ * Without this, the one refusal the seal exists to produce would reach the
+ * operator as a status code — the same failure as an empty register standing in
+ * for an unread one (ADR 0020).
+ *
+ * The same error object is returned rather than a fresh `Error` so `response`,
+ * `status` and `isAxiosError` survive for anything that branches on them.
+ */
+function spoken(e: unknown): unknown {
+  if (e && typeof e === 'object') {
+    (e as { message?: string }).message = apiMessage(e);
+  }
+  return e;
 }
 
 function readState(q: UseQueryResult<unknown>, enabled: boolean): ReadState {
@@ -759,9 +792,58 @@ export function useProfileNextData() {
    * connecting a provider is a credential and a hosted flow, not a rewrite.
    */
 
+  /**
+   * Mint the one-time seal a payment write has to carry back — at the moment
+   * the hold BEGINS.
+   *
+   * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0110's
+   * addendum). `POST /payment-methods/seal-challenge` issues a 120-second
+   * token bound to (this manager, this act, this instrument, and the brand and
+   * last four the manager was looking at); `PATCH :id/default` and
+   * `DELETE :id` each redeem it exactly once and refuse in words when it is
+   * absent (`payment-methods.controller.ts:86-115`, `:124-179`).
+   *
+   * Called from `HoldToApprove`'s `onChallenge`, which is what guarantees the
+   * timing: a token fetched by the same request it authorises is the assertion
+   * model with extra steps, which is precisely what this replaced.
+   *
+   * It returns null instead of throwing. `HoldToApprove` reads null as "do not
+   * approve" and says so on the control; a rejected promise there would
+   * surface as an unhandled error while the operator was still holding the
+   * button, and the gesture would look like it had worked.
+   */
+  const mintPaymentSeal = useCallback(
+    async (
+      act: 'set_default' | 'remove',
+      methodId: string,
+    ): Promise<string | null> => {
+      try {
+        const { data } = await apiClient.post<{ challenge?: string }>(
+          '/payment-methods/seal-challenge',
+          { act, methodId },
+        );
+        return data?.challenge ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
   const removePaymentMethod = useCallback(
-    async (id: string) => {
-      await apiClient.delete(`/payment-methods/${id}`);
+    async (id: string, challenge?: string | null) => {
+      try {
+        await apiClient.delete(
+          `/payment-methods/${id}`,
+          // The seal travels in a HEADER, never in the body: it is not one of
+          // the arguments it is a seal over, and `DELETE` has no body here at
+          // all. The gateway reads `x-seal-challenge`
+          // (`payment-methods.controller.ts:285`).
+          challenge ? { headers: { 'X-Seal-Challenge': challenge } } : undefined,
+        );
+      } catch (e) {
+        throw spoken(e);
+      }
       await paymentsQ.refetch();
     },
     [paymentsQ],
@@ -824,8 +906,16 @@ export function useProfileNextData() {
    * the local flag, so the page and the charge cannot disagree.
    */
   const setDefaultPaymentMethod = useCallback(
-    async (id: string) => {
-      await apiClient.patch(`/payment-methods/${id}/default`, {});
+    async (id: string, challenge?: string | null) => {
+      try {
+        await apiClient.patch(
+          `/payment-methods/${id}/default`,
+          {},
+          challenge ? { headers: { 'X-Seal-Challenge': challenge } } : undefined,
+        );
+      } catch (e) {
+        throw spoken(e);
+      }
       await paymentsQ.refetch();
     },
     [paymentsQ],
@@ -933,6 +1023,7 @@ export function useProfileNextData() {
     probeMcpServer,
     setMcpSecret,
     setMcpConsent,
+    mintPaymentSeal,
     removePaymentMethod,
     createSetupIntent,
     syncPayments,
