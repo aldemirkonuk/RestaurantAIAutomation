@@ -1226,19 +1226,19 @@ until the founder decides whether a drinks house should see a produce line at al
 
 ### Founder-only questions raised by this pass
 
-13. **TÜİK claims an SDMX web service in its own sitemap and is the one source that permits us by
+22. **TÜİK claims an SDMX web service in its own sitemap and is the one source that permits us by
     name — worth one more agent to find the endpoint?** Both its documentation pages render
     "JavaScript Required" to a fetcher. Even if found it yields index numbers, not prices, so it
     cannot enter this table today (Q23) — but it would give Türkiye a labelled index line the day
     that changes.
-14. **Class E has no home in `price_index_postings` for an index NUMBER.** The type union and the
+23. **Class E has no home in `price_index_postings` for an index NUMBER.** The type union and the
     CHECK both admit `public_index`, but the columns require a price in a currency with a unit.
     Every genuine public index found for either market (ONS `d7bv`, TÜİK CPI) is unitless. Add
     the columns, keep a separate table, or drop class E from the union and say so?
-15. **Should a drinks house be shown a PRODUCE line?** Defra is real, dated, licensed, fetchable
+24. **Should a drinks house be shown a PRODUCE line?** Defra is real, dated, licensed, fetchable
     and about vegetables. It is built and disarmed. This is Q11's other half, now with a working
     parser behind it, and it is one environment variable from being live.
-16. **`restaurants.currency` says `USD` for all fourteen houses, the two Turkish and the British
+25. **`restaurants.currency` says `USD` for all fourteen houses, the two Turkish and the British
     included** — measured 2026-09-05. This settles Q10: fixing the class-A writer alone fixes
     nothing, because the tenant rows themselves carry the column default. The repair is a data
     correction on three rows, and it is a WRITE, so it was not made.
@@ -1690,7 +1690,7 @@ file wins over the recorded one whenever they differ.
 
 ### Founder-only questions raised by this pass
 
-22. **Something stamped `verified_at` on rows whose websites are a casino, a
+26. **Something stamped `verified_at` on rows whose websites are a casino, a
     wine school and a clothes shop.** Measured in the dry run of 2026-09-05:
     Banfi, Henry Wine Group and Charmer all carry
     `verified_at = 2026-08-10T17:21:2x`, two months after the seed wrote them,
@@ -1699,7 +1699,7 @@ file wins over the recorded one whenever they differ.
     Should `verified_at` be cleared for every row it touched, and should the
     thing that set it be found before it runs again?
 
-23. **May a shop's price be filed with our READ date, labelled as such?** Three
+27. **May a shop's price be filed with our READ date, labelled as such?** Three
     of six pages state no date at all, and this build refuses them, so the
     class delivers one row out of six. The alternative is an additive migration
     adding `issued_at_basis` (`issuer_stated` | `fetch_date`, nullable, NULL
@@ -1708,7 +1708,7 @@ file wins over the recorded one whenever they differ.
     to ignore a `fetch_date` row, because such a row is fresh by construction.
     Refuse and stay thin, or extend and label?
 
-24. **Which pages should the sweep read?** It reads the pages it is given, and
+28. **Which pages should the sweep read?** It reads the pages it is given, and
     nothing today decides which. The honest options are: a house nominates the
     wines it wants a reference for (needs a UI and a per-house list, which the
     public register deliberately cannot hold); or the sweep reads a shop's
@@ -1717,7 +1717,7 @@ file wins over the recorded one whenever they differ.
     largest and the only one that makes an index line answer "what does this
     bottle cost elsewhere".
 
-25. **Two of the four fetchable shops are unarmable for reasons that are not
+29. **Two of the four fetchable shops are unarmable for reasons that are not
     about us.** Hedonism serves USD to an anonymous fetcher and Wine Chateau
     serves a market with no house in it. Is it worth sending a presentment
     hint (a `?currency=GBP` or a locale header) to pin Hedonism to GBP, or is
