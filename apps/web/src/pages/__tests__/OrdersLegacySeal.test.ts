@@ -29,7 +29,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
@@ -122,5 +122,72 @@ describe('useOrdersData carries the seal', () => {
 
   it('exposes the mint, so a caller has the whole path from one hook', () => {
     expect(ordersData).toMatch(/mintOrderSeal/);
+  });
+});
+
+describe('OrderApprovalModal is gone from the tree', () => {
+  /**
+   * Deleted 2026-09-05 (p4ak), on the founder's call: its three surviving acts
+   * — reject with a reason, step through several vendor answers, read the
+   * negotiation summary — are now `pages/orders/next/ResponsesSheet.tsx`, so
+   * what remained was dead code holding a sealed ceremony nothing could open.
+   *
+   * Asserted as an ABSENCE OF THE FILE and of every reference to it, not just
+   * of the import: a component nothing imports but that still compiles is one
+   * `setShow…(true)` away from being live again, and that is exactly how both
+   * of these modals survived four months of being unreachable.
+   *
+   * `sealTarget` is asserted too. Its only two setters were that modal's
+   * Confirm handler, so it went with the modal rather than after it — an
+   * overlay with no opener left behind is the same fault under a new name.
+   */
+  it('has no source file left', () => {
+    expect(existsSync(resolve(__dirname, '../../components/orders/OrderApprovalModal.tsx'))).toBe(
+      false,
+    );
+  });
+
+  it('is imported, rendered and stated nowhere on the legacy page', () => {
+    expect(codeLines(orders)).not.toMatch(/OrderApprovalModal/);
+    expect(codeLines(orders)).not.toMatch(/showOrderApprovalModal/);
+    expect(codeLines(orders)).not.toMatch(/orderApprovalData/);
+    expect(codeLines(orders)).not.toMatch(/allProviderResponses/);
+    expect(codeLines(orders)).not.toMatch(/currentApprovalIndex/);
+    expect(codeLines(orders)).not.toMatch(/interface OrderApprovalData/);
+  });
+
+  it('took the click-to-seal hand-over overlay with it', () => {
+    expect(codeLines(orders)).not.toMatch(/sealTarget/);
+  });
+
+  it('leaves the bulk bar ceremony untouched', () => {
+    // The act the overlay carried lives here, and this must NOT have been
+    // deleted along with its caller — an absence test that also deletes the
+    // thing it protects proves nothing.
+    expect(orders).toMatch(/<SealedApproveDie/);
+    expect(orders).toMatch(/afterOrdersSealed/);
+  });
+});
+
+describe('the rebuilt page carries the three acts instead', () => {
+  const sheet = readFileSync(
+    process.env.RESPONSES_SHEET_SOURCE ??
+      resolve(__dirname, '../orders/next/ResponsesSheet.tsx'),
+    'utf8',
+  );
+
+  it('confirms through the same mint the ledger row uses', () => {
+    expect(sheet).toMatch(/ordersApi\.mintOrderSeal\(row\.id\)/);
+    expect(sheet).toMatch(/onChallenge=\{onChallenge\}/);
+  });
+
+  it('rejects through the route that actually exists, with the reason', () => {
+    expect(sheet).toMatch(/useCancelOrder/);
+    expect(sheet).toMatch(/reasonIsGiven\(reason\)/);
+  });
+
+  it('steps between answers on the arrow keys', () => {
+    expect(sheet).toMatch(/ArrowRight/);
+    expect(sheet).toMatch(/ArrowLeft/);
   });
 });

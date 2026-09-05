@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
-import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
 import { SealedApproveDie } from '../components/orders/SealedApproveDie'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
@@ -140,20 +139,6 @@ interface CreateOrderItem {
   notes: string
 }
 
-interface OrderApprovalData {
-  orderId: string
-  wineName: string
-  quantity: number
-  providerName: string
-  proposedPrice: number
-  finalPrice: number
-  deliveryEstimate: string
-  conversationSummary: string
-  hasNegotiation?: boolean
-  conversationId: string
-  timestamp: string
-}
-
 const getRecommendedProviders = (providerList: Provider[]) => {
   const sorted = [...providerList].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
   return {
@@ -237,23 +222,17 @@ export function Orders() {
 
   // Use API orders hook for real-time updates (hook handles loading via loadOrders)
   const { refetch: refetchOrders } = useOrders()
-  const [showOrderApprovalModal, setShowOrderApprovalModal] = useState(false)
-  /**
-   * The order a confirm handed to the seal.
+  /*
+   * `showOrderApprovalModal`, `orderApprovalData` and `sealTarget` were deleted
+   * on 2026-09-05 with `OrderApprovalModal` (founder's call; orders.md §13.13).
    *
-   * `OrderApprovalModal`'s Confirm is a click, and a click cannot mint the way
-   * a hold does (ADR 0116 addendum: the token must be asked for when the
-   * gesture BEGINS). So it hands the order here instead, and the one ceremony
-   * this page has does the sealing.
+   * `sealTarget` went WITH it rather than after it: its only two setters were
+   * that modal's Confirm handler, so once the modal's render was gone the
+   * hand-over overlay had no opener at all — the exact state (a sealed ceremony
+   * nothing can reach) this pass exists to stop leaving behind. The act it
+   * carried is `SealedApproveDie` on the bulk bar, which is unchanged and still
+   * mints through the same path.
    */
-  const [sealTarget, setSealTarget] = useState<{
-    orderId: string
-    title: string
-    /** Set when the order cannot be sealed at all, with the reason in words. */
-    blocked: string | null
-    onSealed: () => void
-  } | null>(null)
-  const [orderApprovalData, setOrderApprovalData] = useState<OrderApprovalData | null>(null)
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
   const [showOrderGuard, setShowOrderGuard] = useState(false)
   const [draftPanelData, setDraftPanelData] = useState<{
@@ -398,11 +377,6 @@ export function Orders() {
   const [configPriceMode, setConfigPriceMode] = useState<'custom' | 'ask_provider'>('custom')
   const [configCustomPrice, setConfigCustomPrice] = useState<number>(0)
   const [providerSearchQuery, setProviderSearchQuery] = useState('')
-  
-  // Multi-provider approval pagination
-  const [currentApprovalIndex, setCurrentApprovalIndex] = useState(0)
-  const [allProviderResponses, setAllProviderResponses] = useState<OrderApprovalData[]>([])
-
   
   // Wine list pagination for create order modal
   const [wineListLimit, setWineListLimit] = useState(20)
@@ -1303,7 +1277,6 @@ Shadow stock has been moved to Live Stock.`)
       // Escape to close modals
       if (e.key === 'Escape') {
         setShowCreateOrderModal(false)
-        setShowOrderApprovalModal(false)
         setShowWineConfigModal(false)
         setSelectedOrders(new Set())
       }
@@ -3299,164 +3272,6 @@ Shadow stock has been moved to Live Stock.`)
         )}
       </AnimatePresence>
 
-      {/* Order Approval Modal - One-Tap Approval with Multi-Provider Support */}
-      {orderApprovalData && (
-        <OrderApprovalModal
-          isOpen={showOrderApprovalModal}
-          orderData={orderApprovalData}
-          totalResponses={allProviderResponses.length}
-          currentIndex={currentApprovalIndex}
-          onNext={() => {
-            // Navigate to next response
-            if (currentApprovalIndex < allProviderResponses.length - 1) {
-              const nextIndex = currentApprovalIndex + 1
-              setCurrentApprovalIndex(nextIndex)
-              setOrderApprovalData(allProviderResponses[nextIndex])
-            }
-          }}
-          onPrevious={() => {
-            // Navigate to previous response
-            if (currentApprovalIndex > 0) {
-              const prevIndex = currentApprovalIndex - 1
-              setCurrentApprovalIndex(prevIndex)
-              setOrderApprovalData(allProviderResponses[prevIndex])
-            }
-          }}
-          onConfirm={() => {
-            // A CLICK IS NOT A HOLD (founder, 2026-09-04; ADR 0116 addendum).
-            //
-            // This button used to POST `/approve` itself. Minting a seal here
-            // and spending it in the same breath would be the assertion model
-            // with extra steps — the token would be one more thing the same
-            // request asked for itself. So Confirm now hands the order to the
-            // one ceremony this page has, and the seal is minted when that
-            // hold begins.
-            //
-            // `finalPrice` is not carried, and never was: the gateway's
-            // approve route takes no body at all (`procurement.controller.ts`
-            // `approveOrder`, id + `X-Seal-Challenge` header only), so the
-            // figure this modal posted was read by nothing.
-            if (!isUuid(orderApprovalData.orderId)) {
-              setSealTarget({
-                orderId: orderApprovalData.orderId,
-                title: orderApprovalData.wineName || 'this order',
-                blocked:
-                  'This order has no server id yet, so there is nothing to seal and nothing was sent.',
-                onSealed: () => {},
-              })
-              return
-            }
-            setSealTarget({
-              orderId: orderApprovalData.orderId,
-              title: orderApprovalData.wineName || 'this order',
-              blocked: null,
-              onSealed: () => {
-                setOrders(prev => prev.map(order =>
-                  order.order_id === orderApprovalData.orderId
-                    ? {
-                        ...order,
-                        status: 'approved',
-                        approved_at: new Date().toISOString(),
-                      }
-                    : order
-                ))
-                // Refetch orders to sync with backend
-                refetchOrders()
-
-                // Remove from all responses
-                setAllProviderResponses(prev => {
-                  const updated = prev.filter((_, idx) => idx !== currentApprovalIndex)
-
-                  // If there are more responses, show the next one (or previous if at end)
-                  if (updated.length > 0) {
-                    const nextIndex = Math.min(currentApprovalIndex, updated.length - 1)
-                    setCurrentApprovalIndex(nextIndex)
-                    setOrderApprovalData(updated[nextIndex])
-                  } else {
-                    // No more responses, close modal
-                    setShowOrderApprovalModal(false)
-                    setOrderApprovalData(null)
-                    setCurrentApprovalIndex(0)
-                  }
-
-                  return updated
-                })
-              },
-            })
-          }}
-          onCancel={async () => {
-            try {
-              if (isUuid(orderApprovalData.orderId)) {
-                await apiClient.delete(`/procurement/orders/${orderApprovalData.orderId}`)
-              } else {
-                throw new Error('Invalid order id')
-              }
-
-              setOrders(prev => prev.map(order =>
-                order.order_id === orderApprovalData.orderId
-                  ? { ...order, status: 'cancelled' }
-                  : order
-              ))
-              // Refetch orders to sync with backend
-              refetchOrders()
-              
-              // Remove from all responses
-              setAllProviderResponses(prev => {
-                const updated = prev.filter((_, idx) => idx !== currentApprovalIndex)
-                
-                // If there are more responses, show the next one (or previous if at end)
-                if (updated.length > 0) {
-                  const nextIndex = Math.min(currentApprovalIndex, updated.length - 1)
-                  setCurrentApprovalIndex(nextIndex)
-                  setOrderApprovalData(updated[nextIndex])
-                } else {
-                  // No more responses - close modal
-                  setShowOrderApprovalModal(false)
-                  setOrderApprovalData(null)
-                  setCurrentApprovalIndex(0)
-                }
-                
-                return updated
-              })
-              
-              alert('Order cancelled. ❌')
-            } catch (error) {
-              console.error('Failed to cancel order:', error)
-              alert('Failed to cancel order. Please try again.')
-            }
-          }}
-          onEdit={() => {
-            // Open edit modal - for now just close approval and navigate to create order
-            setShowOrderApprovalModal(false)
-            openCreateOrderFlow()
-            // In real app, would pre-fill with existing data
-          }}
-          onRequestMoreInfo={async () => {
-            // Trigger another conversation with provider to ask for more information
-            alert('Requesting additional information from provider. You will receive another notification when they respond.')
-            
-            // In real app, this would trigger Procurement AI agent to contact provider again
-            // For now, simulate another conversation
-            setTimeout(() => {
-              const updatedData: OrderApprovalData = {
-                ...orderApprovalData,
-                conversationId: `CONV-${Date.now()}`,
-                conversationSummary: orderApprovalData.conversationSummary + '\n\n**FOLLOW-UP CONVERSATION:**\n\nManager requested additional information. Provider provided detailed specifications and confirmed all requirements can be met.',
-                timestamp: new Date().toISOString(),
-              }
-              setOrderApprovalData(updatedData)
-              // Update in all provider responses too
-              setAllProviderResponses(prev => prev.map((item, idx) => 
-                idx === currentApprovalIndex ? updatedData : item
-              ))
-            }, 2000)
-          }}
-          onClose={() => {
-            setShowOrderApprovalModal(false)
-            // Keep pending approvals - user can review later
-          }}
-        />
-      )}
 
       {/* AI Draft Email Approval Panel */}
       <DraftEmailApprovalPanel
@@ -3612,63 +3427,6 @@ Shadow stock has been moved to Live Stock.`)
         isApproving={approveDraftMutation.isPending}
         isDiscarding={discardDraftMutation.isPending}
       />
-
-      {/*
-        THE SEAL, HANDED OVER FROM A CLICK.
-
-        `OrderApprovalModal`'s Confirm cannot mint the way a hold does, so it
-        opens this instead. One ceremony, one mint path — the same
-        `SealedApproveDie` the bulk bar and the legacy modal use.
-      */}
-      <AnimatePresence>
-        {sealTarget && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
-            onClick={() => setSealTarget(null)}
-            role="dialog"
-            aria-label="Seal this order"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
-            >
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Seal this order</h3>
-              <p className="text-gray-600 mb-6">
-                {sealTarget.title} — the seal is minted when the hold begins and spent exactly
-                once. Release early and nothing is sent.
-              </p>
-              {sealTarget.blocked ? (
-                <p className="mb-6 text-sm text-gray-700" role="status">
-                  {sealTarget.blocked}
-                </p>
-              ) : (
-                <SealedApproveDie
-                  orderIds={[sealTarget.orderId]}
-                  label="Hold to approve this order"
-                  onApproved={(ids) => {
-                    afterOrdersSealed(ids)
-                    sealTarget.onSealed()
-                    setSealTarget(null)
-                  }}
-                />
-              )}
-              <Button
-                variant="outline"
-                onClick={() => setSealTarget(null)}
-                className="mt-4 w-full"
-              >
-                Cancel
-              </Button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

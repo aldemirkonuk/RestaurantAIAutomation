@@ -19,6 +19,8 @@ hold-to-approve gesture becomes a two-step press-to-arm / press-to-confirm.
 | 8 | `orders.draft.turn` | The draft turns in | `DraftRail` / `DraftDetail` — the drafted letter and its thread reveal on expand, slower than settle on purpose ("show the working" for the letter itself). | `turn` — cubic-bezier(0.32,0.72,0,1) · 420ms |
 | 9 | `orders.draft.drain` | Auto-send countdown | `DraftRail` / `CountdownBar` — when a scheduled send exists (`scheduledSendAt`, no `sentAt`), the bar drains scaleX 1→0 over the exact remaining ms, with Cancel live (`cancel-scheduled-send`) and growing stronger under 30s. | **linear**, duration = ms remaining (an eased countdown lies about time) |
 | 9a | `orders.agreement.panel` | The composer opens | `AgreementSheet` — "Write down an agreement" opens the house `Panel` (centered: it asks for an answer). No motion of its own; the primitive's, unchanged, so the composer moves like every other ask in the house. | `settle` — cubic-bezier(0.16,1,0.3,1) · 320ms (from `components/mudavym/Sheet.tsx`) |
+| 9b | `orders.responses.sheet` | The answers arrive | `ResponsesSheet` — "The vendor's answers" opens the house `Sheet` (right slide-in: one object's detail, ADR 0112). No motion of its own; the primitive's, unchanged. | `tuck` — near-critically-damped spring · 300ms (from `components/mudavym/Sheet.tsx`) |
+| 9c | `orders.responses.step` | Stepping between answers | `ResponsesSheet` — the position dot widens 6→16px on `settle` and takes the seal colour on `ink`. The answer itself does NOT slide: a record you are comparing must not move under the eye, and a horizontal transition would imply the answers are pages of one letter rather than separate ones. | `settle` (width) · 320ms + `ink` (colour) · 160ms |
 | 10 | `orders.micro.ink` | Micro-states | Hovers, chip borders, the deliver button's pressed/disabled states, the error banner's retry. Nothing travels more than 2px. | `ink` — house curve · 160ms |
 
 Not used on this page, on purpose: no shake anywhere (a refusal is stated as a
@@ -36,3 +38,20 @@ and the founder's rationing rule (`p4-page-brief.md`) spends this page's
 emphatic motion on the seal and nowhere else. The refusal sentences appear and
 disappear with the state that produced them — a refusal is stated as a fact in
 place, never announced with movement.
+
+## Added 2026-09-05 — the responses sheet (orders.md §13.13)
+
+`ResponsesSheet` introduces **no new motion either**, and one deliberate
+absence. The obvious gesture for Next/Previous is a horizontal slide, and it is
+refused: these are three separate answers from a vendor, not three pages of one
+letter, and a slide would tell the reader they are the same document. Only the
+position indicator moves, on tokens the page already uses.
+
+The wax is unchanged too. Confirm is `HoldToApprove` completing into the same
+`stamp` — the one overshoot the system allows — because it is the same sealed
+approval as the ledger row. **Reject uses the same die and the same curve**, and
+the sheet says in words that the gateway's cancel route redeems no seal, so the
+gesture records a decision rather than proving one. Giving rejection its own
+softer motion was considered and rejected: a quieter gesture for a destructive
+act is the wrong lesson, and the honest fix for the missing proof is a sentence,
+not a slower spring.

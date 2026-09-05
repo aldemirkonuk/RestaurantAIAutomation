@@ -187,7 +187,27 @@ export async function approveOrder(
 }
 
 /**
- * Cancel an order
+ * Cancel (reject) an order, with the reason written onto it.
+ *
+ * THIS POSTED TO A ROUTE THAT DOES NOT EXIST (measured 2026-09-05).
+ * It sent `POST /procurement/orders/:id/cancel` with the reason in a body. The
+ * gateway has no such route: `procurement.controller.ts` declares
+ * `@Delete("orders/:id")` taking `@Query("reason")`, and `openapi.json` lists
+ * `/api/v1/procurement/orders/{id}` as `get, patch, delete` with the only
+ * `cancel` path being `cancel-scheduled-send`. Every call through
+ * `useCancelOrder` was therefore a 404, and the reason a person typed went
+ * nowhere. The service DOES record it — `cancelOrder` -> `updateOrder` writes
+ * `procurement_orders.rejection_reason` — so nothing but the caller was wrong.
+ *
+ * The reason travels as a query parameter because that is what the route reads;
+ * a body on a DELETE would be silently dropped by the same code path that
+ * dropped this one.
+ *
+ * NOTE ON THE SEAL: this route redeems none. `POST orders/:id/approve` demands
+ * a one-time seal minted when the hold began; `DELETE orders/:id` reads the id
+ * and the reason. Callers that put a hold in front of it are recording a
+ * deliberate act, not proving one, and must say so
+ * (`pages/orders/next/ResponsesSheet.tsx` REJECT_SEAL_NOTE).
  */
 export async function cancelOrder(
   orderId: string,
@@ -197,8 +217,21 @@ export async function cancelOrder(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/cancel`, { reason });
-  return response.data;
+  try {
+    const response = await apiClient.delete<Order>(`${ORDERS_PATH}/${orderId}`, {
+      params: reason ? { reason } : undefined,
+    });
+    return response.data;
+  } catch (error) {
+    // Same promotion as `approveOrder`: the gateway's sentence is what a person
+    // needs, and every call site reads `.message`. The original error object is
+    // rethrown so callers that branch on `err.response?.status` still can.
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
 }
 
 /**

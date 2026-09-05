@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 4
 maturity: partial
 status: documented
-updated: 2026-09-04
+updated: 2026-09-05
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
@@ -28,6 +28,7 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 - **Go to Providers** (no-vendor guard modal) → [[providers]] `/providers`
 - **Export** → (in-page download via ExportMenu)
 - **Draft email approval panel** → (panel on this page — approve/send vendor email)
+- **The vendor's answers** (rebuilt ledger row) → (house Sheet on this page) → API `GET /api/v1/procurement/orders/:id/conversations`; its Confirm → `POST …/:id/approve`, its Reject → `DELETE /api/v1/procurement/orders/:id?reason=…`
 
 ## 1. Purpose
 
@@ -54,6 +55,9 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - **The agreement's total is drawn from the stated pair, with its working printed** — five cases of twelve at $420 per case reads $2,100, not the $25,200 the old per-bottle arithmetic gave; a quantity or price not yet typed leaves the total an em dash, never a zero
 - **The price register's refusal is said on the page, before the save** — an agreement saved with no price unit shows, in the register's own words, that it will not enter the price register and why. It still saves (a NULL pair is an ordinary row); nobody saves one unknowingly. A price unit the order cannot be counted in (a keg order priced per bottle) blocks the save with the sentence the gateway would answer
 - **Every ledger row states the unit its price is in, and shows the working in that unit** (2026-09-05, ADR 0119 phase 2) — `GET /procurement/orders` joins the line's pair in the same query and the expanded row prints "$420.00 per case (12 bottles)" above "60 bottles ÷ 12 = 5 cases × $420.00 = $2,100.00". A row whose unit is UNSTATED — every order placed before ADR 0119 — prints the price, the register's refusal in words, and **no working of the page's own**: the per-bottle convention would print a case price twelve times over, which is the error this ADR exists to end. A pairing the order cannot be counted in (per keg, counted in bottles) prints the refusal instead of a total, and a route that never read the line says exactly that rather than announcing a refusal about a line nobody looked at
+- **Read the vendors' answers to one order, and act on them there** (2026-09-05, founder's call; closes §13.13) — every ledger row opens a house `Sheet` listing each inbound answer: who answered, when, which round, the delivery estimate the deal proposal was drawn from, the conditions the reading flagged, the **negotiation summary as the engine's own sentence with the engine and the time it read named beside it**, and the vendor's own words. Left/right arrows and Previous/Next step between answers, oldest first. A summary that was never written says so in a sentence; a read that FAILS says it is unknown rather than showing an empty sheet
+- **Reject an order with a reason in words** (2026-09-05) — the same hold gesture as an approval, over `DELETE /procurement/orders/:id?reason=…`, which writes `procurement_orders.rejection_reason`. The reason is REQUIRED by the sheet although the route treats it as optional: a cancelled order with a null reason is a decision nobody can audit. The sheet also states what the hold does *not* prove — the cancel route redeems no seal (§9, "A rejection is not sealed"), so this records a decision rather than proving one
+- **Confirm from the sheet is the SAME sealed approve as the row** — `mintOrderSeal` at the moment the hold begins, the token carried onto `POST /orders/:id/approve`, the house's approval gate honoured, and the gateway's refusal printed verbatim
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
 
@@ -79,6 +83,7 @@ this list is the note-side index (ADR 0044 §2).
 | `orders.draft.turn` | The draft turns in | drafted letter + thread reveal, slower than settle on purpose |
 | `orders.draft.drain` | Auto-send countdown | scheduled sends drain linear over the exact remaining ms, cancel live |
 | `orders.agreement.panel` | The composer opens | "Write down an agreement" opens the house `Panel` on `settle`; the composer adds NO motion of its own — a refusal is stated in place, never announced with movement |
+| `orders.responses.sheet` / `.step` | The vendor's answers | the row's "The vendor's answers" opens the house `Sheet` on `tuck`; stepping moves only the position dot (`settle` width, `ink` colour) — the answers themselves do not slide, because three answers are three letters, not three pages of one |
 | `orders.micro.ink` | Micro-states | hovers, chips, deliver button; ≤2px travel |
 
 Not used, on purpose: no shake, no bouncing checkmarks, no skeleton shimmer for
@@ -154,7 +159,8 @@ badge (`Sidebar.tsx:409`). Eagerly loaded (`apps/web/src/App.tsx:73`).
 - Route binding: `apps/web/src/App.tsx:257`.
 - `apps/web/src/pages/Orders.tsx` (3,614 lines — largest page in the app).
 - Co-located: `pages/orders/{useOrdersPage.ts, OrderSummary.tsx, OrderFilters.tsx, CreateOrderModal.tsx, index.tsx}`.
-- Rendered components: `components/orders/{OrderApprovalModal, OrderGuardModal, DraftEmailApprovalPanel, ActiveConversationsPanel, CommsThreadDrawer}.tsx`, `components/insights/ContextualInsights.tsx` (Orders.tsx:5-10).
+- Rendered components: `components/orders/{SealedApproveDie, OrderGuardModal, DraftEmailApprovalPanel, ActiveConversationsPanel, CommsThreadDrawer}.tsx`, `components/insights/ContextualInsights.tsx` (Orders.tsx:5-10). `OrderApprovalModal.tsx` was deleted 2026-09-05 (§13.13).
+- Rebuilt page (flag `mudavym_design_orders`): `pages/orders/next/{OrdersNext, StageSpine, Tally, LedgerRow, BulkApproveBar, DraftRail, AgreementSheet, ResponsesSheet}.tsx` + `{format, price-unit, responses, useOrdersNextData}.ts` + `MOTIONS.md`.
 
 ## 4. Endpoints
 
@@ -167,14 +173,14 @@ is stale; guarded at class level since 2026-08-24 (#31),
 |---|---|---|
 | GET | `/procurement/orders` (list) | `useOrders` → `services/api/orders.ts:53` |
 | POST | `/procurement/orders` | `pages/Orders.tsx:966`; `pages/orders/next/AgreementSheet.tsx` (the rebuilt composer, via `apiClient` — it posts the gateway's own `CreateOrderDto`, including `priceUom`/`pricePackSize`, because `services/api/orders.ts::createOrder` still takes the older `{ wineId, unitPrice }` shape the gateway does not accept) |
-| PATCH / DELETE | `/procurement/orders/:id` | `pages/Orders.tsx:583` / `:532,3323` |
+| PATCH / DELETE | `/procurement/orders/:id` | `pages/Orders.tsx:593` / `:542` (the legacy `handleReject`, no reason sent) · `pages/orders/next/ResponsesSheet.tsx` → `useCancelOrder` → `services/api/orders.ts::cancelOrder`, which sends `?reason=` (fixed 2026-09-05 — it had been POSTing to a route that does not exist; §9) |
 | POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275`; `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`, `pages/dashboard/next/WaitingOnYou.tsx` — all via `services/api/orders.ts`. **Can answer 403** since ADR 0116 |
 | GET | `/procurement/order-approval-gate` | `pages/orders/next/useOrdersNextData.ts` — one call per house, not per row |
 | POST | `/procurement/orders/:id/deliver` | `pages/Orders.tsx:651` |
 | POST | `/inventory/add-from-order` | raw axios, `pages/Orders.tsx:684` |
 | GET/PATCH | `/procurement/orders/:id/draft` | `pages/Orders.tsx:417,1021`; `hooks/queries/useDraftEmailQueries.ts:57,404` |
 | POST | `…/approve-draft`, `…/generate-ai-reply`, `…/discard-draft`, `…/manual-reply`, `…/ai-pause`, `…/cancel-scheduled-send` | `useDraftEmailQueries.ts:78,103,128,225,241,255` |
-| GET | `…/conversations`, `…/attachments` | `useDraftEmailQueries.ts:186,212` |
+| GET | `…/conversations`, `…/attachments` | `useDraftEmailQueries.ts:186,212`; `pages/orders/next/ResponsesSheet.tsx` reads `…/conversations` per order — the ONLY source of the vendors' answers, and since 2026-09-05 it also carries `summaryModel`/`summaryAnalyzedAt` (`conversation_context.model` / `.analyzed_at`) so the summary is attributed |
 | GET/POST | `…/deal-proposal`, `…/confirm-deal`, `…/dismiss-deal` | `useDraftEmailQueries.ts:352,367,388` |
 | GET | `/providers` | `useProviders` → `services/api/providers.ts:201` |
 | GET/POST | `/analytics/insights/:rid`, `/analytics/recommendations/:rid/action(s)` | `components/insights/ContextualInsights.tsx:118-192` |
@@ -212,6 +218,36 @@ outbound mail: `pages/Orders.tsx:430,1039,3457,3535`. Plus shared layout chrome
   (memory: autonomous-email-replies — never auto-send).
 
 ## 9. Gaps
+
+**A rejection is not sealed, and the page says so, 2026-09-05.** `POST
+orders/:id/approve` redeems a one-time seal minted when the hold begins
+(`procurement.service.ts redeemOrderSeal`, act `"approve"`; ADR 0116 addendum).
+`DELETE orders/:id` — the only route that cancels an order — redeems **nothing**:
+it reads the id and an optional `reason` query parameter
+(`procurement.controller.ts:261`). So the responses sheet's Reject runs the same
+hold gesture over an unproven write, and prints one line saying exactly that
+rather than letting the wax imply a proof (`ResponsesSheet.tsx`
+`REJECT_SEAL_NOTE`). **Not fixed here, deliberately:** `seal-subject.ts` already
+names `cancel` as its own act, so the mechanism exists — but making the seal
+REQUIRED would refuse the legacy desk's only Reject control
+(`pages/Orders.tsx handleReject`, three live call sites, and the legacy desk is
+what production shows with the flag off), and an OPTIONAL seal is decoration.
+Which of the three (seal it and teach the legacy desk; a separate sealed
+`POST orders/:id/reject`; leave it recorded-not-proven) is the founder's call —
+filed as §13.14.
+
+**`services/api/orders.ts::cancelOrder` posted to a route that does not exist —
+FIXED 2026-09-05.** It sent `POST /procurement/orders/:id/cancel` with the reason
+in a body. The gateway declares `@Delete("orders/:id")` with `@Query("reason")`
+and no POST `cancel` route at all (`openapi.json`:
+`/api/v1/procurement/orders/{id}` is `get, patch, delete`; the only `cancel`
+path is `cancel-scheduled-send`). Every call through `useCancelOrder` was a 404
+and every reason typed went nowhere — while the SERVICE has always recorded one
+(`cancelOrder` → `updateOrder` writes `procurement_orders.rejection_reason`), so
+only the caller was wrong. Now a DELETE with the reason as a query parameter,
+with the gateway's sentence promoted onto `.message` the way `approveOrder` does
+it. `useCancelOrder` had no reachable caller before this pass, which is why a
+404 on every call went unnoticed.
 
 **The confirmation mail states the order's own unit, 2026-09-04 — ADR 0119
 phase 0 (the mail half).** `confirmDeal` used to mail the vendor
@@ -502,6 +538,42 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
     wrote nothing (an `alert` and a `setTimeout` that fabricated a follow-up), so they are
     not acts to recreate. *Rework candidates for the founder: reject-an-order on the
     rebuilt page; the several-responses-per-order comparison; the negotiation summary.*
+    **CLOSED 2026-09-05.** The founder's call was *"rebuild all three on the rebuilt
+    /orders as a responses sheet"*, and that is
+    `pages/orders/next/ResponsesSheet.tsx` (+ `responses.ts`, its pure half): one house
+    `Sheet` per order, one section per inbound answer, keyboard stepping, the sealed
+    confirm, and a reject that requires a reason in words. `OrderApprovalModal.tsx` is
+    **DELETED** — with its import, its render, `showOrderApprovalModal`,
+    `orderApprovalData`, `allProviderResponses`, `currentApprovalIndex`, the
+    `OrderApprovalData` interface, and the `sealTarget` hand-over overlay, whose only two
+    setters were that modal's Confirm handler. `pages/__tests__/OrdersLegacySeal.test.ts`
+    asserts the absence of the FILE and of every reference to it (4 cases; 2 of them fail
+    against a `git show HEAD:` copy of `Orders.tsx`). The gateway's four
+    `OrderApprovalModal summary section visibility` cases went with it: they asserted
+    that an absent summary HID the section, which is the rule the sheet deliberately
+    reverses.
+    *Measured while doing it:* the modal could not have been reached even in principle —
+    `setAllProviderResponses` and `setOrderApprovalData` were called only from inside its
+    own handlers, so `orderApprovalData` was permanently null and its render guard
+    permanently false.
+
+14. **Decide how a rejection is proven.** The sheet's Reject is the same hold over a
+    route that redeems no seal (§9, "A rejection is not sealed"). Three paths, none of
+    them a builder's to pick: (a) require a `cancel`-act seal on
+    `DELETE /procurement/orders/:id` and teach the legacy desk's `handleReject` the hold
+    — closes the hole, but changes the control production actually uses; (b) add a
+    separate sealed `POST orders/:id/reject` requiring a reason, leaving DELETE for the
+    legacy desk — no regression, two cancel paths, needs an ADR; (c) leave it recorded
+    but not proven, as it is now, and keep the sentence on the page. *Blocker: founder.*
+
+15. **Say on the LEDGER ROW which orders have an answer.** The row offers "The vendor's
+    answers" unconditionally, because nothing on the page knows which orders have one:
+    `GET /procurement/orders` returns the header and says nothing about correspondence,
+    and `GET /procurement/conversations/history` is capped at 100 rows, so hiding the
+    control on that basis would be a "no answer" claim the page cannot make. Needs either
+    an inbound count on the list route or an uncapped per-house index.
+    *Blocker: none — a gateway read-shape change on a route four surfaces share, the same
+    blocker §13.10 named.*
 
 ### An agreed price has no unit — research 2026-09-04, phase 1 BUILT 2026-09-04, phase 2 BUILT 2026-09-05, CLOSED (ADR 0119)
 

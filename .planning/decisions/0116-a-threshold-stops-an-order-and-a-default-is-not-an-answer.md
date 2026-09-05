@@ -481,16 +481,36 @@ believed when written and is corrected here rather than quietly fixed:
    saying the approval writes no price and that the seal is taken over the
    order's own total.
 
-**Status of the two sealed modals, 2026-09-05.** The founder's rule was: if the rebuilt
-page recreated everything a dead modal offered, delete it. The inline "Approve Order"
-modal is **deleted** — its only real act, approving one order, is
-`pages/orders/next/LedgerRow.tsx:282`. `OrderApprovalModal` **remains sealed and
-unreachable**: rejecting an order, comparing several vendors' responses to one order, and
-reading the AI negotiation summary are not on the rebuilt page, so deleting it would
-delete acts, not dead code. Point 3's "the field is now disabled" no longer describes
-anything in the tree: that input lived only in the deleted modal (`OrderApprovalModal`
-displays the agreed price and never had an input), so the `finalPrice` it named now has
-nowhere left to be typed at all. See [[orders]] §13.13.
+**Status of the two sealed modals, 2026-09-05 — BOTH NOW DELETED.** The founder's rule
+was: if the rebuilt page recreated everything a dead modal offered, delete it. The inline
+"Approve Order" modal went first — its only real act, approving one order, is
+`pages/orders/next/LedgerRow.tsx`'s `HoldToApprove`. `OrderApprovalModal` was held back
+that morning because three of its acts existed nowhere on the rebuilt page: rejecting an
+order, comparing several vendors' responses to one order, and reading the AI negotiation
+summary. **The founder's call the same day was to rebuild all three as a responses
+sheet** — `pages/orders/next/ResponsesSheet.tsx`, a house `Sheet` per order — and delete
+the modal, which is done: file, import, render, `showOrderApprovalModal`,
+`orderApprovalData`, `allProviderResponses`, `currentApprovalIndex`, the
+`OrderApprovalData` interface, and the `sealTarget` hand-over overlay this addendum
+introduced, whose only two setters were that modal's Confirm.
+`pages/__tests__/OrdersLegacySeal.test.ts` now asserts the absence of the file and of
+every reference to it.
+
+Point 3's "the field is now disabled" no longer describes anything in the tree: that
+input lived only in the deleted inline modal (`OrderApprovalModal` displayed the agreed
+price and never had an input), so the `finalPrice` it named has nowhere left to be typed
+at all.
+
+**The seal did NOT travel with the acts, and that is filed rather than fudged.** Confirm
+on the sheet is this decision's mechanism unchanged — minted at the start of the hold,
+redeemed once on `POST orders/:id/approve`. Reject is the same gesture over
+`DELETE orders/:id`, **which redeems nothing**; `seal-subject.ts` already names `cancel`
+as its own act, so the mechanism exists, but requiring it would refuse the LEGACY desk's
+only Reject control (`pages/Orders.tsx handleReject`, three live call sites, and with the
+flag off that desk is what production shows), and an optional seal is decoration. The
+sheet therefore prints one line saying the hold records a decision rather than proving
+one. Which of the three ways out to take is the founder's — [[orders]] §13.14.
+See [[orders]] §13.13 for the whole retirement.
 
 **The ground.** The legacy page renders outside the Mudavym shell, and a grep
 ("zero `dark:` classes in `Orders.tsx`") suggested it was permanently light, so
