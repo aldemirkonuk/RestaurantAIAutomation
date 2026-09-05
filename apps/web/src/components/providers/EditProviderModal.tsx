@@ -905,12 +905,21 @@ export function EditProviderModal({
                                         {order.status}
                                       </span>
                                     </div>
+                                    {/*
+                                      `totalCost` and `requestedAt` are the
+                                      route's own keys. This line read
+                                      `order.totalPrice ?? order.unitPrice *
+                                      order.quantity` — neither name is ever
+                                      sent — so `undefined ?? undefined * n` is
+                                      NaN and every row here printed a literal
+                                      "$NaN" (measured 2026-09-05).
+                                    */}
                                     <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400">
                                       <span>{order.quantity} btl{order.quantity !== 1 ? 's' : ''}</span>
                                       <span>·</span>
-                                      <span>${(order.totalPrice ?? order.unitPrice * order.quantity).toLocaleString()}</span>
+                                      <span>{typeof order.totalCost === 'number' ? `$${order.totalCost.toLocaleString()}` : 'no total'}</span>
                                       <span>·</span>
-                                      <span>{new Date(order.createdAt || order.requestedAt).toLocaleDateString()}</span>
+                                      <span>{order.requestedAt ? new Date(order.requestedAt).toLocaleDateString() : 'no date'}</span>
                                     </div>
                                   </div>
                                 )

@@ -51,9 +51,10 @@
  *    refusal sentences are reused verbatim.
  *  * Confirm is the SAME sealed approve as the ledger row: `mintOrderSeal` at
  *    the moment the hold begins, the token carried back on the write. Reject is
- *    the same gesture over a route that redeems no seal, and the sheet says so
- *    in those words rather than letting the wax imply a proof that does not
- *    exist (see REJECT_SEAL_NOTE).
+ *    now the mirror of it (ADR 0125, 2026-09-05): `mintOrderCancelSeal` at the
+ *    moment its hold begins, act `cancel`, the token carried back on the DELETE.
+ *    The note that used to sit here saying the rejection recorded a decision
+ *    rather than proving one is retired — it was true, and it is not any more.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -83,24 +84,26 @@ import {
 import type { ApprovalGateRow, OrderRowVM } from './useOrdersNextData';
 
 /**
- * What a rejection's hold does and does not prove — measured, and said.
+ * What a rejection's hold proves — measured, and said.
  *
- * `POST orders/:id/approve` redeems a one-time seal minted when the hold began
- * (`procurement.service.ts redeemOrderSeal`, act `"approve"`).
- * `DELETE orders/:id` redeems nothing: it reads the id and an optional `reason`
- * query parameter and writes `procurement_orders.rejection_reason`. Making it
- * demand a seal would refuse the LEGACY desk's only Reject control
- * (`pages/Orders.tsx handleReject`, three live call sites, and the legacy desk
- * is what production shows) — which is the founder's call, not a builder's.
+ * RETIRED AND REPLACED (ADR 0125, 2026-09-05). This constant used to read "the
+ * cancel route redeems no seal, so this records a decision rather than proving
+ * one", and the fork it named — sealing DELETE would refuse the legacy desk's
+ * only Reject control — was put to the founder, who chose neither branch:
+ * research the whole thing and build the shape that scales. The shape is that
+ * an order changes state through a checked, sealed transition, and the legacy
+ * desk got the hold in the same pass (`components/orders/SealedRejectDie.tsx`),
+ * so nothing is left lying to keep it working.
  *
- * So the gesture is the same and the proof is not, and the sheet says which is
- * which. A control that looks sealed and is not is the exact shape this house
- * spent ADR 0116's addendum removing.
+ * The sentence stays because the property is worth stating rather than implying
+ * from the wax — and because it now names the thing that makes a cancellation
+ * different from an approval: it is refused outright once the wine has arrived.
  */
 export const REJECT_SEAL_NOTE =
-  'The hold is the same gesture as an approval, but the cancel route redeems no ' +
-  'seal, so this records a decision rather than proving one. The reason is written ' +
-  'to the order.';
+  'The hold mints a one-time seal for this order, spent exactly once on the ' +
+  'cancellation — the same proof an approval carries, for a different act. The ' +
+  'reason is written to the order, and an order whose wine has already arrived ' +
+  'cannot be cancelled at all.';
 
 const label = (text: string) => (
   <span
@@ -263,7 +266,44 @@ export function ResponsesSheet({
     );
   };
 
-  const onReject = () => {
+  /**
+   * Mint the cancellation seal, at the moment the reject hold BEGINS.
+   *
+   * Separate from `onChallenge` above because the ACT is different: a token
+   * minted for `approve` is refused here by the gateway with "That seal was
+   * issued for a different act on this order", and the mirror holds. Resolving
+   * null stops the hold, which is how a refused mint cannot become a silent
+   * cancellation on the way through the UI.
+   *
+   * A missing reason resolves null too. The gateway refuses a blank one with a
+   * 400 in words, but making a person discover that from a failed request would
+   * be a control lying about its own preconditions.
+   */
+  const onRejectChallenge = async (): Promise<string | null> => {
+    if (!reasonIsGiven(reason)) {
+      setReasonTouched(true);
+      setRejectError(null);
+      return null;
+    }
+    setRejectError(null);
+    try {
+      return await ordersApi.mintOrderCancelSeal(row.id);
+    } catch (err) {
+      // Where "the wine is already on the shelf" (422) and "this order is
+      // already cancelled" (422) arrive — at the START of the hold.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const msg = (err as { message?: string })?.message ?? 'request failed';
+      setRejectError(
+        status === 403 || status === 422
+          ? msg
+          : `The seal could not be issued (${msg}) — nothing was cancelled.`,
+      );
+      setRejectAttempt((a) => a + 1);
+      return null;
+    }
+  };
+
+  const onReject = (challenge?: string | null) => {
     if (!reasonIsGiven(reason)) {
       setReasonTouched(true);
       setRejectError(null);
@@ -272,11 +312,18 @@ export function ResponsesSheet({
     }
     setRejectError(null);
     cancel.mutate(
-      { orderId: row.id, reason: reason.trim() },
+      { orderId: row.id, reason: reason.trim(), challenge },
       {
         onError: (err) => {
+          const status = (err as { response?: { status?: number } })?.response?.status;
           const msg = (err as { message?: string })?.message ?? 'request failed';
-          setRejectError(`The gateway refused (${msg}) — nothing was rejected, and no reason was written.`);
+          // 400 (no reason), 403 (the seal) and 422 (the state) are whole
+          // sentences written to be read; wrapping them buries them.
+          setRejectError(
+            status === 400 || status === 403 || status === 422
+              ? msg
+              : `The gateway refused (${msg}) — nothing was rejected, and no reason was written.`,
+          );
           setRejectAttempt((a) => a + 1);
         },
         onSuccess: () => onClose(),
@@ -382,6 +429,7 @@ export function ResponsesSheet({
                     approvedLabel="Rejected"
                     disabled={approve.isPending || cancel.isPending}
                     onApprove={onReject}
+                    onChallenge={onRejectChallenge}
                   />
                 </div>
                 {reasonMissing && (

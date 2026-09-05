@@ -398,3 +398,12 @@ same shape.
 6. Fold `pages/distributors/useDistributorsPage.ts` into the discover tab or keep it
    deliberately — today it is a standalone page hook with one consumer (§9 of
    [[distributors]]).
+
+7. **The Terms panel no longer assumes dollars** (done 2026-09-05, ADR 0117 Q25).
+   `TermsSection.tsx` read `reg?.currency.code ?? 'USD'`, which was the only
+   honest reading while `restaurants.currency` carried `DEFAULT 'USD'` — and
+   which told a London house its vendor's minimum was in dollars. The default is
+   dropped (`20260905120000_a_house_names_its_money.sql`), so `code` can now be
+   `null`: the minimum-order field is labelled "(currency not recorded)" and
+   `fmtMoney` prints the number unsymboled. Nothing here can SET the currency;
+   today the only place it is asked is the sign-up form ([[register]] §1a).

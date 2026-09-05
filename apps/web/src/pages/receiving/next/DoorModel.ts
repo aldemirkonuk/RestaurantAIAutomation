@@ -64,13 +64,18 @@ export interface DoorOrderVM {
 
 /**
  * The gateway's GET /procurement/orders/:id returns OrderResponseDto
- * (quantity, unitType, bottlesTotal, wineName, orderNumber…); the web `Order`
- * type predates unitType/bottlesTotal, so those ride in untyped. Read them
- * defensively — a missing field is a null, not a guess.
+ * (quantity, unitType, bottlesTotal, wineName, orderNumber…). The web `Order`
+ * type used to predate `unitType` / `bottlesTotal`, so both rode in through a
+ * widening cast; since 2026-09-05 the shared type IS the DTO's key set and the
+ * cast is gone. Read defensively still — an absent field is a null, not a guess.
+ *
+ * `providerName` went with the cast: the DTO carries `providerId` and no vendor
+ * name, so that field was `undefined` on every order this door has ever opened.
+ * The door names the vendor from nothing else, so it now says so.
  */
 export function normalizeDoorOrder(raw: Order | null | undefined): DoorOrderVM | null {
   if (!raw || typeof raw !== 'object') return null;
-  const loose = raw as Order & { unitType?: unknown; bottlesTotal?: unknown };
+  const loose = raw;
   const quantity = num(loose.quantity);
   const unitType =
     typeof loose.unitType === 'string' && loose.unitType.trim() !== ''
@@ -82,7 +87,7 @@ export function normalizeDoorOrder(raw: Order | null | undefined): DoorOrderVM |
   return {
     orderNumber: loose.orderNumber ?? null,
     wineName: loose.wineName ?? null,
-    providerName: loose.providerName ?? null,
+    providerName: null,
     quantity,
     unitType,
     expectedBottles: bottlesTotal ?? (isBottles ? quantity : null),

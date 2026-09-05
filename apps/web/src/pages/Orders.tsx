@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
 import { SealedApproveDie } from '../components/orders/SealedApproveDie'
+import { SealedRejectDie } from '../components/orders/SealedRejectDie'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
@@ -44,7 +45,7 @@ import { toast } from 'sonner'
 import axios from 'axios'
 import { Wine as WineType } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
-import { apiClient } from '../services/api/client'
+import { apiClient, getErrorMessage } from '../services/api/client'
 import { inventoryApi, getInventory } from '../services/api'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useWinesByIds } from '../hooks/queries'
@@ -93,7 +94,11 @@ const mapApiOrderToUi = (order: any): Order => ({
   wine_id: order.inventoryId ?? order.wine_id ?? '',
   wine_name: order.wineName ?? order.wine_name,
   quantity: order.quantity ?? 0,
-  provider_name: order.providerName ?? order.provider_id ?? order.providerId,
+  // `provider_name` deliberately carries the vendor's NAME or, when the
+  // payload has none, its id — `providerNameById` resolves a uuid downstream
+  // (useOrdersPage.ts:120). The `o.providerName ??` branch that led this
+  // chain was dead: OrderResponseDto carries `providerId` and no name.
+  provider_name: order.provider_id ?? order.providerId,
   status: mapApiStatusToUi(order.status),
   suggested_price: order.quotedPrice ?? order.suggested_price,
   final_price: order.finalPrice ?? order.final_price,
@@ -535,18 +540,27 @@ export function Orders() {
     [setOrders, setSelectedOrders, refetchOrders]
   )
 
-  const handleReject = async (orderId: string) => {
-    if (confirm('Are you sure you want to reject this order?')) {
-      try {
-        if (isUuid(orderId)) {
-          await apiClient.delete(`/procurement/orders/${orderId}`)
-        }
-        // Refetch orders to sync with backend
-        refetchOrders()
-      } catch (error) {
-        console.error('Rejection failed:', error)
-      }
-    }
+  /**
+   * Open the reject ceremony. It does NOT reject.
+   *
+   * ADR 0125. This was `confirm('Are you sure you want to reject this order?')`
+   * followed by `apiClient.delete('/procurement/orders/:id')` — with no reason
+   * at all, so the one column that records why a house did not buy a wine was
+   * left null by the only Reject control production shows. Beside it, Approve
+   * had been a held gesture redeeming a one-time seal since 2026-09-04.
+   *
+   * A cancellation is now a sealed act like an approval, and the seal is minted
+   * when the HOLD begins — so a control that fires the write on click cannot
+   * carry one. All three call sites open `SealedRejectDie` instead: a reason in
+   * words, then the same gesture, then the write.
+   */
+  const openRejectCeremony = (orderId: string) => {
+    if (!isUuid(orderId)) return
+    const order = orders.find(o => o.order_id === orderId)
+    setRejectOrder({
+      orderId,
+      wineName: (order && resolveOrderWineName(order)) || order?.wine_name || 'this order',
+    })
   }
 
   const handleMarkAsOrdered = async (orderId: string) => {
@@ -728,7 +742,11 @@ Shadow stock has been moved to Live Stock.`)
       }
     } catch (error) {
       console.error('Failed to mark as delivered:', error)
-      alert('Failed to mark order as delivered. Please try again.')
+      // The gateway refuses a second delivery with a whole sentence and a 409
+      // (`delivered-once.ts`), and "Please try again" is the one instruction
+      // that must not follow it — it tells a person to repeat exactly what the
+      // house just declined to do. The server's own words when it sent any.
+      alert(getErrorMessage(error) || 'Failed to mark order as delivered.')
     }
   }
 
@@ -1376,43 +1394,6 @@ Shadow stock has been moved to Live Stock.`)
     }
   }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
 
-  const handleBulkReject = useCallback(async () => {
-    if (selectedOrders.size === 0) return
-    
-    const ordersToReject = orders.filter(o => 
-      selectedOrders.has(o.order_id) && o.status === 'pending_approval'
-    )
-    
-    if (!confirm(`Reject ${ordersToReject.length} pending order(s)?`)) return
-    
-    setActionLoading('bulk-reject')
-    
-    try {
-      setOrders(prev => prev.map(order => 
-        selectedOrders.has(order.order_id) && order.status === 'pending_approval'
-          ? { ...order, status: 'cancelled' }
-          : order
-      ))
-      
-      // Check if there are other actionable orders still selected
-      const selectedOrdersList = orders.filter(o => selectedOrders.has(o.order_id))
-      const hasOtherActionableOrders = selectedOrdersList.some(o => 
-        o.status === 'approved' || o.status === 'ordered'
-      )
-      
-      // Only clear selection if no other actionable orders remain
-      if (!hasOtherActionableOrders) {
-        setSelectedOrders(new Set())
-      }
-      
-      alert(`❌ ${ordersToReject.length} order(s) rejected${hasOtherActionableOrders ? '\n\n📋 Other selected orders remain - you can continue with bulk actions.' : ''}`)
-    } catch (err) {
-      setError('Failed to reject orders')
-    } finally {
-      setActionLoading(null)
-    }
-  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
-
   const toggleOrderSelection = (orderId: string) => {
     const newSelected = new Set(selectedOrders)
     if (newSelected.has(orderId)) {
@@ -1425,6 +1406,8 @@ Shadow stock has been moved to Live Stock.`)
 
   // ── Right-click context menu (NEW-135) + double-click open (NEW-136) ─────
   const [orderMenu, setOrderMenu] = useState<{ orderId: string; x: number; y: number } | null>(null)
+  /** The order whose reject ceremony is open. Opening it rejects nothing (ADR 0125). */
+  const [rejectOrder, setRejectOrder] = useState<{ orderId: string; wineName: string } | null>(null)
   const openThread = useCallback((order: Order) => {
     setCommsDrawerOrder({
       orderId: order.order_id,
@@ -1646,16 +1629,23 @@ Shadow stock has been moved to Live Stock.`)
                            </p>
                          )}
                        </div>
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         onClick={handleBulkReject}
-                         disabled={actionLoading === 'bulk-reject'}
-                         className="text-red-600 hover:bg-red-50 border-red-300"
-                       >
-                         <XCircle className="w-4 h-4 mr-1" />
-                         Reject ({pendingCount})
-                       </Button>
+                       {/*
+                         WAS: a live `Reject (N)` button calling a bulk-reject
+                         handler that called NO endpoint at all — it rewrote local
+                         state to `cancelled` and alerted success. The twin of the
+                         bulk-approve defect ADR 0116's addendum found on 2026-09-04,
+                         left standing because that pass's scope was approve. A page
+                         may not claim a write it never makes (ADR 0020).
+                         It is not made real in bulk, because it should not be: a
+                         cancellation needs a REASON, and one sentence pasted over
+                         fourteen orders is not an account of any of them — the same
+                         argument that makes `SealedApproveDie` mint one seal per order.
+                       */}
+                       <p className="text-xs text-gray-600 max-w-[15rem]" role="status">
+                         Rejecting is one order at a time: each needs its own reason,
+                         and the reason is written onto that order. Open a row&rsquo;s
+                         Reject to do it.
+                       </p>
                      </>
                    )}
                    
@@ -2172,7 +2162,7 @@ Shadow stock has been moved to Live Stock.`)
                                                   <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    onClick={() => handleReject(order.order_id)}
+                                                    onClick={() => openRejectCeremony(order.order_id)}
                                                     className="text-red-600 hover:bg-red-50"
                                                   >
                                                     <XCircle className="w-4 h-4 mr-1" />
@@ -2780,7 +2770,7 @@ Shadow stock has been moved to Live Stock.`)
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => handleReject(order.order_id)}
+                                        onClick={() => openRejectCeremony(order.order_id)}
                                         className="text-red-600 hover:bg-red-50"
                                       >
                                         <XCircle className="w-4 h-4 mr-1" />
@@ -3346,6 +3336,53 @@ Shadow stock has been moved to Live Stock.`)
         }}
       />
 
+      {/*
+        The reject ceremony (ADR 0125). All three Reject controls open this and
+        none of them cancels: the seal is minted when the HOLD begins, so a
+        one-click control could not carry one even if it wanted to. The wine is
+        named because the three call sites are rows in three different lists and
+        a bare "Reject this order?" over the wrong row is how the wrong order
+        gets cancelled.
+      */}
+      {rejectOrder && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reject order"
+          onClick={() => setRejectOrder(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700"
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Reject {rejectOrder.wineName}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              The reason is written onto the order, the cancellation is sealed like an
+              approval, and the vendor is not written to about it afterwards.
+            </p>
+            <div className="mt-3">
+              <SealedRejectDie
+                orderId={rejectOrder.orderId}
+                onRejected={() => {
+                  setRejectOrder(null)
+                  refetchOrders()
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="mt-3 text-xs text-gray-500 underline hover:text-gray-700"
+              onClick={() => setRejectOrder(null)}
+            >
+              Leave it alone
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Right-click order context menu (NEW-135) */}
       {orderMenu && (() => {
         const order = orders.find((o) => o.order_id === orderMenu.orderId)
@@ -3367,7 +3404,7 @@ Shadow stock has been moved to Live Stock.`)
             {order.status === 'pending_approval' && (
               <>
                 <MItem icon={CheckCircle} label="Approve" onClick={() => { openThread(order); setOrderMenu(null) }} />
-                <MItem icon={XCircle} label="Reject" danger onClick={() => { handleReject(order.order_id); setOrderMenu(null) }} />
+                <MItem icon={XCircle} label="Reject" danger onClick={() => { openRejectCeremony(order.order_id); setOrderMenu(null) }} />
               </>
             )}
             {order.status === 'approved' && (

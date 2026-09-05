@@ -49,6 +49,7 @@ import {
   cancelOneTapAction,
 } from '../../services/api/dashboard'
 import type { Order, OrderStatus } from '../../services/api/types'
+import { canonicalStatus } from '../../lib/mudavym/status'
 import { useAuthStore } from '../../stores'
 import { useWines } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
@@ -358,11 +359,46 @@ function generateRealActions(
   
   // If API orders are available, use them
   if (ordersToProcess.length > 0) {
+    /*
+     * TWO DEFECTS, BOTH MEASURED 2026-09-05, BOTH FIXED HERE.
+     *
+     * (a) The filter compared the WIRE status to lowercase UI literals.
+     *     `OrderResponseDto.status` is `ProcurementOrderStatus` in
+     *     SCREAMING_SNAKE, so `o.status === 'approved'` was false for every
+     *     order ever fetched and this branch produced no cards at all.
+     *     `canonicalStatus` is the repo's one wire-to-UI mapper
+     *     (`lib/mudavym/status.ts`) and is what the comparison now goes
+     *     through. It does NOT arm anything new: the two fetches above ask
+     *     for PENDING/APPROVAL_NEEDED and CONFIRMED, which canonicalise to
+     *     'pending', 'pending_approval' and 'ordered' — still none of them
+     *     'approved' or 'in_transit'. The card is now correctly written and
+     *     still unreachable; widening the fetch is a founder's call, filed in
+     *     `.planning/v3.0-TECH-DEBT.md`.
+     *
+     * (b) `totalPrice`, `unitPrice`, `providerName`, `wineId` and `createdAt`
+     *     are names the route has never sent. `order.totalPrice ||
+     *     order.quantity * (order.unitPrice || 0)` was therefore `0`, so the
+     *     card printed "$0" as the invoice price AND "$0" as the negotiated
+     *     price — and `negotiatedPrice` is dispatched as `cost` on the
+     *     inventory-update event when the delivery is confirmed, so a zero
+     *     was being WRITTEN, not merely shown. The figures are now the DTO's
+     *     own `totalCost` / `finalPrice`, and `null` when the route did not
+     *     carry them, which the card renders as words rather than as a
+     *     number.
+     */
     ordersToProcess
-      .filter((o) => o.status === 'approved' || o.status === 'in_transit')
+      .filter((o) => {
+        const s = canonicalStatus(o.status)
+        return s === 'approved' || s === 'in_transit'
+      })
       .slice(0, 3)
       .forEach((order, index: number) => {
-        const wine = wines.find(w => w.id === order.wineId)
+        const wine = wines.find(w => w.id === order.inventoryId)
+        const invoicePrice =
+          order.totalCost ??
+          (order.finalPrice != null && order.quantity != null
+            ? order.finalPrice * order.quantity
+            : null)
         actions.push({
           id: `delivery_${order.id}`,
           type: 'delivery_confirm',
@@ -372,12 +408,12 @@ function generateRealActions(
           wine,
           details: { 
             expectedQty: order.quantity, 
-            invoicePrice: order.totalPrice || order.quantity * (order.unitPrice || 0), 
-            negotiatedPrice: (order.totalPrice || order.quantity * (order.unitPrice || 0)) * 0.97,
-            supplier: order.providerName || 'Unknown Provider',
+            invoicePrice, 
+            negotiatedPrice: invoicePrice == null ? null : invoicePrice * 0.97,
+            supplier: 'Not named by this route',
             orderId: order.id
           },
-          timestamp: new Date(order.createdAt || now.getTime() - (index + 1) * 1000 * 60 * 15),
+          timestamp: new Date(order.requestedAt || now.getTime() - (index + 1) * 1000 * 60 * 15),
         })
       })
   } else {
@@ -1409,13 +1445,22 @@ export function OneTapActionCenter() {
                                   <p className="text-xs text-gray-500 mb-1">Expected</p>
                                   <p className="text-lg font-bold text-gray-900">{action.details.expectedQty} btls</p>
                                 </div>
+                                {/* Never `$` + a null: the route may not carry a total at all. */}
                                 <div className="p-3 bg-white rounded-xl">
                                   <p className="text-xs text-gray-500 mb-1">Invoice Price</p>
-                                  <p className="text-lg font-bold text-gray-900">${action.details.invoicePrice}</p>
+                                  <p className="text-lg font-bold text-gray-900">
+                                    {typeof action.details.invoicePrice === 'number'
+                                      ? `$${action.details.invoicePrice}`
+                                      : 'no total on this order'}
+                                  </p>
                                 </div>
                                 <div className="p-3 bg-white rounded-xl">
                                   <p className="text-xs text-gray-500 mb-1">Negotiated</p>
-                                  <p className="text-lg font-bold text-emerald-600">${action.details.negotiatedPrice}</p>
+                                  <p className="text-lg font-bold text-emerald-600">
+                                    {typeof action.details.negotiatedPrice === 'number'
+                                      ? `$${action.details.negotiatedPrice}`
+                                      : 'nothing to negotiate from'}
+                                  </p>
                                 </div>
                               </div>
                               <p className="text-sm text-gray-600">

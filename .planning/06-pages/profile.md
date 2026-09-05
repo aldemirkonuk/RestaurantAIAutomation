@@ -217,6 +217,21 @@ behind it exists:
   pressed nowhere else on the page. The sole-owner refusal (`auth.service.ts:2132-2176`, throw at `:2149-2151`)
   is stated before the act
 
+- **"The house may text me at this number"** *(ADR 0121, 2026-09-05)*. A row in
+  **Register IV**, not a seventh register: retire-to-write applies to surfaces
+  as well as documents, and ADR 0114's whole justification was a surface count
+  that FELL. Register IV already answers exactly one question — what has *this
+  person* agreed to, which nobody else may agree to for them — and a number the
+  house may reach you at is that question with a different object; its lead is
+  widened to name both. The row **never pre-fills the number from the profile**:
+  an account phone and a number somebody is willing to be texted at are
+  different facts, and pre-filling one as the other collects a consent for an
+  address that was never chosen. Withdrawing is the person's alone and is a
+  **timestamp, never a delete** — a revocation that leaves no trace cannot be
+  honoured, and 47 CFR 64.1200(d)(3)/(d)(6) require it recorded and kept for
+  five years. It never claims the text will arrive: with no house sender the row
+  says agreeing changes nothing today and is recorded for the day it does.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_profile`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -1159,6 +1174,19 @@ Core, every role. No `S..` touches it directly (OD-48).
 
 ## 9. Gaps
 
+- **G-TXT-P1 — a person cannot see who would be texting them.** The consent row
+  says whether *this house* has a sender and how many, but not the number a
+  vendor or a colleague would see, because the row that carries it is
+  manager-scoped on `/connections`. A person is being asked to agree to be
+  reached by an identity they cannot read. Filed; the fix is to return the
+  connected sender's display identity on the person-scoped read, which is a
+  gateway change and not a page one.
+- **G-TXT-P2 — the crew count is hidden from staff and the row says so, but the
+  distinction is thin.** `crewConsents` is `null` both when the caller may not
+  see it and when the count could not be read. The page prints "a manager's to
+  see" for both, which is right in the first case and wrong in the second.
+
+
 - ~~**G-PAY-SEAL — the payment register's controls are buttons, not the seal
   ceremony**~~ — **CLOSED 2026-09-04.** Gateway half in `cd2b86d8`; page half in
   this pass (`PaymentRegister.tsx` `SealedControl`, `useProfileNextData.ts`
@@ -1396,6 +1424,11 @@ credentials, which restaurants you belong to, and the exit.
    — the line now says "Mudavym account" (§7). The rebuild says the same.
 
 ## 13. Roadmap
+
+> **Added 2026-09-05 by the crew text (ADR 0121).**
+> 0. **Show the person who would be texting them** (§9 G-TXT-P1), and split
+>    "not yours to see" from "could not be read" on the crew count (G-TXT-P2).
+
 
 > **Added 2026-09-04 by the collapse.**
 > 1. **Give `useMudavymDesign` a settled state.** It returns `false` while the

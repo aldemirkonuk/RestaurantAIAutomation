@@ -77,6 +77,18 @@ interface RegisterRestaurantData {
   cuisineType?: string
   timezone?: string
   /**
+   * The money this house reports in, ISO 4217 alpha-3, from the sign-up form's
+   * currency step.
+   *
+   * Omitted — not defaulted to `USD` — when the manager answered "not yet" or
+   * when no default could be worked out from the address's country. The gateway
+   * then writes NULL and every screen says "currency not recorded". Until
+   * 2026-09-05 the column carried `DEFAULT 'USD'` and this payload never
+   * mentioned it, which is how all fourteen production houses came to assert
+   * dollars including two in Turkiye and one in London (ADR 0117 Q25).
+   */
+  currency?: string
+  /**
    * The coordinate of the Google Places selection, when the operator chose one.
    *
    * Omitted — not zeroed, not defaulted — for a hand-typed address. The gateway

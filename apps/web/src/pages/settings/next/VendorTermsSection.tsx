@@ -248,7 +248,8 @@ function Editor({
   onClose,
 }: {
   row: VendorTermsRow;
-  currency: string;
+  /** `null` when the house has not been asked what money it reports in. */
+  currency: string | null;
   busy: boolean;
   onSave: (body: SetVendorTermsBody) => void;
   onClose: () => void;
@@ -342,7 +343,13 @@ function Editor({
           </select>
         </Field>
 
-        <Field label={`Minimum order (${currency})`}>
+        <Field
+          label={
+            currency
+              ? `Minimum order (${currency})`
+              : 'Minimum order (currency not recorded)'
+          }
+        >
           <input
             type="number"
             min={0}
@@ -454,12 +461,22 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
               if it is wrong.
             </p>
           )}
-          {reg.currency.isColumnDefault && (
+          {/* Two different states, said differently. Before 2026-09-05 they were
+              one: `restaurants.currency` defaulted to USD, so "nobody answered"
+              and "this house is American" were the same row (ADR 0117 Q25). */}
+          {reg.currency.code === null ? (
             <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 12px' }}>
-              Money is shown in <strong>{reg.currency.code}</strong>, which is
-              also that column&rsquo;s default, so it too may never have been set.
+              This house has not recorded the money it reports in, so amounts
+              below are shown as bare numbers. Set it on the sign-up form or ask
+              us to record it — nothing here is in dollars by default any more.
             </p>
-          )}
+          ) : reg.currency.isColumnDefault ? (
+            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 12px' }}>
+              Money is shown in <strong>{reg.currency.code}</strong>, which was
+              also that column&rsquo;s default until 2026-09-05, so on a house
+              created before then it may never have been chosen.
+            </p>
+          ) : null}
 
           {reg.vendors.length === 0 ? (
             <Note role="status">

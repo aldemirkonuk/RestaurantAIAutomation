@@ -26,6 +26,7 @@ interface Calls {
   orderInserts: Row[];
   orderUpdates: Row[];
   lineInserts: Row[];
+  lineUpdates: Row[];
   lineDeletes: number;
   priceHistoryInserts: Row[];
 }
@@ -42,12 +43,20 @@ function makeDb(opts: {
   existingOpenOrders?: Row[];
   insertedOrder?: Row;
   orderRow?: Row | null;
+  /**
+   * The order's own `procurement_order_items` row, as `readAgreedLine` reads it
+   * (ADR 0119). `null` means the order has no line — which since Q4 is a
+   * REFUSAL rather than an inherited per-bottle claim: an agreement with no
+   * stated price unit does not enter `price_history` at all.
+   */
+  orderLine?: Row | null;
   inventory?: Row | null;
 }) {
   const calls: Calls = {
     orderInserts: [],
     orderUpdates: [],
     lineInserts: [],
+    lineUpdates: [],
     lineDeletes: 0,
     priceHistoryInserts: [],
   };
@@ -68,6 +77,11 @@ function makeDb(opts: {
             return { data: opts.orderRow ?? null, error: null };
           return { data: opts.existingOpenOrders ?? [], error: null };
         }
+        if (table === "procurement_order_items" && op === "select")
+          return {
+            data: shape === "one" ? (opts.orderLine ?? null) : [],
+            error: null,
+          };
         return { data: shape === "many" ? [] : null, error: null };
       };
 
@@ -94,6 +108,8 @@ function makeDb(opts: {
         update(payload: Row) {
           op = "update";
           if (table === "procurement_orders") calls.orderUpdates.push(payload);
+          if (table === "procurement_order_items")
+            calls.lineUpdates.push(payload);
           return q;
         },
         delete() {
@@ -348,8 +364,32 @@ describe("price_history finally has a writer", () => {
     restaurant_inventory: { wine_name: "Barolo Riserva" },
   };
 
+  /**
+   * The order's line, stating a per-BOTTLE price.
+   *
+   * Every test in this block used to run without any line at all, and the
+   * series still took the number — on the hardcoded `unit = 'BOTTLE'` that ADR
+   * 0119 Q4 ended. It now takes a STATED unit or no row, so a fixture that
+   * states none proves the refusal rather than the writer. The per-bottle pair
+   * keeps these four tests testing what they were written to test; the block
+   * below adds the cases the unit actually changes.
+   */
+  const bottleLine = {
+    id: "55555555-5555-4555-8555-555555555555",
+    price_uom: "bottle",
+    price_pack_size: 1,
+    final_unit_price: 38,
+    allowance: null,
+    deposit: null,
+    freight: null,
+  };
+
   it("records the agreed price when a manager confirms a deal", async () => {
-    const { db, calls } = makeDb({ orderRow, inventory: inventoryRow });
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: bottleLine,
+      inventory: inventoryRow,
+    });
     await service(db).confirmDeal("rest-1", insertedOrder.id, {
       finalPrice: 36.5,
       sendConfirmation: false,
@@ -368,7 +408,11 @@ describe("price_history finally has a writer", () => {
   });
 
   it("falls back to the order's standing price when the confirm changes nothing", async () => {
-    const { db, calls } = makeDb({ orderRow, inventory: inventoryRow });
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: bottleLine,
+      inventory: inventoryRow,
+    });
     await service(db).confirmDeal("rest-1", insertedOrder.id, {
       sendConfirmation: false,
     });
@@ -381,7 +425,11 @@ describe("price_history finally has a writer", () => {
     // Both halves are asserted in one test on purpose: "no row was written" is
     // trivially true of code that never writes any row at all, and a negative
     // test that passes against the pre-fix tree proves nothing.
-    const priced = makeDb({ orderRow, inventory: inventoryRow });
+    const priced = makeDb({
+      orderRow,
+      orderLine: bottleLine,
+      inventory: inventoryRow,
+    });
     await service(priced.db).confirmDeal("rest-1", insertedOrder.id, {
       sendConfirmation: false,
     });
@@ -394,6 +442,7 @@ describe("price_history finally has a writer", () => {
         negotiated_price: null,
         quoted_price: null,
       },
+      orderLine: { ...bottleLine, final_unit_price: null },
       inventory: inventoryRow,
     });
     await service(unpriced.db).confirmDeal("rest-1", insertedOrder.id, {
@@ -402,10 +451,128 @@ describe("price_history finally has a writer", () => {
     expect(unpriced.calls.priceHistoryInserts).toHaveLength(0);
   });
 
+  // -------------------------------------------------------------------------
+  // ADR 0119 phase 2 — the unit reaches the series, and the header stops being
+  // a second source of truth.
+  // -------------------------------------------------------------------------
+  it("records a CASE price as a case price, not divided into a bottle price", async () => {
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: {
+        id: "55555555-5555-4555-8555-555555555555",
+        price_uom: "case",
+        price_pack_size: 12,
+        final_unit_price: 420,
+        allowance: null,
+        deposit: null,
+        freight: null,
+      },
+      inventory: inventoryRow,
+    });
+    await service(db).confirmDeal("rest-1", insertedOrder.id, {
+      finalPrice: 420,
+      sendConfirmation: false,
+    });
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    const p = calls.priceHistoryInserts[0];
+    // Pre-fix (`procurement.service.ts:1160-1205` at 611f7682): $35.00 under
+    // `unit: "BOTTLE"`. The number was right per bottle and the ROW could not
+    // say it was a case that had been divided.
+    expect(p.price).toBe(420);
+    expect(p.unit).toBe("case");
+    expect(p.notes).toContain("not converted");
+  });
+
+  it("writes NO series row for an order whose line states no unit", async () => {
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: {
+        id: "55555555-5555-4555-8555-555555555555",
+        price_uom: null,
+        price_pack_size: null,
+        final_unit_price: 38,
+        allowance: null,
+        deposit: null,
+        freight: null,
+      },
+      inventory: inventoryRow,
+    });
+    await service(db).confirmDeal("rest-1", insertedOrder.id, {
+      finalPrice: 38,
+      sendConfirmation: false,
+    });
+    // Pre-fix this wrote $38.00 under `unit: "BOTTLE"` on no evidence at all.
+    expect(calls.priceHistoryInserts).toHaveLength(0);
+  });
+
+  it("writes the confirmed price to the LINE and never to the header", async () => {
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: {
+        id: "55555555-5555-4555-8555-555555555555",
+        price_uom: "case",
+        price_pack_size: 12,
+        final_unit_price: 420,
+        allowance: null,
+        deposit: null,
+        freight: null,
+      },
+      inventory: inventoryRow,
+    });
+    await service(db).confirmDeal("rest-1", insertedOrder.id, {
+      finalPrice: 399,
+      sendConfirmation: false,
+    });
+
+    // Pre-fix (`:5205-5209` at 611f7682) the header took 399 and the line kept
+    // 420 — the divergence ADR 0119 Q2 exists to end. The database now refuses
+    // that write with 23514.
+    expect(calls.lineUpdates).toHaveLength(1);
+    expect(calls.lineUpdates[0].final_unit_price).toBe(399);
+    const headerWrite = calls.orderUpdates.find((u) => "final_price" in u);
+    expect(headerWrite).toBeUndefined();
+    // `negotiated_price` is the order's own column and stays on the header.
+    expect(calls.orderUpdates[0].negotiated_price).toBe(399);
+  });
+
+  it("falls back to the header, loudly, for an order with no line at all", async () => {
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: null,
+      inventory: inventoryRow,
+    });
+    const svc = service(db);
+    const logged: string[] = [];
+    jest.spyOn((svc as any).logger, "warn").mockImplementation((...a: any[]) => {
+      logged.push(String(a[0]));
+    });
+
+    await svc.confirmDeal("rest-1", insertedOrder.id, {
+      finalPrice: 41,
+      sendConfirmation: false,
+    });
+
+    // Legal — the echo trigger permits it precisely because there is nothing to
+    // disagree with — and said out loud, because no invoice can be matched
+    // against a price that lives only on a unit-less header.
+    expect(calls.lineUpdates).toHaveLength(0);
+    expect(calls.orderUpdates[0].final_price).toBe(41);
+    expect(
+      logged.some(
+        (l) => l.includes("has no order line") && l.includes("names no unit"),
+      ),
+    ).toBe(true);
+  });
+
   it("does not fail the confirmation when the price row cannot be written", async () => {
     // An order a manager has confirmed is a fact. Failing it because an
     // analytics row would not write is the wrong trade.
-    const { db, calls } = makeDb({ orderRow, inventory: inventoryRow });
+    const { db, calls } = makeDb({
+      orderRow,
+      orderLine: bottleLine,
+      inventory: inventoryRow,
+    });
     const original = (db as any).supabase.from;
     (db as any).supabase.from = (table: string) => {
       const q = original(table);

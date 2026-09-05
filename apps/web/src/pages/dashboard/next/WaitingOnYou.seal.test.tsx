@@ -43,21 +43,30 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 import { WaitingOnYou } from './WaitingOnYou';
 import type { Order } from '@/services/api/types';
 
+/**
+ * One row of `GET /procurement/orders/pending` as `OrderResponseDto` actually
+ * serialises it (`mapOrderRow`, procurement.service.ts). This fixture used to
+ * carry `unitPrice`, `totalPrice`, `wineId`, `createdAt`, `updatedAt` and
+ * `providerName` — six names the route has never sent — and a lowercase status
+ * the gateway does not speak. Every test below passed on it while the live
+ * card read `undefined` for both money figures and printed "$0" in the money
+ * column and on the seal itself.
+ */
 function order(over: Partial<Order> = {}): Order {
   return {
     id: 'o-1',
+    orderNumber: 'ORD-2026-00042',
     restaurantId: 'r-1',
-    wineId: 'w-1',
+    inventoryId: 'i-1',
     providerId: 'p-1',
     quantity: 5,
-    unitPrice: 400,
-    totalPrice: 2000,
-    status: 'pending_approval',
+    unitType: 'case',
+    bottlesTotal: 60,
+    finalPrice: 400,
+    totalCost: 2000,
+    status: 'APPROVAL_NEEDED',
     requestedAt: '2026-09-01T10:00:00Z',
-    createdAt: '2026-09-01T10:00:00Z',
-    updatedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',
-    providerName: 'Anadolu',
     ...over,
   } as Order;
 }
@@ -203,6 +212,26 @@ describe('an order the gateway did approve', () => {
 });
 
 describe('the states that are not an approval', () => {
+  it('prints the route\'s own total on the row and on the seal, never $0', () => {
+    // The defect: `formatMoney(undefined)` is the string "$0", so a card reading
+    // a key the route does not send showed a real order as costing nothing —
+    // on the control a human holds to spend the money. Measured 2026-09-05.
+    mount([order()]);
+    expect(screen.getByText('$2,000')).toBeInTheDocument();
+    expect(screen.queryByText('$0')).not.toBeInTheDocument();
+    openRow();
+    expect(screen.getByRole('button', { name: /Hold to approve · \$2,000/i })).toBeInTheDocument();
+  });
+
+  it('says nothing about money the route did not carry', () => {
+    // An absent total is an em dash and a bare "Hold to approve" — not a zero,
+    // and not a dash on the die, where it reads as a rendering fault.
+    mount([order({ totalCost: undefined, finalPrice: undefined })]);
+    expect(screen.getByText('—')).toBeInTheDocument();
+    openRow();
+    expect(screen.getByRole('button', { name: /^Hold to approve$/i })).toBeInTheDocument();
+  });
+
   it('says the queue could not be reached rather than drawing an empty desk', () => {
     mount(null);
     expect(screen.getByText(/couldn’t be reached/i)).toBeInTheDocument();

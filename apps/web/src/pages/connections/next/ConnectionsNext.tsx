@@ -91,6 +91,8 @@ import {
   KeyRound,
   Link2,
   Mail,
+  MessageCircle,
+  MessageSquare,
   Network,
   ShieldCheck,
   Smartphone,
@@ -539,6 +541,31 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 'No per-restaurant sender exists yet.'
               }
             />
+          )}
+
+          {/* — the house's text senders — (ADR 0121; the founder's line of
+              2026-09-05: the house sends in its OWN name, through its own
+              WhatsApp Business number or its own registered SMS sender, and a
+              person's phone is never the sender)
+
+              TWO ROWS, NOT ONE. WhatsApp and SMS are different products with
+              different registrars, different fees and — in Türkiye — different
+              CAPABILITIES: an alphanumeric SMS sender there cannot receive a
+              reply at all. One row would have to average that away. */}
+          <span id="text" aria-hidden />
+          {d.textSenders.loading ? (
+            <LoadingRegister name="the text senders" />
+          ) : d.textSenders.error ? (
+            <UnreadRegister
+              name="The text senders"
+              detail={d.textSenders.error}
+              refused={d.textSenders.refused}
+            />
+          ) : (
+            <>
+              <TextSenderRow channel="whatsapp" vm={d.textSenders.data} />
+              <TextSenderRow channel="sms" vm={d.textSenders.data} />
+            </>
           )}
 
           {/* — the calendar feed — (`/settings?tab=calendar` lands here) */}
@@ -1241,6 +1268,131 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
 }
 
 /* ── small pieces ──────────────────────────────────────────────────────── */
+
+/**
+ * One channel's text sender: what this house has, and what it would take.
+ *
+ * THE ROW IS DRAWN AT FULL WEIGHT WHETHER OR NOT A SENDER EXISTS, which is this
+ * page's one structural idea applied to the newest attachment: a live POS feed
+ * and an unconnected sender get the same amount of design, so the page cannot
+ * flatter an absence by drawing it thinner.
+ *
+ * NO CONTROL HERE CAN APPEAR TO SUCCEED. Both buttons are disabled, and each
+ * carries the server's own reason rather than a sentence this file invented —
+ * `transport.built` is false for every house on this deployment, because no
+ * provider credential for a per-house sender exists.
+ */
+/**
+ * The state, in the manager's language rather than the column's.
+ *
+ * "Waiting on a registrar" and "asked for, not sent yet" are the two a manager
+ * acts on differently — the first is somebody else's queue and the second is
+ * ours — so they are two sentences and not one word with an underscore in it.
+ */
+const STATE_WORDS: Record<
+  'requested' | 'submitted' | 'in_review' | 'connected' | 'rejected' | 'revoked',
+  string
+> = {
+  requested: 'Asked for, not submitted',
+  submitted: 'Submitted',
+  in_review: 'Waiting on the registrar',
+  connected: 'Connected',
+  rejected: 'Rejected',
+  revoked: 'Stopped',
+};
+
+function TextSenderRow({
+  channel,
+  vm,
+}: {
+  channel: 'whatsapp' | 'sms';
+  vm: import('./useConnectionsNextData').TextSendersVM | null;
+}) {
+  const definition =
+    channel === 'whatsapp'
+      ? vm?.catalogue?.whatsapp_business ?? null
+      : vm?.catalogue?.sms_sender ?? null;
+  const sender = channel === 'whatsapp' ? vm?.senders.whatsapp ?? null : vm?.senders.sms ?? null;
+  const readable = vm?.readable ?? false;
+
+  /**
+   * SIX STATES AND AN UNREAD ONE, KEPT APART. "Not connected" and "we could not
+   * read whether it is connected" are different facts, and folding them would
+   * tell a manager the second is the first (ADR 0051 clause 3).
+   */
+  const chips: RowChip[] = !readable
+    ? [{ label: 'Could not be read', tone: 'warn' }]
+    : !sender
+      ? [{ label: 'None', tone: 'off' }]
+      : sender.state === 'connected'
+        ? [{ label: 'Connected', tone: 'on' }]
+        : sender.state === 'rejected'
+          ? [{ label: 'Rejected', tone: 'warn' }]
+          : [{ label: STATE_WORDS[sender.state], tone: 'off' }];
+
+  const oneWayMarkets = (definition?.markets ?? [])
+    .filter((m) => !m.twoWay)
+    .map((m) => m.marketLabel);
+
+  return (
+    <AttachmentRow
+      icon={channel === 'whatsapp' ? <MessageCircle {...ICON} /> : <MessageSquare {...ICON} />}
+      title={definition?.label ?? (channel === 'whatsapp' ? 'WhatsApp Business' : 'SMS sender')}
+      owner={sender ? "the house's" : "nobody's"}
+      chips={chips}
+      subtitle={
+        sender
+          ? `${sender.identity ?? 'no number issued yet'} · ${sender.market} · ${
+              sender.path === 'bring_your_own'
+                ? 'the house brought it'
+                : 'Mudavym is registering it'
+            }`
+          : definition?.providerLabel ?? null
+      }
+      why={
+        <>
+          {definition?.description}{' '}
+          {oneWayMarkets.length > 0 && (
+            <>
+              In <em>{oneWayMarkets.join(', ')}</em> this channel is one-way: a
+              reply cannot come back, so it can carry a notice and never a
+              conversation.
+            </>
+          )}
+        </>
+      }
+      permissionsLabel={sender?.state === 'connected' ? 'May do' : 'Would do, once connected'}
+      permissions={[
+        { text: "Send in this house's own name, to people who consented", can: true },
+        {
+          text: 'Carry a reply back into this house’s book',
+          can: channel === 'whatsapp',
+        },
+        {
+          text: 'Send to anyone who has not agreed — never',
+          can: false,
+        },
+      ]}
+      lastLabel="Last proven reachable"
+      last={sender?.lastProbeAt ? when(sender.lastProbeAt) : null}
+      lastDetail={
+        sender
+          ? sender.lastProbeAt
+            ? (sender.lastProbeResult ?? 'The probe did not say what it found.')
+            : 'This sender has never been probed. That is not the same as unreachable, and it is not health.'
+          : 'No sender has ever been recorded for this house on this channel.'
+      }
+      controls={[
+        { label: 'Bring our own', disabled: true },
+        { label: 'Ask Mudavym to register one', disabled: true },
+      ]}
+      stopNote={
+        vm?.transport.words ??
+        'The deployment did not say whether anything could be sent.'
+      }
+    />
+  );
+}
 
 function Tally({ n, k, seal }: { n: number | null; k: string; seal?: boolean }) {
   return (

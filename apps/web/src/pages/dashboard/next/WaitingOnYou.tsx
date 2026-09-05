@@ -25,8 +25,8 @@ import { Link } from 'react-router-dom';
 import { Seal } from '@/components/mudavym';
 import { SealedApproveDie } from '@/components/orders/SealedApproveDie';
 import type { Order } from '@/services/api/types';
-import { formatMoney, formatNumber } from '@/lib/utils';
-import { DASH, timeAgo } from './format';
+import { formatNumber } from '@/lib/utils';
+import { DASH, approveLabel, money, timeAgo } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -102,21 +102,17 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] text-inkm-1">
-                    {o.wineName ?? (o as Order & { wine_name?: string }).wine_name ?? 'Unnamed wine'}
-                    <span className="text-inkm-3">
-                      {' '}
-                      · {o.providerName ?? (o as Order & { provider_name?: string }).provider_name ?? 'vendor'}
-                    </span>
+                    {o.wineName ?? 'Unnamed wine'}
                   </span>
                   <span className="block text-[11px] text-inkm-3">
-                    requested {timeAgo(o.requestedAt ?? o.createdAt)}
+                    requested {timeAgo(o.requestedAt)}
                   </span>
                 </span>
                 <span
                   className="shrink-0 text-[13px] text-inkm-1"
                   style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {formatMoney(o.totalPrice, 'full')}
+                  {money(o.totalCost)}
                 </span>
               </button>
 
@@ -128,7 +124,8 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                       className="text-[12px] text-inkm-2"
                       style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {formatNumber(o.quantity)} × {formatMoney(o.unitPrice, 'full')}
+                      {formatNumber(o.quantity)}
+                      {o.unitType ? ` ${o.unitType}` : ''} × {money(o.finalPrice)}
                     </p>
                     <div className="flex items-center gap-3">
                       <Link
@@ -139,7 +136,7 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                       </Link>
                       <SealedApproveDie
                         orderIds={[o.id]}
-                        label={`Hold to approve · ${formatMoney(o.totalPrice, 'full')}`}
+                        label={approveLabel(o.totalCost)}
                         onApproved={onApproved}
                       />
                     </div>

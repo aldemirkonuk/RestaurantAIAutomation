@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsString,
+  Matches,
   MinLength,
   IsOptional,
   IsNumber,
@@ -24,6 +25,33 @@ export class RegisterRestaurantDto {
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() cuisineType?: string;
   @IsOptional() @IsString() timezone?: string;
+
+  /**
+   * The money this house reports in, ISO 4217 alpha-3, as CONFIRMED on the
+   * currency step of the sign-up form.
+   *
+   * Optional here and NULL in the row when absent — never `USD`. Until
+   * 2026-09-05 `restaurants.currency` carried `DEFAULT 'USD'` (baseline:3576)
+   * and this insert named no currency key at all, so every house arrived
+   * asserting dollars whether or not anybody had been asked: measured on
+   * production, `USD` on all fourteen, including two houses in Turkiye and one
+   * in London (ADR 0117 Q25). The default is dropped
+   * (`20260905120000_a_house_names_its_money.sql`) and the question is asked, so
+   * absent must mean absent.
+   *
+   * The form defaults it from the address's country and shows it as a stated
+   * default the manager confirms or changes (ADR 0083: the page says what it
+   * will record). Validation is shape only — three capitals. A hardcoded ISO
+   * 4217 membership list in the gateway would be a second table to rot, and the
+   * codes a manager can pick come from one table in the form
+   * (`apps/web/src/lib/currency.ts`), never free text.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: "currency must be an ISO 4217 alpha-3 code in capitals, e.g. TRY.",
+  })
+  currency?: string;
 
   /**
    * The coordinate of the Google Places selection the sign-up form resolved.

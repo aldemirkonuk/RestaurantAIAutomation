@@ -41,13 +41,14 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Panel } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import { useInventory } from '@/hooks/queries/useInventoryQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { queryKeys } from '@/lib/query-keys';
+import { CURRENCY_CODES, currencyLabel, currencyToRecord as resolveCurrency } from '@/lib/currency';
 import { EM, MONO, SANS, SERIF, fmtMoney } from './format';
 import {
   PRICE_UOMS,
@@ -56,6 +57,7 @@ import {
   agreementTotal,
   halfStatedRefusal,
   isMultiplying,
+  type AgreementFees,
   type PriceUom,
 } from './price-unit';
 
@@ -149,6 +151,24 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
   // No default. A preselected unit is the assumption this whole change removes.
   const [priceUom, setPriceUom] = useState<PriceUom | ''>('');
   const [pricePackSize, setPricePackSize] = useState('');
+  // The money outside the price of the wine (ADR 0119 Q3). Empty is UNSTATED,
+  // not zero: a $0.00 deposit is a claim about this vendor and an empty field
+  // is not, and the two are kept apart all the way to the column.
+  const [allowance, setAllowance] = useState('');
+  const [deposit, setDeposit] = useState('');
+  const [freight, setFreight] = useState('');
+  /**
+   * The money every amount on this line is in — ADR 0117 Q31, founder
+   * 2026-09-05: *"defaulted from the vendor's terms or the house, stated on the
+   * sheet"*.
+   *
+   * `null` means untouched, so the STATED DEFAULT below stands and is what gets
+   * sent; `''` means the person explicitly chose "not now" and nothing is
+   * recorded. Those are different answers and the column can hold both, which
+   * is the whole reason `procurement_order_items.currency` is nullable with no
+   * default: a defaulted currency is a claim about a vendor nobody made.
+   */
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -187,6 +207,53 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
 
   const packMissing = priceUom !== '' && isMultiplying(priceUom) && stated === null;
 
+  /**
+   * The currency this sheet OFFERS, from the gateway's own chain.
+   *
+   * Deliberately not computed here. `agreement-currency.ts` resolves it —
+   * what this vendor last billed this house in, then the house's own reporting
+   * currency, then nothing — and the WRITER uses the same function, so the
+   * default a person confirms is the default the row would have taken. A second
+   * copy of the chain in the browser would drift, and the first symptom would be
+   * a line recorded in a currency nobody was shown.
+   *
+   * A failed fetch offers NOTHING rather than a guess: `code: null` renders as
+   * "we could not work one out", which is true, where a fallback would render as
+   * a claim.
+   */
+  const currencyDefaultQuery = useQuery({
+    queryKey: ['agreement-currency', restaurantId, providerId],
+    enabled: open && Boolean(restaurantId),
+    queryFn: async () => {
+      const { data } = await apiClient.get<{
+        code: string | null;
+        basis: 'vendor_paper' | 'house' | null;
+        sentence: string;
+      }>('/procurement/agreement-currency', {
+        params: providerId ? { providerId } : undefined,
+      });
+      return data;
+    },
+  });
+  const offeredCurrency = currencyDefaultQuery.data?.code ?? null;
+  const currencyToRecord = resolveCurrency(currencyChoice, offeredCurrency);
+
+  // A negative fee is refused by the database CHECKs — the direction is carried
+  // by the field's name, never by a sign — so a typed minus reads as UNSTATED
+  // here rather than as a number the save would 400 on.
+  const fee = (v: string): number | null => {
+    const n = num(v);
+    return n !== null && n >= 0 ? n : null;
+  };
+  const fees: AgreementFees = useMemo(
+    () => ({
+      allowance: fee(allowance),
+      deposit: fee(deposit),
+      freight: fee(freight),
+    }),
+    [allowance, deposit, freight],
+  );
+
   const total = useMemo(
     () =>
       agreementTotal({
@@ -195,8 +262,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
         quantity: qty,
         unitType,
         bottlesPerUnit: packNum,
+        fees,
       }),
-    [priceNum, stated, qty, unitType, packNum],
+    [priceNum, stated, qty, unitType, packNum, fees],
   );
 
   const orderPackMissing = isMultiplying(unitType) && (packNum == null || packNum < 1);
@@ -218,6 +286,10 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
     setPrice('');
     setPriceUom('');
     setPricePackSize('');
+    setAllowance('');
+    setDeposit('');
+    setFreight('');
+    setCurrencyChoice(null);
     setFailure(null);
   };
 
@@ -240,6 +312,16 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
         finalPrice: priceNum,
         priceUom: stated?.priceUom,
         pricePackSize: stated?.pricePackSize,
+        // `undefined` where the desk stated nothing, so the key never reaches
+        // the wire and the column keeps NULL. Sending 0 would record that this
+        // vendor charges no deposit, which nobody said.
+        allowance: fees.allowance ?? undefined,
+        deposit: fees.deposit ?? undefined,
+        freight: fees.freight ?? undefined,
+        // The confirmed default, or the person's change, or nothing at all.
+        // Never `|| 'USD'` — that fallback is what put dollars on a restaurant
+        // in Fethiye for seven months (ADR 0117 Q25/Q31).
+        currency: currencyToRecord ?? undefined,
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       reset();
@@ -485,6 +567,97 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
                 are posted separately for the same wine.
               </Note>
             )}
+        </fieldset>
+
+        {/* ── the money all of it is in ───────────────────────────────── */}
+        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={labelStyle}>What money this is in</legend>
+          <select
+            id="ag-currency"
+            data-testid="agreement-currency"
+            aria-label="Currency"
+            style={{ ...fieldStyle, width: '100%' }}
+            value={currencyChoice ?? offeredCurrency ?? ''}
+            onChange={(e) => setCurrencyChoice(e.target.value)}
+          >
+            <option value="">Not stated — record no currency on this line</option>
+            {CURRENCY_CODES.map((code) => (
+              <option key={code} value={code}>
+                {currencyLabel(code)}
+              </option>
+            ))}
+          </select>
+          <Note>
+            {currencyDefaultQuery.isLoading
+              ? 'Working out what this vendor usually bills in…'
+              : currencyToRecord
+                ? currencyChoice === null && currencyDefaultQuery.data?.sentence
+                  ? currencyDefaultQuery.data.sentence
+                  : `This line will be recorded in ${currencyToRecord}.`
+                : (currencyDefaultQuery.data?.sentence ??
+                  'Nothing will be recorded, and every amount on this line will read as “currency not recorded”.')}{' '}
+            Every amount above is in it — the price, the total, and each of the
+            three charges below. Nothing is converted anywhere: a comparison
+            across two currencies refuses rather than guessing a rate.
+          </Note>
+        </fieldset>
+
+        {/* ── the money outside the price of the wine ─────────────────── */}
+        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={labelStyle}>What else the agreement charges</legend>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr 1fr' }}>
+            <div>
+              <label style={{ ...labelStyle, letterSpacing: '0.08em' }} htmlFor="ag-allowance">
+                Allowance (off)
+              </label>
+              <input
+                id="ag-allowance"
+                data-testid="fee-allowance"
+                inputMode="decimal"
+                placeholder="none"
+                style={{ ...fieldStyle, fontFamily: MONO }}
+                value={allowance}
+                onChange={(e) => setAllowance(e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ ...labelStyle, letterSpacing: '0.08em' }} htmlFor="ag-deposit">
+                Deposit (on)
+              </label>
+              <input
+                id="ag-deposit"
+                data-testid="fee-deposit"
+                inputMode="decimal"
+                placeholder="none"
+                style={{ ...fieldStyle, fontFamily: MONO }}
+                value={deposit}
+                onChange={(e) => setDeposit(e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ ...labelStyle, letterSpacing: '0.08em' }} htmlFor="ag-freight">
+                Freight (on)
+              </label>
+              <input
+                id="ag-freight"
+                data-testid="fee-freight"
+                inputMode="decimal"
+                placeholder="none"
+                style={{ ...fieldStyle, fontFamily: MONO }}
+                value={freight}
+                onChange={(e) => setFreight(e.target.value)}
+              />
+            </div>
+          </div>
+          <Note>
+            Each is for the whole line, entered as a positive amount — the field says which way
+            it goes. Left empty they are not recorded at all, which is not the same as recording
+            a zero. They stay OUT of the price above on purpose: a deposit folded into the price
+            of the wine becomes a permanent price rise on a bottle that will be refunded.
+          </Note>
+          {/* A split case is its own line, so there is no split-case fee field
+              here and there is not going to be one. The vocabulary carries it:
+              price the broken case per split case, on its own agreement. */}
         </fieldset>
 
         {/* ── the total, drawn from the pair, with its working ────────── */}

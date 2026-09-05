@@ -45,10 +45,17 @@ const cancelMock = vi.hoisted(() => ({
   isPending: false,
 }));
 const mintMock = vi.hoisted(() => vi.fn(async (): Promise<string | null> => 'seal-token'));
+// ADR 0125: rejecting mints its own token, for the act `cancel`.
+const cancelMintMock = vi.hoisted(() =>
+  vi.fn(async (): Promise<string | null> => 'cancel-seal-token'),
+);
 const convosMock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 const proposalMock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
-vi.mock('@/services/api/orders', () => ({ mintOrderSeal: mintMock }));
+vi.mock('@/services/api/orders', () => ({
+  mintOrderSeal: mintMock,
+  mintOrderCancelSeal: cancelMintMock,
+}));
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
   useApproveOrder: () => approveMock,
   useCancelOrder: () => cancelMock,
@@ -117,7 +124,16 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     bottlesTotal: 60,
     unitType: 'case',
     priceUnit: { read: true, stated: { priceUom: 'case', pricePackSize: 12 } },
-    agreement: { ok: true, total: 2100, working: '5 cases at $420.00 per case.' },
+    // ADR 0119 Q3: the list route reads the line's fee columns, and this
+    // agreement names none. `read: true` with three nulls is "looked, found
+    // nothing"; `read: false` would be "never looked".
+    fees: { read: true, fees: { allowance: null, deposit: null, freight: null } },
+    agreement: {
+      ok: true,
+      goods: 2100,
+      total: 2100,
+      working: '5 cases at $420.00 per case.',
+    },
     computedTotal: 2100,
     listedTotal: 2100,
     total: 2100,
@@ -155,6 +171,8 @@ beforeEach(() => {
   cancelMock.isPending = false;
   mintMock.mockReset();
   mintMock.mockResolvedValue('seal-token');
+  cancelMintMock.mockReset();
+  cancelMintMock.mockResolvedValue('cancel-seal-token');
   convosMock.current = { data: [convo()], isError: false, error: null };
   proposalMock.current = { data: null };
 });
@@ -363,28 +381,50 @@ describe('stepping between answers', () => {
 /* ── the two acts ────────────────────────────────────────────────────────── */
 
 describe('reject', () => {
-  it('will not send without a reason, and says why', () => {
+  it('will not send without a reason, and says why', async () => {
     mount();
     hold(rejectDie());
-    expect(cancelMock.mutate).not.toHaveBeenCalled();
-    expect(screen.getByTestId('reject-needs-reason')).toHaveTextContent(
-      REJECT_NEEDS_A_REASON.slice(0, 40),
+    await waitFor(() =>
+      expect(screen.getByTestId('reject-needs-reason')).toHaveTextContent(
+        REJECT_NEEDS_A_REASON.slice(0, 40),
+      ),
     );
+    expect(cancelMock.mutate).not.toHaveBeenCalled();
+    // ADR 0125: a missing reason stops the gesture at the MINT, so no seal is
+    // spent and none is even asked for.
+    expect(cancelMintMock).not.toHaveBeenCalled();
   });
 
-  it('sends the reason the desk wrote, to the route that exists', () => {
+  it('mints a cancel seal when the hold begins and carries it onto the write', async () => {
     mount();
     fireEvent.change(screen.getByTestId('reject-reason'), {
       target: { value: 'Price is 18% over what we last paid.' },
     });
     hold(rejectDie());
+    await waitFor(() => expect(cancelMock.mutate).toHaveBeenCalled());
+    expect(cancelMintMock).toHaveBeenCalledWith('o-1');
     expect(cancelMock.mutate).toHaveBeenCalledWith(
-      { orderId: 'o-1', reason: 'Price is 18% over what we last paid.' },
+      {
+        orderId: 'o-1',
+        reason: 'Price is 18% over what we last paid.',
+        challenge: 'cancel-seal-token',
+      },
       expect.anything(),
     );
   });
 
-  it('states what the hold on a rejection does NOT prove', () => {
+  it('cancels nothing at all when the cancel seal cannot be minted', async () => {
+    cancelMintMock.mockResolvedValue(null);
+    mount();
+    fireEvent.change(screen.getByTestId('reject-reason'), {
+      target: { value: 'No longer needed.' },
+    });
+    hold(rejectDie());
+    await waitFor(() => expect(cancelMintMock).toHaveBeenCalled());
+    expect(cancelMock.mutate).not.toHaveBeenCalled();
+  });
+
+  it('states what the hold on a rejection proves', () => {
     mount();
     expect(screen.getByTestId('reject-seal-note')).toHaveTextContent(
       REJECT_SEAL_NOTE.slice(0, 40),

@@ -133,8 +133,16 @@ export interface VendorTermsRow {
 export interface VendorTermsReadout {
   restaurantId: string;
   vendors: VendorTermsRow[];
-  /** ISO 4217 from `restaurants.currency`, and whether it is still the default. */
-  currency: { code: string; isColumnDefault: boolean };
+  /**
+   * ISO 4217 from `restaurants.currency`, or `null` when the house has not been
+   * asked (ADR 0117 Q25 dropped the column's `DEFAULT 'USD'` on 2026-09-05).
+   *
+   * `code: null` is the state the page must render as "currency not recorded".
+   * It is NOT a licence to print a dollar sign: `USD` was on all fourteen houses
+   * including two in Turkiye and one in London, so "no answer" and "dollars" are
+   * exactly the two things that had been indistinguishable.
+   */
+  currency: { code: string | null; isColumnDefault: boolean };
   zone: ZoneUse;
   /** How far back the inference looked, in days. */
   windowDays: number;
@@ -183,14 +191,18 @@ export const PROVIDER_COLUMN_DEFAULTS = {
 
 /**
  * `restaurants` fallbacks. `timezone DEFAULT 'America/Los_Angeles'`
- * (baseline:3575) was dropped by the same migration; `currency DEFAULT 'USD'`
- * (baseline:3576) was NOT — it was not named in the decision, and it is filed in
- * `06-pages/settings.md` §13 rather than changed in passing.
+ * (baseline:3575) was dropped by `20260903170000_a_default_is_not_an_answer.sql`.
+ * `currency DEFAULT 'USD'` (baseline:3576) was NOT touched by that file — it had
+ * not been decided — and was dropped on 2026-09-05 by
+ * `20260905120000_a_house_names_its_money.sql`, after the measurement that it
+ * said `USD` on all fourteen houses including two in Turkiye and one in London
+ * (ADR 0117 Q25).
  *
- * So the two entries below now mean different things, and the code says which:
- * the zone is a DISPLAY fallback for a house that has set none (`isColumnDefault`
- * then means "unset", and the register prints the caveat), while the currency is
- * still a live column default and `isColumnDefault` still means "equal to it".
+ * Both entries are therefore now records of what was dropped rather than values
+ * anything falls back to. The zone still has a DISPLAY fallback (the inference
+ * needs some clock to work in, and the register prints a caveat over it); the
+ * currency has none, because there is no such thing as a neutral currency to
+ * display — a guessed one is a wrong price on every line.
  */
 export const RESTAURANT_COLUMN_DEFAULTS = {
   timezone: "America/Los_Angeles",
@@ -660,15 +672,22 @@ export class VendorTermsService {
 
   private async readHouse(
     restaurantId: string,
-  ): Promise<{ zone: ZoneUse; currency: { code: string; isColumnDefault: boolean } }> {
+  ): Promise<{
+    zone: ZoneUse;
+    currency: { code: string | null; isColumnDefault: boolean };
+  }> {
     const fallback = {
       zone: {
         zone: RESTAURANT_COLUMN_DEFAULTS.timezone,
         isColumnDefault: true,
       },
+      // An UNREADABLE house is not a dollar house. This used to fall back to
+      // `USD` — so a failed read and a US restaurant produced the same readout,
+      // which is the read-failure-reported-as-an-answer fault this file names
+      // everywhere else (ADR 0117 Q25, ADR 0051).
       currency: {
-        code: RESTAURANT_COLUMN_DEFAULTS.currency,
-        isColumnDefault: true,
+        code: null,
+        isColumnDefault: false,
       },
     };
     try {
@@ -691,10 +710,22 @@ export class VendorTermsService {
           zone: row.timezone || RESTAURANT_COLUMN_DEFAULTS.timezone,
           isColumnDefault: !row.timezone,
         },
+        // A house that has answered is believed; a house that has not gets
+        // `null` and the page says "currency not recorded". Until 2026-09-05
+        // this read `row.currency || 'USD'` with `isColumnDefault` true for any
+        // stored `USD` — the only honest reading while the column defaulted to
+        // it. `20260905120000_a_house_names_its_money.sql` dropped that default,
+        // so a stored `USD` after the correction script has run is a `USD`
+        // somebody chose, exactly as the timezone above became a choice.
+        //
+        // `isColumnDefault` is kept and now means the narrower thing its name
+        // says: the value EQUALS the default this column used to carry. The
+        // three corrected houses (TRY/TRY/GBP) make it false; the ten US ones
+        // still make it true, because the migration deliberately did not clear
+        // them and nothing can yet tell a chosen USD from an inherited one.
         currency: {
-          code: row.currency || RESTAURANT_COLUMN_DEFAULTS.currency,
-          isColumnDefault:
-            !row.currency || row.currency === RESTAURANT_COLUMN_DEFAULTS.currency,
+          code: row.currency ?? null,
+          isColumnDefault: row.currency === RESTAURANT_COLUMN_DEFAULTS.currency,
         },
       };
     } catch {

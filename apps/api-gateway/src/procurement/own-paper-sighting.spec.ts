@@ -179,6 +179,11 @@ const verifyBody = {
   invoiceQuantity: 10,
   invoiceUnitPrice: 40,
   acceptedQuantity: 10,
+  // ADR 0117 Q25, founder 2026-09-05. This key was absent until then, and the
+  // module supplied `?? "USD"` behind it: every sighting in this suite asserted
+  // dollars and every one of them passed. A currency the desk did not state is
+  // now a refusal, so the happy path has to state one — which is the point.
+  invoiceCurrency: "TRY",
 } as any;
 
 // ---------------------------------------------------------------------------
@@ -207,7 +212,12 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(row.raw_price).toBe(40);
     expect(row.pack_size).toBe(1);
     expect(row.unit_volume_ml).toBe(750);
-    expect(row.currency).toBe("USD");
+    // The INVOICE's currency, off the invoice — not the house's, and not USD.
+    // Before ADR 0117 Q25 (2026-09-05) this line read `toBe("USD")` and passed
+    // while `verifyBody` stated no currency at all: `own-paper-sighting.ts`
+    // supplied `?? "USD"`. Proved against the pre-fix file, which stamps USD on
+    // this same Turkish invoice — see `own-paper-currency.spec.ts`.
+    expect(row.currency).toBe("TRY");
     expect(typeof row.content_hash).toBe("string");
     expect(row.is_outlier).toBe(false);
     // observed_at is the verification's own moment, and effective_date agrees.
@@ -226,16 +236,31 @@ describe("own paper reaches vendor_price_observations", () => {
       sendConfirmation: false,
     });
 
-    expect(calls.sightingInserts).toHaveLength(1);
-    const row = calls.sightingInserts[0];
-    expect(row.source_type).toBe("quote");
-    expect(row.trust_tier).toBe(2);
-    expect(row.source_ref).toBe(`order_confirmed:${ORDER}`);
-    expect(row.raw_price).toBe(36);
-    expect(row.pack_size).toBe(1);
-    expect(row.unit_volume_ml).toBe(750);
-    expect(row.vendor_name_raw).toBe("Vinos Iberia");
-    expect(row.restaurant_id).toBe(REST);
+    // CHANGED BY ADR 0117 Q25 (founder, 2026-09-05), and this is the cost of
+    // that decision written down rather than argued away.
+    //
+    // Until then this asserted one tier-2 quote sighting with every field the
+    // register wants. It was written because the module supplied `?? "USD"` for
+    // the currency nobody had stated. Measured on this tree, NOTHING on an
+    // agreement states a currency: neither `procurement_orders` nor
+    // `procurement_order_items` has the column. So the number was real, its
+    // pack size was real, its date was real, and its currency was invented — on
+    // a house that may be in Fethiye.
+    //
+    // `vendor_price_observations.currency` is NOT NULL, so the register can
+    // record the code or refuse the row; there is no third option. It refuses,
+    // in the sentence below, exactly as the class-D sweep already refuses
+    // `currency_unstated`. The agreement path gets its sighting back the day the
+    // agreement line names its currency — a founder question, not an assumption.
+    expect(calls.sightingInserts).toHaveLength(0);
+
+    // `price_history` is empty here too, and for a DIFFERENT and earlier
+    // reason: this order line states no `price_uom`, so ADR 0119 Q4's unit rule
+    // refuses the series row before the currency is ever considered. The two
+    // refusals are kept apart deliberately — `price-currency.spec.ts` runs the
+    // same path with a STATED unit and shows the series row being written with
+    // `currency: null`, which is the currency rule on its own.
+    expect(calls.priceHistoryInserts).toHaveLength(0);
   });
 
   it("writes no sighting for an order priced by the case, and says why", async () => {
@@ -246,8 +271,14 @@ describe("own paper reaches vendor_price_observations", () => {
     // Nothing on `procurement_orders` states the unit of `final_price`
     // separately from the order's own unit, so a 36 against a case of 12 could
     // be $36 a bottle or $3 a bottle and the register cannot tell. It is
-    // refused. price_history still takes the number, on its own inherited
-    // per-bottle claim; the REGISTER does not inherit it.
+    // refused.
+    //
+    // CHANGED BY ADR 0119 Q4 (founder, 2026-09-05). Until then this test also
+    // asserted that `price_history` STILL took the number "on its own inherited
+    // per-bottle claim" — the inherited claim being precisely the hardcoded
+    // `unit = 'BOTTLE'`. The series now carries a STATED unit, so an agreement
+    // whose line states none is refused by BOTH registers, for the same reason,
+    // and the two stop disagreeing about what the same event was.
     const { db, calls } = makeDb({
       orderRow: deliveredOrder,
       orderLineRow: { unit_type: "case", bottles_per_unit: 12 },
@@ -263,11 +294,19 @@ describe("own paper reaches vendor_price_observations", () => {
       sendConfirmation: false,
     });
 
-    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.priceHistoryInserts).toHaveLength(0);
     expect(calls.sightingInserts).toHaveLength(0);
     expect(
       logged.some(
         (l) => l.includes("the pack size is null") && l.includes('"case"'),
+      ),
+    ).toBe(true);
+    // And the series says why, in its own words rather than by omission.
+    expect(
+      logged.some(
+        (l) =>
+          l.includes("No price_history row written") &&
+          l.includes("states no unit for its price"),
       ),
     ).toBe(true);
   });
@@ -387,6 +426,11 @@ describe("decideOwnPaperSighting", () => {
     packSize: 12,
     unitVolumeMl: 750,
     observedAt: "2026-09-04T10:00:00.000Z",
+    // Stated, because a sighting without a stated currency is now refused (ADR
+    // 0117 Q25). Before 2026-09-05 this key was absent from every case here and
+    // the module supplied `?? "USD"`, which is exactly the defect: the fixture
+    // asserted dollars and nobody had to notice.
+    currency: "EUR",
   };
 
   it("keeps the case price unconverted and normalises it for the ladder", () => {
@@ -545,6 +589,7 @@ describe("priceBelowAverage over own-paper rows", () => {
       packSize: 1,
       unitVolumeMl: 750,
       observedAt: "2026-08-20T00:00:00.000Z",
+      currency: "EUR",
     });
     if (!d.write) throw new Error(d.reason);
     return d.normalizedUnitPrice;
@@ -566,6 +611,7 @@ describe("priceBelowAverage over own-paper rows", () => {
       packSize: 1,
       unitVolumeMl: 750,
       observedAt,
+      currency: "EUR",
     });
     if (!d.write) throw new Error(d.reason);
     return {

@@ -1873,3 +1873,36 @@ built here:
    still 0 rows — it is the neighbour line ADR 0111 always intended. Beer is the only
    category live today; wine still waits on a class-B or class-C wine source (NY SLA
    unverified; Wine-Searcher quote pending, Q5).
+
+### 13.x A bottle has one identity, and this page's registers can name it (ADR 0124, 2026-09-05)
+
+Answering ADR 0117 Q28 — *which pages should the shop sweep read* — put a
+**trade-item register** beside the library rather than columns on it:
+`beverage_identities` (`supabase/migrations/20260905140000_a_bottle_has_one_identity.sql`),
+keyed on `producer · name · vintage · size · pack`, with every code that names a
+bottle (GTIN, LWIN, TTB COLA, a source's item code, our own row ids) as a row in
+`beverage_identity_keys` and every proposed link waiting for a person in
+`beverage_identity_candidates`.
+
+**Why the library did not get the column, measured read-only 2026-09-05.**
+`master_wine_library.bottle_size_ml` is **750 on all 4,226 rows** — one distinct
+value, the column DEFAULT — and only **2 of 3,562** live rows name a format
+anywhere in `name`. So this page's library does not know the size of a single
+bottle it holds, and a wine sold in 750 ml and in magnum is **two trade items**
+(GS1 GTIN Management Standard 1.1 §2.3 and §2.8, read 2026-09-05) that one row
+cannot express. A library row therefore reaches an identity through a KEY
+(`mudavym:master_wine_library`), so one row may name several formats and several
+rows may name one bottle. Also measured: `upc`, `ean`, `barcode`,
+`manufacturer_sku` and `distributor_skus` are **empty on all 4,226 rows**, and
+the producer|name|vintage key already in use collapses 3,562 live rows to
+**3,525** keys (34 keys hold 71 rows, worst 3).
+
+**Nothing is backfilled and nothing auto-merges.** The migration's own assertion
+block fails if any row is written; the candidate queue starts every proposal
+`pending` at every confidence; and an exact key that names more than one identity
+is a **refusal**, not a choice — measured on Iowa's live file, 1,736 of its 9,118
+distinct UPCs do exactly that.
+
+**Founder questions this opened:** whether to take the LWIN database (it is
+**CC BY 4.0**, free, 200,000+ wines — the only real first fill available for
+wine), and who confirms a candidate. Both are in ADR 0124 §Founder-only questions.

@@ -67,8 +67,24 @@ export function fmtWeekdays(days: number[] | null | undefined): string {
  * the register prints the caveat once, at the top, rather than beside every
  * figure — which would be true and unreadable.
  */
-export function fmtMoney(value: number | null | undefined, currency: string): string {
+export function fmtMoney(
+  value: number | null | undefined,
+  /**
+   * The house's ISO 4217 code, or `null` when nobody has been asked.
+   *
+   * `null` became reachable on 2026-09-05: `restaurants.currency` carried
+   * `DEFAULT 'USD'` and every one of the fourteen production houses therefore
+   * asserted dollars, two of them in Turkiye and one in London (ADR 0117 Q25).
+   * With the default dropped, "not recorded" is a real state and this function
+   * must render it as one. It does NOT fall back to USD, and it does not print a
+   * bare symbol: a currency mark is a claim about the amount.
+   */
+  currency: string | null | undefined,
+): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EM;
+  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
+    return `${value.toLocaleString('en-GB')} (currency not recorded)`;
+  }
   try {
     return new Intl.NumberFormat('en-GB', {
       style: 'currency',
@@ -76,7 +92,7 @@ export function fmtMoney(value: number | null | undefined, currency: string): st
       maximumFractionDigits: value % 1 === 0 ? 0 : 2,
     }).format(value);
   } catch {
-    // An unknown ISO code from the column. The number is still true.
+    // A well-formed ISO code `Intl` does not know. The number is still true.
     return `${value.toLocaleString('en-GB')} ${currency}`;
   }
 }

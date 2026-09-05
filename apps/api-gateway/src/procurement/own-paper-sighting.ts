@@ -103,7 +103,13 @@ export interface OwnPaperSightingInput {
   unitVolumeMl: number | null | undefined;
   /** The event's own date, ISO. Never `now()` supplied by the caller. */
   observedAt: string | null | undefined;
-  currency?: string | null;
+  /**
+   * The DOCUMENT's own ISO 4217 code. No default: absent is a refusal (ADR 0117
+   * Q25). Never the house's `restaurants.currency` — that is what the house
+   * REPORTS in, not what this vendor billed, and production already holds a
+   * house with TRY invoices against a USD row.
+   */
+  currency: string | null | undefined;
   notes?: string | null;
 }
 
@@ -272,8 +278,42 @@ export function decideOwnPaperSighting(
     };
   }
 
+  // ADR 0117 Q25, founder 2026-09-05. This was `(input.currency ?? "USD")`:
+  // neither caller passes a currency, so every class-A sighting this register
+  // would ever hold was about to be stamped USD on no evidence — the same
+  // fabricated answer that put USD on a house in Fethiye
+  // (`restaurants.currency`, 14 of 14). It is a refusal now, and the shape is
+  // not new: the class-D sweep beside this one already refuses
+  // `currency_unstated` with the sentence "A number without its currency is not
+  // a price" (`vendor-intel/shop-reference-posting.ts:106-107`). Class A
+  // defaulting while class D refuses was the inconsistency.
+  //
+  // `vendor_price_observations.currency` is NOT NULL
+  // (`20260805154027_vendor_price_observations.sql:82`), so refuse and invent
+  // are the only two options this table allows. THE COST, STATED: until a caller
+  // states one, no class-A sighting is written. The register holds 0 rows today
+  // and has since it was built, so nothing existing is lost — but the next
+  // verified receipt writes no sighting where it would have written a USD one.
+  // A USD one about a Turkish invoice is worse than none, because a refusal is
+  // visible in the log and a wrong currency is invisible in the ladder.
+  const currencyRaw =
+    typeof input.currency === "string" ? input.currency.trim().toUpperCase() : "";
+  if (!/^[A-Z]{3}$/.test(currencyRaw)) {
+    return {
+      write: false,
+      reason:
+        `No price sighting written for ${where}: the currency is ` +
+        `${JSON.stringify(input.currency)}. A number without its currency is ` +
+        `not a price — this house's paper arrives in whatever its vendors ` +
+        `bill, and one house in production already holds TRY invoices against ` +
+        `a row that says USD. State the document's own ISO 4217 code (the ` +
+        `invoice header carries it: procurement_documents.currency) and this ` +
+        `sighting is admitted.`,
+    };
+  }
+
   const { sourceType, trustTier } = OWN_PAPER_CLASS[input.source];
-  const currency = (input.currency ?? "USD").toUpperCase();
+  const currency = currencyRaw;
 
   // `normalizeUnitPrice` returns null on exactly three inputs: a price that is
   // not a number, a pack size below 1, and a yield outside (0, 1]

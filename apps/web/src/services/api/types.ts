@@ -248,32 +248,85 @@ export function normalizeOrderStatus(raw: string | undefined | null): OrderStatu
   return map[lower] ?? 'pending';
 }
 
+/**
+ * The status vocabulary the gateway actually SENDS — `ProcurementOrderStatus`
+ * in `apps/api-gateway/src/procurement/dto/procurement.dto.ts:19`, in
+ * SCREAMING_SNAKE. `OrderStatus` above is the lowercase vocabulary this app's
+ * own screens use; the two are different alphabets and `Order.status` is the
+ * first one. Convert with `normalizeOrderStatus` — never compare a wire status
+ * to a lowercase literal.
+ */
+export type OrderWireStatus =
+  | 'PENDING'
+  | 'APPROVAL_NEEDED'
+  | 'NEGOTIATING'
+  | 'APPROVED'
+  | 'CONFIRMED'
+  | 'IN_TRANSIT'
+  | 'DELIVERED'
+  /** Accepted less than was ordered; the remainder stays open as a backorder. */
+  | 'PARTIALLY_RECEIVED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'REJECTED'
+  | 'FAILED';
+
+/**
+ * One procurement order as `GET /procurement/orders`, `/orders/pending`,
+ * `/orders/history` and `/orders/:id` send it.
+ *
+ * THIS TYPE IS A CLAIM ABOUT THE WIRE, AND IT WAS WRONG FOR MONTHS.
+ * It used to declare `unitPrice`, `totalPrice`, `wineId`, `providerName`,
+ * `wineProducer`, `notes`, `createdAt`, `updatedAt` and `recurrence` — nine
+ * names `OrderResponseDto` has never sent. Nothing failed: `formatMoney(
+ * undefined)` is `"$0"`, `a ?? b * c` is `NaN`, `x || y * 0` is `0`, and
+ * `typeof x === 'number'` is false so the clause vanishes. Every one of those
+ * readings type-checked, and three of them printed a confident wrong number on
+ * a screen a human approves money from. Measured 2026-09-05 (ADR 0119 §13.11).
+ *
+ * The key set below is now exactly `OrderResponseDto`
+ * (`apps/api-gateway/src/procurement/dto/procurement.dto.ts:699`), optional
+ * where the DTO is optional, and `scripts/check_web_reads_gateway_dto_keys.py`
+ * fails CI if the two drift apart again. Add a key here only after the DTO
+ * declares it.
+ */
 export interface Order {
   id: string;
+  orderNumber: string;
   restaurantId: string;
-  wineId: string;
+  /** The inventory row this order is for. There is no `wineId` on the wire. */
+  inventoryId: string;
   providerId: string;
-  inventoryId?: string;
+  /** In `unitType`, NOT necessarily in bottles. `bottlesTotal` is the bottles. */
   quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  status: OrderStatus;
-  requestedAt: string;
+  unitType?: string;
+  bottlesTotal?: number;
+  quotedPrice?: number;
+  negotiatedPrice?: number;
+  /** The agreed price per `priceUom`. This is the field the old `unitPrice` meant. */
+  finalPrice?: number;
+  /** The order's total. This is the field the old `totalPrice` meant. */
+  totalCost?: number;
+  status: OrderWireStatus;
+  requestedAt?: string;
   approvedAt?: string;
   deliveredAt?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  // Joined fields
+  completedAt?: string;
+  isEmergency?: boolean;
+  priorityLevel?: number;
+  /** Joined from `inventory.wine_name`. There is no producer and no vendor name. */
   wineName?: string;
-  wineProducer?: string;
-  providerName?: string;
-  orderNumber?: string;
-  recurrence?: {
-    frequency: 'daily' | 'weekly' | 'monthly';
-    interval?: number;
-    nextDate?: string;
-  };
+  /**
+   * The unit `finalPrice` is stated in — ADR 0119, read from the order LINE.
+   * THREE values: a unit; `null` (the line was read and states none, which is
+   * the price register's refusal); or the KEY ABSENT (this route does not read
+   * the line and knows nothing either way). Only `/procurement/orders` and
+   * `/orders/history` carry them. Reading absent as "unstated" is the
+   * absence-reported-as-health fault — use `undefined` vs `null` deliberately.
+   */
+  priceUom?: string | null;
+  /** Bottles in one `priceUom`. Travels with it: both, neither, or both absent. */
+  pricePackSize?: number | null;
 }
 
 export interface CreateOrderRequest {

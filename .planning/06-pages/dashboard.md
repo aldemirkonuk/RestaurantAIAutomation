@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-09-03
+updated: 2026-09-05
 links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[calendar]]", "[[wines]]"]
 ---
 
@@ -88,10 +88,44 @@ while the flag is off — `apps/web/src/pages/dashboard/next/`):
       calling `ProcurementService.markDelivered`, and the card then says how many
       bottles were booked, from what the gateway recorded. Proven, then done, then
       recorded — in that order.
-    - **A written action is a record and gets a plain button.** The wax is rationed
-      to the act that moves the house's stock (§13.10's question, answered): a die
-      meaning "recorded" beside a die meaning "done" is how the seal stops meaning
-      anything.
+    - **A written action is a record. How it CLOSES is being tried both ways**
+      (added 2026-09-05 the same day, the founder: *"lets try both, 80 percent
+      simple 20 percent signature"*). Eighty per cent of houses get the plain
+      button; twenty get the hold. The arm is the gateway's, per house,
+      deterministic, and frozen the first time it is asked
+      (`GET /ux/experiments/note_close_control` →
+      `apps/api-gateway/src/ux-optimizer/experiments.ts`, table
+      `ux_experiment_assignments`). The browser never chooses one. ADR 0127.
+      - **The die on a note is a GESTURE, not a seal, and the card says so** — no
+        `onChallenge` is passed, nothing is minted, nothing is redeemed. The
+        original objection is not withdrawn and is what the experiment is for: a
+        die meaning "recorded" beside a die meaning "done" is how the seal stops
+        meaning anything (§13.10's answer, now under test rather than settled).
+        **Measured cost, in the captures:** at rest the two holds are visually
+        identical and only the sentence above each tells them apart.
+      - **Exposure and outcome go to `neural_footprint_event`** as
+        `subject_type: 'operator'` — the first operator rows anything writes;
+        until now the model client was the only writer and it writes `'agent'`.
+        Three events in both arms — `exposed`, `completed`, `abandoned` — with
+        the arm stamped by the SERVER from the stored assignment, never sent by
+        the browser. Time-to-complete rides on `duration_ms` and is measured from
+        EXPOSURE, because press-to-complete would compare 0ms against `pour.ms`'s
+        620 by construction.
+      - **When the arm cannot be read, the card draws the plain control, SAYS it
+        is a fallback rather than an assignment, and records nothing at all.**
+        The server would stamp this house's stored arm, which may be the die, and
+        filing a plain exposure under the die is worse than not counting it.
+      - **The counts are a floor and the page says so.** A tab closed outright
+        records no abandon (the web app may not reach the gateway with a
+        keepalive fetch — `__tests__/no-raw-gateway-fetch.test.ts`); both arms
+        lose exactly the same cases.
+    - **The report line sits in the page's own signature footer**, not on
+      `/notifications` and not inside the panel. The day-book is a RECORD, which
+      is the argument that moved the desk off it (§1b, [[notifications]] §1b) and
+      applies to a running tally just as much; and putting the count under the
+      card it counts is the surest way to change what it measures. It prints
+      counts and the ratio, never a comparison. **It can only ever show this
+      house's own arm** — see §9.
     - **Every other act is disabled and says what is not built** — the reorder in
       particular, because placing the order needs a vendor and an agreed price the
       card does not carry and would open a priced negotiation with the vendor. The
@@ -255,6 +289,23 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
 
 ## 9. Gaps
 
+**The hold-to-approve seal read "Hold to approve · $0" over real orders — FIXED
+2026-09-05.** `WaitingOnYou.tsx` read `o.totalPrice` and `o.unitPrice` off the shared
+`Order` type; `OrderResponseDto` sends `totalCost` and `finalPrice` and has never sent
+those two. `formatMoney(undefined)` returns the string `"$0"`, so the money column, the
+`60 × $0` working AND the die a person holds to spend the money all read zero. Fixed
+here, on `DayDetail.tsx` (`60 × $0 · $0`) and on `useDashboardPage.ts`/`Dashboard.tsx`
+(top-wines spend summed from zeroes); `money()` is the em dash for an absent figure and
+`approveLabel()` drops the clause entirely rather than putting a dash on the die, where
+it reads as a rendering fault. Two new cases in `WaitingOnYou.seal.test.tsx` pin both.
+The full consumer audit is `06-pages/orders.md` §13.16; the guard is
+`scripts/check_web_reads_gateway_dto_keys.py`.
+
+**The vendor name on the queue and the day panel is gone, not fixed.** Both printed the
+literal word "vendor" off `providerName`, which the route does not send. The clause is
+removed rather than faked; `v3.0-TECH-DEBT.md` "The orders wire" item 1 carries the two
+ways to get a real name. *Blocker: founder.*
+
 - `pages/Dashboard.tsx:267` fetches `'/api/v1/calendar/ical-token'` **relative to the SPA
   origin**, bypassing `VITE_API_GATEWAY_URL` — works only where the web host proxies the
   gateway; every other page uses the absolute base (e.g. `pages/Settings.tsx:159`).
@@ -263,6 +314,34 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
   row ([ENDPOINTS](../foundation/ENDPOINTS.md):197) still reads "unguarded" and is stale.
 - `v3.0-TECH-DEBT.md:502` — dashboard profile card dead-click claim (L102) is *unverified,
   not confirmed*; the one-tap auth hole it fed is closed (`v3.0-TECH-DEBT.md:409`).
+
+**The note-control experiment's report cannot answer the question it exists for
+(2026-09-05, stated not hidden).** Every read on the `ux` controller is scoped to
+the caller's restaurant, and assignment is per HOUSE, so a house is on exactly one
+arm and `GET /ux/experiments/:key/report` **can only ever show that arm's
+figures**. The cross-arm comparison the 80/20 ratio exists to settle is a
+cross-tenant read, and no role in this codebase grants one — there is no founder
+or platform-admin role; `role` on the JWT is per-restaurant (`jwt.strategy.ts:56`).
+Printing `plain: 0` beside a die house's real numbers was refused: it would read as
+a verdict against an arm nobody here was shown. The footer line therefore names
+what it cannot show and why. *Blocker: founder — see ADR 0127's open questions.*
+Two further floors, both stated on the line: an abandon is lost when a tab is
+closed outright, and nothing is recorded at all while the arm is unreadable.
+
+**The experiment's die may land on nobody, or on the only tenant that matters.**
+Measured 2026-09-05: the one house the local gateway reaches
+(`550e8400-e29b-41d4-a716-446655440000`, `GET /auth/me`) hashes to bucket **99 —
+the die arm**. Production held ten restaurants and one real tenant at the last
+count, so a 20% per-house split over that population is a coin flip about whether
+either arm contains real traffic. A ratio is honoured; a sample is not guaranteed.
+
+**Nothing has recorded a single row yet, and the table does not exist in
+production.** `GET /ux/experiments/note_close_control/report` against the live
+gateway answered **500 — "Could not find the table
+'public.ux_experiment_assignments' in the schema cache"** (curl, 2026-09-05),
+which is the read failing as a failure rather than as an empty report. Both halves
+also need §13.13's producer before a real card is ever raised: `custom` notes are
+written by people, so the note arm can be exercised today, but the desk is empty.
 
 **Found while moving the one-tap desk here (2026-09-03).** Both are outside this
 page's paths; neither was built here, and the rail panel states both in words.
@@ -467,10 +546,14 @@ the two or three actions worth doing before service, each of which actually happ
    and permission context, so no page can contribute one today. Mirrored in
    [[notifications]] §13.14.
 10. ~~**Decide whether two `HoldToApprove` dies on one screen is one too many**~~
-   **ANSWERED 2026-09-05** (§1b): the wax now sits only where a write leaves the
-   page. The rail's die moved off the written note — which is a record — and onto
-   the delivery confirmation, which books stock. Both dies on this page are now
-   redeemed seals rather than asserted ones.
+   **ANSWERED 2026-09-05, then REOPENED AS AN EXPERIMENT the same day.** The first
+   answer (§1b) was that the wax sits only where a write leaves the page: the
+   rail's die moved off the written note and onto the delivery confirmation. The
+   founder then asked for both — *"lets try both, 80 percent simple 20 percent
+   signature"* — so in the die arm two `HoldToApprove` controls DO sit on one
+   screen, one sealed and one not, told apart only by the sentence above each.
+   That is no longer a matter of taste to be settled in a doc: it is
+   `note_close_control`, and it ends when a person reads the counts (ADR 0127).
 
 **Added 2026-09-04 — the seal reached this card.**
 
@@ -501,9 +584,70 @@ the two or three actions worth doing before service, each of which actually happ
 14. **Make the reorder real behind a vendor and a price**, when there is a card that
    carries both and a decision about the auto-send gate. Until then it is disabled
    and says why, which is the honest state, not a placeholder.
-15. **Decide whether `markDelivered` should refuse an already-delivered order itself.**
-   The refusal lives in `one-tap-actions.service.ts` today (both on the mint and on
-   the write), because that is the caller this pass owns — but
-   `procurement.service.ts:2868-2878` books `quantity_received` and moves stock every
-   time it is called, so the same double-booking is available to every other caller
-   of it. *Owner: `procurement/`.*
+15. ~~**Decide whether `markDelivered` should refuse an already-delivered order itself.**~~
+   ✅ **CLOSED 2026-09-05 — founder: "harden it in the procurement service for every
+   caller."** `markDelivered` now reads the order's state before any write and refuses a
+   second delivery with `409 { reason: "order_already_delivered", orderId, status,
+   deliveredAt, message }`; the same rule is the UPDATE's own `status=not.in.(...)` WHERE
+   clause, so the loser of two simultaneous confirmations loses at the database rather
+   than at the read. The set is `ORDER_GOODS_ARRIVED_STATUSES` (DELIVERED,
+   PARTIALLY_RECEIVED, COMPLETED), **imported** from `order-transitions.ts` (ADR 0125) so
+   the rule that stops a second delivery and the rule that stops a cancellation cannot
+   drift. Sentences and reason codes in `procurement/delivered-once.ts`.
+   **The one-tap refusal stays, and stays first**, widened to the same set: the seal is
+   minted and redeemed *before* `markDelivered` runs, so a refusal arriving only from the
+   service would burn a one-shot seal on an act the house was always going to decline.
+   **What the double-booking actually was, measured** rather than repeated: a second
+   `markDelivered` on the same order did **not** double-book the live ledger —
+   `apply_stock_movement` returns the existing transaction for a seen
+   `p_idempotency_key` and the key is `order-delivered-live:{orderId}`, one per order.
+   What it *did* do every time was overwrite `delivered_at` and `received_by`, reset
+   `quantity_received` to the full ordered count, and write `status` backwards (COMPLETED
+   and PARTIALLY_RECEIVED both silently became DELIVERED again). The real double-book is
+   the neighbouring one and is why PARTIALLY_RECEIVED is refused too: the receiving door
+   books under `door-receipt:{eventId}` and this path under
+   `order-delivered-live:{orderId}` — different keys, nothing dedupes them, so a door
+   count of 3 followed by a tap booked 3 + 12 = 15 on a twelve-bottle order.
+   *Owner: `procurement/`. Pinned by `procurement/tests/delivered-once.spec.ts`.*
+
+16. **`WaitingOnYou` still has no Reject.** Measured 2026-09-05 (ADR 0125's census):
+   `grep -n -i 'reject\|cancel\|decline\|dismiss'` over `dashboard/next/WaitingOnYou.tsx`
+   returns **zero hits** — the card approves and nothing else. Now that a cancellation is
+   a checked, sealed transition with a required reason
+   (`components/orders/SealedRejectDie.tsx`, one control, already used by the legacy desk
+   and available to any surface), giving this card the other half is a small change and a
+   real decision: the one-tap desk is where a manager clears a queue, and a queue you can
+   only say yes to is not a decision surface. *Blocker: founder — it is a new act on the
+   dashboard, not a defect.*
+
+**Added 2026-09-05 — the note's closing control became a measured question.**
+
+17. **Give someone a way to read BOTH arms.** `GET /ux/experiments/:key/report` is
+   tenant-scoped like every read on that controller, and assignment is per house, so
+   the footer line can only ever print this house's own arm. The founder's question —
+   which control closes more notes — is a cross-tenant read, and no role in this
+   codebase grants one. Three shapes were considered and none is this pass's to
+   choose: a founder-scoped read; cross-house aggregates served to any authenticated
+   caller (counts only, but with ~one real tenant that is close to serving that
+   tenant's own data to everyone); or a k-anonymity floor, which with today's
+   population would return nothing for months and hide exactly the data that was
+   asked for. *Blocker: founder — ADR 0127's first open question.*
+18. **Decide what ends the experiment.** Nothing in the code stops
+   `note_close_control` running forever, and an experiment left running is a product
+   with two faces. Name the trigger — a count, a date, or a look — and when it fires
+   the winning arm becomes the control, the spec object is deleted and the assignment
+   rows are kept as the record of what was shown. *Blocker: founder — ADR 0127's
+   second open question.*
+19. **Record an abandon when the tab is closed.** Today an abandon is written only on
+   unmount, so a tab closed outright counts nothing and every abandon figure is a
+   floor. The fix is a `fetch({keepalive})` — which `apps/web/src/lib/uxSignals.ts`
+   already has an allowlist entry for — plus a `pagehide` handler. It needs an entry
+   in `apps/web/src/__tests__/no-raw-gateway-fetch.test.ts`, which is a shared file
+   this pass did not own. Both arms lose the same cases, so the comparison holds and
+   only the absolute number is understated.
+20. **Turn the client friction reporter on, or retire it.** §5 still reads "None":
+   `lib/uxSignals.ts` is gated on `VITE_UX_OPTIMIZER` and its only importer has zero
+   call sites. The experiment deliberately does NOT route through it — exposures go
+   straight to `neural_footprint_event` — which means the ux-optimizer now has two
+   telemetry paths, one live and one dark. That is a fork worth closing in one
+   direction or the other rather than leaving.

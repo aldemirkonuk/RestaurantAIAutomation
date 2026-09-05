@@ -178,6 +178,15 @@ OFF by default; with it off `Settings.tsx` renders byte-for-byte):
 - **Calendar**: the Outlook/Apple/Google steps are filed under *Untested* with
   the `Content-Disposition: attachment` suspect named, and regeneration is an
   armed two-click confirm that states it breaks every existing subscription.
+- **Currency (register 05, group "The house")** — the money this house reports
+  in, with the code or "currency not recorded", the country's default OFFERED
+  and stated in words before Record writes it, the date it was last *stated*
+  (from the audit trail, never `restaurants.updated_at`), and a select disabled
+  for anyone who is not a manager or owner. `PUT /settings/currency` is gated by
+  `assertCanManageRestaurant` and validates `^[A-Z]{3}$` — exactly what
+  `restaurants_currency_check` allows. The same field is on the legacy page
+  (`ReportingCurrencySection`, `pages/Settings.tsx`), because the rebuild is
+  behind a flag and a house without it must still be able to answer.
 - **Not rebuilt, deliberately**: the five modal dialogs (invite, add location,
   create/assign chain, edit branch) and the two labour/goals panels are the
   shipping components, mounted as-is — capability kept, visual seam accepted
@@ -844,6 +853,19 @@ accepted from the caller):
 
 There is deliberately **no** write or delete route on `/settings-audit`.
 
+**Added 2026-09-05 — the currency field (§13.35).** These two are on BOTH pages,
+because the rebuild is behind a flag:
+
+| Method | Path | Gateway | Call site |
+|---|---|---|---|
+| GET | `/settings/currency` | `settings/settings.controller.ts` → `settings/house-currency.service.ts` | `useSettingsNextData.ts` — `houseCurrency` remote, keyed `?tab=currency`; legacy `ReportingCurrencySection` (`pages/Settings.tsx`) |
+| PUT | `/settings/currency` | same | `useSettingsNextData.ts` — `saveCurrency`; legacy `ReportingCurrencySection` |
+
+The GET is not role-gated (a member may read what money the figures they are
+looking at are in); the PUT is owner/manager-only through
+`assertCanManageRestaurant` and validates `^[A-Z]{3}$`, which is
+`restaurants_currency_check` verbatim.
+
 Most member/chain calls are raw `fetch` with a manually attached Bearer token
 (`Settings.tsx:769-880`) rather than `apiClient`.
 
@@ -913,6 +935,22 @@ Layout chrome per dashboard.md §7.
 
 ## 9. Gaps
 
+- **Closed 2026-09-05 — a house could not state its own currency.** After the
+  Q30 clearing pass, eleven of the fourteen production houses hold
+  `restaurants.currency = NULL` and print "currency not recorded" against every
+  money figure. Until today the only writer in the entire product was the
+  sign-up form, so those eleven were told a true thing they had no way to act
+  on. `GET`/`PUT /settings/currency` and the Currency register (§1a) are the
+  field; §13.35 is struck accordingly.
+- **Still open here**: nothing clears a stated currency back to NULL. That was
+  done once, by `scripts/correct_restaurant_currency.py` under the founder's
+  explicit word, and this register deliberately does not offer it — a button
+  that silently un-answers the question every money figure depends on is not the
+  same act as answering it. If a house needs it, it is a founder call.
+- **A currency with no trail row cannot be dated.** `statedAt` comes from
+  `system_audit_log`, so a code set before this route existed (or by the
+  correction script) shows an em dash naming both possibilities rather than
+  substituting `restaurants.updated_at`, which moves for any change to the row.
 - Raw-`fetch`-with-manual-token pattern (§4) bypasses `apiClient` interceptors —
   same inconsistency as dashboard.md §9.
 - Phase 30 iCal: "no external calendar client has ever confirmed the feed
@@ -1745,3 +1783,71 @@ cleared to edit, so each is filed rather than built):
     public.tmp_dropped_report_clocks_20260904;`, nothing reads it, and a
     snapshot kept indefinitely stops being a record of an erasure and becomes a
     second copy of the erased answers. Both drops can be one migration.
+
+### 13.34 — the house's currency stopped being a default, and this page shows it
+
+**Done 2026-09-05, ADR 0117 Q25.** `20260903170000_a_default_is_not_an_answer.sql`
+dropped `restaurants.timezone`'s default and explicitly left
+`restaurants.currency DEFAULT 'USD'` standing, filing it here because it had not
+been decided. It has been now: measured on production, that default had put
+`USD` on **all fourteen** houses including two in Türkiye and one in London.
+`20260905120000_a_house_names_its_money.sql` drops it and adds an ISO-4217-shape
+CHECK.
+
+What changed on this page: `VendorTermsSection` now distinguishes **two states
+that used to be one**. `reg.currency.code === null` means nobody has been asked
+and the panel says so in a sentence; a stored `USD` still carries the older
+"this was also the column's default" caveat, because the migration deliberately
+did NOT clear the ten US houses that already hold it and nothing can yet tell a
+chosen `USD` from an inherited one (that is Q30, and it is a write).
+`lib/mudavym/format.ts`'s `fmtMoney` takes `string | null` and renders an
+unrecorded currency as `1,200 (currency not recorded)` — never a symbol, because
+a currency mark is a claim about the amount.
+
+Still open here: `manager_preferences.report_timezone` and
+`manager_report_profiles.timezone` (§13.32's neighbours) are untouched. ~~and so
+is whether `/settings` should let a house SET its currency at all — today the
+only place it can be stated is the sign-up form.~~ **Answered 2026-09-05: it
+does — see §13.35.**
+
+### 13.35 — after the clearing pass, this page is where the answer has to live
+
+**Raised 2026-09-05, ADR 0117 Q30/Q35.** The founder's call — *"Clear all eleven
+to unrecorded; the onboarding step asks"* — sets `restaurants.currency` to NULL
+on every house still carrying the old column default. Eleven qualify.
+
+`VendorTermsSection` already renders that state honestly ("this house has not
+recorded the money it reports in"), which is §13.34's work. What it does not do
+is offer to fix it, and **the sign-up form is the only place in the product that
+can set a currency at all**. So after the apply, eleven houses are told a true
+thing they have no way to act on — which is the shape this page exists not to
+have.
+
+The fix is a field, not a decision: `/settings` writes `restaurants.currency`
+through the same shape the sign-up step uses (`lib/currency.ts`
+`currencyToRecord`, the ISO-4217 picker, "not recorded" as a real answer). It
+should land before the clearing pass gets far ahead of it.
+
+**CLOSED 2026-09-05.** Both pages carry the field.
+
+* Gateway — `apps/api-gateway/src/settings/house-currency.service.ts`, routed as
+  `GET /settings/currency` and `PUT /settings/currency`
+  (`settings.controller.ts`). The write is gated by
+  `assertCanManageRestaurant` (the same helper the flags and the thresholds
+  call), validates `^[A-Z]{3}$` — the migration's own CHECK, so a value the
+  route accepts is a value the database accepts — and files a
+  `reporting_currency_changed` row in `system_audit_log` naming the actor and
+  both codes. The receipt travels back as `audited` / `auditReason`, so an
+  audit row that failed is visible rather than assumed.
+* Rebuilt page — register 05 "Currency" under *The house*
+  (`pages/settings/next/CurrencySection.tsx`). The country's default is
+  OFFERED and stated in a sentence before Record writes it; nothing is ever
+  written by opening the page.
+* Legacy page — `ReportingCurrencySection` (`pages/Settings.tsx`, section
+  `?tab=currency`), the same three rules, because the rebuild is behind a flag.
+
+Also closed here: the §13.34 tail asking *"whether `/settings` should let a
+house SET its currency at all"*. It does.
+
+Not closed: `manager_preferences.report_timezone` and
+`manager_report_profiles.timezone` are still untouched.

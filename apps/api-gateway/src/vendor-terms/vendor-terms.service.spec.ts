@@ -320,8 +320,16 @@ describe("VendorTermsService — the house's own zone and currency", () => {
    * `restaurants.timezone DEFAULT 'America/Los_Angeles'` was dropped by
    * `20260903170000_a_default_is_not_an_answer.sql`, so a house reading Los
    * Angeles today CHOSE Los Angeles. `restaurants.currency DEFAULT 'USD'`
-   * (baseline:3576) was NOT dropped — it was not named in the founder's
-   * decision — so a USD is still unattributable and still flagged.
+   * (baseline:3576) was dropped a fortnight later by
+   * `20260905120000_a_house_names_its_money.sql` (ADR 0117 Q25), after the
+   * measurement that it read USD on all fourteen production houses including two
+   * in Turkiye and one in London.
+   *
+   * The two columns are still not symmetrical, and the tests below say why: the
+   * zone keeps a DISPLAY fallback because the inference needs some clock to work
+   * in, while the currency has none — there is no neutral currency, and a
+   * guessed one is a wrong price on every line. So an unanswered currency is
+   * `code: null`, and every screen renders that as "currency not recorded".
    */
   it("BELIEVES a timezone a house has set, even the one that used to be the default", async () => {
     const { databaseService } = makeDb({
@@ -335,7 +343,10 @@ describe("VendorTermsService — the house's own zone and currency", () => {
     const audit = makeAudit();
     const out = await new VendorTermsService(databaseService, audit.service).read(RID);
     expect(out.zone).toEqual({ zone: "America/Los_Angeles", isColumnDefault: false });
-    // The currency default still stands, so a USD is still flagged.
+    // A stored USD is still FLAGGED rather than believed, and deliberately so:
+    // the migration dropped the default but did NOT clear the ten US houses that
+    // already carried its value, so nothing can yet tell a chosen USD from an
+    // inherited one. `isColumnDefault` now means exactly that and nothing more.
     expect(out.currency).toEqual({ code: "USD", isColumnDefault: true });
   });
 
@@ -353,7 +364,12 @@ describe("VendorTermsService — the house's own zone and currency", () => {
     const audit = makeAudit();
     const out = await new VendorTermsService(databaseService, audit.service).read(RID);
     expect(out.zone).toEqual({ zone: "America/Los_Angeles", isColumnDefault: true });
-    expect(out.currency).toEqual({ code: "USD", isColumnDefault: true });
+    // CHANGED BY ADR 0117 Q25 (2026-09-05). This asserted `code: "USD"` while
+    // the row's currency was NULL — the reader supplied the fallback, so a house
+    // nobody had asked and a house in Ohio produced the same readout. There is
+    // no display fallback for money: `null` reaches the page and the page says
+    // "currency not recorded".
+    expect(out.currency).toEqual({ code: null, isColumnDefault: false });
   });
 });
 

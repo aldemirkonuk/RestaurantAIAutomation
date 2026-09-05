@@ -269,6 +269,33 @@ describe('OneTapActionCenter — taps reach the server', () => {
     )
   })
 
+  it('shows the gateway\'s whole sentence when the order was already delivered', async () => {
+    // An order is delivered once (2026-09-05): the gateway answers 409 with a
+    // sentence naming the order and when it arrived, and `markOrderDelivered`
+    // promotes it onto `error.message` (orders.deliverOnce.test.ts pins that
+    // half). What this asserts is the last hop — that `failureMessage` shows
+    // the sentence rather than its own fallback, and that the card comes back
+    // so nothing reads as done.
+    const refusal =
+      'Order ORD-2026-00042 was already delivered on 2026-09-04 at 14:05 UTC. ' +
+      'An order is delivered once. Nothing was changed.'
+    seed([DERIVED_DELIVERY])
+    vi.mocked(markOrderDelivered).mockRejectedValue(
+      Object.assign(new Error(refusal), { response: { status: 409 } }),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Approve: Barolo Delivery/i))
+
+    // Query and assert in one tick — same detached-node reason as the test above.
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(refusal)
+      expect(screen.getByLabelText(/Approve: Barolo Delivery/i)).toBeInTheDocument()
+    })
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
   it('refuses to fake a reorder instead of fabricating an order id', async () => {
     seed([DERIVED_LOW_STOCK])
 

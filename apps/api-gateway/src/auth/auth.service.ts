@@ -773,6 +773,20 @@ export class AuthService {
             phone: dto.phone,
             cuisine_type: dto.cuisineType,
             timezone: dto.timezone || "America/New_York",
+            // The money this house reports in, as CONFIRMED on the form's
+            // currency step — or NULL, which means the question has not been
+            // answered and every reader must say so rather than print a dollar
+            // sign (ADR 0117 Q25, founder 2026-09-05).
+            //
+            // This key did not exist here until 2026-09-05, and its absence was
+            // the whole defect: `restaurants.currency` carried `DEFAULT 'USD'`
+            // (baseline:3576), so the column was the writer and all fourteen
+            // production houses asserted dollars — two of them in Turkiye, one
+            // in London. `20260905120000_a_house_names_its_money.sql` drops that
+            // default; naming the key here is what makes "not asked" reachable.
+            // Spelled explicitly, `?? null` rather than left off, so the
+            // capture-contract guard can read what this insert claims.
+            currency: dto.currency ?? null,
             organization_id: org.id,
             latitude: coords.latitude,
             longitude: coords.longitude,

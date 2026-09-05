@@ -108,6 +108,9 @@ export const SECTION_IDS = [
   'team', 'services', 'email', 'notifications', 'locations',
   'measurement', 'map', 'features', 'pos', 'calendar', 'cellar',
   'vendor-terms', 'thresholds', 'ledger',
+  // Appended, never inserted, for the same reason `cellar` was: an id's
+  // position is not its identity, but a bookmark is, and `?tab=` is the id.
+  'currency',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -159,6 +162,13 @@ export const SECTIONS: SectionSpec[] = [
     description: 'Who may seal an order, above what amount, and in which circumstances a second signature is wanted.' },
   { id: 'ledger', label: 'What changed here', title: 'What changed here', kind: 'restaurant', group: 'record', order: 1,
     description: 'Every setting change on this restaurant, who made it, and what it was before.' },
+  // Its own register rather than a line inside Locations, because it is not a
+  // fact about a branch: it decides what every money figure in the product
+  // MEANS. Eleven of the fourteen production houses hold NULL here as of
+  // 2026-09-05 and print "currency not recorded" everywhere (ADR 0117 Q25), and
+  // until this register there was no control anywhere that could change it.
+  { id: 'currency', label: 'Currency', title: 'Reporting currency', kind: 'restaurant', group: 'house', order: 5,
+    description: 'The money this house states its own totals in. Nothing is ever converted.' },
 ];
 
 /**

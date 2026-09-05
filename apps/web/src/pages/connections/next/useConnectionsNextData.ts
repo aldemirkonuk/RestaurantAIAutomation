@@ -105,6 +105,74 @@ export interface SenderIdentityVM {
   perHouse: { supported: boolean; reason: string };
 }
 
+/**
+ * The house's TEXT sender — the mail row's sibling (ADR 0121).
+ *
+ * `state` is the whole story and there are six of it, because "we asked", "they
+ * are looking at it" and "it is live" are three different facts a manager acts
+ * on differently. Only `connected` may send.
+ */
+export interface HouseTextSenderVM {
+  id: string;
+  channel: 'whatsapp' | 'sms';
+  path: 'bring_your_own' | 'mudavym_registers';
+  state:
+    | 'requested'
+    | 'submitted'
+    | 'in_review'
+    | 'connected'
+    | 'rejected'
+    | 'revoked';
+  stateDetail: string | null;
+  identity: string | null;
+  identityKind: 'e164' | 'alphanumeric' | null;
+  displayName: string | null;
+  market: string;
+  provider: string | null;
+  /** NULL means NEVER PROBED, which is not the same as unreachable. */
+  lastProbeAt: string | null;
+  lastProbeResult: string | null;
+  feeStated: string | null;
+  timelineStated: string | null;
+}
+
+export interface TextMarketVM {
+  market: string;
+  marketLabel: string;
+  twoWay: boolean;
+  provides: string[];
+  fee: string;
+  timeline: string;
+  refusals: string[];
+}
+
+export interface TextSenderDefinitionVM {
+  id: 'whatsapp_business' | 'sms_sender';
+  channel: 'whatsapp' | 'sms';
+  label: string;
+  providerLabel: string;
+  description: string;
+  connection: { bring_your_own: string; mudavym_registers: string };
+  revocation: string;
+  custody: string;
+  markets: TextMarketVM[];
+}
+
+export interface TextSendersVM {
+  senders: { whatsapp: HouseTextSenderVM | null; sms: HouseTextSenderVM | null };
+  readable: boolean;
+  reason: string | null;
+  catalogue: Record<'whatsapp_business' | 'sms_sender', TextSenderDefinitionVM>;
+  surveyedMarkets: { whatsapp: string[]; sms: string[] };
+  /** The server's own statement that nothing can leave yet. */
+  transport: { built: boolean; words: string };
+  myConsent: {
+    consent: { phone: string; channel: string; consentedAt: string } | null;
+    readable: boolean;
+    reason: string | null;
+  };
+}
+
 /** The four MCP behaviour hints, tri-state. Null = the server did not say. */
 export interface McpAnnotationsVM {
   readOnlyHint: boolean | null;
@@ -316,6 +384,23 @@ export function useConnectionsNextData() {
     },
     enabled: on,
     staleTime: 300_000,
+  });
+
+  /* read 3b — the TEXT senders, and what each registrar would require.
+     A separate request from the mail sender on purpose: ADR 0114 rejected one
+     `/connections/ledger` endpoint because it has exactly two answers, the
+     whole page or a 500 — so a WhatsApp read failing must not blank the row
+     that says which address the letters leave from. */
+  const textQ = useQuery({
+    queryKey: ['connections-next-text-senders', rid],
+    queryFn: async (): Promise<TextSendersVM> => {
+      const { data } = await apiClient.get<TextSendersVM>(
+        '/communications/text-senders',
+      );
+      return data;
+    },
+    enabled: on,
+    staleTime: 120_000,
   });
 
   /* read 4 — the calendar feed. Provisioned on read by the gateway, which is
@@ -762,6 +847,7 @@ export function useConnectionsNextData() {
     provider: toRegister(providerQ),
     payments: toRegister(paymentsQ),
     sender: toRegister(senderQ),
+    textSenders: toRegister(textQ),
     ical: toRegister(icalQ),
     mcp: toRegister(mcpQ),
     mcpRuntime: toRegister(mcpRuntimeQ),

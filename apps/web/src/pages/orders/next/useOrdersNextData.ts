@@ -21,6 +21,8 @@ import { num } from './format';
 import {
   PRICE_UOMS,
   agreementTotal,
+  readFeesFromWire,
+  type AgreementFees,
   readPriceUnitFromWire,
   type AgreementTotal,
   type PriceUnitReading,
@@ -77,27 +79,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const isUuid = (v: string | null | undefined): boolean => !!v && UUID_RE.test(v);
 
 /**
- * The three fields `GET /procurement/orders` sends that the shared `Order` type
- * does not yet name.
+ * What this page reads beyond the shared `Order` type.
  *
- * `finalPrice` / `totalCost` are `OrderResponseDto`'s ACTUAL keys for the two
- * figures this page prints. The shared type calls them `unitPrice` /
- * `totalPrice`, which the list route has never sent — see `toRow` for the
- * measured consequence. `bottlesTotal` and `unitType` are the two operands the
- * gateway totals with, and `priceUom` / `pricePackSize` are ADR 0119's pair.
+ * It used to carry six more: `finalPrice`, `totalCost`, `bottlesTotal`,
+ * `unitType`, `priceUom` and `pricePackSize` were declared here because the
+ * shared type named none of them — it named `unitPrice` / `totalPrice`, which
+ * the list route has never sent. On 2026-09-05 the shared type was rewritten to
+ * be exactly `OrderResponseDto`, so those six moved there and this intersection
+ * shrank to what remains genuinely local.
  *
- * Declared here rather than added to `services/api/types.ts` because that file
- * is shared with every other order surface and this pass owns only
- * `pages/orders/next`. The right home is the shared type; §13 of the page note
- * carries that as a pointer.
+ * The three fee keys stay because they are ADR 0119 Q3, still being built on the
+ * gateway side; they join the shared type when `OrderResponseDto` declares them.
+ * `scripts/check_web_reads_gateway_dto_keys.py` guards the shared type, not this
+ * intersection — a widening cast is always a way around a guard, which is why
+ * the only three keys in it are named, dated and owned.
  */
 type OrderWire = Order & {
-  finalPrice?: number | null;
-  totalCost?: number | null;
-  bottlesTotal?: number | null;
-  unitType?: string | null;
-  priceUom?: string | null;
-  pricePackSize?: number | null;
+  /** ADR 0119 Q3 — the money outside the price of the wine. */
+  allowance?: number | null;
+  deposit?: number | null;
+  freight?: number | null;
 };
 
 export interface OrderRowVM {
@@ -122,6 +123,13 @@ export interface OrderRowVM {
    * whether it said anything at all (`read`). See `readPriceUnitFromWire`.
    */
   priceUnit: PriceUnitReading;
+  /**
+   * What the route said about the money OUTSIDE the price of the wine (ADR 0119
+   * Q3) — including whether it said anything at all. `read: false` means this
+   * payload came from a route that does not read the line's fee columns, which
+   * is not the same as the agreement charging nothing.
+   */
+  fees: { read: boolean; fees: AgreementFees };
   /**
    * The total worked out from the price and ITS unit, with the working in
    * words. `null` when the operands are not all known — never a zero, and never
@@ -242,15 +250,17 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
    * not have; it was not honest about WHY. Proven by `LedgerUnit.test.tsx`
    * case 1, which fails against the pre-fix hook.
    *
-   * The shared names are kept as fallbacks rather than deleted: `useOrders` is
-   * a generic hook and a caller that does hand it the shared shape should not
-   * silently lose its prices to this fix.
+   * The `?? o.unitPrice` / `?? o.totalPrice` fallbacks that stood here until
+   * 2026-09-05 are gone with the keys themselves: the shared type no longer
+   * declares a name the route does not send, so there is nothing to fall back
+   * to and nothing that could quietly supply one.
    */
-  const unitPrice = num(o.finalPrice ?? o.unitPrice);
-  const listedTotal = num(o.totalCost ?? o.totalPrice);
+  const unitPrice = num(o.finalPrice);
+  const listedTotal = num(o.totalCost);
   const bottlesTotal = num(o.bottlesTotal);
   const unitType = readUnitType(o.unitType);
   const priceUnit = readPriceUnitFromWire(o);
+  const fees = readFeesFromWire(o);
 
   /*
    * The working, drawn from the PRICE's unit — the same arithmetic the gateway
@@ -285,24 +295,47 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
           quantity,
           unitType,
           bottlesPerUnit,
+          // Only what the route actually read. A row whose fee columns were
+          // never selected totals the goods alone — which is what it did before
+          // ADR 0119 phase 2 — rather than a total built on three assumed
+          // zeroes.
+          fees: fees.read ? fees.fees : undefined,
         })
       : null;
   const computedTotal = agreement && agreement.ok ? agreement.total : null;
 
-  const rawProvider = o.providerName && !isUuid(o.providerName) ? o.providerName : null;
-  const recurring = !!o.recurrence;
-  const freq = o.recurrence?.frequency ?? null;
+  /*
+   * The route sends NO vendor name, NO producer, NO recurrence and NO notes.
+   * All four were read off the shared `Order` type until 2026-09-05, and all
+   * four were `undefined` on every live row:
+   *
+   *   providerName  the vendor was ALREADY resolved from `providerId` through
+   *                 the providers query, so the page was right by accident —
+   *                 `rawProvider` never once won that `??`.
+   *   producer      always null, so the row's producer line never rendered.
+   *   recurrence    always absent, so `recurring` was always false: the page's
+   *                 RECURRING STATION HAS ALWAYS BEEN EMPTY and every order
+   *                 fell into "one-time". Kept false, but as a stated fact
+   *                 about the route rather than a fact about the order —
+   *                 `06-pages/orders.md` §13.12 owns the station.
+   *   notes         always null, so the note clause never rendered.
+   *
+   * Reading them again would need the route to send them; asserting them from
+   * absence is the fault this whole pass exists to remove.
+   */
+  const recurring = false;
   return {
     id: o.id,
     orderNumber: o.orderNumber ?? null,
     wineName: o.wineName && !isUuid(o.wineName) ? o.wineName : null,
-    producer: o.wineProducer ?? null,
-    providerName: rawProvider ?? providerNameById.get(o.providerId) ?? null,
+    producer: null,
+    providerName: providerNameById.get(o.providerId) ?? null,
     quantity,
     unitPrice,
     bottlesTotal,
     unitType,
     priceUnit,
+    fees,
     agreement,
     computedTotal,
     listedTotal,
@@ -310,15 +343,11 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     stage: stageOf(status),
     status,
     recurring,
-    recurrenceLabel: recurring
-      ? [freq, o.recurrence?.nextDate ? `next ${o.recurrence.nextDate}` : null]
-          .filter(Boolean)
-          .join(' · ') || 'recurring'
-      : null,
-    requestedAt: o.requestedAt ?? o.createdAt ?? null,
+    recurrenceLabel: null,
+    requestedAt: o.requestedAt ?? null,
     approvedAt: o.approvedAt ?? null,
     deliveredAt: o.deliveredAt ?? null,
-    notes: o.notes ?? null,
+    notes: null,
   };
 }
 

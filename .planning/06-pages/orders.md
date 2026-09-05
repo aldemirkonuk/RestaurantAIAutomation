@@ -56,8 +56,14 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - **The price register's refusal is said on the page, before the save** — an agreement saved with no price unit shows, in the register's own words, that it will not enter the price register and why. It still saves (a NULL pair is an ordinary row); nobody saves one unknowingly. A price unit the order cannot be counted in (a keg order priced per bottle) blocks the save with the sentence the gateway would answer
 - **Every ledger row states the unit its price is in, and shows the working in that unit** (2026-09-05, ADR 0119 phase 2) — `GET /procurement/orders` joins the line's pair in the same query and the expanded row prints "$420.00 per case (12 bottles)" above "60 bottles ÷ 12 = 5 cases × $420.00 = $2,100.00". A row whose unit is UNSTATED — every order placed before ADR 0119 — prints the price, the register's refusal in words, and **no working of the page's own**: the per-bottle convention would print a case price twelve times over, which is the error this ADR exists to end. A pairing the order cannot be counted in (per keg, counted in bottles) prints the refusal instead of a total, and a route that never read the line says exactly that rather than announcing a refusal about a line nobody looked at
 - **Read the vendors' answers to one order, and act on them there** (2026-09-05, founder's call; closes §13.13) — every ledger row opens a house `Sheet` listing each inbound answer: who answered, when, which round, the delivery estimate the deal proposal was drawn from, the conditions the reading flagged, the **negotiation summary as the engine's own sentence with the engine and the time it read named beside it**, and the vendor's own words. Left/right arrows and Previous/Next step between answers, oldest first. A summary that was never written says so in a sentence; a read that FAILS says it is unknown rather than showing an empty sheet
-- **Reject an order with a reason in words** (2026-09-05) — the same hold gesture as an approval, over `DELETE /procurement/orders/:id?reason=…`, which writes `procurement_orders.rejection_reason`. The reason is REQUIRED by the sheet although the route treats it as optional: a cancelled order with a null reason is a decision nobody can audit. The sheet also states what the hold does *not* prove — the cancel route redeems no seal (§9, "A rejection is not sealed"), so this records a decision rather than proving one
+- **Reject an order with a reason in words, behind a PROVEN seal** (2026-09-05, ADR 0125; the rejection-not-sealed note of that morning is retired) — the hold mints a one-time challenge for the act `cancel` at `POST /procurement/orders/:id/cancel-seal-challenge`, bound to this manager, this order, its total, its vendor **and its state**, and `DELETE /procurement/orders/:id?reason=…` redeems it exactly once. An approval's seal is refused here and this one is refused on an approval, each with its own sentence. The reason is now REQUIRED by the ROUTE, not only by the page: a blank one is a 400 in words
+- **An order changes state only in ways this house has agreed to** (2026-09-05, ADR 0125) — `order-transitions.ts` holds one table for all twelve statuses; `cancelOrder` and `PATCH /procurement/orders/:id` both consult it and refuse with a whole sentence naming the state, the consequence and what to do instead. **An order whose wine has arrived cannot be cancelled at all** — cancelling one reversed nothing (the receipt event stood, the stock stayed booked) while removing its cost from every spend, cashflow, bottles-delivered, lead-time and vendor-scorecard figure in the house. The refusal points at a vendor credit or the receiving door instead
+- **A cancellation leaves paper, and stops the vendor mail** (2026-09-05, ADR 0125) — `order_cancelled` in `system_audit_log` naming the actor, the state left, the act and the reason; and a conversation left `AUTO_SEND_SCHEDULED` is cancelled with the order, with the sender refusing a closed order independently. Before this, a reply staged a minute before a cancellation was emailed to the vendor on the next 30-second tick
+- **The LEGACY desk rejects through the same die** (2026-09-05, ADR 0125) — its three Reject controls (two row buttons and the right-click menu) OPEN a ceremony rather than cancelling: `components/orders/SealedRejectDie.tsx`, a reason box that arms the hold, one mint, one redemption. It was `confirm('Are you sure?')` then a bare DELETE **with no reason argument at all**, so every rejection production ever made left `rejection_reason` null. Its bulk Reject is **removed**: it called no endpoint, rewrote local state and alerted "N order(s) rejected" — the twin of the bulk-approve defect ADR 0116's addendum removed — and a cancellation needs one reason per order, not one pasted over fourteen
 - **Confirm from the sheet is the SAME sealed approve as the row** — `mintOrderSeal` at the moment the hold begins, the token carried onto `POST /orders/:id/approve`, the house's approval gate honoured, and the gateway's refusal printed verbatim
+- **The agreement names the money outside the price of the wine** (2026-09-05, ADR 0119 Q3) — three more fields on the composer: an **allowance** that comes off, a **deposit** and **freight** that go on, each a positive amount for the whole line, each landing in its own column on `procurement_order_items` beside the invoice line's own `allowance`/`deposit`. Left empty they are not recorded at all, which is NOT the same as recording a zero: an empty field sends no key and the column keeps NULL, while a typed 0 travels, because "no deposit was agreed" and "a deposit of zero was agreed" are different claims about a vendor. The total shows the whole arithmetic — "60 bottles ÷ 12 = 5 cases × $420.00. Goods $2100.00, less allowance $100.00, plus deposit $30.00, plus freight $48.00" — and the ledger row prints the same sentence, so a deposit can never be read as the wine having gone up. There is **no split-case fee field and there is not going to be one**: Q6 makes a split case its own line
+- **The order's header price can no longer disagree with its line** (2026-09-05, ADR 0119 Q2) — `procurement_orders.final_price` is maintained from `procurement_order_items.final_unit_price` by a database trigger, and a direct write to it that disagrees with the line is refused with a sentence naming both numbers. Confirming a deal at an edited price now writes the LINE — which is what the invoice matcher and the price register read — and the header follows. An order with no line yet may still take a price on the header, and the page and the log say so, because no invoice can be matched against a price that lives only on a unit-less header
+- **A split case is its own agreement line** (2026-09-05, ADR 0119 Q6) — `split_case` stopped being a bare word in the unit picker and became a rule: the line IS the broken case, priced as its own trade item, with its pack field holding the bottles actually in the broken pack. Whole cases quoted at a split-case price, or a split case quoted at the full case price, are refused in words before the database refuses them by constraint
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
 
@@ -173,7 +179,9 @@ is stale; guarded at class level since 2026-08-24 (#31),
 |---|---|---|
 | GET | `/procurement/orders` (list) | `useOrders` → `services/api/orders.ts:53` |
 | POST | `/procurement/orders` | `pages/Orders.tsx:966`; `pages/orders/next/AgreementSheet.tsx` (the rebuilt composer, via `apiClient` — it posts the gateway's own `CreateOrderDto`, including `priceUom`/`pricePackSize`, because `services/api/orders.ts::createOrder` still takes the older `{ wineId, unitPrice }` shape the gateway does not accept) |
-| PATCH / DELETE | `/procurement/orders/:id` | `pages/Orders.tsx:593` / `:542` (the legacy `handleReject`, no reason sent) · `pages/orders/next/ResponsesSheet.tsx` → `useCancelOrder` → `services/api/orders.ts::cancelOrder`, which sends `?reason=` (fixed 2026-09-05 — it had been POSTing to a route that does not exist; §9) |
+| PATCH | `/procurement/orders/:id` | `pages/Orders.tsx:593`. **Can answer 422** since ADR 0125: a `status` in the body is checked against `order-transitions.ts` |
+| DELETE | `/procurement/orders/:id?reason=` | `components/orders/SealedRejectDie.tsx` (the legacy desk's three call sites, via `useCancelOrder`) · `pages/orders/next/ResponsesSheet.tsx`, same hook. Carries `x-seal-challenge`. **Can answer 400** (no reason), **403** (the seal) or **422** (the state) since ADR 0125; each body's `message` is the whole sentence and is printed verbatim |
+| POST | `/procurement/orders/:id/cancel-seal-challenge` | `services/api/orders.ts::mintOrderCancelSeal`, called from both dies' `onChallenge`. Mints act `cancel`; refuses 422 for a cancellation the house would not perform, so the reason arrives at the START of the hold |
 | POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275`; `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`, `pages/dashboard/next/WaitingOnYou.tsx` — all via `services/api/orders.ts`. **Can answer 403** since ADR 0116 |
 | GET | `/procurement/order-approval-gate` | `pages/orders/next/useOrdersNextData.ts` — one call per house, not per row |
 | POST | `/procurement/orders/:id/deliver` | `pages/Orders.tsx:651` |
@@ -218,6 +226,95 @@ outbound mail: `pages/Orders.tsx:430,1039,3457,3535`. Plus shared layout chrome
   (memory: autonomous-email-replies — never auto-send).
 
 ## 9. Gaps
+
+**An order could be delivered twice, from every caller but one — FIXED 2026-09-05
+(founder: "harden it in the procurement service for every caller").**
+`POST /procurement/orders/:id/deliver` read the order, wrote `status = DELIVERED`,
+`delivered_at`, `received_by` and `quantity_received`, and booked stock, with no
+question asked about where the order already was. The only refusal in the house lived
+in `one-tap-actions.service.ts` and covered exactly one caller — the dashboard's sealed
+card. The desk's "Mark delivered" (`orders/next/LedgerRow.tsx`), the legacy desk's
+`handleMarkAsDelivered`, the Action Center's locally-derived delivery card and the
+mobile offline outbox all posted straight past it.
+
+*Measured, not repeated.* A second `markDelivered` on the same order did **not**
+double-book the live ledger: `apply_stock_movement` returns the existing transaction
+for a `p_idempotency_key` it has seen
+(`supabase/migrations/20260902150000_lot_cost_truth.sql:149`) and the key is
+`order-delivered-live:{orderId}`, one per order. What it did do, every time, was
+overwrite `delivered_at` and `received_by` — when the wine arrived and who signed for
+it became whenever it was last tapped and whoever last tapped it — reset
+`quantity_received` to the full ordered count, and write `status` **backwards**: a
+COMPLETED order (invoice verified) and a PARTIALLY_RECEIVED one (backorder open) both
+silently became DELIVERED again, a move `order-transitions.ts` forbids for `updateOrder`
+and `markDelivered` never asked it about. The real double-book is the neighbouring one:
+the receiving door books under `door-receipt:{eventId}` and this path under
+`order-delivered-live:{orderId}`, different keys with nothing reconciling them, so a
+door count of 3 followed by a tap booked 3 + 12 = **15 bottles on a twelve-bottle
+order**.
+
+*The fix.* `markDelivered` reads `status` in the same pre-read that already fetched
+`quantity`, and refuses **before any write** when the order is in
+`ORDER_GOODS_ARRIVED_STATUSES` (DELIVERED, PARTIALLY_RECEIVED, COMPLETED) — imported
+from `order-transitions.ts` (ADR 0125), never restated, so the rule that stops a second
+delivery and the rule that stops a cancellation cannot drift. The refusal is
+`409 { reason: "order_already_delivered", orderId, status, deliveredAt, message }` and
+the message names the order, when it was delivered and what to do instead — three
+different sentences for the three states, because they have three different
+consequences (`procurement/delivered-once.ts`). An unreadable stored status is a 422
+refusal, not permission. The read's own failure is a 500 with words, never an absence.
+The same exclusion is also the UPDATE's `status=not.in.(...)` WHERE clause, so of two
+simultaneous confirmations the loser matches no row and is told it lost the race rather
+than overwriting the winner. The controller now passes `HttpException`s through instead
+of re-wrapping them, so the structured body survives; `markOrderDelivered`
+(`services/api/orders.ts`) promotes the gateway sentence onto `error.message` the way
+`approveOrder` and `cancelOrder` do, which is how it reaches `LedgerRow`'s alert, the
+Action Center's toast and the legacy desk (whose catch said *"Please try again"* — the
+one instruction that must not follow this refusal).
+
+*Still open here:* the one-tap endpoints answer **400** for the same fact the deliver
+route answers **409**, because widening `deliverableOrderFor`'s exception class would
+change a contract shipped in `be80f8b5`. Founder question, §13.
+
+**The shared `Order` type declared nine keys the route does not send — FIXED
+2026-09-05.** `unitPrice`, `totalPrice`, `wineId`, `providerName`, `wineProducer`,
+`notes`, `createdAt`, `updatedAt`, `recurrence`; `OrderResponseDto` declares none of
+them. Twenty-three files read them and every reading type-checked: `formatMoney(
+undefined)` is the string `"$0"`, so the dashboard's approval seal read
+**"Hold to approve · $0"** over real orders; `undefined ?? undefined * n` is `NaN`, so
+the provider card printed **"$NaN"**; and `useOrdersMetrics` defaulted both money keys
+to `0`, so **every procurement-spend figure on /reports and the dashboard was a sum of
+zeroes**. All three classes of `absence-reported-as-health` from one wrong word in a
+type. Fixed by making `Order` exactly the DTO's key set and auditing each reader (the
+table at the end of this file), and guarded by
+`scripts/check_web_reads_gateway_dto_keys.py`.
+
+**What the route still does not carry, now said rather than faked.** The list and
+detail routes send `providerId` and **no vendor name**, so `/dashboard`'s queue, the
+day panel, the receiving door's credit-note draft and the receipts pairing line all
+dropped a clause that could never have rendered; the door's letter is addressed "To the
+vendor" and cannot name them. They send **no `recurrence`**, so the rebuilt page's
+Recurring station has always been empty and every order fell into "one-time". They send
+**no `quantityReceived`** — `quantity_received` is a column `mapOrderRow` does not map —
+so mobile receiving pre-fills the physical count from the ORDERED quantity on a
+partially-received order. Each is a `v3.0-TECH-DEBT` row, not a silent fallback.
+
+**A rejection is not sealed — CLOSED the same day, 2026-09-05, by ADR 0125.**
+The founder was offered the three paths below and chose none of them: *"research
+the current approach, find flaws and bulletproof ... and build the right option
+for future scalabilty and quality"*. The research found ten flaws behind this
+one, of which the largest was not the missing seal: **cancelling a DELIVERED
+order reversed nothing and erased everything** — the receipt event stood, the
+shelf stock stayed booked, and the row left `ORDER_SPEND_STATUSES` /
+`ORDER_ARRIVED_STATUSES`, taking its cost out of every spend, cashflow,
+bottles-delivered, lead-time, on-time, HHI and vendor-scorecard figure in the
+house. What shipped is an explicit transition table (`order-transitions.ts`)
+enforced by `cancelOrder` AND `updateOrder`, a `cancel` seal act bound to the
+order's total, vendor and STATE, a required reason at the ROUTE, an
+`order_cancelled` audit row, the `AUTO_SEND_SCHEDULED` cascade, and the legacy
+desk's three Reject controls moved onto one held, sealed die. §13.14 is closed;
+four founder questions are open in ADR 0125. What follows is the account as it
+stood that morning, kept rather than deleted.
 
 **A rejection is not sealed, and the page says so, 2026-09-05.** `POST
 orders/:id/approve` redeems a one-time seal minted when the hold begins
@@ -287,15 +384,32 @@ states it. 42 jest + 14 vitest assertions, pre-fix behaviours transcribed from
   printing it needs the list endpoint to join `procurement_order_items`, which
   is a gateway read-shape change on a route four surfaces share, and this
   dispatch was scoped to the columns and the field. §13.10.
-- **`procurement_orders.final_price` is an echo by COMMENT, not by
-  construction** (ADR 0119 Q2). `confirmDeal` still writes it independently
-  (`procurement.service.ts` `update.final_price = finalPrice`). *Why not yet:*
-  making it GENERATED from the line is a second migration plus four readers that
-  treat it as authoritative; Q2 is the founder's and is unanswered.
-- **`price_history.unit` is still the hardcoded `'BOTTLE'`** (ADR 0119 Q4). A
-  per-keg agreement is now refused from that table in a sentence rather than
-  filed as a bottle price. *Why not yet:* Q4 asks what the series MEANS, which
-  is a decision, not a column widening.
+- ~~**`procurement_orders.final_price` is an echo by COMMENT, not by
+  construction**~~ **CLOSED 2026-09-05 (ADR 0119 Q2).** It is an echo by
+  CONSTRUCTION now: `20260905072000_the_header_price_echoes_the_line.sql`
+  maintains it from the line and refuses a direct write that disagrees, with
+  `23514` naming both numbers. `confirmDeal` and `InboundResponder.syncOrderState`
+  write the LINE; either falls back to the header only when the order has no
+  line, and says so. Postgres cannot express this as `GENERATED` — a generation
+  expression may not read another table, and the column is `NOT NULL` on a row
+  that exists before its line — which was measured rather than assumed and is
+  recorded in the migration's header.
+- ~~**`price_history.unit` is still the hardcoded `'BOTTLE'`**~~ **CLOSED
+  2026-09-05 (ADR 0119 Q4).** The column is `NOT NULL` with no default and the
+  seven-word CHECK; a case price enters as a case price and a keg price enters
+  at all for the first time. The reversal that matters: an agreement stating NO
+  unit used to enter the series anyway as `'BOTTLE'`, and is now refused in a
+  sentence — the same refusal the register already made about the same event.
+  **The obligation this moves:** any future reader of `price_history` must
+  GROUP BY `unit` first; measured on this tree there is no reader yet, and the
+  column comment carries the rule for the first one.
+- **The invoice line's own `allowance`/`deposit` reach no comparison at the
+  door** (ADR 0119 Q3 residue). `procurement_document_lines.allowance` and
+  `.deposit` are written by the parser and read by nothing in `verifyReceipt`;
+  only a caller-supplied `allocatedCharges` scalar reaches `computeMatch`. The
+  AGREEMENT's side of that comparison now exists and is named in the verdict's
+  notes, so a billed deposit no longer reads as a price variance — but the two
+  sides are not yet compared to each other. `06-pages/receiving.md` §13 owns it.
 - **The legacy desk cannot state a price unit.** `pages/Orders.tsx` offers
   `case | bottle`, sends no `bottlesPerUnit` — so `resolveOrderUnits` already
   refuses every case order it attempts — and sends no price unit at all.
@@ -497,7 +611,10 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
 6. Add a role gate for approval controls so staff do not see buttons the server will
    reject.
 
-10. **Print the unit beside the price on the LEDGER row.** The composer states it;
+10. ~~**Print the unit beside the price on the LEDGER row.**~~ **DONE 2026-09-05**
+    (ADR 0119 phase 2, `5432fb47`) — the list route joins the line and the row prints
+    the unit and its working. The original text is kept below as the record of the
+    blocker, not as a description of today. The composer states it;
     the rows still show a bare number, because `GET /procurement/orders` returns the
     header (`mapOrderRow`) and the pair lives on `procurement_order_items`. Needs the
     list endpoint to join the line and `OrderResponseDto` to carry
@@ -557,14 +674,19 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
     own handlers, so `orderApprovalData` was permanently null and its render guard
     permanently false.
 
-14. **Decide how a rejection is proven.** The sheet's Reject is the same hold over a
-    route that redeems no seal (§9, "A rejection is not sealed"). Three paths, none of
-    them a builder's to pick: (a) require a `cancel`-act seal on
-    `DELETE /procurement/orders/:id` and teach the legacy desk's `handleReject` the hold
-    — closes the hole, but changes the control production actually uses; (b) add a
-    separate sealed `POST orders/:id/reject` requiring a reason, leaving DELETE for the
-    legacy desk — no regression, two cancel paths, needs an ADR; (c) leave it recorded
-    but not proven, as it is now, and keep the sentence on the page. *Blocker: founder.*
+14. ~~**Decide how a rejection is proven.**~~ **DONE 2026-09-05, ADR 0125.** The founder
+    took none of the three paths offered — (a) seal the DELETE, (b) a separate sealed
+    route, (c) leave it recorded — and asked for the research first. What was built is
+    (a) plus the thing the three options all missed: an explicit **order transition
+    table** consulted by every gateway door that writes a status, so a cancellation of an
+    order whose wine has arrived is refused outright rather than merely proven. The
+    legacy desk's Reject holds through `SealedRejectDie`, the reason is required at the
+    route, and the act is recorded in `system_audit_log`. **Four founder questions remain
+    open in ADR 0125:** whether a cancellation should be role-gated like an approval; what
+    to do about the Python orchestrator's two direct terminal writes (a database trigger
+    is the strongest answer and the most work); whether a vendor's rejection should return
+    an order to NEGOTIATING rather than kill it (Dynamics 365 keeps such a PO "In external
+    review"); and whether bulk rejection should return as a real ceremony.
 
 15. **Say on the LEDGER ROW which orders have an answer.** The row offers "The vendor's
     answers" unconditionally, because nothing on the page knows which orders have one:
@@ -574,6 +696,60 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
     an inbound count on the list route or an uncapped per-house index.
     *Blocker: none — a gateway read-shape change on a route four surfaces share, the same
     blocker §13.10 named.*
+
+16. ~~**The shared `Order` type declares keys the route does not send.**~~ **DONE
+    2026-09-05** (founder: *"fix the shared type and audit every consumer now"*).
+    Nine phantom keys removed, fourteen real ones added, twenty-three consumer files audited in
+    the table at the end of this file, and `scripts/check_web_reads_gateway_dto_keys.py`
+    added so the two files cannot drift apart again. Left open: `CreateOrderRequest` /
+    `UpdateOrderRequest` are REQUEST types with the same disease (`wineId`, `unitPrice`
+    against `CreateOrderDto`'s `inventoryId`) and zero live callers — filed in
+    `v3.0-TECH-DEBT.md` rather than fixed, because the create DTO was being extended by
+    a concurrent pass while this ran.
+
+17. ~~**Nothing stops the first reader of `price_history` from averaging a case price
+    with a bottle price.**~~ **DONE 2026-09-05** (founder decided ADR 0119 Q4:
+    *`price_history` carries a stated unit; kegs and cases enter with their own unit;
+    every comparison groups by unit first*, and asked for the guard now rather than at
+    the first reader). The write half is the migration
+    `20260905072500_the_price_series_states_its_unit.sql` — `unit` NOT NULL, the seven
+    singulars as a CHECK, the `DEFAULT 'BOTTLE'` dropped — and `recordPriceHistory`
+    (`procurement.service.ts`) states it. No constraint can enforce the read half, so
+    `scripts/check_price_history_reads_group_by_unit.py` does: a supabase chain on
+    `price_history` that selects, or raw SQL selecting from it, must filter on `unit`,
+    `GROUP BY unit`, or aggregate keyed by `unit` in the code that follows; writes are
+    ignored; an aggregation whose key the parse cannot follow is exit 2, never a pass.
+    Landed at zero cost — measured on this tree, `price_history` has one writer and
+    **zero readers** (the orchestrator's `_get_price_history` reads
+    `procurement_orders.price_per_bottle`, another table). Proved FAIL against a copy of
+    the tree carrying a planted unit-less read and PASS on the tree itself; wired into
+    `ci.yml` beside `check_read_columns_exist` with a 16-case pytest in `scripts-tests`.
+
+18. ~~**An order can be delivered twice.**~~ **DONE 2026-09-05** (founder: *"harden it in
+    the procurement service for every caller"*). `markDelivered` refuses a second
+    delivery in words, before any write, for every caller, with the same rule as the
+    UPDATE's own WHERE clause so a race loses at the database. §9 carries what a second
+    delivery actually did, measured. Pinned by
+    `apps/api-gateway/src/procurement/tests/delivered-once.spec.ts` (14 cases; 8 of them
+    fail against a `git show HEAD:` copy of the service) and
+    `apps/web/src/services/api/orders.deliverOnce.test.ts`.
+    **Left open, and it is a founder's call, not a defect:**
+    - **Two statuses for one fact.** The deliver route answers 409; the one-tap seal
+      mint and execute answer 400 for the same "this order has already arrived",
+      because `deliverableOrderFor`'s `BadRequestException` is the contract `be80f8b5`
+      shipped and changing an exception class on a live endpoint is not a builder's
+      call. One status for one fact would be better.
+    - **`markDelivered` still does not enforce the whole transition table.** It asks
+      only "have the goods arrived", deliberately: `ORDER_TRANSITIONS` forbids
+      `PENDING → DELIVERED`, which the deliver route does today for real orders that
+      were never formally approved, and permits `DELIVERED → DELIVERED`, which is the
+      one move this pass exists to stop. Making delivery a full `assertStatusTransition`
+      call would refuse work the house does and permit the thing it must not.
+    - **A CANCELLED order can still be delivered.** `ORDER_TRANSITIONS` treats CANCELLED
+      as terminal, so the table would refuse it; this guard does not, because
+      cancel-then-deliver was explicitly left to its own decision by ADR 0073 and is a
+      different question (goods that arrive against a cancelled order are a real event
+      somebody has to be able to record).
 
 ### An agreed price has no unit — research 2026-09-04, phase 1 BUILT 2026-09-04, phase 2 BUILT 2026-09-05, CLOSED (ADR 0119)
 
@@ -668,6 +844,164 @@ while ADR 0119 was research. Two are DONE:
 the order form. Until the founder rules on ADR 0119 Q1–Q2 … adding a picker would let
 the desk state a unit the schema cannot store."* The founder ruled on Q1 on 2026-09-04
 by refusing the fork's framing — *ship the columns and the field together* — so the
-picker and the columns landed in one build and the objection never applied. **Q2 is
-still unanswered**, and the picker does not depend on it: the pair lives on the LINE,
-and the header's `final_price` is an echo whether or not it is ever made GENERATED.
+picker and the columns landed in one build and the objection never applied. ~~**Q2 is
+still unanswered**~~ **Q2, Q3, Q4 and Q6 were all decided on 2026-09-05 and built the
+same day (§13.14). Q7 alone remains open.**
+
+### The money outside the price, and the header that could disagree — BUILT 2026-09-05 (ADR 0119 Q2/Q3/Q4/Q6), §13.14
+
+The founder's four decisions, and what each one is on THIS page:
+
+10. **The composer asks for the money outside the price of the wine.** Allowance off,
+    deposit and freight on, each a positive amount for the whole line, each with its own
+    column (`20260905073000_the_agreement_names_the_money_outside_the_price.sql`). The
+    total prints the whole arithmetic, goods first, and the ledger row prints the same
+    sentence. NULL and 0 stay different facts from the field to the column: an empty
+    field sends no key, a typed 0 travels.
+11. **The header price follows the line, enforced by the database.** Two triggers
+    (`20260905072000_the_header_price_echoes_the_line.sql`), not a `GENERATED` column —
+    Postgres cannot generate from another table, measured, and `final_price` is `NOT
+    NULL` on a row inserted before its line exists. `confirmDeal` writes the line.
+12. **`split_case` became a rule.** The line IS the broken case, priced as its own trade
+    item; the pack field holds the bottles actually in the broken pack. There is no
+    split-case fee field and there will not be one.
+13. **The ledger row prints the fees inside the working, and on their own line only when
+    there is no working to hold them** — an agreement whose price unit is unstated shows
+    no arithmetic at all, and without that line its deposit would be invisible on the
+    row a manager approves money from. Both defects that made this true were found by
+    CAPTURING the row, not by reading it (`$SP/shots-price-unit-2/`): the first build
+    printed the total twice, and the fees twice.
+
+### The shared `Order` type said nine things the route does not send — FIXED 2026-09-05, §13.16
+
+Founder, 2026-09-05: *"Fix the shared type and audit every consumer now."* ADR 0119
+phase 2 had fixed `toRow` on this page and filed the rest: *"the shared `Order` type
+still declares the two never-sent keys for every other consumer."* Measured, it was
+**nine**, not two.
+
+`apps/web/src/services/api/types.ts` `Order` declared `unitPrice`, `totalPrice`,
+`wineId`, `providerName`, `wineProducer`, `notes`, `createdAt`, `updatedAt` and
+`recurrence`. `OrderResponseDto`
+(`apps/api-gateway/src/procurement/dto/procurement.dto.ts:699`) declares none of them,
+and `mapOrderRow` (`procurement.service.ts:4119`) writes every key it sends by hand, so
+the DTO is the whole wire. It goes the other way too: the DTO sent fourteen keys the
+shared type never named — `unitType`, `bottlesTotal`, `quotedPrice`, `negotiatedPrice`,
+`finalPrice`, `totalCost`, `completedAt`, `isEmergency`, `priorityLevel` and ADR 0119's
+`priceUom` / `pricePackSize` among them — which is why three separate files carried a
+widening cast to get at fields the server had been sending all along.
+
+**Nothing about this failed loudly.** `formatMoney(undefined)` returns the string
+`"$0"`. `a ?? b * c` with both absent is `NaN`. `x || q * (y || 0)` is `0`.
+`typeof x === 'number'` is false, and the clause it guards disappears. All four
+type-checked. The first two print a confident wrong number on screens a person
+approves money from.
+
+`Order` is now **exactly** `OrderResponseDto`'s key set, optional where the DTO is
+optional, and `scripts/check_web_reads_gateway_dto_keys.py` fails CI on the next drift
+(wired in `ci.yml` beside `check_read_columns_exist`; the mapping table is written out
+by hand, because `Order` / `ProcurementOrder` / `OrderResponseDto` share no name and a
+guard that paired by name would have found nothing and exited 0).
+
+#### The consumer audit — every reader of `Order` or of the orders routes
+
+"Printed" is the value each expression yields for one route row — the object
+`mapOrderRow` emits for a five-cases-of-twelve agreement (`finalPrice: 420`,
+`totalCost: 2100`, `quantity: 60`, `status: "APPROVED"`), run through each site's own
+expression: `$SP/p4an-prefix-reads.mjs`, output in `$SP/p4an-prefix-reads.txt`. "Prints
+now" is the same row through the same sites on the fixed tree
+(`$SP/p4an-postfix-reads.mjs` / `.txt`), including a second row with no money on it so
+the refusals are measured too, not asserted. Neither is
+an HTTP capture — `GET /procurement/orders` and `/orders/history` both answer
+**500, `column procurement_order_items_1.price_uom does not exist`** on this worktree,
+because ADR 0119 phase 1's migration is unmerged and the local gateway reads
+PRODUCTION; and the dev-bypass tenant has zero pending orders and zero conversations.
+
+| File | Keys it read | Printed | Prints now |
+|---|---|---|---|
+| `dashboard/next/WaitingOnYou.tsx` | `totalPrice`, `unitPrice`, `providerName`, `createdAt` | `$0` in the money column, `60 × $0`, and **`Hold to approve · $0` on the seal itself** | `money(totalCost)` / `money(finalPrice)`, em dash when absent; the die reads `Hold to approve · $2,000`, or bare `Hold to approve` with no total (`approveLabel`) |
+| `dashboard/next/DayDetail.tsx` | `unitPrice`, `totalPrice`, `providerName` | `60 × $0 · $0`, and the literal word "vendor" on every delivery | `60 case × $420 · $2,100`; the vendor clause is gone — the route sends `providerId` only |
+| `hooks/useOrdersMetrics.ts` | `unitPrice`, `totalPrice`, `wineId`, `providerName`, `createdAt` (+ snake aliases, all absent) | `0` and `0`, so **every spend figure on /reports and the dashboard was summed from zeroes**: `totalOrderValue`, `spendThisMonth`, `spendLastMonth`, month-over-month, spend-by-wine, spend-by-provider and the 30-day chart | `finalPrice` / `totalCost`, `null` when absent; `sumKnown` skips nulls, `unpricedOrders` counts them, and the average divides by the PRICED orders |
+| `pages/Reports.tsx` | `StoredOrder.totalPrice` ×2 | `day.spend += 0` on every day; every wine's value `0` | guarded — an unpriced order adds nothing and does not read as a zero day |
+| `pages/Dashboard.tsx` | `wineId` ×2, `wineProducer` ×2, `totalPrice`, `providerName` | top-wines `spend` always `0`; the group-by key fell through to the wine name; "Unknown provider" on every row | `inventoryId`, `totalCost`; the producer and vendor clauses are gone |
+| `pages/dashboard/useDashboardPage.ts` | `wineId`, `wineProducer`, `providerName`, `totalPrice` | reminder subtitle `$0`, "Unknown provider" | `totalCost` or `no total on this order`; `vendor not named by this route` |
+| `components/notifications/OneTapActionCenter.tsx` | `totalPrice` ×2, `unitPrice` ×2, `providerName`, `createdAt`, `wineId`, **and `o.status === 'approved'`** | `$0` invoice price, `$0` negotiated — and `cost: 0` **dispatched onto the inventory-update event**, a zero WRITTEN not merely shown. The status compare was `false` for every order ever fetched (the wire is SCREAMING_SNAKE), so the branch produced no cards at all | `totalCost`, else `finalPrice × quantity` only when both are present, else `null` and the words `no total on this order`; the compare goes through `canonicalStatus`, the repo's one wire-to-UI mapper |
+| `components/providers/EditProviderModal.tsx` | `totalPrice`, `unitPrice`, `createdAt` | **`$NaN`** on every row of a provider's recent orders (`undefined ?? undefined * n`) | `totalCost` or `no total`; `requestedAt` or `no date` |
+| `pages/receipts/next/ReceiptsNext.tsx` | `totalPrice` (through a cast), `providerName` | the `· ordered $X` clause **silently vanished** although the route carried the figure; the vendor clause never rendered | `totalCost` reads `· ordered $2,100.00`; the vendor clause is gone |
+| `pages/receiving/next/DoorModel.ts` | `providerName` (+ a cast for `unitType`/`bottlesTotal`) | the credit-note draft addressed "To the vendor" **without naming them**, on every order the door has ever opened | `providerName: null`, said out loud; the cast is gone — the shared type now carries `unitType`/`bottlesTotal`. Pinned by two `DoorModel.test.ts` cases that had asserted a name the wire cannot supply |
+| `pages/orders/next/useOrdersNextData.ts` | `providerName`, `wineProducer`, `recurrence`, `notes`, `createdAt` (the price pair was fixed in `5432fb47`) | the vendor was already resolved from `providerId`, so that `??` never fired; producer and notes never rendered; **`recurring` was always false, so this page's RECURRING STATION has always been empty** and every order fell into "one-time" | reads none of them; `recurring` is a stated `false` about the route, not about the order. The local `OrderWire` intersection lost six keys to the shared type |
+| `pages/Orders.tsx`, `pages/orders/useOrdersPage.ts` (legacy desk) | `providerName` | dead branch — `provider_name` fell through to `providerId`, which is the desk's own deliberate convention (`providerNameById` resolves a uuid at `useOrdersPage.ts:120`) | the dead branch is gone; the convention is named in a comment |
+| `hooks/queries/useOrderQueries.ts`, `hooks/useOrdersData.ts`, `hooks/useDashboardData.ts`, `pages/calendar/next/useCalendarNextData.ts`, `pages/dashboard/next/useDashboardNextData.ts`, `services/api/orders.ts` | none — they carry `Order[]` and read no price key | nothing to print | unchanged |
+| `apps/mobile` `components/supply/OrderRow.tsx`, `app/(tabs)/supply/[id].tsx` | `totalCost ?? finalPrice ?? negotiatedPrice ?? quotedPrice` | **`$2,100` — correct all along.** Mobile has read the DTO's own names since it was written | unchanged |
+| `apps/mobile/app/(tabs)/cellar/receive/[orderId].tsx` | `quantityReceived` | `quantity_received` is a COLUMN, not a wire key: `mapOrderRow` does not map it, so the physical count pre-filled from the ORDERED quantity on every partially-received order | reads `quantity` and says why; the gateway fix is a `v3.0-TECH-DEBT` row |
+| `apps/mobile/src/api/types.ts` `ProcurementOrder` | — | carried `[key: string]: any`, so `order.totalPrice` would have compiled there exactly as it did on the web | the index signature is gone; the guard refuses one, because a type that declares everything cannot be checked against anything |
+
+**Two things the guard still cannot see, said out loud.** A widening cast
+(`raw as Order & { … }`) puts a key back beyond its reach — one such intersection is
+live in `useOrdersNextData.ts`, added by a concurrent pass, and its own comment says it
+is a no-op to delete now that the shared type has settled. And the guard compares key
+EXISTENCE, not type: `status` was declared as the lowercase `OrderStatus` while the wire
+sends `ProcurementOrderStatus` in SCREAMING_SNAKE. That one is fixed here — `Order.status`
+is now `OrderWireStatus` — but the guard would not have caught it.
+
+### A recorded price now names its own money (2026-09-05, ADR 0117 Q25)
+
+Two writers on this page's path changed, and one of them changed BEHAVIOUR
+rather than only shape.
+
+`recordPriceHistory` (`procurement.service.ts`) takes a required `currencyClaim`
+and writes `price_history.currency` explicitly — the column was added by
+`20260905120000_a_house_names_its_money.sql`, nullable and with no default. A
+confirmed order records `null`, because measured 2026-09-05 **neither
+`procurement_orders` nor `procurement_order_items` has a currency column**, so
+nothing on an agreement states one; the refusal is a logged sentence naming the
+missing column, and the note goes on the row. That is Q31.
+
+`verifyReceipt`'s DTO gains `invoiceCurrency` (ISO 4217 alpha-3, optional). The
+receiving screen does **not** send it yet, so a verified receipt today records
+its currency as NOT RECORDED — the document header already holds the real code
+(`procurement_documents.currency`, and production carries two live `TRY` rows
+against a house whose own row says `USD`). That is Q32, and it is one field on
+the form or one read of the linked document.
+
+**The behaviour change:** `own-paper-sighting.ts` used to read
+`(input.currency ?? "USD")` and neither caller passed a currency, so every
+class-A sighting was about to be stamped USD on no evidence. It is a refusal now,
+with the same sentence the class-D sweep already used — *"A number without its
+currency is not a price"*. `vendor_price_observations.currency` is NOT NULL, so
+refuse and invent are the only two options that table allows. Until a caller
+states a currency, **no class-A sighting is written at all**. The register holds
+0 rows today and always has, so nothing existing was lost — but a confirmed order
+that would have written a USD-stamped sighting now writes none, and says why.
+
+### The agreement line names its money (2026-09-05, ADR 0117 Q31)
+
+Founder, the same afternoon: *"A currency column on the agreement line,
+defaulted from the vendor's terms or the house, stated on the sheet"*.
+
+`procurement_order_items.currency` — nullable, no default, ISO 4217 CHECK
+(`20260905200000_the_agreement_names_its_money.sql`). It denominates **all seven**
+money columns on that line: the three prices, the line total, and the allowance,
+deposit and freight that `20260905073000` added while saying they were "in the
+agreement's currency" that nothing stated.
+
+**The sheet asks, with the evidence.** `AgreementSheet` shows a currency field
+whose default comes from `GET /procurement/agreement-currency` — the same chain
+the writer uses, so the default a person confirms is the default the row would
+have taken. The chain reads: what this vendor last billed this house in
+(`procurement_documents.currency`, ordered by the document's own date), then
+`restaurants.currency`, then nothing. The sentence under the field is the
+gateway's, and it names the rung: *"Defaulted to TRY: that is what Anadolu Şarap
+last billed this house in."* A person can check that; nobody can check "we
+suggest TRY".
+
+**One correction to the founder's sentence, measured rather than assumed:**
+`restaurant_vendor_terms` has seven columns and none of them is a currency, so
+"the vendor's terms" had no field to read. Whether a typed one should exist is
+ADR 0117 Q34.
+
+**What this restores.** ADR 0117 Q25 made an unstated currency a refusal in the
+price register, which was right and which meant **no class-A sighting was written
+for any confirmed order at all**. With the column, a line whose desk stated a
+currency writes one again — proved in `price-currency.spec.ts`, which asserts the
+sighting appears with `TRY` on it and still does not appear when the desk stated
+nothing.

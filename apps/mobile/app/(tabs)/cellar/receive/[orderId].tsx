@@ -40,7 +40,13 @@ export default function ReceivingScreen() {
   const orderedQty: number = order?.quantity ?? 0;
   const poUnitPrice: number | null =
     order?.finalPrice ?? order?.negotiatedPrice ?? order?.quotedPrice ?? null;
-  const stockedQty: number = order?.quantityReceived ?? order?.quantity ?? 0;
+  // `quantityReceived` is a COLUMN on procurement_orders, not a key on the
+  // wire: `mapOrderRow` does not map it, so `OrderResponseDto` has never
+  // carried it and this read has always fallen through to the ordered
+  // quantity. Named here rather than left as a phantom `??` that looks like
+  // it works: a partially-received order still pre-fills from what was
+  // ORDERED, and the fix is on the gateway (v3.0-TECH-DEBT, 2026-09-05).
+  const stockedQty: number = order?.quantity ?? 0;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);

@@ -328,6 +328,30 @@ export interface LedgerRegister {
   recordingSince: string;
 }
 
+/**
+ * The house's reporting currency, as `GET /settings/currency` answers it.
+ *
+ * Mirrors `HouseCurrencyReadout` (`apps/api-gateway/src/settings/
+ * house-currency.service.ts`). Three states, never two: `readable: false` is a
+ * failed READ, `code: null` is an unanswered QUESTION, and a code is an answer.
+ * `country` is here so the page can derive the offered default from
+ * `lib/countries.ts` — the gateway holds no country-to-currency table, so the
+ * default is computed once, in one file, and is only ever WRITTEN once a person
+ * has accepted the sentence that states it.
+ */
+export interface HouseCurrencyRegister {
+  restaurantId: string;
+  code: string | null;
+  country: string | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  /** Present on a write only. `false` = the change landed, the paper did not. */
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
 export interface SetVendorTermsBody {
   deliveryWeekdays?: number[] | null;
   orderCutoffTime?: string | null;
@@ -477,6 +501,11 @@ export function useSettingsNextData(active: SectionId) {
     return data;
   });
 
+  const houseCurrency = useRemote<HouseCurrencyRegister>(tenantKey('currency'), async () => {
+    const { data } = await apiClient.get<HouseCurrencyRegister>('/settings/currency');
+    return data;
+  });
+
   const ledger = useRemote<LedgerRegister>(tenantKey('ledger'), async () => {
     const { data } = await apiClient.get<LedgerRegister>('/settings-audit?limit=100');
     return data;
@@ -617,6 +646,28 @@ export function useSettingsNextData(active: SectionId) {
     [writer, thresholds, ledger],
   );
 
+  /**
+   * State the house's reporting currency.
+   *
+   * The code is always one a person picked or accepted — this function is never
+   * called with a value the page worked out on its own. The server's answer
+   * replaces the register rather than an optimistic patch, so a write whose
+   * audit row failed shows that fact rather than a clean success.
+   */
+  const saveCurrency = useCallback(
+    (code: string) =>
+      writer.run('currency', async () => {
+        const { data } = await apiClient.put<HouseCurrencyRegister>('/settings/currency', {
+          code,
+        });
+        if (data) houseCurrency.set(data);
+        else houseCurrency.reload();
+        // A code that moved is a row in the trail; the trail must not lag it.
+        ledger.reload();
+      }),
+    [writer, houseCurrency, ledger],
+  );
+
   const locations: RestaurantBranch[] = useMemo(
     () => availableRestaurants ?? [],
     [availableRestaurants],
@@ -632,11 +683,11 @@ export function useSettingsNextData(active: SectionId) {
     locations,
     refreshBranches,
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
-    vendorTerms, thresholds, ledger,
+    vendorTerms, thresholds, ledger, houseCurrency,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
-    saveVendorTerms, saveThreshold,
+    saveVendorTerms, saveThreshold, saveCurrency,
   };
 }
 

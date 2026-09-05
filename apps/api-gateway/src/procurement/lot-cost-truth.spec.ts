@@ -229,7 +229,9 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
   });
 
   it("markDelivered books the delivery at a stated, non-invoice provenance", async () => {
-    const { db, calls } = makeDb();
+    // A delivery that has NOT yet happened: the goods-arrived guard refuses a
+    // second one, and this test is about what the first one costs the lot.
+    const { db, calls } = makeDb({ status: "APPROVED", quantity_received: null });
     await service(db).markDelivered(REST, ORDER, USER, 10);
 
     const live = calls.rpc.find(
@@ -370,7 +372,15 @@ const orderRow = {
   delivery_notes: null,
 };
 
-function makeDb() {
+/**
+ * @param orderOverrides Fields to change on the fixture order. Added 2026-09-05
+ *   because the shared fixture is DELIVERED — right for `verifyReceipt`, which
+ *   only ever runs on a delivered order, and wrong for `markDelivered`, which
+ *   now refuses an order whose goods have already arrived (`delivered-once.ts`).
+ *   The provenance assertion below is about the PRICE, so it gets a
+ *   pre-delivery order rather than a fixture that agrees with it by accident.
+ */
+function makeDb(orderOverrides: Record<string, any> = {}) {
   const calls = { rpc: [] as { name: string; args: Record<string, any> }[] };
 
   const supabase: any = {
@@ -381,7 +391,11 @@ function makeDb() {
       const settle = (shape: "one" | "many"): Record<string, any> => {
         if (table === "procurement_orders")
           return {
-            data: { ...orderRow, inventory: { wine_name: "Barolo" } },
+            data: {
+              ...orderRow,
+              ...orderOverrides,
+              inventory: { wine_name: "Barolo" },
+            },
             error: null,
           };
         if (table === "restaurant_inventory") {

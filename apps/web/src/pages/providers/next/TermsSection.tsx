@@ -271,7 +271,8 @@ function Editor({
   onClose,
 }: {
   row: VendorTermsRow;
-  currency: string;
+  /** `null` when the house has not been asked what money it reports in. */
+  currency: string | null;
   busy: boolean;
   onSave: (body: SetVendorTermsBody) => void;
   onClose: () => void;
@@ -350,7 +351,13 @@ function Editor({
           </select>
         </Field>
 
-        <Field label={`Minimum order (${currency})`}>
+        <Field
+          label={
+            currency
+              ? `Minimum order (${currency})`
+              : 'Minimum order (currency not recorded)'
+          }
+        >
           <input
             type="number"
             min={0}
@@ -424,7 +431,14 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
   const [editing, setEditing] = useState(false);
   const reg = terms.register;
   const row = terms.row;
-  const currency = reg?.currency.code ?? 'USD';
+  // The house's reporting currency, or `null` when nobody has been asked. It
+  // used to read `?? 'USD'`, which was the only honest reading while
+  // `restaurants.currency` carried `DEFAULT 'USD'` — and which meant this panel
+  // told a London house its vendor's minimum was in dollars. The default is
+  // dropped (`20260905120000_a_house_names_its_money.sql`, ADR 0117 Q25), so a
+  // missing answer is now visible and is rendered as one: `fmtMoney` prints the
+  // number unsymboled, and the field label says the money is not recorded.
+  const currency = reg?.currency.code ?? null;
 
   return (
     <section style={{ fontFamily: SANS }}>

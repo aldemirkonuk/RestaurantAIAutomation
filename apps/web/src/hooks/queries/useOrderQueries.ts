@@ -191,9 +191,25 @@ export function useCancelOrder() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ orderId, reason }: { orderId: string; reason?: string }) => {
+    mutationFn: ({
+      orderId,
+      reason,
+      challenge,
+    }: {
+      orderId: string
+      reason?: string
+      /**
+       * The one-time seal minted when the hold began (ADR 0125). Typed optional
+       * so a caller that does not yet mint keeps COMPILING and receives the
+       * gateway's refusal sentence rather than a type error — the same
+       * arrangement `approveOrder` uses, and the honest outcome for such a
+       * caller: it will say, in words, that the seal has to be proven and that
+       * nothing was cancelled.
+       */
+      challenge?: string | null
+    }) => {
       if (!activeRestaurantId) throw new Error('No restaurant selected')
-      return ordersApi.cancelOrder(orderId, reason, activeRestaurantId)
+      return ordersApi.cancelOrder(orderId, reason, activeRestaurantId, challenge)
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })

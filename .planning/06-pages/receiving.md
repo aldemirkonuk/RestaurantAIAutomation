@@ -160,6 +160,27 @@ applies (see dashboard.md §7).
   to. Either a sidebar/palette entry or a dashboard hand-off is missing.
 - PAGE_MAP's entry-point list omits this route (see §2) — the atlas undercounts
   orphans; worth a regeneration note there rather than a fix here.
+- ~~**`markDelivered` could be run on an order the door had already received.**~~
+  ✅ **Resolved 2026-09-05** (founder: *"harden it in the procurement service for every
+  caller"*). The door and this control book stock under **different idempotency keys** —
+  `door-receipt:{eventId}` versus `order-delivered-live:{orderId}` — so nothing
+  reconciled them: a door count of 3 on a twelve-bottle order followed by anyone tapping
+  "mark delivered" booked 3 + 12 = **15 bottles**, and reset `quantity_received` from the
+  door's measured 3 back to the ordered 12. `markDelivered` now refuses before any write
+  when the order is DELIVERED, PARTIALLY_RECEIVED or COMPLETED
+  (`ORDER_GOODS_ARRIVED_STATUSES`, imported from `order-transitions.ts`, ADR 0125), with
+  a 409 whose sentence for the partly-received case names the receiving door as the way
+  to finish — because the door adds only the difference and this control does not.
+  **The door itself needed no change and got none**: on its FIRST receipt
+  `recordDoorReceipt` already subtracts `quantity_received` — whatever the one-shot
+  path put on the shelf — from what it books, and on every receipt after that it books
+  its own accepted bottles under its own event key, with the running total summed from
+  the durable events (`receiving.service.ts:359-372`, ADR 0057 D3). So the two now agree
+  by the door reconciling and this path refusing, not by two rules being kept in step.
+  What made the 15 reachable was the ORDER of the two: door first, then the tap, where
+  the door's reconciliation had already happened and had nothing to subtract.
+  `apps/api-gateway/src/procurement/delivered-once.ts`,
+  `procurement/tests/delivered-once.spec.ts`.
 
 ## 10. Maturity
 
@@ -235,6 +256,40 @@ delivery day while the request behind it is rejected.
 4. Link the manager queue's rows to the match workspace on [[inventory]] rather than to
    `/orders?order=` — the decision the row asks for is made there.
 5. Turn on the reporter for the two `data-ux-key` markers already placed (§5).
+6. **Compare the invoice's OWN allowance and deposit against the agreement's** — the
+   other half of ADR 0119 Q3, opened 2026-09-05. What changed on 2026-09-05: the AGREEMENT
+   now names its money outside the price (`procurement_order_items.allowance`, `.deposit`,
+   `.freight`), and `verifyReceipt` reads it, states it in the verdict's notes, and stops
+   reading a billed deposit the agreement provided for as a price variance. What did NOT
+   change, measured on this tree: `procurement_document_lines.allowance` and `.deposit`
+   (`baseline:4393-4394`) are written by the document parser and read by NOTHING at the
+   door — the only charge figure reaching `computeMatch` is the caller-supplied
+   `allocatedCharges` scalar, which is folded into landed cost and never compared to
+   anything. So the door compares like with like on the UNIT axis and not yet on the
+   CHARGES axis. *Blocker: it needs a decision on where the invoice's line-level charges
+   come from — the desk typing them like every other invoice figure, or the door reading
+   the matched `procurement_document_lines` row — and the second is a new read on a path
+   that currently takes all its invoice numbers from the request body.*
+7. **The agreed price reaching the door is now the LINE's, converted once** (ADR 0119
+   phase 2, 2026-09-05) — recorded here because it changed a verdict this page renders.
+   `verifyReceipt` fed `procurement_orders.final_price`, the unit-less header, into
+   `computeMatch`'s `poUnitPrice`, which `invoice-match.ts` documents as PER BOTTLE, so a
+   case-priced agreement produced `price_variance` — the loudest verdict the module
+   reaches — on an order where nothing was wrong. It now converts from the line's stated
+   `(price_uom, price_pack_size)`, and for an OPAQUE pair (per keg, per litre) it makes
+   NO price comparison at all rather than a wrong one: the check reads as not evaluated,
+   which is true, and the reason is logged and written into the discrepancy notes.
+8. ~~**Two paths book the same delivery under two idempotency keys.**~~ **DONE
+   2026-09-05** — the half that could be closed without a decision. `markDelivered` now
+   refuses an order the door has already received (§9), so the 3 + 12 = 15 case cannot
+   be reached from any caller. **What is NOT closed and is still P11:** neither
+   `recordDoorReceipt` nor `verifyReceipt` releases shadow stock or `in_transit_quantity`
+   — only `markDelivered` and `releaseOrderShadowStock` do — so the door→verify flow, the
+   flow the two-stage design exists for, still leaks a reservation for every delivery it
+   handles. This pass deliberately did not touch `receiving.service.ts`: the leak is a
+   *missing* write on the door's path, not a *duplicate* one on this path, and it needs
+   its own decision about where the release belongs. *Blocker: founder / owner of
+   `receiving.service.ts`.*
 
 ## 14. Pipeline review — 2026-09-01
 
@@ -422,3 +477,13 @@ approve path).
    and inert until the write side stamps the field.
 3. **`ReceiptsNext.tsx:447` reads only `?tab`**, so the order id this page now
    passes to `/receipts` does not yet select anything there.
+4. **A delivered order can no longer be cancelled away, and the door is where the
+   correction now belongs** (2026-09-05, ADR 0125). Cancelling a DELIVERED or
+   PARTIALLY_RECEIVED order used to be allowed and reversed nothing — the receipt event
+   stood, the stock stayed booked — while taking the order's cost out of every spend and
+   delivery figure. `order-transitions.ts` refuses it, and the refusal a person reads
+   points here: *"Raise a vendor credit against the delivery instead, or correct the count
+   at the receiving door."* That sentence is a promise this page has to keep. The credit
+   half exists (`procurement/documents/credit-ledger.ts`); **the count-correction half is
+   not verified from this page and is not claimed here** — whether a counted receipt can be
+   corrected at the door, and by whom, is the open question the refusal now creates.

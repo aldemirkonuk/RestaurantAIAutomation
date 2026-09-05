@@ -19,8 +19,17 @@ interface StoredOrder {
   wineId: string
   wineName: string
   quantity: number
-  unitPrice: number
-  totalPrice: number
+  /**
+   * The AGREED price and the order's total, as the route sends them
+   * (`finalPrice` / `totalCost`). NULL means the payload carried no figure —
+   * never 0. Until 2026-09-05 this hook read `unitPrice` / `totalPrice`, names
+   * `OrderResponseDto` has never sent, and defaulted both to 0: every spend
+   * figure on /reports and the dashboard's top-wines table was therefore
+   * summed from zeroes and read as "nothing was spent". Nulls are now SKIPPED
+   * by the sums and COUNTED in `unpricedOrders`.
+   */
+  unitPrice: number | null
+  totalPrice: number | null
   providerId: string
   providerName: string
   status: 'pending' | 'approved' | 'ordered' | 'delivered' | 'cancelled'
@@ -37,6 +46,12 @@ interface OrderMetrics {
   totalOrderValue: number
   totalBottlesOrdered: number
   avgOrderValue: number
+  /**
+   * Orders in the window whose value the route did not carry. They are not in
+   * `totalOrderValue`, and reading that figure without this one reads an
+   * absence as a zero.
+   */
+  unpricedOrders: number
   
   // Status breakdown
   pendingOrders: number
@@ -88,6 +103,14 @@ interface OrderMetrics {
     spend: number
   }>
 }
+
+/** Sum only the rows whose value the route actually carried. */
+const sumKnown = (rows: StoredOrder[]): number =>
+  rows.reduce((sum, o) => (o.totalPrice == null ? sum : sum + o.totalPrice), 0)
+
+/** How many of those rows carried no value at all. */
+const countUnpriced = (rows: StoredOrder[]): number =>
+  rows.reduce((n, o) => (o.totalPrice == null ? n + 1 : n), 0)
 
 const mapOrderStatus = (status?: string): StoredOrder['status'] => {
   const lower = (status || '').toLowerCase().replace(/-/g, '_')
@@ -157,17 +180,22 @@ export function useOrdersMetrics() {
 
       const mapped: StoredOrder[] = Array.from(unique.values()).map((order) => ({
         id: order.id,
-        wineId: order.wineId || order.inventoryId || '',
-        wineName: order.wineName || order.wine_name || 'Unknown Wine',
+        wineId: order.inventoryId || '',
+        wineName: order.wineName || 'Unknown Wine',
         quantity: order.quantity,
-        unitPrice: order.unitPrice ?? order.unit_price ?? 0,
-        totalPrice: order.totalPrice ?? order.total_price ?? (order.unitPrice ?? 0) * (order.quantity ?? 0),
-        providerId: order.providerId || order.provider_id || '',
-        providerName: order.providerName || order.provider_name || 'Unknown Provider',
+        // `finalPrice` / `totalCost` are the route's own names. No derivation
+        // from the pair: `finalPrice` is stated per `priceUom`, so multiplying
+        // it by the quantity is the per-bottle assumption ADR 0119 exists to
+        // end — a case price times sixty bottles is twelve times the truth.
+        unitPrice: order.finalPrice ?? null,
+        totalPrice: order.totalCost ?? null,
+        providerId: order.providerId || '',
+        // The route sends no vendor name, only `providerId`.
+        providerName: 'Not named by this route',
         status: mapOrderStatus(order.status),
-        createdAt: order.createdAt || order.requestedAt || order.created_at,
-        approvedAt: order.approvedAt || order.approved_at,
-        deliveredAt: order.deliveredAt || order.delivered_at,
+        createdAt: order.requestedAt || '',
+        approvedAt: order.approvedAt,
+        deliveredAt: order.deliveredAt,
         cancelledAt: undefined,
       }))
       setOrders(mapped)
@@ -219,9 +247,13 @@ export function useOrdersMetrics() {
 
     // Calculate base metrics
     const totalOrders = orders.length
-    const totalOrderValue = orders.reduce((sum, o) => sum + o.totalPrice, 0)
+    const totalOrderValue = sumKnown(orders)
+    const unpricedOrders = countUnpriced(orders)
     const totalBottlesOrdered = orders.reduce((sum, o) => sum + o.quantity, 0)
-    const avgOrderValue = totalOrders > 0 ? totalOrderValue / totalOrders : 0
+    // Divided by the PRICED orders: an unpriced one is missing from the
+    // numerator, so counting it in the denominator halves the average.
+    const pricedOrders = totalOrders - unpricedOrders
+    const avgOrderValue = pricedOrders > 0 ? totalOrderValue / pricedOrders : 0
 
     // Status counts
     const pendingOrders = orders.filter(o => o.status === 'pending').length
@@ -232,8 +264,8 @@ export function useOrdersMetrics() {
     // Time-based metrics
     const ordersThisMonth = thisMonthOrders.length
     const ordersLastMonth = lastMonthOrders.length
-    const spendThisMonth = thisMonthOrders.reduce((sum, o) => sum + o.totalPrice, 0)
-    const spendLastMonth = lastMonthOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+    const spendThisMonth = sumKnown(thisMonthOrders)
+    const spendLastMonth = sumKnown(lastMonthOrders)
     const monthOverMonthGrowth = spendLastMonth > 0
       ? ((spendThisMonth - spendLastMonth) / spendLastMonth) * 100
       : 0
@@ -258,7 +290,7 @@ export function useOrdersMetrics() {
         }
       }
       acc[order.wineId].quantity += order.quantity
-      acc[order.wineId].totalValue += order.totalPrice
+      acc[order.wineId].totalValue += order.totalPrice ?? 0
       return acc
     }, {} as Record<string, { wineId: string; wineName: string; quantity: number; totalValue: number }>)
 
@@ -277,7 +309,7 @@ export function useOrdersMetrics() {
         }
       }
       acc[order.providerId].orderCount += 1
-      acc[order.providerId].totalValue += order.totalPrice
+      acc[order.providerId].totalValue += order.totalPrice ?? 0
       return acc
     }, {} as Record<string, { providerId: string; providerName: string; orderCount: number; totalValue: number }>)
 
@@ -299,7 +331,7 @@ export function useOrdersMetrics() {
         date: dateStr,
         orders: dayOrders.length,
         bottles: dayOrders.reduce((sum, o) => sum + o.quantity, 0),
-        spend: dayOrders.reduce((sum, o) => sum + o.totalPrice, 0),
+        spend: sumKnown(dayOrders),
       })
     }
 
@@ -308,6 +340,7 @@ export function useOrdersMetrics() {
       totalOrderValue,
       totalBottlesOrdered,
       avgOrderValue,
+      unpricedOrders,
       pendingOrders,
       approvedOrders,
       deliveredOrders,

@@ -103,6 +103,8 @@ interface Fixture {
   provider: Reg;
   payments: Reg;
   sender: Reg;
+  /** The house's WhatsApp and SMS senders (ADR 0121). */
+  textSenders: Reg;
   ical: Reg;
   mcp: Reg;
   mcpRuntime: Reg;
@@ -156,6 +158,77 @@ function base(): Fixture {
       configuredBy: 'GMAIL_SENDER_EMAIL',
       resolvedFromProfile: false,
       perHouse: { supported: false, reason: 'No per-restaurant sender exists.' },
+    }),
+    /**
+     * The measured state of every house on this deployment: no text sender of
+     * any kind, and a transport that is not built. The fixture says so rather
+     * than inventing a connected sender, because the row this page draws for a
+     * house with nothing is the row every house sees today.
+     */
+    textSenders: reg({
+      senders: { whatsapp: null, sms: null },
+      readable: true,
+      reason: null,
+      catalogue: {
+        whatsapp_business: {
+          id: 'whatsapp_business',
+          channel: 'whatsapp',
+          label: 'WhatsApp Business',
+          providerLabel: 'Meta (Cloud API)',
+          description: "The house's own WhatsApp Business number.",
+          connection: { bring_your_own: 'Embedded Signup.', mudavym_registers: 'Tech Provider.' },
+          revocation: 'Remove the app in Meta, or revoke here.',
+          custody: 'Meta holds the transport, never the record.',
+          markets: [
+            {
+              market: 'TR',
+              marketLabel: 'Türkiye',
+              twoWay: true,
+              provides: ['A number not already on WhatsApp.'],
+              fee: 'Free inside the window.',
+              timeline: 'Weeks for business verification.',
+              refusals: ['A number already on WhatsApp.'],
+            },
+          ],
+        },
+        sms_sender: {
+          id: 'sms_sender',
+          channel: 'sms',
+          label: 'SMS sender',
+          providerLabel: 'The Campaign Registry (US) / the Turkish operators (TR)',
+          description: 'A registered SMS sender in the house\'s own name.',
+          connection: { bring_your_own: 'A scoped subaccount key.', mudavym_registers: 'A subaccount per house.' },
+          revocation: 'Revoke here; releasing the number has no undo.',
+          custody: 'The carrier relationship is the house\'s own brand.',
+          markets: [
+            {
+              market: 'US',
+              marketLabel: 'United States',
+              twoWay: true,
+              provides: ['The legal business name exactly as on EIN records.'],
+              fee: '$44 brand, $15 vetting, $1.50-$10 a month.',
+              timeline: '13-20 business days.',
+              refusals: ['A shared number.'],
+            },
+            {
+              market: 'TR',
+              marketLabel: 'Türkiye',
+              twoWay: false,
+              provides: ['A company registration certificate.'],
+              fee: 'About $0.03 a message.',
+              timeline: 'About two weeks.',
+              refusals: ['A reply. Two-way SMS is not supported.'],
+            },
+          ],
+        },
+      },
+      surveyedMarkets: { whatsapp: ['TR', 'US'], sms: ['US', 'TR'] },
+      transport: {
+        built: false,
+        words:
+          'No provider credential for a per-house sender exists on this deployment, so nothing can leave through one yet.',
+      },
+      myConsent: { consent: null, readable: true, reason: null },
     }),
     ical: reg({ token: 'abc123' }),
     mcp: reg([]),
@@ -1331,5 +1404,68 @@ describe('the payment register acts, and every act is held', () => {
     // The row is still actionable: the chip states what it IS, not that the
     // register has gone read-only.
     expect(screen.getByRole('button', { name: 'Remove' })).not.toBeDisabled();
+  });
+});
+
+/**
+ * The house's text senders (ADR 0121).
+ *
+ * The founder's question was *"can the house sends on their behalf? whatsapp
+ * business api? or sms sender? what do we need there"*. These assertions are
+ * the surface's half of the answer, and each one is about a way the page could
+ * lie: by drawing a control that looks live, by rendering an unread register as
+ * an empty one, or by averaging away the fact that a Turkish SMS cannot receive
+ * a reply.
+ */
+describe('ConnectionsNext — the house sends in its own name', () => {
+  it('draws both channels, and neither control can appear to succeed', () => {
+    mockData.current = base();
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('WhatsApp Business')).toBeInTheDocument();
+    expect(screen.getByText('SMS sender')).toBeInTheDocument();
+
+    // Two paths, both offered, both disabled — with the SERVER's reason, not a
+    // sentence this page invented.
+    for (const label of ['Bring our own', 'Ask Mudavym to register one']) {
+      const buttons = screen.getAllByRole('button', { name: label });
+      expect(buttons).toHaveLength(2);
+      buttons.forEach((b) => expect(b).toBeDisabled());
+    }
+    expect(
+      screen.getAllByText(/No provider credential for a per-house sender exists/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('says a house with no sender has none, and never that it was never probed for health', () => {
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    expect(
+      screen.getAllByText(
+        /No sender has ever been recorded for this house on this channel\./,
+      ).length,
+    ).toBe(2);
+  });
+
+  it('names the one-way market rather than averaging it into the SMS row', () => {
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    // Türkiye is the only surveyed SMS market with `twoWay: false`, and the row
+    // has to say so: a threading UI over a channel that cannot receive would be
+    // a claimed capability.
+    expect(screen.getByText(/this channel is one-way/)).toBeInTheDocument();
+  });
+
+  it('an unread register is not an empty one', () => {
+    const d = base();
+    d.textSenders = reg(null, { error: 'connection reset', data: null });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/The text senders/)).toBeInTheDocument();
+    expect(screen.getByText(/connection reset/)).toBeInTheDocument();
+    // And it must NOT have fallen through to the "none" row, which would tell a
+    // manager an outage is a fact about their restaurant.
+    expect(screen.queryByText('WhatsApp Business')).not.toBeInTheDocument();
   });
 });

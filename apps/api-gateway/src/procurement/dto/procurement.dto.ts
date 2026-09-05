@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   Min,
   ValidateNested,
@@ -105,6 +106,63 @@ export class CreateOrderDto {
   @Min(1)
   @IsOptional()
   pricePackSize?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The money EVERY amount on this line is in — unit price, line total, allowance, deposit, " +
+      "freight (ADR 0117 Q31). ISO 4217 alpha-3. Omitted means UNSTATED and the column stores NULL: " +
+      "there is no default, because a defaulted currency is a claim about a vendor nobody made — " +
+      "`restaurants.currency` said USD about a restaurant in Fethiye for seven months on exactly " +
+      "that mechanism. The agreement sheet offers a default worked out from what this vendor last " +
+      "billed this house in, and the person confirms or changes it before it is sent.",
+    example: "TRY",
+  })
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: "currency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+  })
+  @IsOptional()
+  currency?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Money the vendor DEDUCTS from this line, as a POSITIVE amount for the whole line " +
+      "(ADR 0119 Q3). The agreement's mirror of the invoice line's allowance. Kept outside " +
+      "the unit price on purpose: folded in, a one-off deduction is indistinguishable from " +
+      "the wine being cheaper, and the next order inherits a price the vendor never gave. " +
+      "Omitted means the agreement named none, which is NOT the same as naming zero.",
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  allowance?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Refundable container deposit agreed for this line, a POSITIVE amount for the whole " +
+      "line (ADR 0119 Q3). Not part of what the wine costs — a deposit folded into the unit " +
+      "price becomes a permanent price rise on a bottle that will be redeemed. Omitted means " +
+      "the agreement named none.",
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  deposit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Delivery, fuel surcharge or other carriage agreed for this line, a POSITIVE amount for " +
+      "the whole line (ADR 0119 Q3). Distributors publish freight as its own schedule by " +
+      "weight and distance; it is a cost component, never a price variance. Omitted means the " +
+      "agreement named none.",
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  freight?: number;
 
   @ApiPropertyOptional()
   @IsNumber()
@@ -386,6 +444,23 @@ export class VerifyReceiptDto {
   @Min(0)
   @IsOptional()
   invoiceUnitPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The ISO 4217 alpha-3 code the invoice is denominated in — the VENDOR'S currency, off the vendor's paper, " +
+      "not the house's. `procurement_documents.currency` is where an uploaded invoice already carries it, and " +
+      "production holds TRY invoices against a house whose own currency says USD. Omit it and the price series " +
+      "records the figure with its currency marked NOT RECORDED, and the price register refuses the sighting " +
+      "outright rather than stamping USD on it (ADR 0117 Q25).",
+    example: "TRY",
+  })
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message:
+      "invoiceCurrency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+  })
+  @IsOptional()
+  invoiceCurrency?: string;
 
   @ApiPropertyOptional({
     description:
@@ -806,6 +881,48 @@ export class OrderResponseDto {
       "Bottles in one priceUom. Travels with priceUom: both stated, both null, or both keys absent.",
   })
   pricePackSize?: number | null;
+
+  /**
+   * The money the agreement names OUTSIDE the price of the wine — ADR 0119 Q3,
+   * read from the LINE like the pair above.
+   *
+   * The same three states as `priceUom`, and the third is again the point:
+   *   * a number — the agreement names this amount for the whole line;
+   *   * `null` — the line was read and names none;
+   *   * **the key ABSENT** — this route did not read the fee columns, so it
+   *     knows nothing either way. A consumer that read absence as "no deposit"
+   *     would be reporting the absence of a read as a fact about the agreement.
+   *
+   * All three are POSITIVE amounts. `allowance` deducts; `deposit` and
+   * `freight` add. The direction is in the name, never in a sign, and the
+   * database CHECKs refuse a negative.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 25,
+    description:
+      "Allowance the vendor deducts from this line, positive, for the whole line. null = the line was read and names none. Key ABSENT = this route does not read the line's fee columns.",
+  })
+  allowance?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 6,
+    description:
+      "Refundable container deposit agreed for this line, positive, for the whole line. Travels with allowance and freight: all three stated, all three null, or all three keys absent.",
+  })
+  deposit?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 48,
+    description:
+      "Freight or carriage agreed for this line, positive, for the whole line. A cost component, never a price variance.",
+  })
+  freight?: number | null;
 }
 
 export class OrderListResponseDto {

@@ -136,6 +136,48 @@ export async function mintOrderSeal(orderId: string): Promise<string | null> {
 }
 
 /**
+ * Mint the one-time seal a CANCELLATION has to carry back (ADR 0125).
+ *
+ * A separate route and a separate act from `mintOrderSeal`, on purpose: a token
+ * minted here says `cancel`, so it cannot be spent on an approval, and an
+ * approval's cannot be spent on a cancellation. The gateway refuses each with
+ * "That seal was issued for a different act on this order."
+ *
+ * It is also the first refusal a person meets. The gateway will not mint a seal
+ * for a cancellation it would not perform — an order whose wine has arrived, or
+ * one already closed — so the hold fails at its start with the reason, rather
+ * than at its end after a second and a half of ceremony. Same timing rule as
+ * the approval's: called from `onChallenge`, never at the moment of the write.
+ */
+export async function mintOrderCancelSeal(orderId: string): Promise<string | null> {
+  try {
+    const response = await apiClient.post<{ challenge?: string }>(
+      `${ORDERS_PATH}/${orderId}/cancel-seal-challenge`,
+      {},
+    );
+    return response.data?.challenge ?? null;
+  } catch (error) {
+    // THE REFUSAL HAS TO SURVIVE THE TRIP — and on this route it is the ONLY
+    // place the sentence appears, because a refused mint means the write is
+    // never attempted at all.
+    //
+    // Measured 2026-09-05 while capturing the ceremony: without this the 422
+    // reached the control as "Request failed with status code 422" and the
+    // page printed that, so "the wine has been counted into stock and its cost
+    // is in the books" — the whole reason the house said no — was thrown away
+    // by the client. `mintOrderSeal` above still has this gap; its consequence
+    // is smaller (the approval gate is re-checked at `POST /approve`, where the
+    // sentence does arrive) and it is named in ADR 0125 rather than changed in
+    // a pass about cancellation.
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
+}
+
+/**
  * Approve an order, carrying the seal minted when the hold began.
  *
  * `challenge` is not optional in practice — the gateway refuses an approval
@@ -203,16 +245,20 @@ export async function approveOrder(
  * a body on a DELETE would be silently dropped by the same code path that
  * dropped this one.
  *
- * NOTE ON THE SEAL: this route redeems none. `POST orders/:id/approve` demands
- * a one-time seal minted when the hold began; `DELETE orders/:id` reads the id
- * and the reason. Callers that put a hold in front of it are recording a
- * deliberate act, not proving one, and must say so
- * (`pages/orders/next/ResponsesSheet.tsx` REJECT_SEAL_NOTE).
+ * THE SEAL (ADR 0125, 2026-09-05). This route now redeems one, minted by
+ * `mintOrderCancelSeal` when the hold BEGINS. The act is `cancel`, so an
+ * approval's seal cannot be spent here and this one cannot be spent on
+ * `POST orders/:id/approve`; the gateway refuses each with its own sentence.
+ * The reason is no longer optional — the gateway answers 400 in words without
+ * one — and a cancellation of an order whose wine has arrived is refused 422.
+ * The note that used to sit on the responses sheet saying this act was recorded
+ * rather than proven is retired with this change.
  */
 export async function cancelOrder(
   orderId: string,
   reason?: string,
-  restaurantId?: string
+  restaurantId?: string,
+  challenge?: string | null
 ): Promise<Order> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
@@ -220,6 +266,10 @@ export async function cancelOrder(
   try {
     const response = await apiClient.delete<Order>(`${ORDERS_PATH}/${orderId}`, {
       params: reason ? { reason } : undefined,
+      // The same header the approval carries, so a caller has one thing to
+      // learn. What separates the two acts is the act the token names, which
+      // the gateway compares — not the shape of the request.
+      headers: challenge ? { 'x-seal-challenge': challenge } : undefined,
     });
     return response.data;
   } catch (error) {
@@ -235,7 +285,17 @@ export async function cancelOrder(
 }
 
 /**
- * Mark order as delivered
+ * Mark order as delivered.
+ *
+ * Throws 409 when the order has already arrived — the gateway refuses a second
+ * delivery for every caller, in words (`delivered-once.ts`). The sentence is
+ * promoted onto `error.message` here, exactly as `approveOrder` and
+ * `cancelOrder` do: every call site of this function reads `.message` (the
+ * Action Center's `failureMessage`, the Orders desk's alert), and without the
+ * promotion they would all show axios's own "Request failed with status code
+ * 409" and the reason a person was stopped would never reach the screen. The
+ * original error is rethrown so callers that branch on `err.response?.status`
+ * or on the body's `reason` still can.
  */
 export async function markOrderDelivered(
   orderId: string,
@@ -245,8 +305,16 @@ export async function markOrderDelivered(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/deliver`, { notes });
-  return response.data;
+  try {
+    const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/deliver`, { notes });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -395,6 +463,7 @@ export const ordersApi = {
   updateOrderStatus,
   approveOrder,
   mintOrderSeal,
+  mintOrderCancelSeal,
   cancelOrder,
   markOrderDelivered,
   getPendingOrdersCount,

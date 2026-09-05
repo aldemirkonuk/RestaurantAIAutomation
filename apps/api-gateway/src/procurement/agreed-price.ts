@@ -213,7 +213,7 @@ export function describeAgreedPrice(input: {
   const { priceUom, pricePackSize } = input.stated;
   const pack =
     pricePackSize > 1
-      ? ` (${pricePackSize} bottle${pricePackSize === 1 ? "" : "s"})`
+      ? ` (${pricePackSize} bottles)`
       : "";
   return `${money} per ${priceUom}${pack}`;
 }
@@ -223,14 +223,20 @@ export type PerBottleResolution =
   | { ok: false; reason: string };
 
 /**
- * The per-bottle figure `price_history` requires, derived ONCE and stated.
+ * A stated price, converted ONCE to per bottle, with the arithmetic returned.
  *
- * `price_history.unit` is the hardcoded literal `'BOTTLE'`
- * (`procurement.service.ts` `recordPriceHistory`) and its own docblock records
- * that the column stays that way deliberately: a series whose unit could vary
- * is a series nothing can average. So a stated per-case price has to become a
- * per-bottle one before it enters that table, and the conversion has to be
- * visible.
+ * **SUPERSEDED AS THE `price_history` PATH — ADR 0119 Q4, 2026-09-05.** This
+ * was written for a series whose `unit` column was the hardcoded literal
+ * `'BOTTLE'`, so a case price had to be divided before it could enter. The
+ * founder has since decided that the series carries the STATED unit
+ * (`20260905072500_the_price_series_states_its_unit.sql`), so `recordPriceHistory`
+ * no longer converts anything and no longer calls this.
+ *
+ * It survives as the ONE implementation of this division in the tree, used by
+ * `agreedPricePerBottleForDoor`: `invoice-match.ts` genuinely does compare
+ * bottle-equivalents, so the receiving door genuinely does need a per-bottle
+ * reading of a case-priced agreement. Everything below still holds for that
+ * caller.
  *
  * THIS IS NOT A SECOND CONVERSION OF THE REGISTER'S OPERANDS. ADR 0119
  * invariant 2 — one conversion, in one place, operands kept — is about
@@ -402,7 +408,19 @@ export function unstatedPriceUnitSentence(what: string): string {
  */
 export type AgreedPriceUnitReading =
   | { read: false }
-  | { read: true; stated: StatedPriceUnit | null };
+  | {
+      read: true;
+      stated: StatedPriceUnit | null;
+      /**
+       * The money outside the price (ADR 0119 Q3), when this route read those
+       * columns too. OPTIONAL for the same reason `read` exists at all: a route
+       * that selected `price_uom` but not `allowance` knows nothing about the
+       * fees, and emitting `allowance: null` would report the absence of a read
+       * as "the agreement names no allowance". Absent here means the fee keys
+       * are absent on the wire.
+       */
+      fees?: AgreementFees;
+    };
 
 /**
  * The one price unit an ORDER can be said to have, folded from its lines.
@@ -456,10 +474,355 @@ export function foldOrderPriceUnit(
   return agreed;
 }
 
-/** One embedded `procurement_order_items` row, as far as the price unit cares. */
+/* ==========================================================================
+ * PHASE 2 (ADR 0119, founder decisions Q3, Q4 and Q6, 2026-09-05)
+ * ==========================================================================
+ * Q3 — the money outside the unit price gets its own columns on the agreement
+ *      line, mirroring the invoice, and the total prints its working.
+ * Q4 — `price_history` carries a STATED unit; nothing is converted on the way
+ *      in, and an agreement that states no unit does not enter the series.
+ * Q6 — a split case is its own agreement line, never a surcharge on the case
+ *      line.
+ * ========================================================================== */
+
+/**
+ * The money on an agreement line that is NOT the price of the wine.
+ *
+ * `20260905073000_the_agreement_names_the_money_outside_the_price.sql` — three
+ * nullable `numeric(12,2)` columns mirroring `procurement_document_lines`'
+ * `allowance` and `deposit`, plus the freight the invoice codes at document
+ * level. ADR 0119 invariant 5: *money outside the unit price is named, not
+ * folded in.*
+ *
+ * All three are POSITIVE amounts for the WHOLE LINE. `allowance` deducts;
+ * `deposit` and `freight` add. The direction is carried by the name, never by a
+ * sign — a negative allowance is a charge wearing a deduction's name, and the
+ * database CHECKs refuse one.
+ *
+ * `null` and `0` are different facts and both are legal: `null` is *the
+ * agreement said nothing about a deposit*, `0` is *the agreement says there is
+ * none*. Nothing here ever turns the first into the second.
+ */
+export interface AgreementFees {
+  allowance: number | null;
+  deposit: number | null;
+  freight: number | null;
+}
+
+/** No fee stated at all — every line written before ADR 0119 phase 2. */
+export const NO_AGREEMENT_FEES: AgreementFees = {
+  allowance: null,
+  deposit: null,
+  freight: null,
+};
+
+function feeAmount(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * The three fees as they sit on a row or a DTO.
+ *
+ * A value that is not a non-negative finite number is read as ABSENT rather
+ * than as zero: a `"abc"` deposit is something nobody stated, and reading it as
+ * $0.00 would put "the vendor charged no deposit" into the record on the
+ * strength of a typo.
+ */
+export function readAgreementFees(
+  row:
+    | {
+        allowance?: number | string | null;
+        deposit?: number | string | null;
+        freight?: number | string | null;
+      }
+    | null
+    | undefined,
+): AgreementFees {
+  if (!row) return { ...NO_AGREEMENT_FEES };
+  return {
+    allowance: feeAmount(row.allowance),
+    deposit: feeAmount(row.deposit),
+    freight: feeAmount(row.freight),
+  };
+}
+
+/** Does this agreement name any money outside the goods price? */
+export function hasStatedFees(fees: AgreementFees): boolean {
+  return (
+    fees.allowance !== null || fees.deposit !== null || fees.freight !== null
+  );
+}
+
+export type AgreementLineTotal =
+  | {
+      ok: true;
+      /** The wine, at the agreed price, before any fee. */
+      goods: number;
+      /** goods − allowance + deposit + freight. What the line comes to. */
+      total: number;
+      /** The whole arithmetic, in one sentence, for printing beside the figure. */
+      working: string;
+    }
+  | { ok: false; reason: "price_unit_not_countable"; message: string };
+
+/**
+ * What the line comes to, with the fees named and the working printed.
+ *
+ * The goods half is `agreedOrderTotal` unchanged — the same arithmetic phase 1
+ * shipped, drawn from the price's own unit. This adds the second half of ADR
+ * 0119 invariant 5: the fees are applied HERE, visibly, rather than being
+ * absorbed into a unit price where nothing could ever separate them again.
+ *
+ * With all three fees NULL the total is the goods total and the working is the
+ * goods working, byte for byte — which is every line written before phase 2, so
+ * no existing figure moves.
+ */
+export function agreementLineTotal(input: {
+  price: number | null | undefined;
+  stated: StatedPriceUnit | null;
+  bottlesTotal: number;
+  quantity: number;
+  unitType: Uom;
+  opaque: boolean;
+  fees: AgreementFees;
+}): AgreementLineTotal {
+  const goodsResolution = agreedOrderTotal(input);
+  if (!goodsResolution.ok) return goodsResolution;
+
+  const goods = Math.round(goodsResolution.total * 100) / 100;
+  const { allowance, deposit, freight } = input.fees;
+
+  if (!hasStatedFees(input.fees)) {
+    return { ok: true, goods, total: goods, working: goodsResolution.note };
+  }
+
+  const total =
+    Math.round(
+      (goods - (allowance ?? 0) + (deposit ?? 0) + (freight ?? 0)) * 100,
+    ) / 100;
+
+  const parts: string[] = [`Goods $${goods.toFixed(2)}`];
+  if (allowance !== null) parts.push(`less allowance $${allowance.toFixed(2)}`);
+  if (deposit !== null) parts.push(`plus deposit $${deposit.toFixed(2)}`);
+  if (freight !== null) parts.push(`plus freight $${freight.toFixed(2)}`);
+
+  // NO trailing "= $total" here. Both callers print the figure themselves —
+  // the sheet above the working, the ledger row after it — and a sentence that
+  // carried the total too printed it twice on the row, measured in the first
+  // capture of this pass (`$SP/shots-price-unit-2/`, "= $2178.00. = $2,178.00").
+  return {
+    ok: true,
+    goods,
+    total,
+    working: `${goodsResolution.note} ${parts.join(", ")}.`,
+  };
+}
+
+/**
+ * A split case is its own line — the refusal, in words, before the 23514.
+ *
+ * ADR 0119 Q6, decided by the founder on 2026-09-05: *a split case is its own
+ * agreement line — a different pack with a different price, never a surcharge
+ * on the case line.* GS1's rule is the warrant: a change to the number of items
+ * in a pack requires a new GTIN, so a broken case is a different trade item,
+ * and a different trade item is a different line.
+ *
+ * What `split_case` NOW MEANS, having been a bare vocabulary word until this
+ * decision: **the line is the broken case itself, priced as its own trade
+ * item**, with `price_pack_size` the number of bottles actually in the broken
+ * pack — not the number in a full case, and not a fee bolted onto one.
+ *
+ * The one shape a single row can be refused for is the one this returns a
+ * sentence for, matching
+ * `procurement_order_items_split_case_own_line_check`: `case` on one axis and
+ * `split_case` on the other. Everything else stays legal, including a broken
+ * case bought as loose bottles and priced per split case.
+ */
+export function splitCaseOwnLineRefusal(input: {
+  priceUom: Uom | null;
+  unitType: Uom | null;
+}): string | null {
+  const { priceUom, unitType } = input;
+  if (priceUom === null || unitType === null) return null;
+
+  if (priceUom === "split_case" && unitType === "case") {
+    return (
+      "Whole cases cannot be bought at a split-case price. A split case is a broken case — a different pack, " +
+      "and therefore a different agreement line with its own price, never a surcharge on the case line. " +
+      "Write the full cases on one line at the case price and the broken case on its own line at the split-case price."
+    );
+  }
+
+  if (priceUom === "case" && unitType === "split_case") {
+    return (
+      "A split case cannot be priced at the full case price. If the vendor charges the case price for a broken case, " +
+      "the difference is a split-case charge on its own line, not a case price attached to a quantity of split cases."
+    );
+  }
+
+  return null;
+}
+
+/**
+ * How the unit of a `price_history` observation is KNOWN — never assumed.
+ *
+ * ADR 0119 Q4, decided by the founder on 2026-09-05: *`price_history` carries a
+ * stated unit; kegs and cases enter with their own unit; every comparison
+ * groups by unit first.* Option B in the ADR, over option A (a strictly
+ * per-bottle series with a conversion on the way in), which the ADR itself
+ * called "the current shape and a lie the moment a keg is priced".
+ *
+ * Three claims, and the third is the point:
+ *
+ *   * `stated` — the agreement line states a `(price_uom, price_pack_size)`
+ *     pair. The series records that unit and that price, unconverted. A case
+ *     price enters as a case price.
+ *   * `bottle_equivalent` — the caller has already converted every operand to
+ *     bottles and can say WHERE. `verifyReceipt` is the one such caller:
+ *     `computeMatch` converts all four documents to bottle-equivalents and
+ *     refuses a unit it cannot read (`invoice-match.ts`), so its
+ *     `effectiveUnitCost` is per bottle as a measured fact rather than a
+ *     convention. `because` is written into the row's `notes`.
+ *   * `unstated` — nothing says what unit the price is in. REFUSED. This is
+ *     what phase 1's `'BOTTLE'` literal silently answered for, and it is the
+ *     same refusal `decideOwnPaperSighting` already makes about the same event,
+ *     so the two registers now decline the same rows for the same reason
+ *     instead of one of them inventing a unit (ADR 0119 invariant 7).
+ */
+export type PriceSeriesUnitClaim =
+  | { kind: "stated"; stated: StatedPriceUnit }
+  | { kind: "bottle_equivalent"; because: string }
+  | { kind: "unstated" };
+
+export type PriceSeriesUnitResolution =
+  | { ok: true; unit: Uom; note: string }
+  | { ok: false; reason: string };
+
+/**
+ * The unit `price_history.unit` records, or the sentence saying why no row is
+ * written.
+ *
+ * NOTHING IS CONVERTED HERE, deliberately. Phase 1's
+ * `perBottleFromAgreedPrice` divided a case price by its pack on the way into a
+ * column that said BOTTLE; the column now says `case`, so the division is not
+ * only unnecessary, it would destroy the operand the series is supposed to
+ * hold. The one conversion the platform performs is still
+ * `normalizeUnitPrice`'s, on the register side, with its operands stored beside
+ * the result (ADR 0119 invariant 2) — and there is now exactly one fewer
+ * conversion in the tree than there was.
+ */
+export function priceSeriesUnit(
+  claim: PriceSeriesUnitClaim,
+): PriceSeriesUnitResolution {
+  switch (claim.kind) {
+    case "stated":
+      return {
+        ok: true,
+        unit: claim.stated.priceUom,
+        note:
+          claim.stated.pricePackSize > 1
+            ? `Recorded per ${claim.stated.priceUom} of ${claim.stated.pricePackSize}, as agreed; not converted.`
+            : `Recorded per ${claim.stated.priceUom}, as agreed; not converted.`,
+      };
+    case "bottle_equivalent":
+      return {
+        ok: true,
+        unit: "bottle",
+        note: `Recorded per bottle: ${claim.because}`,
+      };
+    case "unstated":
+      return {
+        ok: false,
+        reason:
+          "the agreement states no unit for its price, and price_history.unit is NOT NULL with no default — " +
+          "a number with no unit cannot be told apart from a case price twelve times its size, so it is refused " +
+          "rather than filed as a bottle price",
+      };
+  }
+}
+
+/**
+ * The agreed price of an order, per BOTTLE, for the receiving door only.
+ *
+ * `verifyReceipt` compares the agreement's price against the invoice's, and
+ * `invoice-match.ts` converts every operand to bottle-equivalents before it
+ * compares anything (`poUnitPrice` is documented PER BOTTLE there). Measured on
+ * this tree, the door fed it `procurement_orders.final_price` — the header, which
+ * names no unit at all — so a case-priced agreement was compared against a
+ * per-bottle invoice price and reported a price variance of a factor of the
+ * pack, in the direction that reads as the vendor overcharging.
+ *
+ * This is the conversion that comparison needs, done once, from the LINE's own
+ * stated pair, with the reason returned so the caller can say it. An OPAQUE
+ * unit has no per-bottle reading, so the comparison is REFUSED rather than
+ * made: a keg price tested against a per-bottle invoice figure produces a
+ * confident wrong verdict, which is the fault `invoice-match` exists to end.
+ */
+export type DoorPriceResolution =
+  | { ok: true; perBottle: number; note: string }
+  | { ok: false; reason: string };
+
+export function agreedPricePerBottleForDoor(input: {
+  price: number | null | undefined;
+  stated: StatedPriceUnit | null;
+}): DoorPriceResolution {
+  if (!input.stated) {
+    // Nothing changed for an order that states no unit: the door compares the
+    // number it has always compared, on the convention it has always used. A
+    // "fix" that started refusing every legacy order at the receiving door
+    // would close the door, not the gap.
+    const price = Number(input.price);
+    if (input.price == null || !Number.isFinite(price)) {
+      return { ok: false, reason: "the order carries no agreed price" };
+    }
+    return {
+      ok: true,
+      perBottle: price,
+      note: "No price unit stated on the line; compared on the historical per-bottle convention, unchanged.",
+    };
+  }
+
+  // ONE implementation of this division in the tree, deliberately. Phase 1 put
+  // it in `perBottleFromAgreedPrice` for `price_history`; ADR 0119 Q4 has since
+  // taken that table off per-bottle, so this is now its only caller — the same
+  // arithmetic, re-worded for the surface that asks (the refusal a receiver
+  // reads must be about the invoice comparison, not about a price series).
+  const converted = perBottleFromAgreedPrice({
+    price: input.price,
+    stated: input.stated,
+  });
+  if (!converted.ok) {
+    const { priceUom } = input.stated;
+    if (OPAQUE.has(priceUom)) {
+      return {
+        ok: false,
+        reason: `the agreement is priced per ${priceUom}, and a ${priceUom} is not a number of bottles — the invoice's per-bottle price cannot be compared against it, and comparing them anyway would report a variance of whatever the two units differ by`,
+      };
+    }
+    return { ok: false, reason: converted.reason };
+  }
+
+  const { priceUom, pricePackSize } = input.stated;
+  return {
+    ok: true,
+    perBottle: converted.perBottle,
+    note:
+      pricePackSize === 1
+        ? `Agreed per ${priceUom}, which holds one bottle; compared as-is.`
+        : `Agreed at $${Number(input.price).toFixed(2)} per ${priceUom} of ${pricePackSize}; compared per bottle at $${converted.perBottle.toFixed(4)}.`,
+  };
+}
+
+/** One embedded `procurement_order_items` row, as far as the money cares. */
 export interface EmbeddedPriceUnitLine {
   price_uom?: string | null;
   price_pack_size?: number | null;
+  allowance?: number | string | null;
+  deposit?: number | string | null;
+  freight?: number | string | null;
 }
 
 /**

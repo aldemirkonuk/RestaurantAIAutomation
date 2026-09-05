@@ -340,6 +340,36 @@ no approve control anywhere in the web app reaches `/approve` without a
 redeemed seal. See "What is NOT sealed yet" below, which is kept and answered
 rather than deleted, and the three measurements that correct it.
 
+**Status, 2026-09-05 (later the same day): EXTENDED AGAIN — a THIRD act, and the
+fork this addendum left open is closed.** [ADR 0125](0125-an-order-changes-state-through-a-sealed-transition.md)
+adds `cancel` to `approve` and `deliver` on the one `procurement_order` subject
+kind, again without editing `common/seal/**`. It also answers the question this
+addendum recorded and could not settle — whether `DELETE orders/:id` should be
+sealed when doing so would refuse the legacy desk's only Reject: the legacy desk
+was given the hold in the same pass (`components/orders/SealedRejectDie.tsx`), so
+nothing is left lying to keep it working. The research behind it found nine
+further flaws in how an order ends, including one with a money consequence larger
+than the missing seal: a cancellation of a DELIVERED order reversed nothing and
+removed its cost from every spend and delivery figure in the house. See ADR 0125
+for the census, the transition table, and four open founder questions.
+
+**Status, 2026-09-05 (later the same day): BOUNDED — a hold that is not a seal now
+exists on the same screen, and it says so.** The founder asked for the written
+note's closing control to be tried both ways — *"lets try both, 80 percent simple
+20 percent signature"* — so twenty per cent of houses see a `HoldToApprove` on a
+one-tap NOTE. **That die is a gesture, not a seal, and nothing about this
+addendum is loosened by it:** no `onChallenge` is passed, no challenge is minted,
+nothing is redeemed, and the card carries the distinction in words ("this die is
+a gesture rather than a seal — nothing is minted and nothing is redeemed"). The
+seal still means exactly one thing: a one-time token bound to an actor and an
+act, spent by the write. The reason this is worth a status line rather than a
+footnote is measured and visible in the captures
+(`$SP/shots-note-experiment/panel-die-*.png`): **the two holds are identical at
+rest** and only the sentence above each tells them apart, which is the founder's
+own original objection now on screen. It is the strongest argument for ending
+that experiment on the plain arm. See ADR 0127 for the arms, the counts, and what
+would end it.
+
 **Status, 2026-09-05: EXTENDED — the seal now covers a second act on an order.**
 The founder: *"extend the seal to it when the first real action lands, but RUN the
 ecosystem to run the first real action."* The dashboard's one-tap desk had a
@@ -389,6 +419,31 @@ would be a production write. Exercised read-only that day: the mint route answer
 401 unauthenticated and 404 for an action the house does not own, and the execute
 route answers 404 the same way — so both exist, are class-guarded, and refuse before
 any write. The 400 and 403 refusals are proven by spec.
+
+**Status, 2026-09-05 (later the same day): the delivery refusal this addendum owned
+alone is now the SERVICE's, and this one is kept for the reason it exists.** The
+founder: *"harden it in the procurement service for every caller."* When this addendum
+was written, `deliverableOrderFor`'s DELIVERED check was the whole defence against an
+order being delivered twice, and its comment said so — *"`markDelivered` has no
+already-delivered guard of its own"*. That was true and it was one caller deep: the
+Orders desk, the legacy desk, the Action Center's locally-derived card and the mobile
+outbox all posted to `POST /procurement/orders/:id/deliver` and reached
+`markDelivered` unguarded. The service now refuses a second delivery for every caller
+with a 409 naming the order and when it arrived, and the same rule is the UPDATE's own
+`status=not.in.(...)` WHERE clause so a race loses at the database
+(`apps/api-gateway/src/procurement/delivered-once.ts`,
+`procurement/tests/delivered-once.spec.ts`, [[orders]] §9 and §13.18).
+
+**This addendum's check is kept, and kept FIRST, for a reason the service cannot
+cover.** The seal is minted and redeemed *before* `markDelivered` is called, so a
+refusal arriving only from the service would burn a one-shot seal on an act the house
+was always going to decline, and the card could not be retried. It is widened from
+DELIVERED to the whole goods-arrived set for exactly that reason: a
+PARTIALLY_RECEIVED or COMPLETED order used to pass the mint and would now be refused
+downstream, after the seal was spent. **Open, and a founder's call rather than a
+builder's:** the mint and execute routes answer **400** where the deliver route answers
+**409** for the same fact, because changing `deliverableOrderFor`'s exception class
+would change a contract this addendum shipped in `be80f8b5`.
 
 **Founder decision, 2026-09-04.** Challenge-and-redeem — built for MCP tool
 writes in ADR 0107's addendum of the same day — is extended to **order approval**

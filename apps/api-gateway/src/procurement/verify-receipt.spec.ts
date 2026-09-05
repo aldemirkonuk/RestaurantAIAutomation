@@ -603,7 +603,13 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     const row = calls.priceHistoryInserts[0];
-    expect(row.unit).toBe("BOTTLE");
+    // Lowercase since ADR 0119 Q4 (2026-09-05): `price_history.unit` joined the
+    // house's one seven-word vocabulary, NOT NULL with no default, and the
+    // migration case-folded the one legacy spelling. The receipt path's claim is
+    // `bottle_equivalent` — not the agreement's unit, but a measured property of
+    // `computeMatch`, which converts all four documents to bottle-equivalents
+    // before producing this cost.
+    expect(row.unit).toBe("bottle");
     expect(row.price).toBe(22);
     // 24 BOTTLES, not the raw 24 that happened to be typed, and not 2 cases.
     expect(row.quantity).toBe(24);

@@ -1,10 +1,13 @@
 # 0119 — An agreed price states its unit
 
-- **Status:** **Accepted in part — O1 phase 0, phase 1 and phase 2 built; phases
-  2026-09-04, phase 2 2026-09-05.** Q1 and Q5 are answered by the founder; **Q2, Q3, Q4,
-  Q6 and Q7 remain open and are restated below.** Phase 2 (founder, 2026-09-05: *"teach
-  the list route the pair and show it on the rows; leave legacy as is"*) closed the
-  read side: `GET /procurement/orders` joins the line's pair in the SAME query and the
+- **Status:** **Accepted — O1 phases 0, 1 and 2 built; 2026-09-04 and 2026-09-05.**
+  Q1, Q5 (2026-09-04) and **Q2, Q3, Q4, Q6 (2026-09-05)** are answered by the founder.
+  **Q7 alone remains open**, restated below. Phase 2 was built in two dispatches: the
+  read side first (*"teach the list route the pair and show it on the rows; leave legacy
+  as is"*), then the four decisions above — the header price made an echo the database
+  enforces, the price series given a stated unit, the money outside the price given
+  columns, and `split_case` turned from a vocabulary word into a rule. Phase 2's first
+  half closed the read side: `GET /procurement/orders` joins the line's pair in the SAME query and the
   rebuilt ledger row prints the price with its unit, or the register's refusal when
   there is none. The ADR was written as research only ("No code, no migration, no schema
   change") and that is no longer true of it: phase 0's mail half shipped in `f7ae750e`,
@@ -12,8 +15,17 @@
   together"*, which built phase 1 — the migration
   `supabase/migrations/20260905010000_an_agreed_price_states_its_unit.sql`, the writers,
   and the price-unit control on `/orders`. What was NOT built is listed under
-  "Still open after phase 1" at the end of the Recommendation.
-- **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided, phases 0-1 built) · 2026-09-05 (phase 2, the read side, built)
+  "Still open after phase 1" at the end of the Recommendation. **The pair now lives on
+  the SHARED web type (2026-09-05):** `priceUom` / `pricePackSize` were declared in a
+  local `OrderWire` intersection in `pages/orders/next/useOrdersNextData.ts` because
+  `services/api/types.ts` `Order` was known to be wrong; that type is now exactly
+  `OrderResponseDto`'s key set, the intersection lost six keys to it, and
+  `scripts/check_web_reads_gateway_dto_keys.py` fails CI if the two drift apart again.
+  Auditing the other consumers found the phantom pair this ADR named was **nine** keys,
+  not two, and that the ledger row's em dash had siblings: `"$0"` on the dashboard's
+  approval seal, `"$NaN"` on the provider card, and a whole spend engine summing zeroes
+  (`06-pages/orders.md` §13.16).
+- **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided, phases 0-1 built) · 2026-09-05 (phase 2, the read side, built) · 2026-09-05 (Q2/Q3/Q4/Q6 decided and built)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** agreed price, price unit, unit of measure, case price, bottle price,
   pack size, split case, deposit, allowance, freight, `procurement_orders.final_price`,
@@ -504,16 +516,10 @@ landed:
 
 **Still open after phase 1**, stated so it is not discovered later:
 
-> * **Q2 is only half-answered.** `procurement_orders.final_price` is now *documented* as
->   an echo (a column comment) and is still independently writable at
->   `procurement.service.ts` `confirmDeal`. Making it GENERATED from the line is a
->   second migration and a change to four readers; it was not in this dispatch.
-> * **Q3, Q4, Q6, Q7 are untouched.** Deposit/freight/split-case money still has no home
->   on the agreement (Q3); `price_history.unit` is still the hardcoded `'BOTTLE'` and a
->   per-keg price is now *refused* rather than recorded, which sharpens Q4 rather than
->   answering it; `split_case` is still a word in the vocabulary rather than a decision
->   (Q6); `normalizeUnitPrice` still reads a 12×375 and a 6×750 as the same per-750 price
->   (Q7).
+> * ~~**Q2 is only half-answered.**~~ ~~**Q3, Q4, Q6 are untouched.**~~ **ALL FOUR
+>   DECIDED AND BUILT 2026-09-05 — see "Phase 2, second half" below.** What remains of
+>   this paragraph is Q7 alone: `normalizeUnitPrice` still reads a 12×375 and a 6×750 as
+>   the same per-750 price.
 > * ~~**The ledger row still prints a bare number.**~~ **CLOSED 2026-09-05 (phase 2).**
 >   `listOrders` embeds `procurement_order_items(price_uom, price_pack_size)` in the
 >   query it was already making — one statement, resolved through
@@ -528,6 +534,102 @@ landed:
 >   all. `06-pages/orders.md` §13.10, `LedgerUnit.test.tsx`.
 > * **The legacy `/orders`** (`apps/web/src/pages/Orders.tsx`, what production shows with
 >   `mudavym_design_orders` off) is deliberately unchanged and cannot state a price unit.
+
+**Phase 2, second half — BUILT 2026-09-05.** The founder decided Q2, Q3, Q4 and Q6
+together. What landed, and what each decision cost:
+
+> **Q2 — the header price is an echo the DATABASE enforces, not a comment.**
+> "Generated from the line" is the right semantics and an impossible mechanism, and the
+> impossibility was MEASURED rather than assumed (Postgres 18.3 via PGlite 0.5.8,
+> `$SP/pglite-probe/q2-probe.mjs`, over a transcription of the two tables):
+> a generation expression may not contain a subquery (`0A000`); the one spelling Postgres
+> ACCEPTS — the subquery wrapped in a function labelled `IMMUTABLE` — is the worst
+> outcome available, because the label is taken on trust and the expression is evaluated
+> once at insert, when the order has no line yet, and never recomputed; and `final_price`
+> cannot become generated in place under any syntax (`42601` for
+> `ADD GENERATED … AS`, `55000` for `SET EXPRESSION` on a non-generated column). On top
+> of that the column is `NOT NULL` on a row inserted BEFORE its line exists, so a CHECK
+> refusing every direct write would make an order uncreatable.
+> `20260905072000_the_header_price_echoes_the_line.sql` therefore ships a trigger pair:
+> the line writes the header, and a direct write to `final_price` that disagrees with the
+> line is refused with `23514` naming the two numbers. `confirmDeal` and
+> `InboundResponder.syncOrderState` now write the LINE; both fall back to the header only
+> when the order has no line, which the trigger permits and which they say out loud.
+> Measured against production (`Restaurant_Wine_Ops`, PG 17.6.1.063, read-only,
+> 2026-09-05): 2 orders, 1 line, **0 orders whose line disagrees with their header**, so
+> the migration's pre-flight assertion costs nothing. Nothing is reconciled — a header
+> that disagreed would be a fact about that order, and the migration raises instead of
+> picking a winner.
+>
+> **Q4 — `price_history` carries a stated unit, and refuses a price that has none.**
+> `20260905072500_the_price_series_states_its_unit.sql`: `unit` becomes `NOT NULL`, its
+> `DEFAULT 'BOTTLE'` is DROPPED, and a CHECK admits the same seven singulars as every
+> other unit column (the fifth copy of one vocabulary). Nothing is converted on the way
+> in any more — a case price enters AS a case price, a keg price enters at all for the
+> first time, and `perBottleFromAgreedPrice` is no longer this path's arithmetic. **The
+> reversal that matters:** an agreement stating NO unit used to enter the series anyway,
+> as `'BOTTLE'`, on no evidence; it is now refused in a sentence, which is the same
+> refusal `decideOwnPaperSighting` already made about the same event. Production held 0
+> `price_history` rows and 0 NULL units (measured 2026-09-05), so the only data change is
+> a case-fold of `'BOTTLE'` → `'bottle'` — provable rather than assumed, because the one
+> writer that produced that spelling converted to per-bottle before inserting. Anything
+> else raises.
+> **The cost, conceded rather than argued away:** this ADR itself rejected a widened
+> `unit` on the grounds that *"a per-bottle series whose unit could vary is a series
+> nothing can average."* That is true. The obligation moves from the writer to the
+> reader — every comparison must GROUP BY unit first — and the column comment says so
+> where a reader will find it. Measured on this tree there is no such reader yet: the
+> insert in `recordPriceHistory` is the only statement in `apps/` or `services/` that
+> touches the table.
+>
+> **Q3 — the money outside the price has three columns and the total prints its
+> working.** `20260905073000_the_agreement_names_the_money_outside_the_price.sql` adds
+> `allowance`, `deposit`, `freight` (`numeric(12,2)`, nullable, each `>= 0`) to
+> `procurement_order_items`, mirroring the invoice line's own `allowance`/`deposit`.
+> All three are POSITIVE amounts for the whole line; the direction is in the name, never
+> in a sign. `agreementLineTotal` computes goods − allowance + deposit + freight and
+> returns the arithmetic as a sentence; `AgreementSheet` gains the three fields and the
+> ledger row prints them. **NULL and 0 stay different facts** end to end: an empty field
+> sends no key, so the column keeps NULL, and a typed 0 travels — "no deposit was agreed"
+> and "a deposit of zero was agreed" are different claims about a vendor.
+> **The receiving door compares like with like.** Measured first: `verifyReceipt` fed
+> `procurement_orders.final_price` — the unit-less header — straight into
+> `computeMatch`'s `poUnitPrice`, which `invoice-match.ts` documents as PER BOTTLE and
+> compares directly against the invoice's per-bottle price. A case-priced agreement
+> therefore produced `price_variance`, the loudest verdict the module reaches, on an
+> order where nothing was wrong. The door now reads the LINE and converts once from its
+> stated pair; an OPAQUE pair (keg, litre) makes NO price comparison at all rather than a
+> wrong one; and the agreement's fees are named in the verdict's own notes so an invoice
+> that bills a deposit the agreement provided for does not read as a price variance.
+> Also measured, and NOT closed: the invoice line's `allowance`/`deposit` columns are
+> written by the parser and read by nothing at the door — only a caller-supplied
+> `allocatedCharges` scalar reaches `computeMatch`. That is the other half of "like with
+> like" and it is named in `06-pages/receiving.md` §13 rather than assumed done.
+>
+> **Q6 — `split_case` stops being a bare vocabulary word.** It now means one thing: *this
+> line is the broken case, as its own trade item, with its own price*, and
+> `price_pack_size` is the number of bottles actually in the broken pack. It is never a
+> fee added to a case line — which is why this build adds no `split_case_fee` column and
+> the sheet has no such field. `procurement_order_items_split_case_own_line_check`
+> refuses the one shape a single row can be judged on: `case` on one axis and
+> `split_case` on the other, in either direction. `createOrder` says the same thing in a
+> sentence before the `23514`. What a CHECK cannot see is a split-case fee hidden inside
+> `freight` on a case line; nothing in a row can. What it can do is leave that fee no home
+> of its own.
+>
+> **Proof.** All three migrations applied and exercised against a real Postgres
+> (`$SP/pglite-probe/apply-and-probe.mjs`, PG 18.3): the case-fold, the NOT NULL, the
+> vocabulary CHECK refusing `'BOTTLE'` and `'cases'`; the header following the line on
+> insert, update, delete-then-reinsert; the direct header write refused with the ADR's own
+> sentence and the same write ACCEPTED when it agrees with the line or when no line
+> exists; the fee sign rule; and all four split-case pairings. 20 assertions in
+> `apps/api-gateway/src/procurement/price-unit-phase2.spec.ts` (each pre-fix behaviour
+> transcribed from `git show HEAD:` copies at `611f7682` under
+> `$SP/prefix-phase2/`), 4 more in `order-capture.spec.ts` driving the service, and 11
+> vitest cases in `apps/web/src/pages/orders/next/AgreementFees.test.tsx`. Captures on
+> both grounds in `$SP/shots-price-unit-2/`, which found two defects of their own — the
+> row printed the total twice, and printed the fees twice — both fixed before the shots
+> that ship.
 
 The sketch the migration was written from, kept for the record — no file, no timestamp
 claimed, gated per ADR 0070's rule that no migration lands before the schema-parity fix:
@@ -657,25 +759,31 @@ found to need a *different* list from the quantity vocabulary; or the header
 
 1. ~~**Ship the column before the desk can set it?**~~ **ANSWERED 2026-09-04: neither —
    "ship the columns and the /orders field together."** Built; see phase 1 above.
-2. **Is `procurement_orders.final_price` demoted to an echo of the line?** Today it is
-   independently writable (`:4715-4716`) and independently read. Making it derived
-   removes a divergence permanently; keeping it writable keeps a second number that can
-   disagree with the line.
-3. **Where does the money outside the unit price go?** Deposit, split-case fee and
-   freight are real and the invoice line already has `allowance` and `deposit`
-   (`baseline:4393-4394`). Name them on the agreement too, or rule that an agreement
-   states only the goods price and every other charge is discovered at the invoice?
-4. **Does `price_history.unit` stay hardcoded `'BOTTLE'`?** Option A: it stays a strictly
-   per-bottle series and a case price is converted once on the way in, with the
-   conversion recorded. Option B: it carries the stated unit and every reader must group
-   by it. B is more truthful and more expensive; A is the current shape and is a lie the
-   moment a keg is priced.
+2. ~~**Is `procurement_orders.final_price` demoted to an echo of the line?**~~
+   **ANSWERED 2026-09-05: yes — "a generated column from the line's pair; no writer can
+   make the two disagree; the four readers keep working."** Built as a trigger pair,
+   because Postgres cannot express it as GENERATED and the column is NOT NULL on a row
+   that exists before its line; the impossibility was measured rather than assumed. See
+   "Phase 2, second half" above.
+3. ~~**Where does the money outside the unit price go?**~~ **ANSWERED 2026-09-05:
+   allowance, deposit and freight get their own columns on the agreement line, mirroring
+   the invoice; the total prints its working; the receiving door compares like with
+   like.** Built. Note the split-case FEE is deliberately not among them — Q6 makes a
+   split case its own line rather than a surcharge, so the fee has no column to hide
+   in.
+4. ~~**Does `price_history.unit` stay hardcoded `'BOTTLE'`?**~~ **ANSWERED 2026-09-05:
+   option B — "it carries a stated unit; kegs and cases enter with their own unit; every
+   comparison groups by unit first."** Built: NOT NULL, no default, the seven-word CHECK,
+   no conversion on the way in, and an agreement that states no unit is refused from the
+   series rather than filed as a bottle. The expense the option was named for is real and
+   is now the reader's: see the conceded cost above.
 5. ~~**Fix the confirmation email now?**~~ **ANSWERED: yes.** The mail half shipped in
    `f7ae750e` (phase 0) and phase 1 taught the same sentence to state the price's own
    unit when the line carries one.
-6. **Is a split case a different agreement line from a case?** GS1 says a pack change is
-   a new trade item. Treat `split_case` as its own line with its own price and its own
-   fee, or as a case line carrying a surcharge?
+6. ~~**Is a split case a different agreement line from a case?**~~ **ANSWERED
+   2026-09-05: its own line — "a different pack with a different price, never a surcharge
+   on the case line."** Built as a row-level CHECK plus a sentence before it, and as the
+   absence of any split-case fee column anywhere.
 7. **A 12×375 case and a 6×750 case normalise to the same per-750 price today**
    (`vendor-price-consensus.ts:129-141`). Volumetrically right, commercially wrong.
    Leave it, or should format be part of the comparison key rather than a scale factor?
@@ -686,6 +794,9 @@ found to need a *different* list from the quantity vocabulary; or the header
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-05 | Claude (build, the read-side guard) | Founder decided Q4 as stated (*`price_history` carries a stated unit; every comparison groups by unit first*) and asked for the guard NOW rather than at the first reader. The write half is enforced by `20260905072500_the_price_series_states_its_unit.sql` (NOT NULL, vocabulary CHECK, default dropped); no constraint can enforce the read half, and phase 2's own trail row conceded the rule was recorded only in a column comment. `scripts/check_price_history_reads_group_by_unit.py` closes that: every `.from("price_history")`/`.table("price_history")` chain that selects, and every raw `select ... from price_history`, must filter on `unit`, `GROUP BY unit`, or aggregate keyed by `unit` in the code that follows; writes are ignored. It refuses with exit 2 — never 0, never 1 — on an aggregation whose grouping key the parse cannot follow, and on a vanished read root, a missing comment stripper, or the literal `price_history` disappearing from the roots (never-vacuous). The cost of landing it today is measured at zero: `grep -rn "price_history" apps services` over `*.ts,*.tsx,*.py,*.sql` minus `/dist/` shows ONE writer and ZERO readers — the orchestrator's `_get_price_history` reads `procurement_orders.price_per_bottle`, a different table sharing the phrase. Proved in both directions rather than argued: PASS on the tree (`0 readers today`, 37 mentions across 2027 source files in 4 roots) and FAIL naming `planted-price-read.ts:4` on an rsync'd copy of the tree carrying a planted `.select("price, observed_at").eq("inventory_id", …)` — nothing was ever planted into the worktree. 10-branch `--self-test` PASS; 16 pytest cases in `scripts/test_price_history_reads_group_by_unit.py`. Wired into `ci.yml` in `schema-code-parity` beside `check_read_columns_exist` (guard + `--self-test`, the shape that job already uses) and into the `scripts-tests` pytest list. |
+| 2026-09-05 | Claude (build, the shared type + a guard) | Founder: *"fix the shared type and audit every consumer now."* The two never-sent keys this ADR filed were measured to be NINE (`unitPrice`, `totalPrice`, `wineId`, `providerName`, `wineProducer`, `notes`, `createdAt`, `updatedAt`, `recurrence`), and the DTO was sending FOURTEEN the shared type never named — which is why three files carried widening casts to reach fields the server had sent all along. Twenty-three consumer files audited in sixteen rows, each pre-fix output MEASURED by running its own expression against the object `mapOrderRow` emits (`$SP/p4an-prefix-reads.mjs`): `"$0"` on the dashboard's hold-to-approve seal, `"$NaN"` on the provider card, a `· ordered $X` clause silently vanishing from every receipt although the route carried the figure, `cost: 0` WRITTEN onto an inventory-update event, and `useOrdersMetrics` defaulting both money keys to zero so every procurement-spend figure on /reports and the dashboard was a sum of zeroes. Three more absences found and named rather than faked: the route sends no vendor name (so the receiving door's credit-note letter has never named the vendor it is addressed to), no `recurrence` (so the rebuilt page's Recurring station has always been empty), and no `quantityReceived` (so mobile receiving pre-fills from the ORDERED quantity). A value-level lie the new guard cannot see was fixed too: `status` was typed as the lowercase UI vocabulary while the wire sends SCREAMING_SNAKE, which made `OneTapActionCenter`'s delivery-card filter false for every order ever fetched. `scripts/check_web_reads_gateway_dto_keys.py` proven FAIL against a temp copy carrying a phantom `unitPrice` and PASS on the fixed tree, with a 16-case self-test; `eslint` unrun (`eslint-plugin-jsx-a11y` is not installed at any level of this checkout). |
+| 2026-09-05 | Claude (build, phase 2 second half) | Founder decided Q2, Q3, Q4 and Q6 in one message. Q2's mechanism was MEASURED before it was designed: a throwaway Postgres (PGlite 0.5.8 / PG 18.3) proved a generation expression cannot read another table (`0A000`), that the one spelling Postgres accepts — an `IMMUTABLE` function wrapping the subquery — is a column that silently never recomputes, and that `final_price` cannot become generated in place at all (`42601`, `55000`); with `NOT NULL` on a header inserted before its line, a trigger pair is what is left, and the migration records the whole probe so nobody "fixes" it back. Production was read (read-only, `Restaurant_Wine_Ops`): 2 orders, 1 line, 0 header/line disagreements, 0 `price_history` rows — so every migration's assertions cost nothing and no backfill invents anything. Three migrations applied end to end against a real Postgres with 21 accept/refuse probes. Two defects found by CAPTURING rather than by reading: the ledger row printed the total twice (the working sentence carried a figure its caller also prints) and printed the fees twice (a dedicated line under a working that already named them); both fixed, both now guarded. Q4's cost — a series whose unit can vary is a series nothing can average — is conceded in the ADR rather than argued away, and measured: `price_history` has one writer and NO reader anywhere in `apps/` or `services/`, so the grouping rule is recorded in the column comment for the first reader. What was NOT closed and is named rather than assumed: the invoice line's own `allowance`/`deposit` columns still reach no comparison at the door. `check_order_capture_contract.py` needed no teaching — it asserts that a writer EXISTS and that no fallback multiplies, not which columns a payload carries — and both new regressions it might have covered are refused by the database instead (the `unit` CHECK rejects `'BOTTLE'`; the echo trigger rejects a direct header write). 24 jest + 11 vitest new assertions; gateway `tsc` clean on both projects; `eslint` unrun (the repo's shared config needs `eslint-plugin-jsx-a11y`, which is not installed at any level of this checkout). |
 | 2026-09-05 | Claude (build, phase 2) | Founder: *"teach the list route the pair and show it on the rows; leave legacy as is."* `listOrders` embeds the line in the query it already made (one statement, not N+1); `mapOrderRow` gained an `AgreedPriceUnitReading` argument defaulting to `{ read: false }` so a route that does not read the line emits NEITHER key rather than a null that would read as "unstated". Two defects found by measuring rather than by reading: `toRow` read key names the route has never sent (pre-fix proof by `git show HEAD:` into same-depth probe files, `$SP/p4ag-prefix-proof.txt` — the row printed an em dash, NOT the bare price the dispatch assumed), and the first build reprinted this ADR's own twelve-times error for an unstated pair, caught in the first capture and now guarded by a test. Also measured: `scripts/check_read_columns_exist.py` is BLIND to columns inside a PostgREST embed — a phantom `price_pack_size_PHANTOM` inside `procurement_order_items(...)` passes, while a phantom top-level column on the same select FAILS at line 1690. 9 new vitest cases, 8 new jest cases; gateway `tsc` clean; `check_gateway_boots.sh` fails on two OTHER builders' uncommitted work. |
 | 2026-09-04 | Claude (build, phase 1) | Founder chose *"ship the columns and the /orders field together"* over both halves of Q1's fork. Built the migration, the four writers and the `/orders` price-unit control in one pass; 42 jest + 14 vitest assertions, each pre-fix behaviour transcribed from `git show HEAD:` copies at `129fbfc6` rather than reverted (the shared worktree's stash rule). The migration was measured against a local Postgres inside a rolled-back transaction: 4 legal shapes accepted, 5 illegal ones refused by constraint name. Q2 answered only as a comment, not as a GENERATED column, and said so. Status moved off "research only", which the ADR's own first line had made untrue. |
 | 2026-09-04 | Claude (research) | Created in answer to ADR 0117 Q6 on the founder's *"research. cover every angle."* Six options mapped across five cost surfaces; the leading candidate (O1) attacked with the two-units-on-one-row objection and the objection's residue conceded rather than argued away; O3 killed on external regulatory evidence (CT's statutory bottle-price formula) rather than on taste. Nine external sources cited with URLs, fetch status marked per source. No code, no migration, no OPEN-DECISIONS edit. ADR number `0119` from `check_adr_numbers_unique.py next_free()` over 628 refs **plus** a `git worktree list` sweep of 51 worktrees, both re-run immediately before writing. |

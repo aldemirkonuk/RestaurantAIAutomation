@@ -98,13 +98,19 @@ describe('the ledger row reads the price the route actually sends', () => {
     expect(row.total).toBe(2100);
   });
 
-  it('1b. still reads the shared names when a caller sends those instead', () => {
+  it('1b. reads NOTHING from the names the route does not send', () => {
+    // The `?? o.unitPrice` / `?? o.totalPrice` fallbacks are gone with the keys
+    // themselves (2026-09-05): the shared `Order` type is now exactly
+    // `OrderResponseDto`, so those two names cannot reach this hook from any
+    // route, and a payload carrying them is not an order this app can price.
+    // Nulls here, never the 22 and the 110 — a figure under a name the server
+    // never uses is a figure from somewhere nobody can name.
     const row = toRow(
       wire({ finalPrice: undefined, totalCost: undefined, unitPrice: 22, totalPrice: 110 }),
       NO_PROVIDERS,
     );
-    expect(row.unitPrice).toBe(22);
-    expect(row.listedTotal).toBe(110);
+    expect(row.unitPrice).toBeNull();
+    expect(row.listedTotal).toBeNull();
   });
 });
 

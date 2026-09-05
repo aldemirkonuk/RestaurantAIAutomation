@@ -417,3 +417,23 @@ line is read at `GET /price-index/:state`. The food-unit and `'BOTTLE'` constrai
 still bind class A; the index register sidesteps them by storing each posted price **as
 posted** (its own unit and pack, no 750 ml normalisation) rather than reducing it to a
 comparable — because an index line is shown, never averaged against a vendor quote.
+
+### 13.x The house item can name the bottle it is (ADR 0124, 2026-09-05)
+
+`restaurant_inventory` gained a **nullable `identity_id`**
+(`supabase/migrations/20260905140000_a_bottle_has_one_identity.sql`) pointing at
+the trade-item register ADR 0124 introduced. It is nullable and never guessed:
+an unjoined house item stays unjoined and the reader says so.
+
+**The measurement that matters for this page.** Run through the real reader
+against production on 2026-09-05: **0 of 206** house items can be read as an
+identity from their own columns — 153 have no producer (the table has no producer
+column at all) and 53 have no `wine_name` — while **205 of 206** can be read
+**through the library row they link to**. `restaurant_inventory` also has **no
+barcode or UPC column**, `internal_sku`/`pos_sku`/`sku_aliases` are empty on all
+206 rows, and `bottle_size_ml` is known on **51** (47 × 750, 4 × 375), NULL on 155.
+
+So the house item's identity comes from the library link it already has, not from
+its own fields — which is a question for the founder rather than a fact this
+build settled: whether a house item may ever carry an identity the library does
+not have (ADR 0124 §Founder-only questions, Q3, beside ADR 0115's house-item key).

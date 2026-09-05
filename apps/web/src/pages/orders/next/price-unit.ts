@@ -89,8 +89,70 @@ export function describeStatedPrice(
   return `${money} per ${stated.priceUom.replace('_', ' ')}${pack}`;
 }
 
+/**
+ * The money on an agreement line that is NOT the price of the wine — ADR 0119
+ * Q3, the page's half of `procurement_order_items.allowance/deposit/freight`.
+ *
+ * All three are POSITIVE amounts for the WHOLE line. `allowance` deducts;
+ * `deposit` and `freight` add. The direction is in the name, never in a sign,
+ * and the gateway's CHECKs refuse a negative.
+ *
+ * `null` is "the agreement named none", `0` is "the agreement named zero", and
+ * nothing on this page turns the first into the second — a $0.00 deposit is a
+ * claim about a vendor and an absent one is not.
+ */
+export interface AgreementFees {
+  allowance: number | null;
+  deposit: number | null;
+  freight: number | null;
+}
+
+export const NO_FEES: AgreementFees = {
+  allowance: null,
+  deposit: null,
+  freight: null,
+};
+
+export function hasStatedFees(fees: AgreementFees): boolean {
+  return (
+    fees.allowance !== null || fees.deposit !== null || fees.freight !== null
+  );
+}
+
+function feeAmount(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * The fees the route sent — and whether it sent them at all.
+ *
+ * The same three-state contract as `readPriceUnitFromWire`, for the same
+ * reason: a route that reads the line's price columns but not its fee columns
+ * emits no fee keys, and reading their absence as "no deposit was agreed" would
+ * be a claim of knowledge nobody has.
+ */
+export function readFeesFromWire(o: {
+  allowance?: number | null;
+  deposit?: number | null;
+  freight?: number | null;
+}): { read: boolean; fees: AgreementFees } {
+  const read = 'allowance' in o || 'deposit' in o || 'freight' in o;
+  if (!read) return { read: false, fees: NO_FEES };
+  return {
+    read: true,
+    fees: {
+      allowance: feeAmount(o.allowance),
+      deposit: feeAmount(o.deposit),
+      freight: feeAmount(o.freight),
+    },
+  };
+}
+
 export type AgreementTotal =
-  | { ok: true; total: number; working: string }
+  | { ok: true; goods: number; total: number; working: string }
   | { ok: false; message: string };
 
 /**
@@ -112,6 +174,12 @@ export function agreementTotal(input: {
   quantity: number | null;
   unitType: PriceUom;
   bottlesPerUnit: number | null;
+  /**
+   * The money outside the price of the wine (ADR 0119 Q3). Absent means the
+   * agreement names none, and the total and its working are then byte for byte
+   * what they were before phase 2 — no existing figure moves.
+   */
+  fees?: AgreementFees;
 }): AgreementTotal | null {
   const { price, stated, quantity, unitType } = input;
   if (price == null || quantity == null || !Number.isFinite(price)) return null;
@@ -119,22 +187,56 @@ export function agreementTotal(input: {
   const orderOpaque = OPAQUE.has(unitType);
   const bottlesPerUnit = orderOpaque ? 1 : (input.bottlesPerUnit ?? 1);
   const bottlesTotal = quantity * bottlesPerUnit;
+  const fees = input.fees ?? NO_FEES;
 
-  if (!stated) {
+  // The goods half first — the wine at the agreed price, in the price's own
+  // unit — then the fees, applied where a reader can watch it happen. Mirrors
+  // the gateway's `agreementLineTotal`, which is the number that actually gets
+  // written; if the two ever disagree the desk is shown a total the server will
+  // not honour.
+  const goodsOnly = (goods: number, working: string): AgreementTotal => {
+    if (!hasStatedFees(fees)) {
+      return { ok: true, goods, total: goods, working };
+    }
+    const total =
+      Math.round(
+        (goods -
+          (fees.allowance ?? 0) +
+          (fees.deposit ?? 0) +
+          (fees.freight ?? 0)) *
+          100,
+      ) / 100;
+    const parts = [`Goods $${goods.toFixed(2)}`];
+    if (fees.allowance !== null)
+      parts.push(`less allowance $${fees.allowance.toFixed(2)}`);
+    if (fees.deposit !== null)
+      parts.push(`plus deposit $${fees.deposit.toFixed(2)}`);
+    if (fees.freight !== null)
+      parts.push(`plus freight $${fees.freight.toFixed(2)}`);
+    // NO trailing "= $total": the sheet prints the figure above this sentence
+    // and the ledger row prints it after, so carrying it here printed it twice
+    // on the row. Measured in the first capture of this pass.
     return {
       ok: true,
-      total: price * bottlesTotal,
-      working: `${bottlesTotal} × $${price.toFixed(2)} — no price unit stated, so this uses the old per-bottle convention.`,
+      goods,
+      total,
+      working: `${working} ${parts.join(', ')}.`,
     };
+  };
+
+  if (!stated) {
+    return goodsOnly(
+      price * bottlesTotal,
+      `${bottlesTotal} × $${price.toFixed(2)} — no price unit stated, so this uses the old per-bottle convention.`,
+    );
   }
 
   if (orderOpaque || OPAQUE.has(stated.priceUom)) {
     if (stated.priceUom === unitType) {
-      return {
-        ok: true,
-        total: price * quantity,
-        working: `${quantity} × $${price.toFixed(2)} per ${unitType}.`,
-      };
+      return goodsOnly(
+        price * quantity,
+        `${quantity} × $${price.toFixed(2)} per ${unitType}.`,
+      );
     }
     return {
       ok: false,
@@ -143,15 +245,44 @@ export function agreementTotal(input: {
   }
 
   const unitsBought = bottlesTotal / stated.pricePackSize;
-  return {
-    ok: true,
-    total: Math.round(price * unitsBought * 100) / 100,
-    working:
-      stated.pricePackSize === 1
-        ? `${bottlesTotal} × $${price.toFixed(2)} per ${stated.priceUom}.`
-        : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
-  };
+  return goodsOnly(
+    Math.round(price * unitsBought * 100) / 100,
+    stated.pricePackSize === 1
+      ? `${bottlesTotal} × $${price.toFixed(2)} per ${stated.priceUom}.`
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
+  );
 }
+
+/**
+ * "an allowance of $25.00, a deposit of $6.00" — the fees a row prints.
+ *
+ * Returns null when the agreement names none, so a row that has no fees prints
+ * nothing rather than a line saying so: absence of a fee is the ordinary case
+ * and does not need announcing. Absence of a READ does — see
+ * `ROW_FEES_NOT_READ`.
+ */
+export function describeFees(fees: AgreementFees): string | null {
+  const parts = [
+    fees.allowance !== null
+      ? `an allowance of $${fees.allowance.toFixed(2)}`
+      : null,
+    fees.deposit !== null ? `a deposit of $${fees.deposit.toFixed(2)}` : null,
+    fees.freight !== null ? `freight of $${fees.freight.toFixed(2)}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+
+/**
+ * What a row says when the route never read the fee columns.
+ *
+ * `GET /procurement/orders` reads them, so this is unreachable from the ledger
+ * today. It exists for the same reason `ROW_PRICE_UNIT_NOT_READ` does: the day
+ * a second route feeds these rows without the fee columns, the row must not
+ * announce that the agreement names no deposit.
+ */
+export const ROW_FEES_NOT_READ =
+  'This view did not read what the agreement charges outside the price of the wine. ' +
+  'That is not the same as the agreement charging nothing.';
 
 /**
  * The refusal the register would give, in the register's own terms.

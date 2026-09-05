@@ -6,6 +6,8 @@ import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, Alert
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
+import { currencyForCountry, currencyToRecord } from '../lib/currency'
+import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
@@ -72,6 +74,25 @@ export function Register() {
   const [neighborhood, setNeighborhood] = useState('')
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
+
+  /**
+   * The money this house reports in — asked, never assumed.
+   *
+   * `restaurants.currency` carried `DEFAULT 'USD'` and this form never named the
+   * column, so all fourteen production houses asserted dollars: two in Turkiye,
+   * one in London, none of them ever asked (ADR 0117 Q25, founder 2026-09-05).
+   * The default is dropped and the question is asked here.
+   *
+   * Three states, and they are deliberately distinct:
+   *   - `null`  the manager has not touched it, so the STATED DEFAULT below
+   *             stands and is what gets sent. The screen says so in words
+   *             before it is recorded (ADR 0083).
+   *   - a code  the manager confirmed or changed it.
+   *   - `''`    the manager explicitly chose "not now". NOTHING is sent, the row
+   *             stores NULL, and every screen says "currency not recorded"
+   *             rather than printing a dollar sign.
+   */
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
 
   /**
    * The point the house asserted, taken from the Google Places selection.
@@ -961,6 +982,12 @@ export function Register() {
         phone: phone ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Sent only when the currency step produced an answer — the stated
+        // default the manager left standing, or the code they picked. Omitted
+        // when they chose "not now", and the gateway then writes NULL rather
+        // than USD (ADR 0117 Q25). Never `|| 'USD'`: that fallback is exactly
+        // what put dollars on a restaurant in Fethiye.
+        currency: willRecordCurrency ?? undefined,
         // Sent only when a place was chosen from the list. A hand-typed address
         // carries no point, and the gateway stores NULL rather than a guess.
         latitude: placePoint?.latitude,
@@ -977,6 +1004,13 @@ export function Register() {
 
   // Country entered enough to trigger the rest of the form
   const countryReady = country.trim().length >= 2
+
+  // The default worked out from the address's country, or null when this table
+  // has no row for it. `null` is shown as a question, never filled with USD.
+  const currencyDefault = currencyForCountry(country)
+  // What will actually be recorded: the manager's answer if they gave one, the
+  // stated default otherwise, and nothing at all if they chose "not now".
+  const willRecordCurrency = currencyToRecord(currencyChoice, currencyDefault)
 
   // Left-rail section labels
   const railSections = [
@@ -1232,6 +1266,18 @@ export function Register() {
                   />
                 </div>
               </div>
+
+              {/*
+                The currency step, extracted so the decision can be rendered and
+                asserted on its own (`components/onboarding/CurrencyStep.tsx`).
+                It sits under the address because it is DERIVED from it: the
+                default comes from the country above and moves when that moves.
+              */}
+              <CurrencyStep
+                country={country}
+                choice={currencyChoice}
+                onChange={setCurrencyChoice}
+              />
 
               {/* Nav */}
               <div className="flex gap-[10px] mt-5">

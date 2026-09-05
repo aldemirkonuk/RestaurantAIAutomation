@@ -123,7 +123,13 @@ describe('creditDraft — calm, complete, unsent', () => {
       driverName: 'Miguel',
       initials: 'ak',
     });
-    expect(d).toContain('Vinifera Imports');
+    // NOT the vendor's name: GET /procurement/orders/:id carries `providerId`
+    // and nothing else, so `normalizeDoorOrder` has never had a name to put in
+    // this letter — the fixture above supplies one the wire cannot. Pinned as
+    // an absence so the next reader does not re-add the phantom read
+    // (2026-09-05; `06-pages/receiving-door.md` owns the gap).
+    expect(d).not.toContain('Vinifera Imports');
+    expect(d).toContain('To the vendor');
     expect(d).toContain('order ORD-2026-00042');
     expect(d).toContain('14 of 16 boxes — two short');
     expect(d).toContain('photographed at the door');
@@ -208,7 +214,8 @@ describe('composeDoorNotes', () => {
     expect(notes.length).toBeLessThanOrEqual(NOTES_MAX);
     // And it is still a usable letter, not a stub.
     expect(notes).toContain('credit-draft (unsent):');
-    expect(notes).toContain('Southern Glazer');
+    // The wine, not the vendor — see the note on the short-ship draft above.
+    expect(notes).toContain('Château Pichon');
   });
 
   it('is bounded by construction, not by arithmetic', () => {

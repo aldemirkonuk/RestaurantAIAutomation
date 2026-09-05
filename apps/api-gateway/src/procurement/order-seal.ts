@@ -31,6 +31,27 @@
 /** The one act this module seals. Not a general "write" — approving is its own act. */
 export const ORDER_SEAL_ACT = "approve";
 
+/**
+ * The second act on an order that this module seals: ending it.
+ *
+ * WHY A CANCEL IS SEALED LIKE AN APPROVAL (ADR 0125, founder 2026-09-05)
+ * ---------------------------------------------------------------------
+ * An approval spends money and a cancellation destroys the record of money
+ * already spent — cancelling a delivered order takes its cost out of every
+ * spend and delivery figure while the bottles stay on the shelf. The two acts
+ * are symmetric in consequence, and until this act existed they were not
+ * symmetric in proof: `POST orders/:id/approve` redeemed a one-time seal while
+ * `DELETE orders/:id` read an id and an optional query parameter.
+ *
+ * It is a SEPARATE act rather than a second use of `approve`, so a seal minted
+ * for one cannot be spent on the other. `SealChallengeService` compares the act
+ * and refuses with the sentence `common/seal/seal-subject.ts` already writes:
+ * "That seal was issued for a different act on this order." The same asymmetry
+ * already holds for `deliver` (`one-tap-workflow.ts`), so this is the third act
+ * on the one subject kind rather than a new mechanism.
+ */
+export const ORDER_CANCEL_ACT = "cancel";
+
 /** Money, as one string, so issue and redemption cannot disagree about format. */
 export function normaliseSealTotal(value: unknown): string {
   if (value === null || value === undefined || value === "") return "unknown";
@@ -56,5 +77,43 @@ export function orderSealArgs(order: {
     orderId: order.id,
     total: normaliseSealTotal(order.total),
     providerId: order.providerId ?? null,
+  };
+}
+
+/**
+ * The canonical arguments for a CANCELLATION seal.
+ *
+ * The money and the vendor, exactly as an approval's — a cancellation is a
+ * decision about the same figure, and a token minted over an order of 2,000
+ * must not be spendable after somebody made it 20,000 — PLUS the order's own
+ * state, which an approval's seal does not carry.
+ *
+ * WHY THE STATE IS IN HERE AND NOT IN `orderSealArgs`
+ * --------------------------------------------------
+ * Whether a cancellation is allowed at all DEPENDS on the state
+ * (`order-transitions.ts`: an order whose goods have arrived cannot be
+ * cancelled). So the state is part of what the person was deciding about, and a
+ * seal held open while the truck arrives must not still be spendable: between
+ * the hold and the write the answer changed from "yes" to "no, the wine is on
+ * the shelf". Hashing the state makes that a refusal with the seal's own words
+ * instead of a race the transition check happens to catch.
+ *
+ * It is the same reason `deliverySealArgs` hashes `status`
+ * (`one-tap-workflow.ts`), and the reason an APPROVAL's does not: an approval
+ * is refused by role and threshold, which the state does not move.
+ */
+export function orderCancelSealArgs(order: {
+  id: string;
+  total: unknown;
+  providerId: string | null | undefined;
+  status: unknown;
+}): Record<string, unknown> {
+  return {
+    orderId: order.id,
+    total: normaliseSealTotal(order.total),
+    providerId: order.providerId ?? null,
+    status: String(order.status ?? "unknown")
+      .trim()
+      .toUpperCase(),
   };
 }

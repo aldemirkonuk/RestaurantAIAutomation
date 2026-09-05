@@ -27,8 +27,10 @@ import * as ordersApi from '@/services/api/orders';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   PRICE_UOM_LABEL,
+  ROW_FEES_NOT_READ,
   ROW_PRICE_UNIT_NOT_READ,
   ROW_UNSTATED_PRICE_UNIT,
+  describeFees,
   describeStatedPrice,
 } from './price-unit';
 import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
@@ -348,6 +350,32 @@ export function LedgerRow({
                   be counted against each other; when they cannot, the refusal
                   above has already said the opposite.
                 */}
+                {/*
+                  THE MONEY OUTSIDE THE PRICE OF THE WINE — ADR 0119 Q3.
+
+                  Where there IS a working, the fees are already inside it —
+                  "Goods $2100.00, less allowance $100.00, plus deposit $30.00"
+                  — and this line would print the same three amounts a second
+                  time. The first capture of this pass did exactly that
+                  (`$SP/shots-price-unit-2/`), so this line now exists for the
+                  case where there is NO working: an agreement whose price unit
+                  is unstated shows no arithmetic at all, and without this its
+                  deposit would be invisible on the row that a manager approves
+                  money from.
+
+                  A route that never READ the fee columns is a different fact
+                  again, and says so unconditionally — the absence of a read is
+                  not the absence of a deposit.
+                */}
+                {!row.fees.read ? (
+                  <div data-testid="fees-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    {ROW_FEES_NOT_READ}
+                  </div>
+                ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees) ? (
+                  <div data-testid="row-fees" style={{ color: 'var(--ink-2, #4F473C)' }}>
+                    outside the price of the wine: {describeFees(row.fees.fees)}
+                  </div>
+                ) : null}
                 {row.priceUnit.stated &&
                   row.unitType !== null &&
                   row.priceUnit.stated.priceUom !== row.unitType &&

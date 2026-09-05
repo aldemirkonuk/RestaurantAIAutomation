@@ -39,7 +39,11 @@ const mapApiOrderToUi = (o: any): Order => ({
   wine_id: o.inventoryId ?? o.wine_id ?? '',
   wine_name: o.wineName ?? o.wine_name,
   quantity: o.quantity ?? 0,
-  provider_name: o.providerName ?? o.provider_id ?? o.providerId,
+  // `provider_name` deliberately carries the vendor's NAME or, when the
+  // payload has none, its id — `providerNameById` resolves a uuid downstream
+  // (useOrdersPage.ts:120). The `o.providerName ??` branch that led this
+  // chain was dead: OrderResponseDto carries `providerId` and no name.
+  provider_name: o.provider_id ?? o.providerId,
   status: mapApiStatusToUi(o.status),
   suggested_price: o.quotedPrice ?? o.suggested_price,
   final_price: o.finalPrice ?? o.final_price,

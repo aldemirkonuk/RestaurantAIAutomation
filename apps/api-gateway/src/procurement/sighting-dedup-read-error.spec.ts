@@ -158,6 +158,9 @@ const deliveredOrder = {
 const verifyBody = {
   invoiceQuantity: 10,
   invoiceUnitPrice: 40,
+  // ADR 0117 Q25 (2026-09-05): a sighting without its currency is refused before
+  // the dedup probe runs, so the fixture states one to reach the probe.
+  invoiceCurrency: "USD",
   acceptedQuantity: 10,
 } as any;
 

@@ -614,10 +614,18 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           {doc.order_id ? (
             orderQ.data ? (
               <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+                {/*
+                  `totalCost` is OrderResponseDto's own key. The cast that stood
+                  here read `totalPrice`, which the route has never sent, so the
+                  typeof guard was always false and the "ordered $X" clause
+                  silently vanished from every receipt — the route HAD the
+                  figure and this line dropped it. The vendor clause is gone
+                  with `providerName`: the DTO carries `providerId` only, so
+                  that clause could never render either (2026-09-05).
+                */}
                 Against order {orderQ.data.orderNumber ?? doc.order_id.slice(0, 8)}
-                {orderQ.data.providerName ? ` · ${orderQ.data.providerName}` : ''}
-                {typeof (orderQ.data as { totalPrice?: number }).totalPrice === 'number'
-                  ? ` · ordered ${fmtMoney((orderQ.data as { totalPrice?: number }).totalPrice ?? null)}`
+                {typeof orderQ.data.totalCost === 'number'
+                  ? ` · ordered ${fmtMoney(orderQ.data.totalCost)}`
                   : ''}
               </p>
             ) : orderQ.isError ? (

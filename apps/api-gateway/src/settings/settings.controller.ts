@@ -22,6 +22,10 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
 import { SettingsService } from "./settings.service";
 import {
+  HouseCurrencyService,
+  type HouseCurrencyReadout,
+} from "./house-currency.service";
+import {
   ApprovalThresholdsService,
   type ThresholdsReadout,
 } from "./approval-thresholds.service";
@@ -33,6 +37,7 @@ import {
   CheckFeatureFlagDto,
   FeatureFlagCheckResultDto,
 } from "./dto/feature-flags.dto";
+import { SetHouseCurrencyDto } from "./dto/house-currency.dto";
 
 @ApiTags("settings")
 @ApiBearerAuth("JWT-auth")
@@ -43,6 +48,7 @@ export class SettingsController {
     private readonly settingsService: SettingsService,
     private readonly thresholds: ApprovalThresholdsService,
     private readonly organizations: OrganizationsService,
+    private readonly houseCurrency: HouseCurrencyService,
   ) {}
 
   @Get("feature-flags")
@@ -181,6 +187,70 @@ export class SettingsController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /* ── The money this house reports in ──────────────────────────────────
+   *
+   * `CurrencyStep` asks a house being CREATED. Until these two routes existed
+   * an EXISTING house had no way to answer at all, and eleven of the fourteen
+   * production houses print "currency not recorded" against every money figure
+   * with no control anywhere that could change it (ADR 0117 Q25, founder call
+   * 2026-09-05). A state the product can be in and cannot be got out of is a
+   * missing field, not a copy problem.
+   */
+
+  @Get("currency")
+  @ApiOperation({
+    summary: "The house's reporting currency, and who last stated it",
+    description:
+      "`code: null` means nobody has stated one — every money figure renders as \"currency not recorded\". `readable: false` means the row could not be READ, which is a different state and says so in words. `country` is returned so the page can offer the default its own country table derives, which is shown as a sentence before anything is recorded; the gateway never derives one and never writes on a read.",
+  })
+  @ApiResponse({ status: 200, description: "The currency readout" })
+  async getHouseCurrency(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseCurrencyReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is no currency to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseCurrency.read(restaurantId);
+  }
+
+  @Put("currency")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "State the house's reporting currency — owner or manager only",
+    description:
+      "The code must be ISO 4217 alpha-3 (`^[A-Z]{3}$`), which is exactly what `restaurants_currency_check` allows, so a value this route accepts is a value the database accepts. The write is explicit: no default is ever derived or written here. The response carries `audited` and `auditReason`, so a change whose audit row failed is visible rather than assumed.",
+  })
+  @ApiResponse({ status: 200, description: "The readout after the write" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. The money every figure on every screen is stated in is not a per-person setting.",
+  })
+  async setHouseCurrency(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Body() dto: SetHouseCurrencyDto,
+    @CurrentUser("userId") userId: string,
+  ): Promise<HouseCurrencyReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    // Same helper, same sentence, as the flags above and the thresholds below.
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "state the currency this restaurant reports in",
+    );
+    // The author comes from the signed token and nowhere else:
+    // `public.users.user_id`, never an `auth.users` id.
+    return this.houseCurrency.write(restaurantId, dto?.code, userId);
   }
 
   @Post("feature-flags/check")

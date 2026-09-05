@@ -82,6 +82,7 @@ function headline(entry: LedgerEntry): string {
   if (entry.action === 'approval_threshold_changed') {
     return entry.subject ? `Approval rule: ${entry.subject}` : 'An approval rule';
   }
+  if (entry.action === 'reporting_currency_changed') return 'The money this house reports in';
   if (entry.action === 'feature_flag_changed') {
     return entry.subject ? `Feature: ${entry.subject}` : 'A feature switch';
   }

@@ -54,7 +54,12 @@ const formatDate = (y: number, m: number, d: number) => `${y}-${String(m + 1).pa
 function generateRemindersFromRealData(
   wines: ReturnType<typeof mapApiWinesToUiWines>, 
   lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number; thresholdMin?: number }>,
-  pendingOrders: Array<{ id?: string; wineId?: string; wineName?: string; quantity?: number; status?: string; totalPrice?: number; providerName?: string }>,
+  // `totalCost` and `inventoryId` are OrderResponseDto's own names. This
+  // signature used to say `totalPrice` and `providerName`, which
+  // GET /procurement/orders has never sent, so the reminder below printed
+  // "$0" over every pending order and "Unknown provider" over every
+  // delivery (measured 2026-09-05).
+  pendingOrders: Array<{ id?: string; inventoryId?: string; wineName?: string; quantity?: number; status?: string; totalCost?: number }>,
   inventory: Array<{ wineId?: string; wineName?: string; shadowStock?: number }>
 ): Reminder[] {
   const reminders: Reminder[] = []
@@ -71,12 +76,12 @@ function generateRemindersFromRealData(
     reminders.push({ 
       id: `order_${order.id}`, 
       title: (order.status === 'pending' || order.status === 'PENDING') ? `Approve ${order.wineName || 'Order'} Reorder` : `Confirm ${order.wineName || 'Order'} Delivery`, 
-      subtitle: `${order.quantity || 0} bottles · ${(order.status === 'pending' || order.status === 'PENDING') ? `$${order.totalPrice?.toLocaleString() || '0'}` : order.providerName || 'Unknown provider'}`, 
+      subtitle: `${order.quantity || 0} bottles · ${(order.status === 'pending' || order.status === 'PENDING') ? (typeof order.totalCost === 'number' ? `$${order.totalCost.toLocaleString()}` : 'no total on this order') : 'vendor not named by this route'}`, 
       priority: 'high', 
       completed: false, 
       dueTime: 'Today', 
       type: (order.status === 'pending' || order.status === 'PENDING') ? 'reorder' : 'delivery', 
-      wineId: order.wineId 
+      wineId: order.inventoryId 
     })
   })
   
@@ -206,9 +211,11 @@ export function useDashboardPage() {
   }), [apiLowStock])
   
   const recentOrderRows = useMemo(() => apiPendingOrders.slice(0, 4).map(order => {
-    const wine = libraryWines.find(w => w.id === order.wineId)
+    const wine = libraryWines.find(w => w.id === order.inventoryId)
     const bottleMl = (order as { bottleSizeMl?: number }).bottleSizeMl ?? wine?.bottleSizeMl ?? 750
-    return { id: order.id, wine: order.wineName || order.wineProducer || 'Unknown wine', bottleFormat: formatVolume(bottleMl, measurementUnit), qty: order.quantity, status: order.status || 'pending', provider: order.providerName || 'Unknown provider' }
+    // No producer and no vendor name on the wire: OrderResponseDto carries
+    // `wineName` (joined from inventory) and `providerId` only.
+    return { id: order.id, wine: order.wineName || 'Unknown wine', bottleFormat: formatVolume(bottleMl, measurementUnit), qty: order.quantity, status: order.status || 'pending', provider: 'Not named by this route' }
   }), [apiPendingOrders, libraryWines, measurementUnit])
   
   const libraryWinesRef = useRef(libraryWines)

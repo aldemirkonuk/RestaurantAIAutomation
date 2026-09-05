@@ -61,7 +61,14 @@ function controller(opts: {
   const settings = {} as unknown as SettingsService;
 
   return {
-    controller: new SettingsController(settings, thresholds, organizations),
+    controller: new SettingsController(
+      settings,
+      thresholds,
+      organizations,
+      // The currency register, added 2026-09-05. Not exercised here — this file
+      // owns the THRESHOLD gate — so it is a bare double rather than a live one.
+      {} as never,
+    ),
     write,
   };
 }

@@ -122,10 +122,27 @@ renders outside DashboardLayout, so it carries no WineOps wordmark at all.
 
 ## 9. Gaps
 
+**The credit-note draft cannot name the vendor it is addressed to — measured
+2026-09-05.** `normalizeDoorOrder` read `providerName` off the shared `Order` type;
+`OrderResponseDto` carries `providerId` and no name, so `GET /procurement/orders/:id`
+has never supplied one and the letter has always begun "To the vendor: order ORD-…".
+Two `DoorModel.test.ts` cases had asserted the vendor's name from a FIXTURE that
+supplied one, so the suite proved a sentence the wire cannot produce; both now pin the
+absence. `providerName` is `null` in the view model, said out loud rather than read from
+a key that is not there. The fix is a gateway shape change on a route four surfaces
+share — `.planning/v3.0-TECH-DEBT.md`, "The orders wire", item 1. *Blocker: founder.*
+
+**The shared `Order` type's widening cast is gone.** `normalizeDoorOrder` used
+`raw as Order & { unitType?: unknown; bottlesTotal?: unknown }` because the shared type
+predated both fields. It now declares them (it is exactly `OrderResponseDto` since
+2026-09-05, guarded by `scripts/check_web_reads_gateway_dto_keys.py`), so the cast is
+deleted and both reads are type-checked.
+
 - Inherits `/receiving`'s reachability problem (receiving.md §9): the only path to
   this URL is a page nothing links to.
-- None recorded against this page in `v3.0-TECH-DEBT.md` (checked "receiving" and
-  "door" — no hits).
+- One recorded against this page in `v3.0-TECH-DEBT.md` since 2026-09-05: "The orders
+  wire", item 1 — the vendor name the credit-note draft cannot print. (The line here
+  used to read "none recorded"; it was true when written and is not now.)
 
 ## 10. Maturity
 

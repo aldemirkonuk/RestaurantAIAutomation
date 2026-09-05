@@ -125,11 +125,12 @@ function base(over: Record<string, unknown> = {}) {
     vendorTerms: remote(vendorTermsRegister()),
     thresholds: remote(thresholdsRegister()),
     ledger: remote(ledgerRegister()),
+    houseCurrency: remote(currencyRegister()),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
     setMemberRole: vi.fn(), removeMember: vi.fn(), revokeInvite: vi.fn(), disconnectIntegration: vi.fn(),
-    saveVendorTerms, saveThreshold,
+    saveVendorTerms, saveThreshold, saveCurrency,
     ...over,
   };
 }
@@ -138,6 +139,29 @@ function base(over: Record<string, unknown> = {}) {
 
 const saveVendorTerms = vi.fn(() => Promise.resolve(true));
 const saveThreshold = vi.fn(() => Promise.resolve(true));
+const saveCurrency = vi.fn(() => Promise.resolve(true));
+
+/**
+ * The currency readout as `GET /settings/currency` returns it.
+ *
+ * The default fixture is the state ELEVEN of the fourteen production houses are
+ * in as of 2026-09-05: no code recorded, in a country the app's own table can
+ * offer a default for. A fixture that started from a recorded code would have
+ * let the "not recorded" branch — the whole reason this register exists — go
+ * untested.
+ */
+function currencyRegister(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1',
+    code: null,
+    country: 'Türkiye',
+    readable: true,
+    reason: null,
+    statedAt: null,
+    statedBy: null,
+    ...over,
+  };
+}
 
 /**
  * A vendor-terms readout shaped exactly as the gateway returns one.
@@ -300,10 +324,10 @@ describe('SettingsNext — the editorial spine', () => {
   it('opens on a contents page naming every register and where each is kept', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(14);
+    expect(within(nav).getAllByRole('button')).toHaveLength(15);
     // The legacy ten under their legacy names, plus cellar, plus the three the
     // fourth pass added. Every one of these is still a live `?tab=` id.
-    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here']) {
+    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Currency']) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
     // The contents column now reads in GROUPS, so the headings must be there —
@@ -311,10 +335,11 @@ describe('SettingsNext — the editorial spine', () => {
     for (const heading of ['The house', 'How it buys', 'What it does on its own', 'Yours', 'The record']) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
-    expect(screen.getByText(/ten kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
-    // The standing honesty statement, now that three registers DO record an
-    // author: it names which three, and admits the other eight still do not.
-    expect(screen.getByText(/Three of these registers now record/i)).toBeInTheDocument();
+    expect(screen.getByText(/eleven kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    // The standing honesty statement, now that FOUR registers DO record an
+    // author: it names which four — Currency joined them 2026-09-05 — and
+    // admits the other eight still do not.
+    expect(screen.getByText(/Four of these registers now record/i)).toBeInTheDocument();
     expect(screen.getByText(/other eight write through services this pass did not touch/i)).toBeInTheDocument();
   });
 
@@ -903,24 +928,27 @@ describe('the collapse — four connection tabs become one line', () => {
   it('drops exactly the four connection registers and keeps the other ten', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(10);
+    expect(within(nav).getAllByRole('button')).toHaveLength(11);
     for (const gone of ['Services', 'Email', 'POS', 'Calendar']) {
       expect(within(nav).queryByText(gone)).not.toBeInTheDocument();
     }
     for (const kept of [
       'Team', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features',
       'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here',
+      'Currency',
     ]) {
       expect(within(nav).getByText(kept)).toBeInTheDocument();
     }
   });
 
-  it('counts eleven registers in the opening line, not fourteen', () => {
+  it('counts the registers actually on the page, not the id set', () => {
     mount();
-    // Ten tabs plus the one line out. The tally beside it counts the same ten,
-    // and drops a clause whose count reached zero rather than printing "none".
-    expect(screen.getByText(/^Ten registers — /)).toBeInTheDocument();
-    expect(screen.queryByText(/Fourteen registers/)).not.toBeInTheDocument();
+    // Eleven tabs plus the one line out. The tally beside it counts the same
+    // eleven, and drops a clause whose count reached zero rather than printing
+    // "none". The numbers moved by one on 2026-09-05 when the Currency register
+    // was added; they are derived, so this line is the only place that says so.
+    expect(screen.getByText(/^Eleven registers — /)).toBeInTheDocument();
+    expect(screen.queryByText(/Fifteen registers/)).not.toBeInTheDocument();
   });
 
   it('offers one line out, naming the four registers it replaces', () => {
@@ -960,7 +988,7 @@ describe('the collapse — four connection tabs become one line', () => {
     design.connections = false;
     mount('/settings?tab=pos');
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(14);
+    expect(within(nav).getAllByRole('button')).toHaveLength(15);
     expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=pos');
     expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
   });

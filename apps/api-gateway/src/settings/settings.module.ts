@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { SettingsController } from "./settings.controller";
 import { SettingsService } from "./settings.service";
 import { ApprovalThresholdsService } from "./approval-thresholds.service";
+import { HouseCurrencyService } from "./house-currency.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
@@ -39,7 +40,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     OrganizationsModule,
   ],
   controllers: [SettingsController],
-  providers: [SettingsService, ApprovalThresholdsService],
-  exports: [SettingsService, ApprovalThresholdsService],
+  providers: [SettingsService, ApprovalThresholdsService, HouseCurrencyService],
+  exports: [SettingsService, ApprovalThresholdsService, HouseCurrencyService],
 })
 export class SettingsModule {}

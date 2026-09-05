@@ -67,7 +67,14 @@ function controller(opts: {
   const thresholds = {} as unknown as ApprovalThresholdsService;
 
   return {
-    controller: new SettingsController(settings, thresholds, organizations),
+    controller: new SettingsController(
+      settings,
+      thresholds,
+      organizations,
+      // The currency register, added 2026-09-05. Not exercised here — this file
+      // owns the FLAG gate — so it is a bare double rather than a live service.
+      {} as never,
+    ),
     update,
   };
 }

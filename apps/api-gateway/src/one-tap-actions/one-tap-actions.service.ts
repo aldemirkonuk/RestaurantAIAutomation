@@ -25,6 +25,12 @@ import {
   deliverySealArgs,
   dispositionOf,
 } from "./one-tap-workflow";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import {
+  ORDER_GOODS_ARRIVED_STATUSES,
+  readOrderStatus,
+  statusInWords,
+} from "../procurement/order-transitions";
 
 /** Every column the seal path reads off an order, for `check_read_columns_exist.py`. */
 const ORDER_SEAL_COLUMNS = "id, restaurant_id, status, quantity, bottles_total";
@@ -387,13 +393,33 @@ export class OneTapActionsService {
       bottles_total: unknown;
     };
 
-    // `markDelivered` has no already-delivered guard of its own: it books
-    // `quantity_received` and moves stock every time it is called
-    // (`procurement.service.ts:2868-2878`). So the refusal lives here, on both
-    // the mint and the write.
-    if (String(order.status ?? "").toUpperCase() === "DELIVERED") {
+    // THIS REFUSAL STAYS FIRST, AND IT IS NO LONGER THE ONLY ONE.
+    //
+    // It was written when `markDelivered` had no guard of its own, so this was
+    // the whole defence and it lived one caller deep. Since 2026-09-05 the
+    // service refuses a second delivery for EVERY caller (`delivered-once.ts`,
+    // `procurement.service.ts` `markDelivered`) with a 409. This check is kept,
+    // and kept ahead of the seal, because of what it protects that the service
+    // cannot: the seal is minted here and redeemed before `markDelivered` runs,
+    // so a refusal that arrived only from the service would burn a one-shot
+    // seal on an act the house was always going to decline, and the card could
+    // not be retried.
+    //
+    // Widened to the whole goods-have-arrived set for the same reason. A
+    // PARTIALLY_RECEIVED or COMPLETED order passed this check before and would
+    // now be refused downstream — after the seal was spent.
+    const arrived = readOrderStatus(order.status);
+    if (arrived === ProcurementOrderStatus.DELIVERED) {
       throw new BadRequestException(
         "That order is already booked in as delivered, so nothing was changed. Booking it twice would double the stock.",
+      );
+    }
+    if (arrived !== null && ORDER_GOODS_ARRIVED_STATUSES.includes(arrived)) {
+      throw new BadRequestException(
+        `That order is ${statusInWords(arrived)} — its wine has already been ` +
+          `counted in, so nothing was changed. Confirming delivery from a card ` +
+          `would book the whole order on top of what the receiving door has ` +
+          `already recorded. Finish it at the receiving door instead.`,
       );
     }
 

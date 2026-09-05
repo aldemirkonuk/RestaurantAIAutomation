@@ -17,6 +17,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
 import { PriceIndexModule } from "./price-index/price-index.module";
+import { DistributorFeedModule } from "./distributor-feed/distributor-feed.module";
 import { PosHubModule } from "./pos-hub/pos-hub.module";
 import { SimposModule } from "./simpos/simpos.module";
 import { LogsModule } from "./logs/logs.module";
@@ -29,6 +30,8 @@ import { ProvidersModule } from "./providers/providers.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
+import { RetentionModule } from "./communications/retention/retention.module";
+import { TextSendersModule } from "./communications/text/text-senders.module";
 import { WinesModule } from "./wines/wines.module";
 import { StorageLocationsModule } from "./storage-locations/storage-locations.module";
 import { CellarModule } from "./cellar/cellar.module";
@@ -91,6 +94,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     PriceIndexModule, // Public price-index register (posted lists / shelf prices), state-scoped (ADR 0117)
+    DistributorFeedModule, // Class-C distributor connections: read-only catalogue of what each portal actually publishes (ADR 0126)
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     AskAiModule, // Ask AI (FUTURES §8): ask → propose → confirm → execute
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
@@ -117,6 +121,8 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     ConversationsModule, // Procurement conversation history, threads, summaries
     SettingsModule, // Restaurant settings and feature flags
     IntegrationsModule, // Third-party OAuth grants (Drive, Excel) + scope disclosure
+    RetentionModule, // How long mirrored vendor mail is kept, and the sweep that deletes it
+    TextSendersModule, // The house's own WhatsApp/SMS sender + each person's consent (ADR 0121)
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     McpConnectionsModule, // Model-context (MCP) servers declared per user + restaurant
     PaymentMethodsModule, // Payment instruments on file; create refuses with no provider

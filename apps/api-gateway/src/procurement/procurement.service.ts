@@ -54,17 +54,31 @@ import {
 } from "./own-paper-sighting";
 import { Uom } from "./documents/document-types";
 import {
-  agreedOrderTotal,
+  NO_AGREEMENT_FEES,
+  agreedPricePerBottleForDoor,
+  agreementLineTotal,
   describeAgreedPrice,
   embeddedOrderLines,
   foldOrderPriceUnit,
-  perBottleFromAgreedPrice,
+  hasStatedFees,
+  priceSeriesUnit,
+  readAgreementFees,
   readStatedPriceUnit,
   resolveStatedPriceUnit,
+  splitCaseOwnLineRefusal,
   unstatedPriceUnitSentence,
   type AgreedPriceUnitReading,
+  type AgreementFees,
+  type PriceSeriesUnitClaim,
   type StatedPriceUnit,
 } from "./agreed-price";
+import {
+  agreementCurrencyClaim,
+  invoiceCurrencyClaim,
+  priceCurrency,
+  type PriceCurrencyClaim,
+} from "./price-currency";
+import { agreementCurrencyDefault } from "./agreement-currency";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -88,7 +102,26 @@ import {
   roleSatisfies,
 } from "./order-approval-gate";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
-import { ORDER_SEAL_ACT, orderSealArgs } from "./order-seal";
+import {
+  ORDER_CANCEL_ACT,
+  ORDER_SEAL_ACT,
+  orderCancelSealArgs,
+  orderSealArgs,
+} from "./order-seal";
+import {
+  ORDER_GOODS_ARRIVED_STATUSES,
+  ORDER_TERMINAL_STATUSES,
+  decideTransition,
+  readOrderStatus,
+  refuseUnreadableStatus,
+} from "./order-transitions";
+import { toPostgrestInList } from "./order-status";
+import {
+  DELIVERY_REFUSED_ALREADY_ARRIVED,
+  DELIVERY_REFUSED_STATE_UNREADABLE,
+  refuseLostDeliveryRace,
+  refuseSecondDelivery,
+} from "./delivered-once";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -583,20 +616,56 @@ export class ProcurementService {
     }
     const statedPriceUnit = priceUnit.stated;
 
+    // A split case is its own line, never a surcharge on the case line (ADR
+    // 0119 Q6, founder 2026-09-05). The database says the same thing in
+    // `procurement_order_items_split_case_own_line_check`; this says it first,
+    // in a sentence that tells the desk what to do about it instead of a 23514
+    // naming a constraint.
+    const splitCase = splitCaseOwnLineRefusal({
+      priceUom: statedPriceUnit?.priceUom ?? null,
+      unitType: units.unitType,
+    });
+    if (splitCase) {
+      this.logger.warn("Refused a split case folded onto a case line", {
+        restaurantId,
+        inventoryId: dto.inventoryId,
+        unitType: units.unitType,
+        priceUom: statedPriceUnit?.priceUom ?? null,
+      });
+      throw new BadRequestException({
+        reason: "split_case_needs_its_own_line",
+        message: splitCase,
+      });
+    }
+
+    // The money outside the price of the wine (ADR 0119 Q3, founder
+    // 2026-09-05). Absent stays absent: a NULL allowance is "the agreement said
+    // nothing about one", and turning that into 0.00 would record that the
+    // vendor granted none.
+    const fees = readAgreementFees({
+      allowance: dto.allowance,
+      deposit: dto.deposit,
+      freight: dto.freight,
+    });
+
     const finalPrice = dto.finalPrice ?? dto.quotedPrice ?? 0;
     const bottlesTotal = units.bottlesTotal;
     // The order's value, worked out from the unit the price is actually stated
-    // in (ADR 0119). Without a stated pair this is byte-for-byte the historical
-    // `finalPrice × bottlesTotal` — the per-bottle convention, unchanged, for
-    // every order that does not state a unit. With one, "$420 per case of 12"
-    // over 60 bottles totals 5 × 420, not 60 × 420.
-    const agreedTotal = agreedOrderTotal({
+    // in (ADR 0119) and net of the money the agreement names outside that price.
+    // Without a stated pair AND without a stated fee this is byte-for-byte the
+    // historical `finalPrice × bottlesTotal` — the per-bottle convention,
+    // unchanged, for every order that states neither. With a pair, "$420 per
+    // case of 12" over 60 bottles totals 5 × 420, not 60 × 420; with a fee, the
+    // deposit is added where a reader can see it rather than hidden in the
+    // unit price.
+    const agreedTotal = agreementLineTotal({
       price: finalPrice,
       stated: statedPriceUnit,
       bottlesTotal,
       quantity: dto.quantity,
       unitType: units.unitType,
       opaque: units.opaque,
+      fees,
     });
     if (!agreedTotal.ok) {
       this.logger.warn("Refused an order whose value cannot be worked out", {
@@ -705,6 +774,7 @@ export class ProcurementService {
         units,
         finalPrice,
         statedPriceUnit,
+        fees,
       });
 
       const updatedRow = updated as any;
@@ -805,6 +875,7 @@ export class ProcurementService {
       units,
       finalPrice,
       statedPriceUnit,
+      fees,
     });
 
     // Emit order_change event for cross-page sync
@@ -933,9 +1004,17 @@ export class ProcurementService {
      * status quo rather than a guess.
      */
     statedPriceUnit?: StatedPriceUnit | null;
+    /**
+     * The money the agreement names OUTSIDE the price of the wine (ADR 0119
+     * Q3). Absent means the agreement named none — which is not the same as
+     * naming zero, and the columns keep NULL rather than 0.00 so the two stay
+     * distinguishable for the whole life of the row.
+     */
+    fees?: AgreementFees;
   }): Promise<void> {
     const { restaurantId, orderId, dto, units, finalPrice } = args;
     const statedPriceUnit = args.statedPriceUnit ?? null;
+    const fees = args.fees ?? NO_AGREEMENT_FEES;
 
     // The wine identity. `restaurant_inventory.master_wine_id` is NOT NULL
     // (`baseline`), so a resolvable inventory row always yields one.
@@ -983,13 +1062,14 @@ export class ProcurementService {
     // than cast away, because an unreachable branch that silently returns a
     // number is how a wrong total gets written the day it becomes reachable.
     const lineTotalResolution = Number.isFinite(finalPrice)
-      ? agreedOrderTotal({
+      ? agreementLineTotal({
           price: finalPrice,
           stated: statedPriceUnit,
           bottlesTotal: units.bottlesTotal,
           quantity: dto.quantity,
           unitType: units.unitType,
           opaque: units.opaque === true,
+          fees,
         })
       : null;
     const lineTotal =
@@ -1026,6 +1106,29 @@ export class ProcurementService {
       // CHECK `..._price_unit_pair_check` refuses either half alone.
       price_uom: statedPriceUnit?.priceUom ?? null,
       price_pack_size: statedPriceUnit?.pricePackSize ?? null,
+      // ADR 0117 Q31: the money all seven amounts on this line are in, stated
+      // rather than assumed. One EXPLICIT key, for the same capture-guard reason
+      // as the pair above, and `?? null` rather than a fallback: there is no
+      // default here and there must not be one. The sheet offers a default
+      // worked out from what this vendor last billed this house in
+      // (`agreement-currency.ts`) and the person confirms it before this write
+      // happens — a confirmed suggestion and a silent one are different things,
+      // and `restaurants.currency` is what the second one looks like after
+      // seven months.
+      currency:
+        typeof dto.currency === "string" && /^[A-Z]{3}$/.test(dto.currency.trim().toUpperCase())
+          ? dto.currency.trim().toUpperCase()
+          : null,
+      // ADR 0119 Q3: the money outside the price of the wine, named rather than
+      // folded into `final_unit_price`. Three EXPLICIT keys for the same reason
+      // the pair above is two — the capture guard reads this literal without
+      // executing it — and NULL rather than 0 when the agreement said nothing,
+      // because "no deposit was agreed" and "a deposit of zero was agreed" are
+      // different sentences and the invoice will be checked against whichever
+      // one this row holds.
+      allowance: fees.allowance,
+      deposit: fees.deposit,
+      freight: fees.freight,
       line_total: lineTotal,
       line_no: 1,
     };
@@ -1094,37 +1197,62 @@ export class ProcurementService {
     orderId: string;
     providerId: string | null;
     masterWineId: string | null;
-    /** Per bottle. */
+    /**
+     * The observed price, in the unit `unitClaim` names — NOT per bottle by
+     * convention. ADR 0119 Q4 took `price_history` off the per-bottle
+     * assumption on 2026-09-05: a case price is recorded as a case price beside
+     * `unit = 'case'`, and nothing is converted on the way in.
+     */
     price: number | null | undefined;
     source: PriceHistorySource;
     quantity?: number | null;
     notes?: string | null;
     /**
-     * The unit `price` above is stated in, when the agreement states one
-     * (ADR 0119, `procurement_order_items.price_uom`/`price_pack_size`).
+     * How the unit of `price` is KNOWN — required, and never inferred here.
      *
-     * `price_history.unit` is the hardcoded literal `'BOTTLE'` and the docblock
-     * below records why it stays that way, so a stated per-CASE price has to
-     * become a per-bottle one before it enters the table. The conversion is
-     * `perBottleFromAgreedPrice` — one division, and the sentence it returns is
-     * written into this row's `notes` so the arithmetic is re-derivable from
-     * the row itself. A unit with no bottle inside it (keg, litre) is REFUSED
-     * in words rather than divided by one and filed as a bottle price.
+     * ADR 0119 Q4 (founder, 2026-09-05) took `price_history.unit` off the
+     * hardcoded `'BOTTLE'` literal: the column is now NOT NULL with no default
+     * and a seven-word vocabulary
+     * (`20260905072500_the_price_series_states_its_unit.sql`), so every caller
+     * has to say which unit its number is in and where that knowledge came
+     * from. `priceSeriesUnit` turns the claim into the word written to the
+     * column, or into the sentence explaining why no row is written at all.
      *
-     * Absent means the caller asserts the historical per-bottle convention,
-     * which is what all three callers did before this and what every order
-     * without a stated pair still does.
+     * There is no default value for this argument on purpose. A default is
+     * exactly what the old `'BOTTLE'` literal was, and a caller that forgot to
+     * think about its unit would inherit it in silence.
      */
-    statedPriceUnit?: StatedPriceUnit | null;
+    unitClaim: PriceSeriesUnitClaim;
+    /**
+     * What MONEY this price is in, and how that is known — required, and never
+     * inferred here.
+     *
+     * ADR 0117 Q25 (founder, 2026-09-05) added `price_history.currency`
+     * (`20260905120000_a_house_names_its_money.sql`) because a price series with
+     * one unnamed currency is only true while every vendor bills in the same
+     * one, and production already disproves that: one house carries
+     * `restaurants.currency = 'USD'` and holds two `TRY` invoices. The claim is
+     * a property of the PAPER, never of the house — inheriting
+     * `restaurants.currency` would be a statement about the vendor that no
+     * document makes.
+     *
+     * There is no default here for the same reason `unitClaim` has none.
+     * `priceCurrency` turns the claim into the code written to the column, or
+     * into `null` plus the sentence naming what would have admitted one. Unlike
+     * an unstated unit, an unstated currency does NOT suppress the row: the
+     * observation is real and the gap is recorded on it (the migration argues
+     * that difference at length).
+     */
+    currencyClaim: PriceCurrencyClaim;
     /**
      * The same event as a row in the PRICE REGISTER — `vendor_price_observations`
      * — which is the table every price reader actually joins on (ADR 0117 class
      * A, "own paper"). Carried separately from the `price` above because the two
-     * tables mean different things by a number: `price_history.unit` is
-     * hardcoded `'BOTTLE'` and its `price` is per bottle, while a sighting must
-     * carry the DOCUMENT's own figure in the DOCUMENT's own unit, with the pack
-     * size and bottle volume beside it, so that `normalizeUnitPrice` — and only
-     * it — does the conversion.
+     * tables mean different things by a number: `price_history` holds ONE
+     * observation with the unit it was quoted in, while a sighting must carry
+     * the DOCUMENT's own figure with the pack size and bottle volume beside it,
+     * so that `normalizeUnitPrice` — and only it — does the conversion the
+     * market box's comparison needs.
      *
      * Absent means no sighting, and `recordOwnPaperSighting` says so in a
      * sentence rather than defaulting one into existence.
@@ -1143,38 +1271,58 @@ export class ProcurementService {
     // The register mirror runs first and on its own operands: a price_history
     // row that cannot be written must not silently take the sighting down with
     // it, and the sighting's refusals are different refusals.
-    await this.recordOwnPaperSighting(args);
+    //
+    // The pair is handed over explicitly rather than riding on the spread: the
+    // sighting cares only whether the AGREEMENT stated a unit, and a
+    // `bottle_equivalent` claim — the receipt path, whose unit was resolved by
+    // `computeMatch` rather than by the agreement — is not that. Collapsing the
+    // two would make the receipt path stop printing the unstated-unit refusal
+    // for an order that genuinely never stated one.
+    await this.recordOwnPaperSighting({
+      ...args,
+      statedPriceUnit:
+        args.unitClaim.kind === "stated" ? args.unitClaim.stated : null,
+    });
 
-    // The per-bottle figure this table's `unit` column asserts. With no stated
-    // pair this is `args.price` unchanged — the convention every caller has
-    // always passed. With one, the division happens here, once, and says so.
-    let price = Number(args.price);
-    let unitNote: string | null = null;
-    if (args.statedPriceUnit) {
-      const perBottle = perBottleFromAgreedPrice({
-        price: args.price,
-        stated: args.statedPriceUnit,
-      });
-      if (!perBottle.ok) {
-        // Not a silent skip. A price this table cannot hold is a fact about the
-        // agreement, and a series that quietly omits every keg is a series that
-        // reports its own absence as health.
-        this.logger.warn(
-          `No price_history row written for ${args.source} on order ${args.orderId}: ` +
-            `${perBottle.reason}. The price register (vendor_price_observations) ` +
-            `still carries it in its own unit.`,
-        );
-        return;
-      }
-      price = perBottle.perBottle;
-      unitNote = perBottle.note;
+    // The unit this observation is in, taken from the caller's claim and never
+    // from a default. ADR 0119 Q4: the series carries the stated unit, so a
+    // case price enters AS a case price and NOTHING is converted here — the
+    // division phase 1 performed on the way in is gone, and with it the only
+    // place in this method where a number changed meaning.
+    const seriesUnit = priceSeriesUnit(args.unitClaim);
+    if (!seriesUnit.ok) {
+      // Not a silent skip. A price this table cannot hold is a fact about the
+      // agreement, and a series that quietly omits every unstated order is a
+      // series that reports its own absence as health.
+      this.logger.warn(
+        `No price_history row written for ${args.source} on order ${args.orderId}: ` +
+          `${seriesUnit.reason}.`,
+      );
+      return;
     }
+
+    const price = Number(args.price);
 
     // A zero or absent price is not an observation. Writing one would put a
     // fabricated $0 into the series and drag every average through it.
     if (!Number.isFinite(price) || price <= 0) return;
 
-    const notes = [args.notes ?? null, unitNote].filter(Boolean).join(" ") || null;
+    // ADR 0117 Q25. Unlike the unit, an unstated currency does not suppress the
+    // row — but it is never silent either: the sentence goes to the log AND the
+    // note goes on the row, so the gap is legible both to whoever is watching
+    // and to whoever reads the series later.
+    const seriesCurrency = priceCurrency(args.currencyClaim);
+    if (seriesCurrency.reason) {
+      this.logger.warn(
+        `price_history row for ${args.source} on order ${args.orderId}: ` +
+          `${seriesCurrency.reason}`,
+      );
+    }
+
+    const notes =
+      [args.notes ?? null, seriesUnit.note, seriesCurrency.note]
+        .filter(Boolean)
+        .join(" ") || null;
 
     try {
       const { error } = await this.databaseService.supabase
@@ -1185,24 +1333,33 @@ export class ProcurementService {
           provider_id: args.providerId,
           price: Math.round(price * 100) / 100,
           quantity: args.quantity ?? 1,
-          // The vocabulary of the column, not of this codebase: price_history
-          // predates the canonical singular unit list and defaults to 'BOTTLE'.
+          // The unit this price is in, STATED — ADR 0119 Q4, founder
+          // 2026-09-05. It was the hardcoded literal `'BOTTLE'` until this
+          // pass, which is why phase 1 had to divide a case price on the way in
+          // and refuse a keg price outright: the column asserted bottles about
+          // every row whatever the agreement said. It now says what the
+          // agreement said, and the database backs that with NOT NULL, no
+          // default and a seven-word CHECK.
           //
-          // This label is now TRUE rather than merely constant. All three
-          // callers pass a bottle count and a per-bottle price: the two
-          // `order_confirmed` writers use `bottles_total`, and
-          // `receipt_verified` passes the match's normalised bottle figure
-          // alongside `effectiveUnitCost`. Before the units reached
-          // `computeMatch`, the receipt writer put a raw invoice number — a case
-          // count on any order not placed in bottles — into a column asserting
-          // bottles, and no reader could tell.
-          //
-          // It stays hardcoded, deliberately: this is a per-bottle price series
-          // by construction, so a `unit` that could vary would invite a caller
-          // to write a case price into it and make the whole series
-          // incomparable. Any future non-bottle observation needs a decision
-          // about what the series means, not a widened column.
-          unit: "BOTTLE",
+          // THE COST, CONCEDED RATHER THAN ARGUED AWAY: this ADR itself
+          // rejected a widened `unit` on the grounds that "a per-bottle series
+          // whose unit could vary is a series nothing can average". That is
+          // true, and it is now the reader's obligation instead of the writer's
+          // — every comparison over this table must GROUP BY unit first. The
+          // column comment says so where a reader will find it. Measured on
+          // this tree, there is no such reader yet: this insert is the only
+          // statement in `apps/` or `services/` that touches the table.
+          unit: seriesUnit.unit,
+          // The money this price is in, STATED — ADR 0117 Q25, founder
+          // 2026-09-05. The column did not exist until
+          // `20260905120000_a_house_names_its_money.sql`, so every row in this
+          // series asserted one unnamed currency, which is only true while every
+          // vendor bills in the same one. `null` is written when the paper
+          // stated none, and it means NOT RECORDED: no reader may substitute
+          // `restaurants.currency`, USD, or the currency of the row beside it.
+          // The key is named explicitly even when the value is null so the
+          // capture-contract guard can read what this write claims.
+          currency: seriesCurrency.code,
           effective_date: new Date().toISOString().slice(0, 10),
           source: args.source,
           order_id: args.orderId,
@@ -1599,23 +1756,187 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
   ): Promise<StatedPriceUnit | null> {
+    return (await this.readAgreedLine(restaurantId, orderId)).stated;
+  }
+
+  /**
+   * The whole agreement line, as far as money is concerned — ADR 0119 phase 2.
+   *
+   * `readAgreedPriceUnit` above answers one question and is kept because two of
+   * its callers only ask that one. This answers all four at once, in ONE read,
+   * for the callers that need the line's number as well as its unit:
+   *
+   *   * `id` — so `confirmDeal` can write the LINE rather than the header. Q2
+   *     made `procurement_orders.final_price` a trigger-maintained echo, and a
+   *     direct write to it that disagrees with the line is now refused by the
+   *     database with 23514.
+   *   * `stated` — the (unit, pack) pair.
+   *   * `finalUnitPrice` — the agreed price in that unit.
+   *   * `fees` — the money the agreement names outside that price (Q3).
+   *
+   * `read: false` is returned for a failure OR for an order with no line, and
+   * the two are distinguished by `reason`. Nothing here defaults: an unreadable
+   * line loses a sighting and refuses a comparison, it never gains a wrong one.
+   */
+  private async readAgreedLine(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{
+    read: boolean;
+    reason: string | null;
+    id: string | null;
+    stated: StatedPriceUnit | null;
+    finalUnitPrice: number | null;
+    fees: AgreementFees;
+    /**
+     * The money every amount on this line is in — ADR 0117 Q31,
+     * `20260905200000_the_agreement_names_its_money.sql`. `null` means the desk
+     * stated none, and it is never filled in here: an unreadable or unstated
+     * line loses a sighting, it does not gain a guessed currency.
+     */
+    currency: string | null;
+  }> {
+    const empty = {
+      id: null,
+      stated: null,
+      finalUnitPrice: null,
+      fees: { ...NO_AGREEMENT_FEES },
+      currency: null,
+    };
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_order_items")
-        .select("price_uom, price_pack_size")
+        .select(
+          "id, price_uom, price_pack_size, final_unit_price, allowance, deposit, freight, currency",
+        )
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
         .maybeSingle();
       if (error) throw new Error(error.message);
-      return readStatedPriceUnit(data as any);
+      if (!data) {
+        return {
+          read: true,
+          reason: "this order has no line written down",
+          ...empty,
+        };
+      }
+      const row = data as any;
+      const price = Number(row.final_unit_price);
+      return {
+        read: true,
+        reason: null,
+        id: row.id ?? null,
+        stated: readStatedPriceUnit(row),
+        finalUnitPrice: Number.isFinite(price) ? price : null,
+        fees: readAgreementFees(row),
+        // Read, never defaulted. A three-letter code or nothing.
+        currency:
+          typeof row.currency === "string" && /^[A-Z]{3}$/.test(row.currency)
+            ? row.currency
+            : null,
+      };
     } catch (e: any) {
       this.logger.warn(
-        `Could not read the order line's stated price unit for order ${orderId}: ` +
-          `${e?.message}. Treating it as unstated, which refuses a sighting ` +
+        `Could not read the order line for order ${orderId}: ${e?.message}. ` +
+          `Treating its price unit as unstated, which refuses a sighting ` +
           `rather than filing one under a guessed unit.`,
       );
-      return null;
+      return { read: false, reason: e?.message ?? "unknown", ...empty };
     }
+  }
+
+  /**
+   * The currency the agreement sheet should OFFER for a new line with this
+   * vendor, and the reason a person can check.
+   *
+   * ADR 0117 Q31 (founder, 2026-09-05): *"defaulted from the vendor's terms or
+   * the house, stated on the sheet"*. The chain and its labels are
+   * `agreement-currency.ts`; this method is only the two reads it needs, and it
+   * exists so the SHEET offers exactly what the WRITER would — one tested
+   * function, not two implementations that drift.
+   *
+   * Both reads are best-effort and both fail CLOSED: an unreadable vendor
+   * document or an unreadable house yields no default and the sheet says the
+   * field is unanswered. Neither failure is allowed to produce a currency,
+   * because a currency invented by a failed read is exactly what
+   * `restaurants.currency DEFAULT 'USD'` was.
+   */
+  async agreementCurrencyForVendor(
+    restaurantId: string,
+    providerId: string | null | undefined,
+  ): Promise<{
+    code: string | null;
+    basis: "vendor_paper" | "house" | null;
+    sentence: string;
+  }> {
+    let vendorPaperCurrency: string | null = null;
+    let vendorName: string | null = null;
+
+    if (providerId) {
+      // Ordered by the DOCUMENT's own date, never by insertion: "what they last
+      // billed us in" must not change because somebody uploaded an old invoice
+      // this morning.
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_documents")
+        .select("currency, doc_date")
+        .eq("restaurant_id", restaurantId)
+        .eq("provider_id", providerId)
+        .not("currency", "is", null)
+        .order("doc_date", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        this.logger.warn(
+          `Could not read this vendor's documents for a currency default ` +
+            `(order sheet, provider ${providerId}): ${error.message}. No ` +
+            `default is offered from their paper — a failed read is not an ` +
+            `empty one.`,
+        );
+      } else if (data) {
+        vendorPaperCurrency = (data as any).currency ?? null;
+      }
+
+      const { data: provider, error: providerError } =
+        await this.databaseService.supabase
+          .from("providers")
+          .select("name")
+          .eq("id", providerId)
+          .eq("restaurant_id", restaurantId)
+          .maybeSingle();
+      if (providerError) {
+        // A failed read is not an empty one: the default sentence must not
+        // print "the vendor" as if no vendor were known. Say the name could
+        // not be read, and keep the currency chain's own evidence intact.
+        this.logger.warn(
+          `agreement currency default: the vendor's name could not be read ` +
+            `(${providerError.message}); the sentence names no vendor.`,
+        );
+        vendorName = null;
+      } else {
+        vendorName = (provider as any)?.name ?? null;
+      }
+    }
+
+    let houseCurrency: string | null = null;
+    const { data: house, error: houseError } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (houseError) {
+      this.logger.warn(
+        `Could not read the house's currency for the agreement sheet: ` +
+          `${houseError.message}. No default is offered from it.`,
+      );
+    } else {
+      houseCurrency = (house as any)?.currency ?? null;
+    }
+
+    return agreementCurrencyDefault({
+      vendorPaperCurrency,
+      vendorName,
+      houseCurrency,
+    });
   }
 
   /**
@@ -1689,7 +2010,7 @@ export class ProcurementService {
     let supabaseQuery = this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name), procurement_order_items(price_uom, price_pack_size)",
+        "*, inventory:inventory_id(wine_name), procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
         { count: "exact" },
       )
       .eq("restaurant_id", restaurantId);
@@ -1735,11 +2056,17 @@ export class ProcurementService {
       // there is no row here to map. An order with no line folds to `null` —
       // "read, and states nothing" — which is the honest reading of a header
       // with nothing under it, and is what the page prints the refusal for.
+      const lines = embeddedOrderLines(row.procurement_order_items);
       return this.mapOrderRow(orderRow, {
         read: true,
-        stated: foldOrderPriceUnit(
-          embeddedOrderLines(row.procurement_order_items),
-        ),
+        stated: foldOrderPriceUnit(lines),
+        // The fees of the ONE line, and only when there is exactly one. Two
+        // lines carrying two deposits do not add up to an order-level deposit —
+        // they are two facts about two lines, and folding them would invent a
+        // third. `upsertOrderLine` writes exactly one line per order today, so
+        // this is that line; the day it writes two, this reports nothing rather
+        // than a sum nobody agreed to.
+        fees: lines.length === 1 ? readAgreementFees(lines[0]) : undefined,
       });
     });
     const total = count ?? orders.length;
@@ -1783,11 +2110,87 @@ export class ProcurementService {
     return this.mapOrderRow(orderRow);
   }
 
+  /**
+   * Refuse a state change this house has not agreed to, in words.
+   *
+   * ADR 0125. Reads the CURRENT state and asks `order-transitions.ts`. Three
+   * things about it are deliberate:
+   *
+   *   * A failed READ is a refusal, not a pass. supabase-js resolves
+   *     `{ data, error }` and never throws, so the old shape here — read, ignore
+   *     `error`, carry on — would have let every transition through whenever the
+   *     table was unreadable. That is the exact fault the house calls
+   *     [[absence-reported-as-health]], and it would arrive at the one write
+   *     that ends an order.
+   *   * A missing order is a 404, not a silent success. The UPDATE that follows
+   *     matches nothing and reports no rows, which reads like a no-op.
+   *   * The refusal is a 422 carrying the WHOLE sentence, because the page
+   *     renders `message` verbatim and "invalid transition" teaches an operator
+   *     to try the same thing again.
+   *
+   * Returns the parsed current state so a caller that needs it (cancelOrder,
+   * for the seal's arguments and the shadow-stock decision) reads the row once.
+   */
+  private async assertStatusTransition(
+    restaurantId: string,
+    orderId: string,
+    to: ProcurementOrderStatus,
+  ): Promise<{ from: ProcurementOrderStatus; row: Record<string, any> }> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, status, total_cost, provider_id, inventory_id, quantity")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order's current state could not be read (${error.message}), so ` +
+          `whether it may change was not decided and nothing was changed.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to change.",
+      );
+    }
+
+    const row = data as Record<string, any>;
+    const verdict = decideTransition(row.status, to);
+    if (!verdict.allowed || !verdict.from) {
+      throw new UnprocessableEntityException({
+        reason: "order_transition_refused",
+        from: readOrderStatus(row.status),
+        to,
+        message: verdict.sentence,
+      });
+    }
+    return { from: verdict.from, row };
+  }
+
   async updateOrder(
     restaurantId: string,
     orderId: string,
     dto: UpdateOrderDto,
+    /**
+     * Set by a caller that has ALREADY run `assertStatusTransition` for this
+     * exact move (today: `cancelOrder`). Not a way to opt out of the rule — a
+     * caller that sets it without having checked is writing an unchecked state
+     * change, and there is exactly one such caller, named here.
+     */
+    opts?: { statusTransitionAlreadyChecked?: boolean },
   ): Promise<OrderResponseDto> {
+    // ADR 0125 — the state change is the one field on this DTO that is not a
+    // note about the order but a claim about where the order IS. Until this,
+    // `status: dto.status ?? undefined` reached the UPDATE unread, so any
+    // authenticated caller could move any order to any of the twelve members
+    // from any other: a DELIVERED order back to PENDING, a COMPLETED one to
+    // CANCELLED, an order to IN_TRANSIT or FAILED which nothing in this
+    // codebase ever writes.
+    if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
+      await this.assertStatusTransition(restaurantId, orderId, dto.status);
+    }
+
     // D-06: Block location assignment while order is in a pending state.
     if (dto.locationId !== undefined) {
       const BLOCKED_STATUSES = [
@@ -1868,37 +2271,220 @@ export class ProcurementService {
     return this.mapOrderRow(orderRow);
   }
 
+  /**
+   * The sentence a cancellation with no reason is refused with.
+   *
+   * Exported so the page can print the rule BEFORE the request rather than
+   * discovering it from a 400, and so the test asserts the words rather than
+   * the status.
+   */
+  static readonly CANCEL_NEEDS_A_REASON =
+    "A cancellation has to say why. The reason is written onto the order and " +
+    "is the only account anyone will have of why this wine was not bought. " +
+    "Nothing was changed.";
+
+  /**
+   * Mint the proof, at the moment the hold on a REJECT begins.
+   *
+   * ADR 0125. The mirror of `issueOrderSealChallenge`, and separate from it for
+   * the same reason the acts are separate: a token minted here says `cancel`,
+   * so it cannot be spent on `POST orders/:id/approve`, and one minted there
+   * cannot be spent here.
+   *
+   * Everything that would refuse the cancellation refuses the SEAL first — the
+   * transition check runs here too. A person whose order cannot be cancelled at
+   * all is told so when they begin the hold, not after holding it for a second
+   * and a half. A control that mints happily and refuses at the end teaches
+   * people the seal is decoration.
+   */
+  async issueOrderCancelSealChallenge(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), " +
+          "so nothing can be cancelled. This is a gateway fault, not a decision about this order.",
+      );
+    }
+
+    await this.assertStatusTransition(
+      restaurantId,
+      orderId,
+      ProcurementOrderStatus.CANCELLED,
+    );
+
+    const args = await this.readOrderCancelSealArgs(restaurantId, orderId);
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_CANCEL_ACT,
+      args,
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Read the facts a cancellation seal is taken over. ONE reader, used by both
+   * ends — two readers is how issue and redemption learn to disagree.
+   */
+  private async readOrderCancelSealArgs(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Record<string, unknown>> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, total_cost, provider_id, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read, so the seal could not be taken over its own figures: ${error.message}`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to seal.",
+      );
+    }
+    const row = data as {
+      id: string;
+      total_cost: string | number | null;
+      provider_id: string | null;
+      status: string | null;
+    };
+    return orderCancelSealArgs({
+      id: row.id,
+      total: row.total_cost,
+      providerId: row.provider_id,
+      status: row.status,
+    });
+  }
+
+  /**
+   * End an order — behind the same kind of proof its approval carries.
+   *
+   * =========================================================================
+   * WHAT CHANGED, AND WHY (ADR 0125, founder 2026-09-05)
+   * =========================================================================
+   * This method used to be: write CANCELLED, write whatever reason arrived (or
+   * none), cascade two things, return 200. No state was read except to decide
+   * about shadow stock, no role was consulted, no seal was redeemed, no reason
+   * was required and no paper was filed. Beside it sat `approveOrder`, which
+   * consults the house's thresholds, resolves the actor's role, redeems a
+   * one-time seal bound to the order's own money, and refuses in whole
+   * sentences. Two acts of equal consequence, one of them proven.
+   *
+   * The consequence is not symmetric in the direction people assume. An
+   * approval spends money; a cancellation ERASES money already spent.
+   * Cancelling a delivered order reverses nothing — the receipt event stands,
+   * the shelf stock stays booked — but the row leaves `ORDER_SPEND_STATUSES`
+   * and `ORDER_ARRIVED_STATUSES`, so its cost vanishes from every spend total,
+   * cashflow figure, bottles-delivered count, lead-time statistic and vendor
+   * scorecard in the house.
+   *
+   * So a cancellation now:
+   *
+   *   1. NAMES A REASON. Not optional. The reason is the only account anyone
+   *      will have of why this wine was not bought.
+   *   2. IS A LEGAL TRANSITION, checked against `order-transitions.ts` — which
+   *      refuses a cancel out of DELIVERED, PARTIALLY_RECEIVED or COMPLETED
+   *      with the sentence that says the wine is on the shelf.
+   *   3. REDEEMS A SEAL bound to (this actor, this order, the act `cancel`, the
+   *      order's total, its vendor and its state). Absent, spent, another
+   *      person's, another order's, another act's, or minted before the order
+   *      moved — each refused with its own sentence.
+   *   4. STOPS THE VENDOR MAIL. A conversation left AUTO_SEND_SCHEDULED used to
+   *      survive the cancel and be sent by `processScheduledAutoSends` 30
+   *      seconds later, so the house emailed a vendor about an order it had
+   *      just cancelled.
+   *   5. LEAVES PAPER. `order_cancelled` in `system_audit_log`, naming the
+   *      actor, the state left, and the reason.
+   *
+   * The role gate deliberately is NOT applied. `assertApprovalAllowed` answers
+   * "may this role commit this much money", and refusing to let a junior STOP a
+   * spend would be that rule pointed backwards — it would leave an order live
+   * because the only person at the desk could not afford to have approved it.
+   * The seal proves a person did it and the audit row names them; that is the
+   * property this act needs. Recorded as a founder question in ADR 0125 rather
+   * than settled by a builder.
+   */
   async cancelOrder(
     restaurantId: string,
     orderId: string,
     userId: string,
     reason?: string,
+    challenge?: string | null,
   ): Promise<OrderResponseDto> {
-    // Capture current order state BEFORE cancelling so we can decide
-    // whether to release shadow stock (only if order was in an active state).
-    const { data: preCancelRow } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .select("status, inventory_id, quantity")
-      .eq("id", orderId)
-      .single();
+    const spokenReason = (reason ?? "").trim();
+    if (spokenReason === "") {
+      throw new BadRequestException(ProcurementService.CANCEL_NEEDS_A_REASON);
+    }
 
-    const order = await this.updateOrder(restaurantId, orderId, {
-      status: ProcurementOrderStatus.CANCELLED,
-      rejectionReason: reason,
-    });
+    // The state, read once and refused here rather than inside `updateOrder`:
+    // this caller needs `from` for the shadow-stock decision and the audit row.
+    const { from: preStatus } = await this.assertStatusTransition(
+      restaurantId,
+      orderId,
+      ProcurementOrderStatus.CANCELLED,
+    );
+
+    // AFTER the transition check, so a person whose order cannot be cancelled
+    // at all is told that rather than having their seal burned by a request
+    // that was never going to succeed. BEFORE the write, so the status is never
+    // written on an unproven seal.
+    await this.redeemOrderCancelSeal(restaurantId, orderId, userId, challenge);
+
+    const order = await this.updateOrder(
+      restaurantId,
+      orderId,
+      {
+        status: ProcurementOrderStatus.CANCELLED,
+        rejectionReason: spokenReason,
+      },
+      { statusTransitionAlreadyChecked: true },
+    );
 
     // D-10: Cascade PENDING_APPROVAL conversations to CANCELLED so they don't
     // appear in the active conversations panel after order cancellation.
+    //
+    // AUTO_SEND_SCHEDULED joins them (ADR 0125). It did not before, and
+    // `processScheduledAutoSends` reads the ORDER only for `ai_autonomy_paused`
+    // and a provider email — never for its status — so a reply staged before
+    // the cancel was delivered to the vendor on the next 30-second tick, about
+    // an order this house had just ended. Both are cancelled here AND the
+    // sender refuses a closed order independently: one belt, one brace, because
+    // this cascade is best-effort by design and a silent failure here must not
+    // put mail on the wire.
     try {
-      await this.databaseService.supabase
+      const { error: cascadeError } = await this.databaseService.supabase
         .from("procurement_conversations")
-        .update({ status: "CANCELLED" })
+        .update({ status: "CANCELLED", scheduled_send_at: null })
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
-        .eq("status", "PENDING_APPROVAL");
-      this.logger.log(
-        `Cascaded PENDING_APPROVAL conversations to CANCELLED for order ${orderId}`,
-      );
+        .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
+      if (cascadeError) {
+        // supabase-js resolves `{ data, error }` and never throws, so the
+        // try/catch alone reported every failure here as a success.
+        this.logger.warn(
+          `cancelOrder conversation cascade failed for order ${orderId} ` +
+            `(${cascadeError.message}). The order IS cancelled; a staged reply may ` +
+            `still be listed, and processScheduledAutoSends refuses to send it.`,
+        );
+      } else {
+        this.logger.log(
+          `Cascaded PENDING_APPROVAL and AUTO_SEND_SCHEDULED conversations to CANCELLED for order ${orderId}`,
+        );
+      }
     } catch (cascadeError: any) {
       this.logger.warn(
         `cancelOrder conversation cascade failed (non-fatal): ${cascadeError?.message}`,
@@ -1910,7 +2496,6 @@ export class ProcurementService {
 
     // Release shadow stock if the order had already been approved/sent and
     // inventory was reserved (shadow_stock was incremented for this order).
-    const preStatus = (preCancelRow as any)?.status ?? "";
     const RESERVED_STATUSES = [
       ProcurementOrderStatus.APPROVED,
       ProcurementOrderStatus.CONFIRMED,
@@ -1919,7 +2504,7 @@ export class ProcurementService {
     if (
       order.inventoryId &&
       order.quantity &&
-      RESERVED_STATUSES.includes(preStatus as ProcurementOrderStatus)
+      RESERVED_STATUSES.includes(preStatus)
     ) {
       await this.releaseOrderShadowStock(
         restaurantId,
@@ -1928,10 +2513,99 @@ export class ProcurementService {
       );
     }
 
+    // The paper. Best-effort in the same sense as `recordApprovalRefusal`: the
+    // cancellation has already happened, and turning a 200 into a 500 because
+    // the log failed would tell the person something false about what just
+    // happened. A failed write is logged loudly instead.
+    await this.recordOrderCancelled({
+      restaurantId,
+      orderId,
+      actorUserId: userId,
+      from: preStatus,
+      reason: spokenReason,
+    });
+
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, "cancelled");
 
     return order;
+  }
+
+  /** Spend the cancellation seal. Throws with the whole sentence on refusal. */
+  private async redeemOrderCancelSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    challenge: string | null | undefined,
+  ): Promise<void> {
+    if (!this.sealChallenges) {
+      // Refuse, never seal. A seal check that vanishes with its own dependency
+      // is [[absence-reported-as-health]] pointed at money.
+      throw new InternalServerErrorException(
+        "The seal could not be checked (the seal service is not wired into procurement), " +
+          "so nothing was cancelled. This is a gateway fault, not a decision about this order.",
+      );
+    }
+
+    const args = await this.readOrderCancelSealArgs(restaurantId, orderId);
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_CANCEL_ACT,
+      args,
+      challenge: challenge ?? null,
+    });
+  }
+
+  /**
+   * File `order_cancelled` in `system_audit_log`. Never throws.
+   *
+   * The row's shape is `recordApprovalRefusal`'s, because they are two events
+   * in one register and a reader should not have to learn two schemas to read
+   * the life of one order.
+   */
+  private async recordOrderCancelled(record: {
+    restaurantId: string;
+    orderId: string;
+    actorUserId: string;
+    from: ProcurementOrderStatus;
+    reason: string;
+  }): Promise<void> {
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: "user",
+          actor_id: record.actorUserId,
+          action: "order_cancelled",
+          entity_type: "procurement_order",
+          entity_id: record.orderId,
+          changes: {
+            register: "orders",
+            subject: record.orderId,
+            from: record.from,
+            to: ProcurementOrderStatus.CANCELLED,
+            act: ORDER_CANCEL_ACT,
+            sealed: true,
+            reason: record.reason,
+          },
+          restaurant_id: record.restaurantId,
+          reason: record.reason,
+        });
+      if (error) {
+        this.logger.error(
+          `order_cancelled happened but the audit row failed to write: ${error.message}. ` +
+            `Order ${record.orderId} IS cancelled and the log does not say so.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `order_cancelled happened but the audit row threw: ${err?.message}. ` +
+          `Order ${record.orderId} IS cancelled and the log does not say so.`,
+      );
+    }
   }
 
   /**
@@ -2843,10 +3517,19 @@ export class ProcurementService {
     // Read before the update so `resolvedQuantity` is available to write. A
     // failed read is raised, not defaulted to 0: silently booking nothing and
     // recording nothing is how this defect stayed invisible the first time.
+    //
+    // AN ORDER IS DELIVERED ONCE (founder, 2026-09-05). The same read now also
+    // carries the state, so the question "has this already arrived" is answered
+    // BEFORE anything is written. `status`, `delivered_at`, `quantity_received`
+    // and `order_number` are here for that: the first decides, the rest are the
+    // words the refusal is made of. See `delivered-once.ts` for what a second
+    // delivery actually did, measured rather than assumed.
     const { data: existingOrder, error: existingError } =
       await this.databaseService.supabase
         .from("procurement_orders")
-        .select("quantity")
+        .select(
+          "quantity, status, delivered_at, quantity_received, order_number",
+        )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .maybeSingle();
@@ -2857,15 +3540,82 @@ export class ProcurementService {
         orderId,
         error: existingError.message,
       });
-      throw existingError;
+      // A FAILED READ IS AN ERROR, NEVER AN ABSENCE. supabase-js resolves
+      // `{ data, error }` and never throws, so an unread row arrives here as a
+      // populated `error` and an undefined `data` — indistinguishable from a
+      // legitimate no-match to anything that only looks at `data`. Raised with
+      // a sentence rather than the bare PostgREST object so the page has words
+      // to render: the previous `throw existingError` reached the controller as
+      // an object with no `.status`, which mapped it to a 500 whose body was
+      // whatever PostgREST happened to say.
+      throw new InternalServerErrorException(
+        `This order could not be read (${existingError.message}), so whether ` +
+          `it has already been delivered was not decided and nothing was ` +
+          `changed. No stock was booked.`,
+      );
     }
     if (!existingOrder) {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
+    const existingRow = existingOrder as Record<string, any>;
+    const currentStatus = readOrderStatus(existingRow.status);
+
+    // An unreadable state is a refusal, not permission. A guard that cannot see
+    // the state it is guarding has established nothing; letting the write
+    // through on nothing is [[absence-reported-as-health]] arriving at the one
+    // write that puts wine on a shelf and money in the books.
+    if (currentStatus === null) {
+      throw new UnprocessableEntityException({
+        reason: DELIVERY_REFUSED_STATE_UNREADABLE,
+        orderId,
+        message: refuseUnreadableStatus(
+          ProcurementOrderStatus.DELIVERED,
+          existingRow.status,
+        ),
+      });
+    }
+
+    if (ORDER_GOODS_ARRIVED_STATUSES.includes(currentStatus)) {
+      const sentence = refuseSecondDelivery({
+        orderId,
+        orderNumber: existingRow.order_number ?? null,
+        status: currentStatus,
+        deliveredAt: existingRow.delivered_at ?? null,
+        quantityReceived:
+          existingRow.quantity_received == null
+            ? null
+            : Number(existingRow.quantity_received),
+      });
+      this.logger.warn("Refused a second delivery", {
+        restaurantId,
+        orderId,
+        status: currentStatus,
+      });
+      throw new ConflictException({
+        reason: DELIVERY_REFUSED_ALREADY_ARRIVED,
+        orderId,
+        status: currentStatus,
+        deliveredAt: existingRow.delivered_at ?? null,
+        message: sentence,
+      });
+    }
+
     const resolvedQuantity =
       quantityReceived ?? (existingOrder as any).quantity ?? 0;
 
+    // THE SECOND DELIVERY LOSES AT THE DATABASE, NOT ONLY AT THE READ.
+    //
+    // The check above is a read followed by a write, and two taps that arrive
+    // together both pass it. So the same rule is also the UPDATE's own WHERE
+    // clause: PostgREST sends `status=not.in.(...)` and Postgres, in READ
+    // COMMITTED, re-evaluates that qualifier after taking the row lock — the
+    // loser of the race therefore matches nothing and writes nothing, rather
+    // than overwriting the winner's `delivered_at`, `received_by` and
+    // `quantity_received`.
+    //
+    // The set is imported, not restated. A guard whose two halves are typed out
+    // twice is a guard with two answers waiting to disagree.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -2876,10 +3626,57 @@ export class ProcurementService {
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .not("status", "in", toPostgrestInList(ORDER_GOODS_ARRIVED_STATUSES))
       .select("*, inventory:inventory_id(wine_name)")
       .single();
 
     if (error) {
+      // PGRST116 from a `.single()` on a primary-key match means the WHERE
+      // matched no row. The id existed moments ago — the read above found it —
+      // so the filter that excluded it is the status one, and this call is the
+      // loser of a concurrent confirmation. Reported as the race it is, with
+      // the state read back so the sentence can name it. The re-read is
+      // best-effort ON PURPOSE and says so when it fails: the refusal does not
+      // depend on it, only the precision of the words does.
+      if (error.code === "PGRST116") {
+        // The error IS bound and IS reported. A failed re-read here does not
+        // change the verdict — this call already lost, and saying so is not
+        // conditional on knowing what it lost to — but it does change the
+        // words, and an unread state must reach the sentence as "could not be
+        // read back" rather than as silence. `readOrderStatus(undefined)`
+        // returns null, which is exactly that branch.
+        const { data: raced, error: racedError } =
+          await this.databaseService.supabase
+            .from("procurement_orders")
+            .select("status, order_number")
+            .eq("restaurant_id", restaurantId)
+            .eq("id", orderId)
+            .maybeSingle();
+        const racedRow = (racedError ? {} : (raced ?? {})) as Record<
+          string,
+          any
+        >;
+        const racedStatus = readOrderStatus(racedRow.status);
+        this.logger.warn("A concurrent delivery won this order", {
+          restaurantId,
+          orderId,
+          statusNow: racedStatus,
+          // Named, not swallowed: without this the difference between "it now
+          // reads delivered" and "the re-read failed" is invisible in the logs.
+          statusReadError: racedError ? racedError.message : null,
+        });
+        throw new ConflictException({
+          reason: DELIVERY_REFUSED_ALREADY_ARRIVED,
+          orderId,
+          status: racedStatus,
+          message: refuseLostDeliveryRace({
+            orderId,
+            orderNumber:
+              racedRow.order_number ?? existingRow.order_number ?? null,
+            status: racedStatus,
+          }),
+        });
+      }
       this.logger.error("Failed to mark procurement order delivered", {
         restaurantId,
         orderId,
@@ -3450,11 +4247,6 @@ export class ProcurementService {
     const stockedQty =
       (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
     const orderedQty = (orderRow as any).quantity ?? 0;
-    const poUnitPrice =
-      (orderRow as any).final_price ??
-      (orderRow as any).negotiated_price ??
-      (orderRow as any).quoted_price ??
-      null;
 
     // The order's own unit, which every comparison below is anchored to. It was
     // sitting on the row this method already reads and was never looked at:
@@ -3465,6 +4257,59 @@ export class ProcurementService {
       orderId,
       orderRow as any,
     );
+
+    // THE AGREED PRICE, IN THE UNIT THE COMPARISON IS IN — ADR 0119 phase 2.
+    //
+    // MEASURED on this tree before the change: `poUnitPrice` was
+    // `orderRow.final_price` (falling back to negotiated/quoted), and
+    // `invoice-match.ts` documents `poUnitPrice` as PER BOTTLE and compares it
+    // directly against `invoiceUnitPrice`. The header names no unit at all, so
+    // a case-priced agreement was tested against a per-bottle invoice figure
+    // and came back `price_variance` by a factor of the pack — the loudest
+    // verdict this module produces, fired on an order where nothing was wrong.
+    //
+    // The line states the unit (phase 1), so the conversion is available and is
+    // done ONCE here, with its arithmetic recorded on the receipt event's notes
+    // rather than left implicit. Three cases:
+    //   * pair stated and convertible -> the per-bottle reading of it
+    //   * no pair stated              -> the header, unchanged. Every order
+    //                                    placed before phase 1, and the door
+    //                                    stays open for them.
+    //   * pair stated but OPAQUE      -> NO price comparison at all. A keg price
+    //     (keg, litre)                  against a per-bottle invoice price is
+    //                                    the confident wrong verdict this
+    //                                    module exists to end; `null` reads as
+    //                                    "not evaluated", which is true.
+    const agreedLine = await this.readAgreedLine(restaurantId, orderId);
+    const headerPrice =
+      (orderRow as any).final_price ??
+      (orderRow as any).negotiated_price ??
+      (orderRow as any).quoted_price ??
+      null;
+    const doorPrice = agreedPricePerBottleForDoor({
+      price: agreedLine.stated
+        ? (agreedLine.finalUnitPrice ?? headerPrice)
+        : headerPrice,
+      stated: agreedLine.stated,
+    });
+    const poUnitPrice = doorPrice.ok ? doorPrice.perBottle : null;
+    if (!doorPrice.ok && headerPrice != null) {
+      this.logger.warn(
+        `The agreed price on order ${orderId} was not compared against the invoice: ` +
+          `${doorPrice.reason}. Every other check on this receipt still ran; the ` +
+          `price check reads as not evaluated rather than as passed.`,
+      );
+    }
+
+    // The money the AGREEMENT names outside the price of the wine (ADR 0119
+    // Q3). It is NOT folded into `poUnitPrice` and NOT folded into
+    // `allocatedCharges`: `allocatedCharges` is what the INVOICE apportions to
+    // this line, and putting the agreement's freight there would claim the
+    // vendor billed it. Naming it here is what makes the comparison like with
+    // like — the goods price is tested against the goods price, and a deposit
+    // the agreement already provided for stops reading as a price variance
+    // nobody agreed to.
+    const agreedFees = agreedLine.fees;
 
     // Silence is NOT agreement. An unstated invoice used to be inferred from the
     // PO, which had two consequences: physical_vs_bill compared a number to
@@ -3622,6 +4467,44 @@ export class ProcurementService {
       // Converting them here would silently restate a manager's count.
       const acceptedQty = acceptedQuantity ?? stockedQty;
       const rejectedQty = rejectedQuantity ?? 0;
+
+      // WHAT THE PRICE CHECK DID AND DID NOT COMPARE — ADR 0119 phase 2.
+      //
+      // Two sentences, and both exist because a verdict a manager cannot
+      // interrogate is a verdict they will either over-trust or ignore:
+      //
+      //   * the unit the agreed price was read in, or the reason it was not
+      //     compared at all (a per-keg agreement has no per-bottle reading);
+      //   * the money the AGREEMENT already provided for outside the price of
+      //     the wine. A vendor who bills the deposit and the freight the
+      //     agreement named has not varied the price, and without this sentence
+      //     a `price_variance` reads as an overcharge.
+      const comparisonNotes = [
+        doorPrice.ok ? doorPrice.note : `Price not compared: ${doorPrice.reason}.`,
+        hasStatedFees(agreedFees)
+          ? "The agreement also names money outside the price of the wine: " +
+            [
+              agreedFees.allowance !== null
+                ? `an allowance of $${agreedFees.allowance.toFixed(2)}`
+                : null,
+              agreedFees.deposit !== null
+                ? `a deposit of $${agreedFees.deposit.toFixed(2)}`
+                : null,
+              agreedFees.freight !== null
+                ? `freight of $${agreedFees.freight.toFixed(2)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(", ") +
+            ". These are not part of the price compared above, so an invoice that bills them is not a price variance."
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      this.logger.log(
+        `Receipt price comparison for order ${orderId}: ${comparisonNotes}`,
+      );
+
       Object.assign(update, {
         quantity_received: acceptedQty + rejectedQty,
         accepted_quantity: acceptedQty,
@@ -3636,7 +4519,14 @@ export class ProcurementService {
         // facts, and only one of them is an accusation.
         price_verified: hasInvoice ? match.priceVerified : null,
         price_override_reason: body.priceOverrideReason ?? null,
-        discrepancy_notes: isDiscrepancy(match.verdict) ? match.summary : null,
+        // The verdict's own summary, followed by what the price check actually
+        // compared (ADR 0119 phase 2). A `price_variance` on a case-priced
+        // agreement used to say only "Agreed $420.00 vs billed $35.00"; it now
+        // says which unit each of those is in, and names any deposit or freight
+        // the agreement already provided for.
+        discrepancy_notes: isDiscrepancy(match.verdict)
+          ? `${match.summary} ${comparisonNotes}`.trim()
+          : null,
         match_verified_at: new Date().toISOString(),
         match_verified_by: userId,
       });
@@ -3688,14 +4578,25 @@ export class ProcurementService {
         masterWineId: shelfItem.masterWineId,
         price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
         source: "receipt_verified",
-        // BOTTLES, which is what the `unit: 'BOTTLE'` this table hardcodes has
-        // always claimed. It used to be the raw invoice number: on an order
-        // billed in cases of 12, a 2 was written into a column labelled BOTTLE,
-        // and `effectiveUnitCost` — a per-bottle amount divided by a case count
-        // — was written beside it. Both are now genuinely per bottle, so the
-        // hardcoded label is true rather than merely constant.
+        // BOTTLES. It used to be the raw invoice number: on an order billed in
+        // cases of 12, a 2 was written into a column labelled BOTTLE, and
+        // `effectiveUnitCost` — a per-bottle amount divided by a case count —
+        // was written beside it. Both are genuinely per bottle since the units
+        // reached `computeMatch`.
         quantity: bottles?.invoiceQty ?? null,
         notes: `Verified against the invoice: ${match.verdict}.`,
+        // ADR 0119 Q4: this path's unit is not a convention and not the
+        // agreement's — it is a measured property of `computeMatch`, which
+        // converts all four documents to bottle-equivalents and REFUSES a unit
+        // it cannot read (`invoice-match.ts` `toBottleOperands`) before it
+        // produces `effectiveUnitCost`. So the claim is `bottle_equivalent`
+        // with the reason recorded on the row, never `stated` (the agreement's
+        // unit is not what this number is in) and never a default.
+        unitClaim: {
+          kind: "bottle_equivalent",
+          because:
+            "computeMatch converted every document to bottle-equivalents before landing this cost, and refuses a unit it cannot read.",
+        },
         // The register row, in the INVOICE's own unit — the whole point of ADR
         // 0117's class A. `bottles.units.invoice` is the unit `toBottleOperands`
         // already resolved and already refused if it could not read
@@ -3705,6 +4606,16 @@ export class ProcurementService {
         // `effectiveUnitCost` above is that number landed and per-bottle, and
         // putting a converted figure on a sighting is exactly what the register
         // must not hold — `normalizeUnitPrice` converts, once, at read time.
+        // ADR 0117 Q25. The invoice is the one document in this system that
+        // already carries a real non-USD currency, so this path is the one that
+        // can state one — when the desk keys it in. When it does not, the claim
+        // says so and names the field: the series records the figure with its
+        // currency NOT RECORDED, and the register refuses the sighting rather
+        // than stamping USD on a Turkish invoice.
+        currencyClaim: invoiceCurrencyClaim(
+          body.invoiceCurrency,
+          `order ${orderId}`,
+        ),
         sighting: {
           vendorName: null,
           productName: shelfItem.wineName,
@@ -3712,6 +4623,10 @@ export class ProcurementService {
           unitLabel: bottles?.units.invoice.uom ?? null,
           packSize: bottles?.units.invoice.bottlesPerUnit ?? null,
           unitVolumeMl: shelfItem.bottleSizeMl,
+          // The DOCUMENT's own money, off the same paper as the price beside
+          // it — never `restaurants.currency`, which is what the house REPORTS
+          // in (ADR 0117 Q25).
+          currency: body.invoiceCurrency ?? null,
           // The receipt's own moment. `procurement_documents` carries no
           // issued-date column this path can read, so the date recorded is the
           // one this event actually has: when a person checked the paper. It is
@@ -4014,6 +4929,16 @@ export class ProcurementService {
       pricePackSize: priceUnit.read
         ? (priceUnit.stated?.pricePackSize ?? null)
         : undefined,
+      // ADR 0119 Q3. Three states again, and the third is the same point: a
+      // route that read the line's price columns but not its fee columns emits
+      // NEITHER a number nor a null for them, because it has not learned that
+      // the agreement names no deposit — it has learned nothing about deposits.
+      allowance:
+        priceUnit.read && priceUnit.fees ? priceUnit.fees.allowance : undefined,
+      deposit:
+        priceUnit.read && priceUnit.fees ? priceUnit.fees.deposit : undefined,
+      freight:
+        priceUnit.read && priceUnit.fees ? priceUnit.fees.freight : undefined,
     };
   }
 
@@ -4590,13 +5515,35 @@ export class ProcurementService {
         const { data: order } = await this.databaseService.supabase
           .from("procurement_orders")
           .select(
-            "id, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+            "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
           )
           .eq("id", row.order_id)
           .single();
         const providerEmail = (order as any)?.providers?.contact_email ?? null;
         const wineName =
           (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
+
+        // ADR 0125 — never write to a vendor about an order this house has
+        // closed. `status` was not even SELECTed here before, so a reply staged
+        // a minute before a cancellation was delivered on the next tick, about
+        // an order that no longer existed as far as the house was concerned.
+        // `cancelOrder` now cascades AUTO_SEND_SCHEDULED to CANCELLED, which
+        // makes the claim above lose the race; this is the brace, because that
+        // cascade is best-effort and a silent failure there must not put mail
+        // on the wire. DISCARDED, not reverted: reverting would leave a manager
+        // a one-tap approval for a letter about a dead order.
+        const orderState = readOrderStatus((order as any)?.status);
+        if (orderState !== null && ORDER_TERMINAL_STATUSES.includes(orderState)) {
+          await this.databaseService.supabase
+            .from("procurement_conversations")
+            .update({ status: "DISCARDED", scheduled_send_at: null })
+            .eq("id", row.id);
+          this.logger.log(
+            `Auto-send discarded for ${row.id}: order ${row.order_id} is ${orderState}. ` +
+              `Nothing was sent to the vendor.`,
+          );
+          continue;
+        }
 
         // Respect a late pause, and never send without a recipient.
         if ((order as any)?.ai_autonomy_paused === true || !providerEmail) {
@@ -5192,6 +6139,10 @@ export class ProcurementService {
     const quantity = opts.quantity ?? (order as any).quantity;
     const finalPrice = opts.finalPrice ?? null;
 
+    // The agreement line, read once — its id, its stated pair and its fees.
+    // Everything below that touches money goes through it.
+    const agreedLine = await this.readAgreedLine(restaurantId, orderId);
+
     // "Confirmed by us" = we accepted the deal and are emailing the vendor to
     // confirm. That lands the order in APPROVED — NOT ORDERED. It only advances to
     // ORDERED (CONFIRMED) once the vendor sends back a receipt/order-confirmation
@@ -5202,11 +6153,53 @@ export class ProcurementService {
       approved_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString(),
     };
-    if (finalPrice != null) {
-      update.negotiated_price = finalPrice;
-      update.final_price = finalPrice;
-    }
+    // `negotiated_price` is this order's own column and stays here. `final_price`
+    // does NOT: ADR 0119 Q2 (founder, 2026-09-05) made the header an echo of the
+    // line, maintained by `trg_procurement_line_price_echoes_to_header` and
+    // defended by `trg_procurement_header_price_is_an_echo`, so a direct write
+    // here that disagreed with the line would now come back as a 23514 — and
+    // before those triggers existed it silently produced exactly the divergence
+    // the ADR names: the manager edits the price at confirmation, the header
+    // moves, the line keeps the number the invoice matcher and the price
+    // register both read. The line is written below instead, and the header
+    // follows it in the same statement.
+    if (finalPrice != null) update.negotiated_price = finalPrice;
     if (opts.quantity != null) update.quantity = opts.quantity;
+
+    // The line first, so the header's echo is already correct by the time the
+    // header UPDATE runs and the two can never be seen disagreeing — not even
+    // between two statements.
+    if (finalPrice != null && agreedLine.id) {
+      const { error: lineErr } = await this.databaseService.supabase
+        .from("procurement_order_items")
+        .update({ final_unit_price: finalPrice })
+        .eq("id", agreedLine.id)
+        .eq("restaurant_id", restaurantId);
+      if (lineErr) {
+        // Not best-effort. If the line will not take the confirmed price, the
+        // header must not take it either: an order whose two numbers disagree
+        // is the state ADR 0119 Q2 exists to make unreachable, and confirming
+        // at a price only half the record carries is worse than not confirming.
+        this.logger.error("Could not write the confirmed price to the line", {
+          restaurantId,
+          orderId,
+          error: lineErr.message,
+        });
+        throw lineErr;
+      }
+    } else if (finalPrice != null) {
+      // No line to write to. The header takes it directly, which the echo
+      // trigger permits precisely because there is nothing to disagree with —
+      // and it is said out loud, because an order confirmed at a price with no
+      // line under it is an order no invoice can be matched against.
+      update.final_price = finalPrice;
+      this.logger.warn(
+        `Order ${orderId} was confirmed at a price but has no order line ` +
+          `(${agreedLine.reason ?? "no line row"}), so the price is held only on ` +
+          `the header, which names no unit. The price register refuses it and ` +
+          `the invoice matcher has no line to pair against.`,
+      );
+    }
 
     const { error: upErr } = await this.databaseService.supabase
       .from("procurement_orders")
@@ -5257,10 +6250,10 @@ export class ProcurementService {
       (confirmUnits.unitType == null || confirmUnits.unitType === "bottle"
         ? 1
         : null);
-    const statedPriceUnit = await this.readAgreedPriceUnit(
-      restaurantId,
-      orderId,
-    );
+    // Already read at the top of this method, before the write, and reused
+    // rather than re-read: a second SELECT here would be a second chance for
+    // the two reads to disagree about the same row.
+    const statedPriceUnit = agreedLine.stated;
 
     await this.recordPriceHistory({
       restaurantId,
@@ -5271,7 +6264,30 @@ export class ProcurementService {
       source: "order_confirmed",
       quantity: (order as any).bottles_total ?? quantity ?? 1,
       notes: `Agreed on order confirmation${finalPrice != null ? "" : " (price unchanged from the order)"}.`,
-      statedPriceUnit,
+      // ADR 0119 Q4: the series takes the unit the AGREEMENT states, and a
+      // price with no stated unit does not enter it at all. Before this it
+      // entered as `'BOTTLE'` whatever the agreement said — the case price
+      // divided by its pack, the keg price refused — so an order whose desk
+      // never picked a unit was filed as a per-bottle observation on no
+      // evidence.
+      unitClaim: statedPriceUnit
+        ? { kind: "stated", stated: statedPriceUnit }
+        : { kind: "unstated" },
+      // ADR 0117 Q31 (founder, 2026-09-05): the agreement now HAS a currency
+      // column (`20260905200000_the_agreement_names_its_money.sql`), so this
+      // path reads it instead of reporting a schema gap. When the desk stated
+      // one, the series records it and the class-A sighting is admitted; when
+      // the desk did not, the claim still says so in a sentence rather than
+      // inheriting `restaurants.currency` — which would be a statement about the
+      // vendor that no paper makes, and which on the Fethiye house would have
+      // said USD.
+      currencyClaim: agreedLine.currency
+        ? {
+            kind: "stated",
+            code: agreedLine.currency,
+            from: `the agreement line for order ${orderId}`,
+          }
+        : agreementCurrencyClaim(`order ${orderId}`),
       sighting: {
         vendorName: (order as any)?.providers?.name ?? null,
         productName: shelfItem.wineName ?? wineName ?? null,
@@ -5281,6 +6297,13 @@ export class ProcurementService {
           statedPriceUnit?.pricePackSize ??
           (bottlesPerConfirmedUnit === 1 ? 1 : null),
         unitVolumeMl: shelfItem.bottleSizeMl,
+        // The AGREEMENT's own currency, off the line the desk filled in
+        // (ADR 0117 Q31). Still never `restaurants.currency`: the house's
+        // reporting currency is not a statement about what this vendor charges.
+        // When the desk stated none this is null, and the register — whose
+        // `currency` is NOT NULL — refuses the sighting in a sentence rather
+        // than stamping USD on it, the same rule the class-D sweep applies.
+        currency: agreedLine.currency,
         // `confirmed_at` was just written onto the order above: the moment the
         // house committed to these terms. That is the date this quote carries.
         observedAt: update.confirmed_at ?? new Date().toISOString(),

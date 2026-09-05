@@ -1134,6 +1134,9 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       };
       if (vendorPrice != null) update.negotiated_price = vendorPrice;
 
+      /** The agreed price this sync commits to, if any. Written to the LINE below. */
+      let agreedPriceToWrite: number | null = null;
+
       // Receipt verification: the vendor is acknowledging OUR order (e.g. "confirmed,
       // shipping Monday"). If it doesn't contradict what we approved (any stated
       // price/qty must match), advance APPROVED -> ORDERED (CONFIRMED). A stated term
@@ -1163,12 +1166,66 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         // Vendor accepted our terms and full autonomy is on: we agree the deal, but
         // this is APPROVED (not yet placed) until a matching receipt arrives.
         update.status = "APPROVED";
-        update.final_price = vendorPrice;
+        agreedPriceToWrite = vendorPrice;
       } else if (
         currentStatus === "PENDING" ||
         currentStatus === "APPROVAL_NEEDED"
       ) {
         update.status = "NEGOTIATING";
+      }
+
+      // THE AGREED PRICE GOES ON THE LINE, NOT ON THE HEADER — ADR 0119 Q2
+      // (founder, 2026-09-05). `procurement_orders.final_price` is now a
+      // trigger-maintained echo of `procurement_order_items.final_unit_price`,
+      // and a direct write here that disagreed with the line comes back as a
+      // 23514 from `trg_procurement_header_price_is_an_echo`. It is also the
+      // right place on its own terms: the LINE is what the invoice matcher and
+      // the price register read, and this branch fires only when the vendor has
+      // ACCEPTED our terms — so the number is in the unit our own line already
+      // states, and the line's price_uom keeps saying which one that is.
+      //
+      // The header is written directly only when there is no line to write to,
+      // which the trigger permits because there is then nothing to disagree
+      // with.
+      if (agreedPriceToWrite != null) {
+        const { data: line, error: lineReadError } =
+          await this.databaseService.supabase
+            .from("procurement_order_items")
+            .select("id")
+            .eq("order_id", order.id)
+            .order("line_no", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        if (lineReadError) {
+          // A failed read is never an empty one. Without knowing whether a line
+          // exists, writing the header could hit the echo trigger and take the
+          // whole status update down with it, so the price is left unwritten
+          // and said out loud instead.
+          this.logger.warn(
+            `Could not read order ${order.id}'s line to record the accepted price ` +
+              `(${lineReadError.message}). The status was still advanced; the agreed ` +
+              `price was NOT written, so nothing claims a price nobody stored.`,
+          );
+        } else if (line?.id) {
+          const { error: lineWriteError } = await this.databaseService.supabase
+            .from("procurement_order_items")
+            .update({ final_unit_price: agreedPriceToWrite })
+            .eq("id", line.id);
+          if (lineWriteError) {
+            this.logger.warn(
+              `Could not write the accepted price to order ${order.id}'s line ` +
+                `(${lineWriteError.message}). The header was left alone rather than ` +
+                `written on its own, which would put the two numbers out of step.`,
+            );
+          }
+        } else {
+          update.final_price = agreedPriceToWrite;
+          this.logger.warn(
+            `Order ${order.id} has no line, so the accepted price was written to the ` +
+              `header, which names no unit. No invoice can be matched against it.`,
+          );
+        }
       }
 
       await this.databaseService.supabase
