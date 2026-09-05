@@ -157,10 +157,23 @@ function intOrNull(v: unknown): number | null {
  */
 /**
  * The intents that mean the vendor said no — the SAME list the gateway acts on
- * (`inbound-responder.service.ts` `DECLINE_INTENTS`), restated here because the
- * web cannot import from the gateway and a second, drifting opinion about what
- * a decline is would mark different rows than the ones that moved the order.
- * `check_decision_claims.sh` is where that pairing is kept honest.
+ * (`inbound-responder.service.ts:125` `DECLINE_INTENTS`), restated here because
+ * the web cannot import from the gateway and a second, drifting opinion about
+ * what a decline is would mark different rows than the ones that moved the
+ * order.
+ *
+ * THE PAIRING IS HELD BY A CLAIM, AND THAT CLAIM NOW EXISTS.
+ * ---------------------------------------------------------
+ * This comment used to say `check_decision_claims.sh` kept the two lists
+ * honest. Nothing did: there was no row naming them, so the sentence asserted a
+ * guard that did not exist — the one-definition problem the trigger's two
+ * guards close for the transition table, reintroduced here unguarded and then
+ * papered over by prose. Found by the audit of ADR 0125's follow-up.
+ *
+ * The row is `ADR-0125` in `.planning/decisions/CLAIMS.jsonl`. Its verify
+ * command extracts both arrays, sorts them and compares, and fails when they
+ * differ OR when either file stops containing the declaration at all — so a
+ * rename shouts rather than passing on an empty comparison.
  *
  * `counter_offer` is deliberately absent: haggling is not refusing.
  */

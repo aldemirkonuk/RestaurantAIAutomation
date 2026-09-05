@@ -1124,6 +1124,20 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       const vendorPrice = this.toNum(sameQtyOffer?.price_per_bottle);
 
       const currentStatus = String(order.status || "").toUpperCase();
+
+      // The intents the model is told to emit for a refusal, in its own prompt's
+      // words: "rejection" and "out_of_stock". `declined` is accepted too
+      // because `procurement_agent.py` has always branched on it and the two
+      // paths read the same column.
+      //
+      // COMPUTED BEFORE THE TERMINAL GUARD, and that placement is the whole fix
+      // (found by writing the regression test the audit asked for: the edge
+      // CONFIRMED -> NEGOTIATING was added to the transition table and was
+      // UNREACHABLE from here, because the guard below returned first).
+      const isDecline = DECLINE_INTENTS.includes(
+        String(analysis.intent || "").toLowerCase(),
+      );
+
       // ORDERED (CONFIRMED) and beyond are terminal — don't rewind a placed order.
       // APPROVED is intentionally NOT terminal here: a matching vendor receipt
       // should still advance an approved order to ORDERED.
@@ -1136,15 +1150,21 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         "REJECTED",
         "FAILED",
       ];
-      if (terminal.includes(currentStatus)) return;
 
-      // The intents the model is told to emit for a refusal, in its own prompt's
-      // words: "rejection" and "out_of_stock". `declined` is accepted too
-      // because `procurement_agent.py` has always branched on it and the two
-      // paths read the same column.
-      const isDecline = DECLINE_INTENTS.includes(
-        String(analysis.intent || "").toLowerCase(),
-      );
+      // The ONE state a decline is allowed to rewind out of. A vendor that
+      // confirmed an order and then went short is the case ADR 0125 Q3 is
+      // about; a vendor "declining" an order already on a truck or already
+      // counted at the door is a delivery problem, and the transition table
+      // refuses those (IN_TRANSIT/DELIVERED/... -> NEGOTIATING is not an edge),
+      // so this list and that table have to agree. They are checked against
+      // each other in `order-transitions.spec.ts`.
+      const declineMayRewindFrom = ["CONFIRMED"];
+      if (
+        terminal.includes(currentStatus) &&
+        !(isDecline && declineMayRewindFrom.includes(currentStatus))
+      ) {
+        return;
+      }
 
       const accepted =
         analysis.intent === "price_acceptance" ||
@@ -1209,6 +1229,28 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
               `The decline is the inbound conversation row.`,
           );
         }
+        // A decline is the one inbound answer that needs a person and gets no
+        // AI reply worth reading. `procurement_agent.py` has always notified on
+        // this path; the gateway's did not, so a decline arriving through the
+        // HTTP responder was silent. Best-effort, like every other notification
+        // here: the status change must not depend on the paper.
+        void this.persistManagerNotification(
+          String(order.restaurant_id ?? ""),
+          {
+            type: "vendor_reply",
+            title: "Vendor declined — back to you",
+            message:
+              "The vendor declined this order. It is open for negotiation again, " +
+              "not cancelled: re-price it, try another vendor, or reject it yourself.",
+            priority: "high",
+            actionUrl: `/orders?order=${order.id}`,
+            metadata: {
+              order_id: order.id,
+              intent: String(analysis.intent || ""),
+              from_status: currentStatus,
+            },
+          },
+        );
       } else if (currentStatus === "APPROVED") {
         if (receiptMatches) {
           update.status = "CONFIRMED"; // -> UI "ordered"
