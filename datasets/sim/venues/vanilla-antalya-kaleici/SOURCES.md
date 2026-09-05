@@ -21,10 +21,16 @@ the venue publish a **priced drinks list** that can be read without guessing?
 | **Vanilla Restaurant** | Kaleiçi | yes, `vanillaantalya.com` | **yes — 215 drink rows, 194 of them priced, machine-readable, currency declared** | **chosen** |
 | The Barrels Pub (Konyaaltı) | Konyaaltı | yes, `konyaalti.thebarrelspub.com` | yes — 425 price tokens across 13 drink categories, two pour sizes | **runner-up** |
 | Kaleiçi Steak Gastro Bar | Kaleiçi | yes, `kaleicisteakgastrobar.com` | **no** — `/en/menu/` contains exactly one `TL` string and no price pattern; `/en/wines/`, linked from its own nav, returns **404** | rejected |
-| No 14 Kaleiçi | Kaleiçi | no resolving domain found | no | rejected |
-| Kaleiçi Buda | Kaleiçi | aggregator page only | one price seen in a review ("a litre of house wine for 750 TL") | rejected |
-| Tipsy Old Town, Off Cocktail Bar | Kaleiçi / Konyaaltı | no resolving domain found | no | rejected |
+| No 14 Kaleiçi | Kaleiçi | **not established** — the guessed domain `no14kaleici.com` does not resolve; no site URL was found | not established | rejected on that basis |
+| Kaleiçi Buda | Kaleiçi | **not established** — only aggregator pages were found | **not established** | rejected on that basis |
+| Tipsy Old Town, Off Cocktail Bar | Kaleiçi / Konyaaltı | **not established** — guessed domains do not resolve | not established | rejected on that basis |
 
+**The bottom three rows are a weaker rejection than the top three, and the table says so.** For
+Kaleiçi Steak Gastro Bar the menu page was fetched and read: it demonstrably carries no prices.
+For the last three, no own-site URL could be found at all, so the honest statement is "no
+published priced drinks list was found", not "none exists". A listing summary mentioned "a litre
+of house wine for 750 TL" at Kaleiçi Buda; that figure was never seen on a page and is recorded
+here only as the reason the venue was looked at, never as a price.
 **Why Vanilla over The Barrels Pub.** The Barrels genuinely publishes more raw price tokens.
 It lost on four things:
 
