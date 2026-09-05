@@ -50,6 +50,18 @@ type Row = Record<string, any>;
  * catches drift; this list catches the write.
  */
 const PROCUREMENT_ORDER_COLUMNS = new Set([
+  // 20260905235800_an_order_that_repeats_says_so_on_itself.sql (2026-09-05):
+  // nine additive recurrence columns; createOrder writes the last two on a
+  // generated child (ADR 0125 recurrence addendum).
+  "recurrence_frequency",
+  "recurrence_anchor_day",
+  "recurrence_anchored_on",
+  "recurrence_next_due_on",
+  "recurrence_status",
+  "recurrence_status_by",
+  "recurrence_status_at",
+  "recurrence_parent_order_id",
+  "recurrence_occurrence_on",
   "accepted_quantity",
   "ai_autonomy_paused",
   "approved_at",

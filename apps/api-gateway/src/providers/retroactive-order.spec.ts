@@ -210,6 +210,18 @@ function services(db: DatabaseService, orchestrator?: OrchestratorService) {
  * absence IS the defect.
  */
 const PROCUREMENT_ORDER_COLUMNS = new Set([
+  // 20260905235800_an_order_that_repeats_says_so_on_itself.sql (2026-09-05):
+  // nine additive recurrence columns; createOrder writes the last two on a
+  // generated child (ADR 0125 recurrence addendum).
+  "recurrence_frequency",
+  "recurrence_anchor_day",
+  "recurrence_anchored_on",
+  "recurrence_next_due_on",
+  "recurrence_status",
+  "recurrence_status_by",
+  "recurrence_status_at",
+  "recurrence_parent_order_id",
+  "recurrence_occurrence_on",
   "id",
   "order_number",
   "restaurant_id",
