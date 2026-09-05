@@ -1,8 +1,10 @@
 /**
- * The canonical document API (ADR 0104 D12 slice 2).
+ * The canonical document API (ADR 0104 D12 slices 2 and 3).
  *
- * READ-ONLY. There is no correction call, no claim call and no write of any
- * kind in this file — those are slices 3 and 4.
+ * Two writes live here, and only two: the correction door and the per-field
+ * `verified_by` tick of ADR 0104 D5. Neither edits anything — both APPEND a
+ * revision and an audit row the database refuses to update or delete. The claim
+ * workflow and the mapping memory are still later slices.
  *
  * The shapes mirror `apps/api-gateway/src/procurement/canonical/canonical-types.ts`
  * and `delivery-spine.service.ts`. Two nullabilities carry meaning and must not
@@ -217,6 +219,34 @@ export interface DeliverySpine {
   documents: SpineDocument[];
 }
 
+/**
+ * One entry in the append-only correction log (ADR 0104 D5).
+ *
+ * `before` is what the field said BEFORE — the half a vendor dispute is argued
+ * from, and the reason a correction is a new row rather than an edit.
+ */
+export interface CorrectionLogEntry {
+  revision: number;
+  /** `correction` changed the value; `verification` is the per-field tick. */
+  kind: "correction" | "verification";
+  path: string;
+  /** The field in words — "Unit price, line 4". */
+  label: string;
+  before: FieldEnvelope<unknown> | null;
+  after: FieldEnvelope<unknown> | null;
+  reason: string | null;
+  correctedBy: string | null;
+  /** The person's name, or null when we hold no row for them. */
+  correctedByName: string | null;
+  correctedAt: string;
+}
+
+export interface CorrectionOutcome {
+  revision: number;
+  entry: CorrectionLogEntry;
+  document: CanonicalDocument;
+}
+
 export interface CanonicalDocumentResponse {
   canonical: CanonicalDocument;
   /** `null` = a read failed (see `failedRead`); `[]` = on no delivery. */
@@ -240,6 +270,12 @@ export interface CanonicalDocumentResponse {
     sha256: string | null;
     createdAt: string | null;
   };
+  /**
+   * `null` = the log could not be read and `failedRead` says so; `[]` = nobody
+   * has corrected or verified a field on this document. Collapsing the two
+   * would render a broken query as "this document has never been touched".
+   */
+  corrections: CorrectionLogEntry[] | null;
   /** True of the READ, not of the document (e.g. a schema lag). */
   notes?: string[];
   failedRead?: string[];
@@ -255,6 +291,37 @@ export const canonicalApi = {
 
   async delivery(id: string): Promise<{ delivery: DeliverySpine }> {
     const { data } = await apiClient.get(`/procurement/deliveries/${id}`);
+    return data;
+  },
+
+  /**
+   * Correct one layer-1 field (ADR 0104 D5).
+   *
+   * `value: null` is a real correction and means "the document states nothing
+   * here" — the answer when an extraction invented a figure the paper never
+   * printed. The gateway refuses any path outside its closed list with a 400
+   * that names the field, so nothing here needs to guess.
+   */
+  async correctField(
+    documentId: string,
+    body: { path: string; value: unknown; reason?: string },
+  ): Promise<CorrectionOutcome> {
+    const { data } = await apiClient.post(
+      `/procurement/documents/${documentId}/corrections`,
+      body,
+    );
+    return data;
+  },
+
+  /** The per-field `verified_by` tick. The value and its source are unchanged. */
+  async verifyField(
+    documentId: string,
+    path: string,
+  ): Promise<CorrectionOutcome> {
+    const { data } = await apiClient.post(
+      `/procurement/documents/${documentId}/fields/verify`,
+      { path },
+    );
     return data;
   },
 };
