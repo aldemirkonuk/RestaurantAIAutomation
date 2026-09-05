@@ -20,6 +20,26 @@
  * pairs a client TYPE with a gateway DTO CLASS and this is an ERROR body off a
  * pure module — neither side of that pairing.
  */
+// `../client` reaches `@/state/session`, which imports react-native; this
+// runner (ts-jest, node, no native transform — see jest.config.js) cannot parse
+// react-native's Flow syntax, and CI failed on exactly that (2026-09-05). The
+// parser under test only needs the ApiError SHAPE (status, message, body) and
+// `instanceof`, so the module is replaced with a class of the same shape. The
+// mock is hoisted above the imports by ts-jest, so both this file and
+// delivered-once.ts see the same class.
+jest.mock("../client", () => ({
+  ApiError: class ApiError extends Error {
+    constructor(
+      public status: number,
+      message: string,
+      public readonly body?: unknown,
+    ) {
+      super(message);
+      this.name = "ApiError";
+    }
+  },
+}));
+
 import { ApiError } from "../client";
 import {
   alreadyDeliveredRefusal,
