@@ -37,6 +37,7 @@ import { MonthlyReconciliation } from "../components/reports/organisms/MonthlyRe
 import { useQuery } from "@tanstack/react-query";
 import { describeReportsGap } from "../lib/reportsDataGap";
 import { getPosStatus } from "../services/api/posHub";
+import { getActiveRestaurantId } from "../services/api/client";
 import { PeriodCompareBar } from "../components/reports/molecules/PeriodCompareBar";
 import { formatMoney } from "../lib/utils";
 // `bottlesToVolume` is gone on purpose: bottle volume is now the MEASURED
@@ -510,9 +511,17 @@ export function Reports() {
    * name the RIGHT gap rather than always blaming the connection (defect 9).
    * A failed status read is its own case — never a guess in either direction.
    */
+  // `enabled` + the id in the key: AuthContext writes `activeRestaurantId` to
+  // localStorage only after /auth/me returns, so an ungated query throws "No
+  // restaurant ID available" on mount and — with `retry: false` and no id to
+  // invalidate on — stays failed. The banner would then say "we could not check
+  // whether your POS is connected" forever, which is the honest branch reporting
+  // a dishonest thing. Measured on the /inventory chip and fixed there too.
+  const activeRestaurantIdForPos = getActiveRestaurantId();
   const posStatusQuery = useQuery({
-    queryKey: ["pos-hub", "status", "reports-banner"],
-    queryFn: () => getPosStatus(),
+    queryKey: ["pos-hub", "status", "reports-banner", activeRestaurantIdForPos],
+    queryFn: () => getPosStatus(activeRestaurantIdForPos),
+    enabled: Boolean(activeRestaurantIdForPos),
     staleTime: 300_000,
     retry: false,
   });
