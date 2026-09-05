@@ -1066,3 +1066,49 @@ ceiling; `till` draws the average check and the cover count; `quadrants` draws i
 RevPASH; `service` draws the server spread; and `reading` is the only place attach rate
 reaches the sheet at all. A layout is therefore checkable against the book: *if a house sets
 this goal, does the layout it works from show it?*
+
+### 6f. Overlay behaviours the best products have (2026-09-05)
+
+**Why this exists.** At the sketch 102 census review the founder asked: *"research more, find
+more functional SOTA overlays to have more access, be creative, think about new unicorn company
+behaviours and approach."* Three finders and an adversary ran per CLAUDE.md §3; the files are in
+`.planning/sketches/102-modal-census/research/` (A command-first · B ops and finance · C AI-native
+and mobile · D implementation references · E the adversary's verdicts; the brief is beside them).
+Nothing in this subsection is built or decided: the sixteen behaviours that survived are **drawn**
+on the house's own surfaces in sketch 102's Behaviours section, and the four decisions they need
+are forks F8–F11 in [[0112-one-modal-policy-three-shapes-one-primitive|ADR 0112]].
+
+**The numbers.** 72 patterns from the three angles plus 8 implementation rows; the adversary
+judged 96 rows against eight house rules: 51 keep · 40 adapt · 5 reject. Rejected: an OS-wide
+quick-capture a web app cannot honestly offer (A11); a nested peek with no primary source (B7);
+a "door-side receiving screen" the docs do not show (B-R8); Linear's agent "resolving its own
+threads", which **did not survive re-fetch of either cited changelog** (C5 — the principle stands
+on ADR 0113, not on Linear); and a bare *Approve* on a push notification (C23), the most tempting
+violation of "AI proposes, a person applies" in the scan. Evidence that moved on re-fetch:
+Granola's black/grey provenance holds on its blog, not its docs; Robinhood's swipe-up holds, its
+haptic detail does not; Stripe's refund needs a reason but is one click; Mercury's separation of
+duties still 403s and rests on a snippet.
+
+**The ten the adversary would show first** (all verified unless marked): Notion's suggested-edits
+layer (a proposal is a layer on the record, never an already-changed cell); Granola's permanent
+black/grey provenance; Ramp and Restaurant365's in-place invoice-vs-order compare; Ramp's
+two-checkpoint approve-then-release; Apple Pay's transaction-bound seal (what "wax" should
+*mean*); Ramp's "why this was flagged" on the row; Linear's bulk-select bar with full keyboard
+parity; the `prefers-reduced-motion` contract; grounded Q&A scoped to one object with citations
+or "no data"; Toast's split-view review (lines left, the paper right).
+
+**What all four files missed** (the adversary's own finds, verified against the vendors' docs):
+Toast POS's **manager passcode** at the point of action — the restaurant industry's own
+second-authority ceremony, seconds long, not a chain; Toast KDS's **bump and recall** — the
+kitchen's battle-tested "undo replaces confirm" for one bounded class of act; Figma's
+**presence** — who else has this open — which answers file B's own concurrent-count gap.
+
+**How it maps to the policy.** Six of the sixteen are not shapes at all — peek, hover card, undo
+toast, bulk bar, the phone's standard bottom sheet, the expanded row — and that is the point:
+ADR 0112's carve-out already allows non-modal surfaces; the research shows they are where
+"more access" lives. Named once (F8) they stay six; approved one feature at a time they become
+"three shapes plus uncounted exceptions", which the ADR's own §Options warned against. The phone
+form of the sheet (detents, F9), undo-after for reversible routine writes (F10) and the second
+authority (F11) are the other three decisions. Sources for every drawn behaviour are on the
+specimen and in `research/E-adversary.md`.
+

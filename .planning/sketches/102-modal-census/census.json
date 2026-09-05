@@ -4494,6 +4494,707 @@
    "flag": null,
    "verdict": "Not rebuilt. Mounts two overlays drawn elsewhere: Photograph the label (cellar) and Invite a team member (team).",
    "overlays": []
+  },
+  {
+   "route": "behaviours",
+   "slug": "behaviours",
+   "doc": null,
+   "rebuilt": true,
+   "flag": null,
+   "verdict": "What the best products do, drawn on our surfaces. Three researchers read 72 patterns from command-first, ops-and-finance and AI-native products; an adversary judged 96 rows against the eight house rules (51 keep · 40 adapt · 5 reject) and named three things all of them missed. These sixteen survived. None is built; four of them are forks (F8–F11).",
+   "overlays": [
+    {
+     "name": "Peek beside the list",
+     "status": "pattern",
+     "shape": "peek",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Order 118 · peek",
+     "title": "Öküzgözü 2022 · Kavaklıdere",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Status",
+       "Confirmed · delivery Thu"
+      ],
+      [
+       "fact",
+       "Agreed",
+       "₺ 2,400 per case · 5 cases"
+      ],
+      [
+       "fact",
+       "Last answer",
+       "Hasan, 3 Sept — a confirmation"
+      ],
+      [
+       "quiet",
+       "Space opens it beside the ledger; ↑ ↓ step rows; Enter promotes it to the sheet; Esc closes. No scrim, no focus trap — the list stays live."
+      ]
+     ],
+     "footer": "Non-modal. Never a form, never the seal.",
+     "why": "For the 80% of glance-then-move-on lookups, a sheet is too much and a hover card too little. It is not a fourth shape: it has no scrim and traps nothing — the non-modal class ADR 0112's carve-out allows, named (fork F8).",
+     "source": "Linear — Peek (https://linear.app/docs/peek) · adversary A1: ADAPT, name it non-modal",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The palette with pages and one argument",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Command palette",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Approve",
+       false
+      ],
+      [
+       "sect",
+       "Approve … · 3 waiting"
+      ],
+      [
+       "item",
+       "Order 118 · Kavaklıdere · ₺ 12,000",
+       "confirmed Thursday",
+       true,
+       "↵"
+      ],
+      [
+       "item",
+       "Order 121 · Sevilen · ₺ 3,120",
+       "awaiting a reply"
+      ],
+      [
+       "item",
+       "Order 119 · Banfi · $ 420",
+       ""
+      ],
+      [
+       "quiet",
+       "↵ opens the approval panel with the seal; ⌫ or Esc steps back a page. One argument, never a form."
+      ]
+     ],
+     "footer": "↑↓ · ↵ · ⌫ back · esc",
+     "why": "One command box drills into a picker instead of a long tail of small popovers. The adversary's cap: a command that wants three arguments is a disguised form and belongs in a panel or a sheet.",
+     "source": "Raycast arguments (https://developers.raycast.com/information/lifecycle/arguments) · cmdk pages (https://dip-cmdk.mintlify.app/guides/nested-items) · adversary A3 KEEP, A4 ADAPT (cap at one argument)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A hover card on a referenced name",
+     "status": "pattern",
+     "shape": "hover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Vendor",
+     "title": "Kavaklıdere",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Terms",
+       "Net 30 · min ₺ 5,000"
+      ],
+      [
+       "fact",
+       "Open orders",
+       "2 · ₺ 15,120"
+      ],
+      [
+       "fact",
+       "Last contact",
+       "3 Sept"
+      ],
+      [
+       "btns",
+       [
+        "Open"
+       ],
+       [
+        "Copy link"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "Hovering substitutes for navigating: the reader confirms 'is this the right one' without leaving the row. Non-modal, dismissed by moving; its own menu is open/copy-link only, never a form.",
+     "source": "GitHub hovercards (https://github.blog/changelog/2018-10-08-issue-and-pull-request-hovercards/) · Notion hover preview · adversary A15/A16 KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Undo after, for what can be undone",
+     "status": "pattern",
+     "shape": "toast",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Entry dismissed — 'Öküzgözü is below par'",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "btns",
+       [
+        "Undo",
+        true
+       ]
+      ],
+      [
+       "quiet",
+       "8 s"
+      ]
+     ],
+     "footer": null,
+     "why": "Fire the routine act, offer the way back — instead of a panel before it. Scoped hard: dismissals, archives, a removed shift, a note. Never money, never a send, never a ledger row: those keep the seal before (fork F10).",
+     "source": "Linear undo (https://linear.app/changelog/undo-actions) · Sonner (https://sonner.emilkowal.ski/toast) · adversary A6/D5: ADAPT — reversible, non-money, non-send only",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Approve, then release",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Order 118 · payment",
+     "title": "Release ₺ 12,000 to Kavaklıdere?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Approved",
+       "by Ayşe · 3 Sept · sealed"
+      ],
+      [
+       "fact",
+       "Invoice",
+       "INV-4471 · matches the order line by line"
+      ],
+      [
+       "fact",
+       "From",
+       "the house account · ends 0412"
+      ],
+      [
+       "hold",
+       "Hold to release the payment"
+      ]
+     ],
+     "footer": "Two moments, two seals: approving the order and releasing the money are never one hold (ADR 0110, 0125).",
+     "why": "Ramp separates chain approval from the payer's release; the house already lists them as separate commitments. Drawn so the second seal is seen, not assumed.",
+     "source": "Ramp Bill Pay approvals (https://support.ramp.com/bill-pay-approvals) · adversary B16 KEEP, verified",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Why this was flagged, on the row",
+     "status": "pattern",
+     "shape": "inplace",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Ledger row · expanded",
+     "title": "Order 121 · Sevilen · held",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "alert",
+       "Held by a threshold",
+       "₺ 260 per bottle is 11% above the agreed ₺ 234 — the house stops an order 10% over its agreement (ADR 0116). Vendor terms, written 2 Sept by Ayşe."
+      ],
+      [
+       "btns",
+       [
+        "Ask Sevilen"
+       ],
+       [
+        "Adjust the threshold (manager)"
+       ],
+       [
+        "Leave it held"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "Every figure names its rows; every flag names the rule it tripped, on the object itself — never in a separate log the approver has to go and find.",
+     "source": "Ramp flagging (https://support.ramp.com/hc/en-us/articles/4417662594195-Flagging-transactions-Accidental-purchase-fraud-and-out-of-policy) · adversary B14 KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Select many, one plain bar",
+     "status": "pattern",
+     "shape": "bar",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "4 selected",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "btns",
+       [
+        "Mark ordered",
+        true
+       ],
+       [
+        "Assign vendor"
+       ],
+       [
+        "Export"
+       ]
+      ],
+      [
+       "quiet",
+       "x toggles · ⇧ ranges · ⌘A all · Esc clears"
+      ]
+     ],
+     "footer": null,
+     "why": "Bulk gets the plain die: a bar at the bottom, no scrim, no seal. The house rule already says so; this is only the mechanic.",
+     "source": "Linear select issues (https://linear.app/docs/select-issues) · adversary A17/B21 KEEP — adopt the fuller keyboard spec",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A manager's passcode at the point of action",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Order 118 · line 2",
+     "title": "Correct the case count to 4?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Proposed by",
+       "Mehmet Kaya · staff · 14:02"
+      ],
+      [
+       "fact",
+       "Changes",
+       "5 cases → 4 cases · ₺ 12,000 → ₺ 9,600"
+      ],
+      [
+       "field",
+       "A manager's passcode",
+       "••••",
+       false
+      ],
+      [
+       "quiet",
+       "The manager's name is written on the line; the seal is theirs, not the staff member's."
+      ],
+      [
+       "hold",
+       "Hold to apply as manager"
+      ]
+     ],
+     "footer": null,
+     "why": "The restaurant industry's own second-authority ceremony: superior authority, completed in seconds at the point of action — not a multi-step chain. A different thing from a two-person rule; the founder should choose which acts get which (fork F11).",
+     "source": "Toast POS discounts — manager passcode prompt (https://support.toasttab.com/en/article/Basic-Discount-Configuration) · adversary §6: MISSED by all four files",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Suggested edits, not applied edits",
+     "status": "pattern",
+     "shape": "inplace",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Vendor terms · Kavaklıdere",
+     "title": "The engine suggests two changes",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sugg",
+       "Lead time",
+       "4 days",
+       "5 days — from the last 11 deliveries",
+       "add"
+      ],
+      [
+       "sugg",
+       "Delivery days",
+       "Tue · Thu",
+       "Tue · Thu · Sat — three Saturday deliveries since June",
+       "add"
+      ],
+      [
+       "quiet",
+       "A suggestion is a layer on the record, never an already-changed cell. The person's words stay ink; the engine's stay grey — permanently, not only until accepted."
+      ],
+      [
+       "btns",
+       [
+        "Accept both",
+        true
+       ],
+       [
+        "Reject both"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "The best structural proof that 'a draft never looks sent' is buildable: nothing is touched until a person disposes of each suggestion. Provenance is a colour that never fades.",
+     "source": "Notion suggested edits (https://www.notion.com/help/suggested-edits) · Granola black/grey (https://www.granola.ai/blog/how-to-use-ai-to-take-meeting-notes) · adversary C9 KEEP (verified), C16 KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Ask about this, with its sources",
+     "status": "pattern",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Order 118",
+     "title": "Ask about this order",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Did we pay more than last time?",
+       false
+      ],
+      [
+       "text",
+       "Yes — ₺ 2,400 per case against ₺ 2,250 on 24 July [1], the same unit [2]. The three orders before that were ₺ 2,250 too [3]."
+      ],
+      [
+       "item",
+       "[1] order 118 · agreed price · 3 Sept",
+       "price_history"
+      ],
+      [
+       "item",
+       "[2] price unit · per case · ADR 0119",
+       ""
+      ],
+      [
+       "item",
+       "[3] orders 109 · 112 · 114",
+       ""
+      ],
+      [
+       "quiet",
+       "When the book holds no line, the answer says so: 'The book holds no line about freight for this vendor.'"
+      ]
+     ],
+     "footer": null,
+     "why": "Every sentence cites a row or says 'no data'. Sources stream with the answer, not after it — an absence is reported as an absence.",
+     "source": "Grounded Q&A scoped to one object (adversary C10 KEEP) · Perplexity streaming citations (https://docs.perplexity.ai/docs/cookbook/articles/streaming-citations/README) · C15 KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A proposal you accept line by line, sealed once",
+     "status": "pattern",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "The assistant proposes",
+     "title": "Three changes to the house's configuration",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "chips",
+       [
+        "Quiet hours 23:00–08:00 · accepted",
+        true
+       ],
+       [
+        "Low-stock floor 90 days · accepted",
+        true
+       ],
+       [
+        "Report clock Europe/Istanbul · rejected",
+        false
+       ]
+      ],
+      [
+       "quiet",
+       "Each line has its reason and its provenance; you accept or reject each, then one hold applies what stands."
+      ],
+      [
+       "hold",
+       "Hold to apply 2 of 3"
+      ]
+     ],
+     "footer": null,
+     "why": "Three granularities of accept are right; a plain 'Accept all' button is wrong when the apply is a real commitment. The ticks choose, the seal commits (ADR 0113).",
+     "source": "GitHub Copilot Edits per-hunk accept (https://learn.microsoft.com/visualstudio/ide/copilot-edits) · adversary C1 ADAPT — the batch resolves to one seal",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The door's sheet rests at three heights",
+     "status": "pattern",
+     "shape": "bottom",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Delivery · Kavaklıdere",
+     "title": "How many boxes?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Boxes delivered",
+        "5"
+       ],
+       [
+        "Visibly broken?",
+        "No"
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Next: photograph the paper",
+        true
+       ]
+      ],
+      [
+       "quiet",
+       "Peek shows the next step; half holds the count; full holds the photo. The grabber appears only because there is more than one height."
+      ]
+     ],
+     "footer": null,
+     "why": "On a phone the right sheet becomes a bottom sheet — same object, same head, same close-in-words — resting at detents instead of a fixed 440. Four files asked for this four ways; it is one decision (fork F9).",
+     "source": "Apple HIG sheets and detents · Material bottom sheets (https://m2.material.io/components/sheets-bottom/android) · Vaul snap points (https://www.npmjs.com/package/vaul/v/1.0.0) · adversary C18/C19/D1: ADAPT — ONE decision",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Swipe up to record it; the stamp at the end",
+     "status": "pattern",
+     "shape": "bottom",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Delivery · Kavaklıdere",
+     "title": "Record this delivery",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Boxes",
+       "5 · none broken"
+      ],
+      [
+       "fact",
+       "Paper",
+       "photographed · 1 page"
+      ],
+      [
+       "fact",
+       "Signed",
+       "AK"
+      ],
+      [
+       "pill",
+       "Swipe up to record"
+      ]
+     ],
+     "footer": null,
+     "why": "The founder's own ask, proven at scale in a high-stakes app: review, then one deliberate gesture; the house's stamp completes it. On desktop the same act is the hold.",
+     "source": "Robinhood swipe-up-to-submit (https://robinhood.com/us/en/support/articles/selling-a-stock/) — swipe confirmed, haptic detail dropped by the adversary (C20 ADAPT)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Queued is never confirmed",
+     "status": "pattern",
+     "shape": "inplace",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Door · this phone",
+     "title": "Delivery · Kavaklıdere · 14:06",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Saved on this phone",
+       "14:06 · no signal",
+       true
+      ],
+      [
+       "item",
+       "Sent to the house",
+       "—"
+      ],
+      [
+       "item",
+       "Recorded",
+       "—"
+      ],
+      [
+       "item",
+       "Read by a manager",
+       "—"
+      ],
+      [
+       "quiet",
+       "A record made with no signal looks provisional and steps forward through named states; it never silently reads as recorded."
+      ]
+     ],
+     "footer": null,
+     "why": "The right vocabulary for the door: four states, each unmistakable. An absence (no signal) is reported as what it is.",
+     "source": "WhatsApp offline queue and tick ladder · adversary C24 KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Who else has this open",
+     "status": "pattern",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Spot count · Cellar · rack B",
+     "title": "Öküzgözü 2022",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "avatars",
+       "Elif is counting rack B on her phone · started 14:01"
+      ],
+      [
+       "two",
+       [
+        "Counted",
+        "9"
+       ],
+       [
+        "On the book",
+        "11"
+       ]
+      ],
+      [
+       "quiet",
+       "Two people may count at once; the sheet says so, so neither writes over the other unknowing."
+      ],
+      [
+       "hold",
+       "Hold to record the count"
+      ]
+     ],
+     "footer": null,
+     "why": "Concurrency is not the failure mode — invisibility is. A presence line on shared records makes a split count safe (fork F11).",
+     "source": "Figma presence and multiplayer (https://help.figma.com/hc/en-us/articles/360040449713) · adversary §6: MISSED — answers B's own concurrent-count gap",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The invoice beside the order, cell by cell",
+     "status": "pattern",
+     "shape": "inplace",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Receipt · INV-4471",
+     "title": "Order 118 · Kavaklıdere",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "table",
+       [
+        "Line",
+        "Ordered",
+        "Invoiced",
+        "Read from the paper"
+       ],
+       [
+        [
+         "Öküzgözü 2022",
+         "5 cases",
+         "5 cases",
+         "5 × 12 · ₺ 2,400"
+        ],
+        [
+         "Boğazkere 2021",
+         "2 cases",
+         "3 cases ⚑",
+         "3 × 12 · ₺ 2,600"
+        ],
+        [
+         "Freight",
+         "—",
+         "₺ 180 ⚑",
+         "not on the order"
+        ]
+       ]
+      ],
+      [
+       "quiet",
+       "The paper stays visible while you correct the read; a mismatched cell is marked on the cell, not in a message."
+      ],
+      [
+       "btns",
+       [
+        "Accept 5 · query 2",
+        true
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "Both cited products do this in place, not in a popup — the founder's own 'side-by-side inside an overlay' ask is answered by rule 6: the row expands and shows its working.",
+     "source": "Ramp PO matching · Restaurant365 discrepancy view · Toast AI invoice scanning split view (https://support.toasttab.com/en/article/Get-Started-With-AI-Invoice-Scanning) · adversary B17/B-R2 KEEP",
+     "acts": null,
+     "went": null,
+     "fork": null
+    }
+   ]
   }
  ],
  "no_overlay": [
@@ -4562,6 +5263,26 @@
    "id": "F7",
    "title": "The figure behind a dashboard number.",
    "text": "A sheet ('the working', drawn) or the house idiom — the KPI row expands in place."
+  },
+  {
+   "id": "F8",
+   "title": "The non-modal class.",
+   "text": "Name peek · hover card · undo toast · bulk bar · the standard bottom sheet as what they are: not shapes (no scrim, no focus trap, never a form, never the seal). ADR 0112's own carve-out allows them; four files asked for them four ways — one amendment, or none."
+  },
+  {
+   "id": "F9",
+   "title": "The sheet on a phone.",
+   "text": "A bottom sheet with detents (peek / half / full) as the right sheet's phone form, and sheet stacking capped at three with a breadcrumb — one decision covering Apple detents, Material sheets and Vaul snap points together."
+  },
+  {
+   "id": "F10",
+   "title": "Undo after, for what can be undone.",
+   "text": "Fire the routine act and offer Undo (dismiss, archive, a removed shift, a note); keep the seal before for money, sends and ledger rows. The adversary's fight #4: the line must be written down or it creeps."
+  },
+  {
+   "id": "F11",
+   "title": "A second authority.",
+   "text": "Two ceremonies the research surfaced that the house has not chosen between: a manager's passcode at the point of action (Toast) for staff → manager acts, and presence on shared records (Figma) so a split count is safe. Which acts get which."
   }
  ]
 }

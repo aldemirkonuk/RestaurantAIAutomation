@@ -12,7 +12,7 @@ tags: [modal, sheet, panel, popover, census, mudavym, design-system, adr-0112]
 
 The founder, 2026-09-05: *"finalize all modal windows for all pages."* Sketch 099 drew the three
 shapes on the first pages that used them; ADR 0112 built the primitive. This sketch reads **every**
-place the web app opens something over the page — 141 sites, folded into 117 overlays plus the three the founder's rulings added (120 rows), on 21 pages plus the shell — and gives each
+place the web app opens something over the page — 141 sites, folded into 117 overlays plus the three the founder's rulings added (120 rows), on 22 pages plus the shell — and gives each
 one the shape the policy gives it, or a reason it has none.
 
 ## How to view
@@ -48,6 +48,7 @@ page's ground). Filter by shape and by status.
 | Delete — nobody imports it | 15 |
 | Not a shape (paint, a label) | 3 |
 | Drawn: sheets · panels · popovers | 28 · 22 · 10 |
+| Behaviours drawn from the research (nothing built) | 16 |
 
 ## Files
 
@@ -57,6 +58,7 @@ page's ground). Filter by shape and by status.
 - **`census.py`** — the source of truth. Edit here.
 - **`census.json`** — the same data for tools (the page-doc subsections are generated from it).
 - **`build.py`** — the builder.
+- **`research/`** — the five research files behind the Behaviours section (three angles, the implementation references, the adversary's verdicts) and the adversary's brief.
 
 ## What to look for
 
@@ -74,6 +76,10 @@ page's ground). Filter by shape and by status.
 - **F5 — Where a manual order starts.** The owed 'A new order' sheet on /orders, or from a register row, the palette, or Ask AI — OrdersNext has no create path today. **Answered:** The owed sheet on /orders is the manual entry.
 - **F6 — Two bells, two user menus.** Header.tsx's house branch and HouseHeader's HouseBell/HouseUserMenu both exist. Which survives when the house header lands on every page. **Answered:** HouseHeader's bell and user menu survive; Header.tsx's house branch is deleted, its legacy branch stays byte-identical.
 - **F7 — The figure behind a dashboard number.** A sheet ('the working', drawn) or the house idiom — the KPI row expands in place. **Answered:** The KPI row expands in place; no overlay.
+- **F8 — The non-modal class.** Name peek · hover card · undo toast · bulk bar · the standard bottom sheet as what they are: not shapes (no scrim, no focus trap, never a form, never the seal). ADR 0112's own carve-out allows them; four files asked for them four ways — one amendment, or none. *(open)*
+- **F9 — The sheet on a phone.** A bottom sheet with detents (peek / half / full) as the right sheet's phone form, and sheet stacking capped at three with a breadcrumb — one decision covering Apple detents, Material sheets and Vaul snap points together. *(open)*
+- **F10 — Undo after, for what can be undone.** Fire the routine act and offer Undo (dismiss, archive, a removed shift, a note); keep the seal before for money, sends and ledger rows. The adversary's fight #4: the line must be written down or it creeps. *(open)*
+- **F11 — A second authority.** Two ceremonies the research surfaced that the house has not chosen between: a manager's passcode at the point of action (Toast) for staff → manager acts, and presence on shared records (Figma) so a split count is safe. Which acts get which. *(open)*
 
 ## Pages that open nothing
 
@@ -203,6 +209,22 @@ page's ground). Filter by shape and by status.
 | `/distributors` | Distributor detail | sheet | Target | One distributor is one object. | `pages/distributors/command/DistributorDrawer.tsx:125` |
 | `/studio/certify` | Invite a contributor | popover · modal | Target · fork F2 | The same act as Invite a team member. Decided 2026-09-05 (F2): the same component — InviteTeamDialog's Popover modal — with a second opener; one component, however many openers, is one exception. | `pages/studio/certify/InviteDialog.tsx:106 (Radix dialog today)` |
 | `/admin/health` | Live payload | sheet | Target | One response is one object; reading it wants the page beside it. | `pages/AdminHealth.tsx:226` |
+| `behaviours` | Peek beside the list | peek | Behaviour | For the 80% of glance-then-move-on lookups, a sheet is too much and a hover card too little. It is not a fourth shape: it has no scrim and traps nothing — the non-modal class ADR 0112's carve-out allows, named (fork F8). | `Linear — Peek (https://linear.app/docs/peek) · adversary A1: ADAPT, name it non-modal` |
+| `behaviours` | The palette with pages and one argument | panel | Behaviour | One command box drills into a picker instead of a long tail of small popovers. The adversary's cap: a command that wants three arguments is a disguised form and belongs in a panel or a sheet. | `Raycast arguments (https://developers.raycast.com/information/lifecycle/arguments) · cmdk pages (https://dip-cmdk.mintlify.app/guides/nested-items) · adversary A3 KEEP, A4 ADAPT (cap at one argument)` |
+| `behaviours` | A hover card on a referenced name | hover | Behaviour | Hovering substitutes for navigating: the reader confirms 'is this the right one' without leaving the row. Non-modal, dismissed by moving; its own menu is open/copy-link only, never a form. | `GitHub hovercards (https://github.blog/changelog/2018-10-08-issue-and-pull-request-hovercards/) · Notion hover preview · adversary A15/A16 KEEP` |
+| `behaviours` | Undo after, for what can be undone | toast | Behaviour | Fire the routine act, offer the way back — instead of a panel before it. Scoped hard: dismissals, archives, a removed shift, a note. Never money, never a send, never a ledger row: those keep the seal before (fork F10). | `Linear undo (https://linear.app/changelog/undo-actions) · Sonner (https://sonner.emilkowal.ski/toast) · adversary A6/D5: ADAPT — reversible, non-money, non-send only` |
+| `behaviours` | Approve, then release | panel · seal | Behaviour | Ramp separates chain approval from the payer's release; the house already lists them as separate commitments. Drawn so the second seal is seen, not assumed. | `Ramp Bill Pay approvals (https://support.ramp.com/bill-pay-approvals) · adversary B16 KEEP, verified` |
+| `behaviours` | Why this was flagged, on the row | inplace | Behaviour | Every figure names its rows; every flag names the rule it tripped, on the object itself — never in a separate log the approver has to go and find. | `Ramp flagging (https://support.ramp.com/hc/en-us/articles/4417662594195-Flagging-transactions-Accidental-purchase-fraud-and-out-of-policy) · adversary B14 KEEP` |
+| `behaviours` | Select many, one plain bar | bar | Behaviour | Bulk gets the plain die: a bar at the bottom, no scrim, no seal. The house rule already says so; this is only the mechanic. | `Linear select issues (https://linear.app/docs/select-issues) · adversary A17/B21 KEEP — adopt the fuller keyboard spec` |
+| `behaviours` | A manager's passcode at the point of action | panel | Behaviour | The restaurant industry's own second-authority ceremony: superior authority, completed in seconds at the point of action — not a multi-step chain. A different thing from a two-person rule; the founder should choose which acts get which (fork F11). | `Toast POS discounts — manager passcode prompt (https://support.toasttab.com/en/article/Basic-Discount-Configuration) · adversary §6: MISSED by all four files` |
+| `behaviours` | Suggested edits, not applied edits | inplace | Behaviour | The best structural proof that 'a draft never looks sent' is buildable: nothing is touched until a person disposes of each suggestion. Provenance is a colour that never fades. | `Notion suggested edits (https://www.notion.com/help/suggested-edits) · Granola black/grey (https://www.granola.ai/blog/how-to-use-ai-to-take-meeting-notes) · adversary C9 KEEP (verified), C16 KEEP` |
+| `behaviours` | Ask about this, with its sources | sheet | Behaviour | Every sentence cites a row or says 'no data'. Sources stream with the answer, not after it — an absence is reported as an absence. | `Grounded Q&A scoped to one object (adversary C10 KEEP) · Perplexity streaming citations (https://docs.perplexity.ai/docs/cookbook/articles/streaming-citations/README) · C15 KEEP` |
+| `behaviours` | A proposal you accept line by line, sealed once | panel · seal | Behaviour | Three granularities of accept are right; a plain 'Accept all' button is wrong when the apply is a real commitment. The ticks choose, the seal commits (ADR 0113). | `GitHub Copilot Edits per-hunk accept (https://learn.microsoft.com/visualstudio/ide/copilot-edits) · adversary C1 ADAPT — the batch resolves to one seal` |
+| `behaviours` | The door's sheet rests at three heights | bottom | Behaviour | On a phone the right sheet becomes a bottom sheet — same object, same head, same close-in-words — resting at detents instead of a fixed 440. Four files asked for this four ways; it is one decision (fork F9). | `Apple HIG sheets and detents · Material bottom sheets (https://m2.material.io/components/sheets-bottom/android) · Vaul snap points (https://www.npmjs.com/package/vaul/v/1.0.0) · adversary C18/C19/D1: ADAPT — ONE decision` |
+| `behaviours` | Swipe up to record it; the stamp at the end | bottom · seal | Behaviour | The founder's own ask, proven at scale in a high-stakes app: review, then one deliberate gesture; the house's stamp completes it. On desktop the same act is the hold. | `Robinhood swipe-up-to-submit (https://robinhood.com/us/en/support/articles/selling-a-stock/) — swipe confirmed, haptic detail dropped by the adversary (C20 ADAPT)` |
+| `behaviours` | Queued is never confirmed | inplace | Behaviour | The right vocabulary for the door: four states, each unmistakable. An absence (no signal) is reported as what it is. | `WhatsApp offline queue and tick ladder · adversary C24 KEEP` |
+| `behaviours` | Who else has this open | sheet | Behaviour | Concurrency is not the failure mode — invisibility is. A presence line on shared records makes a split count safe (fork F11). | `Figma presence and multiplayer (https://help.figma.com/hc/en-us/articles/360040449713) · adversary §6: MISSED — answers B's own concurrent-count gap` |
+| `behaviours` | The invoice beside the order, cell by cell | inplace | Behaviour | Both cited products do this in place, not in a popup — the founder's own 'side-by-side inside an overlay' ask is answered by rule 6: the row expands and shows its working. | `Ramp PO matching · Restaurant365 discrepancy view · Toast AI invoice scanning split view (https://support.toasttab.com/en/article/Get-Started-With-AI-Invoice-Scanning) · adversary B17/B-R2 KEEP` |
 
 ## Method
 

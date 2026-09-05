@@ -11,7 +11,8 @@ esc = lambda s: html.escape(str(s), quote=True)
 STATUS_WORD = dict(built="Built", migrate="Migrate", owed="Owed", target="Target", retire="Retires", delete="Delete", none="Not a shape", pattern="Behaviour")
 STATUS_GLOSS = dict(pattern="a behaviour the best products have, proposed for the house", built="on the primitive today", migrate="renders legacy inside a house page today", owed="the rebuilt page owes this act",
                     target="page not yet rebuilt; shape decided", retire="retires with the legacy page", delete="unreachable — delete", none="paint or a label, no shape")
-SHAPE_W = dict(sheet="440", panel="620", popover="320")
+SHAPE_W = dict(sheet="440", panel="620", popover="320", peek="400", hover="300", toast="380", bar="560", bottom="360", inplace="620")
+NONMODAL = ("peek", "hover", "toast", "bar", "bottom", "inplace")
 DRAWN = ("built", "migrate", "owed", "target", "pattern")
 
 # ── body rows ─────────────────────────────────────────────────────────────
@@ -45,12 +46,15 @@ def row(r):
     if k == "text":  return f'<p class="letter">{esc(r[1])}</p>'
     if k == "mono":  return f'<pre class="mono">{esc(r[1])}</pre>'
     if k == "frame": return f'<div class="frame"><span>{esc(r[1])}</span></div>'
+    if k == "sugg":  return f'<div class="sugg"><span class="k">{esc(r[1])}</span><span class="was">{esc(r[2])}</span><span class="now">{esc(r[3])}</span><span class="sg"><span class="ok">Accept</span><span class="no">Reject</span></span></div>'
+    if k == "pill":  return f'<div class="pillwrap"><div class="pill"><span class="sealdot"><i></i></span><span>{esc(r[1])}</span><span class="arrow">↑</span></div></div>'
+    if k == "avatars": return f'<div class="presence"><span class="av">E</span><span class="av">A</span><span>{esc(r[1])}</span></div>'
     raise ValueError(k)
 
 def specimen(o, pg):
     shape = o["shape"]; cls = shape + (" wide" if o["wide"] else "")
     chips = [f'<span class="st st-{o["status"]}">{STATUS_WORD[o["status"]]}</span>',
-             f'<span class="sh">{shape}{" · wide" if o["wide"] else ""}{" · modal" if o["modal"] else ""} · {("640" if o["wide"] else SHAPE_W[shape])}px</span>']
+             f'<span class="sh">{shape}{" · wide" if o["wide"] else ""}{" · modal" if o["modal"] else ""}{" · non-modal" if shape in NONMODAL and shape != "bottom" else ""} · {("640" if o["wide"] else SHAPE_W[shape])}px</span>']
     if o["seal"]: chips.append('<span class="sh">seal</span>')
     if o["fork"]: chips.append(f'<span class="sh fk">fork {o["fork"]}</span>')
     head = ('<div class="oh"><div>' + (f'<span class="oh-eyebrow">{esc(o["eyebrow"])}</span>' if o["eyebrow"] else "")
@@ -60,9 +64,20 @@ def specimen(o, pg):
     body = '<div class="obody">' + "".join(row(r) for r in o["body"]) + '</div>'
     foot = f'<div class="ofoot">{esc(o["footer"])}</div>' if o["footer"] else ""
     pin = ' data-ground="charcoal"' if o.get("pin") else ""
-    return (f'<article class="spec" data-shape="{shape}" data-status="{o["status"]}"{pin}>'
+    kind = "nonmodal" if shape in NONMODAL else "modal"
+    if shape in ("toast", "bar"):
+        surface = f'<div class="ovl {cls}"><div class="tline"><span class="ttext">{esc(o["title"] or o["name"])}</span>{body}</div></div>'
+    elif shape == "bottom":
+        surface = (f'<div class="phone"><div class="pscreen"><div class="under-p"><span class="u-eyebrow">The door</span></div><div class="pscrim"></div>'
+                   f'<div class="bsheet"><div class="grab"></div>{head}{body}{foot}</div></div></div>')
+    elif shape == "inplace":
+        surface = (f'<div class="ovl inplace"><div class="rowhead"><span class="oh-eyebrow">{esc(o["eyebrow"] or "")}</span><span class="rowtitle">{esc(o["title"] or o["name"])}</span><span class="chev">▾</span></div>'
+                   f'<div class="rowx">{body}{foot}</div></div>')
+    else:
+        surface = f'<div class="ovl {cls}">{head}{body}{foot}</div>'
+    return (f'<article class="spec" data-shape="{shape}" data-kind="{kind}" data-status="{o["status"]}"{pin}>'
             f'<div class="spec-cap">{"".join(chips)}<span class="nm">{esc(o["name"])}</span></div>'
-            f'<div class="ovl {cls}">{head}{body}{foot}</div>'
+            f'{surface}'
             f'<p class="why">{o["why"] or ""}</p><p class="src">{esc(o["source"] or "")}</p></article>')
 
 def tomb(o):
@@ -80,8 +95,8 @@ def counts():
     for pg in C.PAGES:
         for o in pg["overlays"]:
             c[o["status"]] += 1
-            if o["status"] in DRAWN: shapes[o["shape"]] += 1
-    c["total"] = sum(v for k, v in c.items() if k != "total"); c["drawn"] = sum(c[s] for s in DRAWN)
+            if o["status"] in DRAWN and o["status"] != "pattern": shapes[o["shape"]] += 1
+    c["total"] = sum(v for k, v in c.items() if k not in ("total", "pattern")); c["drawn"] = sum(c[s] for s in DRAWN)
     return c, shapes
 
 CSS = r"""
@@ -194,6 +209,38 @@ pre.mono{margin:8px 16px 0;padding:9px 11px;background:var(--paper-1);border:1px
 .tbl table{border-collapse:collapse;width:100%;font-size:11.5px}
 .tbl th{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:4px 8px 6px 0;border-bottom:1px solid var(--paper-2);font-weight:600}
 .tbl td{padding:6px 8px 6px 0;border-bottom:1px solid var(--paper-2);color:var(--ink-1);font-variant-numeric:tabular-nums}
+/* non-modal surfaces (research) */
+.ovl.peek{width:400px;max-width:100%;border-radius:10px;box-shadow:0 10px 30px -18px rgba(0,0,0,.35)}
+.ovl.hover{width:300px;max-width:100%;border-radius:10px;box-shadow:0 10px 30px -18px rgba(0,0,0,.35)}
+.ovl.toast,.ovl.bar{border-radius:12px;box-shadow:0 12px 32px -18px rgba(0,0,0,.4)}
+.ovl.toast{width:380px;max-width:100%}.ovl.bar{width:560px;max-width:100%}
+.tline{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 16px;font-size:12.5px;color:var(--ink-1)}
+.tline .ttext{flex:1 1 auto;font-weight:500}.tline .obody{padding:0;display:flex;align-items:center;gap:8px}.tline .btnrow{padding:0}.tline .quiet{padding:0;font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.ovl.inplace{width:620px;max-width:100%;border-radius:0;border:0;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.rowhead{display:grid;grid-template-columns:auto 1fr auto;align-items:baseline;gap:12px;padding:10px 16px;background:var(--paper-1)}
+.rowtitle{font-weight:600;color:var(--ink-1);font-size:13px}.chev{color:var(--ink-3);font-size:11px}
+.rowx{padding:4px 0 12px;border-left:2px solid var(--seal)}
+.sugg{display:grid;grid-template-columns:96px 1fr 1.3fr auto;gap:10px;align-items:baseline;padding:7px 16px;font-size:12px}
+.sugg .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.sugg .was{color:var(--ink-1)}.sugg .now{color:var(--ink-3);border-bottom:1px dotted var(--ink-3)}
+.sugg .sg{display:flex;gap:6px;font-size:11px}.sugg .ok{color:var(--seal-deep)}.sugg .no{color:var(--ink-3)}
+.phone{width:360px;max-width:100%;border:1px solid var(--paper-2);border-radius:28px;padding:10px;background:var(--paper-1)}
+.pscreen{position:relative;height:560px;border-radius:20px;overflow:hidden;background:var(--paper-0)}
+.under-p{position:absolute;inset:0;padding:22px 16px}
+.pscrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+.bsheet{position:absolute;left:0;right:0;bottom:0;height:55%;background:var(--paper-0);border-top:1px solid var(--paper-2);border-radius:16px 16px 0 0;display:flex;flex-direction:column;box-shadow:0 -12px 32px rgba(23,19,15,.14)}
+.grab{width:36px;height:4px;border-radius:999px;background:var(--paper-2);margin:8px auto 0}
+.bsheet .oh{padding-top:8px}
+.pillwrap{padding:14px 16px 0}
+.pill{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:999px;border:1px solid var(--seal);color:var(--seal-deep);font-weight:500;font-size:12.5px}
+.pill .arrow{margin-left:auto;font-family:var(--mono)}
+.presence{display:flex;align-items:center;gap:6px;padding:8px 16px 0;font-size:11.5px;color:var(--ink-2)}
+.presence .av{width:20px;height:20px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);font-family:var(--mono);font-size:9px;display:inline-flex;align-items:center;justify-content:center}
+.presence .av+.av{margin-left:-8px}
+.access{list-style:none;margin:12px 0 0;padding:0;max-width:1000px;counter-reset:a}
+.access li{display:grid;grid-template-columns:190px 1fr auto;gap:12px;padding:8px 0;border-top:1px solid var(--paper-2);font-size:12px;line-height:1.5;color:var(--ink-2);align-items:start}
+.access .at{color:var(--ink-1);font-weight:600}.access .al{font-family:var(--mono);font-size:9.5px;color:var(--seal-deep);text-decoration:none}
+@media (max-width:760px){.access li{grid-template-columns:1fr}.sugg{grid-template-columns:1fr}}
 /* tombstones */
 .tomb{list-style:none;margin:16px 0 0;padding:0;max-width:1100px}
 .tomb li{display:grid;grid-template-columns:76px 170px 1fr 1fr;gap:12px;padding:8px 0;border-top:1px solid var(--paper-2);font-size:12px;line-height:1.5;color:var(--ink-2);align-items:start}
@@ -223,7 +270,8 @@ JS = r"""
   var shape='all',status='all';
   function apply(){
     document.querySelectorAll('.spec').forEach(function(s){
-      s.hidden=!((shape==='all'||s.dataset.shape===shape)&&(status==='all'||s.dataset.status===status));
+      var shapeOk=(shape==='all')||(shape==='nonmodal'?s.dataset.kind==='nonmodal':s.dataset.shape===shape);
+      s.hidden=!(shapeOk&&(status==='all'||s.dataset.status===status));
     });
     document.querySelectorAll('.tomb li').forEach(function(l){
       l.hidden=!(shape==='all'&&(status==='all'||l.dataset.status===status));
@@ -247,11 +295,15 @@ JS = r"""
 def page_section(pg):
     drawn = [o for o in pg["overlays"] if o["status"] in DRAWN]
     tombs = [o for o in pg["overlays"] if o["status"] not in DRAWN]
-    title = "The shell — over every page" if pg["route"] == "shell" else pg["route"]
-    h = [f'<section class="pg" id="pg-{esc(pg["slug"])}"><div class="pg-h"><span class="rt">{"shell" if pg["route"]=="shell" else ("rebuilt · flagged" if pg["rebuilt"] else "not yet rebuilt")}</span>'
+    title = "The shell — over every page" if pg["route"] == "shell" else ("Behaviours — what the best products do, drawn on our surfaces" if pg["route"] == "behaviours" else pg["route"])
+    h = [f'<section class="pg" id="pg-{esc(pg["slug"])}"><div class="pg-h"><span class="rt">{"shell" if pg["route"]=="shell" else ("research · 2026-09-05 · nothing built" if pg["route"]=="behaviours" else ("rebuilt · flagged" if pg["rebuilt"] else "not yet rebuilt"))}</span>'
          f'<h2>{esc(title)}</h2>' + (f'<span class="fl">{esc(pg["flag"])}</span>' if pg["flag"] else "") + '<span class="fl pg-count"></span></div>',
          f'<p class="v">{esc(pg["verdict"])}</p>']
     if drawn: h.append('<div class="specs">' + "".join(specimen(o, pg) for o in drawn) + '</div>')
+    if pg["route"] == "behaviours":
+        h.append('<p class="tomb-h">More access — how the best products make every act reachable</p><ol class="access">'
+                 + "".join(f'<li><span class="at">{esc(a)}</span><span class="ad">{b}</span><a class="al" href="{esc(u)}">{esc(u.split("/")[2])}</a></li>' for a, b, u in C.MORE_ACCESS) + '</ol>'
+                 '<p class="v">Evidence and verdicts: <code>research/A-command-first.md</code>, <code>B-ops-finance.md</code>, <code>C-ai-mobile.md</code>, <code>D-implementation.md</code>, <code>E-adversary.md</code> in the sketch directory. The adversary rejected five rows (an OS-wide capture a web app cannot honestly offer; two claims whose sources did not hold; a bare Approve on a push notification; a nested peek with no primary source) and found three misses: the manager passcode, the kitchen\'s bump-and-recall, and presence.</p>')
     if tombs:
         h.append('<p class="tomb-h">Not drawn — and why</p><ul class="tomb">' + "".join(tomb(o) for o in tombs) + '</ul>')
     if not drawn and not tombs: h.append('<p class="quiet" style="padding-left:0">No overlay opens from this page.</p>')
@@ -261,7 +313,7 @@ def body_html(for_artifact):
     c, shapes = counts()
     nums = [(141, "overlay sites read"), (c["total"], "census rows"), (len([p for p in C.PAGES if p["route"]!="shell"]), "pages with an overlay"),
             (c["built"], "built"), (c["migrate"], "migrate"), (c["owed"], "owed"), (c["target"], "target"),
-            (c["retire"], "retire"), (c["delete"], "delete"), (shapes["sheet"], "sheets drawn"), (shapes["panel"], "panels drawn"), (shapes["popover"], "popovers drawn")]
+            (c["retire"], "retire"), (c["delete"], "delete"), (shapes["sheet"], "sheets drawn"), (shapes["panel"], "panels drawn"), (shapes["popover"], "popovers drawn"), (c["pattern"], "behaviours drawn")]
     h = [f'<div class="mudavym" id="mdv-root"><div class="banner">Sketch 102 · modal census — example data, not a tenant</div><div class="wrap">',
          '<div class="wordmark">Mudavym<span class="dot">.</span></div>',
          '<h1>Every overlay, in its shape<span class="dot">.</span></h1>',
@@ -272,7 +324,7 @@ def body_html(for_artifact):
          '<p>The shape is chosen by what the reader must do next — never by how much content there is and never by which page it is on. '
          'A sheet arrives from the right so the list stays readable; a panel sits in the middle because it wants an answer; a popover hangs off the control it belongs to. '
          'The seal never sits in a popover (founder, 2026-09-04). Wax is for a real commitment; bulk gets the plain die.</p></div>',
-         '<div class="ctl"><div class="g"><span class="gl">Shape</span>' + "".join(f'<button type="button" data-filter="shape" data-value="{v}" aria-pressed="{str(v=="all").lower()}">{l}</button>' for v, l in [("all","All"),("sheet","Sheet"),("panel","Panel"),("popover","Popover")]) + '</div>'
+         '<div class="ctl"><div class="g"><span class="gl">Shape</span>' + "".join(f'<button type="button" data-filter="shape" data-value="{v}" aria-pressed="{str(v=="all").lower()}">{l}</button>' for v, l in [("all","All"),("sheet","Sheet"),("panel","Panel"),("popover","Popover"),("nonmodal","Non-modal")]) + '</div>'
          '<div class="g"><span class="gl">Status</span>' + "".join(f'<button type="button" data-filter="status" data-value="{v}" aria-pressed="{str(v=="all").lower()}">{l}</button>' for v, l in [("all","All"),("built","Built"),("migrate","Migrate"),("owed","Owed"),("target","Target"),("pattern","Behaviours"),("retire","Retires"),("delete","Delete")]) + '</div>'
          '<div class="g"><span class="gl">Ground</span>' + "".join(f'<button type="button" data-filter="ground" data-value="{v}" aria-pressed="{str(v=="auto").lower()}">{l}</button>' for v, l in [("auto","Follow the viewer"),("paper","Paper"),("charcoal","Charcoal")]) + '</div></div>',
          '<p style="max-width:80ch">Every specimen is drawn at the primitive\'s real width — 440 for a sheet, 640 wide, 620 for a panel, 320 for a popover — with the head, the close-in-words and the footer exactly as <code>sheet.css</code> draws them. Four specimens are pinned to charcoal on purpose: that is the portal carrying the page\'s ground, demonstrated rather than described.</p>']
@@ -373,6 +425,7 @@ page's ground). Filter by shape and by status.
 | Delete — nobody imports it | {c["delete"]} |
 | Not a shape (paint, a label) | {c["none"]} |
 | Drawn: sheets · panels · popovers | {shapes["sheet"]} · {shapes["panel"]} · {shapes["popover"]} |
+| Behaviours drawn from the research (nothing built) | {c["pattern"]} |
 
 ## Files
 
@@ -382,6 +435,7 @@ page's ground). Filter by shape and by status.
 - **`census.py`** — the source of truth. Edit here.
 - **`census.json`** — the same data for tools (the page-doc subsections are generated from it).
 - **`build.py`** — the builder.
+- **`research/`** — the five research files behind the Behaviours section (three angles, the implementation references, the adversary's verdicts) and the adversary's brief.
 
 ## What to look for
 

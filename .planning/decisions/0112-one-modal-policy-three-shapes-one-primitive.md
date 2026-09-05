@@ -228,3 +228,32 @@ two bells · F7 the figure behind a dashboard number) are stated in full in the 
 - All seven forks are answered. Migration order: the ten `migrate` rows first (they render legacy
   inside house-flagged pages today), then the owed sheets, then the sixteen deletions.
 
+## Behaviours proposed (2026-09-05, from the sketch 102 research — Proposed, not decided)
+
+The founder asked for SOTA overlay behaviours and "more access"; DESIGN-FOUNDATION §6f records
+the research and its adversary. Sixteen behaviours are drawn in sketch 102; they need four
+decisions, each a fork for the founder. None changes the three shapes.
+
+- **F8 — the non-modal class, named.** Peek-beside-the-list, the hover card, the undo toast,
+  the bulk-select bar, the standard bottom sheet on a phone and the expanded ledger row are
+  **not shapes**: no scrim, no focus trap, dismissed by moving or by Esc; never a form, never the
+  seal. This ADR's Options already allowed exactly this carve-out; the amendment would state it so
+  four separate requests do not become six shapes.
+- **F9 — the sheet on a phone.** The right sheet's phone form is a bottom sheet with detents
+  (peek · half · full; the grabber appears only when there is more than one), and stacked sheets
+  (a vendor from an order from a notification) are capped at three with a breadcrumb — one
+  decision covering Apple's detents, Material's sheets and Vaul's snap points together.
+- **F10 — undo after, for what can be undone.** Dismiss, archive, remove a shift, a note:
+  fire the act, offer Undo for a few seconds. Money, sends and ledger rows keep the seal before.
+  The adversary's warning is recorded: the line must be written down or the toast creeps into
+  what needs wax.
+- **F11 — a second authority.** Two ceremonies the research surfaced and the house has not chosen
+  between: a manager's passcode at the point of action (Toast) for staff → manager acts, and
+  presence on shared records (Figma) so a split count is safe.
+
+Two rules the research confirmed rather than proposed, restated here so they are cited from the
+house and not from a product: **a proposal is a layer, never an applied change** (the composer,
+the config assistant, vendor terms); **approving from a notification lands in the panel with the
+seal, never on the tap**. And one the adversary struck: nothing here is attributed to Linear's
+agent resolving its own threads — that claim did not survive re-fetch; the rule is ADR 0113's.
+
