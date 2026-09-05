@@ -3,7 +3,7 @@
 
 WHAT WENT WRONG, MEASURED
 -------------------------
-ADR 0117 Q8 recorded on 2026-09-04 that three of the sweep's 23 recorded vendor
+ADR 0117 Q13 (numbered Q8 in the draft lost on 2026-09-05) recorded on 2026-09-04 that three of the sweep's 23 recorded vendor
 websites now point somewhere else entirely. Re-measured on 2026-09-05 with the
 sweep's own identifying agent, and all three reproduce:
 
@@ -36,14 +36,20 @@ merge; editing live vendor rows must be read first and run by hand, on the
 founder's word - which is why `--apply` is refused unless
 `--i-have-the-founders-word` is passed with it.
 
-A FOURTH ROW IS REPORTED AND NOT PROPOSED
------------------------------------------
-`www.charmer.com` answers HTTP 200 with 114 bytes and no title: a JavaScript
-redirect to `/lander`, the signature of a parked domain. That is evidence the
-domain is no longer the vendor's either - and the founder's instruction named
-three. So it is printed with its evidence under a separate heading and is NOT in
-the proposed changes. Widening a cleaning run past what was asked for is how a
-script becomes something nobody decided.
+THE FOURTH ROW, ADDED ON THE FOUNDER'S WORD (2026-09-05)
+--------------------------------------------------------
+`www.charmer.com` answers HTTP 200 with 114 bytes and no title:
+`<script>window.onload=function(){window.location.href="/lander"}</script>`, the
+signature of a parked domain. The first cut of this script printed it under a
+separate REPORTED ONLY heading and refused to touch it, because the founder's
+instruction had named three websites and widening a cleaning run past what was
+asked for is how a script becomes something nobody decided.
+
+The founder then said **"Clear it with the three"**, so it is now the fourth
+PROPOSED row, with the same statement shape and the same note. The REPORTED ONLY
+section is kept in the code and prints "(none)" rather than being deleted: the
+next person to add a row to this script should find the shape that reports a row
+without acting on it already there.
 
 THE WRITER IS NAMED, NOT ASSUMED GONE
 -------------------------------------
@@ -210,8 +216,10 @@ PROPOSED = [
     "https://www.banfivintners.com",
     "https://www.henrywine.com",
     "https://www.sevilen.com",
+    # Added 2026-09-05 on the founder's word: "Clear it with the three."
+    "https://www.charmer.com",
 ]
-REPORTED_ONLY = ["https://www.charmer.com"]
+REPORTED_ONLY: list[str] = []
 
 SEED_WRITERS = {
     "https://www.banfivintners.com": "supabase/migrations/seed/27_vendor_catalogue_seed.sql (ON CONFLICT (id) DO NOTHING)",
@@ -233,7 +241,7 @@ def note_for(url: str, evidence: dict[str, Any]) -> str:
     return (
         f"Website cleared {evidence['measured_on']}: {url} answered "
         f"HTTP {evidence['http_status']} and resolved to {evidence['final_url']} "
-        f'serving "{served}" - {evidence["verdict"]}. Recorded by ADR 0117 Q8.'
+        f'serving "{served}" - {evidence["verdict"]}. Recorded by ADR 0117 Q13.'
     )
 
 
@@ -380,13 +388,19 @@ def report(rows: list[dict[str, Any]], evidence: dict[str, dict[str, Any]], out)
         statements.append(stmt)
 
     print("=" * 78, file=out)
-    print("PROPOSED - the three websites the founder named", file=out)
+    print("PROPOSED - the four websites the founder named", file=out)
     print("=" * 78, file=out)
     for url in PROPOSED:
         block(url, proposed=True)
     print(f"\n{'=' * 78}", file=out)
     print("REPORTED ONLY - measured, not proposed", file=out)
     print("=" * 78, file=out)
+    if not REPORTED_ONLY:
+        print(
+            "\n  (none) - every website this script measured is proposed above.\n"
+            "  This heading is kept so a row can be reported without being acted on.",
+            file=out,
+        )
     for url in REPORTED_ONLY:
         block(url, proposed=False)
     return statements
@@ -406,10 +420,16 @@ def self_test() -> int:
     text = buf.getvalue()
     failures: list[str] = []
 
-    if len(statements) != 3:
-        failures.append(f"expected 3 proposed statements, got {len(statements)}")
-    if any("charmer" in s for s in statements):
-        failures.append("charmer.com must never be in the proposed statements")
+    if len(statements) != 4:
+        failures.append(f"expected 4 proposed statements, got {len(statements)}")
+    if REPORTED_ONLY:
+        failures.append("REPORTED_ONLY should be empty since 2026-09-05")
+    if not any("charmer" in s for s in statements):
+        failures.append(
+            "charmer.com must be proposed since the founder's word of 2026-09-05"
+        )
+    if "parked domain" not in text:
+        failures.append("the parked-domain evidence for charmer.com was not printed")
     for s in statements:
         if "website = NULL" not in s:
             failures.append("a statement did not clear the website")
@@ -428,7 +448,7 @@ def self_test() -> int:
     without = [r for r in rows if r is not missing_rows[0]] if missing_rows else rows
     buf2 = io.StringIO()
     statements2 = report(without, RECORDED_EVIDENCE, buf2)
-    if len(statements2) != 2:
+    if len(statements2) != 3:
         failures.append("a row absent from the table still produced a statement")
     if "NOT FOUND" not in buf2.getvalue():
         failures.append("an absent row was not reported as NOT FOUND")
@@ -437,7 +457,10 @@ def self_test() -> int:
         for f in failures:
             print(f"self-test FAILED: {f}", file=sys.stderr)
         return 3
-    print(f"self-test passed: {len(statements)} statements proposed, 1 reported only, 0 writes.")
+    print(
+        f"self-test passed: {len(statements)} statements proposed, "
+        f"{len(REPORTED_ONLY)} reported only, 0 writes."
+    )
     return 0
 
 

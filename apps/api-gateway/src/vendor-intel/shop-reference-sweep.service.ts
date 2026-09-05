@@ -55,6 +55,7 @@ import {
 import { isPathAllowed, parseCrawlDelay } from "./vendor-page-extraction";
 import { readPageSizeEvidence } from "./bottle-size";
 import { PostingSighting, contentHash } from "../price-index/price-index.types";
+import { IssuedAtBasis } from "../price-index/staleness";
 import {
   SHOPS,
   SHOP_ARMED_KEYS_FLAG,
@@ -373,7 +374,7 @@ export class ShopReferenceSweepService {
       }
       const src: OfferSource = decision.offerSource;
       base.offerSources[src] = (base.offerSources[src] ?? 0) + 1;
-      rows.push(toRow(decision.sighting, fetchedAt));
+      rows.push(toRow(decision.sighting, fetchedAt, decision.issuedAtBasis));
     }
 
     let written = 0;
@@ -553,6 +554,7 @@ export class ShopReferenceSweepService {
 export function toRow(
   s: PostingSighting,
   fetchedAt: string,
+  issuedAtBasis: IssuedAtBasis,
 ): Record<string, unknown> {
   return {
     source_key: s.sourceKey,
@@ -561,6 +563,10 @@ export function toRow(
     region: s.region,
     issuer: s.issuer,
     issued_at: s.issuedAt,
+    // Whose clock the line above came from. Never omitted and never defaulted:
+    // a NULL here would mean "written before a basis was recorded", which is a
+    // claim about history, and this writer has no history to claim.
+    issued_at_basis: issuedAtBasis,
     fetched_at: fetchedAt,
     price_basis: s.priceBasis,
     product_name: s.productName,

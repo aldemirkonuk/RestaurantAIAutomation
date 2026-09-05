@@ -173,17 +173,55 @@ describe("decideShopPosting", () => {
     expect(d.message).toContain("GBP");
   });
 
-  it("refuses a page that states no date the price applies from", () => {
+  it("files a page that states no date under the READ date, labelled fetch_date", () => {
+    // The founder's answer to ADR 0117 Q27, 2026-09-05. Before it, this page
+    // was refused `no_issue_date`; now it is admitted and SAYS whose date it
+    // carries, which is what lets `refuseStale` age it from the read and the
+    // panel print "read on" instead of "issued".
     const d = decide(
       page({
         title: "Andre Clouet Silver Brut Nature Champagne",
         ld: offerLd({ validFrom: undefined, priceValidUntil: "2026-12-04" }),
       }),
     );
+    expect(d.write).toBe(true);
+    if (!d.write) return;
+    expect(d.issuedAtBasis).toBe("fetch_date");
+    // The fetch clock handed in, as a date, and nothing else.
+    expect(d.sighting.issuedAt).toBe("2026-09-05");
+    expect(d.sighting.raw).toMatchObject({ issuedAtBasis: "fetch_date" });
+  });
+
+  it("keeps the shop's own date, and says issuer_stated, when it states one", () => {
+    const d = decide(
+      page({
+        title: "Andre Clouet Silver Brut Nature Champagne",
+        ld: offerLd({ validFrom: "2026-08-20" }),
+      }),
+    );
+    expect(d.write).toBe(true);
+    if (!d.write) return;
+    expect(d.issuedAtBasis).toBe("issuer_stated");
+    // The shop's date, NOT the fetch date the same call handed in.
+    expect(d.sighting.issuedAt).toBe("2026-08-20");
+  });
+
+  it("still refuses when there is no date of any kind, not even a read date", () => {
+    const html = page({
+      title: "Andre Clouet Silver Brut Nature Champagne",
+      ld: offerLd({ validFrom: undefined }),
+    });
+    const d = decideShopPosting({
+      shop: GB,
+      url: "https://example.test/products/x",
+      html,
+      sizeEvidence: readPageSizeEvidence(html),
+      fetchedAt: "not a time",
+    });
     expect(d.write).toBe(false);
     if (d.write) return;
     expect(d.reason).toBe("no_issue_date");
-    expect(d.message).toContain("2026-12-04");
+    expect(d.message).toContain("not a time");
   });
 
   it("refuses two different prices for one product rather than picking one", () => {
@@ -283,8 +321,9 @@ describe("the six recorded merchant pages", () => {
     },
   ];
 
-  it("admits one and refuses five, each for a named and different reason", () => {
+  it("admits four and refuses two, each for a named and different reason", () => {
     const counts = emptyShopRefusalCounts();
+    const bases: Record<string, number> = {};
     const lines: string[] = [];
     let admitted = 0;
     for (const c of CASES) {
@@ -298,9 +337,12 @@ describe("the six recorded merchant pages", () => {
       });
       if (d.write) {
         admitted += 1;
+        bases[d.issuedAtBasis] = (bases[d.issuedAtBasis] ?? 0) + 1;
         lines.push(
           `${c.fixture.padEnd(46)} ADMITTED ${d.sighting.price} ${d.sighting.currency} ` +
-            `${d.sighting.sizeValue}ml via ${d.offerSource}, issued ${d.sighting.issuedAt}`,
+            `${d.sighting.sizeValue}ml via ${d.offerSource}, ` +
+            `${d.issuedAtBasis === "issuer_stated" ? "issued" : "read on"} ${d.sighting.issuedAt}` +
+            ` (${d.issuedAtBasis})`,
         );
       } else {
         counts[d.reason] += 1;
@@ -309,12 +351,20 @@ describe("the six recorded merchant pages", () => {
     }
     // Printed so the ADR's table is reproducible from one command.
     // eslint-disable-next-line no-console
-    console.log(`\n${lines.join("\n")}\n  admitted ${admitted}/${CASES.length}`);
+    console.log(
+      `\n${lines.join("\n")}\n  admitted ${admitted}/${CASES.length}` +
+        ` — by date basis: ${JSON.stringify(bases)}`,
+    );
 
-    expect(admitted).toBe(1);
-    expect(counts.no_issue_date).toBe(3);
+    // BEFORE the founder's answer to Q27 this was 1 admitted / 5 refused, with
+    // three of the refusals `no_issue_date`. Those three pages are now filed
+    // under the read date and labelled, and NOT ONE of them is dated as though
+    // a shop had published it.
+    expect(admitted).toBe(4);
+    expect(counts.no_issue_date).toBe(0);
     expect(counts.identity_conflict).toBe(1);
     expect(counts.currency_not_jurisdiction).toBe(1);
+    expect(bases).toEqual({ issuer_stated: 1, fetch_date: 3 });
   });
 });
 

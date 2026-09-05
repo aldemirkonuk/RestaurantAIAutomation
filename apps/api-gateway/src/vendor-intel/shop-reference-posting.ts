@@ -49,20 +49,35 @@
  * quietly downgraded to the Open Graph price, which on that page would have
  * been the champagne's price attached to the whisky's structured data.
  *
+ * THE DATE, AND WHOSE CLOCK IT IS (changed 2026-09-05 on the founder's answer
+ * to Q27: *"Yes: an issued_at_basis column, fetch-dated rows labelled and aged
+ * from the read"*)
+ * ---------------------------------------------------------------------------
+ * Of the six recorded merchant pages, exactly ONE states a date its price
+ * applies from (`Offer.validFrom`). The first cut REFUSED the other five, which
+ * kept `issued_at`'s column contract intact and delivered one row in six.
+ * The founder's answer files them instead, under the read date and LABELLED:
+ * `issued_at_basis = 'fetch_date'`, `issued_at` = the day we read the page.
+ *
+ * The label is what makes it honest rather than a fetch date wearing a
+ * publication's clothes. Three things hang off it and none of them is optional:
+ * `refuseStale` ages such a row from the read instead of the edition (see
+ * `staleness.ts`), the index line prints **"read on"** and never "issued", and
+ * a reader six months from now can tell a shop's silence from a publisher's
+ * statement. A page that DOES state `validFrom` still carries
+ * `issuer_stated` — the shop's own date always wins over ours.
+ *
  * THE FIVE LEGS, AND THE TWO THIS CLASS FAILS MOST
  * ------------------------------------------------
  * ADR 0117 admits a row only if it names the number, the publisher, the date,
  * the unit and where it is a price. A shop names the publisher (itself), the
  * unit (via `readBottleSize`) and the place (the registry's jurisdiction). It
  * fails on the DATE far more often than anything else: of the six recorded
- * pages, exactly ONE states `Offer.validFrom`. Those five are refused
- * `no_issue_date` rather than filed with our fetch clock, because
- * `price_index_postings.issued_at` is documented as "the ISSUER's own
- * effective/publication date, never the fetch date" and `refuseStale` treats
- * that column as the freshness signal — a row dated by our own fetch is fresh
- * by construction and would make the staleness gate vacuous for the whole
- * class. Whether a shop price may instead be filed with a read-date basis is a
- * decision for the founder, not a default taken here (ADR 0117 Q13).
+ * pages, exactly ONE states `Offer.validFrom`. Since 2026-09-05 the other five
+ * are filed under the read date with `issued_at_basis = 'fetch_date'` rather
+ * than refused — see the section above. `no_issue_date` survives as a refusal
+ * reason for the case that is still not admissible: a page that states no date
+ * AND gives no read date to stand in for one.
  */
 
 import {
@@ -72,6 +87,7 @@ import {
   sameProduct,
 } from "./bottle-size";
 import { PostingSighting } from "../price-index/price-index.types";
+import { IssuedAtBasis } from "../price-index/staleness";
 import { ShopEntry } from "./price-reference-shops";
 
 /** Where a price was read. The precedence order is the array order. */
@@ -108,7 +124,7 @@ export const SHOP_REFUSAL_SENTENCE: Readonly<Record<ShopRefusalReason, string>> 
     currency_not_jurisdiction:
       "The shop served the price in a currency that is not its jurisdiction's, so the figure is not that market's shelf price.",
     no_issue_date:
-      "The shop states no date its price applies from, and this register's date column is the issuer's date, never our fetch clock.",
+      "The shop states no date its price applies from and no usable read date stands in for one, so nothing can say when this price was true.",
     bad_price: "The price read is zero, negative or unparseable.",
     no_bottle_volume:
       "The page prints no bottle size, so the number has no unit to be compared in.",
@@ -397,6 +413,15 @@ export type ShopPostingDecision =
   | {
       write: true;
       sighting: PostingSighting;
+      /**
+       * Whose clock `sighting.issuedAt` came from. NOT a field on
+       * `PostingSighting`: every other producer of that type is a registry
+       * parser reading a publisher's own edition date, and `refuseStale`
+       * already refuses a run without one, so making it a required member
+       * would have made five parsers restate a fact their gate proves. It is
+       * stated where it varies — here, and at each writer's row.
+       */
+      issuedAtBasis: IssuedAtBasis;
       /** Kept so the caller can count where sizes and prices were read. */
       offerSource: OfferSource;
       volume: BottleSizeReading;
@@ -498,17 +523,22 @@ export function decideShopPosting(input: ShopPostingInput): ShopPostingDecision 
     );
   }
 
-  // THE DATE. The register's `issued_at` is the issuer's own date by column
-  // contract, and `refuseStale` reads it as the freshness signal. A shop that
-  // states none is refused rather than stamped with our clock.
-  const issuedAt = usable.map((o) => o.validFrom).find((d): d is string => !!d) ?? null;
+  // THE DATE, AND WHOSE IT IS. The shop's own `validFrom` wins whenever it
+  // states one; otherwise the row is filed under the day we read it and SAYS
+  // SO. `issued_at_basis` is the whole difference between a labelled read and a
+  // manufactured publication, so it travels on the decision, on the row, into
+  // `refuseStale` and out to the panel's wording.
+  const stated = usable.map((o) => o.validFrom).find((d): d is string => !!d) ?? null;
+  const readDate = fetchedAt.slice(0, 10);
+  const issuedAt = stated ?? (/^\d{4}-\d{2}-\d{2}$/.test(readDate) ? readDate : null);
+  const issuedAtBasis: IssuedAtBasis = stated ? "issuer_stated" : "fetch_date";
   if (!issuedAt) {
-    const until = usable.map((o) => o.priceValidUntil).find((d): d is string => !!d);
+    // Reachable only when the caller's own fetch clock is unusable: the page
+    // states nothing and we cannot say when we looked either, so there is no
+    // date of any kind to file. Refusing is the only honest end.
     return refuse(
       "no_issue_date",
-      until
-        ? `It states only priceValidUntil ${until}, which bounds the price forward and says nothing about when it began.`
-        : "Neither validFrom nor any dated statement appears on the page.",
+      `The page states no date and the fetch time handed in (${JSON.stringify(fetchedAt)}) is not a date either, so nothing can say when this price was true.`,
     );
   }
 
@@ -569,6 +599,7 @@ export function decideShopPosting(input: ShopPostingInput): ShopPostingDecision 
       shopKey: shop.key,
       fetchedAt,
       offerSource: best.source,
+      issuedAtBasis,
       offerLocator: best.locator,
       offerStatement: best.statement,
       wasPrice: wasPrice > 0 ? wasPrice : null,
@@ -586,7 +617,7 @@ export function decideShopPosting(input: ShopPostingInput): ShopPostingDecision 
     },
   };
 
-  return { write: true, sighting, offerSource: best.source, volume };
+  return { write: true, sighting, issuedAtBasis, offerSource: best.source, volume };
 }
 
 /** Zeroed tallies, never absent keys — an absent key and a zero read alike. */

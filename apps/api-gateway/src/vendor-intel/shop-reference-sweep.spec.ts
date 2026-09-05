@@ -145,7 +145,7 @@ describe("toRow", () => {
   };
 
   it("writes every column explicitly, and no restaurant column at all", () => {
-    const row = toRow(sighting, "2026-09-05T11:00:00.000Z");
+    const row = toRow(sighting, "2026-09-05T11:00:00.000Z", "issuer_stated");
     expect(Object.keys(row)).toEqual([
       "source_key",
       "source_class",
@@ -153,6 +153,7 @@ describe("toRow", () => {
       "region",
       "issuer",
       "issued_at",
+      "issued_at_basis",
       "fetched_at",
       "price_basis",
       "product_name",
@@ -185,11 +186,28 @@ describe("toRow", () => {
   });
 
   it("hashes a price change to a different row and an unchanged read to the same", () => {
-    const a = toRow(sighting, "2026-09-05T11:00:00.000Z");
-    const b = toRow(sighting, "2026-09-06T11:00:00.000Z");
-    const c = toRow({ ...sighting, price: 36 }, "2026-09-05T11:00:00.000Z");
+    const a = toRow(sighting, "2026-09-05T11:00:00.000Z", "issuer_stated");
+    const b = toRow(sighting, "2026-09-06T11:00:00.000Z", "issuer_stated");
+    const c = toRow({ ...sighting, price: 36 }, "2026-09-05T11:00:00.000Z", "issuer_stated");
     expect(a.content_hash).toBe(b.content_hash);
     expect(a.content_hash).not.toBe(c.content_hash);
+  });
+
+  it("writes the basis it is handed, and never a default", () => {
+    // Both values reach the column, and neither writer may omit it: a NULL here
+    // would mean "written before a basis was recorded", which is a claim about
+    // history this writer has none of.
+    expect(toRow(sighting, "2026-09-05T11:00:00.000Z", "fetch_date").issued_at_basis).toBe(
+      "fetch_date",
+    );
+    expect(toRow(sighting, "2026-09-05T11:00:00.000Z", "issuer_stated").issued_at_basis).toBe(
+      "issuer_stated",
+    );
+    // The basis is NOT part of the content hash: re-reading the same shop page
+    // tomorrow must dedup, and it would not if our own clock were hashed in.
+    const stated = toRow(sighting, "2026-09-05T11:00:00.000Z", "issuer_stated");
+    const fetched = toRow(sighting, "2026-09-05T11:00:00.000Z", "fetch_date");
+    expect(stated.content_hash).toBe(fetched.content_hash);
   });
 });
 

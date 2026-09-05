@@ -47,18 +47,60 @@ export interface StaleVerdict {
 }
 
 /**
+ * Whose clock `issued_at` came from (ADR 0117 Q27, `issued_at_basis`).
+ *
+ * `issuer_stated` is the only basis a periodical may carry. `fetch_date` says
+ * nobody published a date and the column holds the day WE read the page.
+ */
+export type IssuedAtBasis = "issuer_stated" | "fetch_date";
+
+/**
  * Decide whether a run is too old to admit.
  *
  *  - No readable issue date  → refused. A sighting without an issuer's date is
  *    not a sighting (ADR 0117), and is never treated as fresh.
  *  - age > maxAgeDays        → refused. The bh_fv020.txt case.
  *  - otherwise               → admitted.
+ *
+ * `basis` (added 2026-09-05 on the founder's answer to Q27): a `fetch_date`
+ * row's `issued_at` is our own read date, so ageing it against `maxAgeDays`
+ * would be measuring our clock against itself — it is fresh by construction and
+ * the gate would be vacuous for the whole class. Such a row is aged from
+ * `readAt` instead: the question stops being "how old is this edition" and
+ * becomes "how long since we last looked", which is a real question with a real
+ * answer, and it refuses at the same cadence bound. `readAt` defaults to
+ * `issuedAt` because for a shop row they are the same day at the moment of
+ * writing and diverge only as the row sits in the register.
+ *
+ * Omitting `basis` keeps the old behaviour exactly, so every existing caller is
+ * unchanged: a periodical is aged from the issuer's date, as it must be.
  */
 export function refuseStale(
   issuedAt: string | null,
   maxAgeDays: number,
   today: Date = new Date(),
+  opts: { basis?: IssuedAtBasis | null; readAt?: string | null } = {},
 ): StaleVerdict {
+  if (opts.basis === "fetch_date") {
+    const readAt = opts.readAt ?? issuedAt;
+    const sinceRead = stalenessDays(readAt, today);
+    if (sinceRead === null) {
+      return {
+        stale: true,
+        ageDays: null,
+        reason:
+          "the row is dated by our own read and carries no readable read date, so nothing about its age can be stated",
+      };
+    }
+    if (sinceRead > maxAgeDays) {
+      return {
+        stale: true,
+        ageDays: sinceRead,
+        reason: `nobody published a date for this price and we last read it ${sinceRead} days ago, past the ${maxAgeDays}-day cadence this source is allowed (a read is not a publication)`,
+      };
+    }
+    return { stale: false, ageDays: sinceRead, reason: null };
+  }
   const ageDays = stalenessDays(issuedAt, today);
   if (ageDays === null) {
     return {

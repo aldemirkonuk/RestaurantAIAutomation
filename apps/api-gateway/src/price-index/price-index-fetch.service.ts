@@ -184,6 +184,14 @@ export class PriceIndexFetchService {
       region: s.region,
       issuer: s.issuer,
       issued_at: s.issuedAt,
+      // Always the ISSUER's own date on this path, and stated rather than
+      // left to a DEFAULT: every source in this registry publishes an
+      // edition date, and `refuseStale` has already refused the run if the
+      // parser could not read one. The value is written here rather than
+      // carried on `PostingSighting` because it is a property of the WRITER
+      // (this one reads publishers; the merchant-shop writer reads shops),
+      // not of the sighting (ADR 0117 Q27).
+      issued_at_basis: "issuer_stated",
       fetched_at: fetchedAt,
       price_basis: s.priceBasis,
       product_name: s.productName,
