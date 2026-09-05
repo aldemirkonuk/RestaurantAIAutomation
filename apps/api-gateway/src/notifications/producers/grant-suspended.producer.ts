@@ -131,6 +131,28 @@ export class GrantSuspendedProducer {
   /** The two roles that may consent for the house. Not a default — a CHECK. */
   static readonly DECIDING_ROLES = ["owner", "manager"];
 
+  /**
+   * Who hears the REPEATS. The first line goes to everyone who can clear the
+   * suspension; a suspension still standing a week later is an escalation, and
+   * the founder's call is that it climbs to owners only rather than re-pinging
+   * every manager weekly until somebody acts.
+   */
+  static readonly REPEAT_ROLES = ["owner"];
+
+  /** One re-say per week of suspension. */
+  static readonly REPEAT_INTERVAL_DAYS = 7;
+
+  /**
+   * How many weekly repeats a single suspension may produce.
+   *
+   * Twelve — a quarter. Not a silencing: the run row keeps naming the
+   * suspension every sweep after that, and the status read still counts it. It
+   * is a bound on the INBOX, because a grant nobody has cleared in three months
+   * is not going to be cleared by a thirteenth identical line, and the register
+   * that holds it is `/connections`, not the day book.
+   */
+  static readonly MAX_REPEATS = 12;
+
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly ledger: ProducerLedgerService,
@@ -140,11 +162,12 @@ export class GrantSuspendedProducer {
     restaurantId: string,
     timeZone: string,
     audience: ProducerAudience,
-    // Taken for the family's signature and deliberately unused: every date this
-    // producer prints comes from `needs_reconsent_at` on the row. Dating a
-    // suspension with the sweep's own clock would move the event to whenever
-    // anybody happened to look at it.
-    _now: Date,
+    // Every date this producer PRINTS still comes from `needs_reconsent_at` on
+    // the row — dating a suspension with the sweep's own clock would move the
+    // event to whenever anybody happened to look at it. The sweep's instant is
+    // used only for ELAPSED time: which week of the suspension this is, and how
+    // many days it has stood (the founder's weekly re-say, 2026-09-04).
+    now: Date,
   ): Promise<ProducerTally> {
     const tally = emptyTally();
 
@@ -170,6 +193,11 @@ export class GrantSuspendedProducer {
     // Narrowed AFTER the source read, so a house with no manager still records
     // a truthful run row rather than a silent zero.
     const deciding = await this.decidingAudience(restaurantId, audience);
+
+    // Resolved lazily: a house with no repeat due should not pay for a
+    // second role read. `null` means "not asked yet", not "nobody".
+    let owners: ProducerAudience | null = null;
+    let cappedRepeats = 0;
 
     for (const grant of grants) {
       const connection = connections.get(String(grant.connection_id));
@@ -205,29 +233,69 @@ export class GrantSuspendedProducer {
         ? fingerprintToolList(connection.tools)
         : null;
 
+      // WHICH WEEK OF THE SUSPENSION IS THIS?
+      //
+      // Week 0 is the original line and its key is unchanged, byte for byte, so
+      // a suspension already reported stays reported. Week N >= 1 is a repeat:
+      // a new key, a narrower audience, and the elapsed days in the sentence.
+      // The arithmetic is on `needs_reconsent_at`, not on when the producer
+      // first spoke — a house that armed this producer late still hears the
+      // true age of the suspension rather than the age of our knowledge of it.
+      const elapsedMs = now.getTime() - changedAt.getTime();
+      const daysElapsed = Math.max(0, Math.floor(elapsedMs / 86_400_000));
+      const week = Math.floor(
+        daysElapsed / GrantSuspendedProducer.REPEAT_INTERVAL_DAYS,
+      );
+
+      if (week > GrantSuspendedProducer.MAX_REPEATS) {
+        // Bounded, and said out loud rather than silently skipped.
+        cappedRepeats += 1;
+        continue;
+      }
+
+      const isRepeat = week >= 1;
+      if (isRepeat && owners === null) {
+        owners = await this.repeatAudience(restaurantId, audience);
+      }
+      const forThisLine = isRepeat ? (owners as ProducerAudience) : deciding;
+
       await this.ledger.emit(
         {
           restaurantId,
           producer: PRODUCER,
-          audience: deciding,
+          audience: forThisLine,
           tally,
+          now,
         },
         {
-          dedupeKey: `grant:${grant.id}:${previousHash ?? "unrecorded"}`,
+          dedupeKey: isRepeat
+            ? `grant:${grant.id}:${previousHash ?? "unrecorded"}:week${week}`
+            : `grant:${grant.id}:${previousHash ?? "unrecorded"}`,
           occurredAt: changedAt,
           payload: {
             type: "grant_suspended",
             title: removed
               ? `Tool grant revoked — ${tool} on ${connection.name}`
-              : `Tool grant suspended — ${tool} on ${connection.name}`,
-            message: this.sentence({
-              server: connection.name,
-              tool,
-              reason,
-              removed,
-              changedAt,
-              timeZone,
-            }),
+              : isRepeat
+                ? `Tool grant still suspended after ${daysElapsed} days — ${tool} on ${connection.name}`
+                : `Tool grant suspended — ${tool} on ${connection.name}`,
+            message: isRepeat
+              ? `${this.sentence({
+                  server: connection.name,
+                  tool,
+                  reason,
+                  removed,
+                  changedAt,
+                  timeZone,
+                })} It has stood for ${daysElapsed} days; this is week ${week} of asking.`
+              : this.sentence({
+                  server: connection.name,
+                  tool,
+                  reason,
+                  removed,
+                  changedAt,
+                  timeZone,
+                }),
             // A permission the house did not change is refused right now. It is
             // not critical — nothing is lost by reading it an hour later — but
             // it outranks a delivery or a certified invoice.
@@ -257,9 +325,19 @@ export class GrantSuspendedProducer {
               classificationSource: grant.classification_source ?? null,
               grantedBy: grant.granted_by ?? null,
               grantedAt: grant.granted_at ?? null,
-              audience:
-                "Owners and managers of this restaurant only, resolved through " +
-                "user_restaurant_access.role.",
+              // The repeat's own facts, so a reader can tell a first line from
+              // a fourth without counting rows.
+              repeat: isRepeat,
+              weekOfSuspension: week,
+              daysElapsed,
+              repeatIntervalDays: GrantSuspendedProducer.REPEAT_INTERVAL_DAYS,
+              maxRepeats: GrantSuspendedProducer.MAX_REPEATS,
+              audience: isRepeat
+                ? "Owners of this restaurant only — a suspension standing a week " +
+                  "later escalates rather than re-pinging every manager, resolved " +
+                  "through user_restaurant_access.role."
+                : "Owners and managers of this restaurant only, resolved through " +
+                  "user_restaurant_access.role.",
               timeZone,
             },
           },
@@ -272,7 +350,9 @@ export class GrantSuspendedProducer {
         deciding.ready.length === 0 && deciding.deferred.length === 0
           ? "This house has a suspended grant and no active owner or manager to tell " +
             "about it. Nobody was written to, and nobody can clear the suspension."
-          : "Every suspension standing on this house's servers had already been reported.";
+          : cappedRepeats > 0
+            ? `Every suspension standing on this house's servers had already been reported, and ${cappedRepeats} has stood past ${GrantSuspendedProducer.MAX_REPEATS} weeks — it is still refused and still on /connections, but it has stopped writing weekly lines.`
+            : "Every suspension standing on this house's servers had already been reported.";
     }
 
     return tally;
@@ -462,6 +542,49 @@ export class GrantSuspendedProducer {
    *
    * THROWS on a read failure. See the class header: neither fallback is honest.
    */
+  /**
+   * Owners only, for the weekly repeats.
+   *
+   * Same intersection with the handed audience as `decidingAudience`, so quiet
+   * hours still decide delivery, and the same THROW on a failed read: telling
+   * the whole house, or nobody, are both dishonest answers to "who owns this".
+   */
+  private async repeatAudience(
+    restaurantId: string,
+    audience: ProducerAudience,
+  ): Promise<ProducerAudience> {
+    const { data, error } = await this.databaseService
+      .getClient()
+      .from("user_restaurant_access")
+      .select("user_id, role")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .in("role", GrantSuspendedProducer.REPEAT_ROLES);
+
+    if (error) {
+      throw new Error(`could not read user_restaurant_access: ${error.message}`);
+    }
+
+    const owners = new Set(
+      (data ?? [])
+        .map((r: any) => String(r?.user_id ?? ""))
+        .filter((id: string) => id.length > 0),
+    );
+
+    if (owners.size === 0) {
+      this.logger.warn(
+        `GRANT_SUSPENDED_NO_OWNER restaurant=${restaurantId} — a grant has been ` +
+          "suspended for over a week and this house has no active owner in " +
+          "user_restaurant_access. The weekly re-say reaches nobody; the run row says so.",
+      );
+    }
+
+    return {
+      ready: audience.ready.filter((u) => owners.has(u)),
+      deferred: audience.deferred.filter((u) => owners.has(u)),
+    };
+  }
+
   private async decidingAudience(
     restaurantId: string,
     audience: ProducerAudience,

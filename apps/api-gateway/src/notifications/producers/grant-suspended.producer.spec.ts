@@ -396,3 +396,157 @@ describe("GrantSuspendedProducer", () => {
     });
   });
 });
+
+describe("the weekly re-say (founder, 2026-09-04)", () => {
+  /** `needs_reconsent_at` is 2026-09-04T09:15Z; N days after that. */
+  const daysAfter = (n: number) =>
+    new Date(new Date("2026-09-04T09:15:00Z").getTime() + n * 86_400_000);
+
+  it("[REVERT-FAILS] says nothing more inside the first week", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+
+    for (const d of [1, 3, 6.9]) {
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(d));
+    }
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS] re-says once a week, and only once per week", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+    // Week 1: one line, however many sweeps run inside it.
+    for (const d of [7, 8, 10, 13]) {
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(d));
+    }
+    expect(notifications.persistForRestaurant.calls).toHaveLength(2);
+
+    // Week 2: one more.
+    for (const d of [14, 17, 20]) {
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(d));
+    }
+    expect(notifications.persistForRestaurant.calls).toHaveLength(3);
+
+    const keys = db.tables.notification_producer_claims.map(
+      (r: any) => r.dedupe_key,
+    );
+    expect(new Set(keys)).toEqual(
+      new Set([
+        "grant:grant-1:list-hash-a",
+        "grant:grant-1:list-hash-a:week1",
+        "grant:grant-1:list-hash-a:week2",
+      ]),
+    );
+  });
+
+  it("[REVERT-FAILS] the first line reaches managers; every repeat is owners only", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+    const first = notifications.persistForRestaurant.calls[0][2].onlyUserIds;
+    expect([...first].sort()).toEqual([MANAGER, OWNER].sort());
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(7));
+    const repeat = notifications.persistForRestaurant.calls[1][2].onlyUserIds;
+    expect(repeat).toEqual([OWNER]);
+    expect(repeat).not.toContain(MANAGER);
+    expect(repeat).not.toContain(STAFF);
+  });
+
+  it("[REVERT-FAILS] every repeat carries the days elapsed, in the title and the metadata", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(16));
+
+    const call = notifications.persistForRestaurant.calls[1][1];
+    expect(call.title).toBe(
+      "Tool grant still suspended after 16 days — search_vintages on Alexandria Cellar Index",
+    );
+    expect(call.message).toContain("It has stood for 16 days; this is week 2 of asking.");
+    expect(call.metadata.repeat).toBe(true);
+    expect(call.metadata.weekOfSuspension).toBe(2);
+    expect(call.metadata.daysElapsed).toBe(16);
+    expect(call.metadata.audience).toMatch(/Owners of this restaurant only/);
+    // The event is still dated by the row, not by the sweep that re-said it.
+    expect(call.metadata.changedAt).toBe("2026-09-04T09:15:00.000Z");
+  });
+
+  it("[REVERT-FAILS] the first line's key and audience are unchanged by this feature", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.title).toBe(
+      "Tool grant suspended — search_vintages on Alexandria Cellar Index",
+    );
+    expect(call.metadata.repeat).toBe(false);
+    expect(call.metadata.weekOfSuspension).toBe(0);
+    expect(db.tables.notification_producer_claims[0].dedupe_key).toBe(
+      "grant:grant-1:list-hash-a",
+    );
+  });
+
+  it("[REVERT-FAILS] stops writing weekly lines after the cap, and says so", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+    for (let w = 1; w <= GrantSuspendedProducer.MAX_REPEATS; w++) {
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(w * 7));
+    }
+    const atCap = notifications.persistForRestaurant.calls.length;
+    expect(atCap).toBe(GrantSuspendedProducer.MAX_REPEATS + 1);
+
+    const past = await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      AUDIENCE,
+      daysAfter((GrantSuspendedProducer.MAX_REPEATS + 1) * 7),
+    );
+    expect(notifications.persistForRestaurant.calls).toHaveLength(atCap);
+    expect(past.withheldReason).toMatch(/stopped writing weekly lines/);
+  });
+
+  it("a re-consent ends the repeats: a new hash starts a new week 0", async () => {
+    const { db, notifications, producer } = build();
+    house(db);
+    connection(db);
+    grant(db);
+
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(0));
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(7));
+    expect(notifications.persistForRestaurant.calls).toHaveLength(2);
+
+    // The manager re-consents and the server changes again: a new grant hash,
+    // a fresh suspension, dated now — so it is week 0 again, to both roles.
+    db.tables.mcp_tool_grants[0].tool_list_hash = "list-hash-b";
+    db.tables.mcp_tool_grants[0].needs_reconsent_at = daysAfter(8).toISOString();
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, daysAfter(8));
+
+    expect(notifications.persistForRestaurant.calls).toHaveLength(3);
+    const latest = notifications.persistForRestaurant.calls[2];
+    expect(latest[1].metadata.repeat).toBe(false);
+    expect([...latest[2].onlyUserIds].sort()).toEqual([MANAGER, OWNER].sort());
+  });
+});

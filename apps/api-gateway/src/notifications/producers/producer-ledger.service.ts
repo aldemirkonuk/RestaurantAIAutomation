@@ -1,10 +1,15 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../notifications.service";
 import {
   isWithinQuietHours,
   type QuietHours,
 } from "../../calendar/reminder-window";
+import {
+  PRODUCER_CLOCK,
+  SYSTEM_CLOCK,
+  type ProducerClock,
+} from "./producer-clock";
 
 /**
  * The one place a notification producer is allowed to speak from.
@@ -123,6 +128,17 @@ export interface EmitContext {
   producer: string;
   audience: ProducerAudience;
   tally: ProducerTally;
+  /**
+   * The instant this sweep is operating at.
+   *
+   * Load-bearing, not decoration: `claimed_at` is stamped from it and
+   * `claimedKeysSince` derives its window from the same value in the caller, so
+   * the two compare like with like. Omitting it falls back to the injected
+   * clock, which is what the wall clock was doing before — correct in
+   * production, and the reason a spec could measure the calendar instead of the
+   * code (see `producer-clock.ts`).
+   */
+  now?: Date;
 }
 
 interface MemberPreference {
@@ -135,10 +151,17 @@ const QUIET_OFF: QuietHours = { enabled: false, start: "22:00", end: "08:00" };
 export class ProducerLedgerService {
   private readonly logger = new Logger(ProducerLedgerService.name);
 
+  private readonly clock: ProducerClock;
+
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly notifications: NotificationsService,
-  ) {}
+    // Optional so the seven producers' specs, which construct this service
+    // directly with two arguments, keep compiling and keep their behaviour.
+    @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
+  ) {
+    this.clock = clock ?? SYSTEM_CLOCK;
+  }
 
   // ==========================================================================
   // WHO MAY BE WRITTEN TO
@@ -241,6 +264,7 @@ export class ProducerLedgerService {
       event.dedupeKey,
       audience.ready,
       event.occurredAt,
+      ctx.now,
     );
 
     if (claimed === null) {
@@ -311,9 +335,12 @@ export class ProducerLedgerService {
     dedupeKey: string,
     userIds: string[],
     occurredAt: Date,
+    sweepNow?: Date,
   ): Promise<WonClaim[] | null> {
     const client = this.databaseService.getClient();
-    const now = new Date().toISOString();
+    // The sweep's instant when it has one, so `claimed_at` and the suppression
+    // window `claimedKeysSince` compares it against derive from one value.
+    const now = (sweepNow ?? this.clock.now()).toISOString();
     const rows = userIds.map((userId) => ({
       restaurant_id: restaurantId,
       producer,
@@ -354,7 +381,7 @@ export class ProducerLedgerService {
     const { error } = await client
       .from("notification_producer_claims")
       .update({
-        delivered_at: new Date().toISOString(),
+        delivered_at: this.clock.now().toISOString(),
         outcome,
         failure: failure ?? null,
       })

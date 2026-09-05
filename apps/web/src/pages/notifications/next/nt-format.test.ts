@@ -138,6 +138,7 @@ describe('the mark drawn in the emoji’s place', () => {
       // Its rows landed under *Other* until this row existed, which is exactly
       // how a new register goes invisible.
       ['grant_suspended', 'Connections'],
+      ['mcp_tool_added', 'Connections'],
       ['overdue_order', 'Orders'],
       ['order_inquiry', 'Orders'],
       ['custom_reminder', 'Calendar'],
@@ -163,6 +164,8 @@ describe('the mark drawn in the emoji’s place', () => {
     // out of a list — the same absence-as-health shape as falling to *Other*.
     expect(iconForType('grant_suspended')).toBe(iconForKind('Connections'));
     expect(iconForType('grant_suspended')).not.toBe(iconForKind('Other'));
+    expect(iconForType('mcp_tool_added')).toBe(iconForKind('Connections'));
+    expect(iconForType('mcp_tool_added')).not.toBe(iconForKind('Other'));
   });
 
   it('still gives an unknown type a real mark rather than nothing', () => {

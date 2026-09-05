@@ -174,7 +174,7 @@ export class GoalReachedProducer {
       });
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally },
+        { restaurantId, producer: PRODUCER, audience, tally, now },
         {
           // The target is IN the key: raising a target after it was met makes a
           // new goal to reach, and the house should hear about that one too.

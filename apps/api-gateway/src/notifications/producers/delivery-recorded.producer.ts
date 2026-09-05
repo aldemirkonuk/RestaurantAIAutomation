@@ -143,7 +143,7 @@ export class DeliveryRecordedProducer {
       const outcome = String(event.outcome ?? "").toLowerCase();
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally },
+        { restaurantId, producer: PRODUCER, audience, tally, now },
         {
           // The event id. `procurement_receipt_events` rows are append-only and
           // their own UNIQUE `idempotency_key` index already stops the door

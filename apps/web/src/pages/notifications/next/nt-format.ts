@@ -117,6 +117,7 @@ const KIND_BY_TYPE: Record<string, string> = {
   // someone re-consents.
   // notifications/producers/grant-suspended.producer.ts
   grant_suspended: 'Connections',
+  mcp_tool_added: 'Connections',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',

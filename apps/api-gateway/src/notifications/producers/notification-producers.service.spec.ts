@@ -48,6 +48,10 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
   const goals = {
     getPosRevenueWindow: recorder(async () => ({ posConnected: true })),
   };
+  const addedTool = overrides.addedTool ?? stub("added_tool");
+  // The status read asks it how many servers this house has declared.
+  (addedTool as any).watchedServerCount =
+    overrides.watchedServerCount ?? recorder(async () => 3);
   const market = overrides.market ?? stub("market_price");
   // The status read asks the market producer whether the register has anything
   // in it at all. Default: it does, so the silence cases below are the ones the
@@ -74,6 +78,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     (overrides.sale ?? stub("sale_record")) as any,
     market as any,
     grantSuspended as any,
+    addedTool as any,
   );
   return {
     service,
@@ -119,6 +124,7 @@ describe("arming", () => {
       "delivery_recorded",
       "invoice_confirmed",
       "grant_suspended",
+      "added_tool",
     ]);
   });
 
@@ -131,7 +137,7 @@ describe("arming", () => {
 });
 
 describe("the two cadences", () => {
-  it("the fast sweep runs the five event producers and opens a run row each", async () => {
+  it("the fast sweep runs the six event producers and opens a run row each", async () => {
     const { service, ledger } = build();
     await service.runFastForTenant(TENANT, new Date("2026-09-03T12:00:00Z"));
     expect(ledger.openRun.calls.map((c: any[]) => c[1])).toEqual([
@@ -140,8 +146,9 @@ describe("the two cadences", () => {
       "delivery_recorded",
       "invoice_confirmed",
       "grant_suspended",
+      "added_tool",
     ]);
-    expect(ledger.closeRun.calls).toHaveLength(5);
+    expect(ledger.closeRun.calls).toHaveLength(6);
   });
 
   it("[REVERT-FAILS] one producer throwing does not cost the others their run", async () => {
@@ -161,6 +168,7 @@ describe("the two cadences", () => {
       "delivery_recorded",
       "invoice_confirmed",
       "grant_suspended",
+      "added_tool",
     ]);
     // The failure is recorded on the run row rather than swallowed.
     const closed = ledger.closeRun.calls[0];
@@ -193,7 +201,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all seven producers, their schedule and their next tick", async () => {
+  it("names all eight producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -205,24 +213,25 @@ describe("statusFor — what the page is allowed to say", () => {
       "delivery_recorded",
       "invoice_confirmed",
       "grant_suspended",
+      "added_tool",
       "sale_record",
       "market_price",
     ]);
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[4].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[6].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
+    expect(status.producers[7].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all seven, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all eight, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 7 producers/);
-    expect(status.producers).toHaveLength(7);
+    expect(status.armingNote).toMatch(/arms all 8 producers/);
+    expect(status.producers).toHaveLength(8);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 7 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 8 producers at once/s,
       );
     }
   });

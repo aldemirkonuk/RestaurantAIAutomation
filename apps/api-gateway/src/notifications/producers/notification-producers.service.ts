@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { ConfigService } from "@nestjs/config";
 import { GoalsService } from "../../analytics/goals.service";
@@ -19,7 +19,13 @@ import { DeliveryRecordedProducer } from "./delivery-recorded.producer";
 import { InvoiceConfirmedProducer } from "./invoice-confirmed.producer";
 import { SaleRecordProducer } from "./sale-record.producer";
 import { MarketPriceProducer } from "./market-price.producer";
+import {
+  PRODUCER_CLOCK,
+  SYSTEM_CLOCK,
+  type ProducerClock,
+} from "./producer-clock";
 import { GrantSuspendedProducer } from "./grant-suspended.producer";
+import { AddedToolProducer } from "./added-tool.producer";
 
 /**
  * The seven notification producers, and the two crons that run them.
@@ -147,6 +153,8 @@ export class NotificationProducersService {
   static readonly FAST_INTERVAL_MINUTES = FAST_INTERVAL_MINUTES;
   static readonly DAILY_INTERVAL_MINUTES = DAILY_INTERVAL_MINUTES;
 
+  private readonly clock: ProducerClock;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly tenants: ScheduledTenantsService,
@@ -159,7 +167,13 @@ export class NotificationProducersService {
     private readonly saleRecord: SaleRecordProducer,
     private readonly marketPrice: MarketPriceProducer,
     private readonly grantSuspended: GrantSuspendedProducer,
-  ) {}
+    private readonly addedTool: AddedToolProducer,
+    // Optional for the same reason the ledger's is: the spec constructs this
+    // service positionally, and production keeps the wall clock.
+    @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
+  ) {
+    this.clock = clock ?? SYSTEM_CLOCK;
+  }
 
   armed(): boolean {
     return producersArmed(
@@ -185,16 +199,18 @@ export class NotificationProducersService {
   @Cron(FAST_CRON, { name: FAST_JOB })
   async sweepFast(): Promise<void> {
     if (!this.disarmedNotice(FAST_JOB)) return;
+    const at = this.clock.now();
     await this.tenants.runPerTenant(FAST_JOB, async (tenant) => {
-      await this.runFastForTenant(tenant);
+      await this.runFastForTenant(tenant, at);
     });
   }
 
   @Cron(DAILY_CRON, { name: DAILY_JOB })
   async sweepDaily(): Promise<void> {
     if (!this.disarmedNotice(DAILY_JOB)) return;
+    const at = this.clock.now();
     await this.tenants.runPerTenant(DAILY_JOB, async (tenant) => {
-      await this.runDailyForTenant(tenant);
+      await this.runDailyForTenant(tenant, at);
     });
   }
 
@@ -216,7 +232,7 @@ export class NotificationProducersService {
   /** Public so a spec can drive it with a fixed clock. */
   async runFastForTenant(
     tenant: ScheduledTenant,
-    now: Date = new Date(),
+    now: Date = this.clock.now(),
   ): Promise<Record<string, ProducerTally>> {
     const timeZone = this.zoneOf(tenant);
     const audience = await this.ledger.audienceFor(tenant.id, timeZone, now);
@@ -257,13 +273,19 @@ export class NotificationProducersService {
         () =>
           this.grantSuspended.sweepTenant(tenant.id, timeZone, audience, now),
       ),
+      [AddedToolProducer.PRODUCER]: await this.runOne(
+        tenant.id,
+        AddedToolProducer.PRODUCER,
+        now,
+        () => this.addedTool.sweepTenant(tenant.id, timeZone, audience, now),
+      ),
     };
   }
 
   /** Public so a spec can drive it with a fixed clock. */
   async runDailyForTenant(
     tenant: ScheduledTenant,
-    now: Date = new Date(),
+    now: Date = this.clock.now(),
   ): Promise<Record<string, ProducerTally>> {
     const timeZone = this.zoneOf(tenant);
     const audience = await this.ledger.audienceFor(tenant.id, timeZone, now);
@@ -324,7 +346,7 @@ export class NotificationProducersService {
     const runId = await this.ledger.openRun(restaurantId, producer, now);
     try {
       const tally = await body();
-      await this.ledger.closeRun(runId, tally, new Date(), null);
+      await this.ledger.closeRun(runId, tally, this.clock.now(), null);
       return tally;
     } catch (error: any) {
       const tally: ProducerTally = {
@@ -339,7 +361,7 @@ export class NotificationProducersService {
       await this.ledger.closeRun(
         runId,
         tally,
-        new Date(),
+        this.clock.now(),
         error?.message ?? "unknown",
       );
       this.logger.error(
@@ -374,7 +396,7 @@ export class NotificationProducersService {
    */
   async statusFor(
     restaurantId: string,
-    now: Date = new Date(),
+    now: Date = this.clock.now(),
   ): Promise<ProducersStatus> {
     let served: boolean | null = null;
     let servedReason: string | null = null;
@@ -401,6 +423,7 @@ export class NotificationProducersService {
       [DeliveryRecordedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [InvoiceConfirmedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [GrantSuspendedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
+      [AddedToolProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
     ];
@@ -412,11 +435,13 @@ export class NotificationProducersService {
     // zero rows on 2026-09-03, so the market producer would be armed, served
     // and mute, and a page that only said "armed" would be lying by omission.
     let marketSightings: number | null = null;
+    let declaredServers: number | null = null;
     if (armed && served !== false) {
       marketSightings = await this.marketPrice.visibleObservationCount(
         restaurantId,
         now,
       );
+      declaredServers = await this.addedTool.watchedServerCount(restaurantId);
     }
 
     // The same shape for the seventh: a house whose servers have moved under
@@ -467,6 +492,17 @@ export class NotificationProducersService {
             "No tool grant on this house's model-context servers is suspended, so this " +
             "producer will stay silent even though it is armed. It speaks when a probe " +
             "finds that a server changed or withdrew a tool a manager had granted.";
+        }
+      } else if (producer === AddedToolProducer.PRODUCER) {
+        if (declaredServers === null) {
+          willWrite = null;
+          silentReason =
+            "The connections register could not be read, so whether this producer has a server to watch is unknown.";
+        } else if (declaredServers === 0) {
+          willWrite = false;
+          silentReason =
+            "This house has declared no model-context server, so no server can offer it a new tool. " +
+            "It speaks the first time a declared server's probe lists a tool it was not listing before.";
         }
       } else if (producer === MarketPriceProducer.PRODUCER) {
         if (marketSightings === null) {

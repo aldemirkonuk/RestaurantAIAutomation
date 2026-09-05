@@ -132,7 +132,7 @@ export class InvoiceConfirmedProducer {
       const currency = String(doc.currency || "USD");
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally },
+        { restaurantId, producer: PRODUCER, audience, tally, now },
         {
           // `verified_at` is in the key even though there is no un-verify today:
           // if one is ever added, a re-certification is a new event and this key

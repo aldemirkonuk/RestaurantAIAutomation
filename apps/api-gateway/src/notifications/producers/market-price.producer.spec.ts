@@ -10,6 +10,7 @@ import {
   FakeDb,
   fakeDatabase,
   fakeNotifications,
+  fixedClock,
   recorder,
 } from "./testing/fake-db";
 import {
@@ -50,13 +51,22 @@ function rankedItem(over: Record<string, any> = {}) {
   };
 }
 
-function build(items: any[] = [rankedItem()], env: Record<string, any> = {}) {
+function build(
+  items: any[] = [rankedItem()],
+  env: Record<string, any> = {},
+  startAt: Date = NOW,
+) {
   const db = new FakeDb();
   const database = fakeDatabase(db, MEMBERS);
   const notifications = fakeNotifications(MEMBERS);
+  // EVERY instant in this suite comes from here. Before 2026-09-04 the ledger
+  // stamped `claimed_at` from the wall clock while the suppression window came
+  // from the fixed NOW below, so the outcome depended on the machine date.
+  const clock = fixedClock(startAt);
   const ledger = new ProducerLedgerService(
     database as any,
     notifications as any,
+    clock,
   );
   const comparison = {
     belowTrailingAverage: recorder(async () => ({
@@ -81,7 +91,13 @@ function build(items: any[] = [rankedItem()], env: Record<string, any> = {}) {
     ledger,
     config as any,
   );
-  return { db, notifications, comparison, producer };
+  /** Sweep at an instant, keeping the clock and the sweep's `now` in step. */
+  const sweepAt = (at: Date) => {
+    clock.advanceTo(at);
+    return producer.sweepTenant(TENANT, ZONE, AUDIENCE, at);
+  };
+
+  return { db, notifications, comparison, producer, clock, sweepAt };
 }
 
 function bought(db: FakeDb, over: Record<string, any> = {}) {
@@ -130,30 +146,74 @@ describe("MarketPriceProducer", () => {
   });
 
   it("[REVERT-FAILS] a second sweep on the same day writes nothing", async () => {
-    const { db, notifications, producer } = build();
+    const { db, notifications, sweepAt } = build();
     bought(db);
-    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
-    const second = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    await sweepAt(NOW);
+    const second = await sweepAt(NOW);
     expect(notifications.persistForRestaurant.calls).toHaveLength(1);
     expect(second.emitted).toBe(0);
     expect(second.alreadyClaimed).toBe(1);
   });
 
   it("[REVERT-FAILS] stays quiet about the same product for a week", async () => {
-    const { db, notifications, producer } = build();
+    const { db, notifications, sweepAt } = build();
     bought(db);
-    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    await sweepAt(NOW);
     // Three days later — a new dedupe key, but inside the suppression window.
-    const later = new Date(NOW.getTime() + 3 * 86_400_000);
-    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, later);
+    const tally = await sweepAt(new Date(NOW.getTime() + 3 * 86_400_000));
     expect(notifications.persistForRestaurant.calls).toHaveLength(1);
     expect(tally.alreadyClaimed).toBe(1);
 
     // Eight days later — outside it, and the house hears about it again.
-    const muchLater = new Date(NOW.getTime() + 8 * 86_400_000);
-    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, muchLater);
+    await sweepAt(new Date(NOW.getTime() + 8 * 86_400_000));
     expect(notifications.persistForRestaurant.calls).toHaveLength(2);
     expect(SIGNAL_WINDOW_DAYS).toBe(7);
+  });
+
+  it("[REVERT-FAILS] the suppression window is measured against the sweep, not the machine date", async () => {
+    // THE 2026-09-04 REGRESSION, PINNED. This suite fixes NOW at
+    // 2026-09-03T14:00Z and sweeps a third time at NOW + 8 days. When
+    // `claimed_at` came from the wall clock, the claim written by sweep one
+    // carried the REAL date: before 2026-09-04T14:00Z it fell outside the
+    // seven-day window and the third sweep wrote; from 2026-09-04T14:00Z it
+    // fell inside, the sweep suppressed, and the assertion above went red
+    // having changed nothing. The test was measuring the calendar.
+    //
+    // Running the WHOLE sequence under two clocks a year apart proves the
+    // outcome is a property of the code. If either stamp escapes to the wall
+    // clock again, exactly one of these two runs breaks.
+    const runUnder = async (startAt: Date) => {
+      const { db, notifications, sweepAt } = build([rankedItem()], {}, startAt);
+      bought(db);
+      const first = await sweepAt(startAt);
+      const inside = await sweepAt(new Date(startAt.getTime() + 3 * 86_400_000));
+      const after = await sweepAt(new Date(startAt.getTime() + 8 * 86_400_000));
+      return {
+        writes: notifications.persistForRestaurant.calls.length,
+        claimedAt: db.tables.notification_producer_claims.map(
+          (r: any) => r.claimed_at,
+        ),
+        tallies: [first.emitted, inside.alreadyClaimed, after.emitted],
+      };
+    };
+
+    const past = await runUnder(new Date("2025-01-15T09:00:00Z"));
+    const future = await runUnder(new Date("2027-11-02T22:30:00Z"));
+
+    expect(past.writes).toBe(2);
+    expect(future.writes).toBe(2);
+    expect(past.tallies).toEqual(future.tallies);
+    expect(past.tallies).toEqual([2, 1, 2]);
+
+    // …and every stamp came from the injected clock, not from today.
+    const today = new Date().toISOString().slice(0, 10);
+    for (const stamp of [...past.claimedAt, ...future.claimedAt]) {
+      expect(stamp.slice(0, 10)).not.toBe(today);
+    }
+    expect(past.claimedAt.every((t: string) => t.startsWith("2025-"))).toBe(true);
+    expect(future.claimedAt.every((t: string) => t.startsWith("2027-"))).toBe(
+      true,
+    );
   });
 
   it("[REVERT-FAILS] says nothing about a product this house has never bought", async () => {

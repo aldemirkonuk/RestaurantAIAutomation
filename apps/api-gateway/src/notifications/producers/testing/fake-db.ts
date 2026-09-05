@@ -17,6 +17,16 @@
  * operators these producers actually call (`or`, `not`, `lt`, `maybeSingle`).
  */
 
+import { fixedClock, type ProducerClock } from "../producer-clock";
+
+/**
+ * Re-exported so a spec wires its store, its doubles and its clock from ONE
+ * import and cannot accidentally leave the clock on the wall while it fixes
+ * everything else — which is precisely the shape of the 2026-09-04 defect.
+ */
+export { fixedClock };
+export type { ProducerClock };
+
 export type Row = Record<string, any>;
 
 export class FakeDb {
@@ -63,6 +73,25 @@ const UNIQUE_KEYS: Record<string, string[]> = {
     "dedupe_key",
     "user_id",
   ],
+};
+
+/**
+ * PARTIAL unique indexes: the key applies only to rows the predicate admits.
+ *
+ * `uq_notification_mcp_tool_open_run` is `(connection_id, tool_name) WHERE
+ * gone_at IS NULL` — the CLOSED runs of a tool that came and went and came back
+ * must coexist, which is the whole mechanism behind "a removed-then-re-added
+ * tool is said again". A fake enforcing it as a TOTAL unique index would make
+ * that behaviour untestable by forbidding it, so the predicate is modelled too.
+ */
+const PARTIAL_UNIQUE_KEYS: Record<
+  string,
+  { key: string[]; where: (r: Row) => boolean }
+> = {
+  notification_mcp_tool_sightings: {
+    key: ["connection_id", "tool_name"],
+    where: (r) => (r.gone_at ?? null) === null,
+  },
 };
 
 type Predicate = (r: Row) => boolean;
@@ -201,7 +230,19 @@ export class FakeQuery {
     if (this.mode === "insert" || this.mode === "upsert") {
       const written: Row[] = [];
       const key = UNIQUE_KEYS[this.table];
+      const partial = PARTIAL_UNIQUE_KEYS[this.table];
       for (const row of this.payload) {
+        if (partial && partial.where(row)) {
+          const clash = rows.some(
+            (r) => partial.where(r) && partial.key.every((k) => r[k] === row[k]),
+          );
+          if (clash) {
+            return {
+              data: null,
+              error: { code: "23505", message: "duplicate key value" },
+            };
+          }
+        }
         if (key) {
           const clash = rows.some((r) => key.every((k) => r[k] === row[k]));
           if (clash) {

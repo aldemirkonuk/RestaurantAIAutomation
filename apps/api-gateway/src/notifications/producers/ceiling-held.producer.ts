@@ -185,7 +185,7 @@ export class CeilingHeldProducer {
       const name = String(goal.name || "Untitled goal");
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally },
+        { restaurantId, producer: PRODUCER, audience, tally, now },
         {
           // The period end, not the target: a ceiling that is reset for the next
           // month is a new period and gets its own line, while re-reading the

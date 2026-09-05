@@ -156,7 +156,7 @@ export class SaleRecordProducer {
         localMidnight(shiftLocalDate(localDate, 1), timeZone);
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally },
+        { restaurantId, producer: PRODUCER, audience, tally, now },
         {
           dedupeKey: `service:${localDate}`,
           occurredAt,

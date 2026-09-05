@@ -191,7 +191,7 @@ export class MarketPriceProducer {
         item.productName ?? bought.labels.get(item.productKey) ?? "A product";
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally },
+        { restaurantId, producer: PRODUCER, audience, tally, now },
         {
           dedupeKey: `product:${item.productKey}:${day}`,
           occurredAt: Number.isFinite(observedAt.getTime()) ? observedAt : now,
