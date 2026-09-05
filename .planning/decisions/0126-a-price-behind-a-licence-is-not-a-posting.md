@@ -386,3 +386,66 @@ could not be verified because michigan.gov refuses this environment.
 |---|---|---|
 | 2026-09-05 | Claude (build, Q3 — the manager maps the code) | **Q3 ANSWERED by the founder in his own words — *"Manager maps it, recorded on every row"* — and BUILT.** `20260905240000_a_manager_states_what_a_code_means.sql`: `distributor_price_code_mappings` (one statement per house per sender per code — the meaning, the **evidence**, the manager's id AND the name they bore when they said it, the time; **no DEFAULT on `price_basis` at any layer**, asserted in-file; `code_field` a CHECK with one member because **there is no CSV feed path in this repo**), plus `vendor_price_observations.price_code_mapping_id` as a **column** with an `ON DELETE RESTRICT` foreign key, so "which statement let this price in" is one indexed query rather than a JSONB hunt. **A withdrawal marks and never deletes:** all three of who/when/why or the CHECK refuses it, the withdrawn row STAYS and a partial unique index frees the code for a corrected statement, and the mark on the admitted rows is the JOIN to `withdrawn_at` — derived rather than stamped, because a stamped flag is a backfill that can half-succeed and then disagree with the mapping it reflects. **The safe refusal is still the default**: nothing is seeded, and `DistributorEntry` LOST its `priceBasisByCode` field rather than keeping it empty, because a per-distributor map shipped in a config file is the rejected alternative "Mudavym maintains the mappings" — a trade level is negotiated per licence, and the probe demonstrates two houses reading the same code differently. **Two live meanings for one code is refused twice** (the index, and `liveMappingsByCode` again) and the code is REMOVED from the parser's map, so the line is refused as unmapped — the one thing the parser must never do is pick between two trade levels. **Proven against a real Postgres** (`$SP/pglite-probe/p4ar-code-mappings.mjs`, PGlite / PG 18.3): **24/24 OK**, the in-file `DO` block EXERCISED (a user and a restaurant exist in the fixture, so the skip branch was not taken), every CHECK biting from outside it as well, a different house mapping the same code differently, deleting a mapping that admitted rows raising **23001** — `restrict_violation`, measured, not the 23503 this probe first expected — and the withdrawal marking **2** rows by join while deleting **none of 3**. **Q2 also answered** (a standing quarterly request, filed as a source — which is what the register already holds, `status` still `not_yet_filed` because nobody has filed it) and **Q1 narrowed**: the founder is asking about sanctioned APIs and a sign-in hand-over, so **no mirror of any kind was built** and the catalogue still carries `offerable: false`. Verification: `npx jest --runInBand --forceExit src/distributor-feed src/price-index` from `apps/api-gateway` — **284 passed / 24 suites**, of which **24 cases in 1 suite are new here**; gateway `tsc --noEmit -p tsconfig.spec.json` — my files clean, the 9 remaining error lines all in `communications/`, `procurement/` and `ux-optimizer/`, three directories this pass was told to keep out of; web `tsc --noEmit` **0 errors**; `check_new_tables_are_locked_down`, `check_fk_targets_exist`, `check_read_columns_exist`, `check_queried_tables_exist`, `check_no_seeded_defaults`, `check_order_capture_contract` and `check_migration_versions_unique` all **exit 0**; migration prefix uniqueness empty. **No row was written to any database and no route was called on a live gateway.** |
 | 2026-09-05 | Claude (research + build, Illinois class C and the Michigan FOIA source) | **Both of the founder's premises were measured and both were wrong, in opposite directions.** Illinois: there is no feed to declare — Breakthru's buyer portal publishes `Disallow: /` for everything but its login, both distributors' terms of use forbid automated access, and Southern Glazer's separately forbids giving "any other person" access with your credentials, so a credential mirror puts the house in breach. LibDib's public OpenAPI (70,801 B, HTTP 200) was read in full: **the string `price` appears zero times**, correcting this register's "most promising class-C connection". And the industry answers the question differently anyway — SGWS's documented EDI set on two independent trading-partner pages is 850/856/810(/997) with **no 832**, Restaurant365 ticks Multi-Invoice and leaves Order Guides blank for all three wine-and-spirits distributors it lists, and MarginEdge says in one sentence "We update your order guides based on your invoices". Michigan: **MCL 436.1609a embargoes every filed net cash price from FOIA for one year**, so the standing quarterly request the founder called for can never return anything current — ADR 0117 Q19's "public records" premise is corrected here. Built: `distributor-feed/` (registry with the verbatim robots and terms per distributor, a read-only catalogue endpoint, `offerable: false` with its reason), `parse-edi832.ts` with two recorded fixtures (one real published sample that correctly admits **nothing**, one constructed and labelled as such), the `intake: "foia"` source with `status: "not_yet_filed"` and a 480-day bound documented as an embargo's arithmetic not a freshness allowance, and two corrected house-facing sentences. **Declined and argued**: the class-C line in `MarketIndexPanel`, because a class-C row is tenant-keyed and that panel draws the state-keyed register — `comparisonClassOf` already maps `api_catalog` to `quoted` and already calls that class "ADR 0117 classes A and C", so the code answered the placement fork before the brief posed it. `npx jest --runInBand --forceExit src/price-index src/distributor-feed` from `apps/api-gateway` on the tree reported here: **214 passed / 20 suites**, of which **45 in 3 suites are new here**. Nothing was armed, no credential is stored, no page on a visit-time-restricted host was fetched, and **no request was sent**. Three founder questions. |
+
+## Q1, researched from three angles and judged (2026-09-05)
+
+The founder asked (batch 48): *"deploy 3 opus agents, look from diff angles, focus on the
+effect on the customer the most. How would it affect to our benefit, and we create our own
+price market."* Three researchers wrote `p4-scratch/p4be/p4be-customer.md` (the Illinois
+house), `p4be-market.md` (Mudavym's own price market and buyer-side information-exchange
+law) and `p4be-law.md` (the distributors' terms, the case law, the sanctioned routes, a
+draft letter), each with a fetch log; a Sonnet adversary tried to kill each answer
+(`p4be-adversary.md`): angle 1 WOUNDED, angle 2 WOUNDED, angle 3 SURVIVES with one defect
+in its fetch log (an unlogged request that no claim rests on) and one self-correction.
+
+**What changes in this ADR.** (1) The Southern Glazer's clause this ADR quotes governs
+`southernglazers.com` — its Terms define "Website" as that host — and NOT the buyer portal
+`shop.sgproof.com`, whose own terms nobody has read (its visit window was shut); the registry
+and the house-facing sentence applied the corporate terms to the portal. (2) Breakthru's
+§6.2(a) ("access our Services by any means other than through the interfaces that are
+provided") is broader than the §6.2(c) quoted here, and §6.2(e) ("reproduce, duplicate, copy
+any aspect of the Site for any purpose") on its face reaches a manual export too — so the
+hand-export path is cleaner than a mirror, not clean. (3) 720 ILCS 5/17-51 (Illinois computer
+tampering: "accesses or causes to be accessed" in excess of authority; no $5,000 loss floor;
+a customer safe harbour only where the customer "complies with all terms") is the sharper
+risk than the CFAA, whose case law (Van Buren; Power Ventures — user consent is "akin to
+allowing a friend to log on", and a ToS breach "without more" is not a violation until a
+cease-and-desist; hiQ, which distinguishes password-gated access; Ryanair) runs the other
+way from what this ADR implied; no Illinois case applies 17-51 to a licensee's own tool, and
+the researcher is not a lawyer. (4) A sign-in-then-hand-over escapes the SGWS credential
+clause on its literal words and lands on the two clauses above; it is not an escape.
+(5) No distributor API or EDI programme exists that a house can be granted; what exists is
+platform-level and Mudavym would apply. Restaurant365's vendor table: 18 of 214 vendors ship
+an order-guide feed, zero of them beverage alcohol; SGWS, RNDC and Youngs offer multi-invoice
+only. (6) Illinois genuinely has no price-posting regime (the Liquor Control Act's one
+"schedule of prices" is the retail happy-hour rule; 11 Ill. Adm. Code 100 has no filing
+phrase), but 11 Ill. Adm. Code 100.500 requires a distributor's quantity discount to be
+offered alike to similarly situated retailers in the same area — a uniformity hypothesis
+worth testing on the first three real Illinois invoices. (7) The access route was never the
+binding constraint on the product: `priceBelowAverage` needs three earlier sightings plus the
+newest inside thirty days per bottle, so a catalogue mirror (one row per edition) would not
+make the market box speak; `parseEdi832` has zero production callers, no upload route accepts
+a distributor catalogue, `apps/web/src` has zero references to `distributor-feed`, and the
+EDI 810 invoice path Mudavym already parses end to end has never been asked for. (8) Provi
+(Chicago, national RNDC agreement since 2025-07-28) already shows a licensed Illinois buyer
+cross-distributor prices lawfully. (9) An owned cross-house price market is not a near-term
+substitute: every regime (US DOJ/FTC factors; the Agri Stats consent decree of 2026-05-07 —
+at least three contributors, no one above 70 %, a 45-day lag, sales-price data stopped
+"regardless of whether anonymized"; EU/UK; Türkiye) permits a buyer-side pool only
+aggregated, lagged and openly accessible, and the estate has at most three houses in any
+jurisdiction, zero rows in the register, and a `restaurant_id` with two states enforced by
+nine hand-written filters and no RLS policy; whether the three Illinois "houses" are real
+independent competitors or demo tenants was never asked. (10) Illinois's cooperative
+purchase-group statute (235 ILCS 5/6-9.5 to 6-9.15) is the one lawful structure in the corpus
+that does what "our own price market" describes; nobody has evaluated it as a product.
+
+**The judged path, proposed to the founder.** No mirror and no session hand-over of any
+kind. For Illinois now: the house's own invoices (class A) plus the EDI 810 ingest that is
+already built, which needs a producer and a surface, not a new capability; a hand-obtained
+832 through the upload path with the manager's code mapping (0e4b67ed) as the second way in;
+a letter from the house (angle 3's draft, for the founder's eyes, never sent by this product)
+asking its Sales Consultant for what this industry already grants foodservice buyers — an
+invoice feed or an order-guide equivalent — starting with Southern Glazer's, which documents
+an EDI programme. The owned price market stays a note until there are three to five
+independent houses in one jurisdiction and the database has a third visibility state, one
+enforcement point and an RLS policy. The founder decides; nothing in this section is built.
