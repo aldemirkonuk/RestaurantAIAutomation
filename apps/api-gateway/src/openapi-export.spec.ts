@@ -140,15 +140,16 @@ describe("the gateway's boot path", () => {
     let preFix: string;
     try {
       preFix = readFromGit(PRE_FIX_SHA, MAIN_TS);
-    } catch {
+    } catch (cause) {
       // The commit is unreachable from this checkout (squash-merged, or a
-      // shallow clone). Skipping is the honest outcome; passing would be a
-      // guard certifying itself against nothing.
-      // eslint-disable-next-line no-console
-      console.warn(
-        `SKIPPED: ${PRE_FIX_SHA} is not reachable, so the pre-fix comparison could not run.`,
+      // shallow clone). A guard that cannot see its pre-fix shape must FAIL,
+      // not pass: a quiet skip would be the guard certifying itself against
+      // nothing (the absence-reported-as-health fault). CI's Test TypeScript
+      // job fetches origin/main for the provenance tests; if this commit is
+      // ever squashed away, re-pin PRE_FIX_SHA rather than soften this.
+      throw new Error(
+        `${PRE_FIX_SHA} is not reachable from this checkout, so the pre-fix comparison could not run: ${String(cause)}`,
       );
-      return;
     }
 
     expect(preFix).toContain('NODE_ENV !== "production"');
