@@ -340,6 +340,53 @@ the Michigan upload path instead; and **`api.bls.gov/robots.txt` returns 200 wit
 `User-agent: * / Disallow: /`** on the host of a documented, key-issuing, rate-limited
 public API, which is an open question about what robots.txt binds and is that plan's Q1.
 
+**Class E's alert now has a PRICE on it, and the price gated the cadence (2026-09-05,
+the founder's batch-59 answer to the plan's Q5).** The founder's words: **"Twice a year, and
+the house types its carrying cost."** Both halves shipped together because the measurement
+made them one answer. Over 440 recorded FAO months, walk-forward, a fire is followed by a
+higher index three months later **66.7 %** of the time against a **54.4 %** benchmark (pooled
+over seven recorded histories: 923 fires, lift **+3.88 pp**) — and the entire gain is spent by
+a carrying cost of about **one percent a month**, with break-evens of 0.96 % on the FAO
+headline, 1.66 % on Dairy and **0.27 % on Meat**. So `DEFAULT_BUDGET = 2` is marked on the
+proposal an admin reads before arming, with the two rejected budgets carrying their reasons
+beside them, and `restaurants.carrying_cost_percent_per_month`
+(`20260906140000_a_carrying_cost_is_typed_by_a_person.sql`) is nullable with **no default**,
+its author and its moment enforced as one fact by a CHECK, typed on `/settings?tab=carrying-cost`.
+
+**Three things this settles that bear on THIS ADR's rules, and one it opens.**
+
+1. **A class-E series may now carry a money figure, and only under two person-typed facts.**
+   The alert states an expected saving in the house's own currency ONLY when the house typed a
+   carrying cost AND a person typed a shelf life for the item; otherwise the clause says
+   **UNMEASURED** and names which number is missing. There are exactly three states —
+   `stated`, `unmeasured`, `too_small` — and the third is not an absence: everything is known
+   and the answer is that the line is too small to repay an interruption, with the measured
+   floor printed as the reason. This is the ADR 0083 line ("a page may not claim a write it
+   never makes") applied to a saving, and it is enforced in code rather than in copy:
+   `carryPerPeriod` is `number | null` and `carryFraction` is null rather than zero, because a
+   zero would price holding three months of stock as free.
+2. **A unit mistake on a class-E-derived figure is refused at both ends.** The column is a
+   PERCENT per month and the CHECK admits `>= 0.01` and `<= 25.000`, which refuses the fraction
+   spelling (`0.0075`, understating the cost by a hundred — the direction that makes every
+   alert look profitable) and the per-year spelling (`75`). Both refusals were PGlite-probed.
+   It is the same rule this ADR wrote for GİB: a number whose unit is not certain is not
+   printed.
+3. **A cadence the series cannot deliver is named, not silently clamped.** FAO and ONS publish
+   monthly, so weekly and fortnightly are refused as `finer_than_the_series_publishes` and the
+   proposal screen says why they are absent. An option that was asked for and is missing must
+   be explained, or an absence reads as a choice — the same shape as `withheld_reason` on a
+   series this register holds but does not fetch.
+
+**And what it opens, carried here rather than lost.** Six questions came out of the quant pass
+(`p4-scratch/p4bf-quant-cadence.md` §9); two are answered above (the default budget; whether a
+house types a carrying cost — yes, and it is now a field), one is built (the spend floor), and
+**three are open and the founder's**: (i) does the proposal promise the budget as a RATE, given
+that out of sample a once-a-year budget fired 1.62 times a year and a twice-a-year budget 2.27
+— the sentence now prints both, which is a partial answer; (ii) do we act on 36 years or on 40
+months, since the identical rule on this repository's own committed 40-month fixture has a
+**negative lift at every cadence and a 0 % hit rate at once a year**; and (iii) the egg
+download, without which no class-E number in this product is money rather than an index point.
+
 ### The provenance a sighting must carry
 
 `source · issuer · issuer_jurisdiction · issued_at · fetched_at · price_basis · unit ·
@@ -2236,7 +2283,7 @@ This is unknown, not empty."*
     largest and the only one that makes an index line answer "what does this
     bottle cost elsewhere".
 
-29. **Two of the four fetchable shops are unarmable for reasons that are not
+29. ~~**Two of the four fetchable shops are unarmable for reasons that are not
     about us.** Hedonism serves USD to an anonymous fetcher and Wine Chateau
     serves a market with no house in it. Is it worth sending a presentment
     hint (a `?currency=GBP` or a locale header) to pin Hedonism to GBP, or is
@@ -2518,3 +2565,9 @@ close things.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-05 | Claude (build, the register's tenancy boundary — founder batch 56) | **Addendum recorded.** One enforcement point (`price-register/visibility.ts`, `scopePriceRegisterRead`) replaces the six hand-written tenancy filters and the two hand-applied `MARKET_VISIBILITY` sites; ten reads now pass through it, including six that previously carried NO visibility clause at all. A third visibility state (`contributed_aggregate_only`) is defined with a CHECK, with **no row in it and no read that returns it**, both asserted. RLS policies on both tables state the rule in SQL and the migration's own header says plainly that they protect nothing while the gateway holds the service role. New guard `check_price_register_reads_are_scoped.py` + `--self-test`, wired into `ci.yml`, **proven to bite** on HEAD copies of two converted files (exit 1, six findings, probes deleted). **Corrects the "nine filters" figure** this ADR's instruction inherited from `p4be-market.md` §5: three of the nine filter `beverage_identity_candidates`, `beverage_identity_decisions` and `providers`, not the register. **Also fixed:** `price-index.service.ts:635` counted held books as visible rows in `/price-index/status`, contradicting `countFor` in the same file. **Four reads left unconverted and allowlisted by name** in `procurement/**`, `notifications/**`, `distributor-feed/**` (other builders' files this wave); none is an open leak and each is pinned so the entry cannot rot into a silent pass. 668 tests / 43 suites pass; migration PGlite-proven 26/0; boot check PASS on an isolated probe. Nothing written to any database. |
+
+## Review trail, continued (parent, 2026-09-06) — the tenancy boundary, 639d66cb
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-06 | Claude (parent) | The numbers 639d66cb's message pointed at this addendum for: on an archive of that commit's index, `npx jest src/vendor-intel src/price-index src/price-register src/beverages` 668 passed / 43 suites; `scripts/check_price_register_reads_are_scoped.py` PASS (14 reads: 10 through the enforcement point, 4 allow-listed) and `--self-test` PASS; its bite proven on the pre-fix vendor-comparison and price-index files (exit 1, six findings by line) and its rot detection on a mutated allow-list pin (exit 2); PGlite `p4bk-register-visibility.mjs` 26 passed / 0 (the CHECK refuses all four disagreements; 4 visible with the null arm, 2 without; four policies; authenticated refused 42501 before RLS); gateway tsc (both configs) and web tsc 0 errors; check_gateway_boots PASS. **Corrections:** the migration's header said "five files" and "FIVE reads" where the census is four files and six reads (fixed in the file); and that message listed check_read_columns_exist under "Measured" while the archive run printed FAIL — the failure belonged to 78bd177a's name lookup, not to this commit, and was fixed in 9d13bd01, but the message should have said so. |

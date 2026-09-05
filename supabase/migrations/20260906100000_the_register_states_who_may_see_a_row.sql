@@ -13,7 +13,11 @@
 --
 -- Measured on this tree before the fix, the boundary of the two register tables
 -- was SIX hand-written `.or("restaurant_id.is.null,restaurant_id.eq.<id>")`
--- clauses across five files, plus FIVE reads carrying no tenancy clause at all,
+-- clauses across four files (vendor-comparison x3, vendor-page-extractor,
+-- procurement.service, market-price.producer), plus SIX reads carrying no
+-- tenancy clause at all (outlier-rejudge, identity, price-code-mappings,
+-- procurement:1780, beverages, price-index:635 -- the header first said five
+-- files and five reads; ADR 0117's addendum has the census right),
 -- and NO policy anywhere in supabase/migrations/ naming either table beyond a
 -- service-role one. (The "nine" of ADR 0126's sentence counted three clauses
 -- that filter other tables entirely; the correction is in ADR 0117's addendum.)

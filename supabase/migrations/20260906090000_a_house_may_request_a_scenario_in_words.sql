@@ -44,7 +44,9 @@
 -- author is required and the row refuses to outlive them silently.
 --
 -- The cost, stated: deleting a user who has an outstanding request is REFUSED
--- (23503) until the request is dealt with. Nothing in the gateway or the
+-- (SQLSTATE 23001, restrict_violation, measured on PGlite -- an earlier comment
+-- said 23503, which is the code for a MISSING referent and is not what a
+-- RESTRICT delete raises) until the request is dealt with. Nothing in the gateway or the
 -- orchestrator deletes a `public.users` row today (grepped 2026-09-05), so this
 -- blocks no existing path; if erasure is ever built, the requests are rows it
 -- must handle rather than rows it may silently blank.

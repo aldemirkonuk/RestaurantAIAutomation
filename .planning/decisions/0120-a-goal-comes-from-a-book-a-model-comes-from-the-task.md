@@ -316,7 +316,7 @@ Three shapes were chosen against the repo's convention, each for a reason:
    actor columns are nullable and `SET NULL`. That convention is right for a
    record of an ACT; this row is a person's WORDS, and a null author would
    render as "nobody asked". Cost, stated: deleting a user with an outstanding
-   request is refused (23503). Nothing in the gateway or the orchestrator
+   request is refused (SQLSTATE 23001, restrict_violation — measured on PGlite; the first text said 23503, the code for a missing referent, corrected by audit adb8de250209ceb96). Nothing in the gateway or the orchestrator
    deletes a `public.users` row today.
 3. **A failed read throws.** `listAll` returns an error with its reason rather
    than `[]`, because on this surface an empty list reads as "no house has asked
@@ -333,3 +333,9 @@ Three shapes were chosen against the repo's convention, each for a reason:
 ## Founder answers, 2026-09-06 (batch 60)
 
 **"Lock it."** Status moved to Locked above. **"No, not for now"** on a house seeing its own scenario requests back: a request is sent and acknowledged; the answer is the scenario appearing in the book; a list with no state reads like a queue nobody answers. Rejected: a plain list of what they sent.
+
+## Review trail, continued (parent, 2026-09-06)
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-06 | Claude (parent) | The numbers 78bd177a's message pointed at "the ADR's review trail" for, which this trail did not carry until now (audit adb8de250209ceb96 called it a BLOCKER, rightly): on an archive of that commit's index, `npx jest src/analytics src/common/model-client` 473 passed / 36 suites; `cd apps/web && npx vitest run src/pages/reports` 89 passed / 3 files; gateway tsc (tsconfig.json and tsconfig.spec.json) 0 errors; web tsc 0 errors; check_gateway_boots PASS; PGlite `p4bh-scenario-request.mjs` applied with its own assertions, nine shape cases (no/null/ghost author refused 23502/23503, empty and 2001-char refused 23514, 2000 accepted), author deletion refused 23001, house cascade 2 to 0 rows, RLS true, anon/authenticated grants 0. **Correction:** that message listed check_read_columns_exist under "Measured" while the archive run printed FAIL (4 unresolvable reads over the ceiling of 2 — the name lookup's two template-literal selects); the parent read the guard lines and committed anyway; fixed in 9d13bd01 (literal columns; guard PASS; jest goal-scenario-requests.spec.ts 14 passed). |
