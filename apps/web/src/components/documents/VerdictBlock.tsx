@@ -95,6 +95,38 @@ export function exceptionSentences(doc: CanonicalDocument): {
     })
 }
 
+/**
+ * THE SHEET MUST FLAG ITS OWN INCONSISTENCY.
+ *
+ * `layer3.tiesOut` is the DOOR's tie-out: the extractor's line sum against the
+ * document's stated total, computed at intake. It says nothing about the ladder
+ * this sheet actually prints. Measured on screen 2026-09-05: the Turkish
+ * invoice `b1e02edf` rendered Lines ₺9.352,00 + Charges ₺180,00 = Before tax
+ * ₺9.532,00, Tax ₺1.834,40 — a ladder totalling ₺11.366,40 — with the stated
+ * total ₺11.186,40 printed directly beneath it, and this block said "The lines
+ * add up to the stated total." The page contradicted itself in two adjacent
+ * rows and reported health.
+ *
+ * So the printed ladder is checked against the printed total, here, from the
+ * same envelopes the totals block renders. Returns null when the two agree to
+ * the cent, and null when any of the three is absent — an ABSENT number is not
+ * a disagreement, and claiming one would be the mirror fault.
+ */
+export function ladderDisagreement(doc: CanonicalDocument): {
+  computed: number
+  stated: number
+  delta: number
+} | null {
+  const t = doc.layer1.totals
+  const before = t.taxExclusiveAmount.value
+  const tax = t.taxAmount.value
+  const stated = t.taxInclusiveAmount.value
+  if (before == null || tax == null || stated == null) return null
+  const computed = Math.round((before + tax) * 100) / 100
+  const delta = Math.round((stated - computed) * 100) / 100
+  return Math.abs(Math.round(delta * 100)) <= 1 ? null : { computed, stated, delta }
+}
+
 export interface VerdictBlockProps {
   doc: CanonicalDocument
   /** The delivery states this document's event is in, for the clock chip. */
@@ -117,6 +149,8 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
    * expensive: the sentence a manager reads first.
    */
   const nothingRead = doc.layer1.lines.length === 0
+  /** The sheet's own rows against the sheet's own stated total. */
+  const ladder = ladderDisagreement(doc)
   /**
    * NOTHING COMPARED IS NOT NOTHING WRONG EITHER — and it is not a difference.
    *
@@ -227,15 +261,22 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
         )}
       </p>
 
-      {/* The arithmetic self-check, with its third state kept separate. */}
-      <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+      {/* The arithmetic self-check, with its third state kept separate. The
+          LADDER check comes first: a sheet whose own rows do not add up must
+          say so before it reports on anybody else's arithmetic. */}
+      <p
+        data-testid="tie-out-sentence"
+        style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}
+      >
         {nothingRead
           ? 'There are no lines to add up, so there is no arithmetic to check.'
-          : doc.layer3.tiesOut === null
-            ? 'The document states no total, so the arithmetic could not be checked. That is untested, not correct.'
-            : doc.layer3.tiesOut
-              ? 'The lines add up to the stated total.'
-              : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency)}).`}
+          : ladder
+            ? `The stated total ${fmtMoney(ladder.stated, currency)} does not match the lines plus charges plus tax, ${fmtMoney(ladder.computed, currency)} — off by ${fmtMoney(Math.abs(ladder.delta), currency)}.`
+            : doc.layer3.tiesOut === null
+              ? 'The document states no total, so the arithmetic could not be checked. That is untested, not correct.'
+              : doc.layer3.tiesOut
+                ? 'The lines add up to the stated total.'
+                : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency)}).`}
       </p>
 
       {exceptions.length > 0 && (

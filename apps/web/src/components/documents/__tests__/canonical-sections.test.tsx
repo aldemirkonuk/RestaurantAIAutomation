@@ -283,6 +283,71 @@ describe('VerdictBlock (ADR 0104 D4)', () => {
     expect(container.textContent).toMatch(/untested, not correct/)
   })
 
+  /**
+   * THE SHEET MUST FLAG ITS OWN INCONSISTENCY.
+   *
+   * Measured on screen 2026-09-05 against the Turkish invoice `b1e02edf`: the
+   * deposit was counted both inside Lines (₺9.352,00) and again as a ₺180,00
+   * charge, so the printed ladder came to ₺11.366,40 while the total row said
+   * ₺11.186,40 — and this block said "The lines add up to the stated total",
+   * because `layer3.tiesOut` grades the DOOR's line sum, not the ladder the
+   * sheet renders.
+   */
+  it('names the ladder that does not reach the stated total', () => {
+    const d = doc()
+    d.layer1.totals = {
+      ...totals(),
+      linesNetTotal: env(9352),
+      chargesTotal: env(180),
+      taxExclusiveAmount: env(9532),
+      taxAmount: env(1834.4),
+      taxInclusiveAmount: env(11186.4, { as_printed: '11.186,40' }),
+      amountDue: env(11186.4),
+    }
+    // The door tied out — that is exactly the state that used to hide this.
+    d.layer3.tiesOut = true
+    d.layer3.tieOutDeltaCents = 0
+    const { getByTestId } = render(<VerdictBlock doc={d} />)
+    const said = getByTestId('tie-out-sentence').textContent ?? ''
+    expect(said).toMatch(/The stated total ₺11\.186,40 does not match/)
+    expect(said).toMatch(/₺11\.366,40/)
+    expect(said).toMatch(/off by ₺180,00/)
+    expect(said).not.toMatch(/The lines add up to the stated total/)
+  })
+
+  it('says the lines add up once the ladder reaches the stated total', () => {
+    // The same document after the BT-106 fix: the deposit has left Lines and is
+    // carried once as a charge, so the ladder reaches the printed total.
+    const d = doc()
+    d.layer1.totals = {
+      ...totals(),
+      linesNetTotal: env(9172),
+      chargesTotal: env(180),
+      taxExclusiveAmount: env(9352),
+      taxAmount: env(1834.4),
+      taxInclusiveAmount: env(11186.4, { as_printed: '11.186,40' }),
+      amountDue: env(11186.4),
+    }
+    d.layer3.tiesOut = true
+    const { getByTestId } = render(<VerdictBlock doc={d} />)
+    expect(getByTestId('tie-out-sentence').textContent).toMatch(
+      /The lines add up to the stated total/,
+    )
+  })
+
+  it('does not call an ABSENT total a disagreement', () => {
+    // A delivery note prints no money. An absent number is not a mismatch, and
+    // claiming one would be the same absence-as-health fault facing the other
+    // way.
+    const d = doc()
+    d.layer1.totals = { ...totals(), taxInclusiveAmount: env<number>(null) }
+    d.layer3.tiesOut = null
+    const { getByTestId } = render(<VerdictBlock doc={d} />)
+    expect(getByTestId('tie-out-sentence').textContent).toMatch(
+      /could not be checked/,
+    )
+  })
+
   it('says the amount is not computed rather than printing a zero at risk', () => {
     const d = doc()
     d.layer3.lines = [adjudicated({ verdict: 'price_variance', moneyAtRisk: null })]
