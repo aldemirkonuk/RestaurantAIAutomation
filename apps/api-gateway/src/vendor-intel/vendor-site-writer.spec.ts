@@ -134,7 +134,7 @@ describe("what reaches the register", () => {
     expect(out.written).toBe(0);
   });
 
-  it("flags an undated page on the row, and dates it from the fetch", async () => {
+  it("flags an undated page on the row, and claims no effective date", async () => {
     const { service, captured } = makeService({});
     await write(service, [item()]);
     expect(captured.rows[0].observed_at).toBe(ctx.fetchedAt);
@@ -142,14 +142,17 @@ describe("what reaches the register", () => {
     expect(captured.rows[0].raw.undated).toBe(true);
   });
 
-  it("uses the page's own date when the page states one", async () => {
+  it("files the page's own date as effective_date, not as observed_at", async () => {
     const { service, captured } = makeService({});
     await write(service, [item()], {
       pageStatedDate: "2026-07-01T00:00:00.000Z",
     });
-    expect(captured.rows[0].observed_at).toBe("2026-07-01T00:00:00.000Z");
+    // observed_at stays OUR fetch clock: the comparison window reads it, so it
+    // must be a fact about our reading rather than a claim on the vendor's page.
+    expect(captured.rows[0].observed_at).toBe(ctx.fetchedAt);
     expect(captured.rows[0].effective_date).toBe("2026-07-01");
     expect(captured.rows[0].raw.undated).toBe(false);
+    expect(captured.rows[0].raw.fetchedAt).toBe(ctx.fetchedAt);
   });
 });
 

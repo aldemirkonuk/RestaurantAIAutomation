@@ -64,20 +64,43 @@ describe("decideScrapeSighting — the label", () => {
 });
 
 describe("decideScrapeSighting — the date", () => {
-  it("uses the page's own date when the page states one, and says so", () => {
+  it("puts the page's own claim in effective_date and OUR clock in observed_at", () => {
     const d = decideScrapeSighting({
       ...BASE,
       pageStatedDate: "2026-08-01T00:00:00.000Z",
     });
     if (!d.write) throw new Error("expected a sighting");
-    expect(d.row.observed_at).toBe("2026-08-01T00:00:00.000Z");
+    // observed_at is when WE saw it, always. The comparison window reads this
+    // column, and it must be a fact about our reading rather than a claim on a
+    // page we do not control.
+    expect(d.row.observed_at).toBe(BASE.fetchedAt);
+    // effective_date is when the vendor says the price applies from.
     expect(d.row.effective_date).toBe("2026-08-01");
     expect(d.row.raw.dateBasis).toBe("page_stated");
     expect(d.row.raw.undated).toBe(false);
     expect(d.row.raw.fetchedAt).toBe(BASE.fetchedAt);
+    expect(d.row.raw.pageStatedDate).toBe("2026-08-01T00:00:00.000Z");
   });
 
-  it("flags an UNDATED page and falls back to the fetch time", () => {
+  it("a page's claimed date NEVER moves the sighting out of the read window", () => {
+    // The defect this mapping exists to prevent: a page claiming an effective
+    // date two months back, read today. Under the first cut this row landed
+    // outside a 30-day window keyed on observed_at and vanished from the
+    // comparison; a forward claim would have kept a stale price inside one.
+    const old = decideScrapeSighting({
+      ...BASE,
+      pageStatedDate: "2026-07-01T00:00:00.000Z",
+    });
+    const undated = decideScrapeSighting({ ...BASE, pageStatedDate: null });
+    if (!old.write || !undated.write) throw new Error("expected sightings");
+    expect(old.row.observed_at).toBe(undated.row.observed_at);
+    expect(old.row.observed_at).toBe(BASE.fetchedAt);
+    // The claim is not lost — it is just in the column that means "applies from".
+    expect(old.row.effective_date).toBe("2026-07-01");
+    expect(undated.row.effective_date).toBeNull();
+  });
+
+  it("flags an UNDATED page and claims no effective date at all", () => {
     const d = decideScrapeSighting({ ...BASE, pageStatedDate: null });
     if (!d.write) throw new Error("expected a sighting");
     expect(d.row.observed_at).toBe(BASE.fetchedAt);
@@ -85,6 +108,7 @@ describe("decideScrapeSighting — the date", () => {
     expect(d.row.raw.dateBasis).toBe("fetch_time_undated");
     // The vendor never claimed an effective date, so we do not invent one.
     expect(d.row.effective_date).toBeNull();
+    expect(d.row.raw.pageStatedDate).toBeNull();
   });
 });
 

@@ -14,8 +14,9 @@
  * it is read by a model out of markup that can change under us. So the row it
  * produces has to say all of that on the row itself: `source_type
  * 'website_scrape'`, `trust_tier 4`, the page URL as `source_ref`, the
- * content hash, and — the thing the old writer never recorded — whether the
- * page stated its own date or we are standing in for it with our fetch time.
+ * content hash, `observed_at` as OUR fetch clock, the page's own claimed date
+ * in `effective_date` when it makes one, and — the thing the old writer never
+ * recorded — an `undated` flag when it makes none.
  *
  * The second half is the comparison gate, and it lives in
  * `price-below-average.ts` (`comparisonClassOf`): a tier-4 row is never
@@ -175,8 +176,9 @@ function positiveInt(v: unknown): number | null {
  * vendor never asserted — which is worse than having no date, because it
  * looks like provenance.
  *
- * Returns null when nothing qualifies. Null is the flag: the caller records
- * `dateBasis: 'fetch_time'` and the row says so.
+ * Returns null when nothing qualifies. Null is the flag: the row's
+ * `effective_date` stays NULL and `raw.undated` is true. It never affects
+ * `observed_at`, which is our fetch clock either way.
  */
 export function readPageStatedDate(
   text: string,
@@ -310,16 +312,33 @@ export function decideScrapeSighting(
     };
   }
 
-  // ADR 0117's `fetched_at` is always known. `observed_at` is the page's own
-  // date when it states one — and the row records WHICH of the two it is, so a
-  // reader is never left guessing whether "today" is the vendor's word or ours.
+  // THE TWO DATES, AND WHICH COLUMN EACH GOES IN.
+  //
+  // CORRECTED 2026-09-04, on the founder's second call, against this file's
+  // first cut. `observed_at` is **when WE saw it** — our fetch clock, always,
+  // whether or not the page dated itself. The page's own claim goes to
+  // `effective_date`, the date the price APPLIES from.
+  //
+  // This restores the column's own comment (`…vendor_price_observations.sql:75-78`:
+  // "When we saw it vs when the price applies") and ADR 0117's provenance
+  // table, which maps `fetched_at -> observed_at` and `issued_at ->
+  // effective_date`. The first cut put the page's claimed date into
+  // `observed_at`, and it was wrong in a way that matters: the comparison
+  // windows on `observed_at`, so a page claiming "prices effective 1 July"
+  // would have dropped a sighting we read TODAY out of a 30-day window — and a
+  // forward claim would have held a stale price inside one. The window must be
+  // a fact about our reading, which we control and can audit, never about a
+  // claim printed on a page we do not control.
+  //
+  // Both dates are on the row regardless, and `undated` still says which pages
+  // made no claim at all.
   const fetchedAt = new Date(input.fetchedAt);
   const fetchedAtIso = Number.isNaN(fetchedAt.getTime())
     ? new Date().toISOString()
     : fetchedAt.toISOString();
   const stated = input.pageStatedDate ? new Date(input.pageStatedDate) : null;
   const statedOk = stated && !Number.isNaN(stated.getTime()) ? stated : null;
-  const observedAt = statedOk ? statedOk.toISOString() : fetchedAtIso;
+  const observedAt = fetchedAtIso;
   const dateBasis: "page_stated" | "fetch_time_undated" = statedOk
     ? "page_stated"
     : "fetch_time_undated";
@@ -365,10 +384,13 @@ export function decideScrapeSighting(
       trust_tier: SCRAPE_TRUST_TIER,
       source_ref: sourceRef,
       source_url: url,
+      // When WE saw it. The comparison window reads this column, so it is our
+      // clock and nothing else.
       observed_at: observedAt,
-      // `effective_date` means the date the price applies from. Only the page's
-      // own claim can fill it; our fetch time is not the vendor's effective
-      // date and writing it there would manufacture provenance.
+      // When the price APPLIES, per the page's own claim. Only the vendor can
+      // fill it; our fetch time is not their effective date and writing it here
+      // would manufacture provenance. NULL is the honest value for an undated
+      // page, and `raw.undated` says so in the same breath.
       effective_date: statedOk ? statedOk.toISOString().slice(0, 10) : null,
       raw_price: Math.round(price * 100) / 100,
       currency,
@@ -385,9 +407,10 @@ export function decideScrapeSighting(
         origin: "vendor_site_sweep",
         sourceClass: "public_site",
         trustTier: SCRAPE_TRUST_TIER,
-        // The two dates, both named, always. `undated` is the flag the founder
-        // asked for: when true, `observed_at` is OUR clock standing in for a
-        // date the vendor never printed.
+        // The two dates, both named, always. `observed_at` is ALWAYS this
+        // `fetchedAt`; `undated` true means the vendor printed no date of its
+        // own, so `effective_date` is NULL and nothing is claimed about when
+        // the price began to apply.
         fetchedAt: fetchedAtIso,
         pageStatedDate: statedOk ? statedOk.toISOString() : null,
         dateBasis,
