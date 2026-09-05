@@ -399,3 +399,264 @@ describe("minting the seal", () => {
     expect(h.calls).toEqual([]);
   });
 });
+
+/**
+ * ===========================================================================
+ * THE ACT, PROVEN AGAINST THE REAL SealChallengeService
+ * ===========================================================================
+ * Every case above mocks `redeem`, so they prove that the one-tap path CALLS
+ * the seal with the right binding — and nothing about whether the seal would
+ * actually refuse an order-approval token presented to the delivery write.
+ * ADR 0116's addendum claims exactly that ("an order seal minted for `approve`
+ * cannot be spent here"), and the claim was resting on a generic case in
+ * `common/seal/seal-challenge.service.spec.ts:213-215` that uses `cancel`.
+ *
+ * So these two drive the REAL service over an in-memory `mcp_seal_challenges`
+ * table, the way that suite does, and the approval seal is a GENUINE one: it
+ * carries `orderSealArgs(...)` from `procurement/order-seal.ts`, which is what
+ * `ProcurementService.issueOrderSealChallenge` mints, rather than a token
+ * hand-shaped to fail.
+ *
+ * The mirror matters as much as the refusal. A test that only proves "the
+ * wrong seal is refused" passes just as well against a path that refuses
+ * everything, which would be a delivery control that never works.
+ */
+
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { hashCallArgs, hashSealToken } from "../common/seal/seal-token";
+import { ORDER_SEAL_ACT, orderSealArgs } from "../procurement/order-seal";
+
+const HOUSE = "rest-A";
+const MANAGER = "user-1";
+const ORDER_ID = "ord-9";
+
+interface SealedHarness {
+  service: OneTapActionsService;
+  seals: Row[];
+  audits: Row[];
+  updates: Array<{ table: string; payload: Row }>;
+  calls: string[];
+}
+
+/**
+ * The same three tables the running path touches, in memory: the card, the
+ * order, and the seal ledger (plus the audit log the refusal is filed in).
+ * `mcp_seal_challenges` is modelled the way `seal-challenge.service.spec.ts`
+ * models it, so single-use stays a property of the UPDATE's own
+ * `redeemed_at IS NULL` filter rather than of anything in TypeScript.
+ */
+function sealedHarness(seed: Row[] = [], action: Row = DELIVERY_CARD): SealedHarness {
+  const seals = seed;
+  const audits: Row[] = [];
+  const updates: Array<{ table: string; payload: Row }> = [];
+  const calls: string[] = [];
+
+  const supabase: any = {
+    from(table: string) {
+      if (table === "system_audit_log") {
+        return {
+          insert: (row: Row) => {
+            audits.push(row);
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+
+      if (table === "mcp_seal_challenges") {
+        const api: Record<string, unknown> = {};
+        let tokenHash: string | null = null;
+        let rowId: string | null = null;
+        api.select = () => api;
+        api.eq = (col: string, value: string) => {
+          if (col === "token_hash") tokenHash = value;
+          if (col === "id") rowId = value;
+          return api;
+        };
+        api.maybeSingle = () =>
+          Promise.resolve({
+            data: seals.find((s) => s.token_hash === tokenHash) ?? null,
+            error: null,
+          });
+        api.insert = (row: Row) => {
+          seals.push({ id: `seal-${seals.length + 1}`, ...row });
+          return Promise.resolve({ error: null });
+        };
+        api.update = (patch: Row) => {
+          const upd: Record<string, unknown> = {};
+          let unspentOnly = false;
+          upd.eq = (col: string, value: string) => {
+            if (col === "id") rowId = value;
+            return upd;
+          };
+          upd.is = (col: string, value: unknown) => {
+            if (col === "redeemed_at" && value === null) unspentOnly = true;
+            return upd;
+          };
+          upd.select = () => ({
+            then: (resolve: (v: unknown) => unknown) => {
+              const row = seals.find((s) => s.id === rowId);
+              if (!row || (unspentOnly && row.redeemed_at)) {
+                return Promise.resolve({ data: [], error: null }).then(resolve);
+              }
+              row.redeemed_at = String(patch.redeemed_at);
+              return Promise.resolve({ data: [{ id: row.id }], error: null }).then(resolve);
+            },
+          });
+          return upd;
+        };
+        return api;
+      }
+
+      const entry: Record<string, unknown> = {};
+      let updatePayload: Row | null = null;
+      const q: any = {
+        select: () => q,
+        insert: () => q,
+        update: (payload: Row) => {
+          updatePayload = payload;
+          updates.push({ table, payload });
+          return q;
+        },
+        is: (c: string, v: unknown) => ((entry[c] = v), q),
+        eq: (c: string, v: unknown) => ((entry[c] = v), q),
+        order: () => q,
+        maybeSingle: async () =>
+          table === "procurement_orders"
+            ? { data: ORDER, error: null }
+            : { data: null, error: null },
+        single: async () =>
+          updatePayload
+            ? { data: { ...action, ...updatePayload }, error: null }
+            : { data: action, error: null },
+      };
+      return q;
+    },
+  };
+
+  const db = { getClient: () => supabase, supabase } as any;
+  const procurement = {
+    markDelivered: async (r: string, o: string, u: string) => {
+      calls.push(`markDelivered(${r},${o},${u})`);
+      return {
+        id: o,
+        orderNumber: "PO-2026-0007",
+        status: "DELIVERED",
+        quantity: 12,
+        bottlesTotal: 72,
+      } as any;
+    },
+  } as any;
+
+  return {
+    service: new OneTapActionsService(
+      db,
+      { server: null } as any,
+      procurement,
+      new SealChallengeService(db),
+    ),
+    seals,
+    audits,
+    updates,
+    calls,
+  };
+}
+
+describe("an order's APPROVE seal cannot be spent on a delivery", () => {
+  /** Exactly what `ProcurementService.issueOrderSealChallenge` writes. */
+  function approvalSeal(): Row {
+    return {
+      id: "seal-approve",
+      subject_kind: "procurement_order",
+      subject_id: ORDER_ID,
+      restaurant_id: HOUSE,
+      actor_user_id: MANAGER,
+      tool_name: ORDER_SEAL_ACT,
+      args_hash: hashCallArgs(
+        orderSealArgs({ id: ORDER_ID, total: "2000.00", providerId: "anadolu" }),
+      ),
+      token_hash: hashSealToken("approve-token"),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      redeemed_at: null,
+    };
+  }
+
+  it("is the approve act, so this is not a straw seal", () => {
+    // If ORDER_SEAL_ACT ever became "deliver", the case below would be
+    // asserting nothing at all.
+    expect(ORDER_SEAL_ACT).toBe("approve");
+    expect(approvalSeal().tool_name).not.toBe("deliver");
+  });
+
+  it("refuses it with the act-mismatch sentence, and books nothing", async () => {
+    const h = sealedHarness([approvalSeal()]);
+
+    await expect(
+      h.service.executeAction("act-1", HOUSE, MANAGER, {} as any, "approve-token"),
+    ).rejects.toThrow(
+      /That seal was issued for a different act on this order\. A seal approves one act, not a session — nothing was changed\./,
+    );
+
+    expect(h.calls).toEqual([]); // markDelivered never ran
+    expect(h.updates).toHaveLength(0); // and nothing was recorded
+    expect(h.seals[0].redeemed_at).toBeNull(); // the approval seal is still good
+  });
+
+  it("throws a 403 naming the ACT — a refusal is not a server fault, and not a vague one", async () => {
+    // Both halves are load-bearing. Asserting only ForbiddenException would
+    // pass against a service with no act check at all: the args hash differs
+    // too, so a 403 still arrives — carrying "this order changed after the
+    // seal was issued", which is a false account of what happened.
+    const h = sealedHarness([approvalSeal()]);
+    const err = await h.service
+      .executeAction("act-1", HOUSE, MANAGER, {} as any, "approve-token")
+      .then(() => null)
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(String(err.message)).toMatch(/different act on this order/);
+    expect(String(err.message)).not.toMatch(/changed after the seal was issued/);
+  });
+
+  it("files the refusal before throwing it", async () => {
+    const h = sealedHarness([approvalSeal()]);
+    await h.service
+      .executeAction("act-1", HOUSE, MANAGER, {} as any, "approve-token")
+      .catch(() => undefined);
+
+    expect(h.audits).toHaveLength(1);
+    expect(h.audits[0]).toMatchObject({
+      action: "seal_refused",
+      entity_type: "procurement_order",
+      entity_id: ORDER_ID,
+      restaurant_id: HOUSE,
+    });
+    expect((h.audits[0].changes as Row).refusal).toBe("other_action");
+    expect((h.audits[0].changes as Row).act).toBe("deliver");
+  });
+
+  it("MIRROR — the seal this path mints IS accepted, and is spent exactly once", async () => {
+    const h = sealedHarness([]);
+
+    const issued = await h.service.issueExecutionSeal("act-1", HOUSE, MANAGER);
+    expect(issued.act).toBe("deliver");
+    expect(h.seals).toHaveLength(1);
+    expect(h.seals[0].tool_name).toBe("deliver");
+    // The token is never stored: only its digest is.
+    expect(h.seals[0].token_hash).toBe(hashSealToken(issued.challenge));
+    expect(Object.values(h.seals[0])).not.toContain(issued.challenge);
+
+    await h.service.executeAction("act-1", HOUSE, MANAGER, {} as any, issued.challenge);
+
+    expect(h.calls).toEqual([`markDelivered(${HOUSE},${ORDER_ID},${MANAGER})`]);
+    expect(h.updates).toHaveLength(1);
+    expect((h.updates[0].payload.execution_result as Row).sealed).toBe(true);
+    expect(h.seals[0].redeemed_at).not.toBeNull();
+    expect(h.audits).toHaveLength(0);
+
+    // And a replay of the same token books nothing a second time.
+    await expect(
+      h.service.executeAction("act-1", HOUSE, MANAGER, {} as any, issued.challenge),
+    ).rejects.toThrow(/already been spent/);
+    expect(h.calls).toHaveLength(1);
+  });
+});

@@ -359,6 +359,22 @@ Two things about that are decisions, not details:
    minted for `approve` is refused here with the sentence this addendum already
    wrote: *"That seal was issued for a different act on this order."* `common/seal/**`
    was not edited.
+
+   *Proven literally, 2026-09-05 (added after an audit found this claim resting on a
+   generic `cancel` case in `seal-challenge.service.spec.ts`).* Five cases at the end
+   of `apps/api-gateway/src/one-tap-actions/one-tap-execute.spec.ts` drive the REAL
+   `SealChallengeService` over an in-memory `mcp_seal_challenges` table with a
+   GENUINE approval seal — `tool_name: ORDER_SEAL_ACT`, `args_hash` from
+   `orderSealArgs(...)`, the row `issueOrderSealChallenge` writes — and assert the
+   delivery path refuses it with the act sentence, calls no `markDelivered`, records
+   nothing, leaves the approval seal unspent, and files one `seal_refused` audit row
+   with `refusal: "other_action"` and `act: "deliver"`. The mirror is asserted in the
+   same block: the seal this path mints IS accepted, is spent exactly once, and a
+   replay is refused. Against a scratch copy of the service with the act comparison
+   deleted, **3 of those 5 fail** — the two that do not are a constant assertion and
+   the mirror, which is the point of a mirror. Note what the probe showed: with the
+   act check gone a 403 still arrives, carrying *"this order changed after the seal
+   was issued"*, so the test asserts the SENTENCE and not merely the status.
 2. **What the args hash covers is the STOCK, not the money.** An approval's seal is
    over the total and the vendor (`order-seal.ts`); a delivery's is over the card,
    the order, the quantity and bottles about to be booked, and the order's state
