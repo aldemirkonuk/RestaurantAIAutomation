@@ -25,6 +25,15 @@ vi.mock('../../../services/api/team', () => ({
   getTextSenders: () => Promise.resolve(readout.current),
 }));
 
+// The control keys its read by the active house (ADR 0051); the test gives it one.
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    activeRestaurantId: 'r1',
+    activeRole: 'owner',
+    user: { id: 'u1', restaurantId: 'r1', role: 'owner' },
+  }),
+}));
+
 import { CrewTextLeg } from './TeamOverlays';
 
 function draw() {

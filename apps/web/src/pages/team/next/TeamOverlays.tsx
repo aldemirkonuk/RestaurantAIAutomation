@@ -44,7 +44,7 @@ import {
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport';
 import { EM, addDays, fmtDayShort, fmtWeekRange, resolveName } from './tm-format';
 import { MutationError, Tag } from './tm-bits';
-import type { TimeOffRow } from './useTeamNextData';
+import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 
 /** The gateway's own words when it has them — a 409 says exactly what is missing. */
 function serverMessage(e: unknown): string | null {
@@ -379,10 +379,15 @@ export function CrewNoteStrip({
  * house has no sender" and "we could not find out" are different facts.
  */
 export function CrewTextLeg({ recipientCount }: { recipientCount: number }) {
+  // The gateway scopes the senders read by the active restaurant through a
+  // header the key never sees; the id is IN the key so a house switch cannot
+  // serve the previous house's senders from cache (ADR 0051 clause 2).
+  const rid = useActiveRestaurantId();
   const q = useQuery({
-    queryKey: ['team-next-text-senders'],
+    queryKey: ['team-next-text-senders', rid],
     queryFn: getTextSenders,
     staleTime: 120_000,
+    enabled: rid !== null,
   });
   const vm: TextSendersReadout | undefined = q.data;
 
