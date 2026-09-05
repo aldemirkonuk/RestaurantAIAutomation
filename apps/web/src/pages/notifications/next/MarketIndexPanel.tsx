@@ -348,9 +348,43 @@ function CommodityLine({ s }: { s: CommoditySeriesVM }) {
         </p>
       ) : null}
 
-      {/* Whether a per-bottle duty can be derived from this rate at all, and
-          why not when it cannot. "This publisher does not say what its number
-          is per" and "somebody has to type this bottle's strength" are
+      {/* THE PER-BOTTLE DUTY, where two person-stated facts exist for a mapped
+          item: the strength on the shared library row and the size on the
+          bottle's own identity. Never the library's 750 ml column default,
+          which the gateway refuses by name.
+
+          A figure here is a DUTY and not a price, so it says so — a number
+          beside a bottle reads as what the house pays for it unless the line
+          says otherwise. Where no figure can be shown the refusal is printed
+          instead, because "nobody has stated this bottle's strength" is
+          something a person can go and fix and an empty space is not. */}
+      {s.exposures.map((e) =>
+        e.duty === null ? null : e.duty.derived ? (
+          <p
+            key={`duty-${e.id}`}
+            className="mt-0.5 text-[11px]"
+            style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+          >
+            <span style={{ fontFamily: MONO }}>
+              {e.duty.currency} {e.duty.amount.toFixed(2)}
+            </span>{' '}
+            per bottle on a mapped item. {e.duty.basis}
+          </p>
+        ) : (
+          <p
+            key={`duty-${e.id}`}
+            role="status"
+            className="mt-0.5 text-[11px]"
+            style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
+          >
+            No per-bottle figure for a mapped item: {e.duty.detail}
+          </p>
+        ),
+      )}
+
+      {/* Whether a per-bottle duty can be derived from this rate AT ALL,
+          independently of any one bottle. "This publisher does not say what its
+          number is per" and "somebody has to state this bottle's strength" are
           different facts, and only the second one a person can fix. */}
       {s.duty ? (
         <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>

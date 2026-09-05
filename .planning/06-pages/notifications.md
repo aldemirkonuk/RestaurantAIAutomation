@@ -69,6 +69,11 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
   never seen real bytes can never look like a working feed
 - An **armed** series names who armed it, when, and the calibration it was armed
   on, on the same line as the number it produces
+- **A per-bottle duty figure** beside a rate series, for a mapped item whose
+  strength and size a person has both stated — labelled as a duty, never as a
+  price. Where either is missing the box prints the reason instead of a blank,
+  because "nobody has stated this bottle's strength" is something a person can
+  go and fix (2026-09-05)
 
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
@@ -2215,3 +2220,49 @@ for is skipped with `no_shelf_life_typed`, and an item that does not keep as
 long as the lag is skipped with a different sentence again. **Condition 7,
 coverage, is still unevaluated and still named on every decision and every
 ledger row.**
+
+### 13.36 The per-bottle duty stops being a sentence and becomes a figure (2026-09-05, batch 57)
+
+§13.35 recorded that the duty line printed a sentence rather than a number, for
+two measured reasons. The founder's batch-57 answer removed one of them and the
+schema turned out to have already removed the other.
+
+**The strength now exists.** `master_wine_library.abv_percent` — nullable, no
+default, carrying the person and the moment, with a
+`0 <= abv <= 100` range whose ceiling catches a US *proof* figure read as a
+percentage. It is on the SHARED library row and **never on a house's own alias**:
+strength is a property of the liquid, and the migration RAISEs if an `abv%`
+column ever appears on `beverage_identities`.
+
+**The stated size was already there, and this box had been reading the wrong
+column to look for it.** `master_wine_library.bottle_size_ml` is
+`DEFAULT 750 NOT NULL` and cannot tell a stated 750 from a defaulted one.
+`beverage_identities.size_ml` can, and says so in its own comment: *"NULL means
+unstated. NEVER 750."* So the size comes from the identity register, the strength
+from the library, and the defaulted column is read by nothing in this path.
+
+**Which bottle, when a library row names several.** This house's own identity
+first — that is the trade item it actually buys — then a platform-wide one, and
+otherwise **refused and named**. Picking the first of two would compute a
+magnum's tax for a 750: off by a factor of two, and entirely ordinary-looking on
+a screen.
+
+**What the box now draws.** Where both facts are stated, a figure with its whole
+working: *"GBP 9.19 per bottle on a mapped item. HM Revenue & Customs, GBP per
+litre of pure alcohol, in force from 2026-02-01 … Duty only; no VAT, no margin,
+no price."* The last clause is not decoration — a number beside a bottle reads
+as what the house pays for it unless the line says otherwise.
+
+Where a fact is missing, the box draws **the reason**, not a blank: *"No
+per-bottle figure for a mapped item: … this bottle's strength is required and
+nobody has stated one."* Three of the four causes are things a person can fix in
+a minute; the fourth (GİB never states what its figure is per) is not, and reads
+differently on purpose.
+
+**A duty of ZERO prints as a figure.** `duty.ts` previously refused
+`abvPercent <= 0`, collapsing *nobody stated one* with *somebody stated a
+de-alcoholised product* — and HMRC's own 0-1.2% band is GBP 0.00. It now refuses
+only null and negatives.
+
+**An index series draws no duty line at all**, and a test pins that: an index
+number is not a tax, and computing one from it would be inventing a liability.

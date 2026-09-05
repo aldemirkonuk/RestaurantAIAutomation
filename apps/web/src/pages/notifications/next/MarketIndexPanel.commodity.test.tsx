@@ -226,6 +226,7 @@ describe('the section makes no claim about what this house will pay', () => {
             {
               id: 'e1',
               houseItemId: 'i1',
+              duty: null,
               passThrough: null,
               passThroughBasis: 'unset',
               lagDays: null,
@@ -462,5 +463,139 @@ describe('an armed series says who armed it and on which numbers', () => {
     mockCommodity.current = { ...COMMODITY_READY, series: [fao()] };
     render(<MarketIndexPanel />);
     expect(screen.queryByText(/Armed for alerting/)).toBeNull();
+  });
+});
+
+
+describe('the per-bottle duty line, beside the rate series', () => {
+  function exposure(over: Record<string, unknown> = {}) {
+    return {
+      id: 'e1',
+      houseItemId: 'i1',
+      duty: null,
+      passThrough: null,
+      passThroughBasis: 'unset',
+      lagDays: null,
+      lagBasis: 'unset',
+      note: null,
+      ...over,
+    };
+  }
+
+  function rate(exposures: Array<Record<string, unknown>>) {
+    return fao({
+      seriesKey: 'hmrc.alcohol_duty.spirits_and_wine_8_5_to_22',
+      issuer: 'HM Revenue & Customs',
+      seriesTitle: 'Alcohol Duty rates, wine and spirits 8.5% to 22% ABV',
+      valueKind: 'rate',
+      unit: 'GBP per litre of pure alcohol',
+      basePeriod: null,
+      currency: 'GBP',
+      statute: 'Finance (No. 2) Act 2023, Part 2',
+      effectiveFrom: '2026-02-01',
+      duty: { supported: true, sentence: 'A per-bottle duty is size x strength x rate.' },
+      exposures,
+    });
+  }
+
+  it('PRINTS the figure when both facts are stated, and calls it a duty', () => {
+    // A number beside a bottle reads as what the house pays for it unless the
+    // line says otherwise.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            duty: {
+              derived: true,
+              amount: 9.19,
+              currency: 'GBP',
+              basis:
+                'HM Revenue & Customs, GBP per litre of pure alcohol, in force from 2026-02-01: 30.62 GBP per litre of pure alcohol, on 750 ml at 40%. Duty only; no VAT, no margin, no price.',
+            },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/GBP 9\.19/)).toBeTruthy();
+    expect(screen.getByText(/per bottle on a mapped item/)).toBeTruthy();
+    expect(screen.getByText(/Duty only; no VAT, no margin, no price/)).toBeTruthy();
+  });
+
+  it('prints a duty of ZERO as a figure, never as an absence', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            duty: { derived: true, amount: 0, currency: 'GBP', basis: 'the 0-1.2% band is GBP 0.00.' },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    // `getAllByText`, not `getByText`: this fixture's own basis sentence also
+    // says "GBP 0.00", so the figure and its working both match. Both are meant
+    // to be there -- the point is that a zero DUTY is printed as a figure and
+    // not swallowed as an absence.
+    expect(screen.getAllByText(/GBP 0\.00/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/per bottle on a mapped item/)).toBeTruthy();
+  });
+
+  it('prints the REFUSAL when nobody has stated a strength', () => {
+    // An empty space is not something a person can act on; a sentence naming
+    // the missing fact is.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            duty: {
+              derived: false,
+              reason: 'no_strength',
+              detail:
+                "HM Revenue & Customs publishes this rate per litre of PURE ALCOHOL, so this bottle's strength is required and nobody has stated one.",
+            },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/No per-bottle figure for a mapped item/)).toBeTruthy();
+    expect(screen.getByText(/nobody has stated one/)).toBeTruthy();
+  });
+
+  it('prints the REFUSAL when the size is unstated or ambiguous', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            id: 'e2',
+            duty: {
+              derived: false,
+              reason: 'size_ambiguous',
+              detail:
+                'This bottle is registered in more than one size and this house has not said which it buys, so no duty is computed.',
+            },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/registered in more than one size/)).toBeTruthy();
+  });
+
+  it('draws no duty line at all on an index series', () => {
+    // An index number is not a tax, and computing one from it would be
+    // inventing a liability.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [fao({ exposures: [exposure()] })],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/per bottle on a mapped item/)).toBeNull();
+    expect(screen.queryByText(/No per-bottle figure/)).toBeNull();
   });
 });

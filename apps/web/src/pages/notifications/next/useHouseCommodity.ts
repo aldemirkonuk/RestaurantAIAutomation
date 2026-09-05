@@ -55,10 +55,25 @@ export interface CommodityObservation {
   vintage: string | null;
 }
 
+/**
+ * The per-bottle duty this rate implies for one exposed item, or the named
+ * reason there is none.
+ *
+ * Never a bare null: "no duty is shown" has several causes and a person can act
+ * on most of them — nobody has stated this bottle's strength, nobody has stated
+ * its size, it is registered in two sizes — while one of them (the publisher
+ * never said what its rate is per) no amount of typing fixes.
+ */
+export type CommodityDuty =
+  | { derived: true; amount: number; currency: string; basis: string }
+  | { derived: false; reason: string; detail: string };
+
 /** One house item a PERSON mapped to this series. Never inferred. */
 export interface CommodityExposure {
   id: string;
   houseItemId: string;
+  /** Present only on a RATE series. */
+  duty: CommodityDuty | null;
   /** Null with basis `unset` is the common case, and it is said out loud. */
   passThrough: number | null;
   passThroughBasis: string;
@@ -155,6 +170,33 @@ function pairOf(raw: unknown): { reason: string; measuredOn: string } | null {
   };
 }
 
+/**
+ * Read one duty outcome off the wire.
+ *
+ * A payload that is neither derived-with-a-number nor refused-with-a-reason
+ * becomes `null` — drawn as nothing — rather than a zero. A duty of 0 IS a real
+ * answer (a de-alcoholised product on HMRC's 0-1.2% band), so it must arrive as
+ * `derived: true, amount: 0` and never as an absence.
+ */
+function dutyOf(raw: unknown): CommodityDuty | null {
+  const d = (raw ?? null) as Record<string, unknown> | null;
+  if (!d) return null;
+  if (d.derived === true) {
+    const amount = num(d.amount);
+    const currency = str(d.currency);
+    if (amount === null || !currency) return null;
+    return { derived: true, amount, currency, basis: str(d.basis) ?? '' };
+  }
+  if (d.derived === false) {
+    return {
+      derived: false,
+      reason: str(d.reason) ?? 'unstated',
+      detail: str(d.detail) ?? 'No duty is shown and no reason was given.',
+    };
+  }
+  return null;
+}
+
 function observationOf(raw: unknown): CommodityObservation | null {
   const r = (raw ?? null) as Record<string, unknown> | null;
   if (!r) return null;
@@ -221,6 +263,7 @@ function seriesOf(raw: Record<string, unknown>): CommoditySeriesVM {
       ? (raw.exposures as Array<Record<string, unknown>>).map((e) => ({
           id: String(e.id ?? ''),
           houseItemId: String(e.houseItemId ?? ''),
+          duty: dutyOf(e.duty),
           passThrough: num(e.passThrough),
           passThroughBasis: str(e.passThroughBasis) ?? 'unset',
           lagDays: num(e.lagDays),

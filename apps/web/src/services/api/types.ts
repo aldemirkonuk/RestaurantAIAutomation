@@ -428,6 +428,14 @@ export interface Wine {
   retailPriceAvg?: number;
   bottleSizeMl: number;
   bottleSizeOz: number;
+  /**
+   * Alcohol by volume, as a percentage, TYPED BY A PERSON onto the shared
+   * library row. Undefined means nobody has stated one — it is never defaulted
+   * and never inferred from a category, because it is the multiplicand in a
+   * duty figure. `0` is a real answer (a de-alcoholised product), so a reader
+   * must not treat a falsy value as absent.
+   */
+  abvPercent?: number;
   category?: string;
   region?: string;
   country?: string;

@@ -888,6 +888,91 @@ proposal hash that is not a hash, logging an arming with no numbers, an invented
 act, a shelf life with nobody's name on it, an author with no value, zero days,
 and clearing only half the fact.
 
+#### Phase 0, continued — the founder's batch-57 answers, BUILT 2026-09-05
+
+**"Add ABV to the library, nullable, no default."**
+`20260906120000_a_strength_is_stated_by_a_person.sql` adds
+`master_wine_library.abv_percent numeric(4,1)`, nullable, **no default**, with
+`abv_percent_set_by` / `abv_percent_set_at` enforced as one fact by a CHECK and
+an optional `abv_percent_basis` in the person's own words. Range
+`0 <= abv <= 100`, and the ceiling earns its place: a transcription that reads a
+US *proof* figure as a percentage doubles it, so 151 proof becomes 151 and is
+refused at the door.
+
+**Why the library's author pattern is the same as a house table's, and why it
+matters MORE here.** `restaurant_inventory.shelf_life_days` carries its author
+because a shelf life nobody typed would mislead the house that typed it.
+`master_wine_library` is **shared**: every house that stocks the bottle reads
+this row, and the value is the multiplicand in a **tax** figure. A wrong ABV does
+not merely mislead one kitchen; it produces a number that looks like a duty and
+is not one. The library's existing `beverage_identities.curated_by` /
+`curated_at` confirm the shape rather than contradict it — this is the same
+discipline applied to a field rather than to a promotion.
+
+**The house alias never touches it, and that is asserted rather than intended.**
+A house's own bottle is a `beverage_identities` row with
+`asserted_for_restaurant_id` set. Strength is a property of the LIQUID, so it
+lives on the shared row only, and the migration RAISEs if an `abv%` column ever
+appears on `beverage_identities` — measured on every replay instead of
+remembered. A test also asserts the resolver would not read one if it did.
+
+**CORRECTION to this document — a stated bottle size ALREADY EXISTED, and no
+new column was needed for it.** The requirement is that a duty print only on a
+STATED size, "not the 750 default". `master_wine_library.bottle_size_ml` is
+`integer DEFAULT 750 NOT NULL` and cannot distinguish the two — but
+`beverage_identities.size_ml` already can, by its own design and its own
+comment: *"NULL means unstated. NEVER 750: the library's 750 is a column default
+and this register exists partly to stop that default being read as a fact"*
+(20260905140000). So `bottle-facts.ts` reads the size off the identity register
+and the strength off the library, and **`bottle_size_ml` is read by nothing in
+this path**. Adding a second stated size to the library would have been a second
+answer to a question ADR 0124 already answered.
+
+**Which identity, when a library row names several.** A wine sold in 750 ml and
+in magnum is two trade items and one library entry. So: this house's own
+identity if exactly one states a size; else a platform-wide one if exactly one;
+else **refused as `size_ambiguous` and named**. Picking the first would compute
+a magnum's tax for a 750 — off by a factor of two and entirely ordinary-looking
+on a screen, the same failure the shell-egg parser refuses as `ambiguous_row`.
+
+**A correction to `duty.ts` the new column forced.** It previously refused
+`abvPercent <= 0`, which collapses two different answers: NULL is *nobody has
+stated a strength*, and **0.0 is a person stating a de-alcoholised product** —
+and HMRC's own 0-1.2% band is GBP 0.00. It now refuses only NULL and negatives,
+so a duty of zero prints as a figure rather than as an absence.
+
+**The line now prints.** Where both facts are stated: HMRC 30.62/l of pure
+alcohol on 750 ml at 40% = **GBP 9.19**; Illinois 8.55/gal on a house-stated
+1500 ml magnum = **USD 3.39**. Where they are not, the panel prints the refusal
+instead of an empty space, because *"nobody has stated this bottle's strength"*
+is something a person can go and fix. The three refusals and the one print are
+the tests the founder asked for (`bottle-facts.spec.ts`), plus the GİB case that
+no amount of typing fixes.
+
+**The DTO mirror, and it is now armed.** `WineResponseDto` was added to
+`wines/dto/wines.dto.ts` and a third entry to `check_web_reads_gateway_dto_keys.py`'s
+MIRRORS table pins the web's `Wine` against it — **21 client keys against the
+DTO's 23**. Proven adversarially rather than assumed: a phantom `abvProof` added
+to `Wine` made the guard exit **1** naming it, and removing it returned exit
+**0**. Two keys the web declares and `mapWine` does not send (`pairingNotes`,
+`imageUrl`) are declared on the DTO with a comment saying so rather than deleted
+from the client type — the honest fix for an unsent field is to send it, and
+that is filed rather than papered over.
+
+**Verified.** `npx jest src/commodity` — **198 passed, 13 suites**. `npx vitest
+run src/pages/notifications/next` — **140 passed, 7 suites**. Gateway `tsc` clean
+under both configs; web `tsc` clean. `check_gateway_boots.sh` PASS. The migration
+applied twice on PGlite on BOTH an empty library (the CI shape, where it NOTICEs
+that its probes did not run) and a seeded one, with a strength-without-an-author,
+a 151, a negative and a half-cleared fact each refused by name, a stated 0.0 and
+an exactly-100 admitted, and `beverage_identities` measured to carry **0** ABV
+columns.
+
+**A prefix collision, and how it was handled.** This migration was first written
+as `20260906110000` and another builder landed a file on that prefix between the
+check and the write. Mine was moved to `20260906120000`; theirs was not touched.
+`ls supabase/migrations | cut -c1-14 | sort | uniq -d` is empty.
+
 ### Phase 1 — the rule and the sentence
 
 `commodity_exposure_rising` as §9, behind a flag defaulting off, with the storability question

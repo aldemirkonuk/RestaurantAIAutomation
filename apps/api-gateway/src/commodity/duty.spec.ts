@@ -52,14 +52,32 @@ describe("HMRC: per litre of PURE ALCOHOL", () => {
     expect(out.basis).toMatch(/Duty only; no VAT, no margin, no price/);
   });
 
-  it("REFUSES without a strength, and names the missing column", () => {
-    // Measured 2026-09-05: there is no alcohol-by-volume column anywhere in
-    // master_wine_library. So this is the real state of every bottle today.
+  it("REFUSES without a strength, and names the column a person has to fill", () => {
+    // The column exists as of 2026-09-05 (the founder's batch-57 answer) and is
+    // null on every row until somebody states one, which is the real state of
+    // every bottle today.
     const out = perBottleDuty(rateOf(HMRC, 30.62), { ...TYPED, abvPercent: null });
     expect(out.derived).toBe(false);
     if (out.derived) return;
     expect(out.reason).toBe("no_strength");
-    expect(out.detail).toMatch(/no alcohol-by-volume column anywhere in master_wine_library/);
+    expect(out.detail).toMatch(/nobody has stated one/);
+    expect(out.detail).toMatch(/master_wine_library\.abv_percent/);
+  });
+
+  it("a STATED 0.0% is a real strength and prints a duty of zero", () => {
+    // NULL is "nobody said"; 0.0 is a person stating a de-alcoholised product.
+    // HMRC's own 0-1.2% band is GBP 0.00, so refusing this would refuse a
+    // correct answer -- and it would make the two states render alike.
+    const out = perBottleDuty(rateOf(HMRC, 0), { ...TYPED, abvPercent: 0 });
+    expect(out.derived).toBe(true);
+    if (!out.derived) return;
+    expect(out.amount).toBe(0);
+  });
+
+  it("REFUSES a negative strength, which is not a strength", () => {
+    const out = perBottleDuty(rateOf(HMRC, 30.62), { ...TYPED, abvPercent: -1 });
+    expect(out.derived).toBe(false);
+    if (!out.derived) expect(out.reason).toBe("no_strength");
   });
 
   it("REFUSES a defaulted strength, not only a missing one", () => {
@@ -158,7 +176,8 @@ describe("derivability: the sentence the panel prints per series", () => {
       issuer: HMRC.issuer,
     });
     expect(hmrc.supported).toBe(true);
-    expect(hmrc.sentence).toMatch(/somebody has to type the strength/);
+    expect(hmrc.sentence).toMatch(/size x strength x rate/);
+    expect(hmrc.sentence).toMatch(/never the library's 750 ml column default/);
 
     const il = derivability({
       valueKind: "rate",
@@ -166,7 +185,7 @@ describe("derivability: the sentence the panel prints per series", () => {
       issuer: IL.issuer,
     });
     expect(il.supported).toBe(true);
-    expect(il.sentence).toMatch(/carries a DEFAULT of 750 ml/);
+    expect(il.sentence).toMatch(/never the library's 750 ml column default/);
   });
 
   it("says nothing at all for a series that is not a rate", () => {

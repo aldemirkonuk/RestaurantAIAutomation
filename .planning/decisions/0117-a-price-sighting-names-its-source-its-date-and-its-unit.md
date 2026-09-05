@@ -305,11 +305,15 @@ effective date, and **none of them fetched here**: all three were measured on
 lines 269, 295, 471 and 565. **The GİB row is the one this ADR's unit rule was
 written for**: the schedule states an exact TL figure and does NOT state what it
 is per, so it is registered `silent: unit_denominator_not_stated`, shown as
-published, and no per-bottle duty is ever derived from it. The other two are
-derivable and are still not printable for any bottle in this product, for two
-measured reasons: there is **no alcohol-by-volume column anywhere in
-`master_wine_library`**, and `bottle_size_ml` carries `DEFAULT 750`, so a figure
-computed from either would be a tax nobody chose. The rule
+published, and no per-bottle duty is ever derived from it. **The other two now PRINT** (2026-09-05, batch 57), on two person-stated facts
+and nothing else: `master_wine_library.abv_percent` — added nullable, with no
+default, carrying its author, on the SHARED row and never on a house's alias —
+and `beverage_identities.size_ml`, which this ADR's own identity register
+already defined as the stated size (*"NULL means unstated. NEVER 750"*).
+`master_wine_library.bottle_size_ml DEFAULT 750` is read by nothing in that
+path. Where either fact is absent the refusal is printed rather than a blank,
+and where a library row names two stated sizes the derivation is refused as
+ambiguous rather than resolved by picking one. The rule
 `commodity_exposure_rising` is built DARK — its module imports no `NotificationsModule`, so
 there is no code path to a person — and it writes verdicts to `neural_footprint_event` with
 `outcome` NULL. Nothing about class E in `price_index_postings` changed. The three findings

@@ -115,6 +115,22 @@ MIRRORS: tuple[Mirror, ...] = (
         ),
     ),
     Mirror(
+        label="web Wine",
+        client_file="apps/web/src/services/api/types.ts",
+        client_type="Wine",
+        dto_file="apps/api-gateway/src/wines/dto/wines.dto.ts",
+        dto_class="WineResponseDto",
+        why=(
+            "The shape every master_wine_library read is returned as: "
+            "WinesService.mapWine builds it and GET /wines, /wines/:id and "
+            "/wines/:id/similar all send it. Added 2026-09-05 with "
+            "master_wine_library.abv_percent -- a person-typed strength that is "
+            "the multiplicand in a per-bottle duty. A phantom key here would "
+            "not crash: it would read as 'no strength stated' on every bottle, "
+            "which is the exact state a person typing one is trying to leave."
+        ),
+    ),
+    Mirror(
         label="mobile ProcurementOrder",
         client_file="apps/mobile/src/api/types.ts",
         client_type="ProcurementOrder",

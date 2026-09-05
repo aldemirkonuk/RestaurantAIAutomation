@@ -9,6 +9,7 @@ import { CommodityFetchService } from "./commodity-fetch.service";
 import { CommodityAlertService } from "./commodity-alert.service";
 import { CommodityAdminService } from "./commodity-admin.service";
 import { CommodityExposureService } from "./commodity-exposure.service";
+import { BottleFactsService } from "./bottle-facts";
 
 /**
  * The class-E index register (ADR 0117; the founder's *"a seperate table for
@@ -51,6 +52,7 @@ import { CommodityExposureService } from "./commodity-exposure.service";
     CommodityAlertService,
     CommodityAdminService,
     CommodityExposureService,
+    BottleFactsService,
   ],
   exports: [
     CommodityService,
@@ -58,6 +60,7 @@ import { CommodityExposureService } from "./commodity-exposure.service";
     CommodityAlertService,
     CommodityAdminService,
     CommodityExposureService,
+    BottleFactsService,
   ],
 })
 export class CommodityModule {}

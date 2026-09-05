@@ -12,6 +12,10 @@ import { CommodityService } from "./commodity.service";
 import { CommodityFetchService, parserFor } from "./commodity-fetch.service";
 import { DatabaseService } from "../database/database.service";
 import { SERIES, fetchableSeries } from "./commodity.registry";
+import {
+  BottleFactsService,
+  type ResolvedBottleFacts,
+} from "./bottle-facts";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -80,6 +84,22 @@ function makeDb(handler: Handler): DatabaseService {
   return { client } as unknown as DatabaseService;
 }
 
+/**
+ * The bottle-facts resolver, stubbed to "nothing stated" -- which is the real
+ * state of every bottle in this product until somebody types a strength and a
+ * size. Its own contract is tested in `bottle-facts.spec.ts`.
+ */
+function stubBottles(over: Partial<ResolvedBottleFacts> = {}): BottleFactsService {
+  return {
+    forHouseItem: async (): Promise<ResolvedBottleFacts> => ({
+      facts: { sizeMl: null, sizeSource: null, abvPercent: null, abvSource: null },
+      refusal: null,
+      detail: null,
+      ...over,
+    }),
+  } as unknown as BottleFactsService;
+}
+
 const HOUSE = "rest-1";
 const FAO_KEY = "fao.food_price_index.all";
 
@@ -91,6 +111,7 @@ describe("which series answer for a house", () => {
           ? { data: [{ state_province: null, country: "Atlantis" }] }
           : { data: [] },
       ),
+      stubBottles(),
     );
     const r = await svc.forHouse(HOUSE);
     expect(r.jurisdiction).toBeNull();
@@ -108,6 +129,7 @@ describe("which series answer for a house", () => {
           ? { data: [{ state_province: "England", country: "United Kingdom" }] }
           : { data: [] },
       ),
+      stubBottles(),
     );
     const r = await svc.forHouse(HOUSE);
     expect(r.jurisdiction).toBe("GB-ENG");
@@ -126,6 +148,7 @@ describe("which series answer for a house", () => {
           ? { data: [{ state_province: null, country: "United Kingdom" }] }
           : { data: [] },
       ),
+      stubBottles(),
     );
     expect((await svc.forHouse(HOUSE)).jurisdiction).toBe("GB");
   });
@@ -140,6 +163,7 @@ describe("the four silences, told apart", () => {
         }
         return { error: { message: "permission denied" } };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.note).toMatch(/unknown, not absent/);
@@ -156,6 +180,7 @@ describe("the four silences, told apart", () => {
         if (ctx.table === "commodity_index_observations") return { data: [], count: 0 };
         return { data: [] };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.latest).toBeNull();
@@ -171,6 +196,7 @@ describe("the four silences, told apart", () => {
         }
         return { data: [] }; // no series rows written
       }),
+      stubBottles(),
     );
     const egg = (await svc.forHouse(HOUSE)).series.find(
       (s) => s.seriesKey === "usda_ams.shell_egg_index.national",
@@ -204,6 +230,7 @@ describe("the four silences, told apart", () => {
         }
         return { data: [] };
       }),
+      stubBottles(),
     );
     const r = await svc.forHouse(HOUSE);
     expect(r.noExposureRecorded).toBe(true);
@@ -223,6 +250,7 @@ describe("the four silences, told apart", () => {
         if (ctx.table === "commodity_index_observations") return { data: [], count: 0 };
         return { error: { message: "relation does not exist" } };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.note).toMatch(/unknown, not "none"/);
@@ -255,6 +283,7 @@ describe("staleness is judged on the OBSERVATION'S period", () => {
         }
         return { data: [] };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.stale).toBe(true);
@@ -264,7 +293,8 @@ describe("staleness is judged on the OBSERVATION'S period", () => {
 
 describe("the status route", () => {
   it("reports the fetch OFF and names the flag", () => {
-    const svc = new CommodityService(makeDb(() => ({ data: [] })));
+    const svc = new CommodityService(makeDb(() => ({ data: [] })),
+      stubBottles(),);
     const s = svc.status();
     expect(s.fetchArmed).toBe(false);
     expect(s.flag).toBe("COMMODITY_INDEX_FETCH_ENABLED");
