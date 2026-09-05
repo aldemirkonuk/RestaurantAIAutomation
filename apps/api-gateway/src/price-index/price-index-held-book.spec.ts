@@ -29,6 +29,7 @@
  */
 
 import { PriceIndexService } from "./price-index.service";
+import { ESCALATION_HOURS } from "./price-index-review.service";
 
 /** One row of a book a person carried in and nobody has admitted. */
 const HELD_MICHIGAN_ROW = {
@@ -79,7 +80,9 @@ interface Ctx {
  * anything. In other words: the database does the filtering, exactly as
  * PostgREST would, so what is proved here is that the SERVICE asks for it.
  */
-function registerWithOneHeldBook(opts: { heldBooks?: number } = {}) {
+function registerWithOneHeldBook(
+  opts: { heldBooks?: number; admitted?: Array<Record<string, unknown>> } = {},
+) {
   const seen: Ctx[] = [];
   const client = {
     from(table: string) {
@@ -108,9 +111,25 @@ function registerWithOneHeldBook(opts: { heldBooks?: number } = {}) {
         },
         then(resolve: (v: unknown) => unknown) {
           if (ctx.table === "price_index_upload_reviews") {
+            // Rows, not a count: since ADR 0128 Q4 one read answers both "how
+            // many are waiting" and "on what basis was each admitted one let
+            // in", so the box can print the basis under a carried line.
+            const held = opts.heldBooks ?? 1;
             return Promise.resolve({
-              data: null,
-              count: opts.heldBooks ?? 1,
+              data: [
+                ...Array.from({ length: held }, (_, i) => ({
+                  file_sha256: `pending-${i}`,
+                  file_name: "held.xlsx",
+                  edition_date: "2025-08-03",
+                  status: "pending",
+                  confirmation_evidence: null,
+                  confirmation_reason: null,
+                  confirmed_at: null,
+                  uploaded_at: "2026-09-05T00:00:00Z",
+                })),
+                ...(opts.admitted ?? []),
+              ],
+              count: null,
               error: null,
             }).then(resolve);
           }
@@ -186,5 +205,100 @@ describe("AFTER: a carried book waits, and the panel says so", () => {
     // A failed read must NOT be reported as "a book is waiting" either: the
     // held count is not asked for when the lines could not be read at all.
     expect(r.heldBooks).toBe(0);
+  });
+});
+
+/**
+ * What a reader is told about a book that WAS let in (ADR 0128 Q4; the founder:
+ * *"Acceptable: reason + record"*), and how long a waiting one waits (Q2).
+ *
+ * The case that matters is `same_person`: the lone owner-or-manager of a
+ * jurisdiction admitting their own book. It is allowed, and the box says so in
+ * those words — a basis that reads like a second pair of eyes when it was not
+ * one would be the whole control quietly evaporating at the last step.
+ */
+function admittedRow(over: Record<string, unknown> = {}) {
+  return {
+    file_sha256: "a".repeat(64),
+    file_name: "8-3-25-PRICE-BOOK-EXCEL.xlsx",
+    edition_date: "2025-08-03",
+    status: "confirmed",
+    confirmation_evidence: "same_person",
+    confirmation_reason: "I am the only manager in Michigan and I re-downloaded it.",
+    confirmed_at: "2026-09-05T09:00:00Z",
+    uploaded_at: "2026-09-05T00:00:00Z",
+    ...over,
+  };
+}
+
+describe("the basis a carried book was let in on", () => {
+  it("carries same_person and the reason the lone admitter gave", async () => {
+    const { db } = registerWithOneHeldBook({
+      heldBooks: 0,
+      admitted: [admittedRow()],
+    });
+    const r = await new PriceIndexService(db).forState("Michigan");
+    expect(r.carriedBooks).toHaveLength(1);
+    expect(r.carriedBooks?.[0]).toMatchObject({
+      sha256: "a".repeat(64),
+      basis: "same_person",
+      reason: "I am the only manager in Michigan and I re-downloaded it.",
+    });
+  });
+
+  it("calls a routine book's basis 'routine', never an empty confirmation", async () => {
+    const { db } = registerWithOneHeldBook({
+      heldBooks: 0,
+      admitted: [
+        admittedRow({
+          status: "stood",
+          confirmation_evidence: null,
+          confirmation_reason: null,
+          confirmed_at: null,
+        }),
+      ],
+    });
+    const r = await new PriceIndexService(db).forState("Michigan");
+    // 'stood' means nobody confirmed it. Reading the empty confirmation column
+    // as the basis would draw the line as "admitted by nobody".
+    expect(r.carriedBooks?.[0].basis).toBe("routine");
+    expect(r.carriedBooks?.[0].reason).toBeNull();
+  });
+
+  it("is UNKNOWN, not empty, when the review register cannot be read", async () => {
+    const client = {
+      from(table: string) {
+        const b: Record<string, unknown> = {
+          select: () => b,
+          eq: () => b,
+          or: () => b,
+          order: () => b,
+          limit: () => b,
+          single: () => Promise.resolve({ data: null, error: null }),
+          then: (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(
+              table === "price_index_upload_reviews"
+                ? { data: null, count: null, error: { message: "connection reset" } }
+                : { data: [], count: 0, error: null },
+            ).then(resolve),
+        };
+        return b;
+      },
+    };
+    const r = await new PriceIndexService({ client } as never).forState("Michigan");
+    expect(r.heldBooks).toBeNull();
+    expect(r.carriedBooks).toBeNull();
+    // And the silence does NOT claim a book is waiting.
+    expect(r.silence).not.toContain("waiting for a second pair of eyes");
+  });
+});
+
+describe("the hold's length is printed, not implied", () => {
+  it("names the hours in the sentence a waiting book produces", async () => {
+    const { db } = registerWithOneHeldBook({ heldBooks: 1 });
+    const r = await new PriceIndexService(db).forState("Michigan");
+    expect(r.heldBookHoldHours).toBe(ESCALATION_HOURS);
+    expect(r.silence).toContain(`After ${ESCALATION_HOURS} hours`);
+    expect(r.silence).toContain("may admit it with a stated reason");
   });
 });

@@ -64,6 +64,12 @@ export interface HouseIndexLine {
   packageDesc: string | null;
   sourceUrl: string | null;
   /**
+   * The sha256 of the file a PERSON carried in, when this line came from one
+   * (ADR 0117 Q17). Null on every fetched line. It is the key the box matches
+   * against `carriedBooks` to print the basis this line was let in on.
+   */
+  uploadSha256: string | null;
+  /**
    * When WE read it. The produce box is titled with this rather than with the
    * issuer's date, because "read on" is a claim about us and is always true.
    */
@@ -103,6 +109,30 @@ export interface HouseIndexVM {
    * is NOT zero — the panel draws nothing rather than claiming nothing waits.
    */
   heldBooks: number | null;
+  /**
+   * How long a held book waits before the people who could act are told again
+   * and the person who brought it may admit it themselves (ADR 0128 Q2, the
+   * founder: 24 hours). Read from the wire, never a constant here: two copies
+   * of the number is how a printed sentence starts lying about a clock.
+   */
+  heldBookHoldHours: number | null;
+  /**
+   * The hand-carried books whose lines ARE drawn, and on what basis each was
+   * let in (ADR 0128 Q4). `null` means the gateway could not answer; a line is
+   * then drawn with no basis rather than with a guessed one.
+   */
+  carriedBooks: CarriedBookVM[] | null;
+}
+
+/** One hand-carried book that is in the market, and how it got there. */
+export interface CarriedBookVM {
+  sha256: string;
+  fileName: string;
+  editionDate: string;
+  /** routine | byte_match | attested | same_person — the gateway's own word. */
+  basis: string;
+  reason: string | null;
+  admittedAt: string | null;
 }
 
 const LOADING: HouseIndexVM = {
@@ -114,6 +144,8 @@ const LOADING: HouseIndexVM = {
   sources: [],
   silence: null,
   heldBooks: null,
+  heldBookHoldHours: null,
+  carriedBooks: null,
 };
 
 /** A posted list changes on a monthly-to-weekly cadence; five minutes is ample. */
@@ -142,6 +174,7 @@ function lineOf(raw: Record<string, unknown>): HouseIndexLine {
     sizeUnit: str(raw.sizeUnit),
     packageDesc: str(raw.packageDesc),
     sourceUrl: str(raw.sourceUrl),
+    uploadSha256: str(raw.uploadSha256),
     fetchedAt: str(raw.fetchedAt),
   };
 }
@@ -202,6 +235,18 @@ export function useHouseIndex(): HouseIndexVM & { refresh: () => void } {
           : [],
         silence: str(d.silence),
         heldBooks: typeof d.heldBooks === 'number' ? d.heldBooks : null,
+        heldBookHoldHours:
+          typeof d.heldBookHoldHours === 'number' ? d.heldBookHoldHours : null,
+        carriedBooks: Array.isArray(d.carriedBooks)
+          ? (d.carriedBooks as Array<Record<string, unknown>>).map((b) => ({
+              sha256: String(b.sha256 ?? ''),
+              fileName: String(b.fileName ?? ''),
+              editionDate: String(b.editionDate ?? ''),
+              basis: String(b.basis ?? ''),
+              reason: typeof b.reason === 'string' ? b.reason : null,
+              admittedAt: typeof b.admittedAt === 'string' ? b.admittedAt : null,
+            }))
+          : null,
       });
     } catch (err) {
       if (tenant.current !== forTenant) return;

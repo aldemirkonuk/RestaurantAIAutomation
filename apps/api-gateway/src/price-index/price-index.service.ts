@@ -30,6 +30,12 @@ import {
 } from "./jurisdiction";
 import { noSourceSentence } from "./silence-notes";
 import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
+// The hold's LENGTH, imported rather than repeated. A number the panel prints
+// and a number the escalation sweep waits out have to be the same number, and
+// two copies of "24" is how a sentence starts lying about a clock. This is a
+// plain const, not a provider: `PriceIndexService` deliberately takes no
+// dependency on the review service (see `carriedBooksFor` below).
+import { ESCALATION_HOURS } from "./price-index-review.service";
 
 /** The columns the endpoint reads. Named explicitly so the read-column guard
  *  can verify every one exists in supabase/migrations/. */
@@ -54,6 +60,13 @@ const SELECT_COLUMNS =
  * product search's own `.or()` rather than replacing it.
  */
 export const MARKET_VISIBILITY = "uploaded_by.is.null,admitted_at.not.is.null";
+
+/**
+ * The review columns this file reads, as a module-level `const` of literal
+ * names, for `scripts/check_read_columns_exist.py`.
+ */
+const REVIEW_BASIS_COLUMNS =
+  "file_sha256, file_name, edition_date, status, confirmation_evidence, confirmation_reason, confirmed_at, uploaded_at";
 
 export interface IndexLine {
   id: string;
@@ -137,8 +150,42 @@ export interface StateIndexResult {
    * house to go and fetch a book its own manager already brought in.
    */
   heldBooks: number | null;
+  /**
+   * How long a held book waits before the people who could act are told again,
+   * and before the person who brought it may admit it themselves (ADR 0128 Q2,
+   * the founder: 24 hours). Sent rather than assumed by the page, so the hold
+   * is PRINTED where the waiting book is shown and never left to be inferred.
+   */
+  heldBookHoldHours: number;
+  /**
+   * The hand-carried books whose rows are in the market, and on what basis each
+   * was let in (ADR 0128 Q4, the founder: *"Acceptable: reason + record"*).
+   *
+   * `null` means the question could not be answered. An admitted line whose
+   * basis is unknown is drawn WITHOUT a basis rather than with a guessed one.
+   */
+  carriedBooks: CarriedBook[] | null;
   /** Words, never an empty list mistaken for "nothing costs anything". */
   silence: string | null;
+}
+
+/** One hand-carried book that is in the market, and how it got there. */
+export interface CarriedBook {
+  sha256: string;
+  fileName: string;
+  editionDate: string;
+  /**
+   * `routine` - one person's upload stood; every band was inside and nobody was
+   * asked. `byte_match` - a second person fetched the book themselves and the
+   * bytes agreed. `attested` - a second person vouched for the summary.
+   * `same_person` - the person who brought it in admitted it, because the
+   * jurisdiction has nobody else. That last one is printed in the box in those
+   * words: it is not a second pair of eyes and the reader is told so.
+   */
+  basis: string;
+  /** The words the lone admitter gave. Null on every other basis. */
+  reason: string | null;
+  admittedAt: string | null;
 }
 
 export interface SourceStatus {
@@ -179,6 +226,8 @@ export class PriceIndexService {
         lines: [],
         sources: [],
         heldBooks: 0,
+        heldBookHoldHours: ESCALATION_HOURS,
+        carriedBooks: [],
         silence: "No active restaurant on this session, so no state to scope the index to.",
       };
     }
@@ -227,6 +276,8 @@ export class PriceIndexService {
       lines: [],
       sources: [],
       heldBooks: 0,
+      heldBookHoldHours: ESCALATION_HOURS,
+      carriedBooks: [],
       silence:
         "This house records neither a state nor a country, so no jurisdiction can be scoped. Set the address in Settings to draw an index line.",
     };
@@ -257,6 +308,8 @@ export class PriceIndexService {
         lines: [],
         sources: [],
         heldBooks: 0,
+        heldBookHoldHours: ESCALATION_HOURS,
+        carriedBooks: [],
         silence: `"${rawState}" is not a jurisdiction this register recognises. No index line is drawn rather than guessing a state.`,
       };
     }
@@ -299,13 +352,18 @@ export class PriceIndexService {
     // this whole change exists to close. Skipped only when the lines could not
     // be read at all, because "a book is waiting" is not a thing to claim on
     // top of "the register is unknown" (ADR 0128).
-    const heldBooks = readFailed ? 0 : await this.heldBookCount(state);
+    const carried = readFailed
+      ? { held: 0 as number | null, admitted: [] as CarriedBook[] | null }
+      : await this.carriedBooksFor(state);
+    const heldBooks = carried.held;
     return {
       requested: rawState,
       state,
       lines,
       sources,
       heldBooks,
+      heldBookHoldHours: ESCALATION_HOURS,
+      carriedBooks: carried.admitted,
       silence: this.silenceFor(
         state,
         sourcesForState,
@@ -333,7 +391,12 @@ export class PriceIndexService {
     // that its own manager already carried in — the same fault ADR 0117
     // corrected for Illinois, wearing the other hat (ADR 0128).
     if (heldBooks !== null && heldBooks > 0) {
-      return `${heldBooks === 1 ? "A price book has" : `${heldBooks} price books have`} been brought in for ${state} and ${heldBooks === 1 ? "is" : "are"} waiting for a second pair of eyes. Nothing is drawn from ${heldBooks === 1 ? "it" : "them"} until an owner or manager admits ${heldBooks === 1 ? "it" : "them"}.`;
+      const one = heldBooks === 1;
+      // The hold's LENGTH is in the sentence, not implied by it (ADR 0128 Q2).
+      // "waiting for a second pair of eyes" with no clock beside it reads as
+      // "waiting indefinitely", and the whole point of the 24 hours is that it
+      // bounds how long one person can be blocked by another person's inbox.
+      return `${one ? "A price book has" : `${heldBooks} price books have`} been brought in for ${state} and ${one ? "is" : "are"} waiting for a second pair of eyes. Nothing is drawn from ${one ? "it" : "them"} until an owner or manager admits ${one ? "it" : "them"}. After ${ESCALATION_HOURS} hours the people who could act are told again, and the person who brought ${one ? "it" : "them"} in may admit ${one ? "it" : "them"} with a stated reason.`;
     }
 
     // A house that records only a country, in a country whose prices are
@@ -446,35 +509,67 @@ export class PriceIndexService {
   }
 
   /**
-   * How many hand-carried books this state is holding (ADR 0128).
+   * The carried books this state has, in ONE read: how many are waiting, and
+   * on what basis each of the admitted ones was let in (ADR 0128 Q4).
    *
-   * Counted here rather than by asking `PriceIndexReviewService`, deliberately.
-   * That service decides who may admit a book and what a confirmation is worth,
-   * and none of that policy is duplicated by a count; taking it as a
-   * constructor dependency would instead have changed the shape of
+   * Read here rather than by asking `PriceIndexReviewService`, deliberately.
+   * That service decides WHO may admit a book and what a confirmation is worth,
+   * and none of that policy is duplicated by reading four columns; taking it as
+   * a constructor dependency would instead have changed the shape of
    * `new PriceIndexService(db)` in five spec files, two of which other builders
-   * had open the same day. A reader counting rows is not a second opinion about
+   * had open the same day. A reader reading rows is not a second opinion about
    * a rule.
    *
-   * `null` on a failed read, never 0: "nothing is waiting" and "we could not
-   * look" produce different sentences, and the second one must not silently
-   * become the first at the exact place a house is told to go and find a book
-   * its own manager already carried in.
+   * `null` on a failed read, never 0 and never `[]`: "nothing is waiting" and
+   * "we could not look" produce different sentences, and the second one must
+   * not silently become the first at the exact place a house is told to go and
+   * find a book its own manager already carried in.
    */
-  private async heldBookCount(state: string): Promise<number | null> {
+  private async carriedBooksFor(state: string): Promise<{
+    held: number | null;
+    admitted: CarriedBook[] | null;
+  }> {
     try {
-      const { count, error } = await this.db.client
+      const { data, error } = await this.db.client
         .from("price_index_upload_reviews")
-        .select("id", { count: "exact", head: true })
+        .select(REVIEW_BASIS_COLUMNS)
         .eq("state", state)
-        .eq("status", "pending");
+        .order("uploaded_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
-      return count ?? 0;
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      const admitted: CarriedBook[] = [];
+      let held = 0;
+      for (const r of rows) {
+        const status = String(r.status);
+        if (status === "pending") {
+          held += 1;
+          continue;
+        }
+        if (status !== "stood" && status !== "confirmed") continue;
+        admitted.push({
+          sha256: String(r.file_sha256),
+          fileName: String(r.file_name),
+          editionDate: String(r.edition_date).slice(0, 10),
+          // A routine book was never confirmed by anybody, so its basis is the
+          // tier that let it stand — not the empty confirmation column, which
+          // would draw as "admitted by nobody".
+          basis:
+            status === "stood"
+              ? "routine"
+              : r.confirmation_evidence
+                ? String(r.confirmation_evidence)
+                : "attested",
+          reason: r.confirmation_reason ? String(r.confirmation_reason) : null,
+          admittedAt: r.confirmed_at ? String(r.confirmed_at) : null,
+        });
+      }
+      return { held, admitted };
     } catch (err) {
       this.logger.warn(
-        `could not count held price books for ${state}: ${(err as Error).message}`,
+        `could not read the carried books for ${state}: ${(err as Error).message}`,
       );
-      return null;
+      return { held: null, admitted: null };
     }
   }
 

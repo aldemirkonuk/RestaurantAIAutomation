@@ -208,6 +208,60 @@ export class PriceIndexController {
   }
 
   /**
+   * Begin the hold on REOPENING a refusal (ADR 0128 Q3).
+   *
+   * A separate act from `challenge` above, and therefore a separate seal: a
+   * token minted to put a book back in front of people must never be spendable
+   * to put its numbers on their screens.
+   */
+  @Post("uploads/:reviewId/reopen-challenge")
+  @Roles("owner")
+  @ApiOperation({
+    summary:
+      "Issue the one-time seal that reopening a refused price book must carry back. Owner only",
+  })
+  async reopenChallenge(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("reviewId") reviewId: string,
+  ) {
+    const review = await this.reviewService.byId(reviewId);
+    const challenge = await this.reviewService.challengeReopen(review, {
+      userId: user.userId,
+      restaurantId: user.restaurantId,
+    });
+    return { success: true, ...challenge };
+  }
+
+  /**
+   * Put a refused book back in front of the jurisdiction.
+   *
+   * `@Roles("owner")` narrows the class-level owner/manager: the founder's
+   * answer to Q3 is *"Owner reopens with a stated reason"*. The guard checks the
+   * caller's role in their OWN house; the service additionally checks that they
+   * are an owner of a house in the BOOK's jurisdiction, because those are two
+   * different questions and only the second one is about this book.
+   */
+  @Post("uploads/:reviewId/reopen")
+  @Roles("owner")
+  @ApiOperation({
+    summary:
+      "Reopen a refused price book. Owner only, never the refuser, once per set of bytes, sealed, and a reason is required",
+  })
+  async reopenUpload(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("reviewId") reviewId: string,
+    @Body() body: { challenge?: string; reason?: string },
+  ) {
+    const review = await this.reviewService.byId(reviewId);
+    const result = await this.reviewService.reopen(
+      review,
+      { userId: user.userId, restaurantId: user.restaurantId },
+      { reason: body?.reason ?? null, challenge: body?.challenge ?? null },
+    );
+    return { success: true, review: result.review, note: result.sentence };
+  }
+
+  /**
    * Never let this book in. Not sealed, deliberately: the seal guards the act
    * that puts numbers on other people's screens, and refusing is the direction
    * that takes them off. A refusal still names a person and a reason.

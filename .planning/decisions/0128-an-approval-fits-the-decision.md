@@ -318,6 +318,34 @@ nothing, and it bounds how long a jurisdiction with one person in practice can b
 hourly sweep tells the pool again and stamps `escalated_at`. It writes that column and nothing
 else — the test asserts the update's key set is exactly `["escalated_at"]`.
 
+### 5. A refusal reopens once, by an owner (Q3, 2026-09-05)
+
+`POST /price-index/uploads/:id/reopen`, owner-only at the guard AND checked again against the
+BOOK's jurisdiction in the service, because "are you an owner" and "are you an owner of a house
+this book reaches" are two different questions and only the second one is about this book.
+
+| Rule | Where it is enforced |
+|---|---|
+| an OWNER, not a manager | `@Roles("owner")` + the pool's role in `reopen()` |
+| never the person who refused it | `reopen()`, and **not** a CHECK — see below |
+| once per set of bytes | `reopened_at IS NULL` in the UPDATE's own filter |
+| a reason, always | `reopen()` + `price_index_upload_reviews_reopen_complete` |
+| the refusal is kept, not deleted | `price_index_upload_reviews_reopen_has_history` |
+| its own seal act | `price_index_upload.reopen`, never `.admit` |
+
+Two consequences are stated rather than left to be discovered.
+
+**The database cannot check "not the refuser".** A reopened row is no longer refused, so
+`refused_by` must be cleared to satisfy the refusal CHECK that already existed — and the refuser
+moves into `decision_history`. The rule therefore lives in the service and in
+`price-index-review.spec.ts`, and nobody should read the absence of that CHECK as the absence of
+the rule.
+
+**`escalated_at` is cleared on a reopen, and that is a decision.** It is the clock that opens the
+self-admission override. A book that had already sat out its hold before being refused would
+otherwise return instantly self-admittable, and an owner reopening their own upload could put it
+on three houses' screens in two requests. The hold starts again.
+
 ---
 
 ## Consequences
@@ -351,29 +379,55 @@ unnecessary for it.
 
 ## Founder-only questions
 
-1. **The bands are reasoned, not measured. Do you want them measured before this is armed?**
-   Every constant in `upload-tier.ts` (20 % catalogue, 25 % share, 5 % median, 50 % single move)
-   is an argument, not an observation, because this repository holds ONE edition of one state
-   book. The system records the real diff of every upload, so two editions would replace all four
-   with evidence. Arm it now on reasoned bands, or hold the arming until a second Michigan edition
-   has been carried in and measured?
+**Four of the five are ANSWERED (2026-09-05). The answers and what each one ruled out are
+recorded here rather than in a chat log, because a decision that is not written did not happen.**
 
-2. **Is 24 hours the right time before a lone person may admit their own book?** It is the bound
-   on how long a jurisdiction with one *available* person can be blocked by a colleague who is not
-   reading their inbox. Shorter makes the second pair of eyes easier to bypass; longer means a
-   Michigan house can sit without an index line for days over a book that is probably fine.
+1. ~~**The bands are reasoned, not measured. Do you want them measured before this is armed?**~~
+   **ANSWERED (batch 44): the tiers stay UNARMED until a second Michigan edition has been carried
+   in and measured.** Every constant in `upload-tier.ts` (20 % catalogue, 25 % share, 5 % median,
+   50 % single move) is an argument, not an observation, because this repository holds ONE edition
+   of one state book. The system records the real diff of every upload, so the second edition
+   replaces all four with evidence.
+   *Rejected: arm now on reasoned bands.* It would have shipped a false-positive rate nobody could
+   state — a state that genuinely reprices its catalogue would hold every quarter, which is the
+   "always two" rule the founder ruled out, arrived at by accident.
 
-3. **Should a refused book be re-uploadable at all?** Today the same bytes are one decision
-   forever (`UNIQUE (source_key, file_sha256)`), and a second upload of a refused book is told
-   *"a refused book does not become acceptable by being sent again"*. That is right for a doctored
-   file and wrong for a book refused by mistake. Should an owner be able to reopen a refusal?
+2. **Is 24 hours the right time before a lone person may admit their own book?**
+   **ANSWERED: 24 hours stands, and it is PRINTED where the waiting book is shown.** Built: the
+   endpoint sends `heldBookHoldHours` and both the silence sentence and the panel's waiting label
+   name it. The panel never carries its own copy of the number — `ESCALATION_HOURS` is imported
+   into the read service, so the number a reader is promised and the number the sweep waits out
+   cannot drift.
+   *Rejected: leaving it implied.* "Waiting for a second pair of eyes" with no clock beside it
+   reads as "waiting indefinitely", which is the opposite of what the hold is for — it exists to
+   bound how long one person can be blocked by another person's inbox.
 
-4. **US-CA, GB-ENG and both Türkiye groupings have exactly ONE owner-or-manager each.** Every book any of them
-   ever carries in will be admitted by the same person who brought it, recorded `same_person`. The
-   control there is a stated reason and a permanent record, not a second pair of eyes. Is that
-   acceptable, or should those jurisdictions be unable to carry a book in at all until a second
-   person exists? (Michigan, the only jurisdiction with an uploadable source today, has three
-   people and is unaffected either way.)
+3. ~~**Should a refused book be re-uploadable at all?**~~
+   **ANSWERED: *"Owner reopens with a stated reason."*** An owner — never the person who refused
+   it — may reopen a refused book **once**, with a reason; the reopening is a logged, sealed
+   decision and the book goes back through the tier it was already in. The bytes stay one record
+   and the decision history grows: the refusal is appended to `decision_history` and then cleared,
+   because the row's own CHECK requires the three refusal columns to be empty once the status
+   leaves `refused`. Built as `POST /price-index/uploads/:id/reopen` (owner-only, its own seal act
+   `price_index_upload.reopen`, migration `20260906020000`).
+   *Rejected: never — upload a corrected file.* That answers a doctored book and punishes a
+   mistake, and it loses the thread: a corrected file is different bytes, so the refusal and the
+   correction become two unrelated records and nobody can see that one followed the other.
+
+4. ~~**US-CA, GB-ENG and both Türkiye groupings have exactly ONE owner-or-manager each.**~~
+   **ANSWERED: *"Acceptable: reason + record."*** A lone owner-or-manager may admit their own book
+   after the 24-hour hold with a stated reason; the row says `same_person` forever, and the index
+   box on `/notifications` prints that basis in words — *"admitted by the same person who brought
+   it in, because this jurisdiction has no second owner or manager — this is not a second pair of
+   eyes"* — with the reason they gave beneath it. The reason is required by the service AND by
+   `price_index_upload_reviews_second_person_is_another`, so a silent self-admission dressed as
+   `attested` is refused by the database.
+   *Rejected: block until a second person exists.* It would make the only route by which a state
+   price reaches a Californian or British house permanently unusable, against GAO-25-107721 §10.23,
+   which asks for an alternative control where segregation is not practical rather than for the
+   process to stop.
+   *Rejected: a Mudavym-side review list.* It would put this company between a house and its own
+   state's published prices, and it is a control nobody in the house can see, audit or appeal.
 
 5. **`admitted_at` is per row, so admitting a book is an UPDATE over every row it wrote** — 12,530
    for the real Michigan book. It is one indexed statement and it happens quarterly, and the
@@ -387,3 +441,4 @@ unnecessary for it.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-05 | Claude (research + build, approval tiers) | **Created.** Answers ADR 0117 Q18 with a tier rather than a rule. **The census is the finding**: read-only against production and taken twice (the estate gained a house between the reads and the later figures are the ones of record), ten of fifteen houses have one owner-or-manager or none, and five of eight jurisdictions contain exactly ONE person — so "always two" is "never" for most of this estate, while US-MI (the only uploadable jurisdiction) has three people and a real second pair of eyes. **The adversarial pass changed the design**: a forged single price is 1 row in 12,530 and no band and no human reader will ever see it, so the tier is a SIZING control and the only evidence-producing confirmation is a byte comparison — which the confirm route now performs and records as `byte_match`, distinct from `attested`. Built: `upload-tier.ts` (pure), `price-index-review.service.ts` (pool, seal, admission, escalation), `price_index_upload_reviews` + `price_index_postings.admitted_at` + the seal kind (`20260905180000`), `MARKET_VISIBILITY` on every read, four routes, and the panel's waiting label. **Pre-fix proof, measured then deleted**: `git show HEAD:apps/api-gateway/src/price-index/price-index.service.ts` into a same-depth probe (HEAD was `b1d64869`; still pre-fix at `d84d8d39`) showed HEAD drawing a carried, unadmitted row as Michigan's index line, with no query asking anything about admission; the probe was removed and the measurement recorded in `price-index-held-book.spec.ts`'s header. `npx jest src/price-index src/common/seal` on the tree reported here: **230 passed / 21 suites**, of which **38 in 3 new suites** (`upload-tier`, `price-index-review`, `price-index-held-book`) plus **7 added to `price-index-upload.spec.ts`** are new here — 45 in total. Gateway `tsc --noEmit -p tsconfig.spec.json` clean; `check_gateway_boots.sh` PASS (the NotificationsModule forwardRef and SealModule resolve); `eslint --quiet` clean on the 12 touched gateway files (web eslint CANNOT run in this checkout at all: `eslint-plugin-jsx-a11y` is not installed anywhere in the tree). Web `vitest run src/pages/notifications/next`: **108 passed / 6 files**, 4 new. Curled live on the local gateway (production data, read-only): `GET /price-index/uploads` returns the no-jurisdiction sentence for the demo house, `GET /price-index/MI` returns `heldBooks: 0` with *"The index register could not be read. This is unknown, not empty."* — `price_index_postings` still does not exist on the production project, so this whole path is correct in code and inert there, as ADR 0117's 2026-09-05 row already recorded. The migration's in-file `DO $$` assertions are **UNEXECUTED**: Docker is down in this environment and no local Postgres was available. Nothing was written to any database, no flag was armed, and no upload was committed. Five founder questions. |
+| 2026-09-05 | Claude (build, Q2/Q3/Q4) | **Q2, Q3 and Q4 answered by the founder and BUILT; Q1 answered earlier (batch 44) and recorded above.** Q3 — *"Owner reopens with a stated reason"*: `POST /price-index/uploads/:id/reopen` and its own seal challenge, owner-only at the guard and re-checked against the BOOK's jurisdiction, refused for the refuser, refused a second time on the same bytes with a sentence that names the date the door was used, and refused with no reason. The refusal is APPENDED to `decision_history` and then cleared, because 20260905180000's refusal CHECK forces the three columns empty once the status leaves `refused` — so the bytes stay one record and the history grows, exactly as the founder put it. `escalated_at` is cleared so the 24-hour hold restarts; without that, an owner reopening their own upload could self-admit in two requests. Migration `20260906020000` adds `reopened_at`/`reopened_by`/`reopen_reason`/`reopen_seal_id`/`decision_history` with all-or-nothing and history-kept CHECKs, both proven to refuse in-file. **A latent defect this question exposed:** `admittersFor` deduped a person by keeping whichever access row came back first, so an owner of one Michigan house who also manages another could be refused their own owner privilege on a coin flip — the dedupe now keeps the strongest role, with a test. Q4 — *"Acceptable: reason + record"*: the reason was already required by the service and by `price_index_upload_reviews_second_person_is_another`; what was missing was the RECORD being visible, so `GET /price-index/:state` now returns `carriedBooks` (sha256, file, edition, basis, reason) and `MarketIndexPanel` prints, beneath a carried line, that it *"was admitted by the same person who brought it in, because this jurisdiction has no second owner or manager — this is not a second pair of eyes"*. Only books whose lines are actually drawn are annotated, and a `null` from the gateway draws no basis rather than a guessed one. Q2 — 24 hours stands and is PRINTED: `heldBookHoldHours` travels on the wire and `ESCALATION_HOURS` is imported into the read service, so the panel never carries its own copy of the number. **Both are dark until arming**: no review row can exist unless an upload was committed with `PRICE_INDEX_UPLOAD_ENABLED` armed (`price-index-upload.spec.ts` "refuses a commit while the flag is off"), and the flag stays off per Q1. `npx jest src/price-index src/common/seal`: **244 passed / 21 suites**, 14 of them new here (10 reopen cases in `price-index-review.spec.ts`, 4 basis-and-hold cases in `price-index-held-book.spec.ts`). `npx vitest run src/pages/notifications/next`: **128 passed / 7 files**, 6 of them new here. Gateway and web `tsc` clean of my files; `check_money_routes_are_sealed`, `check_route_exposure`, `check_read_errors_not_swallowed`, `check_windowed_figures` all exit 0. The migration's in-file assertions are **UNEXECUTED** — Docker is still down here. |

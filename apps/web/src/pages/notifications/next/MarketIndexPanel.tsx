@@ -45,7 +45,15 @@
  * every state posted list and control-state shelf price is.
  */
 
-import { Globe, Hourglass, Landmark, RotateCw, Sprout, TriangleAlert } from 'lucide-react';
+import {
+  FileCheck2,
+  Globe,
+  Hourglass,
+  Landmark,
+  RotateCw,
+  Sprout,
+  TriangleAlert,
+} from 'lucide-react';
 import { EM, MONO, SANS, SERIF } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
 import { CommoditySeriesVM, useHouseCommodity } from './useHouseCommodity';
@@ -60,6 +68,23 @@ const CLASS_LABEL: Record<string, string> = {
   // the reader still sees which kind of retail it is.
   retail_reference: 'Retail reference',
   public_index: 'Public index',
+};
+
+/**
+ * How each admission basis reads to an operator (ADR 0128 Q4).
+ *
+ * `same_person` is spelled out rather than softened. The founder's answer was
+ * *"Acceptable: reason + record"* — acceptable BECAUSE it is recorded and
+ * printed, so the words have to say that nobody else looked.
+ */
+const BASIS_WORDS: Record<string, string> = {
+  routine:
+    'stood on one person\u2019s upload \u2014 every check this register makes was inside its band, so nobody was asked to confirm it',
+  byte_match:
+    'was admitted by a second owner or manager who fetched the same file themselves and matched it byte for byte',
+  attested: 'was admitted by a second owner or manager',
+  same_person:
+    'was admitted by the same person who brought it in, because this jurisdiction has no second owner or manager \u2014 this is not a second pair of eyes',
 };
 
 function classLabel(sourceClass: string): string {
@@ -467,6 +492,15 @@ export function MarketIndexPanel() {
   const m = useHouseIndex();
   const withheld = m.sources.filter((s) => s.withheld);
 
+  // Only the carried books whose lines are actually on this screen (ADR 0128
+  // Q4). A basis note beside a book the reader cannot see would be an answer to
+  // a question nobody asked; a book with no drawn line is either held (the
+  // label above says so) or simply not in this state's current page of lines.
+  const drawnShas = new Set(m.lines.map((l) => l.uploadSha256).filter(Boolean));
+  const drawnCarriedBooks = (m.carriedBooks ?? []).filter((b) =>
+    drawnShas.has(b.sha256),
+  );
+
   // A source with `display` gets its own titled section (Q24). Everything else
   // is a drinks posting and stays in the main list. Splitting on the SOURCE
   // rather than on the class keeps the rule where the evidence is: the registry
@@ -588,8 +622,45 @@ export function MarketIndexPanel() {
               : `${m.heldBooks} price books brought in by hand are waiting for a second pair of eyes.`}{' '}
             Nothing from {m.heldBooks === 1 ? 'it' : 'them'} is drawn here until an owner or manager
             admits {m.heldBooks === 1 ? 'it' : 'them'}.
+            {/* The hold's LENGTH, printed rather than implied (ADR 0128 Q2).
+                Read from the wire — the panel never names its own 24. Omitted
+                when the gateway did not send one, because a hold of unknown
+                length is not a hold of no length. */}
+            {m.heldBookHoldHours !== null && (
+              <>
+                {' '}
+                After {m.heldBookHoldHours} hours the people who could act are told again, and the
+                person who brought {m.heldBooks === 1 ? 'it' : 'them'} in may admit{' '}
+                {m.heldBooks === 1 ? 'it' : 'them'} with a stated reason.
+              </>
+            )}
           </span>
         </p>
+      )}
+
+      {/* On what basis a hand-carried book that IS drawn was let in
+          (ADR 0128 Q4; the founder: "Acceptable: reason + record"). Only the
+          books whose lines are actually on this screen, so the box never
+          annotates a line it is not showing. `same_person` says in words that
+          nobody else looked — a basis that read like a second pair of eyes when
+          it was not one would be the control evaporating at the last step. */}
+      {m.state === 'ready' && drawnCarriedBooks.length > 0 && (
+        <ul className="mt-1.5 space-y-1">
+          {drawnCarriedBooks.map((b) => (
+            <li
+              key={b.sha256}
+              className="flex items-start gap-1.5 text-[10.5px]"
+              style={{ fontFamily: SANS, color: 'var(--ink-3)' }}
+            >
+              <FileCheck2 size={11} className="mt-0.5 shrink-0" aria-hidden />
+              <span>
+                <strong style={{ fontWeight: 500 }}>{b.fileName}</strong> ({b.editionDate}) was
+                brought in by hand and {BASIS_WORDS[b.basis] ?? 'let into the market'}.
+                {b.reason ? ` Reason given: ${b.reason}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
 
       {m.state === 'ready' && m.lines.length === 0 && (

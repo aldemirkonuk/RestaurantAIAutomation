@@ -47,6 +47,8 @@ const READY = {
   sources: [] as Array<Record<string, unknown>>,
   silence: null as string | null,
   heldBooks: 0 as number | null,
+  heldBookHoldHours: 24 as number | null,
+  carriedBooks: [] as Array<Record<string, unknown>> | null,
   refresh: vi.fn(),
 };
 
@@ -548,5 +550,111 @@ describe('MarketIndexPanel — a book waiting for a second pair of eyes', () => 
     expect(
       screen.getByText(/waiting for a second pair of eyes/),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * The hold's length, printed (ADR 0128 Q2), and the basis a carried book that
+ * IS drawn was let in on (Q4).
+ *
+ * The case that carries the decision is `same_person`: the founder allowed a
+ * lone owner-or-manager to admit their own book *"with reason + record"*, and
+ * the record is only a control if the reader is told, in words, that nobody
+ * else looked.
+ */
+describe('MarketIndexPanel — the hold and the basis', () => {
+  const SHA = 'a'.repeat(64);
+
+  it('prints how long a waiting book waits rather than implying it', () => {
+    mockIndex.current = { ...READY, jurisdiction: 'US-MI', heldBooks: 1, heldBookHoldHours: 24 };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/After 24 hours the people who could act are told again/)).toBeTruthy();
+  });
+
+  it('omits the hold sentence when the gateway sent no number', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-MI',
+      heldBooks: 1,
+      heldBookHoldHours: null,
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/waiting for a second pair of eyes/)).toBeTruthy();
+    expect(screen.queryByText(/hours the people who could act/)).toBeNull();
+  });
+
+  it('says a lone admission was NOT a second pair of eyes, and gives the reason', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-MI',
+      lines: [line({ uploadSha256: SHA })],
+      carriedBooks: [
+        {
+          sha256: SHA,
+          fileName: '8-3-25-PRICE-BOOK-EXCEL.xlsx',
+          editionDate: '2025-08-03',
+          basis: 'same_person',
+          reason: 'I am the only manager in Michigan and I re-downloaded it.',
+          admittedAt: '2026-09-05T09:00:00Z',
+        },
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/this is not a second pair of eyes/)).toBeTruthy();
+    expect(
+      screen.getByText(/Reason given: I am the only manager in Michigan/),
+    ).toBeTruthy();
+  });
+
+  it('names a byte match as the independent fetch it is', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-MI',
+      lines: [line({ uploadSha256: SHA })],
+      carriedBooks: [
+        {
+          sha256: SHA,
+          fileName: 'book.xlsx',
+          editionDate: '2025-08-03',
+          basis: 'byte_match',
+          reason: null,
+          admittedAt: '2026-09-05T09:00:00Z',
+        },
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/matched it byte for byte/)).toBeTruthy();
+    expect(screen.queryByText(/Reason given/)).toBeNull();
+  });
+
+  it('annotates only books whose lines are actually on screen', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-MI',
+      lines: [line({ uploadSha256: null })],
+      carriedBooks: [
+        {
+          sha256: SHA,
+          fileName: 'elsewhere.xlsx',
+          editionDate: '2025-08-03',
+          basis: 'same_person',
+          reason: 'reason',
+          admittedAt: null,
+        },
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/elsewhere.xlsx/)).toBeNull();
+  });
+
+  it('draws no basis at all when the gateway could not answer', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-MI',
+      lines: [line({ uploadSha256: SHA })],
+      carriedBooks: null,
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/brought in by hand and/)).toBeNull();
   });
 });

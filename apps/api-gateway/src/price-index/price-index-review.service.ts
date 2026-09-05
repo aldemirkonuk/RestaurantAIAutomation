@@ -72,7 +72,7 @@ import type { EditionDiff, PriceFingerprint, TierVerdict } from "./upload-tier";
  * as unreadable - see `payment-methods.service.ts`).
  */
 const REVIEW_COLUMNS =
-  "id, source_key, state, file_name, file_sha256, edition_date, rows_written, uploaded_by, uploaded_by_restaurant_id, uploaded_at, tier, tier_reasons, tier_note, diff, price_fingerprint, fingerprint_refused_because, status, confirmed_by, confirmed_at, confirmation_evidence, confirmation_reason, confirmation_seal_id, refused_by, refused_at, refusal_reason, escalated_at, created_at";
+  "id, source_key, state, file_name, file_sha256, edition_date, rows_written, uploaded_by, uploaded_by_restaurant_id, uploaded_at, tier, tier_reasons, tier_note, diff, price_fingerprint, fingerprint_refused_because, status, confirmed_by, confirmed_at, confirmation_evidence, confirmation_reason, confirmation_seal_id, refused_by, refused_at, refusal_reason, escalated_at, reopened_at, reopened_by, reopen_reason, reopen_seal_id, decision_history, created_at";
 
 const BASELINE_COLUMNS = "edition_date, price_fingerprint, status, source_key";
 
@@ -82,6 +82,16 @@ const ACCESS_COLUMNS = "user_id, restaurant_id, role, is_active";
 
 /** The seal's act, one string, so the challenge and the redemption agree. */
 export const ADMIT_ACTION = "price_index_upload.admit";
+
+/**
+ * Reopening a refusal is its OWN act, not a second `admit` (ADR 0128 Q3).
+ *
+ * A seal names one act on one subject. If a reopen were sealed as `admit`, a
+ * challenge minted to put a book back in front of people could be spent to put
+ * its numbers on their screens, which is the opposite direction and a stronger
+ * privilege. Two strings, so that cannot happen by accident.
+ */
+export const REOPEN_ACTION = "price_index_upload.reopen";
 
 /**
  * How long a held book waits before the people who could act are told again.
@@ -136,6 +146,16 @@ export interface ReviewRow {
   refusedAt: string | null;
   refusalReason: string | null;
   escalatedAt: string | null;
+  /** Set once, by an owner, when a refusal was put back (ADR 0128 Q3). */
+  reopenedAt: string | null;
+  reopenedBy: string | null;
+  reopenReason: string | null;
+  /**
+   * Decisions these bytes have already had and no longer carry, oldest first.
+   * `null` means nothing has ever been superseded - which is true of every book
+   * that was never reopened, and is NOT the same as an empty history.
+   */
+  decisionHistory: Array<Record<string, unknown>> | null;
 }
 
 function mapReview(r: Record<string, unknown>): ReviewRow {
@@ -168,6 +188,12 @@ function mapReview(r: Record<string, unknown>): ReviewRow {
     refusedAt: r.refused_at ? String(r.refused_at) : null,
     refusalReason: r.refusal_reason ? String(r.refusal_reason) : null,
     escalatedAt: r.escalated_at ? String(r.escalated_at) : null,
+    reopenedAt: r.reopened_at ? String(r.reopened_at) : null,
+    reopenedBy: r.reopened_by ? String(r.reopened_by) : null,
+    reopenReason: r.reopen_reason ? String(r.reopen_reason) : null,
+    decisionHistory: Array.isArray(r.decision_history)
+      ? (r.decision_history as Array<Record<string, unknown>>)
+      : null,
   };
 }
 
@@ -334,6 +360,13 @@ export class PriceIndexReviewService {
         refused_at: null,
         refusal_reason: null,
         escalated_at: null,
+        // Explicit, never omitted (the capture guard forbids a conditional
+        // spread and an omitted key is a key nobody decided about).
+        reopened_at: null,
+        reopened_by: null,
+        reopen_reason: null,
+        reopen_seal_id: null,
+        decision_history: null,
       })
       .select(REVIEW_COLUMNS)
       .single();
@@ -434,19 +467,25 @@ export class PriceIndexReviewService {
         .eq("is_active", true)
         .in("role", ["owner", "manager"]);
       if (error) throw error;
-      const seen = new Set<string>();
-      const people: Admitter[] = [];
+      // One row per PERSON, and where a person is a manager of one house and an
+      // owner of another, the pool remembers the OWNER. Reopening a refusal is
+      // owner-only (ADR 0128 Q3), so a dedupe that kept whichever row the
+      // database happened to return first would refuse an owner their own
+      // privilege on a coin flip.
+      const byUser = new Map<string, Admitter>();
       for (const row of (data ?? []) as Array<Record<string, unknown>>) {
         const userId = String(row.user_id);
         if (excludeUserId && userId === excludeUserId) continue;
-        if (seen.has(userId)) continue;
-        seen.add(userId);
-        people.push({
+        const role = String(row.role);
+        const held = byUser.get(userId);
+        if (held && (held.role === "owner" || role !== "owner")) continue;
+        byUser.set(userId, {
           userId,
           restaurantId: String(row.restaurant_id),
-          role: String(row.role),
+          role,
         });
       }
+      const people: Admitter[] = [...byUser.values()];
       return {
         people,
         readFailed: false,
@@ -567,6 +606,36 @@ export class PriceIndexReviewService {
       reasons: [...review.tierReasons].sort(),
       rows: review.rowsWritten,
     };
+  }
+
+  /**
+   * The arguments a REOPEN seal is minted over: which book, and which refusal.
+   *
+   * The refusal's instant is in the hash on purpose. A seal held open while
+   * somebody refuses the book a second time is a seal minted over a decision
+   * that no longer exists, and spending it would undo a refusal its holder
+   * never read.
+   */
+  sealArgsForReopen(review: ReviewRow): Record<string, unknown> {
+    return {
+      sha256: review.fileSha256,
+      refusedAt: review.refusedAt,
+      refusedBy: review.refusedBy,
+    };
+  }
+
+  async challengeReopen(
+    review: ReviewRow,
+    actor: { userId: string; restaurantId: string },
+  ) {
+    return this.seals.issue({
+      restaurantId: actor.restaurantId,
+      actorUserId: actor.userId,
+      subjectKind: "price_index_upload",
+      subjectId: review.id,
+      action: REOPEN_ACTION,
+      args: this.sealArgsForReopen(review),
+    });
   }
 
   async challenge(
@@ -780,6 +849,144 @@ export class PriceIndexReviewService {
       groupKey: `price_index_refused:${updated.id}`,
     });
     return updated;
+  }
+
+  /**
+   * Put a refused book back in front of the jurisdiction (ADR 0128 Q3).
+   *
+   * The founder, 2026-09-05: *"Owner reopens with a stated reason"* — an owner
+   * (not the refuser) may reopen a refused book ONCE, with a reason; the
+   * reopening is a logged decision and the book goes back through the tier it
+   * was in. The rejected alternative was "never — upload a corrected file",
+   * which answers a doctored book and punishes a mistake, and loses the thread:
+   * a corrected file is different bytes, so the refusal and the correction
+   * become two unrelated records.
+   *
+   * NOTHING IS RE-JUDGED. `tier`, `tier_reasons` and `tier_note` are untouched
+   * and the rows were never admitted, so a reopened book is exactly the held
+   * book it was before somebody said no.
+   *
+   * `escalated_at` IS cleared, and that is a decision rather than tidiness. It
+   * is the clock that opens the self-admission override, and a book that had
+   * already sat 24 hours before it was refused would otherwise come back
+   * instantly self-admittable — an owner reopening their own upload could put
+   * it on three houses' screens in two requests. The hold starts again.
+   */
+  async reopen(
+    review: ReviewRow,
+    actor: { userId: string; restaurantId: string },
+    input: { reason?: string | null; challenge?: string | null },
+  ): Promise<{ review: ReviewRow; sentence: string }> {
+    if (review.status !== "refused") {
+      throw new ForbiddenException(
+        review.status === "pending"
+          ? "This book is already waiting for a decision, so there is nothing to reopen. Nothing was changed."
+          : `This book was not refused — it is ${review.status}. Only a refusal reopens. Nothing was changed.`,
+      );
+    }
+    if (review.reopenedAt) {
+      // ONCE. Said in words rather than as a 409, because the person reading it
+      // has to know that the door exists and has already been used.
+      throw new ForbiddenException(
+        `These bytes have already been reopened once, on ${review.reopenedAt.slice(0, 10)}, and were refused again. A book reopens once: a second override would make a refusal something a determined owner can simply outlast. Bring in a corrected file instead — it is different bytes and gets its own decision. Nothing was changed.`,
+      );
+    }
+    const reason = (input.reason ?? "").trim();
+    if (!reason) {
+      throw new ForbiddenException(
+        "Reopening a refusal names its reason. The person who refused this book reads it, and an override with no account of itself is the one thing that would make refusing pointless. Nothing was changed.",
+      );
+    }
+    if (actor.userId === review.refusedBy) {
+      throw new ForbiddenException(
+        "You refused this book, so you cannot be the one who overrides that refusal. A reopen is a second person disagreeing, not a person changing their mind — change of mind is what the confirm route is for, and it is closed to you here. Nothing was changed.",
+      );
+    }
+
+    const pool = await this.admittersFor(review.state, null);
+    if (pool.readFailed) {
+      throw new ForbiddenException(
+        "Who may act on a book in this jurisdiction could not be read, so whether you are an owner of it could not be established. Nothing was changed. This is unknown, not permitted.",
+      );
+    }
+    const standing = pool.people.find((p) => p.userId === actor.userId);
+    if (!standing || standing.role !== "owner") {
+      throw new ForbiddenException(
+        `A refusal in ${review.state} is overridden by an OWNER of a house in that jurisdiction. ${standing ? "You are a manager there, and a manager's disagreement with a refusal is a conversation rather than a route." : "Your houses are not in it."} Nothing was changed.`,
+      );
+    }
+
+    const { sealId } = await this.seals.redeem({
+      restaurantId: actor.restaurantId,
+      actorUserId: actor.userId,
+      subjectKind: "price_index_upload",
+      subjectId: review.id,
+      action: REOPEN_ACTION,
+      args: this.sealArgsForReopen(review),
+      challenge: input.challenge,
+    });
+
+    const reopenedAt = new Date().toISOString();
+    // The refusal MOVES rather than being deleted: the row's own CHECK requires
+    // the three refusal columns to be null once the status leaves 'refused', so
+    // clearing them without keeping them would erase the only account of why
+    // anybody said no.
+    const history = [
+      ...(review.decisionHistory ?? []),
+      {
+        decision: "refused",
+        by: review.refusedBy,
+        at: review.refusedAt,
+        reason: review.refusalReason,
+        supersededAt: reopenedAt,
+        supersededBy: actor.userId,
+        supersedeReason: reason,
+      },
+    ];
+
+    const { data, error } = await this.db.client
+      .from("price_index_upload_reviews")
+      .update({
+        status: "pending",
+        refused_by: null,
+        refused_at: null,
+        refusal_reason: null,
+        // The hold starts again — see the header.
+        escalated_at: null,
+        reopened_at: reopenedAt,
+        reopened_by: actor.userId,
+        reopen_reason: reason,
+        reopen_seal_id: sealId,
+        decision_history: history,
+      })
+      .eq("id", review.id)
+      // Single-use in the STATEMENT, not in a check-then-write: two owners
+      // racing the same refusal cannot both reopen it.
+      .eq("status", "refused")
+      .is("reopened_at", null)
+      .select(REVIEW_COLUMNS);
+    if (error) {
+      throw new Error(
+        `The book's record could not be updated, so nothing was reopened: ${error.message}`,
+      );
+    }
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    if (rows.length === 0) {
+      throw new ForbiddenException(
+        "This refusal was reopened by another request a moment ago, so this one was refused. A book reopens once.",
+      );
+    }
+    const updated = mapReview(rows[0]);
+
+    const sentence = `Reopened by an owner over a refusal by somebody else. It is held again under the tier it was already in, and the ${ESCALATION_HOURS}-hour hold starts from now.`;
+    await this.tell(updated, pool, {
+      title: `A refused price book for ${review.state} was reopened`,
+      message: `${updated.fileName} (${updated.editionDate}) is waiting again. ${reason} ${sentence} ${updated.tierNote}`,
+      priority: "high",
+      groupKey: `price_index_reopened:${updated.id}`,
+    });
+
+    return { review: updated, sentence };
   }
 
   /**

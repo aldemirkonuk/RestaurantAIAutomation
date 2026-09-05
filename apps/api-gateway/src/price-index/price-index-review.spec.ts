@@ -21,6 +21,7 @@ import { ForbiddenException } from "@nestjs/common";
 import {
   ADMIT_ACTION,
   ESCALATION_HOURS,
+  REOPEN_ACTION,
   PriceIndexReviewService,
   type ReviewRow,
 } from "./price-index-review.service";
@@ -54,6 +55,10 @@ function heldReview(over: Partial<ReviewRow> = {}): ReviewRow {
     refusedAt: null,
     refusalReason: null,
     escalatedAt: null,
+    reopenedAt: null,
+    reopenedBy: null,
+    reopenReason: null,
+    decisionHistory: null,
     ...over,
   };
 }
@@ -568,5 +573,269 @@ describe("the pool is the JURISDICTION, not the house", () => {
     const pool = await svc.admittersFor("US-MI", UPLOADER);
     expect(pool.people).toEqual([]);
     expect(pool.readFailed).toBe(false);
+  });
+});
+
+/**
+ * Reopening a refusal (ADR 0128 Q3; the founder: *"Owner reopens with a stated
+ * reason"*).
+ *
+ * Four rules, and every one of them is a refusal in the ordinary case:
+ * only an OWNER, never the refuser, once per set of bytes, and never without a
+ * reason. The fifth is what happens to the row — the refusal MOVES into the
+ * history rather than being deleted, because the CHECK that makes a refusal
+ * complete forces the three columns to be cleared.
+ */
+function refusedReview(over: Partial<ReviewRow> = {}): ReviewRow {
+  return heldReview({
+    status: "refused",
+    refusedBy: OTHER,
+    refusedAt: "2026-09-05T06:00:00.000Z",
+    refusalReason: "I think this is the 2024 book renamed.",
+    ...over,
+  });
+}
+
+/** The estate with named roles, so owner-only can actually be tested. */
+function estateWithRoles(people: Array<[string, string]>) {
+  return (call: Call) => {
+    if (call.table === "restaurants") {
+      return {
+        data: [
+          {
+            id: HOUSE,
+            name: "ADMIN ROOM",
+            state_province: "Michigan",
+            country: "United States",
+          },
+        ],
+      };
+    }
+    if (call.table === "user_restaurant_access") {
+      return {
+        data: people.map(([user_id, role]) => ({
+          user_id,
+          restaurant_id: HOUSE,
+          role,
+          is_active: true,
+        })),
+      };
+    }
+    if (call.table === "price_index_upload_reviews" && call.op === "update") {
+      return {
+        data: [
+          {
+            id: "review-1",
+            source_key: "michigan-lcc-price-book",
+            state: "US-MI",
+            file_name: "8-3-25-PRICE-BOOK-EXCEL.xlsx",
+            file_sha256: SHA,
+            edition_date: "2025-08-03",
+            rows_written: 18,
+            uploaded_by: UPLOADER,
+            uploaded_by_restaurant_id: HOUSE,
+            uploaded_at: "2026-09-05T00:00:00.000Z",
+            tier: "second_pair_of_eyes",
+            tier_reasons: ["first_book"],
+            tier_note: "first book",
+            ...(call.payload as Record<string, unknown>),
+          },
+        ],
+      };
+    }
+    return { data: [] };
+  };
+}
+
+describe("reopening a refused book", () => {
+  const OWNER = "user-owner";
+
+  it("lets an OWNER who did not refuse it put it back, under the tier it was in", async () => {
+    const { db, calls } = makeDb(
+      estateWithRoles([
+        [OWNER, "owner"],
+        [OTHER, "manager"],
+      ]),
+    );
+    const notes = notifications();
+    const seal = seals();
+    const svc = new PriceIndexReviewService(db, notes as never, seal);
+
+    const out = await svc.reopen(
+      refusedReview(),
+      { userId: OWNER, restaurantId: HOUSE },
+      { reason: "The Commission republished the same edition; the refusal was mine to undo.", challenge: "tok" },
+    );
+
+    expect(out.review.status).toBe("pending");
+    // Nothing is re-judged.
+    expect(out.review.tier).toBe("second_pair_of_eyes");
+    expect(out.review.tierReasons).toEqual(["first_book"]);
+    expect(out.sentence).toContain(`${ESCALATION_HOURS}-hour hold starts from now`);
+
+    const update = calls.find(
+      (c) => c.table === "price_index_upload_reviews" && c.op === "update",
+    );
+    const payload = update?.payload as Record<string, unknown>;
+    // The refusal is CLEARED on the row and KEPT in the history.
+    expect(payload.refused_by).toBeNull();
+    expect(payload.refusal_reason).toBeNull();
+    // The clock restarts: a book already past its hold must not come back
+    // instantly self-admittable.
+    expect(payload.escalated_at).toBeNull();
+    const history = payload.decision_history as Array<Record<string, unknown>>;
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      decision: "refused",
+      by: OTHER,
+      reason: "I think this is the 2024 book renamed.",
+      supersededBy: OWNER,
+    });
+    // Its OWN act, not a second `admit`.
+    expect((seal as never as { redeem: jest.Mock }).redeem).toHaveBeenCalledWith(
+      expect.objectContaining({ action: REOPEN_ACTION, subjectKind: "price_index_upload" }),
+    );
+    expect(ADMIT_ACTION).not.toBe(REOPEN_ACTION);
+  });
+
+  it("refuses the person who refused it", async () => {
+    const { db } = makeDb(estateWithRoles([[OTHER, "owner"]]));
+    const seal = seals();
+    const svc = new PriceIndexReviewService(db, notifications() as never, seal);
+    await expect(
+      svc.reopen(
+        refusedReview({ refusedBy: OTHER }),
+        { userId: OTHER, restaurantId: HOUSE },
+        { reason: "on reflection", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/you cannot be the one who overrides that refusal/);
+    expect((seal as never as { redeem: jest.Mock }).redeem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a MANAGER, however senior their house", async () => {
+    const { db } = makeDb(estateWithRoles([["user-mgr", "manager"]]));
+    const svc = new PriceIndexReviewService(db, notifications() as never, seals());
+    await expect(
+      svc.reopen(
+        refusedReview(),
+        { userId: "user-mgr", restaurantId: HOUSE },
+        { reason: "I disagree", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/overridden by an OWNER.*You are a manager there/s);
+  });
+
+  it("remembers a person as an OWNER when they are a manager elsewhere", async () => {
+    // The dedupe used to keep whichever row came back first, so an owner of one
+    // Michigan house who manages another could be refused their own privilege
+    // on a coin flip.
+    const { db } = makeDb((call: Call) => {
+      if (call.table === "restaurants") {
+        return {
+          data: [
+            { id: "h1", name: "A", state_province: "MI", country: "United States" },
+            { id: "h2", name: "B", state_province: "Michigan", country: "United States" },
+          ],
+        };
+      }
+      if (call.table === "user_restaurant_access") {
+        return {
+          data: [
+            { user_id: OWNER, restaurant_id: "h1", role: "manager", is_active: true },
+            { user_id: OWNER, restaurant_id: "h2", role: "owner", is_active: true },
+          ],
+        };
+      }
+      return { data: [] };
+    });
+    const svc = new PriceIndexReviewService(db, notifications() as never, seals());
+    const pool = await svc.admittersFor("US-MI");
+    expect(pool.people).toHaveLength(1);
+    expect(pool.people[0].role).toBe("owner");
+  });
+
+  it("refuses a second reopen on the same bytes, and says the door has been used", async () => {
+    const { db } = makeDb(estateWithRoles([[OWNER, "owner"]]));
+    const svc = new PriceIndexReviewService(db, notifications() as never, seals());
+    await expect(
+      svc.reopen(
+        refusedReview({ reopenedAt: "2026-09-05T08:00:00.000Z", reopenedBy: OWNER }),
+        { userId: OWNER, restaurantId: HOUSE },
+        { reason: "once more", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/already been reopened once, on 2026-09-05.*Bring in a corrected file/s);
+  });
+
+  it("refuses a reopen with no reason", async () => {
+    const { db } = makeDb(estateWithRoles([[OWNER, "owner"]]));
+    const svc = new PriceIndexReviewService(db, notifications() as never, seals());
+    await expect(
+      svc.reopen(
+        refusedReview(),
+        { userId: OWNER, restaurantId: HOUSE },
+        { reason: "   ", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/Reopening a refusal names its reason/);
+  });
+
+  it("refuses a book that was never refused", async () => {
+    const { db } = makeDb(estateWithRoles([[OWNER, "owner"]]));
+    const svc = new PriceIndexReviewService(db, notifications() as never, seals());
+    await expect(
+      svc.reopen(
+        heldReview(),
+        { userId: OWNER, restaurantId: HOUSE },
+        { reason: "go", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/already waiting for a decision, so there is nothing to reopen/);
+  });
+
+  it("refuses when the pool cannot be read — unknown is not permitted", async () => {
+    const { db } = makeDb(estate({ people: [], accessFails: true }));
+    const seal = seals();
+    const svc = new PriceIndexReviewService(db, notifications() as never, seal);
+    await expect(
+      svc.reopen(
+        refusedReview(),
+        { userId: OWNER, restaurantId: HOUSE },
+        { reason: "go", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/This is unknown, not permitted/);
+    expect((seal as never as { redeem: jest.Mock }).redeem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a refusal two owners reopened at once", async () => {
+    const { db } = makeDb((call: Call) => {
+      const base = estateWithRoles([[OWNER, "owner"]])(call);
+      if (call.table === "price_index_upload_reviews" && call.op === "update") {
+        return { data: [] };
+      }
+      return base;
+    });
+    const svc = new PriceIndexReviewService(db, notifications() as never, seals());
+    await expect(
+      svc.reopen(
+        refusedReview(),
+        { userId: OWNER, restaurantId: HOUSE },
+        { reason: "go", challenge: "tok" },
+      ),
+    ).rejects.toThrow(/A book reopens once/);
+  });
+
+  it("mints a seal bound to the refusal it is undoing", async () => {
+    const { db } = makeDb(estateWithRoles([[OWNER, "owner"]]));
+    const seal = seals();
+    const svc = new PriceIndexReviewService(db, notifications() as never, seal);
+    const review = refusedReview();
+    await svc.challengeReopen(review, { userId: OWNER, restaurantId: HOUSE });
+    expect((seal as never as { issue: jest.Mock }).issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: REOPEN_ACTION,
+        args: {
+          sha256: SHA,
+          refusedAt: "2026-09-05T06:00:00.000Z",
+          refusedBy: OTHER,
+        },
+      }),
+    );
   });
 });

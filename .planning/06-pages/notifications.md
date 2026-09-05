@@ -46,8 +46,11 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 - Create a custom one-tap action (🚧 not persisted — gone on refresh)
 
 - Posted-price index box says when a hand-carried price book is **waiting for a
-  second pair of eyes**, and that nothing is drawn from it until an owner or
-  manager admits it (ADR 0128, 2026-09-05)
+  second pair of eyes**, that nothing is drawn from it until an owner or manager
+  admits it, and **how long the hold is** (ADR 0128 Q2, 2026-09-05)
+- Posted-price index box prints **on what basis** each hand-carried book that IS
+  drawn was let in — and says in words when a lone owner-or-manager admitted
+  their own book, with the reason they gave (ADR 0128 Q4, 2026-09-05)
 - **Commodity and market index context line** inside the same labelled box: the
   newest observation of every published index series that speaks for this house,
   each carrying its issuer, its own period, the base it is stated against, its
@@ -820,6 +823,8 @@ the action center's order reads.
 | POST | `/price-index/uploads/:reviewId/challenge` | **new 2026-09-05** — mints the one-time seal (`subject_kind = price_index_upload`) that admitting a held book must carry back. NOT called by the web yet |
 | POST | `/price-index/uploads/:reviewId/confirm` | **new 2026-09-05** — admits a held book. Optional `fileBase64`: the confirmer's own copy is hashed and must match, recorded `byte_match`; without it, `attested`; by the uploader where the jurisdiction has nobody else (or after the escalation), `same_person` with a required reason. NOT called by the web yet |
 | POST | `/price-index/uploads/:reviewId/refuse` | **new 2026-09-05** — the book is never admitted; its rows stay written and stay out of the market. Deliberately not sealed (the seal guards the direction that puts numbers on screens), but a reason is required. NOT called by the web yet |
+| POST | `/price-index/uploads/:reviewId/reopen-challenge` | **new 2026-09-05** (ADR 0128 Q3) — mints the seal for reopening a refusal. Its OWN act (`price_index_upload.reopen`), never `.admit`: a token minted to put a book back in front of people must not be spendable to put its numbers on their screens. `@Roles("owner")`. NOT called by the web yet |
+| POST | `/price-index/uploads/:reviewId/reopen` | **new 2026-09-05** (ADR 0128 Q3, the founder: *"Owner reopens with a stated reason"*) — an owner, never the refuser, once per set of bytes, with a required reason. The book returns to `pending` under the tier it was already in, the refusal moves into `decision_history`, and `escalated_at` is cleared so the 24-hour hold restarts. NOT called by the web yet |
 
 ## 5. Signals
 
@@ -867,10 +872,10 @@ dashboard.md §7.
 
 ## 9. Gaps
 
-- **A held price book has no way to be admitted from the product** (ADR 0128,
-  2026-09-05). `GET /price-index/uploads`, `POST …/challenge`, `…/confirm` and
-  `…/refuse` are built, guarded, sealed and tested, and **no web call site
-  exists**. `MarketIndexPanel` tells a manager a book is waiting and gives them
+- **A held price book has no way to be admitted, refused or reopened from the
+  product** (ADR 0128, 2026-09-05). `GET /price-index/uploads`, `POST
+  …/challenge`, `…/confirm`, `…/refuse`, `…/reopen-challenge` and `…/reopen` are
+  built, guarded, sealed and tested, and **no web call site exists**. `MarketIndexPanel` tells a manager a book is waiting and gives them
   nothing to press. Until that is drawn, admitting a book is a curl. The seal
   ceremony to reuse is `HoldToApprove` with `onChallenge` (ADR 0112).
 
@@ -2077,3 +2082,40 @@ unevaluable condition would be reporting absence as health -- a condition nobody
 could check, rendered as one that passed -- so `unevaluated` rides on every
 decision, on every ledger row and in the report line. Where shelf life comes
 from is the plan's Q3 and it is the founder's.
+
+### 13.35 The hold is printed and the basis is printed (ADR 0128 Q2/Q4, 2026-09-05)
+
+**Two founder answers landed on this box.**
+
+*Q2 — 24 hours stands, printed where the waiting book is shown.* The waiting
+label now ends with the length of the hold and what happens at the end of it:
+after 24 hours the people who could act are told again, and the person who
+brought the book in may admit it themselves with a stated reason. The number
+comes from the wire (`heldBookHoldHours`), never from a constant in the panel —
+`ESCALATION_HOURS` is imported into the read service so the number a reader is
+promised and the number the escalation sweep waits out cannot drift apart. When
+the gateway sends no number the sentence is omitted rather than guessed: a hold
+of unknown length is not a hold of no length.
+
+*Q4 — a lone person's admission is acceptable with reason + record, and the
+record has to be visible.* `GET /price-index/:state` now returns `carriedBooks`
+(sha256, file name, edition, basis, reason), and beneath the lines the box names
+each hand-carried book that is actually drawn and how it got in:
+
+- `routine` — stood on one person's upload, every check inside its band
+- `byte_match` — a second owner or manager fetched the same file and matched it
+  byte for byte
+- `attested` — a second owner or manager vouched for the summary
+- `same_person` — **"admitted by the same person who brought it in, because this
+  jurisdiction has no second owner or manager — this is not a second pair of
+  eyes"**, with the reason they gave printed beneath it
+
+The last one is the whole point of the answer. The founder allowed it *because*
+it is recorded; a basis that read like a second pair of eyes when it was not one
+would be the control evaporating at the last step. Only books whose lines are on
+the screen are annotated, and `carriedBooks === null` (the gateway could not
+answer) draws no basis rather than a guessed one.
+
+**Still not built:** no web call site admits, refuses or reopens a book — see the
+gap in §9. The reopen route added for Q3 is a fourth thing a manager cannot do
+from the product.
