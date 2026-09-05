@@ -342,10 +342,9 @@ items. A column would force the library to pick one. Rejected in §Rejected.
    See §"Q4, answered" below.
 
 
-5. **A 12 × 375 case and a 6 × 750 case are now two keys — is `price_history` next?**
-   ADR 0119 Q4 asked whether `price_history.unit` stays hardcoded `'BOTTLE'`. Grouping
-   by identity in the ladder makes the two tables disagree about what a price is a
-   price *of*. Fixing that is a separate change and is not in this one.
+5. ~~**A 12 × 375 case and a 6 × 750 case are now two keys — is `price_history` next?**~~
+   **ANSWERED 2026-09-05 (batch 49), and BUILT.** The founder: **"Yes, identity_id on
+   `price_history` now."** See §"Q5, answered" below.
 
 ---
 
@@ -700,8 +699,134 @@ identities, and it says how many it read.
 
 ---
 
+## Q5, answered: the house's own price series names the bottle too (2026-09-05)
+
+**The founder, batch 49: "Yes, identity_id on `price_history` now."**
+**Rejected: keep the two apart.**
+
+### Why the fork was real, and why it still lost
+
+The case for keeping them apart is not weak. `price_history` is the house's own ledger
+of what **it** paid; `vendor_price_observations` is the market. They answer different
+questions, they are written by different paths, and an `identity_id` on the house ledger
+is dead weight for exactly as long as nobody has confirmed an identity — which, measured
+on this tree, is *still true today*: `beverage_identities` holds zero rows and nothing
+writes one unattended. A column that is NULL on every row for a year is the sort of
+thing this repo has learned to treat as a lie waiting.
+
+It loses on one asymmetry. **The cost of adding the column later is not the column.** An
+`ADD COLUMN` is cheap whenever it happens. What is not recoverable is every row written
+between now and then: those rows carry no identity, and no later migration can give them
+one without inventing an assertion nobody made — the library link is a *transcription*
+of somebody's assertion only while the row still has the `master_wine_id` the assertion
+was about, and the joiner would refuse a guess. So the choice was between a column that
+is briefly empty and a series that is permanently partly unjoinable. The founder took
+the first.
+
+The second half of the argument is the one Q5 itself wrote: with the ladder grouping by
+identity and the house ledger only joinable by `master_wine_id`, **the two registers
+disagree about what a price is a price of.** One `master_wine_library` row covers the
+750 and the magnum — this ADR measured `bottle_size_ml` to be 750 on all 4,226 rows
+because that is the column default, never a reading — so the house's own paper could
+never be laid beside a vendor's sighting of the *same trade item*. That is precisely
+what ADR 0117 Q28 asked the register to make possible.
+
+### What was built
+
+`supabase/migrations/20260906060000_a_price_names_the_bottle_it_priced.sql`.
+
+**The column** is nullable with `REFERENCES beverage_identities(id) ON DELETE RESTRICT`,
+no default — identical to the three columns `20260905140000` added, and asserted to be
+so in-file (nullable, no default, FK present, index present). A NOT NULL here would force
+a guess about every bottle nobody has identified, which is the failure the whole design
+refuses.
+
+**It backfills**, and the three siblings deliberately did not. The difference is not a
+relaxation, it is the subject: a house item, a vendor sighting and a posting reach an
+identity only through a person's judgement, whereas a `price_history` row already carries
+`master_wine_id`, and this ADR's own keys table records the library link as
+`('mudavym:master_wine_library', <library row id>)`. Where that key names **exactly one**
+identity, writing it is transcription, not inference. Where it names none, or more than
+one, the row is left NULL — `having count(distinct k.identity_id) = 1` is the whole rule,
+and it is this ADR's ambiguity doctrine applied unattended: *an ambiguous exact key is a
+refusal, never a choice.* A backfill that chose would write, at scale and with nobody
+watching, exactly the answer `joinByExactKey` refuses to give with a person present.
+
+**The count is recorded whether or not it changed anything** (ADR 0078). The `RAISE
+NOTICE` fires unconditionally with four numbers — rows in the table, rows carrying a
+`master_wine_id`, rows resolved and written, rows refused as ambiguous, rows left NULL —
+and three assertion branches then re-derive them *from the table* rather than trusting
+the variables that produced them. Without that, a backfill that resolved nothing would
+leave no trace, and "no NOTICE" reads identically to "never ran".
+
+**The index `(identity_id, unit)` is NOT partial**, and this is the one place the file
+departs from its siblings' shape. `idx_vpo_identity`, `idx_price_index_postings_identity`
+and `idx_restaurant_inventory_identity` are all `WHERE identity_id IS NOT NULL`, because
+their readers filter to identified rows. The contract here is the opposite and explicit:
+the reader groups by identity **and** unit and **prints the NULL group as
+"unidentified"** rather than dropping it (ADR 0016, ADR 0020). A partial index would
+serve every part of that query except the part the decision exists to protect.
+
+### The readers: none, measured rather than assumed
+
+`price_history` has **one writer and zero readers** on this tree —
+`grep -rn 'from("price_history")|table("price_history")|from price_history|join price_history' apps services`
+over `*.ts,*.tsx,*.py,*.sql` returns exactly one line, `recordPriceHistory`'s insert at
+`procurement.service.ts:1434`. So no read gained an identity key, because there is no
+read. The ladder and the market box join `vendor_price_observations`, which has carried
+`identity_id` since `20260905140000`; nothing under `vendor-intel/`, `procurement/` or
+`price-index/` was changed by this pass. The orchestrator's `_get_price_history` reads
+`procurement_orders.price_per_bottle` — a different table that shares the phrase.
+
+### The rule is held by a guard instead
+
+`scripts/check_price_history_reads_group_by_unit.py` (the ADR 0119 Q4 guard) gained a
+**second arm**, because Q5 creates a new way to commit the original defect that *looks*
+like diligence: **group by `identity_id` alone and average.**
+
+An identity fixes **what the bottle is**. A unit fixes **what the number counts**. One
+identity can be bought by the bottle in March and by the case in April, and those two
+rows are both honest, both correctly identified, and not addable. So grouping by identity
+without unit is the same fault as grouping by nothing.
+
+That arm reports **exit 1, not exit 2** — deliberately. The guard refuses (exit 2) when
+it cannot follow a grouping key; here the key is visible, and visibly insufficient, so a
+refusal would be a dodge. Both spellings (`identity_id`, `identityId`) and the raw-SQL
+form (`GROUP BY identity_id` with no `unit`) are covered.
+
+### Proved, not argued
+
+A PGlite probe (`p4-scratch/pglite-probe/p4-price-identity.mjs`, the harness shape of
+`apply-and-probe.mjs`) applied the migration against a real Postgres in four scenarios
+and **caught two defects before this file was applied anywhere**:
+
+1. `min(uuid)` does not exist in Postgres (42883). The single-candidate pick is now
+   `(array_agg(distinct k.identity_id))[1]`, which the `HAVING` guarantees is a read of
+   the only candidate rather than a choice.
+2. The idempotency assertion was wrong: re-applying the file read its own earlier
+   backfill as somebody else's write and raised. It now counts identified rows
+   **before** the update and asserts `final = pre + written`.
+
+What the probe then showed, on four seeded rows: one resolvable library key **written**,
+one ambiguous key (750 vs magnum — this ADR's own example) **refused and left NULL**, one
+key with no identity and one row with no `master_wine_id` **left NULL**; the mandated read
+`group by identity_id, unit` returning the NULL group as `unidentified` beside the
+identified one; a second apply changing nothing; the FK refusing a phantom identity
+(23503); and both `RAISE EXCEPTION` guards firing — the missing-parent check and the
+ambiguity check.
+
+**Stated rather than hidden: PGlite 0.5.x does not surface `RAISE NOTICE` to the client.**
+`PGlite.create({ onNotice })` never fires and `exec()` returns only
+`{rows, fields, command, affectedRows}` — measured. So the probe cannot prove the NOTICE
+**text**; it re-derives the four numbers it reports from the same expressions and prints
+them, and every assertion guarding those numbers *is* proved, because a raised exception
+is observable. The NOTICE text itself is unverified and named here as such.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-05 | Claude (build, Q5: identity_id on price_history) | **Q5 ANSWERED by the founder (batch 49) — *"Yes, identity_id on `price_history` now."* — and BUILT.** Rejected: keep the two apart; the losing argument is conceded in full in the section above rather than caricatured. `20260906060000_a_price_names_the_bottle_it_priced.sql` adds the column nullable with an ON DELETE RESTRICT FK, backfills ONLY through an unambiguous `mudavym:master_wine_library` key (`having count(distinct identity_id) = 1` — an ambiguous key is this ADR's own refusal, applied unattended), RAISEs the four backfill numbers unconditionally (ADR 0078) and re-derives them from the table in three assertion branches, and indexes `(identity_id, unit)` NON-partially because the NULL group is PRINTED as "unidentified", not filtered away. **No reader changed, and that is measured**: `price_history` has one writer and ZERO readers (`grep -rn 'from("price_history")|table("price_history")|from price_history' apps services` returns one line, the insert); the ladder and market box read `vendor_price_observations`, which has had `identity_id` since 20260905140000; `vendor-intel/`, `procurement/` and `price-index/` untouched. The rule is held by a guard instead: `check_price_history_reads_group_by_unit.py` gained an arm making `identity_id` without `unit` exit 1 (not 2 — the key is visible and visibly insufficient), both spellings and the raw-SQL form. **The PGlite probe found two defects before this was applied anywhere**: `min(uuid)` does not exist (42883), and the idempotency assertion misread its own earlier backfill on a second apply. 12 probe outcomes green, including both RAISE EXCEPTION guards firing. Guard PASS + 12-branch self-test; 21 pytest cases. **Named as unverified**: PGlite 0.5.x does not surface RAISE NOTICE, so the NOTICE text is unproved — its four numbers are re-derived and printed instead. |
+| 2026-09-05 | Claude (build, Q3 + the naming rule + Q4) | **Three founder decisions of batches 48-49, built in order, each proven before the next.** **Q3 — *"Provisional on the item, curated into the library"*:** `20260906050000_a_house_may_name_a_bottle_the_library_does_not_have.sql` adds `asserted_for_restaurant_id` (written once, NEVER cleared -- provenance, deliberately a different column from ADR 0130's `master_wine_library.provisional_for_restaurant_id`, which IS cleared on promotion because there it is state), `master_wine_id`, `curation_state/by/at/note`, and a **GENERATED `standing`** so *printed as provisional everywhere, never as official* cannot drift. **Three standings, not two**, because collapsing `source` into `official` would call an Iowa transcription an official library entry. The queue is a QUERY, not a table. Curation is `identity-curation.controller.ts`, its own controller with **no class-level guard**, each route `@Public()` + `ServiceKeyGuard` + `X-Admin-Key` (ADR 0099) -- splitting is not cosmetic: `VendorIntelController`'s class-level `RolesGuard` reads `request.user`, which a service key does not carry, so on that controller these routes could not work; and no platform-admin role is invented. Promotion is four steps and **re-points the items**, reporting how many; a failure at the re-point fails the call AND says the identity was promoted. Promoting onto another venue's provisional row is refused (ADR 0130's rule, enforced from this side). **The naming rule -- *"One alias on the item, library immutable"*: NO COLUMN WAS ADDED.** Measured read-only on production first: `restaurant_inventory.wine_name` exists, is already preferred over the library name at `inventory.service.ts:83`, is present on **180 of 233** rows with **156** distinct values and **0 differing from the library's own name** -- because nothing let a house SET it. `UpdateInventoryItemDto` now carries `wineName` (empty string CLEARS the alias), and `libraryName` + `houseAlias` travel beside it so **both names stay searchable** (rename "1988 Wine X" to "Wine X" and "1988" must still find it). A test READS `updateInventoryItem` out of the source file and fails if it ever contains `from("master_wine_library")`. **Q4 -- *"LWIN search + hand nominations"*:** `lwin-file.ts` validates the header and refuses an unrecognised file BY NAME, counts every row refusal by reason, requires every query word to appear, and matches a year as a WORD never as a vintage filter (an LWIN-7 carries no vintage). **There is no LWIN file in this repo and the route says so**: probed 2026-09-05, the LWIN page (147,184 B) carries no .csv/.xlsx/.zip link and three guessed paths 404 -- Liv-ex serves it through a form -- so `lwinSearch` answers `available:false` naming the path, the CC BY 4.0 licence and where to get it, never an empty hit list. The fixture is **synthetic and named so** in a 99xxxxx block. An LWIN confirmation stands as `source` (not provisional, no queue) with the attribution on the key row; a hand nomination is provisional per Q3 and the response says so; `identity/sweep-subjects` counts `library`+`source` only and calls zero a real zero. **Measured on this tree:** `npx jest --runInBand --forceExit src/vendor-intel src/inventory` **419 passed / 25 suites**, of which **70 in 4 suites are new across these three steps** (identity-curation 26, lwin-file 15, house-item-alias 9, identity-decisions 20 from the Q2 step); `npx vitest run src/pages/IdentityDecisionLog.test.tsx` **11 passed** (+3 for the provisional badge); `npx vitest run src/pages/inventory` **24 passed / 3 files**. Gateway `tsc --noEmit -p tsconfig.spec.json`: **0 errors in vendor-intel and 0 in src/inventory** (the tree's remaining errors are other builders' `communications`, `procurement`, `notifications`, `team` and `orders/next`). Eleven guards exit 0 including `check_route_exposure` (PASS, 0 undeclared -- it sees the three new service-key routes), `check_read_errors_not_swallowed`, `check_read_columns_exist` and `check_windowed_figures`; `check_gateway_boots.sh` PASS; `eslint --quiet` clean on every touched gateway file; emoji grep empty; migration prefix uniqueness empty. **NOT verified, stated:** no Docker and no local Postgres, so neither migration was ever applied -- the new one parses under libpg_query (10 statements + 1 PL/pgSQL body) and its standing probes are proved only by that block's own text; `127.0.0.1:4000` still answers 404 to every gateway route, so no live curl; and web `eslint` cannot run here at all (`eslint-plugin-jsx-a11y` missing, repo-wide). Q5 untouched -- it is another builder's. |
+| 2026-09-05 | Claude (build, Q2: staff may confirm) | **Q2 ANSWERED by the founder — *"staff may confirm, log the decisions"* (batch 47) — and BUILT the same day.** The gate is now drawn by **what a route exposes**, not by the module it sits in: `identity/candidates`, `identity/candidates/decide` and `identity/decisions` admit **staff** (a candidate carries no price, no vendor and no terms, and confirming without seeing the queue is not a capability); `identity/decisions/undo` stays owner/manager and is refused a SECOND time inside `IdentityService.undo`, not only by the decorator; `identity/assert` stays owner/manager because it MINTS an identity rather than confirming one. **The log had to be a second table**, and the reason is the candidate table's own `bic_decision_is_dated` CHECK: a `pending` row has no `decided_by`/`decided_at`, so an undo must clear them — **a manager who undid a confirmation would erase the confirmation**. `beverage_identity_decisions` (`20260906030000_a_confirmation_is_a_logged_decision.sql`) is append-only by trigger, **proved in the migration's own DO block against a real UPDATE** and against an undo that names no prior decision, and adds only what was missing: the action (incl. `undone`), the actor's **name and role as they were** (`decided_by` is ON DELETE SET NULL — a foreign key that forgets is not an audit trail; an account with neither name nor email is REFUSED rather than logged against a placeholder), the evidence the person saw **captured server-side from the same rows the queue rendered** (a client-supplied "here is what I saw" is an attestation, not a record), and `undoes_decision_id` with `bid_undo_names_its_decision` + a partial unique index so two managers racing cannot take one link back twice. The undo clears a column link filtered on **both** subject id and identity id (so it cannot blank a link somebody else wrote) or **deletes** a key row (that table has no state), and names which in the log. The read throws with its reason — an empty array would claim nobody ever decided — and returns `complete`, false when the page came back full. Page list: `apps/web/src/pages/IdentityDecisionLog.tsx`, mounted OUTSIDE the comparison's data branch, tenant-keyed. **Measured on this tree:** `npx jest --runInBand --forceExit src/vendor-intel` **322 passed / 17 suites**, of which **20 in 1 suite are new here**; `npx vitest run src/pages/IdentityDecisionLog.test.tsx` **8 passed / 1 file**; web `tsc --noEmit` **0 errors**; gateway `tsc --noEmit -p tsconfig.spec.json` **0 errors in vendor-intel** (the only errors on the tree are in another builder's untracked `src/procurement/order-recurrence.*`); `check_route_exposure` PASS *"every route says whether it is authenticated"*, UNDECLARED 0; `check_read_errors_not_swallowed` PASS 191/191 baselined; `check_read_columns_exist`, `check_windowed_figures`, `check_queried_tables_exist`, `check_new_tables_are_locked_down`, `check_fk_targets_exist`, `check_no_seeded_defaults`, `check_adr_numbers_unique`, `check_flag_readby_anchors`, `check_order_capture_contract` all exit 0; `check_gateway_boots.sh` PASS; eslint `--quiet` clean on the touched files; emoji grep empty; migration prefix uniqueness empty. **NOT verified, stated:** still no Docker and no local Postgres, so this migration too was **never applied** — it parses under libpg_query (18 statements + 2 PL/pgSQL bodies) and nothing more, and its append-only trigger is proved only by that block's own text; and the process on `127.0.0.1:4000` still answers 404 to every gateway route, so no live curl was made. Rejected: owner/manager only (the status quo); staff proposes and a manager confirms (the proposals are already generated mechanically, so it would move a button and leave the only judgement furthest from the shelf); a confidence threshold that changes who may decide. |
 | 2026-09-05 | Claude (research + build, the identity join) | **Q28 ANSWERED and BUILT.** Founder: *"Do the SOTA and best for scalability thinking there might be more in future."* Twelve standards/vendor/paper sources fetched today (GS1 GMS 1.1 §2.3/§2.8 as a 381,277-byte PDF from `ref.gs1.org` after `www.gs1.org` 403'd twice; LWIN's CC BY 4.0; CellarTracker's three failure modes; Vivino's manual-review sentence; AWS Entity Resolution; SC-Block, Ditto, WDC Products), with **three refusals recorded rather than worked around** — `wine-searcher.com/trade/api` 403, `ttbonline.gov` connection reset, and Liv-ex's own LWIN page no longer publishing the digit structure (recorded from a SECONDARY source and flagged). **The measurement that decided the shape:** the live Iowa file (5,425,785 B, 13,762 rows, `report_as_of` 2026-09-01) carries a check-digit-valid UPC on **100%** of rows and **1,736 of its 9,118 distinct UPCs name more than one product**, 343 of them across different volumes — so the keys table is deliberately not unique on `(namespace, value)` and `joinByExactKey` refuses an ambiguous key at 1/n. **The measurement that killed the obvious alternative:** `master_wine_library.bottle_size_ml` is **750 on all 4,226 rows** (one distinct value, the column default) and only 2 of 3,562 live rows name a format anywhere, so identity cannot live on the library row. **The measurement that is the strongest counter-argument, run through the real code against production:** the fixture register (41 identities) proposes **0 candidates for 608 real beverages**, and `restaurant_inventory` is readable as an identity **0 of 206** times from its own columns but **205 of 206** through its library row. Built: the migration (3 tables + 3 nullable FKs, RLS on, anon/authenticated revoked in-file, an assertion block that **fails if any row is written** and that proves both the generated key and the one-GTIN-two-identities case inside a rolled-back probe), `beverage-identity.ts` (importing the existing normaliser rather than adding a fifth), `identity-join.ts`, `identity.service.ts`, five routes on the existing owner/manager controller, the reader change with `keyedBy`/`groupingNote`, and a dry-by-default backfill script. **Verification on this tree:** `npx jest --runInBand --forceExit src/vendor-intel` → **302 passed / 16 suites**, of which **53 in 3 suites are new here**; `tsc --noEmit -p tsconfig.spec.json` **0 errors**; `eslint --quiet` clean on 8 touched files; emoji grep empty; nine python guards exit 0 and `check_gateway_boots.sh` **PASS**. `check_queried_tables_exist.py` **caught this build** with three `.from(<variable>)` sites in `identity.service.ts` (unresolvable set 26 → 29) — proved pre-existing-clean by exporting HEAD with `git archive` to `$SP/p4aq/head-tree`, where it exits 0; refactored to literal branches, now exits 0 here too. **NOT verified, and stated:** there is no Docker daemon and no local Postgres on this machine, so the migration was **never applied** — it parses under libpg_query (`pglast` 7.18: 39 statements + 1 PL/pgSQL body) and nothing more; and the process on `127.0.0.1:4000` answers **404 to every gateway route including `/auth/me`**, so **no live curl was made**. Five founder questions. |

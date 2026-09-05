@@ -139,6 +139,94 @@ def test_a_write_is_not_a_read(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# ARM 2 — ADR 0124 Q5: identity is not a substitute for unit
+# --------------------------------------------------------------------------
+
+def test_identity_and_unit_together_passes(tmp_path):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async byBottleAndUnit(id) {\n"
+            '    const { data } = await this.db.supabase.from("price_history")\n'
+            '      .select("price, unit, identity_id").eq("restaurant_id", id);\n'
+            "    return (data || []).reduce((acc, r) => {\n"
+            "      const k = `${r.identity_id ?? 'unidentified'}|${r.unit}`;\n"
+            "      acc[k] = (acc[k] || 0) + r.price;\n"
+            "      return acc;\n"
+            "    }, {});\n"
+            "  }\n"
+        ),
+    )
+    code, findings, counts = run(root)
+    assert code == 0, findings
+    assert counts["identity_keyed"] == 1
+
+
+def test_identity_without_unit_fails_not_cannot_check(tmp_path):
+    """The key is visible and visibly insufficient: exit 1, never exit 2."""
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async byBottle(id) {\n"
+            '    const { data } = await this.db.supabase.from("price_history")\n'
+            '      .select("price, identity_id").eq("restaurant_id", id);\n'
+            "    return (data || []).reduce((acc, r) => {\n"
+            "      acc[r.identity_id] = (acc[r.identity_id] || 0) + r.price;\n"
+            "      return acc;\n"
+            "    }, {});\n"
+            "  }\n"
+        ),
+    )
+    code, findings, counts = run(root)
+    assert code == 1
+    assert counts["identity_keyed"] == 1
+    assert "same fault as grouping by nothing" in findings[0]
+
+
+def test_camel_case_identity_id_is_seen_too(tmp_path):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async byBottle(id) {\n"
+            '    const { data } = await this.db.supabase.from("price_history")\n'
+            '      .select("price, identity_id").eq("restaurant_id", id);\n'
+            "    return (data || []).reduce((a, r) => {\n"
+            "      a[r.identityId] = (a[r.identityId] || 0) + r.price;\n"
+            "      return a;\n"
+            "    }, {});\n"
+            "  }\n"
+        ),
+    )
+    assert run(root)[0] == 1
+
+
+def test_raw_sql_group_by_identity_alone_fails(tmp_path):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async sqlIdentityOnly() {\n"
+            '    return this.db.query("select identity_id, avg(price) from price_history group by identity_id");\n'
+            "  }\n"
+        ),
+    )
+    code, findings, _ = run(root)
+    assert code == 1
+    assert "says which bottle" in findings[0]
+
+
+def test_raw_sql_group_by_identity_and_unit_passes(tmp_path):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async sqlBoth() {\n"
+            '    return this.db.query("select identity_id, unit, avg(price) from price_history group by identity_id, unit");\n'
+            "  }\n"
+        ),
+    )
+    assert run(root)[0] == 0
+
+
+# --------------------------------------------------------------------------
 # Raw SQL
 # --------------------------------------------------------------------------
 
