@@ -327,6 +327,37 @@ describe("where the unit came from, on the row", () => {
     expect(captured.rows[0].raw.packFromPageStatement).toBe(6);
   });
 
+  it("does NOT let a printed pack overrule one the model actually read", async () => {
+    // The other half of the same rule, and the half that decides whether it IS
+    // a rule rather than a preference for whichever number is bigger. The
+    // page's variant says "12 x 75cl"; the model reported a pack of 6, which —
+    // unlike a 1 — is a fact it read rather than `validateItem`'s default. The
+    // model's 6 is kept and BOTH numbers go on the row, so the disagreement is
+    // visible to whoever looks instead of being resolved silently in either
+    // direction. (ADR 0117 Q15 asks whether it ought to be a refusal instead;
+    // until that is answered the behaviour is this, and it is pinned.)
+    const html = `<script type="application/json">${JSON.stringify({
+      title: "Chablis 1er Cru",
+      options: ["Format"],
+      variants: [
+        { id: 1, title: "12 x 75cl", options: ["12 x 75cl"], price: 50400 },
+      ],
+    })}</script>`;
+    const { service, captured } = makeService({});
+    await write(service, [item({ volumeMl: null, packSize: 6, price: 252 })], {
+      sizeEvidence: readPageSizeEvidence(html),
+    });
+    expect(captured.rows[0].pack_size).toBe(6);
+    // The VOLUME still comes from the page — only the pack half of that one
+    // statement is declined.
+    expect(captured.rows[0].unit_volume_ml).toBe(750);
+    expect(captured.rows[0].raw.modelPackSize).toBe(6);
+    expect(captured.rows[0].raw.packFromPageStatement).toBe(12);
+    // And the price is normalised on 6, not 12: taking the page's 12 would put
+    // this row on the ladder at half its true per-750ml price and top it.
+    expect(captured.rows[0].normalized_unit_price).toBeCloseTo(42, 6);
+  });
+
   it("keeps the model's own read when the markup says nothing, and labels it", async () => {
     // The manual `POST /vendor-intel/scrape` path has no markup evidence at
     // all; the row must still say where its unit came from.

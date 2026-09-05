@@ -120,6 +120,27 @@ describe("deriveFromUnitPrice — the legally required per-litre figure", () => 
       ),
     ).toBeNull();
   });
+
+  it("refuses a derivation of 730ml — the window is 1%, not 2%", () => {
+    // 730 is the value the two candidate windows disagree about, which is why
+    // it is the one pinned. The nearest permitted quantity to 730 is 720 (a
+    // Japanese/US format on the trade list), 1.39% away: INSIDE a 2% window and
+    // OUTSIDE the 1% one the code enforces. `deriveFromUnitPrice`'s docstring
+    // claimed 2% until 2026-09-05 while `snapToNominal` had already been
+    // tightened to 1%; this fixes the comment in place and stops it drifting
+    // back.
+    const perLitre = {
+      amount: 30,
+      referenceMl: 1000,
+      statement: "£30.00 per litre",
+      offset: 0,
+    };
+    expect(1000 * (21.9 / 30)).toBeCloseTo(730, 6);
+    expect(deriveFromUnitPrice(perLitre, 21.9)).toBeNull();
+    // 720 IS on the list, and a price deriving it exactly still passes — so
+    // what refused above is the window, not the function.
+    expect(deriveFromUnitPrice(perLitre, 21.6)?.ml).toBe(720);
+  });
 });
 
 describe("sameProduct — the identity gate on structured data", () => {

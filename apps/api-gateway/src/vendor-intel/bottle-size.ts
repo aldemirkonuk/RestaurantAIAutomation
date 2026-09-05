@@ -395,7 +395,6 @@ export function parseVolume(
   return { ml: all[0].ml, statement: all[0].statement, pack: null };
 }
 
-/** The nearest permitted nominal quantity, when one is within `tolerance`. */
 /**
  * The nearest permitted nominal quantity, when one is within `tolerance`.
  *
@@ -1171,10 +1170,17 @@ export type BottleSizeReading = BottleSizeHit | BottleSizeMiss;
  * to the currency's minor unit before we ever see them, so the quotient is
  * approximate by construction: a 187ml quarter-bottle at £4.50 with a £18.04
  * per-75cl label derives 187.08ml, not 187. That is why the result is only
- * accepted when it lands within 2% of a quantity a bottle is actually allowed
- * to be (Directive 2007/45/EC), and is then SNAPPED to that quantity. Outside
- * the tolerance the derivation is discarded, not rounded — 2% of 750ml is
- * 15ml, and no legal format sits inside that window of another.
+ * accepted when it lands within **1%** of a quantity a bottle is actually
+ * allowed to be (Directive 2007/45/EC), and is then SNAPPED to that quantity.
+ * Outside the tolerance the derivation is discarded, not rounded.
+ *
+ * 1% is `snapToNominal`'s default and its number, for the reason given there:
+ * the closest pair on the list is 700ml and 720ml, 2.86% apart, so a 2% window
+ * around 730 reaches 720 and would snap a derivation that means neither. This
+ * comment said 2% until 2026-09-05, which the code never did once the tolerance
+ * was tightened — a docstring describing a window WIDER than the one enforced
+ * is the kind of claim that gets believed instead of read, and it is pinned by
+ * a test now ("refuses a derivation of 730ml").
  *
  * The proximity test matters as much as the arithmetic: Hedonism's page prints
  * "£2.87 per 75cl bottle" in a duty-rates table. Against a £97 champagne that

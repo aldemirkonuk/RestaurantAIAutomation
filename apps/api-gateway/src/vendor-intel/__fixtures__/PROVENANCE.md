@@ -87,10 +87,26 @@ The whole pages are the recorded fetches, held outside the repository; the
 sha256 in the table above is what ties a fixture to the page it came from.
 Reading the largest of them end to end takes 13 ms.
 
+**Both figures above are a record, not a re-runnable check (noted 2026-09-05).**
+The whole pages lived in the session scratchpad, which was destroyed when the
+process died at ~06:46Z on 2026-09-05. The 6/6 agreement and the 13 ms were
+measured on 2026-09-04 and cannot be re-run until someone re-fetches the six
+URLs; the sha256 above is exactly what makes that possible, and a re-fetch that
+disagrees means the merchant changed the page, not that the fixture is wrong.
+The before/after measurement below IS re-runnable and was re-run on 2026-09-05
+against `git show fb47d99c^:` copies — it needs only the fixtures, which are in
+this directory.
+
 ## Reproducing the before/after measurement
 
 The BEFORE half of the measurement in ADR 0117 was produced by loading
-**verbatim `git show HEAD:` copies** of `common/html/html-to-text.ts` and
+**verbatim `git show fb47d99c^:` copies** of `common/html/html-to-text.ts` and
 `vendor-intel/vendor-site-sighting.ts` from a scratch directory (only their
 import paths rewritten) and running them over these same files. No file in the
 worktree was reverted, stashed or checked out to produce it.
+
+The ref matters and was wrong here until 2026-09-05: this said `git show HEAD:`,
+which was true only while the reader was uncommitted. `fb47d99c` landed it, so
+HEAD now CONTAINS the reader and a `HEAD:` copy would measure the fix against
+itself and report no change at all. `fb47d99c^` is the tree immediately before
+it.
