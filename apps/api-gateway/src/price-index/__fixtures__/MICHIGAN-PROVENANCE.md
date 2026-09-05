@@ -26,6 +26,23 @@ different publisher serving the issuer's own bytes, and **nothing in this reposi
 michigan.gov, or the archive, on a schedule.** The live path is a person's own download, through
 `POST /price-index/upload`.
 
+## What this fixture is FOR, and what it may never do
+
+**Founder's call, 2026-09-05 (ADR 0117 Q21): "Acceptable for shape only, labelled; never for a
+price line."** So, stated plainly:
+
+- This fixture exists to prove that `parse-michigan.ts` reads a real MLCC workbook correctly.
+  It proves a **parse**. That is its whole job.
+- **No row derived from it may ever enter `price_index_postings`**, and none can. Two barriers,
+  measured, of which only the second is load-bearing: (1) the fixture on disk is JSON, not a
+  workbook, so the upload path cannot open it — real, but weak, since anyone can rebuild an
+  `.xlsx` from these rows; (2) **the edition date**. The file name states 2025-08-03 against a
+  105-day bound: 398 days stale on the day it was recorded, 763 a year later, and monotonically
+  worse. There is no clock at which the staleness gate admits it. Asserted in
+  `michigan-fixture-not-a-price.spec.ts`, including at 2099.
+- There is no third barrier and this file does not pretend there is one. The fixture is not
+  blocked because it is *the fixture*; it is blocked because it is *old*.
+
 ## What this fixture is NOT
 
 It is **thirteen months old** and it is a *shape* fixture only. The book's measured cadence is

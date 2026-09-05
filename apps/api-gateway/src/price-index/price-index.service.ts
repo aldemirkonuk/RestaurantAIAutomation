@@ -34,7 +34,7 @@ import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 /** The columns the endpoint reads. Named explicitly so the read-column guard
  *  can verify every one exists in supabase/migrations/. */
 const SELECT_COLUMNS =
-  "id, source_key, source_class, state, region, issuer, issued_at, issued_at_basis, fetched_at, price_basis, product_name, brand, producer, package_desc, container_type, size_value, size_unit, price, currency, price_unit, pack, container_charge, is_promotion, source_status, attribution, source_url, source_ref";
+  "id, source_key, source_class, state, region, issuer, issued_at, issued_at_basis, fetched_at, price_basis, product_name, brand, producer, package_desc, container_type, size_value, size_unit, price, currency, price_unit, pack, container_charge, is_promotion, source_status, attribution, source_url, source_ref, uploaded_by, upload_file_name, upload_sha256, upload_edition_date";
 
 export interface IndexLine {
   id: string;
@@ -69,6 +69,16 @@ export interface IndexLine {
   sourceStatus: string | null;
   attribution: string | null;
   sourceUrl: string;
+  /**
+   * Set only on a row a PERSON carried in (ADR 0117 Q17). All four together or
+   * all four null — the table's own CHECK enforces it — so a reader can say
+   * "this line came from the book <name> brought in on <date>" and never half
+   * of that. `uploadedBy` is a public.users id.
+   */
+  uploadedBy: string | null;
+  uploadFileName: string | null;
+  uploadSha256: string | null;
+  uploadEditionDate: string | null;
 }
 
 export interface StateIndexResult {
@@ -455,5 +465,9 @@ function mapLine(row: Record<string, unknown>): IndexLine {
     sourceStatus: (row.source_status as string) ?? null,
     attribution: (row.attribution as string) ?? null,
     sourceUrl: String(row.source_url),
+    uploadedBy: (row.uploaded_by as string) ?? null,
+    uploadFileName: (row.upload_file_name as string) ?? null,
+    uploadSha256: (row.upload_sha256 as string) ?? null,
+    uploadEditionDate: (row.upload_edition_date as string) ?? null,
   };
 }

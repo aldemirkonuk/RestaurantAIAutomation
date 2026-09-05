@@ -173,6 +173,13 @@ export const SOURCES: Record<string, SourceEntry> = {
     // of its own 91-day cycle.
     cadence: "quarterly (the price book moves every 91 days)",
     maxAgeDays: 105, // 91-day cycle + a fortnight before the next edition lands
+    // SHAPE ONLY, never a price (ADR 0117 Q21, founder 2026-09-05). These are
+    // real MLCC rows, obtained from an Internet Archive capture because the
+    // issuer's host refuses this fetcher — so they prove the PARSE and nothing
+    // else. No row derived from them can reach the register: the file is JSON
+    // rather than a workbook, and its 2025-08-03 edition is 398 days past this
+    // source's 105-day bound and gets worse every day, so the staleness gate
+    // refuses it at every clock. Proven in `michigan-fixture-not-a-price.spec.ts`.
     fixture: "michigan-lcc-price-book-2025-08-03.sample.json",
     // Still withheld from the FETCHER, and now for a narrower and more exact
     // reason than before. What changed on 2026-09-05 is that the second half of

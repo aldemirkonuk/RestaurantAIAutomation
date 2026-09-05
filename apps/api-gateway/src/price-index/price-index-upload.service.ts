@@ -87,6 +87,22 @@ export const UPLOADABLE_SOURCES: Record<string, { url: string }> = {
   [MICHIGAN_SOURCE_KEY]: { url: MICHIGAN_URL },
 };
 
+/**
+ * The provenance a hand-carried book must state. All four reach columns on the
+ * row (`uploaded_by`, `upload_file_name`, `upload_sha256`, `upload_edition_date`);
+ * the rest stay in `raw.upload`. `uploadedByUserId` is a **public.users** id —
+ * the JWT carries `public.users.user_id`, and `auth.users` is a disjoint table
+ * whose ids would 23503 on every real write while CI stayed green.
+ */
+export interface UploadProvenance {
+  fileName: string;
+  fileSha256: string;
+  fileBytes: number;
+  sheetName: string;
+  uploadedByUserId: string | null;
+  uploadedAt: string;
+}
+
 export interface UploadRequest {
   sourceKey: string;
   fileName: string;
@@ -281,6 +297,18 @@ export class PriceIndexUploadService {
       this.lastUploads.set(req.sourceKey, outcome);
       return outcome;
     }
+    // Last gate before the write, and deliberately last: a dry run may name
+    // nobody (it writes nothing and a person may want to check a book before
+    // they are signed in as anyone), but a ROW may not. The table's
+    // all-or-nothing CHECK would reject a half-provenanced row at the database
+    // with a 500 the uploader cannot act on; refusing here gives them a
+    // sentence instead. ADR 0117 Q17.
+    if (!req.uploadedByUserId) {
+      outcome.silentBecause =
+        "this upload names no person. A hand-carried book must record who carried it, so nothing was written rather than writing rows with an empty uploader.";
+      this.lastUploads.set(req.sourceKey, outcome);
+      return outcome;
+    }
 
     const uploadedAt = new Date().toISOString();
     outcome.written = await this.write(run.sightings, uploadedAt, {
@@ -303,7 +331,7 @@ export class PriceIndexUploadService {
   private async write(
     sightings: PostingSighting[],
     fetchedAt: string,
-    upload: Record<string, unknown>,
+    upload: UploadProvenance,
   ): Promise<number> {
     const rows = sightings.map((s) => ({
       source_key: s.sourceKey,
@@ -343,6 +371,22 @@ export class PriceIndexUploadService {
       source_ref: s.sourceRef,
       content_hash: contentHash(s),
       external_ids: s.externalIds,
+      // The four provenance facts, promoted from `raw.upload` to columns on the
+      // founder's call of 2026-09-05 (ADR 0117 Q17). Written with explicit keys
+      // — never a conditional spread — so a row can never acquire three of the
+      // four and look provenanced. The table's own CHECK refuses that anyway;
+      // this is the writer agreeing with it rather than relying on it.
+      uploaded_by: upload.uploadedByUserId,
+      upload_file_name: upload.fileName,
+      upload_sha256: upload.fileSha256,
+      // The date the FILE NAME stated. Equal to `issued_at` at write time and
+      // kept beside it, because `issued_at` is a value read out of a string a
+      // person could have renamed, and the evidence for it must survive any
+      // later correction of the date itself.
+      upload_edition_date: s.issuedAt,
+      // The JSONB copy STAYS. It carries `fileBytes`, `sheetName`, `uploadedAt`
+      // and `editionDateFrom`, none of which were promoted, and a column added
+      // later must never silently delete the evidence that predates it.
       raw: { ...s.raw, upload: { ...upload, editionDateFrom: "file_name" } },
     }));
     const { error } = await this.db.client
