@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
   CheckCircle2,
@@ -33,224 +33,319 @@ import {
   MessageSquare,
   Mail,
   Copy,
-} from 'lucide-react'
-import { useNotifications, useMarkNotificationAsRead, useMarkNotificationAsUnread, useMarkAllNotificationsAsRead, useArchiveNotification, useDeleteNotification } from '../hooks/queries'
-import { useAuthStore } from '../stores'
-import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
-import type { Notification, NotificationType } from '../services/api/notifications'
-import { collapseStackedNotifications } from '../lib/notificationStack'
+} from "lucide-react";
+import {
+  useNotifications,
+  useMarkNotificationAsRead,
+  useMarkNotificationAsUnread,
+  useMarkAllNotificationsAsRead,
+  useArchiveNotification,
+  useDeleteNotification,
+} from "../hooks/queries";
+import { useAuthStore } from "../stores";
+import { OneTapActionCenter } from "../components/notifications/OneTapActionCenter";
+import { useQuery } from "@tanstack/react-query";
+import { cn } from "../lib/utils";
+import { fetchHeldLowStock } from "../services/api/notifications";
+import { getActiveRestaurantId } from "../services/api/client";
+import type {
+  Notification,
+  NotificationType,
+} from "../services/api/notifications";
+import { collapseStackedNotifications } from "../lib/notificationStack";
 
-type NotificationStatus = 'unread' | 'read'
-type NotificationPriority = 'low' | 'medium' | 'high' | 'critical'
+type NotificationStatus = "unread" | "read";
+type NotificationPriority = "low" | "medium" | "high" | "critical";
 
 // Helper function for timestamp formatting
 const formatTimestamp = (timestamp: string) => {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-  return date.toLocaleDateString()
-}
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+};
 
 interface CustomOneTapAction {
-  id: string
-  title: string
-  description: string
-  icon: string
-  actionUrl: string
-  priority: 'low' | 'medium' | 'high'
-  color: string
-  createdAt: string
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  actionUrl: string;
+  priority: "low" | "medium" | "high";
+  color: string;
+  createdAt: string;
 }
 
 interface NotificationDetailContent {
-  summary: string
+  summary: string;
   wines: Array<{
-    wineName: string
-    currentStock: number
-    threshold: number
-    severity: string
-  }>
-  facts: Array<{ label: string; value: string }>
-  nextSteps: string[]
+    wineName: string;
+    currentStock: number;
+    threshold: number;
+    severity: string;
+  }>;
+  facts: Array<{ label: string; value: string }>;
+  nextSteps: string[];
 }
 
-function buildNotificationDetails(notification: Notification): NotificationDetailContent {
-  const meta = notification.metadata ?? {}
-  const winesRaw = Array.isArray(meta.wines) ? meta.wines : []
+function buildNotificationDetails(
+  notification: Notification,
+): NotificationDetailContent {
+  const meta = notification.metadata ?? {};
+  const winesRaw = Array.isArray(meta.wines) ? meta.wines : [];
   const wines = winesRaw
     .map((w: Record<string, unknown>) => ({
-      wineName: String(w.wineName ?? w.name ?? 'Unknown wine'),
+      wineName: String(w.wineName ?? w.name ?? "Unknown wine"),
       currentStock: Number(w.currentStock ?? w.stock ?? 0),
       threshold: Number(w.threshold ?? w.par ?? 0),
-      severity: String(w.severity ?? 'low'),
+      severity: String(w.severity ?? "low"),
     }))
-    .slice(0, 25)
+    .slice(0, 25);
 
-  const facts: Array<{ label: string; value: string }> = []
-  if (meta.count != null) facts.push({ label: 'Items below par', value: String(meta.count) })
-  if (meta.criticalCount != null) facts.push({ label: 'Critical', value: String(meta.criticalCount) })
-  if (meta.mode) facts.push({ label: 'Alert mode', value: String(meta.mode) })
-  if (meta.wineName) facts.push({ label: 'Wine', value: String(meta.wineName) })
+  const facts: Array<{ label: string; value: string }> = [];
+  if (meta.count != null)
+    facts.push({ label: "Items below par", value: String(meta.count) });
+  if (meta.criticalCount != null)
+    facts.push({ label: "Critical", value: String(meta.criticalCount) });
+  if (meta.mode) facts.push({ label: "Alert mode", value: String(meta.mode) });
+  if (meta.wineName)
+    facts.push({ label: "Wine", value: String(meta.wineName) });
   if (meta.provider || meta.provider_name) {
-    facts.push({ label: 'Provider', value: String(meta.provider ?? meta.provider_name) })
+    facts.push({
+      label: "Provider",
+      value: String(meta.provider ?? meta.provider_name),
+    });
   }
-  if (meta.quantity) facts.push({ label: 'Quantity', value: String(meta.quantity) })
-  if (notification.priority) facts.push({ label: 'Priority', value: notification.priority })
-  if (notification.actionUrl) facts.push({ label: 'Deep link', value: notification.actionUrl })
+  if (meta.quantity)
+    facts.push({ label: "Quantity", value: String(meta.quantity) });
+  if (notification.priority)
+    facts.push({ label: "Priority", value: notification.priority });
+  if (notification.actionUrl)
+    facts.push({ label: "Deep link", value: notification.actionUrl });
 
-  let summary = ''
-  let nextSteps: string[] = []
+  let summary = "";
+  let nextSteps: string[] = [];
   switch (notification.type) {
-    case 'inventory_low_stock':
+    case "inventory_low_stock":
       summary =
         wines.length > 0
-          ? `Expanded breakdown of ${wines.length} wine${wines.length === 1 ? '' : 's'} currently below par.`
-          : 'Low-stock alert details. Open Inventory to reorder the affected wines.'
+          ? `Expanded breakdown of ${wines.length} wine${wines.length === 1 ? "" : "s"} currently below par.`
+          : "Low-stock alert details. Open Inventory to reorder the affected wines.";
       nextSteps = [
-        'Review critical wines first (0–near-zero on hand).',
-        'Open Inventory → Low stock filter to place reorders.',
-        'Confirm provider lead times before service peaks.',
-      ]
-      break
-    case 'order_pending':
-      summary = 'Pending order context and suggested follow-ups.'
-      nextSteps = ['Confirm provider quote', 'Check ETA vs service need', 'Approve or revise quantities']
-      break
-    case 'draft_ready':
-      summary = 'An outbound draft is ready for review.'
-      nextSteps = ['Open Review & Approve Draft', 'Edit tone/quantities if needed', 'Send or discard']
-      break
+        "Review critical wines first (0–near-zero on hand).",
+        "Open Inventory → Low stock filter to place reorders.",
+        "Confirm provider lead times before service peaks.",
+      ];
+      break;
+    case "order_pending":
+      summary = "Pending order context and suggested follow-ups.";
+      nextSteps = [
+        "Confirm provider quote",
+        "Check ETA vs service need",
+        "Approve or revise quantities",
+      ];
+      break;
+    case "draft_ready":
+      summary = "An outbound draft is ready for review.";
+      nextSteps = [
+        "Open Review & Approve Draft",
+        "Edit tone/quantities if needed",
+        "Send or discard",
+      ];
+      break;
     default:
-      summary = 'Additional context assembled from this notification’s metadata.'
-      nextSteps = ['Take the primary action below', 'Archive once resolved']
+      summary =
+        "Additional context assembled from this notification’s metadata.";
+      nextSteps = ["Take the primary action below", "Archive once resolved"];
   }
 
-  return { summary, wines, facts, nextSteps }
+  return { summary, wines, facts, nextSteps };
 }
 
 export function Notifications() {
-  const user = useAuthStore(state => state.user)
-  const location = useLocation()
-  const [filter, setFilter] = useState<'all' | NotificationStatus>('all')
-  const [priorityFilter, setPriorityFilter] = useState<'all' | NotificationPriority>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedNotifications, setSelectedNotifications] = useState<Set<string>>(new Set())
-  const [batchMode, setBatchMode] = useState(false)
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
-  const [starredNotifications, setStarredNotifications] = useState<Set<string>>(new Set())
-  const [showOneTap, setShowOneTap] = useState(true)
-  const [showFilters, setShowFilters] = useState(false)
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
-  const [lastRefresh, setLastRefresh] = useState(new Date())
-  const [detailRequestStatus, setDetailRequestStatus] = useState<Record<string, 'idle' | 'sending' | 'sent'>>({})
-  const [detailContentById, setDetailContentById] = useState<Record<string, NotificationDetailContent>>({})
-  
+  const user = useAuthStore((state) => state.user);
+  const location = useLocation();
+  const [filter, setFilter] = useState<"all" | NotificationStatus>("all");
+  const [priorityFilter, setPriorityFilter] = useState<
+    "all" | NotificationPriority
+  >("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedNotifications, setSelectedNotifications] = useState<
+    Set<string>
+  >(new Set());
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedNotification, setSelectedNotification] =
+    useState<Notification | null>(null);
+  const [starredNotifications, setStarredNotifications] = useState<Set<string>>(
+    new Set(),
+  );
+  const [showOneTap, setShowOneTap] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [detailRequestStatus, setDetailRequestStatus] = useState<
+    Record<string, "idle" | "sending" | "sent">
+  >({});
+  const [detailContentById, setDetailContentById] = useState<
+    Record<string, NotificationDetailContent>
+  >({});
+
+  /**
+   * Crossings the system detected and deliberately has not told anyone about
+   * yet (POS lens, absence-as-health 8). Held by the 15-minute instant cooldown
+   * or by this restaurant's own notification preferences.
+   *
+   * `isError` is kept separate from an empty list: an empty held-queue is good
+   * news, and good news has to be measured rather than assumed (ADR 0067).
+   */
+  const heldQuery = useQuery({
+    queryKey: ["notifications", "low-stock-held"],
+    queryFn: () => fetchHeldLowStock(getActiveRestaurantId()),
+    staleTime: 60_000,
+    retry: false,
+  });
+
   // Fetch notifications from API — poll while this page is open so digests stay live
-  const { data: rawNotifications, isLoading: _isLoading, error: _error, refetch, isFetching } = useNotifications(
-    user?.userId || '',
+  const {
+    data: rawNotifications,
+    isLoading: _isLoading,
+    error: _error,
+    refetch,
+    isFetching,
+  } = useNotifications(
+    user?.userId || "",
     {
-      status: filter === 'all' ? undefined : filter,
+      status: filter === "all" ? undefined : filter,
     },
     { refetchInterval: 10_000, staleTime: 5_000 },
-  )
-  const notifications: Notification[] = Array.isArray(rawNotifications) ? rawNotifications : []
-  const markAsRead = useMarkNotificationAsRead()
-  const markAsUnread = useMarkNotificationAsUnread()
-  const markAllAsRead = useMarkAllNotificationsAsRead()
-  const archiveNotificationMutation = useArchiveNotification()
-  const deleteNotification = useDeleteNotification()
+  );
+  const notifications: Notification[] = Array.isArray(rawNotifications)
+    ? rawNotifications
+    : [];
+  const markAsRead = useMarkNotificationAsRead();
+  const markAsUnread = useMarkNotificationAsUnread();
+  const markAllAsRead = useMarkAllNotificationsAsRead();
+  const archiveNotificationMutation = useArchiveNotification();
+  const deleteNotification = useDeleteNotification();
 
   // Create One-Tap Action Modal State
-  const [showCreateActionModal, setShowCreateActionModal] = useState(false)
-  const [customActions, setCustomActions] = useState<CustomOneTapAction[]>([])
+  const [showCreateActionModal, setShowCreateActionModal] = useState(false);
+  const [customActions, setCustomActions] = useState<CustomOneTapAction[]>([]);
   const [newAction, setNewAction] = useState({
-    title: '',
-    description: '',
-    icon: 'Zap',
-    actionUrl: '',
-    priority: 'medium' as 'low' | 'medium' | 'high',
-    color: 'wine'
-  })
+    title: "",
+    description: "",
+    icon: "Zap",
+    actionUrl: "",
+    priority: "medium" as "low" | "medium" | "high",
+    color: "wine",
+  });
 
   // Auto-open detail panel when navigated from the bell icon
   useEffect(() => {
-    const state = location.state as { selectedNotificationId?: string } | null
-    if (!state?.selectedNotificationId || notifications.length === 0) return
-    const target = notifications.find((n) => n.id === state.selectedNotificationId)
-    if (target) setSelectedNotification(target)
-  }, [location.state, notifications])
+    const state = location.state as { selectedNotificationId?: string } | null;
+    if (!state?.selectedNotificationId || notifications.length === 0) return;
+    const target = notifications.find(
+      (n) => n.id === state.selectedNotificationId,
+    );
+    if (target) setSelectedNotification(target);
+  }, [location.state, notifications]);
 
   // Keep the open detail modal in sync when the list refreshes (live digest updates)
   useEffect(() => {
-    if (!selectedNotification) return
-    const fresh = notifications.find((n) => n.id === selectedNotification.id)
-    if (!fresh) return
+    if (!selectedNotification) return;
+    const fresh = notifications.find((n) => n.id === selectedNotification.id);
+    if (!fresh) return;
     if (
       fresh.message !== selectedNotification.message ||
       fresh.title !== selectedNotification.title ||
       fresh.status !== selectedNotification.status ||
-      JSON.stringify(fresh.metadata) !== JSON.stringify(selectedNotification.metadata)
+      JSON.stringify(fresh.metadata) !==
+        JSON.stringify(selectedNotification.metadata)
     ) {
-      setSelectedNotification(fresh)
+      setSelectedNotification(fresh);
     }
-  }, [notifications, selectedNotification])
+  }, [notifications, selectedNotification]);
 
   // Realtime: WebSocket notification:new → notification_sent (also stock:low)
   useEffect(() => {
     const onLive = () => {
-      setLastRefresh(new Date())
-      void refetch()
-    }
-    window.addEventListener('notification_sent', onLive)
-    window.addEventListener('ws:dashboard-invalidate', onLive)
+      setLastRefresh(new Date());
+      void refetch();
+    };
+    window.addEventListener("notification_sent", onLive);
+    window.addEventListener("ws:dashboard-invalidate", onLive);
     return () => {
-      window.removeEventListener('notification_sent', onLive)
-      window.removeEventListener('ws:dashboard-invalidate', onLive)
-    }
-  }, [refetch])
+      window.removeEventListener("notification_sent", onLive);
+      window.removeEventListener("ws:dashboard-invalidate", onLive);
+    };
+  }, [refetch]);
 
   // Fallback poll (in addition to react-query interval) — updates "Last updated" label
   useEffect(() => {
     const interval = setInterval(() => {
-      setLastRefresh(new Date())
-      void refetch()
-    }, 30_000)
-    return () => clearInterval(interval)
-  }, [refetch])
+      setLastRefresh(new Date());
+      void refetch();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [refetch]);
 
   const filteredNotifications = useMemo(() => {
-    const safeNotifications = Array.isArray(notifications) ? notifications : []
-    const { items: dedupedNotifications } = collapseStackedNotifications(safeNotifications)
-    return dedupedNotifications.filter(n => {
-      const matchesFilter = filter === 'all' || n.status === filter
-      const matchesPriority = priorityFilter === 'all' || n.priority === priorityFilter
-      const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           n.message.toLowerCase().includes(searchQuery.toLowerCase())
-      return matchesFilter && matchesPriority && matchesSearch
-    }).sort((a, b) => {
-      // Starred first
-      const aStarred = starredNotifications.has(a.id)
-      const bStarred = starredNotifications.has(b.id)
-      if (aStarred && !bStarred) return -1
-      if (!aStarred && bStarred) return 1
-      
-      // Then by priority
-      const priorityOrder: Record<NotificationPriority, number> = { critical: 0, high: 1, medium: 2, low: 3 }
-      const priorityDiff = (priorityOrder[a.priority as NotificationPriority] ?? 99) - (priorityOrder[b.priority as NotificationPriority] ?? 99)
-      if (priorityDiff !== 0) return priorityDiff
-      
-      // Finally by timestamp
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    })
-  }, [notifications, filter, priorityFilter, searchQuery, starredNotifications])
+    const safeNotifications = Array.isArray(notifications) ? notifications : [];
+    const { items: dedupedNotifications } =
+      collapseStackedNotifications(safeNotifications);
+    return dedupedNotifications
+      .filter((n) => {
+        const matchesFilter = filter === "all" || n.status === filter;
+        const matchesPriority =
+          priorityFilter === "all" || n.priority === priorityFilter;
+        const matchesSearch =
+          n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          n.message.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesFilter && matchesPriority && matchesSearch;
+      })
+      .sort((a, b) => {
+        // Starred first
+        const aStarred = starredNotifications.has(a.id);
+        const bStarred = starredNotifications.has(b.id);
+        if (aStarred && !bStarred) return -1;
+        if (!aStarred && bStarred) return 1;
+
+        // Then by priority
+        const priorityOrder: Record<NotificationPriority, number> = {
+          critical: 0,
+          high: 1,
+          medium: 2,
+          low: 3,
+        };
+        const priorityDiff =
+          (priorityOrder[a.priority as NotificationPriority] ?? 99) -
+          (priorityOrder[b.priority as NotificationPriority] ?? 99);
+        if (priorityDiff !== 0) return priorityDiff;
+
+        // Finally by timestamp
+        return (
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      });
+  }, [
+    notifications,
+    filter,
+    priorityFilter,
+    searchQuery,
+    starredNotifications,
+  ]);
 
   // Smart grouping
   const groupedNotifications = useMemo(() => {
@@ -259,32 +354,36 @@ export function Notifications() {
       today: [],
       yesterday: [],
       thisWeek: [],
-      older: []
-    }
+      older: [],
+    };
 
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const yesterdayStart = new Date(todayStart.getTime() - 24 * 3600000)
-    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 3600000)
+    const now = new Date();
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 3600000);
+    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 3600000);
 
-    filteredNotifications.forEach(notif => {
-      const notifDate = new Date(notif.timestamp)
-      
+    filteredNotifications.forEach((notif) => {
+      const notifDate = new Date(notif.timestamp);
+
       if (starredNotifications.has(notif.id)) {
-        groups.starred.push(notif)
+        groups.starred.push(notif);
       } else if (notifDate >= todayStart) {
-        groups.today.push(notif)
+        groups.today.push(notif);
       } else if (notifDate >= yesterdayStart) {
-        groups.yesterday.push(notif)
+        groups.yesterday.push(notif);
       } else if (notifDate >= weekStart) {
-        groups.thisWeek.push(notif)
+        groups.thisWeek.push(notif);
       } else {
-        groups.older.push(notif)
+        groups.older.push(notif);
       }
-    })
+    });
 
-    return groups
-  }, [filteredNotifications, starredNotifications])
+    return groups;
+  }, [filteredNotifications, starredNotifications]);
 
   /**
    * Display-ordered flat list. Rows render grouped (starred → today → …), so
@@ -292,273 +391,421 @@ export function Notifications() {
    * order. Render assigns each row its index from this list.
    */
   const flatDisplayNotifications = useMemo(
-    () => ([] as Notification[]).concat(
-      groupedNotifications.starred,
-      groupedNotifications.today,
-      groupedNotifications.yesterday,
-      groupedNotifications.thisWeek,
-      groupedNotifications.older,
-    ),
+    () =>
+      ([] as Notification[]).concat(
+        groupedNotifications.starred,
+        groupedNotifications.today,
+        groupedNotifications.yesterday,
+        groupedNotifications.thisWeek,
+        groupedNotifications.older,
+      ),
     [groupedNotifications],
-  )
+  );
 
   const stats = useMemo(() => {
-    const safeNotifications = Array.isArray(notifications) ? notifications : []
-    const unread = safeNotifications.filter(n => n.status === 'unread').length
-    const urgent = safeNotifications.filter(n => n.priority === 'critical' && n.status === 'unread').length
-    const starred = starredNotifications.size
-    const today = safeNotifications.filter(n => {
-      const notifDate = new Date(n.timestamp)
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      return notifDate >= todayStart
-    }).length
+    const safeNotifications = Array.isArray(notifications) ? notifications : [];
+    const unread = safeNotifications.filter(
+      (n) => n.status === "unread",
+    ).length;
+    const urgent = safeNotifications.filter(
+      (n) => n.priority === "critical" && n.status === "unread",
+    ).length;
+    const starred = starredNotifications.size;
+    const today = safeNotifications.filter((n) => {
+      const notifDate = new Date(n.timestamp);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      return notifDate >= todayStart;
+    }).length;
 
-    return { unread, urgent, starred, today }
-  }, [notifications, starredNotifications])
+    return { unread, urgent, starred, today };
+  }, [notifications, starredNotifications]);
 
   const getTypeConfig = (type: NotificationType) => {
-    const configs: Record<string, { icon: any; bg: string; text: string; border: string }> = {
-      info: { icon: Info, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-400' },
-      success: { icon: CheckCircle2, bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-400' },
-      warning: { icon: AlertTriangle, bg: 'bg-amber-100', text: 'text-amber-600', border: 'border-amber-400' },
-      alert: { icon: Bell, bg: 'bg-rose-100', text: 'text-rose-600', border: 'border-rose-400' },
-      order: { icon: TrendingUp, bg: 'bg-indigo-100', text: 'text-indigo-600', border: 'border-indigo-400' },
-      inventory: { icon: Package, bg: 'bg-purple-100', text: 'text-purple-600', border: 'border-purple-400' },
-      report: { icon: Calendar, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
-      reminder: { icon: Bell, bg: 'bg-orange-100', text: 'text-orange-600', border: 'border-orange-400' },
-      event: { icon: Calendar, bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'border-cyan-400' },
+    const configs: Record<
+      string,
+      { icon: any; bg: string; text: string; border: string }
+    > = {
+      info: {
+        icon: Info,
+        bg: "bg-blue-100",
+        text: "text-blue-600",
+        border: "border-blue-400",
+      },
+      success: {
+        icon: CheckCircle2,
+        bg: "bg-emerald-100",
+        text: "text-emerald-600",
+        border: "border-emerald-400",
+      },
+      warning: {
+        icon: AlertTriangle,
+        bg: "bg-amber-100",
+        text: "text-amber-600",
+        border: "border-amber-400",
+      },
+      alert: {
+        icon: Bell,
+        bg: "bg-rose-100",
+        text: "text-rose-600",
+        border: "border-rose-400",
+      },
+      order: {
+        icon: TrendingUp,
+        bg: "bg-indigo-100",
+        text: "text-indigo-600",
+        border: "border-indigo-400",
+      },
+      inventory: {
+        icon: Package,
+        bg: "bg-purple-100",
+        text: "text-purple-600",
+        border: "border-purple-400",
+      },
+      report: {
+        icon: Calendar,
+        bg: "bg-gray-100",
+        text: "text-gray-600",
+        border: "border-gray-400",
+      },
+      reminder: {
+        icon: Bell,
+        bg: "bg-orange-100",
+        text: "text-orange-600",
+        border: "border-orange-400",
+      },
+      event: {
+        icon: Calendar,
+        bg: "bg-cyan-100",
+        text: "text-cyan-600",
+        border: "border-cyan-400",
+      },
       // Phase 32 AI draft types
-      draft_ready: { icon: Mail, bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-400' },
-      constraint_triggered: { icon: AlertTriangle, bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-400' },
-      unknown_sender: { icon: Mail, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
-      invoice_received: { icon: Package, bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-400' },
+      draft_ready: {
+        icon: Mail,
+        bg: "bg-indigo-100",
+        text: "text-indigo-700",
+        border: "border-indigo-400",
+      },
+      constraint_triggered: {
+        icon: AlertTriangle,
+        bg: "bg-amber-100",
+        text: "text-amber-700",
+        border: "border-amber-400",
+      },
+      unknown_sender: {
+        icon: Mail,
+        bg: "bg-gray-100",
+        text: "text-gray-600",
+        border: "border-gray-400",
+      },
+      invoice_received: {
+        icon: Package,
+        bg: "bg-teal-100",
+        text: "text-teal-700",
+        border: "border-teal-400",
+      },
       // API type names
-      inventory_low_stock: { icon: Package, bg: 'bg-purple-100', text: 'text-purple-600', border: 'border-purple-400' },
-      order_pending: { icon: TrendingUp, bg: 'bg-indigo-100', text: 'text-indigo-600', border: 'border-indigo-400' },
-      order_delivered: { icon: CheckCircle2, bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-400' },
-      price_change: { icon: TrendingUp, bg: 'bg-amber-100', text: 'text-amber-600', border: 'border-amber-400' },
-      delivery_scheduled: { icon: Calendar, bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'border-cyan-400' },
-      payment_due: { icon: TrendingUp, bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-400' },
-      calendar_reminder: { icon: Bell, bg: 'bg-orange-100', text: 'text-orange-600', border: 'border-orange-400' },
-      system: { icon: Info, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400' },
-      ai_suggestion: { icon: Info, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-400' },
-    }
-    return configs[type] || configs.info
-  }
+      inventory_low_stock: {
+        icon: Package,
+        bg: "bg-purple-100",
+        text: "text-purple-600",
+        border: "border-purple-400",
+      },
+      order_pending: {
+        icon: TrendingUp,
+        bg: "bg-indigo-100",
+        text: "text-indigo-600",
+        border: "border-indigo-400",
+      },
+      order_delivered: {
+        icon: CheckCircle2,
+        bg: "bg-emerald-100",
+        text: "text-emerald-600",
+        border: "border-emerald-400",
+      },
+      price_change: {
+        icon: TrendingUp,
+        bg: "bg-amber-100",
+        text: "text-amber-600",
+        border: "border-amber-400",
+      },
+      delivery_scheduled: {
+        icon: Calendar,
+        bg: "bg-cyan-100",
+        text: "text-cyan-600",
+        border: "border-cyan-400",
+      },
+      payment_due: {
+        icon: TrendingUp,
+        bg: "bg-rose-100",
+        text: "text-rose-700",
+        border: "border-rose-400",
+      },
+      calendar_reminder: {
+        icon: Bell,
+        bg: "bg-orange-100",
+        text: "text-orange-600",
+        border: "border-orange-400",
+      },
+      system: {
+        icon: Info,
+        bg: "bg-gray-100",
+        text: "text-gray-600",
+        border: "border-gray-400",
+      },
+      ai_suggestion: {
+        icon: Info,
+        bg: "bg-blue-100",
+        text: "text-blue-600",
+        border: "border-blue-400",
+      },
+    };
+    return configs[type] || configs.info;
+  };
 
   const getDetailPrompt = (type: NotificationType) => {
     switch (type) {
-      case 'order_pending':
-        return 'Request provider quote details and delivery timing.'
-      case 'order_delivered':
-        return 'Request delivery confirmation and invoice details.'
-      case 'inventory_low_stock':
-        return 'Request inventory usage trends and reorder recommendations.'
-      case 'price_change':
-        return 'Request price change rationale and alternatives.'
-      case 'delivery_scheduled':
-        return 'Request delivery window and contact details.'
-      case 'calendar_reminder':
-        return 'Request event notes and attendee list.'
-      case 'ai_suggestion':
-        return 'Request the AI reasoning and data sources.'
-      case 'draft_ready':
-        return 'Click "Review & Approve Draft" to open the email compose view.'
-      case 'constraint_triggered':
-        return 'A business rule blocked automatic sending. Manager action required.'
-      case 'unknown_sender':
-        return 'An unrecognised sender emailed. Decide whether to add them as a provider.'
-      case 'invoice_received':
-        return 'An invoice arrived. Confirm the order match or create a retroactive order.'
-      case 'system':
+      case "order_pending":
+        return "Request provider quote details and delivery timing.";
+      case "order_delivered":
+        return "Request delivery confirmation and invoice details.";
+      case "inventory_low_stock":
+        return "Request inventory usage trends and reorder recommendations.";
+      case "price_change":
+        return "Request price change rationale and alternatives.";
+      case "delivery_scheduled":
+        return "Request delivery window and contact details.";
+      case "calendar_reminder":
+        return "Request event notes and attendee list.";
+      case "ai_suggestion":
+        return "Request the AI reasoning and data sources.";
+      case "draft_ready":
+        return 'Click "Review & Approve Draft" to open the email compose view.';
+      case "constraint_triggered":
+        return "A business rule blocked automatic sending. Manager action required.";
+      case "unknown_sender":
+        return "An unrecognised sender emailed. Decide whether to add them as a provider.";
+      case "invoice_received":
+        return "An invoice arrived. Confirm the order match or create a retroactive order.";
+      case "system":
       default:
-        return 'Request additional context for this notification.'
+        return "Request additional context for this notification.";
     }
-  }
+  };
 
   const handleRequestDetails = (notification: Notification) => {
-    setDetailRequestStatus((prev) => ({ ...prev, [notification.id]: 'sending' }))
+    setDetailRequestStatus((prev) => ({
+      ...prev,
+      [notification.id]: "sending",
+    }));
     // Expand from persisted metadata (low-stock digests already include the wine list).
     // Simulated brief load so the button state is visible; no silent no-op.
     window.setTimeout(() => {
-      const content = buildNotificationDetails(notification)
-      setDetailContentById((prev) => ({ ...prev, [notification.id]: content }))
-      setDetailRequestStatus((prev) => ({ ...prev, [notification.id]: 'sent' }))
-    }, 350)
-  }
+      const content = buildNotificationDetails(notification);
+      setDetailContentById((prev) => ({ ...prev, [notification.id]: content }));
+      setDetailRequestStatus((prev) => ({
+        ...prev,
+        [notification.id]: "sent",
+      }));
+    }, 350);
+  };
 
   const getPriorityColor = (priority: NotificationPriority) => {
     const colors: Record<NotificationPriority, string> = {
-      low: 'border-l-gray-300',
-      medium: 'border-l-blue-400',
-      high: 'border-l-amber-500',
-      critical: 'border-l-rose-600',
-    }
-    return colors[priority] ?? 'border-l-gray-300'
-  }
+      low: "border-l-gray-300",
+      medium: "border-l-blue-400",
+      high: "border-l-amber-500",
+      critical: "border-l-rose-600",
+    };
+    return colors[priority] ?? "border-l-gray-300";
+  };
 
   // API wrappers for notification actions (refetch to sync UI)
   const handleMarkAsRead = async (id: string) => {
-    await markAsRead.mutateAsync(id)
-    await refetch()
-  }
+    await markAsRead.mutateAsync(id);
+    await refetch();
+  };
 
   /** NEW-474: mark back to unread (was a disabled "coming soon" button). */
   const handleMarkAsUnread = async (id: string) => {
-    await markAsUnread.mutateAsync(id)
-    await refetch()
-  }
+    await markAsUnread.mutateAsync(id);
+    await refetch();
+  };
 
   // Row focus for keyboard navigation (NEW-483).
-  const [focusedIndex, setFocusedIndex] = useState(-1)
+  const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const handleArchiveNotification = async (id: string) => {
-    await archiveNotificationMutation.mutateAsync(id)
-    await refetch()
-  }
+    await archiveNotificationMutation.mutateAsync(id);
+    await refetch();
+  };
 
   const handleDeleteNotification = async (id: string) => {
-    await deleteNotification.mutateAsync(id)
-    await refetch()
-  }
+    await deleteNotification.mutateAsync(id);
+    await refetch();
+  };
 
   const handleNotificationClick = (notification: Notification) => {
     if (!batchMode) {
-      setSelectedNotification(notification)
-      if (notification.status === 'unread') {
-        void handleMarkAsRead(notification.id)
+      setSelectedNotification(notification);
+      if (notification.status === "unread") {
+        void handleMarkAsRead(notification.id);
       }
     }
-  }
+  };
 
   const toggleNotificationSelection = (id: string) => {
-    setSelectedNotifications(prev => {
-      const newSet = new Set(prev)
+    setSelectedNotifications((prev) => {
+      const newSet = new Set(prev);
       if (newSet.has(id)) {
-        newSet.delete(id)
+        newSet.delete(id);
       } else {
-        newSet.add(id)
+        newSet.add(id);
       }
-      return newSet
-    })
-  }
+      return newSet;
+    });
+  };
 
   const toggleStar = (id: string) => {
-    setStarredNotifications(prev => {
-      const newSet = new Set(prev)
+    setStarredNotifications((prev) => {
+      const newSet = new Set(prev);
       if (newSet.has(id)) {
-        newSet.delete(id)
+        newSet.delete(id);
       } else {
-        newSet.add(id)
+        newSet.add(id);
       }
-      return newSet
-    })
-  }
+      return newSet;
+    });
+  };
 
   // ── Keyboard shortcuts (NEW-483) ─────────────────────────────────────────
   // j/k move · u toggles read/unread · e archives · s stars · Enter opens.
   // ⌘B / ⌘K were already advertised in the UI's tooltips but never bound.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.altKey) return
-      const t = e.target as HTMLElement | null
-      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
-        if (typing) return
-        e.preventDefault()
-        setBatchMode(b => !b)
-        return
+      if (e.defaultPrevented || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const typing =
+        !!t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable);
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        if (typing) return;
+        e.preventDefault();
+        setBatchMode((b) => !b);
+        return;
       }
-      if (e.metaKey || e.ctrlKey || typing) return
+      if (e.metaKey || e.ctrlKey || typing) return;
       if (selectedNotification) {
-        if (e.key === 'Escape') setSelectedNotification(null)
-        return
+        if (e.key === "Escape") setSelectedNotification(null);
+        return;
       }
-      const list = flatDisplayNotifications
-      if (list.length === 0) return
-      const current = list[focusedIndex]
+      const list = flatDisplayNotifications;
+      if (list.length === 0) return;
+      const current = list[focusedIndex];
       switch (e.key) {
-        case 'j':
-          e.preventDefault()
-          setFocusedIndex(i => Math.min(list.length - 1, (i < 0 ? -1 : i) + 1))
-          break
-        case 'k':
-          e.preventDefault()
-          setFocusedIndex(i => Math.max(0, (i < 0 ? 0 : i) - 1))
-          break
-        case 'u':
-          if (current) void (current.status === 'unread' ? handleMarkAsRead(current.id) : handleMarkAsUnread(current.id))
-          break
-        case 'e':
-          if (current) void handleArchiveNotification(current.id)
-          break
-        case 's':
-          if (current) toggleStar(current.id)
-          break
-        case 'Enter':
-          if (current) { e.preventDefault(); handleNotificationClick(current) }
-          break
+        case "j":
+          e.preventDefault();
+          setFocusedIndex((i) =>
+            Math.min(list.length - 1, (i < 0 ? -1 : i) + 1),
+          );
+          break;
+        case "k":
+          e.preventDefault();
+          setFocusedIndex((i) => Math.max(0, (i < 0 ? 0 : i) - 1));
+          break;
+        case "u":
+          if (current)
+            void (current.status === "unread"
+              ? handleMarkAsRead(current.id)
+              : handleMarkAsUnread(current.id));
+          break;
+        case "e":
+          if (current) void handleArchiveNotification(current.id);
+          break;
+        case "s":
+          if (current) toggleStar(current.id);
+          break;
+        case "Enter":
+          if (current) {
+            e.preventDefault();
+            handleNotificationClick(current);
+          }
+          break;
       }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatDisplayNotifications, focusedIndex, selectedNotification])
+  }, [flatDisplayNotifications, focusedIndex, selectedNotification]);
 
   // Keep the focused row in view and valid as the list changes.
   useEffect(() => {
-    setFocusedIndex(i => (i >= flatDisplayNotifications.length ? flatDisplayNotifications.length - 1 : i))
-  }, [flatDisplayNotifications.length])
+    setFocusedIndex((i) =>
+      i >= flatDisplayNotifications.length
+        ? flatDisplayNotifications.length - 1
+        : i,
+    );
+  }, [flatDisplayNotifications.length]);
   useEffect(() => {
-    if (focusedIndex < 0) return
-    document.querySelector(`[data-notif-row="${focusedIndex}"]`)?.scrollIntoView({ block: 'nearest' })
-  }, [focusedIndex])
+    if (focusedIndex < 0) return;
+    document
+      .querySelector(`[data-notif-row="${focusedIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [focusedIndex]);
 
   const handleMarkAllAsRead = async () => {
-    if (!user?.userId) return
+    if (!user?.userId) return;
     // NEW-493: a bulk read of this size is hard to undo, so confirm first.
-    const unread = notifications.filter(n => n.status === 'unread').length
-    if (unread > 50 && !confirm(`Mark all ${unread} unread notifications as read?`)) return
-    await markAllAsRead.mutateAsync(user.userId)
-    await refetch()
-  }
+    const unread = notifications.filter((n) => n.status === "unread").length;
+    if (
+      unread > 50 &&
+      !confirm(`Mark all ${unread} unread notifications as read?`)
+    )
+      return;
+    await markAllAsRead.mutateAsync(user.userId);
+    await refetch();
+  };
 
   const handleQuickAction = (notification: Notification) => {
-    void handleMarkAsRead(notification.id)
+    void handleMarkAsRead(notification.id);
     if (notification.actionUrl) {
-      window.location.href = notification.actionUrl
+      window.location.href = notification.actionUrl;
     }
-  }
+  };
 
   const handleContextMenu = (e: React.MouseEvent, id: string) => {
-    e.preventDefault()
-    setContextMenu({ id, x: e.clientX, y: e.clientY })
-  }
+    e.preventDefault();
+    setContextMenu({ id, x: e.clientX, y: e.clientY });
+  };
 
-  const handleBatchAction = async (action: 'read' | 'archive' | 'delete') => {
-    const ids = Array.from(selectedNotifications)
+  const handleBatchAction = async (action: "read" | "archive" | "delete") => {
+    const ids = Array.from(selectedNotifications);
     await Promise.all(
       ids.map((id) => {
-        if (action === 'read') return markAsRead.mutateAsync(id)
-        if (action === 'archive') return archiveNotificationMutation.mutateAsync(id)
-        if (action === 'delete') return deleteNotification.mutateAsync(id)
-        return Promise.resolve()
-      })
-    )
-    setSelectedNotifications(new Set())
-    await refetch()
-  }
+        if (action === "read") return markAsRead.mutateAsync(id);
+        if (action === "archive")
+          return archiveNotificationMutation.mutateAsync(id);
+        if (action === "delete") return deleteNotification.mutateAsync(id);
+        return Promise.resolve();
+      }),
+    );
+    setSelectedNotifications(new Set());
+    await refetch();
+  };
 
   const selectAllInGroup = (group: Notification[]) => {
-    setSelectedNotifications(new Set(group.map(n => n.id)))
-  }
+    setSelectedNotifications(new Set(group.map((n) => n.id)));
+  };
 
   // Handle Create One-Tap Action
   const handleCreateAction = () => {
     if (!newAction.title || !newAction.actionUrl) {
-      alert('Please fill in all required fields')
-      return
+      alert("Please fill in all required fields");
+      return;
     }
 
     const action: CustomOneTapAction = {
@@ -570,28 +817,38 @@ export function Notifications() {
       priority: newAction.priority,
       color: newAction.color,
       createdAt: new Date().toISOString(),
-    }
+    };
 
-    setCustomActions(prev => [action, ...prev])
-    setShowCreateActionModal(false)
+    setCustomActions((prev) => [action, ...prev]);
+    setShowCreateActionModal(false);
     setNewAction({
-      title: '',
-      description: '',
-      icon: 'Zap',
-      actionUrl: '',
-      priority: 'medium',
-      color: 'wine'
-    })
-  }
+      title: "",
+      description: "",
+      icon: "Zap",
+      actionUrl: "",
+      priority: "medium",
+      color: "wine",
+    });
+  };
 
   const colorOptions = [
-    { name: 'Wine', value: 'wine', bg: 'bg-wine-600', text: 'text-white' },
-    { name: 'Emerald', value: 'emerald', bg: 'bg-emerald-600', text: 'text-white' },
-    { name: 'Blue', value: 'blue', bg: 'bg-blue-600', text: 'text-white' },
-    { name: 'Amber', value: 'amber', bg: 'bg-amber-600', text: 'text-white' },
-    { name: 'Rose', value: 'rose', bg: 'bg-rose-600', text: 'text-white' },
-    { name: 'Purple', value: 'purple', bg: 'bg-purple-600', text: 'text-white' },
-  ]
+    { name: "Wine", value: "wine", bg: "bg-wine-600", text: "text-white" },
+    {
+      name: "Emerald",
+      value: "emerald",
+      bg: "bg-emerald-600",
+      text: "text-white",
+    },
+    { name: "Blue", value: "blue", bg: "bg-blue-600", text: "text-white" },
+    { name: "Amber", value: "amber", bg: "bg-amber-600", text: "text-white" },
+    { name: "Rose", value: "rose", bg: "bg-rose-600", text: "text-white" },
+    {
+      name: "Purple",
+      value: "purple",
+      bg: "bg-purple-600",
+      text: "text-white",
+    },
+  ];
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -608,10 +865,13 @@ export function Notifications() {
               )}
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Notifications & Actions</h1>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Notifications & Actions
+              </h1>
               <p className="text-sm text-gray-600">
-                {stats.unread} unread • {stats.starred} starred • Last updated {formatTimestamp(lastRefresh.toISOString())}
-                {isFetching ? ' · refreshing…' : ''}
+                {stats.unread} unread • {stats.starred} starred • Last updated{" "}
+                {formatTimestamp(lastRefresh.toISOString())}
+                {isFetching ? " · refreshing…" : ""}
               </p>
             </div>
           </div>
@@ -622,7 +882,9 @@ export function Notifications() {
               title="Create One-Tap Action (⌘N)"
             >
               <Plus className="w-5 h-5" />
-              <span className="font-medium hidden md:inline">Create Action</span>
+              <span className="font-medium hidden md:inline">
+                Create Action
+              </span>
             </button>
             <button
               onClick={() => setLastRefresh(new Date())}
@@ -632,7 +894,9 @@ export function Notifications() {
               <RefreshCw className="w-5 h-5 text-gray-600" />
             </button>
             <button
-              onClick={() => window.location.href = '/notifications?tab=settings'}
+              onClick={() =>
+                (window.location.href = "/notifications?tab=settings")
+              }
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               title="Settings"
             >
@@ -641,13 +905,77 @@ export function Notifications() {
           </div>
         </div>
 
+        {/* Held low-stock crossings — what the system knows and has not said.
+            Before this, a crossing held for the digest and a crossing that
+            never happened were indistinguishable in the ledger. */}
+        {(heldQuery.isError || (heldQuery.data?.summary.count ?? 0) > 0) && (
+          <div
+            className={cn(
+              "rounded-xl border p-4 mb-6",
+              heldQuery.isError
+                ? "border-gray-200 bg-gray-50"
+                : "border-amber-200 bg-amber-50",
+            )}
+          >
+            {heldQuery.isError ? (
+              <p className="text-sm font-semibold text-gray-700">
+                Held low-stock alerts could not be read. This is not a claim
+                that none are waiting.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-amber-900">
+                  {heldQuery.data!.summary.count} low-stock crossing
+                  {heldQuery.data!.summary.count === 1 ? "" : "s"} held for the
+                  digest
+                  {heldQuery.data!.summary.critical > 0
+                    ? ` · ${heldQuery.data!.summary.critical} critical`
+                    : ""}
+                </p>
+                <p className="text-xs text-amber-800 mt-1">
+                  These wines have already dropped below par. Nobody has been
+                  notified yet — they are batched into the next digest rather
+                  than interrupting you.
+                </p>
+                <ul className="mt-2 flex flex-wrap gap-1.5">
+                  {heldQuery.data!.held.slice(0, 8).map((h) => (
+                    <li
+                      key={h.inventory_id}
+                      title={
+                        h.reason === "instant_cooldown"
+                          ? "Another alert fired for this restaurant within the last 15 minutes."
+                          : h.reason === "prefs"
+                            ? "Your notification settings batch this rather than interrupting."
+                            : "Held; the reason was not recorded."
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] text-amber-900"
+                    >
+                      {h.wine_name ?? "Unnamed wine"}
+                      {h.level === "critical" && (
+                        <b className="text-rose-600">critical</b>
+                      )}
+                    </li>
+                  ))}
+                  {heldQuery.data!.held.length > 8 && (
+                    <li className="self-center text-[11px] text-amber-800">
+                      +{heldQuery.data!.held.length - 8} more
+                    </li>
+                  )}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Unread</p>
-                <p className="text-2xl font-bold text-wine-600">{stats.unread}</p>
+                <p className="text-2xl font-bold text-wine-600">
+                  {stats.unread}
+                </p>
               </div>
               <div className="p-2 bg-wine-100 rounded-lg">
                 <Bell className="w-5 h-5 text-wine-600" />
@@ -658,7 +986,9 @@ export function Notifications() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Urgent</p>
-                <p className="text-2xl font-bold text-rose-600">{stats.urgent}</p>
+                <p className="text-2xl font-bold text-rose-600">
+                  {stats.urgent}
+                </p>
               </div>
               <div className="p-2 bg-rose-100 rounded-lg">
                 <AlertTriangle className="w-5 h-5 text-rose-600" />
@@ -669,7 +999,9 @@ export function Notifications() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Starred</p>
-                <p className="text-2xl font-bold text-amber-600">{stats.starred}</p>
+                <p className="text-2xl font-bold text-amber-600">
+                  {stats.starred}
+                </p>
               </div>
               <div className="p-2 bg-amber-100 rounded-lg">
                 <Star className="w-5 h-5 text-amber-600" />
@@ -680,7 +1012,9 @@ export function Notifications() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Today</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.today}</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {stats.today}
+                </p>
               </div>
               <div className="p-2 bg-blue-100 rounded-lg">
                 <Clock className="w-5 h-5 text-blue-600" />
@@ -697,23 +1031,29 @@ export function Notifications() {
               Your Custom Actions ({customActions.length})
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {customActions.map(action => {
-                const colorConfig = colorOptions.find(c => c.value === action.color)
+              {customActions.map((action) => {
+                const colorConfig = colorOptions.find(
+                  (c) => c.value === action.color,
+                );
                 return (
                   <button
                     key={action.id}
-                    onClick={() => window.location.href = action.actionUrl}
+                    onClick={() => (window.location.href = action.actionUrl)}
                     className={`${colorConfig?.bg} ${colorConfig?.text} rounded-xl p-4 text-left hover:scale-105 transition-transform shadow-lg`}
                   >
                     <div className="flex items-center gap-3">
                       <Zap className="w-6 h-6" />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold truncate">{action.title}</h4>
-                        <p className="text-sm opacity-90 truncate">{action.description}</p>
+                        <h4 className="font-semibold truncate">
+                          {action.title}
+                        </h4>
+                        <p className="text-sm opacity-90 truncate">
+                          {action.description}
+                        </p>
                       </div>
                     </div>
                   </button>
-                )
+                );
               })}
             </div>
           </div>
@@ -724,7 +1064,7 @@ export function Notifications() {
           {showOneTap && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
+              animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               className="mb-6 overflow-hidden"
             >
@@ -768,14 +1108,14 @@ export function Notifications() {
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {(['all', 'unread', 'read', 'archived'] as const).map((f) => (
+            {(["all", "unread", "read", "archived"] as const).map((f) => (
               <button
                 key={f}
-                onClick={() => setFilter(f as 'all' | NotificationStatus)}
+                onClick={() => setFilter(f as "all" | NotificationStatus)}
                 className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
                   filter === f
-                    ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? "bg-wine-600 text-white shadow-lg shadow-wine-600/30"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
                 {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -784,7 +1124,9 @@ export function Notifications() {
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`p-2.5 rounded-lg transition-colors ${
-                showFilters ? 'bg-wine-100 text-wine-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                showFilters
+                  ? "bg-wine-100 text-wine-600"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
               title="Advanced Filters (⌘K)"
             >
@@ -793,7 +1135,9 @@ export function Notifications() {
             <button
               onClick={() => setBatchMode(!batchMode)}
               className={`p-2.5 rounded-lg transition-colors ${
-                batchMode ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                batchMode
+                  ? "bg-emerald-100 text-emerald-600"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
               title="Batch Mode (⌘B)"
             >
@@ -814,13 +1158,15 @@ export function Notifications() {
           {showFilters && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
+              animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               className="mt-4 pt-4 border-t border-gray-200 overflow-hidden"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Priority
+                  </label>
                   <select
                     value={priorityFilter}
                     onChange={(e) => setPriorityFilter(e.target.value as any)}
@@ -834,12 +1180,14 @@ export function Notifications() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Quick Filters</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Quick Filters
+                  </label>
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        setFilter('unread')
-                        setPriorityFilter('critical')
+                        setFilter("unread");
+                        setPriorityFilter("critical");
                       }}
                       className="flex-1 px-3 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 text-sm font-medium transition-colors"
                     >
@@ -847,7 +1195,7 @@ export function Notifications() {
                     </button>
                     <button
                       onClick={() => {
-                        setFilter('all')
+                        setFilter("all");
                       }}
                       className="flex-1 px-3 py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 text-sm font-medium transition-colors"
                     >
@@ -867,19 +1215,19 @@ export function Notifications() {
             </span>
             <div className="flex gap-2 ml-auto">
               <button
-                onClick={() => handleBatchAction('read')}
+                onClick={() => handleBatchAction("read")}
                 className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
               >
                 Mark Read
               </button>
               <button
-                onClick={() => handleBatchAction('archive')}
+                onClick={() => handleBatchAction("archive")}
                 className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
               >
                 Archive
               </button>
               <button
-                onClick={() => handleBatchAction('delete')}
+                onClick={() => handleBatchAction("delete")}
                 className="px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 text-sm"
               >
                 Delete
@@ -894,231 +1242,258 @@ export function Notifications() {
         {filteredNotifications.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
             <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No notifications</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No notifications
+            </h3>
             <p className="text-gray-600">You're all caught up!</p>
           </div>
         ) : (
-          Object.entries(groupedNotifications).map(([groupKey, groupNotifications]) => {
-            if (groupNotifications.length === 0) return null
+          Object.entries(groupedNotifications).map(
+            ([groupKey, groupNotifications]) => {
+              if (groupNotifications.length === 0) return null;
 
-            const groupLabels: { [key: string]: string } = {
-              starred: `⭐ Starred (${groupNotifications.length})`,
-              today: `Today (${groupNotifications.length})`,
-              yesterday: `Yesterday (${groupNotifications.length})`,
-              thisWeek: `This Week (${groupNotifications.length})`,
-              older: `Older (${groupNotifications.length})`
-            }
+              const groupLabels: { [key: string]: string } = {
+                starred: `⭐ Starred (${groupNotifications.length})`,
+                today: `Today (${groupNotifications.length})`,
+                yesterday: `Yesterday (${groupNotifications.length})`,
+                thisWeek: `This Week (${groupNotifications.length})`,
+                older: `Older (${groupNotifications.length})`,
+              };
 
-            return (
-              <div key={groupKey}>
-                {/* Group Header */}
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                    {groupLabels[groupKey]}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    {batchMode && (
-                      <button
-                        onClick={() => selectAllInGroup(groupNotifications)}
-                        className="text-xs text-wine-600 hover:text-wine-700 font-medium"
-                      >
-                        Select All
-                      </button>
-                    )}
-                    <div className="h-px flex-1 bg-gray-200 min-w-[100px]"></div>
+              return (
+                <div key={groupKey}>
+                  {/* Group Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                      {groupLabels[groupKey]}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      {batchMode && (
+                        <button
+                          onClick={() => selectAllInGroup(groupNotifications)}
+                          className="text-xs text-wine-600 hover:text-wine-700 font-medium"
+                        >
+                          Select All
+                        </button>
+                      )}
+                      <div className="h-px flex-1 bg-gray-200 min-w-[100px]"></div>
+                    </div>
                   </div>
-                </div>
 
-                {/* Group Notifications */}
-                <div className="space-y-3">
-                  {groupNotifications.map((notification, index) => {
-                    const typeConfig = getTypeConfig(notification.type)
-                    const TypeIcon = typeConfig.icon
-                    const isUnread = notification.status === 'unread'
-                    const isSelected = selectedNotifications.has(notification.id)
-                    const isStarred = starredNotifications.has(notification.id)
-                    // Display-order index so j/k focus matches what's on screen.
-                    const displayIndex = flatDisplayNotifications.indexOf(notification)
-                    const isFocused = displayIndex === focusedIndex
+                  {/* Group Notifications */}
+                  <div className="space-y-3">
+                    {groupNotifications.map((notification, index) => {
+                      const typeConfig = getTypeConfig(notification.type);
+                      const TypeIcon = typeConfig.icon;
+                      const isUnread = notification.status === "unread";
+                      const isSelected = selectedNotifications.has(
+                        notification.id,
+                      );
+                      const isStarred = starredNotifications.has(
+                        notification.id,
+                      );
+                      // Display-order index so j/k focus matches what's on screen.
+                      const displayIndex =
+                        flatDisplayNotifications.indexOf(notification);
+                      const isFocused = displayIndex === focusedIndex;
 
-                    return (
-                      <motion.div
-                        key={notification.id}
-                        data-notif-row={displayIndex}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        onClick={() => handleNotificationClick(notification)}
-                        onContextMenu={(e) => handleContextMenu(e, notification.id)}
-                        className={`relative bg-white rounded-xl p-4 shadow-sm border-l-4 ${getPriorityColor(notification.priority)} ${
-                          isUnread ? 'border border-wine-200 bg-wine-50/30' :
-                          isSelected ? 'border border-emerald-200 bg-emerald-50/30' :
-                          'border border-gray-100'
-                        } ${isFocused ? 'ring-2 ring-wine-400' : ''} hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group`}
-                      >
-                        <div className="flex items-start gap-4">
-                          {batchMode && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleNotificationSelection(notification.id)
-                              }}
-                              className="mt-1"
-                            >
-                              {isSelected ? (
-                                <CheckSquare className="w-5 h-5 text-emerald-600" />
-                              ) : (
-                                <Square className="w-5 h-5 text-gray-400" />
-                              )}
-                            </button>
-                          )}
-
-                          <div className={`p-3 ${typeConfig.bg} rounded-lg flex-shrink-0`}>
-                            <TypeIcon className={`w-5 h-5 ${typeConfig.text}`} />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-4 mb-1">
-                              <div className="flex items-center gap-2">
-                                <h3 className={`font-semibold ${isUnread ? 'text-gray-900' : 'text-gray-700'}`}>
-                                  {notification.title}
-                                </h3>
-                                {isUnread && (
-                                  <span className="w-2 h-2 bg-wine-600 rounded-full"></span>
-                                )}
-                              </div>
-                              <span className="text-xs text-gray-500 whitespace-nowrap">
-                                {formatTimestamp(notification.timestamp)}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-2">{notification.message}</p>
-                            
-                            {notification.metadata && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {notification.metadata.wineName && (
-                                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                                    <Wine className="w-3 h-3 inline mr-1" />
-                                    {notification.metadata.wineName}
-                                  </span>
-                                )}
-                                {notification.metadata.quantity && (
-                                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                                    {notification.metadata.quantity} bottles
-                                  </span>
-                                )}
-                                {notification.metadata.provider && (
-                                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                                    {notification.metadata.provider}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {/* Priority Badge */}
-                            {notification.priority === 'critical' && (
-                              <span className="px-2 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold mr-2">
-                                CRITICAL
-                              </span>
-                            )}
-
-                            {/* Star Button */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleStar(notification.id)
-                              }}
-                              className="p-2 hover:bg-amber-50 rounded-lg transition-colors"
-                              title={isStarred ? "Unstar" : "Star"}
-                            >
-                              <Star className={`w-4 h-4 ${isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'}`} />
-                            </button>
-
-                            {/* Quick Action Button */}
-                            {notification.actionUrl && !batchMode && (
+                      return (
+                        <motion.div
+                          key={notification.id}
+                          data-notif-row={displayIndex}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          onClick={() => handleNotificationClick(notification)}
+                          onContextMenu={(e) =>
+                            handleContextMenu(e, notification.id)
+                          }
+                          className={`relative bg-white rounded-xl p-4 shadow-sm border-l-4 ${getPriorityColor(notification.priority)} ${
+                            isUnread
+                              ? "border border-wine-200 bg-wine-50/30"
+                              : isSelected
+                                ? "border border-emerald-200 bg-emerald-50/30"
+                                : "border border-gray-100"
+                          } ${isFocused ? "ring-2 ring-wine-400" : ""} hover:shadow-lg hover:scale-[1.01] transition-all cursor-pointer group`}
+                        >
+                          <div className="flex items-start gap-4">
+                            {batchMode && (
                               <button
                                 onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleQuickAction(notification)
+                                  e.stopPropagation();
+                                  toggleNotificationSelection(notification.id);
                                 }}
-                                className="p-2 bg-wine-600 text-white hover:bg-wine-700 rounded-lg transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1"
-                                title="Quick action"
+                                className="mt-1"
                               >
-                                <Zap className="w-4 h-4" />
-                                <span className="text-xs font-medium hidden md:inline">Action</span>
+                                {isSelected ? (
+                                  <CheckSquare className="w-5 h-5 text-emerald-600" />
+                                ) : (
+                                  <Square className="w-5 h-5 text-gray-400" />
+                                )}
                               </button>
                             )}
-                            
-                            {/* Read/Unread Toggle */}
-                            {isUnread ? (
+
+                            <div
+                              className={`p-3 ${typeConfig.bg} rounded-lg flex-shrink-0`}
+                            >
+                              <TypeIcon
+                                className={`w-5 h-5 ${typeConfig.text}`}
+                              />
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-4 mb-1">
+                                <div className="flex items-center gap-2">
+                                  <h3
+                                    className={`font-semibold ${isUnread ? "text-gray-900" : "text-gray-700"}`}
+                                  >
+                                    {notification.title}
+                                  </h3>
+                                  {isUnread && (
+                                    <span className="w-2 h-2 bg-wine-600 rounded-full"></span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-500 whitespace-nowrap">
+                                  {formatTimestamp(notification.timestamp)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-2">
+                                {notification.message}
+                              </p>
+
+                              {notification.metadata && (
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {notification.metadata.wineName && (
+                                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                      <Wine className="w-3 h-3 inline mr-1" />
+                                      {notification.metadata.wineName}
+                                    </span>
+                                  )}
+                                  {notification.metadata.quantity && (
+                                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                      {notification.metadata.quantity} bottles
+                                    </span>
+                                  )}
+                                  {notification.metadata.provider && (
+                                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                      {notification.metadata.provider}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {/* Priority Badge */}
+                              {notification.priority === "critical" && (
+                                <span className="px-2 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold mr-2">
+                                  CRITICAL
+                                </span>
+                              )}
+
+                              {/* Star Button */}
                               <button
                                 onClick={(e) => {
-                                  e.stopPropagation()
-                                  void handleMarkAsRead(notification.id)
+                                  e.stopPropagation();
+                                  toggleStar(notification.id);
+                                }}
+                                className="p-2 hover:bg-amber-50 rounded-lg transition-colors"
+                                title={isStarred ? "Unstar" : "Star"}
+                              >
+                                <Star
+                                  className={`w-4 h-4 ${isStarred ? "fill-amber-400 text-amber-400" : "text-gray-400"}`}
+                                />
+                              </button>
+
+                              {/* Quick Action Button */}
+                              {notification.actionUrl && !batchMode && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickAction(notification);
+                                  }}
+                                  className="p-2 bg-wine-600 text-white hover:bg-wine-700 rounded-lg transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1"
+                                  title="Quick action"
+                                >
+                                  <Zap className="w-4 h-4" />
+                                  <span className="text-xs font-medium hidden md:inline">
+                                    Action
+                                  </span>
+                                </button>
+                              )}
+
+                              {/* Read/Unread Toggle */}
+                              {isUnread ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleMarkAsRead(notification.id);
+                                  }}
+                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                  title="Mark as read"
+                                >
+                                  <Eye className="w-4 h-4 text-gray-400" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleMarkAsUnread(notification.id);
+                                  }}
+                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                  title="Mark as unread"
+                                >
+                                  <EyeOff className="w-4 h-4 text-gray-400" />
+                                </button>
+                              )}
+
+                              {/* Archive Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleArchiveNotification(notification.id);
+                                }}
+                                className="p-2 hover:bg-blue-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                title="Archive"
+                              >
+                                <Archive className="w-4 h-4 text-blue-400" />
+                              </button>
+
+                              {/* Delete Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDeleteNotification(
+                                    notification.id,
+                                  );
+                                }}
+                                className="p-2 hover:bg-rose-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-500" />
+                              </button>
+
+                              {/* More Options */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleContextMenu(e, notification.id);
                                 }}
                                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Mark as read"
+                                title="More options"
                               >
-                                <Eye className="w-4 h-4 text-gray-400" />
+                                <MoreVertical className="w-4 h-4 text-gray-400" />
                               </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  void handleMarkAsUnread(notification.id)
-                                }}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                title="Mark as unread"
-                              >
-                                <EyeOff className="w-4 h-4 text-gray-400" />
-                              </button>
-                            )}
-                            
-                            {/* Archive Button */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleArchiveNotification(notification.id)
-                              }}
-                              className="p-2 hover:bg-blue-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                              title="Archive"
-                            >
-                              <Archive className="w-4 h-4 text-blue-400" />
-                            </button>
-                            
-                            {/* Delete Button */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                void handleDeleteNotification(notification.id)
-                              }}
-                              className="p-2 hover:bg-rose-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4 text-rose-500" />
-                            </button>
-
-                            {/* More Options */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleContextMenu(e, notification.id)
-                              }}
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="More options"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-400" />
-                            </button>
+                            </div>
                           </div>
-                        </div>
-                      </motion.div>
-                    )
-                  })}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )
-          })
+              );
+            },
+          )
         )}
       </div>
 
@@ -1141,7 +1516,9 @@ export function Notifications() {
             >
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedNotification?.title}</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    {selectedNotification?.title}
+                  </h2>
                   <button
                     onClick={() => setSelectedNotification(null)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1149,32 +1526,39 @@ export function Notifications() {
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>
-                <p className="text-gray-600 mb-4">{selectedNotification?.message}</p>
+                <p className="text-gray-600 mb-4">
+                  {selectedNotification?.message}
+                </p>
                 <div className="text-sm text-gray-500">
-                  {selectedNotification && formatTimestamp(selectedNotification.timestamp)}
+                  {selectedNotification &&
+                    formatTimestamp(selectedNotification.timestamp)}
                 </div>
                 {selectedNotification && (
                   <div className="mt-5 flex flex-col gap-2">
                     <button
                       onClick={() => handleRequestDetails(selectedNotification)}
                       disabled={
-                        detailRequestStatus[selectedNotification.id] === 'sending' ||
-                        detailRequestStatus[selectedNotification.id] === 'sent'
+                        detailRequestStatus[selectedNotification.id] ===
+                          "sending" ||
+                        detailRequestStatus[selectedNotification.id] === "sent"
                       }
                       className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <MessageSquare className="w-4 h-4" />
-                      {detailRequestStatus[selectedNotification.id] === 'sending'
-                        ? 'Requesting details...'
-                        : detailRequestStatus[selectedNotification.id] === 'sent'
-                          ? 'Details ready'
-                          : 'Ask for more details'}
+                      {detailRequestStatus[selectedNotification.id] ===
+                      "sending"
+                        ? "Requesting details..."
+                        : detailRequestStatus[selectedNotification.id] ===
+                            "sent"
+                          ? "Details ready"
+                          : "Ask for more details"}
                     </button>
                     <p className="text-xs text-gray-500">
                       {getDetailPrompt(selectedNotification.type)}
                     </p>
 
-                    {detailRequestStatus[selectedNotification.id] === 'sending' && (
+                    {detailRequestStatus[selectedNotification.id] ===
+                      "sending" && (
                       <div className="mt-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 animate-pulse">
                         Gathering context…
                       </div>
@@ -1186,32 +1570,58 @@ export function Notifications() {
                           {detailContentById[selectedNotification.id].summary}
                         </p>
 
-                        {detailContentById[selectedNotification.id].facts.length > 0 && (
+                        {detailContentById[selectedNotification.id].facts
+                          .length > 0 && (
                           <dl className="grid grid-cols-2 gap-2 text-xs">
-                            {detailContentById[selectedNotification.id].facts.map((f) => (
-                              <div key={f.label} className="rounded-lg bg-white/80 px-2.5 py-2 border border-gray-100">
-                                <dt className="text-gray-400 uppercase tracking-wide">{f.label}</dt>
-                                <dd className="font-medium text-gray-800 mt-0.5 break-all">{f.value}</dd>
+                            {detailContentById[
+                              selectedNotification.id
+                            ].facts.map((f) => (
+                              <div
+                                key={f.label}
+                                className="rounded-lg bg-white/80 px-2.5 py-2 border border-gray-100"
+                              >
+                                <dt className="text-gray-400 uppercase tracking-wide">
+                                  {f.label}
+                                </dt>
+                                <dd className="font-medium text-gray-800 mt-0.5 break-all">
+                                  {f.value}
+                                </dd>
                               </div>
                             ))}
                           </dl>
                         )}
 
-                        {detailContentById[selectedNotification.id].wines.length > 0 && (
+                        {detailContentById[selectedNotification.id].wines
+                          .length > 0 && (
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
                               Wines below par
                             </p>
                             <ul className="max-h-48 overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
-                              {detailContentById[selectedNotification.id].wines.map((w, i) => (
-                                <li key={`${w.wineName}-${i}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                                  <span className="font-medium text-gray-800 truncate">{w.wineName}</span>
+                              {detailContentById[
+                                selectedNotification.id
+                              ].wines.map((w, i) => (
+                                <li
+                                  key={`${w.wineName}-${i}`}
+                                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                                >
+                                  <span className="font-medium text-gray-800 truncate">
+                                    {w.wineName}
+                                  </span>
                                   <span className="shrink-0 text-xs text-gray-500">
-                                    <span className={w.severity === 'critical' ? 'text-rose-600 font-semibold' : ''}>
+                                    <span
+                                      className={
+                                        w.severity === "critical"
+                                          ? "text-rose-600 font-semibold"
+                                          : ""
+                                      }
+                                    >
                                       {w.currentStock}
                                     </span>
                                     /{w.threshold}
-                                    {w.severity === 'critical' ? ' · critical' : ''}
+                                    {w.severity === "critical"
+                                      ? " · critical"
+                                      : ""}
                                   </span>
                                 </li>
                               ))}
@@ -1219,13 +1629,16 @@ export function Notifications() {
                           </div>
                         )}
 
-                        {detailContentById[selectedNotification.id].nextSteps.length > 0 && (
+                        {detailContentById[selectedNotification.id].nextSteps
+                          .length > 0 && (
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
                               Suggested next steps
                             </p>
                             <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
-                              {detailContentById[selectedNotification.id].nextSteps.map((step) => (
+                              {detailContentById[
+                                selectedNotification.id
+                              ].nextSteps.map((step) => (
                                 <li key={step}>{step}</li>
                               ))}
                             </ol>
@@ -1235,37 +1648,41 @@ export function Notifications() {
                     )}
                   </div>
                 )}
-                {selectedNotification?.type === 'draft_ready' && selectedNotification.metadata?.conversation_id && (
-                  <div className="mt-6 flex flex-col gap-2">
-                    <a
-                      href={`/orders?draft=${selectedNotification.metadata.conversation_id}`}
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-700 text-white rounded-lg hover:bg-indigo-800 transition-colors font-medium"
-                    >
-                      <Mail className="w-4 h-4" />
-                      Review &amp; Approve Draft
-                    </a>
-                    {selectedNotification.metadata.email_type && (
-                      <p className="text-xs text-gray-500">
-                        {(selectedNotification.metadata.email_type as string).replace(/_/g, ' ')} ·{' '}
-                        {selectedNotification.metadata.wine_name || ''}
-                        {selectedNotification.metadata.provider_name
-                          ? ` · ${selectedNotification.metadata.provider_name}`
-                          : ''}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {selectedNotification?.actionUrl && selectedNotification.type !== 'draft_ready' && (
-                  <div className="mt-6">
-                    <a
-                      href={selectedNotification.actionUrl}
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors font-medium"
-                    >
-                      Take Action
-                      <ArrowRight className="w-4 h-4" />
-                    </a>
-                  </div>
-                )}
+                {selectedNotification?.type === "draft_ready" &&
+                  selectedNotification.metadata?.conversation_id && (
+                    <div className="mt-6 flex flex-col gap-2">
+                      <a
+                        href={`/orders?draft=${selectedNotification.metadata.conversation_id}`}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-700 text-white rounded-lg hover:bg-indigo-800 transition-colors font-medium"
+                      >
+                        <Mail className="w-4 h-4" />
+                        Review &amp; Approve Draft
+                      </a>
+                      {selectedNotification.metadata.email_type && (
+                        <p className="text-xs text-gray-500">
+                          {(
+                            selectedNotification.metadata.email_type as string
+                          ).replace(/_/g, " ")}{" "}
+                          · {selectedNotification.metadata.wine_name || ""}
+                          {selectedNotification.metadata.provider_name
+                            ? ` · ${selectedNotification.metadata.provider_name}`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                {selectedNotification?.actionUrl &&
+                  selectedNotification.type !== "draft_ready" && (
+                    <div className="mt-6">
+                      <a
+                        href={selectedNotification.actionUrl}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors font-medium"
+                      >
+                        Take Action
+                        <ArrowRight className="w-4 h-4" />
+                      </a>
+                    </div>
+                  )}
               </div>
             </motion.div>
           </motion.div>
@@ -1296,8 +1713,12 @@ export function Notifications() {
                     <Zap className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-white">Create One-Tap Action</h2>
-                    <p className="text-sm text-white/80">Design a custom quick action for your workflow</p>
+                    <h2 className="text-xl font-bold text-white">
+                      Create One-Tap Action
+                    </h2>
+                    <p className="text-sm text-white/80">
+                      Design a custom quick action for your workflow
+                    </p>
                   </div>
                 </div>
                 <button
@@ -1320,23 +1741,55 @@ export function Notifications() {
                       </label>
                       <div className="grid grid-cols-4 gap-2 mb-4">
                         {[
-                          { id: 'communication', label: 'Communication', icon: MessageSquare, color: 'blue', desc: 'Email & SMS' },
-                          { id: 'inventory', label: 'Inventory', icon: Package, color: 'emerald', desc: 'Stock actions' },
-                          { id: 'orders', label: 'Orders', icon: Clock, color: 'amber', desc: 'Order management' },
-                          { id: 'reports', label: 'Reports', icon: TrendingUp, color: 'purple', desc: 'Generate reports' },
+                          {
+                            id: "communication",
+                            label: "Communication",
+                            icon: MessageSquare,
+                            color: "blue",
+                            desc: "Email & SMS",
+                          },
+                          {
+                            id: "inventory",
+                            label: "Inventory",
+                            icon: Package,
+                            color: "emerald",
+                            desc: "Stock actions",
+                          },
+                          {
+                            id: "orders",
+                            label: "Orders",
+                            icon: Clock,
+                            color: "amber",
+                            desc: "Order management",
+                          },
+                          {
+                            id: "reports",
+                            label: "Reports",
+                            icon: TrendingUp,
+                            color: "purple",
+                            desc: "Generate reports",
+                          },
                         ].map((cat) => (
                           <button
                             key={cat.id}
-                            onClick={() => setNewAction({ ...newAction, color: cat.color })}
+                            onClick={() =>
+                              setNewAction({ ...newAction, color: cat.color })
+                            }
                             className={`p-3 rounded-xl border-2 transition-all text-center ${
                               newAction.color === cat.color
-                                ? 'border-wine-500 bg-wine-50'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                ? "border-wine-500 bg-wine-50"
+                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                             }`}
                           >
-                            <cat.icon className={`w-5 h-5 mx-auto mb-1 ${newAction.color === cat.color ? 'text-wine-600' : 'text-gray-500'}`} />
-                            <p className="text-xs font-semibold text-gray-900">{cat.label}</p>
-                            <p className="text-[10px] text-gray-500">{cat.desc}</p>
+                            <cat.icon
+                              className={`w-5 h-5 mx-auto mb-1 ${newAction.color === cat.color ? "text-wine-600" : "text-gray-500"}`}
+                            />
+                            <p className="text-xs font-semibold text-gray-900">
+                              {cat.label}
+                            </p>
+                            <p className="text-[10px] text-gray-500">
+                              {cat.desc}
+                            </p>
                           </button>
                         ))}
                       </div>
@@ -1350,37 +1803,109 @@ export function Notifications() {
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         {[
-                          { title: 'Send Email Template', desc: 'Use saved email template', url: '/communication?tab=email-templates', icon: 'MessageSquare', color: 'blue', category: 'communication' },
-                          { title: 'Send SMS Alert', desc: 'Quick SMS notification', url: '/communication?tab=sms-templates', icon: 'MessageSquare', color: 'emerald', category: 'communication' },
-                          { title: 'Check Low Stock', desc: 'View wines below threshold', url: '/inventory?filter=low-stock', icon: 'Package', color: 'rose', category: 'inventory' },
-                          { title: 'Pending Orders', desc: 'Review orders awaiting approval', url: '/orders?status=pending', icon: 'Clock', color: 'amber', category: 'orders' },
-                          { title: 'Generate Report', desc: 'Create scheduled report', url: '/communication?tab=reports', icon: 'TrendingUp', color: 'purple', category: 'reports' },
-                          { title: 'Contact Provider', desc: 'Quick provider communication', url: '/providers', icon: 'MessageSquare', color: 'emerald', category: 'communication' },
-                          { title: 'Reorder Wine', desc: 'Quick reorder action', url: '/inventory?action=reorder', icon: 'Package', color: 'blue', category: 'inventory' },
-                          { title: 'Weekly Summary', desc: 'Generate weekly summary', url: '/reports?type=weekly', icon: 'TrendingUp', color: 'indigo', category: 'reports' },
+                          {
+                            title: "Send Email Template",
+                            desc: "Use saved email template",
+                            url: "/communication?tab=email-templates",
+                            icon: "MessageSquare",
+                            color: "blue",
+                            category: "communication",
+                          },
+                          {
+                            title: "Send SMS Alert",
+                            desc: "Quick SMS notification",
+                            url: "/communication?tab=sms-templates",
+                            icon: "MessageSquare",
+                            color: "emerald",
+                            category: "communication",
+                          },
+                          {
+                            title: "Check Low Stock",
+                            desc: "View wines below threshold",
+                            url: "/inventory?filter=low-stock",
+                            icon: "Package",
+                            color: "rose",
+                            category: "inventory",
+                          },
+                          {
+                            title: "Pending Orders",
+                            desc: "Review orders awaiting approval",
+                            url: "/orders?status=pending",
+                            icon: "Clock",
+                            color: "amber",
+                            category: "orders",
+                          },
+                          {
+                            title: "Generate Report",
+                            desc: "Create scheduled report",
+                            url: "/communication?tab=reports",
+                            icon: "TrendingUp",
+                            color: "purple",
+                            category: "reports",
+                          },
+                          {
+                            title: "Contact Provider",
+                            desc: "Quick provider communication",
+                            url: "/providers",
+                            icon: "MessageSquare",
+                            color: "emerald",
+                            category: "communication",
+                          },
+                          {
+                            title: "Reorder Wine",
+                            desc: "Quick reorder action",
+                            url: "/inventory?action=reorder",
+                            icon: "Package",
+                            color: "blue",
+                            category: "inventory",
+                          },
+                          {
+                            title: "Weekly Summary",
+                            desc: "Generate weekly summary",
+                            url: "/reports?type=weekly",
+                            icon: "TrendingUp",
+                            color: "indigo",
+                            category: "reports",
+                          },
                         ].map((template, idx) => (
                           <button
                             key={idx}
-                            onClick={() => setNewAction({
-                              ...newAction,
-                              title: template.title,
-                              description: template.desc,
-                              actionUrl: template.url,
-                              icon: template.icon,
-                              color: template.color,
-                            })}
+                            onClick={() =>
+                              setNewAction({
+                                ...newAction,
+                                title: template.title,
+                                description: template.desc,
+                                actionUrl: template.url,
+                                icon: template.icon,
+                                color: template.color,
+                              })
+                            }
                             className="p-3 border-2 border-dashed border-gray-200 rounded-xl hover:border-wine-300 hover:bg-wine-50 transition-all text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <div className={`p-1.5 rounded-lg bg-${template.color}-100 text-${template.color}-600 group-hover:scale-110 transition-transform`}>
-                                {template.icon === 'Package' && <Package className="w-4 h-4" />}
-                                {template.icon === 'Clock' && <Clock className="w-4 h-4" />}
-                                {template.icon === 'TrendingUp' && <TrendingUp className="w-4 h-4" />}
-                                {template.icon === 'MessageSquare' && <MessageSquare className="w-4 h-4" />}
+                              <div
+                                className={`p-1.5 rounded-lg bg-${template.color}-100 text-${template.color}-600 group-hover:scale-110 transition-transform`}
+                              >
+                                {template.icon === "Package" && (
+                                  <Package className="w-4 h-4" />
+                                )}
+                                {template.icon === "Clock" && (
+                                  <Clock className="w-4 h-4" />
+                                )}
+                                {template.icon === "TrendingUp" && (
+                                  <TrendingUp className="w-4 h-4" />
+                                )}
+                                {template.icon === "MessageSquare" && (
+                                  <MessageSquare className="w-4 h-4" />
+                                )}
                               </div>
                               <div>
-                                <p className="text-sm font-semibold text-gray-900">{template.title}</p>
-                                <p className="text-xs text-gray-500">{template.desc}</p>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {template.title}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {template.desc}
+                                </p>
                               </div>
                             </div>
                           </button>
@@ -1397,17 +1922,27 @@ export function Notifications() {
                       <div className="grid grid-cols-3 gap-2">
                         <button className="p-2.5 bg-white rounded-lg border border-indigo-200 hover:border-indigo-400 transition-colors text-center">
                           <Clock className="w-4 h-4 mx-auto mb-1 text-indigo-600" />
-                          <p className="text-xs font-medium text-gray-900">Time-based</p>
-                          <p className="text-[10px] text-gray-500">Daily/Weekly</p>
+                          <p className="text-xs font-medium text-gray-900">
+                            Time-based
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            Daily/Weekly
+                          </p>
                         </button>
                         <button className="p-2.5 bg-white rounded-lg border border-indigo-200 hover:border-indigo-400 transition-colors text-center">
                           <AlertTriangle className="w-4 h-4 mx-auto mb-1 text-amber-600" />
-                          <p className="text-xs font-medium text-gray-900">Threshold</p>
-                          <p className="text-[10px] text-gray-500">Low stock, etc.</p>
+                          <p className="text-xs font-medium text-gray-900">
+                            Threshold
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            Low stock, etc.
+                          </p>
                         </button>
                         <button className="p-2.5 bg-white rounded-lg border border-indigo-200 hover:border-indigo-400 transition-colors text-center">
                           <Zap className="w-4 h-4 mx-auto mb-1 text-purple-600" />
-                          <p className="text-xs font-medium text-gray-900">Manual</p>
+                          <p className="text-xs font-medium text-gray-900">
+                            Manual
+                          </p>
                           <p className="text-[10px] text-gray-500">On-demand</p>
                         </button>
                       </div>
@@ -1423,7 +1958,9 @@ export function Notifications() {
                       <input
                         type="text"
                         value={newAction.title}
-                        onChange={(e) => setNewAction({ ...newAction, title: e.target.value })}
+                        onChange={(e) =>
+                          setNewAction({ ...newAction, title: e.target.value })
+                        }
                         placeholder="e.g., Check Low Stock Wines"
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500 focus:border-transparent text-lg"
                       />
@@ -1436,7 +1973,12 @@ export function Notifications() {
                       </label>
                       <textarea
                         value={newAction.description}
-                        onChange={(e) => setNewAction({ ...newAction, description: e.target.value })}
+                        onChange={(e) =>
+                          setNewAction({
+                            ...newAction,
+                            description: e.target.value,
+                          })
+                        }
                         placeholder="Brief description of what this action does"
                         rows={2}
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500 focus:border-transparent resize-none"
@@ -1453,7 +1995,12 @@ export function Notifications() {
                         <input
                           type="text"
                           value={newAction.actionUrl}
-                          onChange={(e) => setNewAction({ ...newAction, actionUrl: e.target.value })}
+                          onChange={(e) =>
+                            setNewAction({
+                              ...newAction,
+                              actionUrl: e.target.value,
+                            })
+                          }
                           placeholder="/inventory or https://example.com"
                           className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500 focus:border-transparent"
                         />
@@ -1462,14 +2009,24 @@ export function Notifications() {
                         {/* This picker used to offer a bare documents path that is not a route,
                             so every notification built with it dead-ended on the
                             catch-all. Keep these values in sync with App.tsx. */}
-                        {['/inventory', '/orders', '/reports', '/wines', '/providers', '/calendar', '/documents-reports'].map((url) => (
+                        {[
+                          "/inventory",
+                          "/orders",
+                          "/reports",
+                          "/wines",
+                          "/providers",
+                          "/calendar",
+                          "/documents-reports",
+                        ].map((url) => (
                           <button
                             key={url}
-                            onClick={() => setNewAction({ ...newAction, actionUrl: url })}
+                            onClick={() =>
+                              setNewAction({ ...newAction, actionUrl: url })
+                            }
                             className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
                               newAction.actionUrl === url
-                                ? 'bg-wine-600 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                ? "bg-wine-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                             }`}
                           >
                             {url}
@@ -1485,26 +2042,28 @@ export function Notifications() {
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { name: 'Zap', icon: Zap },
-                          { name: 'Wine', icon: Wine },
-                          { name: 'Package', icon: Package },
-                          { name: 'TrendingUp', icon: TrendingUp },
-                          { name: 'Clock', icon: Clock },
-                          { name: 'Star', icon: Star },
-                          { name: 'Bell', icon: Bell },
-                          { name: 'CheckCircle2', icon: CheckCircle2 },
-                          { name: 'AlertTriangle', icon: AlertTriangle },
-                          { name: 'Calendar', icon: Calendar },
-                          { name: 'Search', icon: Search },
-                          { name: 'RefreshCw', icon: RefreshCw },
+                          { name: "Zap", icon: Zap },
+                          { name: "Wine", icon: Wine },
+                          { name: "Package", icon: Package },
+                          { name: "TrendingUp", icon: TrendingUp },
+                          { name: "Clock", icon: Clock },
+                          { name: "Star", icon: Star },
+                          { name: "Bell", icon: Bell },
+                          { name: "CheckCircle2", icon: CheckCircle2 },
+                          { name: "AlertTriangle", icon: AlertTriangle },
+                          { name: "Calendar", icon: Calendar },
+                          { name: "Search", icon: Search },
+                          { name: "RefreshCw", icon: RefreshCw },
                         ].map(({ name, icon: IconComponent }) => (
                           <button
                             key={name}
-                            onClick={() => setNewAction({ ...newAction, icon: name })}
+                            onClick={() =>
+                              setNewAction({ ...newAction, icon: name })
+                            }
                             className={`p-3 rounded-xl border-2 transition-all ${
                               newAction.icon === name
-                                ? 'border-wine-500 bg-wine-50 text-wine-600 scale-110'
-                                : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                                ? "border-wine-500 bg-wine-50 text-wine-600 scale-110"
+                                : "border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50"
                             }`}
                             title={name}
                           >
@@ -1522,17 +2081,37 @@ export function Notifications() {
                         </label>
                         <div className="flex gap-2">
                           {[
-                            { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700 border-gray-300' },
-                            { value: 'medium', label: 'Medium', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-                            { value: 'high', label: 'High', color: 'bg-rose-100 text-rose-700 border-rose-300' },
+                            {
+                              value: "low",
+                              label: "Low",
+                              color:
+                                "bg-gray-100 text-gray-700 border-gray-300",
+                            },
+                            {
+                              value: "medium",
+                              label: "Medium",
+                              color:
+                                "bg-blue-100 text-blue-700 border-blue-300",
+                            },
+                            {
+                              value: "high",
+                              label: "High",
+                              color:
+                                "bg-rose-100 text-rose-700 border-rose-300",
+                            },
                           ].map((p) => (
                             <button
                               key={p.value}
-                              onClick={() => setNewAction({ ...newAction, priority: p.value as any })}
+                              onClick={() =>
+                                setNewAction({
+                                  ...newAction,
+                                  priority: p.value as any,
+                                })
+                              }
                               className={`flex-1 px-3 py-2.5 rounded-xl border-2 font-medium text-sm transition-all ${
                                 newAction.priority === p.value
                                   ? `${p.color} border-current`
-                                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
                               }`}
                             >
                               {p.label}
@@ -1549,11 +2128,16 @@ export function Notifications() {
                           {colorOptions.map((color) => (
                             <button
                               key={color.value}
-                              onClick={() => setNewAction({ ...newAction, color: color.value })}
+                              onClick={() =>
+                                setNewAction({
+                                  ...newAction,
+                                  color: color.value,
+                                })
+                              }
                               className={`flex-1 h-11 rounded-xl ${color.bg} transition-all ${
-                                newAction.color === color.value 
-                                  ? 'ring-2 ring-offset-2 ring-gray-900 scale-105' 
-                                  : 'hover:scale-105'
+                                newAction.color === color.value
+                                  ? "ring-2 ring-offset-2 ring-gray-900 scale-105"
+                                  : "hover:scale-105"
                               }`}
                               title={color.name}
                             />
@@ -1569,7 +2153,7 @@ export function Notifications() {
                       <Eye className="w-4 h-4 text-wine-600" />
                       Live Preview
                     </label>
-                    
+
                     {/* Phone Mockup */}
                     <div className="flex justify-center">
                       <div className="w-64 bg-black rounded-[2.5rem] p-2 shadow-2xl">
@@ -1578,45 +2162,76 @@ export function Notifications() {
                           <div className="h-8 bg-gray-100 flex items-center justify-center">
                             <div className="w-20 h-5 bg-black rounded-full" />
                           </div>
-                          
+
                           {/* App Header */}
                           <div className="px-4 py-3 border-b border-gray-200 bg-white">
                             <div className="flex items-center gap-2">
                               <Bell className="w-5 h-5 text-wine-600" />
-                              <span className="font-semibold text-gray-900 text-sm">One-Tap Actions</span>
+                              <span className="font-semibold text-gray-900 text-sm">
+                                One-Tap Actions
+                              </span>
                             </div>
                           </div>
 
                           {/* Action Preview */}
                           <div className="p-4 bg-gray-50 min-h-[200px]">
-                            <p className="text-xs text-gray-500 mb-3 font-medium">YOUR NEW ACTION</p>
+                            <p className="text-xs text-gray-500 mb-3 font-medium">
+                              YOUR NEW ACTION
+                            </p>
                             <motion.button
                               whileHover={{ scale: 1.02 }}
                               whileTap={{ scale: 0.98 }}
-                              className={`${colorOptions.find(c => c.value === newAction.color)?.bg || 'bg-wine-600'} ${colorOptions.find(c => c.value === newAction.color)?.text || 'text-white'} rounded-xl p-4 w-full text-left shadow-lg`}
+                              className={`${colorOptions.find((c) => c.value === newAction.color)?.bg || "bg-wine-600"} ${colorOptions.find((c) => c.value === newAction.color)?.text || "text-white"} rounded-xl p-4 w-full text-left shadow-lg`}
                             >
                               <div className="flex items-center gap-3">
                                 <div className="p-2 bg-white/20 rounded-lg">
-                                  {newAction.icon === 'Zap' && <Zap className="w-5 h-5" />}
-                                  {newAction.icon === 'Wine' && <Wine className="w-5 h-5" />}
-                                  {newAction.icon === 'Package' && <Package className="w-5 h-5" />}
-                                  {newAction.icon === 'TrendingUp' && <TrendingUp className="w-5 h-5" />}
-                                  {newAction.icon === 'Clock' && <Clock className="w-5 h-5" />}
-                                  {newAction.icon === 'Star' && <Star className="w-5 h-5" />}
-                                  {newAction.icon === 'Bell' && <Bell className="w-5 h-5" />}
-                                  {newAction.icon === 'CheckCircle2' && <CheckCircle2 className="w-5 h-5" />}
-                                  {newAction.icon === 'AlertTriangle' && <AlertTriangle className="w-5 h-5" />}
-                                  {newAction.icon === 'Calendar' && <Calendar className="w-5 h-5" />}
-                                  {newAction.icon === 'Search' && <Search className="w-5 h-5" />}
-                                  {newAction.icon === 'RefreshCw' && <RefreshCw className="w-5 h-5" />}
-                                  {!newAction.icon && <Zap className="w-5 h-5" />}
+                                  {newAction.icon === "Zap" && (
+                                    <Zap className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Wine" && (
+                                    <Wine className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Package" && (
+                                    <Package className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "TrendingUp" && (
+                                    <TrendingUp className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Clock" && (
+                                    <Clock className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Star" && (
+                                    <Star className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Bell" && (
+                                    <Bell className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "CheckCircle2" && (
+                                    <CheckCircle2 className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "AlertTriangle" && (
+                                    <AlertTriangle className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Calendar" && (
+                                    <Calendar className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "Search" && (
+                                    <Search className="w-5 h-5" />
+                                  )}
+                                  {newAction.icon === "RefreshCw" && (
+                                    <RefreshCw className="w-5 h-5" />
+                                  )}
+                                  {!newAction.icon && (
+                                    <Zap className="w-5 h-5" />
+                                  )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <h4 className="font-bold text-sm truncate">
-                                    {newAction.title || 'Action Title'}
+                                    {newAction.title || "Action Title"}
                                   </h4>
                                   <p className="text-xs opacity-90 truncate">
-                                    {newAction.description || 'Action description'}
+                                    {newAction.description ||
+                                      "Action description"}
                                   </p>
                                 </div>
                                 <ArrowRight className="w-4 h-4 opacity-70" />
@@ -1625,15 +2240,21 @@ export function Notifications() {
 
                             {/* Priority Badge */}
                             <div className="mt-4 flex items-center justify-between">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                newAction.priority === 'high' ? 'bg-rose-100 text-rose-700' :
-                                newAction.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
-                                {newAction.priority.charAt(0).toUpperCase() + newAction.priority.slice(1)} Priority
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  newAction.priority === "high"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : newAction.priority === "medium"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-gray-100 text-gray-700"
+                                }`}
+                              >
+                                {newAction.priority.charAt(0).toUpperCase() +
+                                  newAction.priority.slice(1)}{" "}
+                                Priority
                               </span>
                               <span className="text-xs text-gray-500">
-                                {newAction.actionUrl || '/path'}
+                                {newAction.actionUrl || "/path"}
                               </span>
                             </div>
                           </div>
@@ -1648,18 +2269,20 @@ export function Notifications() {
 
                     {/* Action Info */}
                     <div className="mt-6 p-4 bg-white rounded-xl border border-gray-200">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-2">Action Details</h4>
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                        Action Details
+                      </h4>
                       <div className="space-y-2 text-xs">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Title:</span>
                           <span className="font-medium text-gray-900 truncate max-w-[150px]">
-                            {newAction.title || '—'}
+                            {newAction.title || "—"}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">URL:</span>
                           <span className="font-mono text-gray-900 truncate max-w-[150px]">
-                            {newAction.actionUrl || '—'}
+                            {newAction.actionUrl || "—"}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1677,7 +2300,11 @@ export function Notifications() {
               {/* Footer */}
               <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
                 <div className="text-sm text-gray-500">
-                  <span className="font-medium">Tip:</span> Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">⌘N</kbd> to quickly open this modal
+                  <span className="font-medium">Tip:</span> Press{" "}
+                  <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">
+                    ⌘N
+                  </kbd>{" "}
+                  to quickly open this modal
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -1713,28 +2340,30 @@ export function Notifications() {
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
-              if (!contextMenu) return null
-              const notif = notifications.find(n => n.id === contextMenu.id)
-              if (!notif) return null
-              const isStarred = starredNotifications.has(contextMenu.id)
+              if (!contextMenu) return null;
+              const notif = notifications.find((n) => n.id === contextMenu.id);
+              if (!notif) return null;
+              const isStarred = starredNotifications.has(contextMenu.id);
 
               return (
                 <>
                   <button
                     onClick={() => {
-                      if (contextMenu) toggleStar(contextMenu.id)
-                      setContextMenu(null)
+                      if (contextMenu) toggleStar(contextMenu.id);
+                      setContextMenu(null);
                     }}
                     className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                   >
-                    <Star className={`w-4 h-4 ${isStarred ? 'fill-amber-400 text-amber-400' : 'text-gray-400'}`} />
-                    {isStarred ? 'Unstar' : 'Star'}
+                    <Star
+                      className={`w-4 h-4 ${isStarred ? "fill-amber-400 text-amber-400" : "text-gray-400"}`}
+                    />
+                    {isStarred ? "Unstar" : "Star"}
                   </button>
-                  {notif.status === 'unread' ? (
+                  {notif.status === "unread" ? (
                     <button
                       onClick={() => {
-                        if (contextMenu) markAsRead.mutateAsync(contextMenu.id)
-                        setContextMenu(null)
+                        if (contextMenu) markAsRead.mutateAsync(contextMenu.id);
+                        setContextMenu(null);
                       }}
                       className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                     >
@@ -1745,8 +2374,9 @@ export function Notifications() {
                     /* NEW-488: the menu mirrors the row — unread when already read */
                     <button
                       onClick={() => {
-                        if (contextMenu) void handleMarkAsUnread(contextMenu.id)
-                        setContextMenu(null)
+                        if (contextMenu)
+                          void handleMarkAsUnread(contextMenu.id);
+                        setContextMenu(null);
                       }}
                       className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                     >
@@ -1756,8 +2386,10 @@ export function Notifications() {
                   )}
                   <button
                     onClick={() => {
-                      navigator.clipboard?.writeText(`${window.location.origin}/notifications?id=${notif.id}`)
-                      setContextMenu(null)
+                      navigator.clipboard?.writeText(
+                        `${window.location.origin}/notifications?id=${notif.id}`,
+                      );
+                      setContextMenu(null);
                     }}
                     className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                   >
@@ -1766,8 +2398,9 @@ export function Notifications() {
                   </button>
                   <button
                     onClick={() => {
-                      if (contextMenu) handleArchiveNotification(contextMenu.id)
-                      setContextMenu(null)
+                      if (contextMenu)
+                        handleArchiveNotification(contextMenu.id);
+                      setContextMenu(null);
                     }}
                     className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                   >
@@ -1777,10 +2410,10 @@ export function Notifications() {
                   <div className="h-px bg-gray-200 my-1"></div>
                   <button
                     onClick={() => {
-                      if (confirm('Delete this notification?') && contextMenu) {
-                        handleDeleteNotification(contextMenu.id)
+                      if (confirm("Delete this notification?") && contextMenu) {
+                        handleDeleteNotification(contextMenu.id);
                       }
-                      setContextMenu(null)
+                      setContextMenu(null);
                     }}
                     className="w-full px-4 py-2 text-left hover:bg-rose-50 flex items-center gap-2 text-sm text-rose-600"
                   >
@@ -1788,7 +2421,7 @@ export function Notifications() {
                     Delete
                   </button>
                 </>
-              )
+              );
             })()}
           </motion.div>
         )}
@@ -1798,13 +2431,19 @@ export function Notifications() {
       <button
         onClick={() => setBatchMode(!batchMode)}
         className={`fixed bottom-8 right-8 p-4 rounded-full shadow-xl transition-all ${
-          batchMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-wine-600 hover:bg-wine-700'
+          batchMode
+            ? "bg-emerald-600 hover:bg-emerald-700"
+            : "bg-wine-600 hover:bg-wine-700"
         } text-white z-40`}
-        title={batchMode ? 'Exit Batch Mode (⌘B)' : 'Enter Batch Mode (⌘B)'}
+        title={batchMode ? "Exit Batch Mode (⌘B)" : "Enter Batch Mode (⌘B)"}
       >
-        {batchMode ? <CheckSquare className="w-6 h-6" /> : <Filter className="w-6 h-6" />}
+        {batchMode ? (
+          <CheckSquare className="w-6 h-6" />
+        ) : (
+          <Filter className="w-6 h-6" />
+        )}
       </button>
     </div>
-  )
+  );
 }
-export default Notifications
+export default Notifications;
