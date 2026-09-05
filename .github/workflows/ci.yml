@@ -1149,9 +1149,13 @@ jobs:
           # A provenance test may also pin a COMMIT (openapi-export.spec.ts's
           # PRE_FIX_SHA proves the guard fails against the pre-fix source). A
           # depth-1 checkout does not have it, and "cannot read that commit"
-          # must not pass as "the guard fired". Fetch every 40-hex constant a
-          # spec declares; a sha that no longer exists fails this step loudly.
-          for sha in $(grep -rhoE '\b[0-9a-f]{40}\b' apps/api-gateway/src apps/web/src --include='*.spec.ts' --include='*.test.ts' --include='*.test.tsx' | sort -u); do
+          # must not pass as "the guard fired". The convention: a pinned commit
+          # is a top-level `const <NAME>_SHA = "<40 hex>"` in a spec file, and
+          # ONLY that shape is fetched -- a bare 40-hex string can be a fixture
+          # (liveness-names-its-build.spec.ts fakes a RAILWAY_GIT_COMMIT_SHA),
+          # and fetching a fixture as a commit failed this job on 2026-09-05.
+          # A pinned sha that no longer exists still fails this step loudly.
+          for sha in $(grep -rhoE 'const [A-Z_]*SHA\s*=\s*"[0-9a-f]{40}"' apps/api-gateway/src apps/web/src --include='*.spec.ts' --include='*.test.ts' --include='*.test.tsx' | grep -oE '[0-9a-f]{40}' | sort -u); do
             git fetch --no-tags --depth=1 origin "$sha"
           done
 
