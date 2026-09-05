@@ -11,8 +11,13 @@ import {
   HttpException,
   HttpStatus,
   UseGuards,
+  Optional,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
+import { ApiOperation } from "@nestjs/swagger";
 import { NotificationsService } from "./notifications.service";
+import { LowStockAlertsService } from "./low-stock-alerts.service";
 import {
   GetNotificationsQueryDto,
   GetUnreadQueryDto,
@@ -47,7 +52,12 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    @Optional()
+    @Inject(forwardRef(() => LowStockAlertsService))
+    private readonly lowStockAlerts?: LowStockAlertsService,
+  ) {}
 
   // =========================================================================
   // NOTIFICATION CRUD ENDPOINTS
@@ -124,6 +134,29 @@ export class NotificationsController {
       return { count };
     } catch (error) {
       this.logger.error(`Failed to get unread count: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get("low-stock/held/:restaurantId")
+  @ApiOperation({
+    summary: "Low-stock crossings detected but not yet sent to anyone",
+    description:
+      'Wines that crossed below par and were deliberately held — by the 15-minute instant cooldown, or by the restaurant\'s own notification preferences — with the reason and when. Before this existed, a held crossing and a crossing that never happened looked identical in `inventory_alert_state`, so "tonight\'s digest will cover it" and "nothing is wrong" rendered the same (POS lens, absence-as-health 8). A failed read is an error, never an empty list (ADR 0067).',
+  })
+  async getHeldLowStock(@Param("restaurantId") restaurantId: string) {
+    if (!this.lowStockAlerts) {
+      throw new HttpException(
+        "Low-stock alerts are not available on this deployment",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    try {
+      return await this.lowStockAlerts.listHeldCrossings(restaurantId);
+    } catch (error) {
+      this.logger.error(
+        `Failed to read held low-stock crossings: ${error.message}`,
+      );
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
