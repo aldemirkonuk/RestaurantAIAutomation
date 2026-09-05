@@ -162,6 +162,21 @@ export interface NoteCloseCounts {
   completed: number;
   abandoned: number;
   since: string | null;
+  /**
+   * Whether the experiment is still running.
+   *
+   * NULL means the gateway did not say — an older build, or a field that did
+   * not arrive. It is deliberately not `true`: an experiment that has ENDED and
+   * is reported as running is a page claiming a measurement that stopped, which
+   * is the same absence-as-health shape as a failed count printed as zero. The
+   * line says nothing about the window in that case rather than guessing.
+   */
+  running: boolean | null;
+  /**
+   * The arm a person named after the end. Null while running, and after the end
+   * until somebody names one — never the plain arm by default.
+   */
+  winnerArm: NoteCloseArm | null;
 }
 
 export type ReportRegister =
@@ -198,6 +213,8 @@ export function useNoteCloseReport(restaurantId: string | null): ReportRegister 
             completed: numberOr0(d.completed),
             abandoned: numberOr0(d.abandoned),
             since: typeof d.since === 'string' ? d.since : null,
+            running: typeof d.running === 'boolean' ? d.running : null,
+            winnerArm: isArm(d.winnerArm) ? d.winnerArm : null,
           },
         });
       } catch (err) {
@@ -245,18 +262,32 @@ export function noteCloseReportLine(register: ReportRegister): string | null {
   if (register.state === 'unreadable')
     return `${stem} The counts could not be read (${register.message}), so none are shown — this is not a zero.`;
 
-  const { arm, exposures, completed, abandoned, since } = register.counts;
+  const { arm, exposures, completed, abandoned, since, running, winnerArm } = register.counts;
+
+  /**
+   * What the end adds, and only when the gateway actually said the window
+   * closed. `running === null` means it did not say, so nothing is claimed
+   * either way. There is deliberately no branch that names an arm when
+   * `winnerArm` is null: an ended experiment with no winner says exactly that.
+   */
+  const ending =
+    running === false
+      ? winnerArm
+        ? ` This experiment has ended, and the founder named ${ARM_WORDS[winnerArm]} — every house sees it now.`
+        : ' This experiment has ended. No winner is recorded, and none is assumed until the founder names one.'
+      : '';
+
   if (!arm)
-    return `${stem} This house has not been assigned an arm yet, so nothing has been counted.`;
+    return `${stem} This house has not been assigned an arm yet, so nothing has been counted.${ending}`;
 
   if (exposures === 0)
-    return `${stem} This house is on ${ARM_WORDS[arm]}; no note has been put in front of anyone here yet.`;
+    return `${stem} This house is on ${ARM_WORDS[arm]}; no note has been put in front of anyone here yet.${ending}`;
 
   const when = shortDate(since);
   return (
     `${stem} This house is on ${ARM_WORDS[arm]}: ${exposures} shown, ${completed} closed, ` +
     `${abandoned} left standing${when ? `, since ${when}` : ''}. ` +
     `Counts, not a verdict — and a house sees one arm, so the other arm's figures belong to other houses ` +
-    `and are not shown here. A note left by closing the tab is not counted, in either arm.`
+    `and are not shown here. A note left by closing the tab is not counted, in either arm.${ending}`
   );
 }

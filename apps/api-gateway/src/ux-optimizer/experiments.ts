@@ -59,8 +59,15 @@ import { createHash } from "node:crypto";
  *    a human approves — is not weakened by adding a measurement to it.
  */
 
-/** The bucket handed to a caller that cannot be identified. Outside every arm. */
-const UNASSIGNABLE_BUCKET = -1;
+/**
+ * The bucket handed to a caller that is not in any arm. Outside every arm, by
+ * construction: `armForBucket` returns null for anything outside 0..99.
+ *
+ * Two callers get it, and both mean the same thing — "this house is not
+ * enrolled": a request with no restaurant, and a house that first appears after
+ * the experiment's window has closed, which is never assigned at all.
+ */
+export const UNASSIGNABLE_BUCKET = -1;
 
 export interface ExperimentSpec {
   key: string;
@@ -107,6 +114,72 @@ export const NOTE_CLOSE_CONTROL: ExperimentSpec = {
 export const EXPERIMENTS: Readonly<Record<string, ExperimentSpec>> = {
   [NOTE_CLOSE_CONTROL.key]: NOTE_CLOSE_CONTROL,
 };
+
+/**
+ * How long an experiment runs: ONE QUARTER after its first exposure.
+ *
+ * The founder, 2026-09-05, answering ADR 0127's second open question — the
+ * experiment ends one quarter after its first exposure, and after that every
+ * house gets the arm the founder names.
+ *
+ * THE ARITHMETIC. 91 days is 13 whole weeks (13 * 7 = 91). A calendar quarter
+ * is 90, 91 or 92 days depending which one it is, and the mean Gregorian
+ * quarter is 365.2425 / 4 = 91.31 days — so 91 is within a day of every
+ * reading of "a quarter". Thirteen WHOLE WEEKS was chosen over 90 or 92 for a
+ * reason about restaurants rather than calendars: covers are strongly
+ * weekly-periodic, so a window that is not a whole number of weeks gives one
+ * weekday an extra turn and weights the counts by whichever day that happens
+ * to be. A part-week window would make Friday, or Monday, a term in the answer.
+ *
+ * A CALENDAR-MONTH arithmetic (`+ 3 months`) was rejected for the same reason
+ * and one more: it is 89 to 92 days depending on the start date, so two
+ * experiments started a fortnight apart would run for measurably different
+ * lengths and nothing on either report would say so.
+ *
+ * THE CONSTANT DOES NOT DECIDE A RUNNING WINDOW. It is used ONCE, to derive
+ * `ux_experiment_state.ends_at` at the moment the first exposure is known, and
+ * the stored row wins from then on — the same rule the ratio already lives
+ * under. Editing this number must not move the finish line under an experiment
+ * that is already running; the database trigger refuses it outright.
+ */
+export const EXPERIMENT_QUARTER_DAYS = 91;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The instant an experiment closes: first exposure + a quarter.
+ *
+ * Throws on an unparseable start rather than returning a date derived from
+ * `NaN`, which would silently become `Invalid Date` and compare false against
+ * every `now` — an experiment that never ends, reported as one that is running.
+ */
+export function experimentEndsAt(
+  firstExposureIso: string,
+  quarterDays: number = EXPERIMENT_QUARTER_DAYS,
+): string {
+  const start = new Date(firstExposureIso).getTime();
+  if (!Number.isFinite(start))
+    throw new Error(
+      `experiment window: "${firstExposureIso}" is not a readable first-exposure time`,
+    );
+  if (!Number.isInteger(quarterDays) || quarterDays < 1)
+    throw new Error(
+      `experiment window: ${quarterDays} is not a whole number of days`,
+    );
+  return new Date(start + quarterDays * MS_PER_DAY).toISOString();
+}
+
+/**
+ * Whether `arm` is one of the arms this spec declares.
+ *
+ * Used where a person names a winner. An arm that is not declared is refused
+ * rather than stored: `ux_experiment_state.winner_arm` only bounds the length,
+ * so a typo would otherwise be written, frozen by the trigger, and then served
+ * to every house as the product.
+ */
+export function isDeclaredArm(spec: ExperimentSpec, arm: string): boolean {
+  return spec.arms.includes(arm);
+}
 
 /**
  * The three things recorded per exposure. Both arms record all three — an event

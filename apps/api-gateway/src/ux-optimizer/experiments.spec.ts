@@ -1,12 +1,15 @@
 import {
   EXPERIMENTS,
   EXPERIMENT_EVENTS,
+  EXPERIMENT_QUARTER_DAYS,
   NOTE_CLOSE_CONTROL,
   armForBucket,
   assertRatioIsWhole,
   assignArm,
   experimentBucket,
   experimentByKey,
+  experimentEndsAt,
+  isDeclaredArm,
 } from "./experiments";
 
 /**
@@ -156,5 +159,68 @@ describe("experimentByKey", () => {
     // here, and the caller would then read `.arms` off a function.
     expect(experimentByKey("constructor")).toBeNull();
     expect(experimentByKey("__proto__")).toBeNull();
+  });
+});
+
+/**
+ * The end the founder set on 2026-09-05: one quarter after the FIRST exposure.
+ *
+ * The arithmetic is pinned here rather than described, because "a quarter" has
+ * three defensible readings (90, 91 and 92 days) and the one this repository
+ * chose is load-bearing: 91 is 13 WHOLE WEEKS, so the window covers each
+ * weekday the same number of times. Restaurant covers are strongly
+ * weekly-periodic; a part-week window would put whichever weekday got the extra
+ * turn into the answer.
+ */
+describe("the quarter", () => {
+  it("is 91 days — 13 whole weeks", () => {
+    expect(EXPERIMENT_QUARTER_DAYS).toBe(91);
+    expect(EXPERIMENT_QUARTER_DAYS % 7).toBe(0);
+    expect(EXPERIMENT_QUARTER_DAYS / 7).toBe(13);
+  });
+
+  it("lands on the same weekday it started, which is the reason for 13 weeks", () => {
+    const start = "2026-09-05T12:00:00.000Z";
+    const end = experimentEndsAt(start);
+    expect(new Date(end).getUTCDay()).toBe(new Date(start).getUTCDay());
+    expect(end).toBe("2026-12-05T12:00:00.000Z");
+  });
+
+  it("adds exactly 91 days, to the millisecond", () => {
+    const start = "2026-01-01T00:00:00.000Z";
+    const ms = new Date(experimentEndsAt(start)).getTime() - new Date(start).getTime();
+    expect(ms).toBe(91 * 24 * 60 * 60 * 1000);
+  });
+
+  it("crosses a leap day without drifting", () => {
+    // 2028 is a leap year. Days are days: the window is a fixed number of them,
+    // not three calendar months, which would be 89 to 92 depending on the start.
+    const start = "2027-12-31T00:00:00.000Z";
+    const ms = new Date(experimentEndsAt(start)).getTime() - new Date(start).getTime();
+    expect(ms).toBe(91 * 24 * 60 * 60 * 1000);
+  });
+
+  it("THROWS on an unreadable start rather than returning Invalid Date", () => {
+    // `new Date("nonsense")` is NaN, and a NaN end date compares false against
+    // every `now` — an experiment that never ends, reported as one still running.
+    expect(() => experimentEndsAt("nonsense")).toThrow(/not a readable first-exposure time/);
+    expect(() => experimentEndsAt("")).toThrow(/not a readable first-exposure time/);
+  });
+
+  it("refuses an interval that is not a whole number of days", () => {
+    expect(() => experimentEndsAt("2026-09-05T12:00:00.000Z", 0)).toThrow(/whole number of days/);
+    expect(() => experimentEndsAt("2026-09-05T12:00:00.000Z", 91.5)).toThrow(/whole number of days/);
+  });
+});
+
+describe("isDeclaredArm", () => {
+  it("accepts the arms the spec declares and nothing else", () => {
+    expect(isDeclaredArm(NOTE_CLOSE_CONTROL, "plain")).toBe(true);
+    expect(isDeclaredArm(NOTE_CLOSE_CONTROL, "die")).toBe(true);
+    // A winner is stored in a column that only bounds the length, so a typo
+    // that got past this would be frozen and then served as the product.
+    expect(isDeclaredArm(NOTE_CLOSE_CONTROL, "plane")).toBe(false);
+    expect(isDeclaredArm(NOTE_CLOSE_CONTROL, "Plain")).toBe(false);
+    expect(isDeclaredArm(NOTE_CLOSE_CONTROL, "")).toBe(false);
   });
 });

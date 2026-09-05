@@ -356,7 +356,7 @@ describe('noteCloseReportLine — counts, never a verdict', () => {
   it('tells an unassigned house apart from an empty one', () => {
     const line = noteCloseReportLine({
       state: 'ready',
-      counts: { arm: null, exposures: 0, completed: 0, abandoned: 0, since: null },
+      counts: { arm: null, exposures: 0, completed: 0, abandoned: 0, since: null, running: null, winnerArm: null },
     })!;
     expect(line).toContain('has not been assigned an arm yet');
   });
@@ -364,7 +364,7 @@ describe('noteCloseReportLine — counts, never a verdict', () => {
   it('says a real empty in words rather than in zeroes', () => {
     const line = noteCloseReportLine({
       state: 'ready',
-      counts: { arm: 'die', exposures: 0, completed: 0, abandoned: 0, since: null },
+      counts: { arm: 'die', exposures: 0, completed: 0, abandoned: 0, since: null, running: null, winnerArm: null },
     })!;
     expect(line).toContain('no note has been put in front of anyone here yet');
   });
@@ -378,6 +378,8 @@ describe('noteCloseReportLine — counts, never a verdict', () => {
         completed: 9,
         abandoned: 2,
         since: '2026-09-05T12:00:00.000Z',
+        running: true,
+        winnerArm: null,
       },
     })!;
     expect(line).toContain('12 shown, 9 closed, 2 left standing');
@@ -393,9 +395,83 @@ describe('noteCloseReportLine — counts, never a verdict', () => {
     // real numbers would read as a verdict against an arm nobody here was shown.
     const line = noteCloseReportLine({
       state: 'ready',
-      counts: { arm: 'die', exposures: 3, completed: 3, abandoned: 0, since: null },
+      counts: { arm: 'die', exposures: 3, completed: 3, abandoned: 0, since: null, running: null, winnerArm: null },
     })!;
     expect(line).toContain("the other arm's figures belong to other houses");
     expect(line).toContain('not counted, in either arm');
+  });
+});
+
+/* ── the end ─────────────────────────────────────────────────────────────── */
+
+/**
+ * The founder, 2026-09-05 (batch 45): the experiment ends one quarter after its
+ * first exposure, and after that every house gets the arm the founder names.
+ *
+ * These cases pin the two sentences that could otherwise be invented: an ended
+ * experiment must SAY it ended, and an ended experiment with no winner must not
+ * acquire one by omission.
+ */
+describe('noteCloseReportLine — the end', () => {
+  const base = { arm: 'die' as const, exposures: 12, completed: 9, abandoned: 2, since: null };
+
+  it('says nothing about the window while the experiment is running', () => {
+    const line = noteCloseReportLine({
+      state: 'ready',
+      counts: { ...base, running: true, winnerArm: null },
+    })!;
+    expect(line).not.toContain('has ended');
+    expect(line).toContain('Counts, not a verdict');
+  });
+
+  it('says nothing about the window when the gateway did not say', () => {
+    // Absence is not an answer here either: an ENDED experiment reported as
+    // running would be the page claiming a measurement that has stopped.
+    const line = noteCloseReportLine({
+      state: 'ready',
+      counts: { ...base, running: null, winnerArm: null },
+    })!;
+    expect(line).not.toContain('has ended');
+    expect(line).not.toContain('still running');
+  });
+
+  it('AN ENDED EXPERIMENT WITH NO WINNER SAYS SO, and names no arm', () => {
+    const line = noteCloseReportLine({
+      state: 'ready',
+      counts: { ...base, running: false, winnerArm: null },
+    })!;
+    expect(line).toContain('This experiment has ended');
+    expect(line).toContain('No winner is recorded');
+    expect(line).toContain('none is assumed until the founder names one');
+    // Not "the founder named the plain button" — plain is declared first and
+    // that is a rendering fallback, not a verdict.
+    expect(line).not.toContain('the founder named');
+  });
+
+  it('names the winner the founder chose, once there is one', () => {
+    const line = noteCloseReportLine({
+      state: 'ready',
+      counts: { ...base, running: false, winnerArm: 'plain' },
+    })!;
+    expect(line).toContain('the founder named the plain button');
+    expect(line).toContain('every house sees it now');
+    expect(line).not.toContain('No winner is recorded');
+  });
+
+  it('still prints this house\'s counts after the end — they are its history', () => {
+    const line = noteCloseReportLine({
+      state: 'ready',
+      counts: { ...base, running: false, winnerArm: 'plain' },
+    })!;
+    expect(line).toContain('12 shown, 9 closed, 2 left standing');
+  });
+
+  it('an ended experiment an unassigned house never joined still says it ended', () => {
+    const line = noteCloseReportLine({
+      state: 'ready',
+      counts: { arm: null, exposures: 0, completed: 0, abandoned: 0, since: null, running: false, winnerArm: null },
+    })!;
+    expect(line).toContain('has not been assigned an arm yet');
+    expect(line).toContain('This experiment has ended');
   });
 });

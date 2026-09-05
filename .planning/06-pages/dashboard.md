@@ -119,6 +119,29 @@ while the flag is off — `apps/web/src/pages/dashboard/next/`):
         records no abandon (the web app may not reach the gateway with a
         keepalive fetch — `__tests__/no-raw-gateway-fetch.test.ts`); both arms
         lose exactly the same cases.
+      - **The experiment ENDS one quarter after its first exposure** (added
+        2026-09-05, batch 45 — ADR 0127's addendum). The date is DERIVED, never
+        typed: the earliest exposure across all houses plus 91 days (13 whole
+        weeks), computed once and then frozen in `ux_experiment_state` so that
+        editing the constant cannot move the finish line under a running
+        experiment. After it, no new exposure is recorded, no new house is
+        enrolled, and the assignment rows are kept as the record of what each
+        house was shown.
+      - **After the end, every house gets the arm the founder NAMES — and until
+        then, none.** `POST /ux/experiments/:key/winner` writes the arm once (a
+        second, different arm is refused by the service and by a database
+        trigger). Until it is called, the report says the experiment has ended
+        and that no winner is recorded; it never falls back to `plain` and calls
+        that a result. The footer line says which of those two it is.
+      - **The founder alone reads BOTH arms.** `GET
+        /ux/experiments/:key/both-arms` returns, per arm, houses assigned,
+        exposures, completions, abandons and the date of first exposure — counts
+        and dates only, with no restaurant id anywhere in the payload, so a
+        house's identity is never returned beside its arm. It is gated by the
+        platform-admin service key (`X-Admin-Key`, ADR 0099), not by a role:
+        `RolesGuard` knows owner, manager and staff, all three of which are roles
+        *within* a house. The per-house report is unchanged and still shows one
+        house its own arm.
     - **The report line sits in the page's own signature footer**, not on
       `/notifications` and not inside the panel. The day-book is a RECORD, which
       is the argument that moved the desk off it (§1b, [[notifications]] §1b) and
@@ -315,17 +338,25 @@ ways to get a real name. *Blocker: founder.*
 - `v3.0-TECH-DEBT.md:502` — dashboard profile card dead-click claim (L102) is *unverified,
   not confirmed*; the one-tap auth hole it fed is closed (`v3.0-TECH-DEBT.md:409`).
 
-**The note-control experiment's report cannot answer the question it exists for
-(2026-09-05, stated not hidden).** Every read on the `ux` controller is scoped to
-the caller's restaurant, and assignment is per HOUSE, so a house is on exactly one
-arm and `GET /ux/experiments/:key/report` **can only ever show that arm's
-figures**. The cross-arm comparison the 80/20 ratio exists to settle is a
-cross-tenant read, and no role in this codebase grants one — there is no founder
-or platform-admin role; `role` on the JWT is per-restaurant (`jwt.strategy.ts:56`).
-Printing `plain: 0` beside a die house's real numbers was refused: it would read as
-a verdict against an arm nobody here was shown. The footer line therefore names
-what it cannot show and why. *Blocker: founder — see ADR 0127's open questions.*
-Two further floors, both stated on the line: an abandon is lost when a tab is
+~~**The note-control experiment's report cannot answer the question it exists for
+(2026-09-05, stated not hidden).**~~ **ANSWERED THE SAME DAY (batch 45), and the
+diagnosis was right about the cause and wrong about the only cure.** Every read on
+the `ux` controller is scoped to the caller's restaurant, and assignment is per
+HOUSE, so a house is on exactly one arm and `GET /ux/experiments/:key/report`
+**can still only ever show that arm's figures** — that route is unchanged, and the
+footer line still names what it cannot show. What was wrong was "no role in this
+codebase grants a cross-house read, so there is nothing to use". There is still no
+founder or platform-admin ROLE — `role` on the JWT is per-restaurant
+(`jwt.strategy.ts:56`) and `RolesGuard` knows owner, manager and staff, all three
+of them roles within a house — but there is an existing platform-admin
+CREDENTIAL: `X-Admin-Key` / `ADMIN_API_KEY`, the gateway↔orchestrator service key
+ADR 0099 settled and `ServiceKeyGuard` enforces, which fails closed when the
+secret is unset. `GET /ux/experiments/:key/both-arms` sits behind it and serves
+per-arm counts and dates with **no restaurant id in the payload at all**, so the
+cross-house read is granted without a house's identity ever appearing beside its
+arm. Printing `plain: 0` beside a die house's numbers is still refused on the
+per-house line, for the same reason as before.
+Two floors remain, both stated on the line: an abandon is lost when a tab is
 closed outright, and nothing is recorded at all while the arm is unreadable.
 
 **The experiment's die may land on nobody, or on the only tenant that matters.**
@@ -553,7 +584,11 @@ the two or three actions worth doing before service, each of which actually happ
    signature"* — so in the die arm two `HoldToApprove` controls DO sit on one
    screen, one sealed and one not, told apart only by the sentence above each.
    That is no longer a matter of taste to be settled in a doc: it is
-   `note_close_control`, and it ends when a person reads the counts (ADR 0127).
+   `note_close_control`. **Its end is now dated** (founder, 2026-09-05 batch 45):
+   one quarter — 91 days — after its first exposure, after which the founder reads
+   both arms and names the arm every house gets. Until an arm is named, the two
+   dies stay on the screen and the report says no winner is recorded (§13.18,
+   ADR 0127's addendum).
 
 **Added 2026-09-04 — the seal reached this card.**
 
@@ -622,22 +657,44 @@ the two or three actions worth doing before service, each of which actually happ
 
 **Added 2026-09-05 — the note's closing control became a measured question.**
 
-17. **Give someone a way to read BOTH arms.** `GET /ux/experiments/:key/report` is
-   tenant-scoped like every read on that controller, and assignment is per house, so
-   the footer line can only ever print this house's own arm. The founder's question —
-   which control closes more notes — is a cross-tenant read, and no role in this
-   codebase grants one. Three shapes were considered and none is this pass's to
-   choose: a founder-scoped read; cross-house aggregates served to any authenticated
-   caller (counts only, but with ~one real tenant that is close to serving that
-   tenant's own data to everyone); or a k-anonymity floor, which with today's
-   population would return nothing for months and hide exactly the data that was
-   asked for. *Blocker: founder — ADR 0127's first open question.*
-18. **Decide what ends the experiment.** Nothing in the code stops
-   `note_close_control` running forever, and an experiment left running is a product
-   with two faces. Name the trigger — a count, a date, or a look — and when it fires
-   the winning arm becomes the control, the spec object is deleted and the assignment
-   rows are kept as the record of what was shown. *Blocker: founder — ADR 0127's
-   second open question.*
+17. ~~**Give someone a way to read BOTH arms.**~~ **CLOSED 2026-09-05 (batch 45) —
+   founder: the founder alone may read both arms' figures.** Shape (a) of the three,
+   the founder-scoped read, with the "invent the first cross-house role" cost paid
+   differently than expected: no role was invented. `GET
+   /ux/experiments/:key/both-arms` is gated by the platform-admin service key
+   (`ServiceKeyGuard`, `X-Admin-Key` / `ADMIN_API_KEY`, ADR 0099) — the credential
+   that already means "not a tenant" — because `RolesGuard` knows only owner,
+   manager and staff, all three of which are roles *within* a house, and a fourth
+   invented to hold one report would be a permission system arriving as a side
+   effect of a measurement. It returns per arm: houses assigned, exposures,
+   completions, abandons and the date of first exposure. **No restaurant id appears
+   anywhere in the payload and no row is ever selected** — every house figure is a
+   `head: true` count — so a house's identity is never returned beside its arm,
+   which is the property that made a cross-house read grantable at all. `GET
+   /ux/experiments/:key/report` is unchanged: still tenant-scoped, still this
+   house's own arm. Pinned by `ux-optimizer.admin-routes.spec.ts` (the gate and the
+   route census) and by `ux-optimizer.experiments.spec.ts` (the figures and the
+   withheld identity).
+18. ~~**Decide what ends the experiment.**~~ **CLOSED 2026-09-05 (batch 45) —
+   founder: it ends one quarter after its first exposure, and then every house gets
+   the arm the founder names.** A DATE, and one that is derived rather than typed:
+   the earliest exposure across all houses plus `EXPERIMENT_QUARTER_DAYS` = 91 days,
+   which is 13 whole weeks (`experiments.ts`; the arithmetic and why not 90 or 92
+   are in ADR 0127's addendum). Derived once and frozen in `ux_experiment_state`
+   (migration `20260905235500`), because the interval is a constant in a source file
+   and a re-derived finish line would move under a running experiment — the same
+   argument that put the assignment in a row rather than in a hash. After the end:
+   **no new exposure is recorded, no new house is enrolled, the assignment rows are
+   kept as history**, and `POST /ux/experiments/:key/winner` writes the founder's arm
+   ONCE (a different arm afterwards is refused by the service and by a write-once
+   trigger). **Until the founder names one, the report says the experiment has ended
+   and that no winner is recorded** — never a default, and never the first-declared
+   arm, which is a rendering fallback and not a result. The spec object is NOT
+   deleted when the winner is named, which is a departure from what this item asked
+   for: deleting it would leave `ux_experiment_assignments` rows pointing at a key
+   nothing declares, and the winner is served from the stored row. Retiring the spec
+   is a later, separate act. *Left open by this pass: nothing raises the winner in
+   the UI — naming it is a `curl` with the admin key. See item 23.*
 19. **Record an abandon when the tab is closed.** Today an abandon is written only on
    unmount, so a tab closed outright counts nothing and every abandon figure is a
    floor. The fix is a `fetch({keepalive})` — which `apps/web/src/lib/uxSignals.ts`
@@ -653,3 +710,30 @@ the two or three actions worth doing before service, each of which actually happ
    direction or the other rather than leaving.
 21. **One-tap's AUTHOR column had the same disease as its executor, and the first migration asserted the opposite.** Found 2026-09-05 by the schema-parity replay of `20260905060000` (P0001 "user_id grew a foreign key"): the baseline points BOTH `one_tap_actions.user_id` (:12854) and `executed_by` (:12814) at `auth.users(id)`, and `one-tap-actions.service.ts` writes the JWT's `public.users` id into both (`:207`, `:524`) — so a human-raised action 23503'd on create exactly as an execution 23503'd on execute, and only the house's own NULL-author rows could ever be written. The first draft read the key off the CREATE TABLE and not the ALTERs that follow it, and asserted `user_id` had no key. The migration now repoints both, keeps SET NULL and nullability on both, and drops the false assertion; proven on PGlite with a pre-fix control (`node p4-scratch/pglite-probe/one-tap-both-keys.mjs`: 12 passed / 0 failed — both writes refused before, both accepted after, an `auth`-only id refused after, a departed person SET NULLs both columns). Guards `check_fk_targets_exist.py` and `check_fk_repoint_by_referenced_column.py` PASS. The one-tap builder's claim in be80f8b5 that "`user_id` carries no foreign key at all" was wrong; recorded here as its correction.
 22. **The seal subject for a one-tap delivery is the ORDER, not the action** (founder, 2026-09-05, p4aj Q2). The die on the rail mints a `procurement_order` challenge with act `deliver` and the one-tap row's `executed_by` is written only after the order's seal is redeemed — one seal per real-world act, so a second surface (the door, the legacy desk) cannot confirm the same delivery on a different subject. Recorded here because be80f8b5's message named the decision but no page note did.
+
+**Added 2026-09-05 — the experiment got an end and a reader.**
+
+23. **Nothing in the product raises the winner, and no screen shows both arms.**
+   `GET /ux/experiments/:key/both-arms` and `POST /ux/experiments/:key/winner` are
+   gateway routes behind `X-Admin-Key`; reading the figures and naming the arm are
+   both a `curl` today. That is deliberate for the READ — the founder is the only
+   audience and a page for one reader is a page to keep in step — but it is a real
+   gap for the WRITE: the end date arrives on its own and nothing anywhere raises
+   its hand to say so. The two shapes worth weighing are a line on `/admin/health`
+   (which is `requiredRole="owner"`, i.e. every house's owner, so it would need the
+   admin key forwarded from the server and not the browser) and a notification to
+   the founder's own address when `ends_at` passes with no winner named. *Blocker:
+   founder — it is a new surface, not a defect.*
+24. **`ux_experiment_state` cannot be applied to production from here, and the
+   both-arms report is therefore unproven against real data.** Same standing
+   blocker as item 11 and as ADR 0127's own: the local gateway points at production,
+   so no migration may be applied and no assignment may be created from it. The
+   table and its write-once trigger are proven on PGlite
+   (`p4-scratch/pglite-probe/p4bd-experiment-state.mjs`, **19 passed / 0 failed**),
+   with **six of the migration's seven in-file assertions proven to FIRE** against
+   a copy with exactly one thing broken — the seventh is the table-exists guard,
+   which cannot be broken without breaking the `CREATE` it checks. The routes are
+   proven at the controller seam in jest and the whole `AppModule` graph resolves
+   (`check_gateway_boots.sh` PASS). What is NOT proven is a real 200 from either
+   route, or a single real figure from any house. *Blocker: a database with the
+   migration applied.*

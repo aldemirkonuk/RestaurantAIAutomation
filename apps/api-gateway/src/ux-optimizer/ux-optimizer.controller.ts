@@ -14,12 +14,16 @@ import {
   ApiOperation,
   ApiQuery,
   ApiBearerAuth,
+  ApiHeader,
 } from "@nestjs/swagger";
 import { UxOptimizerService } from "./ux-optimizer.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { Public } from "../auth/decorators/public.decorator";
 import {
   IngestSignalDto,
+  NameExperimentWinnerDto,
   RecordExperimentEventDto,
   ReviewProposalDto,
   RollbackProposalDto,
@@ -41,6 +45,8 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   GET  /ux/experiments/:key           which arm this HOUSE is on
  *   POST /ux/experiments/:key/events    one exposure or outcome
  *   GET  /ux/experiments/:key/report    this house's counts, never a verdict
+ *   GET  /ux/experiments/:key/both-arms BOTH arms' figures — platform admin
+ *   POST /ux/experiments/:key/winner    name the winning arm — platform admin
  *
  * AUTHENTICATION — every route on this controller requires a valid JWT.
  * This is load-bearing, not defensive style: the globally-registered TenantGuard
@@ -53,6 +59,23 @@ type AuthedUser = { userId: string; restaurantId: string };
  * TENANCY — restaurantId is ALWAYS taken from the authenticated principal and
  * never from a query parameter or request body. Callers cannot ask about, or
  * write signals against, a restaurant that is not their own.
+ *
+ * THE TWO EXCEPTIONS, AND WHY THEY ARE NOT A HOLE. `both-arms` and `winner` are
+ * platform-admin acts: the founder alone may read both arms' figures, and the
+ * founder alone names the arm that becomes the product (2026-09-05, ADR 0127's
+ * addendum). They are gated by `ServiceKeyGuard` — the X-Admin-Key / ADMIN_API_KEY
+ * service credential ADR 0099 settled — and NOT by a new role, because this
+ * codebase has no platform-admin role: `RolesGuard` knows owner, manager and
+ * staff, all three of which are roles WITHIN a house, and inventing a fourth to
+ * hold one report would be inventing a permission system as a side effect of a
+ * measurement. The service key is the gate that already means "not a tenant".
+ *
+ * `@Public()` on those two routes does NOT mean unauthenticated. Nest runs class
+ * guards before method guards and requires all of them to pass, so a method
+ * guard can only ADD to the class-level JwtAuthGuard, never stand in for it.
+ * `@Public()` short-circuits the JWT check so that ServiceKeyGuard — which FAILS
+ * CLOSED on an unset or empty ADMIN_API_KEY — is what actually decides. Same
+ * shape as `POST /communications/email` (ADR 0099).
  */
 @ApiTags("ux-optimizer")
 @ApiBearerAuth()
@@ -274,6 +297,53 @@ export class UxOptimizerController {
       throw new HttpException(
         error.message || "Failed to read the experiment report",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get("experiments/:key/both-arms")
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiHeader({ name: "X-Admin-Key", required: true })
+  @ApiOperation({
+    summary: "BOTH arms' figures across every house — platform admin only",
+    description:
+      "The founder alone may read both arms (ADR 0127 addendum, 2026-09-05). Per arm: houses assigned, exposures, completions, abandons and the date of first exposure — counts and dates only. No restaurant id appears anywhere in the payload, so a house's identity is never returned beside its arm. Also derives and freezes the experiment's end date (first exposure + one quarter) if it is knowable and not yet stored. Counts, never a verdict: nothing here picks an arm.",
+  })
+  async experimentBothArms(@Param("key") key: string) {
+    try {
+      return await this.ux.adminExperimentReport(key);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the both-arms report",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post("experiments/:key/winner")
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiHeader({ name: "X-Admin-Key", required: true })
+  @ApiOperation({
+    summary: "Name the winning arm once the experiment has ended — platform admin only",
+    description:
+      "Written ONCE. Refused with its reason if the experiment has not started, has not yet ended, or already has a different winner; refused if the arm is not one the experiment declares. Until this is called, an ended experiment reports that it ended and that no winner is recorded — there is no default winner. The assignment rows are untouched and kept as the record of what each house was shown.",
+  })
+  async nameExperimentWinner(
+    @Param("key") key: string,
+    @Body() body: NameExperimentWinnerDto,
+  ) {
+    try {
+      return await this.ux.nameExperimentWinner({
+        experimentKey: key,
+        arm: body.arm,
+        words: body.words ?? null,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to name the winner",
+        error.status || HttpStatus.BAD_REQUEST,
       );
     }
   }
