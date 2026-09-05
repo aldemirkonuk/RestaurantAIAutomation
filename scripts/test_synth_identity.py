@@ -16,7 +16,9 @@ from pathlib import Path
 import pytest
 
 from scripts.synth.identity import (
+    wine_identity_is_specific,
     wine_normalize_text,
+    wine_provisional_signature_hash,
     wine_signature_for_item,
     wine_signature_hash,
 )
@@ -34,6 +36,78 @@ def fx() -> dict:
 def test_fixture_is_not_vacuous(fx):
     assert len(fx["vectors"]) >= 7
     assert len(fx["bistro_menu_identities"]) >= 90
+
+
+def test_generic_identity_fixture_is_not_vacuous(fx):
+    rows = fx["generic_identity_vectors"]
+    assert len(rows) >= 10
+    # A fixture where every row answers the same way proves nothing about the
+    # predicate. Both verdicts must be present, and both must be reachable.
+    assert {r["specific"] for r in rows} == {True, False}
+
+
+def test_specificity_matches_sql_on_every_vector(fx):
+    """ADR 0130: the rule that decides whether a wine may join the SHARED library."""
+    wrong = [
+        r["label"]
+        for r in fx["generic_identity_vectors"]
+        if wine_identity_is_specific(
+            r["p_producer"], r["p_name"], r["p_vintage"], r["p_region"]
+        )
+        != r["specific"]
+    ]
+    assert wrong == []
+
+
+def test_provisional_hash_matches_sql_on_every_vector(fx):
+    wrong = [
+        r["label"]
+        for r in fx["generic_identity_vectors"]
+        if wine_provisional_signature_hash(
+            r["p_restaurant_id"],
+            r["p_producer"],
+            r["p_name"],
+            r["p_vintage"],
+            r["p_country"],
+            r["p_region"],
+            r["p_grape_variety"],
+        )
+        != r["provisional_hash"]
+    ]
+    assert wrong == []
+
+
+def test_shared_hash_matches_sql_on_every_generic_vector(fx):
+    wrong = [
+        r["label"]
+        for r in fx["generic_identity_vectors"]
+        if wine_signature_hash(
+            r["p_producer"],
+            r["p_name"],
+            r["p_vintage"],
+            r["p_country"],
+            r["p_region"],
+            r["p_grape_variety"],
+        )
+        != r["shared_hash"]
+    ]
+    assert wrong == []
+
+
+def test_two_venues_never_share_a_generic_identity(fx):
+    """The whole point: "House White Wine" is a different wine in each house."""
+    a, b = (
+        r
+        for r in fx["generic_identity_vectors"]
+        if r["label"] in ("a bare generic name", "the same words, another venue")
+    )
+    assert a["p_name"] == b["p_name"]
+    assert a["shared_hash"] == b["shared_hash"], "the shared key is what collided"
+    assert a["provisional_hash"] != b["provisional_hash"]
+    # ...and a venue-scoped key is never mistakable for a shared one.
+    keys = {r["provisional_hash"] for r in fx["generic_identity_vectors"]}
+    keys &= {r["shared_hash"] for r in fx["generic_identity_vectors"]}
+    assert keys == set()
 
 
 def test_normalize_matches_sql_on_every_vector(fx):
