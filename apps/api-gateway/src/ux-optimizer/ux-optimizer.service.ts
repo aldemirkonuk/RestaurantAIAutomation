@@ -17,6 +17,12 @@ import {
   filterProposals,
   uxProposalVerdict,
 } from "./ux-proposal-grounding";
+import {
+  EXPERIMENT_EVENTS,
+  type ExperimentEvent,
+  assignArm,
+  experimentByKey,
+} from "./experiments";
 
 /** Most signals read into one friction summary. See summarize() for why it is ordered. */
 const SIGNAL_SAMPLE_CAP = 5000;
@@ -802,6 +808,332 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .lt("created_at", toIso);
     return count ?? 0;
   }
+
+  // ==========================================================================
+  // 6. Experiments — a house sees one arm, and the arm it saw is written down
+  // ==========================================================================
+  //
+  // This is a MEASUREMENT, not a second way to ship a change. Nothing in this
+  // section applies anything, and the optimizer's standing guardrail is
+  // untouched: which arm completes more is a count a person reads.
+  //
+  // It is deliberately NOT behind UX_OPTIMIZER_ENABLED. That switch exists to
+  // stop the agent putting its own proposals in front of users; an experiment a
+  // founder asked for is not the agent's proposal. More to the point, an
+  // experiment that stops recording when a flag is off leaves a gap in the
+  // ledger that reads exactly like a period of nobody using the control.
+
+  /**
+   * The stored assignment, or null when this house has none yet.
+   *
+   * A READ FAILURE THROWS. It must never resolve null: supabase-js returns
+   * `{ data, error }` rather than throwing, so a caller that treats an error as
+   * "no row" would assign a fresh arm on every failure and scatter a house
+   * across both. Null here means "asked, and there is no row".
+   */
+  private async readAssignment(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<ExperimentAssignmentRow | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_assignments")
+      .select("restaurant_id, experiment_key, arm, bucket, ratio, assigned_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("experiment_key", experimentKey)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as ExperimentAssignmentRow | null) ?? null;
+  }
+
+  /**
+   * Which arm this house is on, assigning it on first ask.
+   *
+   * THE STORED ROW WINS OVER THE RECOMPUTED HASH. The hash chooses an arm the
+   * first time; the row is what the house is ON. If the ratio constant is ever
+   * edited, a recompute would move houses and re-label every exposure already
+   * in the ledger — each row still correct, the whole comparison wrong. So the
+   * row is returned as it stands, carrying the ratio it was made under.
+   *
+   * `recorded: false` means the arm is real and deterministic but the write did
+   * not land. The caller is told, rather than the failure being folded into a
+   * value that looks the same as a stored one.
+   */
+  async assignmentFor(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<ExperimentAssignment> {
+    const spec = experimentByKey(experimentKey);
+    if (!spec) throw new NotFoundException(`No experiment "${experimentKey}"`);
+
+    const stored = await this.readAssignment(spec.key, restaurantId);
+    if (stored) {
+      return {
+        experimentKey: spec.key,
+        arm: stored.arm,
+        bucket: stored.bucket,
+        ratio: stored.ratio,
+        assignedAt: stored.assigned_at,
+        recorded: true,
+        decidedOn: spec.decidedOn,
+        founderWords: spec.founderWords,
+      };
+    }
+
+    const { bucket, arm } = assignArm(spec, restaurantId);
+    if (arm === null)
+      throw new Error(
+        `experiment ${spec.key}: bucket ${bucket} fell in no arm for this house`,
+      );
+
+    // ignoreDuplicates, not a plain insert: two tabs opening at once both
+    // compute the SAME arm (that is what deterministic means), so the loser of
+    // the race has nothing to correct and a 23505 would be noise. The first
+    // write stands.
+    const { error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_assignments")
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          experiment_key: spec.key,
+          arm,
+          bucket,
+          ratio: spec.ratio,
+        },
+        {
+          onConflict: "restaurant_id,experiment_key",
+          ignoreDuplicates: true,
+        },
+      );
+
+    if (error) {
+      this.logger.warn(
+        `experiment ${spec.key}: assignment for ${restaurantId} was not recorded — ${error.message}`,
+      );
+      return {
+        experimentKey: spec.key,
+        arm,
+        bucket,
+        ratio: spec.ratio,
+        assignedAt: null,
+        recorded: false,
+        decidedOn: spec.decidedOn,
+        founderWords: spec.founderWords,
+      };
+    }
+
+    // Re-read rather than echo what was just sent: with ignoreDuplicates the
+    // row that ended up in the table may be an earlier one, and the report
+    // joins on what is stored.
+    const after = await this.readAssignment(spec.key, restaurantId);
+    return {
+      experimentKey: spec.key,
+      arm: after?.arm ?? arm,
+      bucket: after?.bucket ?? bucket,
+      ratio: after?.ratio ?? spec.ratio,
+      assignedAt: after?.assigned_at ?? null,
+      recorded: !!after,
+      decidedOn: spec.decidedOn,
+      founderWords: spec.founderWords,
+    };
+  }
+
+  /**
+   * Write one exposure or outcome to the Neural Footprint ledger.
+   *
+   * THE ARM IS STAMPED HERE, NOT SENT BY THE CALLER. A browser that could name
+   * its own arm could attribute its outcome to the other one, and an audit
+   * trail the caller writes about itself is not an audit trail — the same rule
+   * `reviewProposal` keeps for the reviewer id.
+   *
+   * `outcome` is NULL for everything but a completion. The ledger's contract is
+   * that NULL means UNKNOWN and never success, and an abandon is genuinely
+   * unknown: a person who walks away from a note may have changed their mind,
+   * which is a correct refusal, not a failure of the control.
+   */
+  async recordExperimentEvent(input: {
+    experimentKey: string;
+    restaurantId: string;
+    userId: string;
+    event: ExperimentEvent;
+    actionId?: string | null;
+    durationMs?: number | null;
+  }): Promise<{ ok: boolean; arm: string }> {
+    const spec = experimentByKey(input.experimentKey);
+    if (!spec)
+      throw new NotFoundException(`No experiment "${input.experimentKey}"`);
+
+    const assignment = await this.assignmentFor(spec.key, input.restaurantId);
+
+    const context: Record<string, unknown> = {
+      experiment_key: spec.key,
+      arm: assignment.arm,
+      bucket: assignment.bucket,
+      ratio: assignment.ratio,
+      assignment_recorded: assignment.recorded,
+      surface: "dashboard:one-tap:note",
+    };
+    if (input.actionId) context.one_tap_action_id = input.actionId;
+
+    const { error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .insert({
+        subject_type: "operator",
+        subject_id: input.userId,
+        stimulus: "one_tap_note_card",
+        choice: input.event,
+        outcome: input.event === "completed" ? "success" : null,
+        context,
+        // Exposure to completion, NOT press to completion. Pressing a plain
+        // button completes in ~0ms and holding the die completes in `pour.ms`'s
+        // 620 by construction, so a press-to-complete figure would measure a
+        // constant this repository chose rather than an operator.
+        duration_ms:
+          input.event === "completed" && typeof input.durationMs === "number"
+            ? Math.round(input.durationMs)
+            : null,
+        restaurant_id: input.restaurantId,
+      });
+    if (error) throw new Error(error.message);
+    return { ok: true, arm: assignment.arm };
+  }
+
+  /**
+   * The counts, for THIS HOUSE only, and never a verdict.
+   *
+   * Scoped to the caller's restaurant like every other read on this service.
+   * The consequence is stated rather than hidden: assignment is per house, so a
+   * house is on exactly one arm and this report can only ever show that arm's
+   * figures. The cross-arm comparison the ratio exists to settle is a
+   * cross-tenant read, and no role in this codebase grants one — see ADR 0127's
+   * open question. A report that quietly printed `plain: 0 exposures` beside a
+   * die house's real numbers would read as a verdict against an arm this house
+   * was simply never shown.
+   *
+   * Reads do NOT assign: a person opening a page to look at counts must not
+   * enrol their house by looking.
+   */
+  async experimentReport(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<ExperimentReport> {
+    const spec = experimentByKey(experimentKey);
+    if (!spec) throw new NotFoundException(`No experiment "${experimentKey}"`);
+
+    const stored = await this.readAssignment(spec.key, restaurantId);
+    const counts: Record<string, number> = {};
+    for (const event of EXPERIMENT_EVENTS) {
+      counts[event] = stored
+        ? await this.countExperimentEvents(
+            spec.key,
+            restaurantId,
+            stored.arm,
+            event,
+          )
+        : 0;
+    }
+
+    return {
+      experimentKey: spec.key,
+      ratio: stored?.ratio ?? spec.ratio,
+      decidedOn: spec.decidedOn,
+      founderWords: spec.founderWords,
+      question: spec.question,
+      /** Null means this house has never been assigned, not that it saw nothing. */
+      arm: stored?.arm ?? null,
+      assignedAt: stored?.assigned_at ?? null,
+      exposures: counts.exposed,
+      completed: counts.completed,
+      /**
+       * A FLOOR, not a total. An abandon is recorded when the card is left
+       * while still open; a browser tab closed outright records nothing,
+       * because the web app may not reach the gateway with a keepalive fetch
+       * (`__tests__/no-raw-gateway-fetch.test.ts`). Both arms lose exactly the
+       * same cases, so the comparison holds and the absolute number does not.
+       */
+      abandoned: counts.abandoned,
+      since: stored ? await this.firstExperimentEventAt(spec.key, restaurantId) : null,
+      houseScopedOnly: true,
+    };
+  }
+
+  private async countExperimentEvents(
+    experimentKey: string,
+    restaurantId: string,
+    arm: string,
+    event: string,
+  ): Promise<number> {
+    const { count, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("*", { count: "exact", head: true })
+      .eq("subject_type", "operator")
+      .eq("restaurant_id", restaurantId)
+      .eq("choice", event)
+      .eq("context->>experiment_key", experimentKey)
+      .eq("context->>arm", arm);
+    // A failed count is not zero. Zero is a real answer this report prints in
+    // words ("no exposures yet"), so collapsing an error into it would be the
+    // absence-as-health shape in the one place that exists to report absence.
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
+  private async firstExperimentEventAt(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("occurred_at")
+      .eq("subject_type", "operator")
+      .eq("restaurant_id", restaurantId)
+      .eq("context->>experiment_key", experimentKey)
+      .order("occurred_at", { ascending: true })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    return data?.[0]?.occurred_at ?? null;
+  }
+}
+
+interface ExperimentAssignmentRow {
+  restaurant_id: string;
+  experiment_key: string;
+  arm: string;
+  bucket: number;
+  ratio: Record<string, number>;
+  assigned_at: string;
+}
+
+export interface ExperimentAssignment {
+  experimentKey: string;
+  arm: string;
+  bucket: number;
+  ratio: Record<string, number>;
+  assignedAt: string | null;
+  /** False when the arm is real and deterministic but the row did not land. */
+  recorded: boolean;
+  decidedOn: string;
+  founderWords: string;
+}
+
+export interface ExperimentReport {
+  experimentKey: string;
+  ratio: Record<string, number>;
+  decidedOn: string;
+  founderWords: string;
+  question: string;
+  arm: string | null;
+  assignedAt: string | null;
+  exposures: number;
+  completed: number;
+  abandoned: number;
+  since: string | null;
+  /** Always true today. Stated in the payload so the web cannot forget it. */
+  houseScopedOnly: boolean;
 }
 
 function summarizeWindowBounds() {

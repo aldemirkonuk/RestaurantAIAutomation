@@ -71,8 +71,23 @@ const personRaised = {
   priority: 'low',
 };
 
-function serve(rows: unknown[]) {
-  api.get.mockResolvedValue({ data: { actions: rows } });
+/**
+ * Serve the register AND the note-close experiment.
+ *
+ * The experiment arm has to be routed by path rather than left to a blanket
+ * `mockResolvedValue`. A blanket mock answers `GET /ux/experiments/...` with
+ * `{ actions: [...] }`, whose `arm` is undefined, so the panel would fall back
+ * to `plain` and every case below would quietly be testing the FALLBACK path —
+ * passing for the wrong reason, and never touching a real assignment.
+ * `plain` here is the arm 80% of houses are on. The die arm and the unreadable
+ * fallback are covered in `note-close-experiment.test.tsx`.
+ */
+function serve(rows: unknown[], arm: 'plain' | 'die' = 'plain') {
+  api.get.mockImplementation(async (path: string) =>
+    String(path).startsWith('/ux/experiments')
+      ? { data: { experimentKey: 'note_close_control', arm, recorded: true } }
+      : { data: { actions: rows } },
+  );
 }
 
 function draw(restaurantId: string | null = 'rest-A') {
@@ -384,8 +399,14 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     // on screen.
     const a = deferred<{ data: unknown }>();
     const b = deferred<{ data: unknown }>();
-    api.get.mockImplementation((_url: string, cfg: { params: { restaurantId: string } }) =>
-      cfg.params.restaurantId === 'rest-A' ? a.promise : b.promise,
+    api.get.mockImplementation(
+      (url: string, cfg?: { params?: { restaurantId?: string } }) => {
+        // The experiment read carries no params and is not what this case is
+        // about; answering it explicitly keeps the deferred pair to the register.
+        if (String(url).startsWith('/ux/experiments'))
+          return Promise.resolve({ data: { arm: 'plain', recorded: true } });
+        return cfg?.params?.restaurantId === 'rest-A' ? a.promise : b.promise;
+      },
     );
 
     const { rerender } = draw('rest-A');

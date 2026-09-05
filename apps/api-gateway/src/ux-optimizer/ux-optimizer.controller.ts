@@ -20,6 +20,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   IngestSignalDto,
+  RecordExperimentEventDto,
   ReviewProposalDto,
   RollbackProposalDto,
 } from "./dto/ux-optimizer.dto";
@@ -37,6 +38,9 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   POST /ux/proposals/:id/review   human approve/reject (approve = gated ship)
  *   POST /ux/proposals/:id/rollback revert a live change
  *   GET  /ux/learnings          the append-only self-learning ledger
+ *   GET  /ux/experiments/:key           which arm this HOUSE is on
+ *   POST /ux/experiments/:key/events    one exposure or outcome
+ *   GET  /ux/experiments/:key/report    this house's counts, never a verdict
  *
  * AUTHENTICATION — every route on this controller requires a valid JWT.
  * This is load-bearing, not defensive style: the globally-registered TenantGuard
@@ -201,6 +205,75 @@ export class UxOptimizerController {
       throw new HttpException(
         error.message || "Failed to roll back",
         error.status || HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // ==========================================================================
+  // Experiments — assign, record, report. Nothing here applies anything.
+  // ==========================================================================
+
+  @Get("experiments/:key")
+  @ApiOperation({
+    summary: "Which arm of an experiment this house is on",
+    description:
+      "Deterministic per house and FROZEN on first read, so a later edit to the ratio constant cannot re-label exposures already recorded. Assigns on first ask. A caller that cannot read this must render the fallback arm and SAY the experiment could not be read — never a guess that looks like an assignment.",
+  })
+  async experiment(@Param("key") key: string, @CurrentUser() user: AuthedUser) {
+    try {
+      return await this.ux.assignmentFor(key, user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the experiment",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post("experiments/:key/events")
+  @ApiOperation({
+    summary: "Record one exposure or outcome against this house's arm",
+    description:
+      "The arm is stamped from the stored assignment, never from the body. Written to neural_footprint_event as subject_type 'operator'; outcome is 'success' only on a completion, and NULL — meaning unknown — on everything else.",
+  })
+  async recordExperimentEvent(
+    @Param("key") key: string,
+    @Body() body: RecordExperimentEventDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.ux.recordExperimentEvent({
+        experimentKey: key,
+        restaurantId: user.restaurantId,
+        userId: user.userId,
+        event: body.event,
+        actionId: body.actionId ?? null,
+        durationMs: body.durationMs ?? null,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to record the event",
+        error.status || HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("experiments/:key/report")
+  @ApiOperation({
+    summary: "Counts for this house's arm — never a verdict",
+    description:
+      "House-scoped like every read here, and assignment is per house, so this can only ever show the one arm this house is on (`houseScopedOnly`). Reading does not assign. `abandoned` is a floor: a tab closed outright records nothing, equally in both arms.",
+  })
+  async experimentReport(
+    @Param("key") key: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.ux.experimentReport(key, user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the experiment report",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

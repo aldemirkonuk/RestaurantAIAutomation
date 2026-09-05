@@ -39,10 +39,19 @@
  *     booked. It is the first because it is the only act whose backend exists
  *     end to end and neither spends money nor posts a letter — the reorder
  *     path would have done both (`one-tap-workflow.ts` carries the census).
- *   * A WRITTEN NOTE is a record, and its control is a plain button. The wax is
- *     rationed: a note is not a commitment of the house's stock or money, and
- *     a die that means "recorded" beside a die that means "done" teaches people
- *     the seal means nothing.
+ *   * A WRITTEN NOTE is a record, and its closing control is now being TRIED
+ *     BOTH WAYS (the founder, 2026-09-05: "lets try both, 80 percent simple 20
+ *     percent signature"). Eighty per cent of houses get the plain button this
+ *     card shipped with; twenty get the hold. The arm comes from the gateway,
+ *     per house, and is never chosen here — `note-close-experiment.ts`.
+ *
+ *     The die on a note is a GESTURE, NOT A SEAL, and the card says so in
+ *     words: no `onChallenge` is passed, nothing is minted, nothing is
+ *     redeemed. The original objection stands and is what the experiment is
+ *     for — a die that means "recorded" beside a die that means "done" is how
+ *     the seal stops meaning anything — so the two are told apart in the copy
+ *     while the counts are gathered. ADR 0127; ADR 0116 addendum's 2026-09-05
+ *     status line.
  *   * EVERYTHING ELSE is disabled and says, in one line, what is not built.
  *     ADR 0083: a control may not claim a write it never makes.
  */
@@ -53,6 +62,12 @@ import { ArrowRight, Check, Hand, Lock, PenLine, Undo2, UserRound } from 'lucide
 import { HoldToApprove } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import { DELIVERY_WITHOUT_ORDER, dispositionOf } from './one-tap-acts';
+import {
+  armToDraw,
+  recordNoteCloseEvent,
+  useNoteCloseArm,
+  type ArmRegister,
+} from './note-close-experiment';
 import { timeAgo } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -339,12 +354,15 @@ function deliveryWords(result: Record<string, unknown> | null | undefined): stri
 export function ActionCard({
   action,
   byHouse,
+  noteArm,
   onMintSeal,
   onExecute,
   onCancel,
 }: {
   action: OneTapAction;
   byHouse: boolean;
+  /** Which closing control a written note gets here. See `note-close-experiment.ts`. */
+  noteArm: ArmRegister;
   onMintSeal: (id: string) => Promise<string | null>;
   onExecute: (id: string, challenge?: string | null) => Promise<OneTapAction | null>;
   onCancel: (id: string) => Promise<void>;
@@ -363,13 +381,71 @@ export function ActionCard({
         ? DELIVERY_WITHOUT_ORDER
         : null;
 
+  /* ── the experiment on how a note is closed ────────────────────────────
+   * The founder, 2026-09-05: "lets try both, 80 percent simple 20 percent
+   * signature". The arm is the gateway's, per house, never chosen here.
+   *
+   * NOTHING IS RECORDED WHEN THE ARM COULD NOT BE READ. The card falls back to
+   * the plain control and says so, but the server would stamp the event with
+   * this house's STORED arm — which may be the die. Filing a plain exposure
+   * under the die is worse than not counting it, so a failed read counts
+   * nothing and the report says the counts are a floor. */
+  const isNote = disposition.kind === 'record';
+  const drawnArm = isNote ? armToDraw(noteArm) : null;
+  const measurable = isNote && noteArm.state === 'assigned';
+  const exposedAt = useRef<number | null>(null);
+  const settled = useRef(false);
+
+  useEffect(() => {
+    if (!measurable || drawnArm === null || exposedAt.current !== null) return;
+    exposedAt.current = Date.now();
+    recordNoteCloseEvent({ event: 'exposed', actionId: action.id });
+  }, [measurable, drawnArm, action.id]);
+
+  useEffect(
+    () => () => {
+      // Left standing. Recorded on unmount — a tenant switch, a navigation, the
+      // card dropping out of `pending` for any reason other than this person
+      // closing it. A tab closed outright records nothing (the web app may not
+      // reach the gateway with a keepalive fetch), which is why the report line
+      // calls the abandon count a floor. Both arms lose the same cases.
+      if (exposedAt.current !== null && !settled.current)
+        recordNoteCloseEvent({ event: 'abandoned', actionId: action.id });
+    },
+    [action.id],
+  );
+
+  /** Closing the note, for either arm. One path, so the two cannot diverge. */
+  const closeTheNote = useCallback(() => {
+    setRunning(true);
+    void onExecute(action.id)
+      .then(() => {
+        settled.current = true;
+        if (exposedAt.current !== null)
+          recordNoteCloseEvent({
+            event: 'completed',
+            actionId: action.id,
+            durationMs: Date.now() - exposedAt.current,
+          });
+      })
+      .catch(() => undefined)
+      .finally(() => setRunning(false));
+  }, [action.id, onExecute]);
+
   /** What this card's "done" is, said before it is pressed rather than after. */
   const promise =
     disposition.kind === 'workflow'
       ? 'Confirming this books the delivery into stock through the order it names. The hold mints a seal the write has to carry back, so an order edited in the meantime is refused rather than booked.'
-      : disposition.kind === 'record'
-        ? 'Marking it done records the decision against your name. Nothing else moves — a written action has no workflow behind it, and the plain button says so.'
-        : null;
+      : drawnArm === 'die'
+        ? // The die on a note is a GESTURE, NOT A SEAL, and the card has to say
+          // so. ADR 0116's addendum made an order approval a REDEEMED seal —
+          // minted when the hold begins, spent by the write. Nothing is minted
+          // here and nothing is redeemed, and a wax impression that looked the
+          // same in both places would empty the word.
+          'Holding records the decision against your name. Nothing else moves, and this die is a gesture rather than a seal — nothing is minted and nothing is redeemed.'
+        : drawnArm === 'plain'
+          ? 'Marking it done records the decision against your name. Nothing else moves — a written action has no workflow behind it, and the plain button says so.'
+          : null;
 
   return (
     <li
@@ -442,22 +518,39 @@ export function ActionCard({
           </div>
         )}
 
-        {/* A record is a record. No ceremony for something that commits nothing. */}
-        {disposition.kind === 'record' && (
+        {/* The note's closing control, tried both ways (the founder, 2026-09-05).
+            Both arms run `closeTheNote` — one write, one recorded outcome, so
+            the two arms cannot come to mean different things. */}
+        {isNote && drawnArm === 'plain' && (
           <button
             type="button"
             disabled={running}
-            onClick={() => {
-              setRunning(true);
-              void onExecute(action.id)
-                .catch(() => undefined)
-                .finally(() => setRunning(false));
-            }}
+            data-note-arm="plain"
+            onClick={closeTheNote}
             className="dn-ink inline-flex items-center gap-1.5 rounded border border-seal-ring bg-seal-tint px-2 py-1 text-[11px] font-semibold text-seal disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
           >
             <Check size={12} strokeWidth={1.75} aria-hidden />
             {running ? 'Writing it down…' : 'Mark it done'}
           </button>
+        )}
+        {isNote && drawnArm === 'die' && (
+          <div className="min-w-[180px] flex-1" data-note-arm="die">
+            {/* No `onChallenge`. That is the difference between this and the
+                delivery card above it: there is no seal to mint for a row that
+                only records a decision, and passing one would be a ceremony
+                over nothing. */}
+            <HoldToApprove
+              label="Hold to write it down"
+              approvedLabel="Written down"
+              disabled={running}
+              onApprove={closeTheNote}
+            />
+          </div>
+        )}
+        {isNote && drawnArm === null && (
+          <p className="text-[11px] italic text-inkm-4">
+            Reading which closing control this house is on.
+          </p>
         )}
 
         {/* Nothing to press. Disabled, and the sentence above says why. */}
@@ -474,6 +567,16 @@ export function ActionCard({
           </button>
         )}
       </div>
+      {/* A failed read is never dressed as an assignment. The control below is
+          the plain one because plain is the product as built, and this line
+          says that is a fallback rather than what this house was given. */}
+      {isNote && noteArm.state === 'unreadable' && (
+        <p role="status" className="mt-1.5 text-[11px] text-inkm-4">
+          Which closing control this house should see could not be read (
+          {noteArm.message}), so this is the plain one — a fallback, not an
+          assignment. Nothing about this card is being counted.
+        </p>
+      )}
       {outcome && (
         <p role="status" className="mt-1.5 text-[11.5px] text-inkm-2">
           {outcome}
@@ -491,6 +594,10 @@ export interface OneTapPanelProps {
 
 export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
   const desk = useOneTapActions(restaurantId);
+  /* Read ONCE for the panel rather than per card: two cards in one house are
+     one house, and a per-card read would ask the same question five times and
+     could answer it differently if one of them failed. */
+  const noteArm = useNoteCloseArm(restaurantId);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -575,6 +682,7 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
                 key={a.id}
                 action={a}
                 byHouse
+                noteArm={noteArm}
                 onMintSeal={desk.mintSeal}
                 onExecute={desk.execute}
                 onCancel={desk.cancel}
@@ -585,6 +693,7 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
                 key={a.id}
                 action={a}
                 byHouse={false}
+                noteArm={noteArm}
                 onMintSeal={desk.mintSeal}
                 onExecute={desk.execute}
                 onCancel={desk.cancel}
@@ -663,10 +772,11 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
 
         <p className="mt-3 border-t border-paper-2 pt-2 text-[11px] text-inkm-4">
           One act on this desk is real: confirming a delivery books the stock through the order it
-          names, and it is the only control here that carries the seal. A written action is
-          recorded against your name and nothing else moves. Every other kind of action is
-          disabled and says what is not built — no control here sends a mail or places an
-          order.
+          names, and it is the only control here that carries a SEAL — minted when the hold begins
+          and spent by the write. A written action is recorded against your name and nothing else
+          moves; how it is closed is being tried both ways, and where that is a hold it is a
+          gesture rather than a seal. Every other kind of action is disabled and says what is not
+          built — no control here sends a mail or places an order.
         </p>
       </div>
     </section>

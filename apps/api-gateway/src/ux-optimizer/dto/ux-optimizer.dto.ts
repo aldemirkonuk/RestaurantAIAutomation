@@ -6,6 +6,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -89,4 +90,46 @@ export class RollbackProposalDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/**
+ * One exposure or outcome on an experiment arm.
+ *
+ * NOTE WHAT IS ABSENT: there is no `arm` field, and there is no `restaurantId`.
+ * Both are stamped by the service from the token and the stored assignment. A
+ * browser that could name its own arm could file its outcome against the other
+ * one, which would make the whole comparison a thing the measured party writes
+ * about itself.
+ */
+export class RecordExperimentEventDto {
+  @ApiProperty({
+    enum: ["exposed", "completed", "abandoned"],
+    description:
+      "exposed: the control was rendered. completed: the note was closed. abandoned: exposed, then left still open.",
+  })
+  @IsIn(["exposed", "completed", "abandoned"])
+  event!: "exposed" | "completed" | "abandoned";
+
+  @ApiPropertyOptional({
+    description: "The one-tap action the control belonged to.",
+  })
+  @IsOptional()
+  @IsUUID()
+  actionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Milliseconds from EXPOSURE to completion. Ignored on any other event.",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(86_400_000)
+  durationMs?: number;
+
+  // There is deliberately NO field for the die's early releases. It would be
+  // die-only — a plain button has no partial gesture to release — and an event
+  // one arm can produce and the other cannot is not a measurement. Recording it
+  // would also mean a `onRelease` prop on the shared `HoldToApprove`, which no
+  // caller has and which is not this change's to add.
 }
