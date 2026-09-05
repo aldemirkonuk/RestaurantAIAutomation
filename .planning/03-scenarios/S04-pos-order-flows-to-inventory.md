@@ -156,6 +156,56 @@ The §9 gates as they stand after this run: **correct ledger delta** — holds f
 absence-as-health instances are filed in `v3.0-TECH-DEBT.md` (2026-09-03, POS lens); the blocking
 one is that no screen connects POS buttons to stock.
 
+### 9.2 Lens run, 2026-09-05 — the real Vanilla Kaleiçi (Antalya) menu through the product's doors
+
+Tenant `Sim Vanilla Kaleiçi` (`684920db-…`, **Europe/Istanbul**, country `TR`, hours Mon–Sun
+11:00–23:59 set from the venue). Code under test: `main` at **`528f13d1`** — the mapping-surface
+fix (#307) and the migration guard (#311) landed on `main` *after* this run, so every measurement
+below is against the pre-#307 tree and §9.1's defects 1 and 2 are re-measured as they stood then.
+No seed: 27 inventory items were loaded through the **Receive-a-delivery → "Wine not in the
+library"** UI door (2), `POST :rid/items/bulk` (25) and a count (1); **268 SimPOS buttons** were
+typed at the venue's printed **₺** prices; 36 POS mappings and 36 sale units were written through
+the API because no screen existed for them; then **38 checks** were closed — 7 on the terminal UI,
+31 through the SimPOS API — 92 lines, 134 units, 1 void, one check closed twice (refused, `403`).
+Check counts per hour follow Google's **measured** Saturday busyness curve for this venue
+(2·2·2·2·2·3·3·4·4·5·4·3·2 across 11:00–23:00).
+
+| | Database after the service |
+|---|---|
+| `pos_checks` | 38 — `total/subtotal/tip/covers/table_id/server_name` NULL on 38 of 38, over **₺148,205** actually rung; the table has **no currency column at all** |
+| `pos_unresolved_lines` | 79 of 92 lines — every one `unmapped`, every one `is_wine: true` (hummus, water, Turkish coffee, Efes, cola, Espresso Martini) |
+| `wine_consumption_log` | 12 — 6 bottle, 6 glass (14 glasses poured) |
+| `pour_events` | 6 — **5 bottles opened, 2 100 ml poured**; `inventory_lots.open_bottle_ml` 1 650 ml, and 5×750 − 2 100 = 1 650 |
+| `inventory_transactions` | 39 — `initial/manual` 27, `sale/pos` 11, `reconciliation/mobile_count` 1 |
+| bottles on hand | 245 → 234; 27 of 27 lots `unit_cost NULL / 'estimated'` |
+
+**The inventory answer, measured:** `restaurant_inventory.master_wine_id` is **`NOT NULL`**
+(`20260805000000_baseline_from_production.sql:3175`), so everything stocked must be a wine.
+Of this venue's 284 published rows, **247 have no home at all** — 46 cocktails, 78 spirit rows,
+6 beers, 48 non-alcoholic and 69 food. A further 10 of the 37 wine *menu rows* have no
+independent representation, because glass, 500 ml carafe and bottle collapse into one identity.
+
+| Surface | Rendered | Database | Verdict |
+|---|---|---|---|
+| `/inventory` settled | 27 wines · 234 bottles | 27 · `SUM(lots.qty)` 234 | match |
+| `/inventory` TYPE | **"Red" on 26 of 27** — champagne, prosecco, 2 rosés, 5 whites | `primary_type` `'unknown'` on all 26 | asserted, not read |
+| `/inventory` producer | "Malbec, Unknown"; "Prosecco, Unknown" | `producer` = the wine's own **name** on 26 of 26 | fabricated provenance |
+| `/inventory` house white | "HOUSE WHITE / Unknown Producer, **California**" | bound to another tenant's tier-4 row (USA, 2023) | cross-tenant identity capture |
+| `/inventory` value / currency | "$0 cost basis", `$` everywhere | 27 NULL-cost lots; tenant country `TR` | absence as $0; wrong currency |
+| `/notifications` | "**20 unread**", a CRITICAL card naming **Sim Meyhouse's** wines | this tenant owns **1** row; 27 of 28 belong to two other restaurants | cross-tenant leak |
+| `/dashboard` | 27 · 234 · 175.5 L; Low Stock 2 | matches | match |
+| `/dashboard` low-stock widget | "**Unknown wine(750ml)** · Min:" ×2, blank numbers | the same page's One-Tap card names both correctly | two widgets, one truth |
+| `/reports` | **crashes** (`useState` of null, duplicate React in the Vite dep optimizer) | — | **not audited — dev-server condition, not a proven product defect** |
+| `/recommendations` | 12 rules · **0 active**, unchanged after Recompute | revenue rules cannot fire over 38 NULL totals; runway 120 d | honest; Recompute wrote 1 true `analytics_insights` row |
+| `/simpos/:id/orders` | 39 checks, lines, prices; void shows `Loss $3950.00` | 39 · `lossTotal` 3 950 | match; `$` on ₺; viewer's TZ (7 h out) |
+
+The §9 gates as they stand after this run: **correct ledger delta** — holds, and the pour
+arithmetic reconciles to the millilitre; **replay is a no-op** — holds at the terminal (double
+close refused `403`) and was not re-tested at the webhook. Ten new findings and eleven
+re-measurements are filed in `v3.0-TECH-DEBT.md` (2026-09-05, Antalya lens); the two blocking
+ones are that **notifications are scoped to the user rather than the tenant**, and that an
+unrecognised wine is **asserted to be red** rather than reported as unknown.
+
 ## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
 
 **Premise:** this scenario *is* the POS feed — it only exists once S14 connects one. The marks
