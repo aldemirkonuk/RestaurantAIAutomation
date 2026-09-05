@@ -1,15 +1,19 @@
 # 0119 — An agreed price states its unit
 
-- **Status:** **Accepted in part — O1 phase 0 and phase 1 built, 2026-09-04.** Q1 and Q5
-  are answered by the founder; **Q2, Q3, Q4, Q6 and Q7 remain open and are restated
-  below.** The ADR was written as research only ("No code, no migration, no schema
+- **Status:** **Accepted in part — O1 phase 0, phase 1 and phase 2 built; phases
+  2026-09-04, phase 2 2026-09-05.** Q1 and Q5 are answered by the founder; **Q2, Q3, Q4,
+  Q6 and Q7 remain open and are restated below.** Phase 2 (founder, 2026-09-05: *"teach
+  the list route the pair and show it on the rows; leave legacy as is"*) closed the
+  read side: `GET /procurement/orders` joins the line's pair in the SAME query and the
+  rebuilt ledger row prints the price with its unit, or the register's refusal when
+  there is none. The ADR was written as research only ("No code, no migration, no schema
   change") and that is no longer true of it: phase 0's mail half shipped in `f7ae750e`,
   and on 2026-09-04 the founder chose *"ship the columns and the /orders field
   together"*, which built phase 1 — the migration
   `supabase/migrations/20260905010000_an_agreed_price_states_its_unit.sql`, the writers,
   and the price-unit control on `/orders`. What was NOT built is listed under
   "Still open after phase 1" at the end of the Recommendation.
-- **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided and built)
+- **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided, phases 0-1 built) · 2026-09-05 (phase 2, the read side, built)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** agreed price, price unit, unit of measure, case price, bottle price,
   pack size, split case, deposit, allowance, freight, `procurement_orders.final_price`,
@@ -510,9 +514,18 @@ landed:
 >   answering it; `split_case` is still a word in the vocabulary rather than a decision
 >   (Q6); `normalizeUnitPrice` still reads a 12×375 and a 6×750 as the same per-750 price
 >   (Q7).
-> * **The ledger row still prints a bare number.** `GET /procurement/orders` returns the
->   HEADER (`mapOrderRow`), which carries no price unit, so `LedgerRow` cannot show one
->   without the list endpoint joining the line. Filed in `06-pages/orders.md` §13.
+> * ~~**The ledger row still prints a bare number.**~~ **CLOSED 2026-09-05 (phase 2).**
+>   `listOrders` embeds `procurement_order_items(price_uom, price_pack_size)` in the
+>   query it was already making — one statement, resolved through
+>   `procurement_order_items_order_id_fkey` — and `OrderResponseDto` carries the pair as
+>   `priceUom` / `pricePackSize` in **three** states: stated, JSON `null` (read, states
+>   none), and the keys ABSENT (this route does not read the line). Two defects were
+>   found in the building: the row was reading `unitPrice` / `totalPrice`, names the list
+>   route has never sent, so every live row printed an em dash where the money goes; and
+>   the first build of the fix totalled an unstated price per bottle and printed
+>   `60 × $420.00 = $25,200.00` beside the ledger's own $2,100.00 — this ADR's own error,
+>   reprinted by the screen built to end it. An unstated unit now yields no working at
+>   all. `06-pages/orders.md` §13.10, `LedgerUnit.test.tsx`.
 > * **The legacy `/orders`** (`apps/web/src/pages/Orders.tsx`, what production shows with
 >   `mudavym_design_orders` off) is deliberately unchanged and cannot state a price unit.
 
@@ -673,5 +686,6 @@ found to need a *different* list from the quantity vocabulary; or the header
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-05 | Claude (build, phase 2) | Founder: *"teach the list route the pair and show it on the rows; leave legacy as is."* `listOrders` embeds the line in the query it already made (one statement, not N+1); `mapOrderRow` gained an `AgreedPriceUnitReading` argument defaulting to `{ read: false }` so a route that does not read the line emits NEITHER key rather than a null that would read as "unstated". Two defects found by measuring rather than by reading: `toRow` read key names the route has never sent (pre-fix proof by `git show HEAD:` into same-depth probe files, `$SP/p4ag-prefix-proof.txt` — the row printed an em dash, NOT the bare price the dispatch assumed), and the first build reprinted this ADR's own twelve-times error for an unstated pair, caught in the first capture and now guarded by a test. Also measured: `scripts/check_read_columns_exist.py` is BLIND to columns inside a PostgREST embed — a phantom `price_pack_size_PHANTOM` inside `procurement_order_items(...)` passes, while a phantom top-level column on the same select FAILS at line 1690. 9 new vitest cases, 8 new jest cases; gateway `tsc` clean; `check_gateway_boots.sh` fails on two OTHER builders' uncommitted work. |
 | 2026-09-04 | Claude (build, phase 1) | Founder chose *"ship the columns and the /orders field together"* over both halves of Q1's fork. Built the migration, the four writers and the `/orders` price-unit control in one pass; 42 jest + 14 vitest assertions, each pre-fix behaviour transcribed from `git show HEAD:` copies at `129fbfc6` rather than reverted (the shared worktree's stash rule). The migration was measured against a local Postgres inside a rolled-back transaction: 4 legal shapes accepted, 5 illegal ones refused by constraint name. Q2 answered only as a comment, not as a GENERATED column, and said so. Status moved off "research only", which the ADR's own first line had made untrue. |
 | 2026-09-04 | Claude (research) | Created in answer to ADR 0117 Q6 on the founder's *"research. cover every angle."* Six options mapped across five cost surfaces; the leading candidate (O1) attacked with the two-units-on-one-row objection and the objection's residue conceded rather than argued away; O3 killed on external regulatory evidence (CT's statutory bottle-price formula) rather than on taste. Nine external sources cited with URLs, fetch status marked per source. No code, no migration, no OPEN-DECISIONS edit. ADR number `0119` from `check_adr_numbers_unique.py next_free()` over 628 refs **plus** a `git worktree list` sweep of 51 worktrees, both re-run immediately before writing. |

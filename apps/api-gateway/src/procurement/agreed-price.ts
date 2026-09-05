@@ -383,3 +383,94 @@ export function unstatedPriceUnitSentence(what: string): string {
     `and ranking one against the other recommends the wrong vendor by a factor of the pack.`
   );
 }
+
+/**
+ * What one ROUTE knows about an order's agreed price unit.
+ *
+ * Two states, and the distinction between them is the whole point of the type:
+ * `{ read: false }` means this route never looked at `procurement_order_items`,
+ * so it can say nothing; `{ read: true, stated: null }` means it looked and the
+ * line states no unit. They serialise differently on purpose — the first omits
+ * both DTO keys, the second sends them as JSON `null` — because a consumer that
+ * read an ABSENT key as "unstated" would be reporting the absence of a read as
+ * a fact about the row, which is the fault ADR 0020 and the house's
+ * absence-reported-as-health rule name.
+ *
+ * `mapOrderRow` defaults to `{ read: false }`, so a new caller that forgets to
+ * pass a reading says nothing rather than saying "unstated": the failure mode
+ * of forgetting is silence, never a fabricated fact.
+ */
+export type AgreedPriceUnitReading =
+  | { read: false }
+  | { read: true; stated: StatedPriceUnit | null };
+
+/**
+ * The one price unit an ORDER can be said to have, folded from its lines.
+ *
+ * The pair lives on the LINE (ADR 0119 option O1) and the header carries no
+ * unit of its own — `procurement_orders.final_price` is an echo by comment
+ * (`20260905010000_an_agreed_price_states_its_unit.sql`). So a header-level
+ * field can only ever report a unit the lines AGREE on, and this is where that
+ * agreement is decided:
+ *
+ *   * no lines at all       -> null. A header with no line under it states
+ *                              nothing.
+ *   * one line, pair stated -> that pair. The ordinary case: one line per order
+ *                              (`upsertOrderLine` writes `line_no: 1` and
+ *                              deletes the rest before inserting).
+ *   * any line unstated     -> null. A half-stated order has no single unit,
+ *                              and printing the stated half would attach one
+ *                              line's unit to another line's money.
+ *   * lines that DISAGREE   -> null, for the same reason. Two units is not a
+ *                              header fact.
+ *
+ * Every null here reaches the page as the register's own refusal sentence, so a
+ * fold that loses a unit costs a sentence, never a wrong number.
+ */
+export function foldOrderPriceUnit(
+  lines:
+    | ReadonlyArray<{
+        price_uom?: string | null;
+        price_pack_size?: number | null;
+      }>
+    | null
+    | undefined,
+): StatedPriceUnit | null {
+  if (!Array.isArray(lines) || lines.length === 0) return null;
+
+  let agreed: StatedPriceUnit | null = null;
+  for (const line of lines) {
+    const stated = readStatedPriceUnit(line);
+    if (!stated) return null;
+    if (agreed === null) {
+      agreed = stated;
+      continue;
+    }
+    if (
+      agreed.priceUom !== stated.priceUom ||
+      agreed.pricePackSize !== stated.pricePackSize
+    ) {
+      return null;
+    }
+  }
+  return agreed;
+}
+
+/** One embedded `procurement_order_items` row, as far as the price unit cares. */
+export interface EmbeddedPriceUnitLine {
+  price_uom?: string | null;
+  price_pack_size?: number | null;
+}
+
+/**
+ * PostgREST hands an embedded child back as an array, as a single object, or
+ * not at all, depending on the relationship it inferred and how many rows
+ * matched. All three are the same fact — the lines under this order — so they
+ * are flattened here rather than at each call site, where the single-object
+ * case is the one that gets forgotten and then silently reads as "no lines".
+ */
+export function embeddedOrderLines(value: unknown): EmbeddedPriceUnitLine[] {
+  if (Array.isArray(value)) return value as EmbeddedPriceUnitLine[];
+  if (value && typeof value === "object") return [value as EmbeddedPriceUnitLine];
+  return [];
+}

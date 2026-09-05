@@ -18,6 +18,14 @@ import { useOrders } from '@/hooks/queries/useOrderQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num } from './format';
+import {
+  PRICE_UOMS,
+  agreementTotal,
+  readPriceUnitFromWire,
+  type AgreementTotal,
+  type PriceUnitReading,
+  type PriceUom,
+} from './price-unit';
 
 export type Stage = 'pending' | 'approved' | 'ordered' | 'delivered';
 export const STAGES: Stage[] = ['pending', 'approved', 'ordered', 'delivered'];
@@ -68,6 +76,30 @@ export { canonicalStatus };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: string | null | undefined): boolean => !!v && UUID_RE.test(v);
 
+/**
+ * The three fields `GET /procurement/orders` sends that the shared `Order` type
+ * does not yet name.
+ *
+ * `finalPrice` / `totalCost` are `OrderResponseDto`'s ACTUAL keys for the two
+ * figures this page prints. The shared type calls them `unitPrice` /
+ * `totalPrice`, which the list route has never sent — see `toRow` for the
+ * measured consequence. `bottlesTotal` and `unitType` are the two operands the
+ * gateway totals with, and `priceUom` / `pricePackSize` are ADR 0119's pair.
+ *
+ * Declared here rather than added to `services/api/types.ts` because that file
+ * is shared with every other order surface and this pass owns only
+ * `pages/orders/next`. The right home is the shared type; §13 of the page note
+ * carries that as a pointer.
+ */
+type OrderWire = Order & {
+  finalPrice?: number | null;
+  totalCost?: number | null;
+  bottlesTotal?: number | null;
+  unitType?: string | null;
+  priceUom?: string | null;
+  pricePackSize?: number | null;
+};
+
 export interface OrderRowVM {
   id: string;
   orderNumber: string | null;
@@ -75,8 +107,28 @@ export interface OrderRowVM {
   producer: string | null;
   providerName: string | null;
   quantity: number | null;
+  /**
+   * The AGREED price, stated per `priceUom` — not necessarily per bottle. Read
+   * it only alongside `priceUnit`; on its own it is the ambiguous number ADR
+   * 0119 exists to end.
+   */
   unitPrice: number | null;
-  /** quantity × unitPrice when both are known — the working. */
+  /** Bottles (or kegs/litres, when the unit is opaque) the order comes to. */
+  bottlesTotal: number | null;
+  /** The unit the order's QUANTITY is counted in. Independent of the price's. */
+  unitType: PriceUom | null;
+  /**
+   * What the route said about the unit `unitPrice` is stated in — including
+   * whether it said anything at all (`read`). See `readPriceUnitFromWire`.
+   */
+  priceUnit: PriceUnitReading;
+  /**
+   * The total worked out from the price and ITS unit, with the working in
+   * words. `null` when the operands are not all known — never a zero, and never
+   * a per-bottle multiplication applied to a per-case price.
+   */
+  agreement: AgreementTotal | null;
+  /** The arithmetic the page can show. Null when it cannot be done honestly. */
   computedTotal: number | null;
   /** The server's own totalPrice, kept separately so a disagreement can be said. */
   listedTotal: number | null;
@@ -161,12 +213,82 @@ export interface OrdersNextData {
   approvalPolicyNote: string | null;
 }
 
-function toRow(o: Order, providerNameById: Map<string, string>): OrderRowVM {
+/** The order's own quantity unit, when it is one of the seven the schema allows. */
+function readUnitType(v: unknown): PriceUom | null {
+  const raw = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  return (PRICE_UOMS as readonly string[]).includes(raw) ? (raw as PriceUom) : null;
+}
+
+/**
+ * One wire row into one ledger row. Exported so the mapping can be tested on
+ * the payload `GET /procurement/orders` ACTUALLY sends — the defect this pass
+ * found lived entirely in the key names, and a test that builds an `OrderRowVM`
+ * by hand cannot see a key name that was never read.
+ */
+export function toRow(o: OrderWire, providerNameById: Map<string, string>): OrderRowVM {
   const status = canonicalStatus(o.status);
   const quantity = num(o.quantity);
-  const unitPrice = num(o.unitPrice);
-  const listedTotal = num(o.totalPrice);
-  const computedTotal = quantity !== null && unitPrice !== null ? quantity * unitPrice : null;
+
+  /*
+   * `finalPrice` and `totalCost` FIRST, because those are the keys the route
+   * actually sends.
+   *
+   * `OrderResponseDto` has always called them that (`mapOrderRow`); the shared
+   * `Order` type calls them `unitPrice` / `totalPrice`, which appear nowhere in
+   * the list route's payload. Reading only the shared names made both figures
+   * `undefined` for every live row, so `total` was null and the ledger printed
+   * an em dash in the money column, the working line, and the seal's own label
+   * ("Hold to approve · —"). The em dash was honest about a number the page did
+   * not have; it was not honest about WHY. Proven by `LedgerUnit.test.tsx`
+   * case 1, which fails against the pre-fix hook.
+   *
+   * The shared names are kept as fallbacks rather than deleted: `useOrders` is
+   * a generic hook and a caller that does hand it the shared shape should not
+   * silently lose its prices to this fix.
+   */
+  const unitPrice = num(o.finalPrice ?? o.unitPrice);
+  const listedTotal = num(o.totalCost ?? o.totalPrice);
+  const bottlesTotal = num(o.bottlesTotal);
+  const unitType = readUnitType(o.unitType);
+  const priceUnit = readPriceUnitFromWire(o);
+
+  /*
+   * The working, drawn from the PRICE's unit — the same arithmetic the gateway
+   * did (`agreedOrderTotal`), via the same function `AgreementSheet` shows
+   * before saving.
+   *
+   * ATTEMPTED ONLY WHEN THE PRICE'S UNIT IS STATED, and that guard is the whole
+   * point rather than a cheap exit. `agreementTotal` will happily total an
+   * UNSTATED price on "the old per-bottle convention" — the gateway does the
+   * same when it writes `total_cost`, and it must, because a stored total
+   * cannot be null. A PAGE has no such obligation, and printing that figure was
+   * measurably worse than printing nothing: the first capture of this row
+   * (2026-09-05, `$SP/shots-ledger-unit/`) showed a $420-per-case agreement
+   * whose unit was unstated rendering "60 × $420.00 = $25,200.00" in bold
+   * beside the ledger's own $2,100.00 — the exact twelve-times error ADR 0119
+   * exists to end, reprinted by the screen that was built to end it. An
+   * unstated unit now yields NO working, and the row says why.
+   *
+   * The other two operands — the order's own unit, and how many bottles are in
+   * one of them — are required for the same reason: defaulting `bottlesPerUnit`
+   * to 1 is the per-bottle assumption wearing a different hat.
+   */
+  const bottlesPerUnit =
+    quantity !== null && quantity > 0 && bottlesTotal !== null && bottlesTotal > 0
+      ? bottlesTotal / quantity
+      : null;
+  const agreement =
+    priceUnit.stated !== null && unitType !== null && bottlesPerUnit !== null
+      ? agreementTotal({
+          price: unitPrice,
+          stated: priceUnit.stated,
+          quantity,
+          unitType,
+          bottlesPerUnit,
+        })
+      : null;
+  const computedTotal = agreement && agreement.ok ? agreement.total : null;
+
   const rawProvider = o.providerName && !isUuid(o.providerName) ? o.providerName : null;
   const recurring = !!o.recurrence;
   const freq = o.recurrence?.frequency ?? null;
@@ -178,6 +300,10 @@ function toRow(o: Order, providerNameById: Map<string, string>): OrderRowVM {
     providerName: rawProvider ?? providerNameById.get(o.providerId) ?? null,
     quantity,
     unitPrice,
+    bottlesTotal,
+    unitType,
+    priceUnit,
+    agreement,
     computedTotal,
     listedTotal,
     total: listedTotal ?? computedTotal,

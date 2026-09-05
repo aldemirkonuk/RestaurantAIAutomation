@@ -53,6 +53,7 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - **Write down an agreement, stating the unit its price is in** (2026-09-04, ADR 0119 phase 1) — the rebuilt page's own composer: wine, vendor, quantity in the order's own unit with its pack, and separately the price with a **price-unit picker** (per bottle / per case / per keg / per pack / per split case / per each / per litre) and a pack field shown only for a unit that holds more than one. The two units may differ, and the page says that is ordinary. Behind the flag only; the legacy desk (`pages/Orders.tsx`) is unchanged and cannot state a price unit
 - **The agreement's total is drawn from the stated pair, with its working printed** — five cases of twelve at $420 per case reads $2,100, not the $25,200 the old per-bottle arithmetic gave; a quantity or price not yet typed leaves the total an em dash, never a zero
 - **The price register's refusal is said on the page, before the save** — an agreement saved with no price unit shows, in the register's own words, that it will not enter the price register and why. It still saves (a NULL pair is an ordinary row); nobody saves one unknowingly. A price unit the order cannot be counted in (a keg order priced per bottle) blocks the save with the sentence the gateway would answer
+- **Every ledger row states the unit its price is in, and shows the working in that unit** (2026-09-05, ADR 0119 phase 2) — `GET /procurement/orders` joins the line's pair in the same query and the expanded row prints "$420.00 per case (12 bottles)" above "60 bottles ÷ 12 = 5 cases × $420.00 = $2,100.00". A row whose unit is UNSTATED — every order placed before ADR 0119 — prints the price, the register's refusal in words, and **no working of the page's own**: the per-bottle convention would print a case price twelve times over, which is the error this ADR exists to end. A pairing the order cannot be counted in (per keg, counted in bottles) prints the refusal instead of a total, and a route that never read the line says exactly that rather than announcing a refusal about a line nobody looked at
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
 
@@ -502,7 +503,7 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
     not acts to recreate. *Rework candidates for the founder: reject-an-order on the
     rebuilt page; the several-responses-per-order comparison; the negotiation summary.*
 
-### An agreed price has no unit — research 2026-09-04, phase 1 BUILT 2026-09-04 (ADR 0119)
+### An agreed price has no unit — research 2026-09-04, phase 1 BUILT 2026-09-04, phase 2 BUILT 2026-09-05, CLOSED (ADR 0119)
 
 The founder asked for the full graph behind ADR 0117's Q6 (*"a case-priced agreement has
 no unit to state its price in"*). The research is
@@ -513,7 +514,8 @@ is the surface that both creates the ambiguity and hides it. The research built 
 
 **What this page showed BEFORE phase 1 — kept as the record of the defect, not as a
 description of today.** Measured at `HEAD` = `e8a7d6f5`; the first three bullets are
-FIXED (the fourth's `logger.warn` still stands for an existing row, which is §13.10):
+FIXED (the fourth's `logger.warn` still stands in the GATEWAY, but the row now prints the
+refusal in words — phase 2, 2026-09-05):
 
 - `procurement_orders` holds four price columns — `quoted_price`, `negotiated_price`,
   `final_price`, `invoice_unit_price` (`20260805000000_baseline_from_production.sql:4523-4525,
@@ -556,16 +558,37 @@ documented cause of the receiving door's pack-size defect
 **What this page owed, and what it now owes.** The three items below were written
 while ADR 0119 was research. Two are DONE:
 
-7. ~~**Print the unit beside the price.**~~ **PARTLY DONE 2026-09-04.** The composer
-   prints it and shows the working for the total; the LEDGER ROWS still show a bare
-   number, which is now §13.10 above with the exact reason (the list endpoint returns
-   the header, and the pair lives on the line).
+7. ~~**Print the unit beside the price.**~~ **DONE 2026-09-05 (phase 2).**
+   `GET /procurement/orders` now joins the line's `(price_uom, price_pack_size)` in the
+   SAME query (a PostgREST embed through `procurement_order_items_order_id_fkey`, not an
+   N+1), `OrderResponseDto` carries them as `priceUom` / `pricePackSize`, and the ledger
+   row prints "$420.00 per case (12 bottles)" with the working drawn from that unit
+   (`pages/orders/next/LedgerRow.tsx`, `useOrdersNextData.ts` `toRow`,
+   `agreed-price.ts` `foldOrderPriceUnit`; `LedgerUnit.test.tsx`, 9 cases).
+
+   **Three DTO values, not two.** A stated unit; JSON `null` for "the line was read and
+   states none"; and the KEYS ABSENT for "this route does not read the line". Only the
+   list route (and `/orders/history`, the same method) carries them. Reading absence as
+   "unstated" would be absence-reported-as-health, so the page keeps the third state and
+   prints a different sentence for it.
+
+   **Two defects found while building it, both fixed here.** (a) `toRow` read
+   `o.unitPrice` / `o.totalPrice` — names the list route has NEVER sent; the DTO's are
+   `finalPrice` / `totalCost`. Every live row therefore rendered an em dash in the money
+   column, the working line AND the seal's label ("Hold to approve · —"). Measured on
+   HEAD before the fix; see `$SP/p4ag-prefix-proof.txt`. (b) The first build of this
+   change totalled an UNSTATED price on "the old per-bottle convention" and printed
+   `60 × $420.00 = $25,200.00` in bold beside the ledger's own $2,100.00 — the
+   twelve-times error this ADR exists to end, reprinted by the screen built to end it.
+   Caught in the first capture. An unstated unit now yields NO working of the page's own
+   and says why.
 8. ~~**Say the refusal out loud.**~~ **DONE 2026-09-04.** The composer prints the
    register's own refusal before the save, so an agreement with no stated price unit
    is never saved unknowingly (`pages/orders/next/price-unit.ts`
    `UNSTATED_PRICE_UNIT_REFUSAL`, mirroring
    `apps/api-gateway/src/procurement/agreed-price.ts::unstatedPriceUnitSentence`).
-   Still not said on an EXISTING row — that is §13.10's other half.
+   Said on an EXISTING row too since 2026-09-05 (`ROW_UNSTATED_PRICE_UNIT`), which
+   closes the other half.
 9. ~~**Fix the confirmation email.**~~ **DONE** — phase 0 (`f7ae750e`), and phase 1
    taught the same sentence to state the price's own unit when the line carries one.
 

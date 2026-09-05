@@ -756,6 +756,56 @@ export class OrderResponseDto {
 
   @ApiPropertyOptional()
   wineName?: string;
+
+  /**
+   * The unit the agreed price is stated in — ADR 0119, read from the LINE.
+   *
+   * THREE VALUES, AND THE THIRD ONE IS THE POINT:
+   *   * `"case"` (etc.) — the line states this unit, and `pricePackSize` says
+   *     how many bottles are in one of them. The two always travel together.
+   *   * `null` — the line was READ and states no unit. That is a refusal, not a
+   *     default: the price register will not take this agreement, and the page
+   *     prints the register's own sentence instead of a bare number.
+   *   * **the key is ABSENT** — this route does not read
+   *     `procurement_order_items` at all, so it knows nothing either way. Only
+   *     `GET /procurement/orders` (and `/orders/history`, which is the same
+   *     method) joins the line today; every other route returning an
+   *     `OrderResponseDto` omits both keys.
+   *
+   * A consumer must never read the absent case as "unstated" — that is the
+   * absence-reported-as-health fault (ADR 0020), and it is why this is
+   * `string | null` on an optional property rather than a plain optional
+   * string: missing and null are different answers, and JSON keeps them apart.
+   *
+   * `procurement_orders` carries no price unit of its own — the header's
+   * `final_price` is an echo of the line by column comment
+   * (`20260905010000_an_agreed_price_states_its_unit.sql`) — so this field
+   * reports a unit only when every line under the order agrees on one
+   * (`agreed-price.ts` `foldOrderPriceUnit`).
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "case",
+    description:
+      "The unit the agreed price is stated in, read from the order line. null = the line was read and states none, so the price register refuses it. Key ABSENT = this route does not read the line and knows nothing either way.",
+  })
+  priceUom?: string | null;
+
+  /**
+   * How many bottles are in one `priceUom`. Both halves or neither: the CHECK
+   * `procurement_order_items_price_unit_pair_check` says so in the database,
+   * and `readStatedPriceUnit` reads a half-written row as UNSTATED rather than
+   * as half a claim.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description:
+      "Bottles in one priceUom. Travels with priceUom: both stated, both null, or both keys absent.",
+  })
+  pricePackSize?: number | null;
 }
 
 export class OrderListResponseDto {

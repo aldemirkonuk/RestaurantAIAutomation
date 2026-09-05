@@ -33,6 +33,8 @@ import {
   PRICE_UOM_TYPES,
   agreedOrderTotal,
   describeAgreedPrice,
+  embeddedOrderLines,
+  foldOrderPriceUnit,
   perBottleFromAgreedPrice,
   readStatedPriceUnit,
   resolveStatedPriceUnit,
@@ -686,5 +688,91 @@ describe("createOrder — the pair reaches the row, or the order is refused", ()
       response: { reason: "price_unit_not_countable" },
     });
     expect(calls.orderInserts).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR 0119 phase 2 — the LIST ROUTE carries the pair, and says when it cannot.
+//
+// Phase 1 put the pair on the line and taught the sheet to ask for it. Nothing
+// downstream could read it: `GET /procurement/orders` did not join
+// `procurement_order_items`, so /orders printed a figure that could have been a
+// bottle price or a case price twelve times its size. These cases own the fold
+// from lines to header and the three-state DTO shape it feeds.
+// ---------------------------------------------------------------------------
+describe("the header's price unit is folded from the lines", () => {
+  it("one stated line is the order's unit", () => {
+    expect(
+      foldOrderPriceUnit([{ price_uom: "case", price_pack_size: 12 }]),
+    ).toEqual({ priceUom: "case", pricePackSize: 12 });
+  });
+
+  it("no lines at all states nothing", () => {
+    expect(foldOrderPriceUnit([])).toBeNull();
+    expect(foldOrderPriceUnit(null)).toBeNull();
+    expect(foldOrderPriceUnit(undefined)).toBeNull();
+  });
+
+  it("a half-written pair is UNSTATED, never half a claim", () => {
+    expect(foldOrderPriceUnit([{ price_uom: "case", price_pack_size: null }])).toBeNull();
+    expect(foldOrderPriceUnit([{ price_uom: null, price_pack_size: 12 }])).toBeNull();
+  });
+
+  /*
+   * The header cannot carry two units, so it carries none. Reporting the first
+   * line's unit would attach one line's word to another line's money — the
+   * exact failure mode ADR 0119 exists to end, moved from the row to the
+   * header. `upsertOrderLine` writes one line per order today, so this is
+   * unreachable through the app; it is asserted because the day it becomes
+   * reachable, a silent first-line-wins would be indistinguishable from truth.
+   */
+  it("lines that DISAGREE state nothing", () => {
+    expect(
+      foldOrderPriceUnit([
+        { price_uom: "case", price_pack_size: 12 },
+        { price_uom: "bottle", price_pack_size: 1 },
+      ]),
+    ).toBeNull();
+    expect(
+      foldOrderPriceUnit([
+        { price_uom: "case", price_pack_size: 12 },
+        { price_uom: "case", price_pack_size: 6 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("one unstated line among stated ones states nothing", () => {
+    expect(
+      foldOrderPriceUnit([
+        { price_uom: "case", price_pack_size: 12 },
+        { price_uom: null, price_pack_size: null },
+      ]),
+    ).toBeNull();
+  });
+
+  it("lines that AGREE keep their unit", () => {
+    expect(
+      foldOrderPriceUnit([
+        { price_uom: "case", price_pack_size: 12 },
+        { price_uom: "case", price_pack_size: 12 },
+      ]),
+    ).toEqual({ priceUom: "case", pricePackSize: 12 });
+  });
+
+  /*
+   * PostgREST returns an embedded child as an array, as one object, or not at
+   * all. The single-object case is the one that gets forgotten, and forgetting
+   * it reads as "no lines" — a stated pair silently downgraded to a refusal.
+   */
+  it("reads an embed however PostgREST shapes it", () => {
+    const line = { price_uom: "case", price_pack_size: 12 };
+    expect(embeddedOrderLines([line])).toEqual([line]);
+    expect(embeddedOrderLines(line)).toEqual([line]);
+    expect(embeddedOrderLines(null)).toEqual([]);
+    expect(embeddedOrderLines(undefined)).toEqual([]);
+    expect(foldOrderPriceUnit(embeddedOrderLines(line))).toEqual({
+      priceUom: "case",
+      pricePackSize: 12,
+    });
   });
 });

@@ -56,10 +56,13 @@ import { Uom } from "./documents/document-types";
 import {
   agreedOrderTotal,
   describeAgreedPrice,
+  embeddedOrderLines,
+  foldOrderPriceUnit,
   perBottleFromAgreedPrice,
   readStatedPriceUnit,
   resolveStatedPriceUnit,
   unstatedPriceUnitSentence,
+  type AgreedPriceUnitReading,
   type StatedPriceUnit,
 } from "./agreed-price";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
@@ -1671,9 +1674,24 @@ export class ProcurementService {
     const fromIndex = (page - 1) * limit;
     const toIndex = fromIndex + limit - 1;
 
+    // ONE query, not N+1. The agreed price's unit lives on the LINE (ADR 0119)
+    // and `readAgreedPriceUnit` reads it per order — correct for a single-order
+    // path, and a page of fifty orders would be fifty extra round trips. The
+    // embed rides on the query that was already being made: PostgREST resolves
+    // it through `procurement_order_items_order_id_fkey`
+    // (`20260901150000_order_line_capture_and_units.sql`), which is the only
+    // relationship between the two tables, so the join is unambiguous.
+    //
+    // The embed does NOT filter by restaurant_id. It does not need to: the FK
+    // constrains it to lines of orders already scoped by the `.eq` below, and a
+    // second tenant predicate on the child would be a second place for the two
+    // scopes to disagree.
     let supabaseQuery = this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name)", { count: "exact" })
+      .select(
+        "*, inventory:inventory_id(wine_name), procurement_order_items(price_uom, price_pack_size)",
+        { count: "exact" },
+      )
       .eq("restaurant_id", restaurantId);
 
     if (query.status) {
@@ -1712,7 +1730,17 @@ export class ProcurementService {
           (row.inventory as any)?.wine?.name ||
           null,
       };
-      return this.mapOrderRow(orderRow);
+      // `read: true` unconditionally, because the embed above is part of the
+      // same statement: if it had failed, `error` was thrown four lines up and
+      // there is no row here to map. An order with no line folds to `null` —
+      // "read, and states nothing" — which is the honest reading of a header
+      // with nothing under it, and is what the page prints the refusal for.
+      return this.mapOrderRow(orderRow, {
+        read: true,
+        stated: foldOrderPriceUnit(
+          embeddedOrderLines(row.procurement_order_items),
+        ),
+      });
     });
     const total = count ?? orders.length;
 
@@ -3936,7 +3964,28 @@ export class ProcurementService {
     });
   }
 
-  private mapOrderRow(row: ProcurementOrderRow): OrderResponseDto {
+  /**
+   * One `procurement_orders` row as the API states it.
+   *
+   * `priceUnit` is what THIS ROUTE knows about the agreed price's unit (ADR
+   * 0119). It defaults to `{ read: false }`, which emits NEITHER DTO key, and
+   * that default is the safe one on purpose: a route that does not join
+   * `procurement_order_items` has not learned that the price is unstated, it
+   * has learned nothing, and the two must not serialise the same way. A caller
+   * that forgets the argument therefore says nothing rather than asserting
+   * "no unit stated" about a line it never read.
+   *
+   * `undefined` is used for the not-read case rather than omitting the keys
+   * behind a conditional spread: `JSON.stringify` drops an undefined value, so
+   * the wire shape is identical, and the object literal keeps every key
+   * explicit — which is both the house rule for write payloads
+   * (`check_order_capture_contract.py` cannot read a `...(x ? {} : {})`) and
+   * the reason a reader of this method can see all twenty fields at once.
+   */
+  private mapOrderRow(
+    row: ProcurementOrderRow,
+    priceUnit: AgreedPriceUnitReading = { read: false },
+  ): OrderResponseDto {
     return {
       id: row.id,
       orderNumber: row.order_number,
@@ -3958,6 +4007,13 @@ export class ProcurementService {
       isEmergency: row.is_emergency ?? undefined,
       priorityLevel: row.priority_level ?? undefined,
       wineName: row.wine_name ?? undefined,
+      // Both keys, always written, and both `undefined` when the line was not
+      // read — absence on the wire, never a null that would read as "the line
+      // states no unit". See `AgreedPriceUnitReading`.
+      priceUom: priceUnit.read ? (priceUnit.stated?.priceUom ?? null) : undefined,
+      pricePackSize: priceUnit.read
+        ? (priceUnit.stated?.pricePackSize ?? null)
+        : undefined,
     };
   }
 
@@ -5724,6 +5780,18 @@ export class ProcurementService {
       aiGenerated: row.ai_generated ?? null,
       specialConditions:
         row.conversation_context?.analysis?.special_conditions ?? [],
+      // WHO wrote `rolling_summary`, and WHEN. Both are already persisted beside
+      // the summary by the understand step
+      // (`common/orchestrator/inbound-responder.service.ts` writes
+      // `conversation_context.model` and `.analyzed_at` in the same update that
+      // writes `rolling_summary`); nothing read them back, so every screen that
+      // printed the sentence printed it unattributed. A summary is a model's
+      // claim about a vendor's words, and an unattributed claim reads as the
+      // house's own. Null on every outbound row and on inbound rows that
+      // predate the field — which is UNKNOWN, and the page says so rather than
+      // naming a model it cannot prove.
+      summaryModel: row.conversation_context?.model ?? null,
+      summaryAnalyzedAt: row.conversation_context?.analyzed_at ?? null,
       // Triage classification (P6 card): email_class, is_automated, requires_reply,
       // injection_suspected, confidence, transport. Null on outbound / pre-triage rows.
       classification: row.conversation_context?.classification ?? null,

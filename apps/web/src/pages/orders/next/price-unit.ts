@@ -171,3 +171,80 @@ export const UNSTATED_PRICE_UNIT_REFUSAL =
 export function halfStatedRefusal(uom: PriceUom): string {
   return `A price stated "per ${uom.replace('_', ' ')}" also has to say how many bottles are in one. Half a statement cannot be converted, so it is refused rather than completed with a guess.`;
 }
+
+/**
+ * What the LIST ROUTE said about one order's price unit — and whether it said
+ * anything at all.
+ *
+ * `GET /procurement/orders` carries `priceUom` / `pricePackSize` since ADR 0119
+ * phase 2, and the DTO's contract has three values, not two:
+ *
+ *   * both stated        -> `{ read: true, stated: {...} }`
+ *   * both JSON `null`   -> `{ read: true, stated: null }` — the line was read
+ *                           and states no unit. The register refuses it, and
+ *                           the row prints that refusal.
+ *   * the KEYS ABSENT    -> `{ read: false, stated: null }` — this payload came
+ *                           from a route that does not read the order line, so
+ *                           nothing here knows either way.
+ *
+ * The third case is the one that has to survive: reading an absent key as
+ * "unstated" would print a refusal about a line nobody looked at, which is the
+ * absence-reported-as-health fault pointed the other way — a claim of knowledge
+ * where there is none. `'priceUom' in o` is the test, because that is exactly
+ * the distinction JSON preserves.
+ *
+ * A half-stated pair (one key null, the other set) is read as UNSTATED rather
+ * than as half a claim, matching the gateway's `readStatedPriceUnit` and the
+ * database CHECK that makes it unreachable in the first place.
+ */
+export interface PriceUnitReading {
+  read: boolean;
+  stated: StatedPriceUnit | null;
+}
+
+export function readPriceUnitFromWire(o: {
+  priceUom?: string | null;
+  pricePackSize?: number | null;
+}): PriceUnitReading {
+  const read = 'priceUom' in o || 'pricePackSize' in o;
+  if (!read) return { read: false, stated: null };
+
+  const raw = typeof o.priceUom === 'string' ? o.priceUom.trim() : '';
+  const pack = Number(o.pricePackSize);
+  if (raw === '' || !Number.isInteger(pack) || pack < 1) {
+    return { read: true, stated: null };
+  }
+  const uom = (PRICE_UOMS as readonly string[]).includes(raw)
+    ? (raw as PriceUom)
+    : null;
+  if (uom === null) return { read: true, stated: null };
+  if (!MULTIPLYING.has(uom) && pack !== 1) return { read: true, stated: null };
+  return { read: true, stated: { priceUom: uom, pricePackSize: pack } };
+}
+
+/**
+ * The sentence a ledger row prints under a price whose unit is not stated.
+ *
+ * Shorter than `UNSTATED_PRICE_UNIT_REFUSAL`, which is written for the moment
+ * of SAVING (it says "saved without a price unit" and offers the fix). On a row
+ * the agreement already exists, so the row states the consequence in the
+ * present tense instead of warning about it. Same fact, same register, and the
+ * gateway's `unstatedPriceUnitSentence` is the authority if the two drift.
+ */
+export const ROW_UNSTATED_PRICE_UNIT =
+  'No unit is stated for this price, so the agreement is not on the price register. ' +
+  'A number with no unit cannot be told apart from a case price twelve times its size.';
+
+/**
+ * The sentence a row prints when the PAGE was never told, as distinct from
+ * being told "nothing was stated".
+ *
+ * `GET /procurement/orders` always carries the pair, so this is unreachable
+ * from the ledger today. It exists because the alternative to an unreachable
+ * sentence is a reachable lie: the day a second route feeds these rows without
+ * the join, the row would otherwise announce a refusal about a line that was
+ * never read.
+ */
+export const ROW_PRICE_UNIT_NOT_READ =
+  'This view did not read the order line, so nothing here says what unit the price is in. ' +
+  'That is not the same as the line stating none.';

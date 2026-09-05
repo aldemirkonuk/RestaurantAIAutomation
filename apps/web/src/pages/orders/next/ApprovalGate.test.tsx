@@ -65,6 +65,13 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     providerName: 'Anadolu',
     quantity: 5,
     unitPrice: 400,
+    // Five bottles at a stated per-bottle price: the shape where the price's
+    // unit changes nothing, so these gate cases keep testing the gate rather
+    // than ADR 0119's arithmetic (that lives in `LedgerUnit.test.tsx`).
+    bottlesTotal: 5,
+    unitType: 'bottle',
+    priceUnit: { read: true, stated: { priceUom: 'bottle', pricePackSize: 1 } },
+    agreement: { ok: true, total: 2000, working: '5 × $400.00 per bottle.' },
     computedTotal: 2000,
     listedTotal: 2000,
     total: 2000,

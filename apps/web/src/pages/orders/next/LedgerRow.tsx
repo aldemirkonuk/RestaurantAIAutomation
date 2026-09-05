@@ -4,9 +4,12 @@
  * Motion contract (MOTIONS.md):
  * - expand/collapse is the `settle` token on grid-template-rows 0fr→1fr, and
  *   the chevron turns on the same token — one curve, one duration, one event;
- * - the expanded body shows the working for the total (qty × unit price, and
- *   the server's listed total when the two disagree — a disagreement is said,
- *   never averaged away);
+ * - the expanded body shows the working for the total, drawn from the unit the
+ *   PRICE is stated in rather than assumed per bottle (ADR 0119) — and the
+ *   server's listed total when the two disagree, because a disagreement is
+ *   said, never averaged away. A price whose unit is UNSTATED gets no working
+ *   at all and the register's refusal instead: the per-bottle convention would
+ *   print a case price twelve times over, which is the error this ADR ends;
  * - approving is the ceremony: HoldToApprove completing into the Seal landing
  *   on the stamp spring, wired to the REAL approve mutation. A refusal from
  *   the gateway is stated in place and the die resets — the row never
@@ -22,6 +25,12 @@ import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
+import {
+  PRICE_UOM_LABEL,
+  ROW_PRICE_UNIT_NOT_READ,
+  ROW_UNSTATED_PRICE_UNIT,
+  describeStatedPrice,
+} from './price-unit';
 import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
 export interface LedgerRowProps {
@@ -42,6 +51,22 @@ export interface LedgerRowProps {
    * gateway still refuses independently, which the row prints.
    */
   approval?: ApprovalGateRow;
+  /**
+   * Open the responses sheet on this order.
+   *
+   * The sheet is owned by the PAGE, not by the row: it does a per-order read
+   * (`GET /procurement/orders/:id/conversations`) and one mounted instance per
+   * row would be one query subscription per row, all but one of them disabled.
+   *
+   * The control is offered on every live row rather than only on rows known to
+   * have an answer, because nothing on this page knows which those are: the
+   * list route returns the order header and says nothing about correspondence,
+   * and the only house-wide conversation read is capped at 100 rows — so a row
+   * hidden on that basis would be a claim of "no answer" the page cannot make.
+   * The sheet asks the route built for the question and answers it there, in
+   * three distinct states: answers, none, or unreadable.
+   */
+  onOpenResponses?: () => void;
   /** Why the gate could not be read. Said in words above the ceremony. */
   approvalGateError?: string | null;
 }
@@ -69,6 +94,7 @@ export function LedgerRow({
   onSelectChange,
   bulkRunning,
   approval,
+  onOpenResponses,
   approvalGateError,
 }: LedgerRowProps) {
   const approve = useApproveOrder();
@@ -240,13 +266,97 @@ export function LedgerRow({
                   lineHeight: 1.7,
                 }}
               >
-                <div>
-                  {row.quantity !== null ? row.quantity : EM} × {fmtMoney(row.unitPrice)}
-                  <span style={{ color: 'var(--ink-3, #7C7365)' }}> = </span>
+                {/*
+                  The AGREED PRICE, with the unit it is stated in — ADR 0119.
+
+                  This is the number the whole ADR is about: "$420.00" beside a
+                  quantity in cases reads as per-bottle to the code and per-case
+                  to the desk, and the two differ by the pack in the direction
+                  that looks like a bargain. `describeStatedPrice` is the same
+                  function `AgreementSheet` prints at the moment of saving, so
+                  the row and the sheet cannot describe one agreement two ways.
+                */}
+                <div data-testid="agreed-price">
+                  {label('Agreed price')}{' '}
                   <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
-                    {fmtMoney(row.computedTotal ?? row.listedTotal)}
+                    {describeStatedPrice(row.unitPrice, row.priceUnit.stated) ?? EM}
                   </span>
                 </div>
+                {/*
+                  The working, drawn from the PRICE's unit rather than assumed
+                  per bottle. Null when an operand is missing — in which case
+                  the row says so instead of multiplying two numbers that are
+                  not in the same unit.
+                */}
+                <div>
+                  {row.agreement && row.agreement.ok ? (
+                    <>
+                      <span data-testid="row-working">{row.agreement.working}</span>
+                      <span style={{ color: 'var(--ink-3, #7C7365)' }}> = </span>
+                      <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
+                        {fmtMoney(row.agreement.total)}
+                      </span>
+                    </>
+                  ) : row.agreement && !row.agreement.ok ? (
+                    <span data-testid="row-uncountable" style={{ color: 'var(--seal-deep, #14515C)' }}>
+                      {row.agreement.message}
+                    </span>
+                  ) : (
+                    /*
+                      No working, and the two reasons are different facts.
+                      An UNSTATED unit is the ordinary case for every order
+                      placed before ADR 0119, and the page must not fill the
+                      gap with the per-bottle convention: totalling $420 per
+                      case as $420 per bottle prints a figure twelve times the
+                      truth, in bold, beside the right one. It prints the
+                      ledger's own number and nothing of its own.
+                    */
+                    <span data-testid="row-no-working" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                      {row.quantity !== null ? row.quantity : EM}{' '}
+                      {row.unitType ? `${row.unitType}(s)` : 'ordered'} —{' '}
+                      {!row.priceUnit.read
+                        ? 'no working can be shown, because this view never read the unit the price is in. The figure above is the ledger’s own.'
+                        : row.priceUnit.stated === null
+                          ? `no working can be shown, because nothing says what unit ${
+                              row.unitPrice === null ? 'the price' : fmtMoney(row.unitPrice)
+                            } is in. The figure above is the ledger’s own.`
+                          : 'the working needs the order’s pack size, which this row does not carry, so the figure above is the ledger’s own and not one worked out here.'}
+                    </span>
+                  )}
+                </div>
+                {/*
+                  A price with no unit is not a stated price. The refusal is
+                  printed HERE, on the row, because until now it was a
+                  `logger.warn` in the gateway and no screen anywhere said why a
+                  house that buys by the case had an empty price register
+                  (ADR 0119 invariant 6).
+                */}
+                {!row.priceUnit.read ? (
+                  <div data-testid="price-unit-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    {ROW_PRICE_UNIT_NOT_READ}
+                  </div>
+                ) : row.priceUnit.stated === null ? (
+                  <div data-testid="price-unit-unstated" style={{ color: 'var(--seal-deep, #14515C)' }}>
+                    {ROW_UNSTATED_PRICE_UNIT}
+                  </div>
+                ) : null}
+                {/*
+                  "That is ordinary" — a case price on an order counted in
+                  bottles is ordinary trade (Connecticut posts the two prices
+                  separately), and saying so stops the desk reading a correct
+                  row as a mistake. Only printed when the two units can actually
+                  be counted against each other; when they cannot, the refusal
+                  above has already said the opposite.
+                */}
+                {row.priceUnit.stated &&
+                  row.unitType !== null &&
+                  row.priceUnit.stated.priceUom !== row.unitType &&
+                  !(row.agreement && !row.agreement.ok) && (
+                    <div data-testid="units-differ" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                      counted in {row.unitType}s, priced{' '}
+                      {PRICE_UOM_LABEL[row.priceUnit.stated.priceUom]} — that is ordinary
+                    </div>
+                  )}
                 {disagreement && (
                   <div style={{ color: 'var(--seal-deep, #14515C)' }}>
                     the ledger lists {fmtMoney(row.listedTotal)} — the two disagree; the listed figure is
@@ -266,6 +376,37 @@ export function LedgerRow({
 
             {/* the action column — one honest control per stage */}
             <div style={{ minWidth: 230 }}>
+              {/*
+                The correspondence, at every stage. It is not a stage control:
+                what a vendor said about an order is worth reading after the
+                order is delivered as much as before it is sealed, and the three
+                acts the sheet carries (confirm, reject, step) declare their own
+                availability inside it.
+              */}
+              {onOpenResponses && (
+                <button
+                  type="button"
+                  data-testid="open-responses"
+                  onClick={onOpenResponses}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginBottom: 10,
+                    padding: '7px 12px',
+                    borderRadius: 9,
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: `border-color ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  The vendor&rsquo;s answers
+                </button>
+              )}
               {isPendingStage && (
                 <>
                   {label(
