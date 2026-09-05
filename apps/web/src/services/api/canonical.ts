@@ -66,6 +66,14 @@ export interface ExtractedLine {
   /** BT-150 — that quantity's unit. */
   priceBaseUnit: FieldEnvelope<string>;
   netAmount: FieldEnvelope<number>;
+  /**
+   * What the line IS: `goods`, `deposit` or `fee`.
+   *
+   * OPTIONAL here and required on the gateway, deliberately: a stored revision
+   * written before this field existed carries no `lineKind`, and typing it as
+   * required would make the client claim every such line is goods.
+   */
+  lineKind?: FieldEnvelope<string>;
   allowancesCharges: AllowanceCharge[];
   vatCategory: FieldEnvelope<string>;
   vatRate: FieldEnvelope<number>;

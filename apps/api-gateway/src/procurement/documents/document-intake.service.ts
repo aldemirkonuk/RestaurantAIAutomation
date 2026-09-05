@@ -65,6 +65,15 @@ export interface IntakeResult {
   /** True when this exact content was already ingested. */
   duplicate: boolean;
   error?: string;
+  /**
+   * The original bytes arrived and could NOT be stored (ADR 0067).
+   *
+   * Distinct from `error`, which means the document itself did not land. This
+   * one says: the document is on the record and readable, and the file beside
+   * it is missing because a write failed — never because none was sent. Absent
+   * when the upload succeeded or when the channel carried no bytes to store.
+   */
+  storageError?: string;
 }
 
 /** What the extraction door reports back beyond the document itself. */
@@ -132,17 +141,29 @@ export class DocumentIntakeService {
       // this, storage_path lands NULL and the receipts page has nothing to
       // show beside the extracted lines, and a disputed credit has no
       // photograph to point a distributor at.
-      const storagePath = await this.persistOriginalBytes(input, sha256, bytes);
-      const resolvedInput: IntakeInput = { ...input, storagePath };
+      const stored = await this.persistOriginalBytes(input, sha256, bytes);
+      const resolvedInput: IntakeInput = { ...input, storagePath: stored.path };
 
       const parsed = await this.route(input, bytes);
+      // A failed upload travels on the document's own warnings, so it reaches
+      // `notes` on the row and the canonical page's read-notes strip. It is
+      // NOT folded into `error`: the document itself was read and stored, and
+      // failing the ingest would discard a readable document over a photo.
+      const parsedWithStorage = stored.failure
+        ? { ...parsed, warnings: [...parsed.warnings, stored.failure] }
+        : parsed;
       const documentId = await this.persist(
         resolvedInput,
         sha256,
         bytes,
-        parsed,
+        parsedWithStorage,
       );
-      return { documentId, parsed, duplicate: false };
+      return {
+        documentId,
+        parsed: parsedWithStorage,
+        duplicate: false,
+        ...(stored.failure ? { storageError: stored.failure } : {}),
+      };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
       return {
@@ -164,25 +185,50 @@ export class DocumentIntakeService {
    * same path, so this is a plain `upsert`, never a growing pile of
    * duplicates.
    *
-   * Best-effort: a storage failure must not fail the whole ingest, since the
-   * extraction and the four-way match evidence do not depend on the photo
-   * existing — only the receipts page's side-by-side view does. Skipped
-   * entirely when the caller already resolved a storagePath (email channel)
-   * or when there are no original bytes to store (EDI/SFTP text, which keeps
-   * its full content in `raw_payload` instead).
+   * Best-effort ABOUT THE INGEST, never about the record: a storage failure
+   * must not throw away a readable document, since the extraction and the
+   * four-way match evidence do not depend on the photo existing — but it must
+   * not disappear either. Skipped entirely when the caller already resolved a
+   * storagePath (email channel) or when there are no original bytes to store
+   * (EDI/SFTP text, which keeps its full content in `raw_payload` instead).
+   *
+   * A FAILED UPLOAD IS A FAILED WRITE, AND IT SAYS SO (ADR 0067).
+   *
+   * This used to return NULL on failure, indistinguishable from "this channel
+   * had no bytes to store" — so `storage_path` landed null, `GET :id` answered
+   * "no original was stored for this document", and nothing anywhere recorded
+   * that bytes HAD arrived and the write had broken. That is the
+   * absence-as-health shape at its most expensive: the one screen a
+   * disputed-credit conversation depends on says the paper never existed.
+   *
+   * Two rules hold from here on:
+   *   1. `path` is returned ONLY when the object is in the bucket. A document
+   *      never claims a `storage_path` it does not have.
+   *   2. `failure` is a SENTENCE, carried onto the document's own `notes` and
+   *      out through the ingest result, so a failed write reads as a failed
+   *      write rather than as an absent file.
    */
   private async persistOriginalBytes(
     input: IntakeInput,
     sha256: string,
     bytes: Buffer,
-  ): Promise<string | null> {
-    if (input.storagePath) return input.storagePath;
-    if (!input.buffer?.length) return null;
+  ): Promise<{ path: string | null; failure: string | null }> {
+    if (input.storagePath) return { path: input.storagePath, failure: null };
+    if (!input.buffer?.length) return { path: null, failure: null };
 
     const safeName = (input.filename || "document")
       .replace(/[^\w.-]+/g, "_")
       .slice(0, 120);
     const path = `${input.restaurantId}/documents/${sha256}/${safeName}`;
+
+    const failed = (why: string) => {
+      const failure =
+        `The original bytes could not be stored (${safeName}): ${why}. ` +
+        `This document has no file to show beside its lines, and that is a ` +
+        `failed write, not a document that arrived without one.`;
+      this.logger.warn(`persistOriginalBytes: ${failure}`);
+      return { path: null, failure };
+    };
 
     try {
       const { error } = await this.db
@@ -192,18 +238,10 @@ export class DocumentIntakeService {
           contentType: input.mimeType || "application/octet-stream",
           upsert: true,
         });
-      if (error) {
-        this.logger.warn(
-          `persistOriginalBytes: upload failed for ${safeName} — ${error.message}`,
-        );
-        return null;
-      }
-      return path;
+      if (error) return failed(error.message);
+      return { path, failure: null };
     } catch (err: any) {
-      this.logger.warn(
-        `persistOriginalBytes: unexpected failure for ${safeName} — ${err?.message}`,
-      );
-      return null;
+      return failed(err?.message ?? "unknown error");
     }
   }
 

@@ -26,6 +26,7 @@ import {
   CREDIT_MEMO_WITH_REFERENCE,
   DELIVERY_NOTE_NO_MONEY,
   DEPOSIT_AS_GOODS_LINE,
+  DEPOSIT_LINE_CODED_AND_EXCLUDED,
   FREE_GOODS_BILLED_ANYWAY,
   FREE_GOODS_INVOICE,
   LINES_DO_NOT_TIE,
@@ -421,5 +422,48 @@ describe("line net amount across a case quantity and a bottle price base", () =>
     );
     const printed = asPrintedNotMutated(TR_CASE_PRICED_INVOICE);
     expect(printed[0].holds).toBe(true);
+  });
+});
+
+/**
+ * The deposit pair (findings 6 and 7 of `v3.0-TECH-DEBT.md`, 2026-09-04).
+ *
+ * SYNTHETIC 9 and SYNTHETIC 9b are the same paper read two ways, and the pair
+ * is what makes this rule evidence rather than decoration: without 9b, "the
+ * deposit rule holds" would only ever have been proven by documents that carry
+ * no deposit at all.
+ */
+describe("a deposit LINE, coded and excluded (findings 6, 7)", () => {
+  it("holds once the line is classified and a coded BG-21 charge carries it", () => {
+    const results = depositsAreCodedAndExcluded(
+      DEPOSIT_LINE_CODED_AND_EXCLUDED,
+    );
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.holds === true)).toBe(true);
+  });
+
+  it("still fails the identical document when nobody classified the row", () => {
+    const results = depositsAreCodedAndExcluded(DEPOSIT_AS_GOODS_LINE);
+    expect(failures(results).length).toBeGreaterThan(0);
+    expect(failures(results)[0].explanation).toMatch(/inflate beverage cost/);
+  });
+
+  it("leaves BT-106 to the GOODS lines once the deposit is carried elsewhere", () => {
+    // 264.00 of wine, not 265.20 — the CRV row is a BG-21 charge now.
+    const results = documentLinesTotal(DEPOSIT_LINE_CODED_AND_EXCLUDED);
+    expect(results[0].holds).toBe(true);
+    expect(results[0].explanation).toMatch(
+      /deposit\/fee line\(s\) are carried as document-level charges/,
+    );
+  });
+
+  it("counts the deposit line inside BT-106 when it was never classified", () => {
+    // The unclassified fixture still ties: the paper folded the CRV into its
+    // own subtotal, and that arithmetic is internally consistent. It is
+    // `deposits_coded_and_excluded` that names the problem, not this rule —
+    // one defect must not light up two unrelated red lamps.
+    const results = documentLinesTotal(DEPOSIT_AS_GOODS_LINE);
+    expect(results[0].holds).toBe(true);
+    expect(results[0].explanation).not.toMatch(/deposit\/fee line/);
   });
 });

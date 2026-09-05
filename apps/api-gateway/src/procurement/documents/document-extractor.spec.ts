@@ -553,3 +553,175 @@ describe("DocumentExtractorService — fence stripping is linear (CodeQL #1327)"
     expect(stripJsonFence('{"a":1}\n```  ')).toBe('{"a":1}\n```');
   });
 });
+
+/**
+ * The contract gaps the first render against real documents named (findings 3,
+ * 4, 6 and 7 of `v3.0-TECH-DEBT.md`, 2026-09-04). All values SYNTHETIC.
+ */
+describe("the contract carries what the paper prints (findings 3, 4, 6, 7)", () => {
+  it("transcribes a printed delivery date into BT-72, and never borrows docDate", () => {
+    const withDelivery = svc.normalize(
+      json({ ...INVOICE, deliveredDate: "2026-08-12" }),
+      "test",
+    );
+    expect(withDelivery.deliveredDate).toBe("2026-08-12");
+    expect(withDelivery.docDate).toBe("2026-07-15");
+
+    // A document that prints no delivery date says so — it does NOT inherit
+    // the issue date, which on a Turkish fatura can be a week later.
+    expect(svc.normalize(json(INVOICE), "test").deliveredDate).toBeNull();
+  });
+
+  it("keeps a single printed tax line as ONE BG-23 row", () => {
+    // "KDV %20 (matrah 9.172,00) 1.834,40" — one rate, one base, one amount.
+    const tr = svc.normalize(
+      json({
+        ...INVOICE,
+        tax: 1834.4,
+        taxBreakdown: [
+          { rate: 20, taxableBase: 9172, amount: 1834.4, category: "S" },
+        ],
+      }),
+      "test",
+    );
+    expect(tr.taxBreakdown).toEqual([
+      { rate: 20, taxableBase: 9172, amount: 1834.4, category: "S" },
+    ]);
+
+    // "Sales tax 8.625% on 2,940.00" — a fractional rate and no category.
+    const ca = svc.normalize(
+      json({
+        ...INVOICE,
+        tax: 253.58,
+        taxBreakdown: [{ rate: 8.625, taxableBase: 2940, amount: 253.58 }],
+      }),
+      "test",
+    );
+    expect(ca.taxBreakdown).toEqual([
+      { rate: 8.625, taxableBase: 2940, amount: 253.58 },
+    ]);
+  });
+
+  it("drops a breakdown row with no rate, and SAYS it dropped it", () => {
+    const doc = svc.normalize(
+      json({ ...INVOICE, tax: 90, taxBreakdown: [{ amount: 90 }] }),
+      "test",
+    );
+    expect(doc.taxBreakdown).toEqual([]);
+    expect(doc.warnings.join(" ")).toMatch(/Dropped 1 VAT breakdown row/);
+  });
+
+  it("tells a deposit LINE apart from a deposit ON a line", () => {
+    const doc = svc.normalize(
+      json({
+        ...INVOICE,
+        lines: [
+          // A goods line carrying a per-bottle crate charge.
+          {
+            description: "Okuzgozu",
+            qty: 12,
+            uom: "bottle",
+            unitPrice: 142,
+            lineTotal: 1704,
+            deposit: 60,
+          },
+          // A line that IS the deposit. It keeps no `deposit` of its own —
+          // the 2026-09-04 transcription set both and the arithmetic then
+          // expected 360 against a stated 180.
+          {
+            description: "Depozito (kasa)",
+            qty: 2,
+            uom: "each",
+            unitPrice: 90,
+            lineTotal: 180,
+            deposit: 180,
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(doc.lines[0].lineKind).toBe("goods");
+    expect(doc.lines[0].deposit).toBe(60);
+    expect(doc.lines[1].lineKind).toBe("deposit");
+    expect(doc.lines[1].deposit).toBeNull();
+  });
+
+  it("classifies an unlabelled CRV row from its description, never as goods", () => {
+    const doc = svc.normalize(
+      json({
+        ...INVOICE,
+        lines: [
+          { description: "Barolo", qty: 12, uom: "bottle", unitPrice: 22 },
+          {
+            description: "CRV deposit 12 x 750ml",
+            qty: 12,
+            uom: "each",
+            unitPrice: 0.1,
+          },
+          { description: "Freight", qty: 1, uom: "each", unitPrice: 45 },
+        ],
+      }),
+      "test",
+    );
+    expect(doc.lines.map((l) => l.lineKind)).toEqual([
+      "goods",
+      "deposit",
+      "fee",
+    ]);
+  });
+
+  it("names an unrecognised lineKind rather than filing it as goods in silence", () => {
+    const doc = svc.normalize(
+      json({
+        ...INVOICE,
+        lines: [
+          {
+            description: "CRV deposit",
+            qty: 1,
+            uom: "each",
+            unitPrice: 1,
+            lineKind: "container",
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(doc.warnings.join(" ")).toMatch(/unrecognised lineKind "container"/);
+    // And it still lands on the description's answer, not on `goods`.
+    expect(doc.lines[0].lineKind).toBe("deposit");
+  });
+
+  it("counts a deposit ONCE when the paper prints it as a line and a subtotal", () => {
+    // The Turkish invoice of 2026-09-04: 180 as line 4 AND as depositTotal.
+    // Counted twice, the tie-out is "off by 180" — which is what it said.
+    const doc = svc.normalize(
+      json({
+        docType: "invoice",
+        currency: "TRY",
+        subtotal: 1704,
+        depositTotal: 180,
+        total: 1884,
+        lines: [
+          {
+            description: "Okuzgozu",
+            qty: 12,
+            uom: "bottle",
+            unitPrice: 142,
+            lineTotal: 1704,
+          },
+          {
+            description: "Depozito (kasa)",
+            qty: 2,
+            uom: "each",
+            unitPrice: 90,
+            lineTotal: 180,
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(doc.computedLinesTotal).toBe(1704);
+    expect(doc.tieOutDelta).toBe(0);
+    expect(doc.tiesOut).toBe(true);
+  });
+});

@@ -77,15 +77,37 @@ export function fmtReceived(
   return fmtQty(received, currency)
 }
 
-export function fmtDate(iso: string | null | undefined, jurisdiction?: string | null): string {
+/**
+ * A date in the DOCUMENT's own convention, not the reader's.
+ *
+ * `jurisdiction` is the right answer where it is set — but it comes from a
+ * column that is frequently NULL, and on 2026-09-04 all three documents on
+ * screen (two of them Turkish) rendered `Aug 12, 2026` because a null
+ * jurisdiction fell straight through to `en-US`. A default is not a jurisdiction
+ * and must not act like one, so the document's CURRENCY is consulted second: a
+ * document billed in TRY is a Turkish document whatever the column says.
+ *
+ * The Turkish form is written out rather than delegated to `toLocaleDateString`
+ * because that call depends on the runtime's ICU data — the same code then
+ * prints `14.08.2026` in one environment and `8/14/2026` in another, and a date
+ * that changes shape with the server build is not a transcription of anything.
+ */
+export function fmtDate(
+  iso: string | null | undefined,
+  jurisdiction?: string | null,
+  currency?: string | null,
+): string {
   if (!iso) return EM
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
   const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso)
   if (!Number.isFinite(d.getTime())) return EM
   // A Turkish document prints 14.08.2026; a Californian one prints Aug 14, 2026.
-  return jurisdiction === 'TR'
-    ? d.toLocaleDateString('tr-TR')
-    : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
+  if (turkish) {
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`
+  }
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 /**
@@ -124,8 +146,16 @@ export function sourceSentence(
       return 'Learned from this vendor · not printed on this document'
     case 'carried_from_po':
       return 'Carried from the purchase order · not printed on this document'
+    /**
+     * A hand-entered value that kept NO literal was not printed at all — it is
+     * a provider row, a restaurant row, a number somebody typed. Saying "as
+     * printed: not kept" there implies the page carried it and we lost the
+     * glyphs, which is a claim about the document nobody made.
+     */
     case 'human_entered':
-      return `Entered by hand · ${printed}`
+      return asPrinted == null
+        ? 'From your own records in Mudavym · not printed on this document'
+        : `Entered by hand · ${printed}`
     case 'human_corrected':
       return `Corrected by hand · ${printed}`
     case 'computed':

@@ -334,10 +334,18 @@ export class DocumentsController {
     // Best-effort: a signing failure must not take down the rest of the
     // document, since the extraction and match evidence do not depend on it.
     // Shared with `GET :id/canonical` so the two panes cannot drift.
-    const { imageUrl } = await this.signOriginal(doc.storage_path ?? null);
+    //
+    // AND THE REASON TRAVELS WITH IT. This destructured `imageUrl` alone and
+    // dropped `reason` on the floor, so "no file was ever stored", "the path is
+    // there and signing failed" and "the bucket is unreachable" all reached the
+    // screen as the same `null` — the canonical route has carried the reason
+    // since slice 2 and this one had not (ADR 0067).
+    const { imageUrl, reason: imageUrlReason } = await this.signOriginal(
+      doc.storage_path ?? null,
+    );
 
     return {
-      document: { ...doc, imageUrl },
+      document: { ...doc, imageUrl, imageUrlReason },
       lines: lines ?? [],
       links: links ?? [],
     };
