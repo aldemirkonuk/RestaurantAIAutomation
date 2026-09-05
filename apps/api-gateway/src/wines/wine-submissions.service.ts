@@ -3,8 +3,11 @@ import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
 import {
   buildWineSignature,
+  hashProvisionalWineSignature,
   hashWineSignature,
+  isSpecificWineIdentity,
   normalizeSignatureText,
+  parsedVintageOrNull,
   wineSignatureHashOrNull,
   wineSignatureInputFromPayload,
 } from "./wine-signature";
@@ -45,6 +48,17 @@ export interface LibraryResolutionResult {
   masterWineId: string;
   matched: boolean;
   libraryTier: number | null;
+  /**
+   * True when the identity was too generic to join the shared library, so the
+   * row behind `masterWineId` belongs to the asking venue alone (ADR 0130).
+   *
+   * Reported rather than inferred from `matched`: an unmatched SPECIFIC wine
+   * is a genuinely new bottle the shared library should enrich, and a
+   * provisional one is a label only this venue uses. Collapsing the two is
+   * what sent "House White Wine" to governance review as if it were a
+   * discovery.
+   */
+  provisional?: boolean;
   /**
    * Score of the best candidate, 0-100, or null when nothing came back.
    *
@@ -257,7 +271,10 @@ export class WineSubmissionsService {
 
       const best = (candidates ?? [])[0];
 
-      if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+      if (
+        best &&
+        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+      ) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
@@ -403,11 +420,20 @@ export class WineSubmissionsService {
    */
   async resolveOrCreateLibraryWine(
     item: LibraryResolutionInput,
+    restaurantId: string,
   ): Promise<LibraryResolutionResult> {
-    const parsedVintage =
-      typeof item.vintage === "string"
-        ? parseInt(item.vintage, 10) || null
-        : (item.vintage ?? null);
+    const parsedVintage = parsedVintageOrNull(item.vintage);
+
+    // ADR 0130. A generic, producer-less name never reaches the shared
+    // library — not to match it, not to be matched by it. It becomes this
+    // venue's own provisional wine.
+    if (!isSpecificWineIdentity(item)) {
+      return this.resolveVenueProvisionalWine(
+        item,
+        restaurantId,
+        parsedVintage,
+      );
+    }
 
     const { data: candidates, error: matchError } =
       await this.dbService.supabase.rpc("match_library_wine", {
@@ -428,7 +454,10 @@ export class WineSubmissionsService {
     }
 
     const best = (candidates ?? [])[0];
-    if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+    if (
+      best &&
+      best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+    ) {
       return {
         masterWineId: best.id,
         matched: true,
@@ -522,6 +551,140 @@ export class WineSubmissionsService {
   }
 
   /**
+   * The venue's own wine, for a name that identifies nothing (ADR 0130).
+   *
+   * `restaurant_inventory.master_wine_id` is NOT NULL, so "do not join the
+   * shared library" cannot mean "no library row" — it means a library row
+   * that belongs to one venue and is a match target for nobody.
+   * `provisional_for_restaurant_id` says which venue, and
+   * `trg_sync_signature_hash` keys such a row on
+   * `wine_provisional_signature_hash(owner, ...)` instead of the shared
+   * six-field hash. Two venues' "House White Wine" therefore occupy two rows
+   * under the same UNIQUE index, and this venue re-scanning its own menu
+   * lands back on its own row instead of spawning a duplicate.
+   *
+   * The matcher is not consulted at all. Consulting it and discarding the
+   * answer would still leave the decision to a confidence score; the rule is
+   * that a generic identity has nothing to compare, so there is nothing to
+   * score.
+   */
+  private async resolveVenueProvisionalWine(
+    item: LibraryResolutionInput,
+    restaurantId: string,
+    parsedVintage: number | null,
+  ): Promise<LibraryResolutionResult> {
+    if (!restaurantId) {
+      // Better to fail the line than to fall back to the shared library: an
+      // unowned generic row is exactly the cross-tenant collision this exists
+      // to stop.
+      throw new Error(
+        `Cannot resolve "${item.name}" without a restaurant: a name this ` +
+          `generic is only ever one venue's own wine`,
+      );
+    }
+
+    const signatureHash = hashProvisionalWineSignature(restaurantId, {
+      name: item.name,
+      producer: item.producer ?? null,
+      vintage: parsedVintage,
+      country: item.country ?? null,
+      region: item.region ?? null,
+      grapeVariety: item.grapeVariety ?? null,
+    });
+
+    const insertPayload = {
+      wine_id: this.generateWineId(),
+      name: item.name,
+      // Empty, not invented. `producer` and `country` are NOT NULL columns,
+      // which is why the shared path writes the wine's own name and the
+      // literal "Unknown" into them; that fabrication is the ops track's to
+      // remove. It cannot be carried here, because the hash the trigger
+      // recomputes is taken from the STORED fields: writing "Unknown" into
+      // country while keying the lookup on an absent one makes this venue
+      // unable to find its own row on the next scan. `wine_normalize_text`
+      // maps NULL and '' to the same empty segment, so '' hashes identically
+      // to the absence it records — and keeps hashing identically once those
+      // columns are made nullable.
+      producer: item.producer ?? "",
+      primary_type: "unknown",
+      country: item.country ?? "",
+      region: item.region ?? null,
+      grape_variety: item.grapeVariety ?? null,
+      vintage: parsedVintage,
+      library_tier: 3, // Provisional — usable now, pending governance review
+      source: "venue_provisional",
+      signature_hash: signatureHash,
+      normalized_name: this.normalizeText(item.name),
+      normalized_producer: this.normalizeText(item.producer),
+      signature_source: "venue_provisional",
+      provisional_for_restaurant_id: restaurantId,
+    };
+
+    const { data: created, error } = await this.dbService.supabase
+      .from("master_wine_library")
+      .upsert(insertPayload, {
+        onConflict: "signature_hash",
+        ignoreDuplicates: true,
+      })
+      .select("id, library_tier")
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error("Failed to create venue provisional wine", {
+        error: error.message,
+        name: item.name,
+        restaurantId,
+      });
+      throw new Error(
+        `Failed to resolve venue wine "${item.name}": ${error.message}`,
+      );
+    }
+
+    if (created?.id) {
+      return {
+        masterWineId: created.id,
+        matched: false,
+        provisional: true,
+        libraryTier: created.library_tier ?? 3,
+        confidence: null,
+      };
+    }
+
+    // ignoreDuplicates returns no row when this venue already has this wine.
+    // Scoped by owner as well as by hash: reading by hash alone would be
+    // correct today only because the hash carries the owner, and a lookup
+    // that relies on that is one refactor away from reading another venue's
+    // row.
+    const { data: existing, error: readError } = await this.dbService.supabase
+      .from("master_wine_library")
+      .select("id, library_tier")
+      .eq("signature_hash", signatureHash)
+      .eq("provisional_for_restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(
+        `Failed to read back venue wine "${item.name}": ${readError.message}`,
+      );
+    }
+
+    if (existing?.id) {
+      return {
+        masterWineId: existing.id,
+        matched: false,
+        provisional: true,
+        libraryTier: existing.library_tier ?? 3,
+        confidence: null,
+      };
+    }
+
+    throw new Error(
+      `Failed to resolve venue wine "${item.name}": insert was skipped but ` +
+        `no row carries signature ${signatureHash.slice(0, 12)}`,
+    );
+  }
+
+  /**
    * Resolve a whole menu at once.
    *
    * resolveOrCreateLibraryWine is one round trip per wine, and against this
@@ -544,11 +707,24 @@ export class WineSubmissionsService {
    */
   async resolveLibraryWinesBatch(
     items: LibraryResolutionInput[],
+    restaurantId: string,
   ): Promise<Array<LibraryResolutionResult | null>> {
     if (items.length === 0) return [];
 
-    const parseVintage = (v: LibraryResolutionInput["vintage"]) =>
-      typeof v === "string" ? parseInt(v, 10) || null : (v ?? null);
+    const parseVintage = parsedVintageOrNull;
+
+    // ADR 0130. Every generic line on the menu is this venue's own wine.
+    // The whole array is still sent to the matcher — match_library_wine
+    // returns nothing for a query that is not specific, so the generic lines
+    // come back empty and index alignment is preserved — but the decision is
+    // taken here as well, so the rule survives a matcher that forgets it.
+    const isSpecific = items.map((i) => isSpecificWineIdentity(i));
+    if (isSpecific.some((s) => !s) && !restaurantId) {
+      throw new Error(
+        "Cannot resolve a menu with generic wine names without a restaurant: " +
+          "a name that generic is only ever one venue's own wine",
+      );
+    }
 
     const { data: matches, error: matchError } =
       await this.dbService.supabase.rpc("match_library_wines_batch", {
@@ -581,6 +757,7 @@ export class WineSubmissionsService {
     items.forEach((_, idx) => {
       const best = byIndex.get(idx);
       if (
+        isSpecific[idx] &&
         best &&
         best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
       ) {
@@ -607,31 +784,47 @@ export class WineSubmissionsService {
     for (const idx of needsCreate) {
       const item = items[idx];
       const vintage = parseVintage(item.vintage);
-      const signatureHash = this.signatureHashFor({
+      const identity = {
         name: item.name,
         producer: item.producer ?? null,
         vintage,
         country: item.country ?? null,
         region: item.region ?? null,
         grapeVariety: item.grapeVariety ?? null,
-      });
+      };
+      // A specific wine that matched nothing is a new bottle for the shared
+      // library. A generic one is this venue's own, keyed behind the venue id
+      // so another venue printing the same words does not collide with it
+      // (ADR 0130).
+      const provisional = !isSpecific[idx];
+      const signatureHash = provisional
+        ? hashProvisionalWineSignature(restaurantId, identity)
+        : this.signatureHashFor(identity);
       signatureOf.set(idx, signatureHash);
       if (!rowBySignature.has(signatureHash)) {
         rowBySignature.set(signatureHash, {
           wine_id: this.generateWineId(),
           name: item.name,
-          producer: item.producer || item.name,
+          // A venue's own row records absence as absence — see
+          // resolveVenueProvisionalWine for why it cannot inherit the shared
+          // path's fabricated producer/country and still find itself again.
+          producer: provisional
+            ? (item.producer ?? "")
+            : item.producer || item.name,
           primary_type: "unknown",
-          country: item.country || "Unknown",
+          country: provisional
+            ? (item.country ?? "")
+            : item.country || "Unknown",
           region: item.region ?? null,
           grape_variety: item.grapeVariety ?? null,
           vintage,
           library_tier: 3,
-          source: "menu_import",
+          source: provisional ? "venue_provisional" : "menu_import",
           signature_hash: signatureHash,
           normalized_name: this.normalizeText(item.name),
           normalized_producer: this.normalizeText(item.producer),
-          signature_source: "menu_import",
+          signature_source: provisional ? "venue_provisional" : "menu_import",
+          provisional_for_restaurant_id: provisional ? restaurantId : null,
         });
       }
     }
@@ -675,8 +868,14 @@ export class WineSubmissionsService {
       results[idx] = {
         masterWineId: row.id,
         matched: false,
+        provisional: !isSpecific[idx],
         libraryTier: row.library_tier ?? 3,
-        confidence: byIndex.get(idx)?.confidence ?? null,
+        // A generic line was never scored, so there is no confidence to
+        // report. Carrying the matcher's number here would attach a score to
+        // a comparison that did not happen.
+        confidence: isSpecific[idx]
+          ? (byIndex.get(idx)?.confidence ?? null)
+          : null,
       };
     }
 
