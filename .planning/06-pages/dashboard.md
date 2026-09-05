@@ -780,3 +780,16 @@ the two or three actions worth doing before service, each of which actually happ
    (`check_gateway_boots.sh` PASS). What is NOT proven is a real 200 from either
    route, or a single real figure from any house. *Blocker: a database with the
    migration applied.*
+
+### The one-tap delivery card ships live (founder, 2026-09-05, batch 55)
+
+Asked whether the first reachable one-tap delivery card (the desk now fetches CONFIRMED and
+IN_TRANSIT orders and the die confirms against the real endpoint, 7bbc37c9) should be gated
+for one release: **"Ship it."** The 409 covers a second press, the seal on the order proves a
+person asked, and nothing is booked without a hold. Rejected: a flag for one release.
+
+### The experiment-ended notice is also emailed (founder, 2026-09-05, batch 55)
+
+Against the builder's recommendation to keep it an inbox row first, the founder chose
+**"Inbox row and an email"**: when the window closes unnamed, the notice also goes out through
+the house's Gmail grant. Being built; producers stay off until armed.

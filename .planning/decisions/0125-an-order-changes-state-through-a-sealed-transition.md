@@ -691,3 +691,15 @@ new path has never run against a real house); keep both indefinitely.
 | Date | Who | What |
 |---|---|---|
 | 2026-09-05 | Claude (parent) | 5105838d said "gateway tsc on the index tree: 0 errors" — true for tsconfig.json, false for tsconfig.spec.json, which carried one error from a main-merged spec (notifications-are-tenant-scoped.spec.ts:41) at that tip; fixed in 7bbc37c9. It also said "check_decision_claims.sh: PASS (240 rows)"; the guard printed 239 checked, 239 holding — 240 is the file's line count including the comment header, not the claims checked. Everything else in that message reproduced exactly on an isolated archive, including the pre-fix probes (gateway 6 failed / 2 passed against both bdce73f4 and its parent; Python 3 failed / 2 passed). |
+
+## Founder answers, 2026-09-05 (batch 55) — the recurrence addendum's Q2 and Q3
+
+**Q3 — "Keep it unsealed, with the audit row."** Ending a recurrence stops future
+children; nothing is spent or erased, and each occurrence still stops at the approval
+gate. If a recurrence is ever allowed to auto-approve, ending it becomes a money act and
+gets a seal the same day — the two are one decision. Rejected: seal it now.
+
+**Q2 — "Keep the returned outcome and the log line."** The generator's run count stays a
+returned `RecurrenceRunOutcome` plus an unconditional log line, the reminder sweep's
+pattern in the same file. Rejected: a durable runs table (new surface; reverse this if
+run history is ever needed in a page).
