@@ -33,6 +33,8 @@ import { DatabaseService } from "../../../database/database.service";
 import { SealChallengeService } from "../../../common/seal/seal-challenge.service";
 import { OrganizationsService } from "../../../organizations/organizations.service";
 import { TextUsageService } from "../text-usage.service";
+import { PurchaseIntentService } from "./purchase-intent.service";
+import { PurchaseIntentReconciler } from "./purchase-intent.reconciler";
 import type { BillingService } from "../../../billing/billing.service";
 import {
   TextCreditsController,
@@ -94,6 +96,7 @@ function build(
 ) {
   const seals: Row[] = [];
   const credits: Row[] = [];
+  const intents: Row[] = [];
   const audits: Row[] = [];
 
   const db = {
@@ -162,37 +165,84 @@ function build(
         const rows: Row[] =
           table === "house_message_credits"
             ? credits
-            : table === "restaurants"
-              ? [
-                  {
-                    id: HOUSE,
-                    subscription_tier: "pilot",
-                    timezone: "UTC",
-                    currency: null,
-                  },
-                ]
-              : [];
+            : table === "house_message_purchase_intents"
+              ? intents
+              : table === "restaurants"
+                ? [
+                    {
+                      id: HOUSE,
+                      subscription_tier: "pilot",
+                      timezone: "UTC",
+                      currency: null,
+                    },
+                  ]
+                : [];
+        // Filters are applied for real. A stub that ignored `.eq("seal_id", x)`
+        // could not fail a test about one seal buying one purchase, which is
+        // most of what this file is for.
+        const eq: Record<string, unknown> = {};
+        const match = (r: Row) =>
+          Object.entries(eq).every(([k, v]) => r[k] === v);
         const api: Record<string, unknown> = {};
         api.select = () => api;
-        api.eq = () => api;
+        api.eq = (col: string, value: unknown) => {
+          eq[col] = value;
+          return api;
+        };
+        api.neq = () => api;
+        api.in = () => api;
         api.order = () => api;
         api.limit = () => api;
         api.is = () => api;
         api.maybeSingle = () =>
-          Promise.resolve({ data: rows[0] ?? null, error: null });
+          Promise.resolve({ data: rows.filter(match)[0] ?? null, error: null });
+        api.single = () =>
+          Promise.resolve({ data: rows.filter(match)[0] ?? null, error: null });
         api.then = (r: (v: unknown) => unknown) =>
-          Promise.resolve({ data: rows, error: null, count: rows.length }).then(
-            r,
-          );
+          Promise.resolve({
+            data: rows.filter(match),
+            error: null,
+            count: rows.filter(match).length,
+          }).then(r);
         api.insert = (row: Row) => ({
           select: () => ({
             single: () => {
-              const written = { id: `credit-${credits.length + 1}`, ...row };
-              credits.push(written);
+              const written = {
+                id: `${table === "house_message_credits" ? "credit" : "intent"}-${rows.length + 1}`,
+                intended_at: new Date().toISOString(),
+                ...row,
+              };
+              rows.push(written);
               return Promise.resolve({ data: written, error: null });
             },
           }),
         });
+        api.update = (patch: Row) => {
+          const upd: Record<string, unknown> = {};
+          upd.eq = (col: string, value: unknown) => {
+            eq[col] = value;
+            return upd;
+          };
+          upd.neq = () => upd;
+          upd.in = () => upd;
+          upd.is = () => upd;
+          const apply = () => {
+            const hit = rows.filter(match);
+            for (const r of hit) Object.assign(r, patch);
+            return hit;
+          };
+          upd.select = () => ({
+            maybeSingle: () =>
+              Promise.resolve({ data: apply()[0] ?? null, error: null }),
+            then: (r: (v: unknown) => unknown) =>
+              Promise.resolve({ data: apply(), error: null }).then(r),
+          });
+          upd.then = (r: (v: unknown) => unknown) => {
+            apply();
+            return Promise.resolve({ data: null, error: null }).then(r);
+          };
+          return upd;
+        };
         return api;
       },
     },
@@ -231,6 +281,13 @@ function build(
   );
   const billing = {
     chargeForMessageCredits: charge,
+    findChargeForSeal: jest.fn(async () => ({
+      readable: true,
+      succeeded: false,
+      paymentIntentId: null,
+      status: null,
+      words: "The provider reports no charge carrying this seal.",
+    })),
   } as unknown as BillingService;
 
   if (opts.writeFails) {
@@ -241,17 +298,30 @@ function build(
     });
   }
 
+  const intentService = new PurchaseIntentService(db);
+  const reconciler = new PurchaseIntentReconciler(
+    intentService,
+    usage,
+    billing,
+  );
   const controller = new TextCreditsController(
     usage,
     organizations,
     sealService,
     billing,
+    intentService,
+    reconciler,
   );
 
-  return { controller, credits, seals, organizations, charge };
+  return { controller, credits, intents, seals, organizations, charge };
 }
 
 describe("POST /communications/text-credits/purchase — the seal is spent, not claimed", () => {
+  // The charge order, the crash between charge and credit, and the reconcile
+  // live in `purchase-intent.spec.ts`. They are properties of the intent
+  // machine, and proving them here as well would make two files fail for one
+  // cause.
+
   it("refuses with NO seal header, and writes nothing", async () => {
     const { controller, credits } = build();
     await expect(
@@ -287,99 +357,12 @@ describe("POST /communications/text-credits/purchase — the seal is spent, not 
       { amountMinor: 5000, currency: "USD" },
       minted.challenge,
     );
-    expect(out.recorded).toBe(true);
+    expect(out.state).toBe("settled");
+    expect(out.settled).toBe(true);
     expect(credits).toHaveLength(1);
     expect(credits[0].entry_kind).toBe("purchase");
     expect(credits[0].seal_id).toBeTruthy();
     expect(credits[0].currency).toBe("USD");
-  });
-
-  it("charges BEFORE it writes, and names the payment on the row", async () => {
-    const { controller, credits, charge } = build();
-    const minted = await controller.sealChallenge(req(), {
-      amountMinor: 5000,
-      currency: "USD",
-    });
-    const out = await controller.purchase(
-      req(),
-      { amountMinor: 5000, currency: "USD" },
-      minted.challenge,
-    );
-
-    expect(charge).toHaveBeenCalledTimes(1);
-    // The seal the charge was told about is the seal that was redeemed, and the
-    // amount is the amount the seal was minted over — not the body read again.
-    const passed = charge.mock.calls[0][0];
-    expect(passed.amountMinor).toBe(5000);
-    expect(passed.currency).toBe("USD");
-    expect(passed.sealId).toBeTruthy();
-    expect(out.charged).toBe(true);
-    expect(out.paymentIntentId).toBe("pi_1");
-    expect(credits[0].payment_ref).toBe("pi_1");
-    expect(credits[0].seal_id).toBe(passed.sealId);
-  });
-
-  it("a REFUSED charge writes nothing, says why, and says the hold is used up", async () => {
-    const { controller, credits } = build({
-      charge: {
-        charged: false,
-        reason: "no_instrument",
-        words:
-          "This house has no card on file, so nothing was charged and no credits were added.",
-      },
-    });
-    const minted = await controller.sealChallenge(req(), {
-      amountMinor: 5000,
-      currency: "USD",
-    });
-    const out = await controller.purchase(
-      req(),
-      { amountMinor: 5000, currency: "USD" },
-      minted.challenge,
-    );
-
-    expect(out.charged).toBe(false);
-    expect(out.recorded).toBe(false);
-    expect(out.paymentIntentId).toBeNull();
-    expect(out.words).toContain("no card on file");
-    expect(out.words).toContain("balance is unchanged");
-    expect(out.words).toContain("hold you gave has been used up");
-    expect(credits).toHaveLength(0);
-  });
-
-  it("does not charge at all when the seal is refused", async () => {
-    const { controller, credits, charge } = build();
-    await expect(
-      controller.purchase(
-        req(),
-        { amountMinor: 5000, currency: "USD" },
-        "not-a-seal",
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    // The order is the point: money is never touched before authority is proven.
-    expect(charge).not.toHaveBeenCalled();
-    expect(credits).toHaveLength(0);
-  });
-
-  it("reports a charge that succeeded with a write that FAILED, in those words", async () => {
-    const { controller } = build({ writeFails: true });
-    const minted = await controller.sealChallenge(req(), {
-      amountMinor: 5000,
-      currency: "USD",
-    });
-    const out = await controller.purchase(
-      req(),
-      { amountMinor: 5000, currency: "USD" },
-      minted.challenge,
-    );
-
-    // The one window this design cannot close inside a request. It must not
-    // read as a plain failure: the money moved.
-    expect(out.charged).toBe(true);
-    expect(out.recorded).toBe(false);
-    expect(out.paymentIntentId).toBe("pi_1");
-    expect(out.words).toContain("card WAS charged");
-    expect(out.words).toContain("needs a person rather than a retry");
   });
 
   it("SPENDS the seal once: the same challenge is refused the second time", async () => {

@@ -663,6 +663,16 @@ sales-ingest based, which is the permitted kind. Keep them apart.
    script is run: the refusal sentence stays unreachable while every allowance is
    unstated, which is the state today.
 
+0c. **Updated 2026-09-06 — a purchase states its intent before it charges.** The
+   window where a charge could succeed and the credit fail with nothing on disk
+   is closed (founder: *"Close it now with the intent row"*). Any surface that
+   shows a credit purchase must render three states and not two booleans:
+   `settled`, `voided`, and `charge_may_exist` — the last meaning the purchase is
+   **unfinished**, not failed and not successful, and that a reconcile against the
+   provider will complete it. Nothing will be charged twice: the seal is
+   single-use, Stripe's idempotency key is derived from it, and the database
+   refuses a second credit for one seal.
+
 1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:279-286`)
    — turns the performance panel from a data-entry chore into a by-product. Blocked
    on POS depth (S04 ⚠, TIER-MAP:40).

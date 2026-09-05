@@ -59,12 +59,28 @@
  * seal impossible. The seal itself is single-use, so a replayed request is
  * refused before it reaches either.
  *
- * THE ONE WINDOW THIS CANNOT CLOSE, STATED RATHER THAN HIDDEN. If the charge
- * succeeds and the ledger write then fails, the money moved and the credit did
- * not. The response says exactly that, with the PaymentIntent id in it, so a
- * person can reconcile — it does NOT report a success, and it does not retry
- * silently. Closing it properly needs a pre-recorded intent row, which is a
- * bigger change than this decision asked for.
+ * THAT WINDOW IS CLOSED SINCE 2026-09-06 (founder: *"Close it now with the
+ * intent row"*). The order is now five steps, and the third exists only so the
+ * fourth can crash safely:
+ *
+ *   1. the role check
+ *   2. the seal redeemed
+ *   3. THE INTENT ROW written, then moved to `charge_may_exist` BEFORE the
+ *      provider is asked — a state written after the call could never describe
+ *      a crash during it
+ *   4. the charge
+ *   5. the credit, and the intent settled against it
+ *
+ * So there is no longer a moment where money can move with nothing on disk to
+ * say so. A crash anywhere past step 3 leaves a row a reconcile can resolve by
+ * asking the provider what the seal actually produced —
+ * `PurchaseIntentReconciler`, reachable from
+ * `scripts/reconcile_message_credit_purchases.py`.
+ *
+ * THE RESPONSE NEVER AGAIN SAYS `charged: true, recorded: false`. It carries one
+ * `state` — the intent's own — because two booleans that can disagree are two
+ * facts a caller has to reconcile in its head, and the whole point of the intent
+ * row is that the reconciling is done here, on disk.
  */
 
 import {
@@ -82,10 +98,17 @@ import {
 import { ApiHeader, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../../../auth/guards/service-key.guard";
+import { Public } from "../../../auth/decorators/public.decorator";
 import { OrganizationsService } from "../../../organizations/organizations.service";
 import { SealChallengeService } from "../../../common/seal/seal-challenge.service";
 import { BillingService } from "../../../billing/billing.service";
 import { TextUsageService, type MeterReadout } from "../text-usage.service";
+import { PurchaseIntentService } from "./purchase-intent.service";
+import {
+  PurchaseIntentReconciler,
+  type ReconcileRun,
+} from "./purchase-intent.reconciler";
 
 interface AuthenticatedUser {
   userId: string;
@@ -121,6 +144,8 @@ export class TextCreditsController {
     private readonly organizations: OrganizationsService,
     private readonly seals: SealChallengeService,
     private readonly billing: BillingService,
+    private readonly intents: PurchaseIntentService,
+    private readonly reconciler: PurchaseIntentReconciler,
   ) {}
 
   private scope(req: Request & { user: AuthenticatedUser }): {
@@ -236,7 +261,7 @@ export class TextCreditsController {
   @ApiResponse({
     status: 200,
     description:
-      "`charged` says whether the card was charged and `paymentIntentId` names the payment; `recorded` says whether the credit landed. They are separate fields because they can disagree: a charge that succeeded with a write that failed reports charged: true, recorded: false and names the PaymentIntent, rather than reporting a plain failure.",
+      "One `state`, never a pair of booleans that can disagree: `settled` (charged and credited), `voided` (nothing charged, and proven so), or `charge_may_exist` (the provider was asked and the answer is not known yet — a reconcile will resolve it, and the response says so rather than claiming a failure).",
   })
   @ApiResponse({
     status: 403,
@@ -248,10 +273,11 @@ export class TextCreditsController {
     @Body() body: PurchaseBody,
     @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{
-    recorded: boolean;
-    charged: boolean;
+    state: "settled" | "voided" | "charge_may_exist";
+    settled: boolean;
     paymentIntentId: string | null;
     entryId: string | null;
+    intentId: string | null;
     words: string;
     meter: MeterReadout;
   }> {
@@ -264,9 +290,9 @@ export class TextCreditsController {
       "buy message credits",
     );
 
-    // REDEEMED BEFORE ANYTHING ELSE HAPPENS. The order is the point: redeeming
-    // after the charge would take money and then decide whether it was allowed,
-    // which is auditing a capability instead of gating it.
+    // 2. REDEEMED BEFORE ANYTHING ELSE HAPPENS. Redeeming after the charge would
+    // take money and then decide whether it was allowed, which is auditing a
+    // capability instead of gating it.
     const { sealId } = await this.seals.redeem({
       restaurantId,
       actorUserId: userId,
@@ -277,8 +303,62 @@ export class TextCreditsController {
       challenge: challenge ?? null,
     });
 
-    // THE CHARGE. Before the ledger, never after: a credit written first and
-    // charged second is a balance that exists whether or not the money did.
+    // 3a. THE INTENT ROW, before the provider exists to this request.
+    const opened = await this.intents.open({
+      restaurantId,
+      sealId,
+      amountMinor,
+      currency,
+      intendedBy: userId,
+    });
+    if (opened.state === "failed") {
+      // Nothing was asked of the provider, so nothing can have been charged.
+      // Voiding is not needed: no row exists to void.
+      return {
+        state: "voided",
+        settled: false,
+        paymentIntentId: null,
+        entryId: null,
+        intentId: null,
+        words: `This purchase was not started, so nothing was charged: ${opened.reason}. The hold you gave has been used up, so buying again starts a new one.`,
+        meter: await this.usage.readout(restaurantId),
+      };
+    }
+    const intent = opened.intent;
+
+    // A replay of a seal that already settled: answer with what happened rather
+    // than charging again. Unreachable through the seal (single use) and kept
+    // because a reconcile can call this path.
+    if (intent.state === "settled") {
+      return {
+        state: "settled",
+        settled: true,
+        paymentIntentId: intent.paymentRef,
+        entryId: intent.creditEntryId,
+        intentId: intent.id,
+        words:
+          "This purchase was already charged and credited; nothing was charged again.",
+        meter: await this.usage.readout(restaurantId),
+      };
+    }
+
+    // 3b. SAY ON DISK THAT A CHARGE MAY EXIST, BEFORE ASKING. If this write
+    // fails we must not charge: the only way to reach the provider is through a
+    // row that already admits the provider may have been reached.
+    const attempting = await this.intents.markAttempting(intent.id);
+    if (!attempting.ok) {
+      return {
+        state: "voided",
+        settled: false,
+        paymentIntentId: null,
+        entryId: null,
+        intentId: intent.id,
+        words: `Nothing was charged, because this purchase could not be marked as attempted first: ${attempting.reason}. Recording the attempt before making it is what stops money moving with nothing on record.`,
+        meter: await this.usage.readout(restaurantId),
+      };
+    }
+
+    // 4. THE CHARGE.
     const charge = await this.billing.chargeForMessageCredits({
       restaurantId,
       amountMinor,
@@ -287,19 +367,24 @@ export class TextCreditsController {
     });
 
     if (!charge.charged) {
-      // NOTHING IS WRITTEN. The seal is spent — single use is what makes it a
-      // seal — so carrying on needs a fresh hold, and the sentence says so
-      // rather than leaving a manager pressing a button that cannot work.
+      // The provider answered and refused. That IS proof, so the intent is
+      // voided here rather than left for a reconcile.
+      await this.intents.void({
+        intentId: intent.id,
+        reason: `the provider refused the charge (${charge.reason}): ${charge.words}`,
+      });
       return {
-        recorded: false,
-        charged: false,
+        state: "voided",
+        settled: false,
         paymentIntentId: null,
         entryId: null,
+        intentId: intent.id,
         words: `${charge.words} Nothing was recorded and this house's balance is unchanged. The hold you gave has been used up, so buying again starts a new one.`,
         meter: await this.usage.readout(restaurantId),
       };
     }
 
+    // 5. THE CREDIT, then the intent settled against it.
     const recorded = await this.usage.recordPurchase({
       restaurantId,
       sealId,
@@ -309,27 +394,93 @@ export class TextCreditsController {
       paymentRef: charge.paymentIntentId,
     });
 
-    if (!recorded.recorded) {
-      // THE MONEY MOVED AND THE CREDIT DID NOT. Reported in those words, with
-      // the provider's own reference, because the alternative — reporting a
-      // failure and saying nothing about the charge — is how a house is billed
-      // for something that never appears on its meter.
+    if (!recorded.recorded || !recorded.entryId) {
+      // THE OLD HOLE, NOW A KNOWN STATE. The money moved and the credit did not,
+      // and the intent row says exactly that on disk. The response does NOT
+      // report a contradiction for a person to resolve — it names the state and
+      // says a reconcile will finish it.
       return {
-        recorded: false,
-        charged: true,
+        state: "charge_may_exist",
+        settled: false,
         paymentIntentId: charge.paymentIntentId,
         entryId: null,
-        words: `The card WAS charged (${charge.paymentIntentId}) and the credit was NOT recorded: ${recorded.words} The money has moved; this house's balance below does not yet show it, and that needs a person rather than a retry.`,
+        intentId: intent.id,
+        words: `The card was charged and the credit has not landed yet (${recorded.words}). This purchase is recorded as unfinished and will be completed by a reconcile against the provider; nothing is lost and nothing will be charged twice.`,
         meter: await this.usage.readout(restaurantId),
       };
     }
 
+    const settled = await this.intents.settle({
+      intentId: intent.id,
+      paymentRef: charge.paymentIntentId,
+      creditEntryId: recorded.entryId,
+      detail: "settled by the purchase request itself",
+    });
+
     return {
-      ...recorded,
-      charged: true,
+      state: settled.ok ? "settled" : "charge_may_exist",
+      settled: settled.ok,
       paymentIntentId: charge.paymentIntentId,
-      words: `${charge.words} ${recorded.words}`,
+      entryId: recorded.entryId,
+      intentId: intent.id,
+      words: settled.ok
+        ? `${charge.words} ${recorded.words}`
+        : `${charge.words} ${recorded.words} The purchase record could not be closed (${settled.reason}); the credit IS on this house's meter, so no money is unaccounted for, and a reconcile will tidy the record.`,
       meter: await this.usage.readout(restaurantId),
     };
+  }
+
+  /**
+   * Finish every purchase that did not.
+   *
+   * WHY THIS IS A SERVICE-KEY ROUTE AND NOT A SEALED ONE. A seal binds an act to
+   * a PERSON who made a gesture. There is no person here: the caller is the
+   * founder's own runner (`scripts/reconcile_message_credit_purchases.py`) or an
+   * operator, and what it does is not a new decision — it ASKS THE PROVIDER what
+   * already happened and writes down the answer. It cannot charge, it cannot
+   * choose an amount, and it cannot void anything the provider has not been
+   * asked about. `ServiceKeyGuard` (ADR 0099) authenticates the machine and
+   * fails closed when `ADMIN_API_KEY` is unset.
+   *
+   * `@Public()` does not mean unauthenticated: Nest requires every class guard
+   * as well as the method ones, so it short-circuits the class-level
+   * `JwtAuthGuard` in order to let `ServiceKeyGuard` be what decides — the same
+   * shape `POST /communications/email` and the commodity admin routes use.
+   *
+   * NO TENANT FROM A SESSION. `ServiceKeyGuard`'s own header says a route using
+   * it must derive neither a user nor a tenant from `request.user`, so the
+   * optional restaurant filter comes from the body and narrows a read that is
+   * otherwise fleet-wide by design — an unresolved charge belongs to whoever it
+   * belongs to, and the reconcile must not miss one because a session pointed
+   * somewhere else.
+   *
+   * IT IS SAFE TO RUN AT ANY TIME, INCLUDING TWICE. Settled rows are not in the
+   * open set; the credit write is protected by
+   * `uq_house_message_credits_purchase_seal`; and an intent younger than the
+   * provider's own search lag is left alone rather than judged.
+   */
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @Post("reconcile")
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      "Ask the provider what unfinished purchases actually did, and record it",
+  })
+  @ApiHeader({
+    name: "X-Admin-Key",
+    description:
+      "ADMIN_API_KEY. The caller is a machine; there is no session and no seal.",
+    required: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "`considered: null` means the open set could not be READ — never that there was nothing open. Each result carries the outcome and the sentence behind it, including `too_young_to_judge`, which is a refusal to decide rather than a failure.",
+  })
+  async reconcile(
+    @Body() body?: { restaurantId?: string },
+  ): Promise<ReconcileRun> {
+    return this.reconciler.run({ restaurantId: body?.restaurantId });
   }
 }

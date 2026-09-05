@@ -254,8 +254,9 @@ export class StripeClient {
   private async get<T>(
     path: string,
     params: Record<string, unknown>,
+    exempt?: typeof CHARGE_INTENT,
   ): Promise<T> {
-    this.assertAllowed(path);
+    this.assertAllowed(path, exempt);
     try {
       const { data } = await this.client().get<T>(
         `/${path.replace(/^\/+/, "")}`,
@@ -434,5 +435,42 @@ export class StripeClient {
       input.idempotencyKey,
       CHARGE_INTENT,
     );
+  }
+
+  /**
+   * Find the charge a seal produced, if one exists. A READ; it cannot take money.
+   *
+   * WHY THIS EXISTS (founder, 2026-09-05: *"Close it now with the intent row"*).
+   * A purchase writes an intent row, charges, then settles. If the process dies
+   * between the charge and the settle, the only record of whether money moved is
+   * at Stripe — and the only handle we have on it is the seal id, which
+   * `chargeCardOnFile` stamps into the intent's metadata for exactly this
+   * reason.
+   *
+   * IT SHARES THE ONE DOOR because it addresses the same resource. That is
+   * stated rather than hidden: `grep CHARGE_INTENT` returns two methods, and
+   * this is the one that only looks. A separate symbol would have implied a
+   * second permission where there is one resource and one decision behind it.
+   *
+   * SEARCH IS EVENTUALLY CONSISTENT, and the caller MUST NOT treat an empty
+   * result as proof that no charge exists. Stripe's own documentation puts the
+   * index up to a minute behind. `PurchaseIntentReconciler` therefore refuses to
+   * void an intent younger than its stated floor — voiding a young row on an
+   * empty search would destroy the record of a charge that had simply not been
+   * indexed yet, which is the worst outcome this whole mechanism exists to
+   * prevent.
+   */
+  async findChargeBySeal(sealId: string): Promise<StripePaymentIntent[]> {
+    const page = await this.get<{ data: StripePaymentIntent[] }>(
+      "payment_intents/search",
+      {
+        // Stripe's search syntax. The value is quoted and the seal id is a UUID
+        // this product minted, so there is nothing here a caller could inject.
+        query: `metadata['mudavym_seal_id']:'${sealId}'`,
+        limit: 10,
+      },
+      CHARGE_INTENT,
+    );
+    return Array.isArray(page?.data) ? page.data : [];
   }
 }

@@ -144,6 +144,21 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "the purchase runs. Binding the amount into the seal's arguments is what "
         "stops a gesture obtained for one figure being spent on another."
     ),
+    (
+        "communications/text/credits/text-credits.controller.ts",
+        "reconcile",
+    ): (
+        "There is no person to bind a seal to. The caller is a machine — the "
+        "founder's runner or an operator — authenticated by ServiceKeyGuard "
+        "(ADR 0099), which FAILS CLOSED when ADMIN_API_KEY is unset. What it does "
+        "is not a new decision: it asks the provider what already happened to an "
+        "existing purchase intent and writes the answer down. It cannot charge, "
+        "cannot choose an amount, cannot create an intent, and cannot void one "
+        "the provider has not been asked about; an intent younger than the "
+        "provider's search lag is left alone rather than judged. Running it twice "
+        "is a no-op: settled rows leave the open set and "
+        "uq_house_message_credits_purchase_seal refuses a second credit."
+    ),
 }
 
 

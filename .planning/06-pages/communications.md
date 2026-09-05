@@ -62,10 +62,24 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   be spent on another. **Updated 2026-09-05 (founder: *"Wire it to the card on
   file, sealed"*): that route now CHARGES** the house's Stripe instrument for the
   stated amount before the credit is written. A refused charge writes nothing and
-  says why, and the response carries `charged` and `recorded` as **separate**
-  fields because they can disagree: a charge that succeeded with a write that
-  failed reports `charged: true, recorded: false` and names the PaymentIntent, so
-  a person can reconcile rather than reading a plain failure.
+  says why. **Updated 2026-09-06 (founder: *"Close it now with the intent row"*):
+  the response no longer carries `charged` and `recorded` as separate booleans.**
+  It carries ONE `state` — `settled`, `voided`, or `charge_may_exist` — because
+  two booleans that can disagree are two facts a caller has to reconcile in its
+  head, and the reconciling is now done on disk. A purchase writes an intent row
+  and marks it `charge_may_exist` **before** the provider is asked, so there is no
+  longer a moment where money can move with nothing recorded. A page rendering
+  `charge_may_exist` must say the purchase is unfinished and will be completed by
+  a reconcile — never that it failed, and never that it succeeded.
+- **Unfinished purchases are resolved by asking the provider, not by guessing.**
+  `POST /communications/text-credits/reconcile` (service-key, ADR 0099; there is
+  no person to bind a seal to) reads Stripe by the seal id and settles or voids.
+  Two refusals it will not be argued out of: an intent younger than the provider's
+  search lag is **left open** rather than voided, because Stripe's search index
+  runs behind and an empty answer that soon is not evidence; and a provider that
+  could not be reached is never read as "no charge exists". The runner is
+  `scripts/reconcile_message_credit_purchases.py`, `--apply` refused without
+  `--i-have-the-founders-word`.
 - **The allowance a house sees may be its own, not its plan's** (2026-09-05,
   founder: *"One house first, deliberately, then watch"*). `MeterReadout`
   carries `allowanceScope`: `"house"`, `"plan"` or `"none"`. The page must say

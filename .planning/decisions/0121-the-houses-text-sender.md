@@ -1070,3 +1070,111 @@ refuse. The refusal sentence becomes reachable the first time the founder runs t
 script, on the one house he names.
 
 | 2026-09-06 | Claude (charge + first allowance pass) | **Both answers built.** `StripeClient.chargeCardOnFile` — the first and only method in this product that moves money — behind a `unique symbol` that narrows the money-resource deny-list to exactly one door rather than deleting the entry; `BillingService.chargeForMessageCredits` with five outcomes kept apart (`provider_not_connected`, `no_customer`, `no_instrument`, `read_failed`, `refused_by_provider`), reading the register the house was SHOWN rather than asking the provider, and refusing a `requires_action` status that a 200 would otherwise pass off as a payment; the purchase route reordered to charge before it writes, reporting `charged` and `recorded` as separate fields because they can disagree. Migration `20260906080000`: `house_message_allowances` (per-house, PK on the restaurant, `set_via` with no default, a twenty-character provenance floor), `uq_house_message_credits_purchase_seal` and `house_message_credits_purchase_is_paid` (added `NOT VALID`, so purchases written before anything could charge stay readable rather than being declared wrong). `scripts/set_house_message_allowance.py` with `--self-test`. Every migration assertion executed against PGlite: **60 checks, 0 errors**, and the three new constraints proven by rows that had to be refused rather than by asserting the constraints exist. |
+
+## Founder answer, 2026-09-05 (batch 57) — the window is closed
+
+> **"Close it now with the intent row."**
+
+The previous pass shipped the charge and then named, in this document, the one
+window it could not close inside a request: the charge succeeds, the ledger write
+fails, and the money has moved with nothing on disk to say so. The route reported
+`charged: true, recorded: false` and asked a person to reconcile from a sentence.
+That is a report of a hole, not a mechanism for closing one, and the founder's
+answer is to build the mechanism.
+
+### What the order is now
+
+1. the role check
+2. the seal redeemed
+3. **the intent row written**, then moved to `charge_may_exist` **before** the
+   provider is asked
+4. the charge
+5. the credit, and the intent settled against it
+
+Step 3 exists only so that step 4 can crash safely. The state is set **before**
+the call rather than after it, and that is the whole point: a write that happens
+after a crash never happens, so a state set after the call could never describe a
+crash during it.
+
+### The four states, and what each one licenses
+
+| state | what it means | what may be done to it |
+|---|---|---|
+| `intended` | the row is written and **nothing has been sent** | charge it, or void it |
+| `charge_may_exist` | the provider **has been asked, or is about to be**; whether money moved is unknown | settle it from the provider's answer, or void it from proof |
+| `settled` | the charge succeeded; the PaymentIntent id **and** the credit entry it produced are both named on the row | nothing |
+| `voided` | proven that no charge will land, with the reason written down | nothing |
+
+`state` has **no default** — an omitted value would read as "nothing was sent",
+the one wrong answer that loses money silently. `settled` cannot be reached
+without both the payment and the credit; `voided` cannot be reached without a
+reason of at least ten characters; `charge_may_exist` cannot be reached without
+an attempt time; and an `intended` row may not carry a payment reference or an
+attempt time, because the state would then be lying about what has already
+happened. All four are proven by rows that had to be refused, not by asserting
+the constraints exist.
+
+### The reconcile, and the one thing it refuses to do
+
+`PurchaseIntentReconciler` reads the provider **by the seal id** —
+`chargeCardOnFile` stamps it into the PaymentIntent's metadata for exactly this
+purpose — and does one of three things: settles on a succeeded charge, voids on a
+charge the provider says did not succeed (quoting its status), or, on an empty
+answer, **decides by age and only in one direction.**
+
+**Stripe's search index is eventually consistent**, up to about a minute behind by
+its own documentation. So an empty search is not evidence of absence for a charge
+attempted seconds ago, and voiding on it would destroy the record of a real charge
+— silently, and in the exact place this whole mechanism exists to prevent it. An
+intent younger than `SEARCH_LAG_FLOOR_MS` (five minutes, a deliberately one-sided
+margin) is therefore **left open** and reported as `too_young_to_judge`. That is
+not a timeout deciding an outcome; it is a refusal to decide on evidence that
+cannot yet be trusted. The attempt is still written to the row, because a
+reconcile that leaves no trace when it finds nothing to do is indistinguishable
+from one that never ran.
+
+An unanswered provider is likewise never proof: `findChargeForSeal` reports
+`readable: false` separately from "no charge found", and the reconcile leaves the
+intent exactly as it was.
+
+**Idempotent by construction, not by convention.** A settled row leaves the open
+set. The credit write is protected by `uq_house_message_credits_purchase_seal`, so
+a second write for one seal is refused by the database, and the reconcile settles
+against the existing entry rather than treating that refusal as a failure. Running
+it three times settles once — asserted.
+
+### Which door, and why it is three things
+
+- **The decisions** live in `PurchaseIntentReconciler`. One implementation of
+  "did this charge happen"; a second would be one more than the number of answers
+  there can be.
+- **The door** is `POST /communications/text-credits/reconcile`, behind
+  `ServiceKeyGuard` (ADR 0099) rather than a seal. A seal binds an act to a person
+  who made a gesture; there is no person here, and the route makes no new
+  decision — it asks the provider what already happened and writes the answer
+  down. It cannot charge, cannot choose an amount, cannot create an intent, and
+  cannot void one the provider has not been asked about. It is **allow-listed in
+  `check_money_routes_are_sealed.py` with that reason written out**, rather than
+  quietly left outside the guard's scope.
+- **The runner** is `scripts/reconcile_message_credit_purchases.py`, in the
+  founder's-word shape: a dry run lists the open set and what would happen to each
+  row, and `--apply` is refused without `--i-have-the-founders-word`.
+
+### The response never says charged-true / recorded-false again
+
+It carries one `state` — the intent's own. Two booleans that can disagree are two
+facts a caller has to reconcile in its head, and the point of the intent row is
+that the reconciling is done on disk. The old contradiction is now the honest
+state `charge_may_exist`, with a sentence saying a reconcile will finish it and
+that nothing will be charged twice. A test asserts the response has no `charged`
+and no `recorded` property at all, so the old shape cannot come back by accident.
+
+### What this still does not claim
+
+**It is not atomic, and it does not pretend to be.** PostgREST gives this codebase
+no multi-statement transaction, so the honest shape is a durable intent plus a
+reconcile rather than a claim of atomicity. What changed is that there is no
+longer a moment where money can move with nothing on disk to say so — every state
+of the world past step 3 is reachable from a row.
+
+| 2026-09-06 | Claude (intent-row pass) | **The window is closed.** Migration `20260906110000` adds `house_message_purchase_intents` — four states with no default, one intent per seal, and four constraints that make a row unable to lie about what has already happened (settled needs both halves, voided needs a reason, `charge_may_exist` needs an attempt time, `intended` may carry neither). `PurchaseIntentService` writes it before the provider exists to the request and marks `charge_may_exist` **before** the call; `PurchaseIntentReconciler` reads the provider by the seal id and settles, voids, or refuses to judge an intent younger than the provider's own search lag; `StripeClient.findChargeBySeal` and `BillingService.findChargeForSeal` are the read, sharing the one door through the money-resource deny-list and keeping "no charge found" apart from "the provider could not be asked". The door is `POST /communications/text-credits/reconcile` behind `ServiceKeyGuard`, allow-listed in the money guard with its reason, plus `scripts/reconcile_message_credit_purchases.py`. The response dropped `charged`/`recorded` for one `state`, asserted by a test that fails if either property returns. The ORDER is proven by a **mutation**: the charge stub records the intent's state as it stood when it was called, and moving the charge above the mark makes the suite fail — verified by doing it. PGlite: **77 checks, 0 errors**. |
