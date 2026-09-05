@@ -31,6 +31,7 @@ For the last three, no own-site URL could be found at all, so the honest stateme
 published priced drinks list was found", not "none exists". A listing summary mentioned "a litre
 of house wine for 750 TL" at Kaleiçi Buda; that figure was never seen on a page and is recorded
 here only as the reason the venue was looked at, never as a price.
+
 **Why Vanilla over The Barrels Pub.** The Barrels genuinely publishes more raw price tokens.
 It lost on four things:
 
