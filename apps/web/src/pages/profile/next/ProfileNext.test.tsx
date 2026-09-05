@@ -34,6 +34,36 @@ vi.mock('./useProfileNextData', () => ({
 }));
 
 /**
+ * Stripe.js, stubbed at the LOADER (2026-09-05, with the panel's port).
+ *
+ * The real module injects a `<script>` from `js.stripe.com`; in jsdom that is a
+ * request that never resolves, which is why the panel's keyed path had no test
+ * at all before this. Stubbing the loader leaves the panel — its phases, its
+ * copy, its hold — under test on THIS page as well as on `/connections`, which
+ * is the whole claim the port makes: one component, two callers.
+ */
+const stripeJs = vi.hoisted(() => {
+  const element = { mount: vi.fn(), unmount: vi.fn(), destroy: vi.fn(), on: vi.fn() };
+  const elements = {
+    create: vi.fn(() => element),
+    getElement: vi.fn(() => element),
+    submit: vi.fn(async () => ({}) as { error?: { message?: string } }),
+  };
+  const instance = {
+    elements: vi.fn(() => elements),
+    confirmSetup: vi.fn(async () => ({
+      setupIntent: { id: 'seti_1', status: 'succeeded' },
+    })),
+  };
+  return { element, elements, instance, loadStripe: vi.fn(async () => instance) };
+});
+
+vi.mock('../../../components/mudavym/stripe-js', () => ({
+  loadStripe: stripeJs.loadStripe,
+  stripePublishableKey: () => 'pk_test_stub',
+}));
+
+/**
  * The collapse gate (2026-09-04). Defaults to OFF so every test written before
  * this pass still measures the shipping page byte for byte; the collapse tests
  * flip it and are the only ones that do.
@@ -663,6 +693,50 @@ describe('ProfileNext — the payment register (the provider path)', () => {
       screen.getByText(/STRIPE_SECRET_KEY is not set on the gateway/),
     ).toBeInTheDocument();
     expect(createSetupIntent).not.toHaveBeenCalled();
+  });
+
+  /**
+   * THE PORT, 2026-09-05 — the same component, still here with the flag off.
+   *
+   * `mudavym_design_connections` is OFF in production, so `/profile` is where a
+   * card is actually added today. The panel is no longer in this directory; if
+   * the port had broken this page, nothing else in this file would have noticed
+   * — every other payment test exercises the UNKEYED path, where the panel is
+   * never constructed.
+   */
+  it('mounts the shared card panel here when both halves of the credential exist', async () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      stripePublishableKey: 'pk_test_stub',
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+
+    // The gateway is asked for the intent BEFORE Stripe.js is fetched.
+    await waitFor(() => expect(createSetupIntent).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(stripeJs.loadStripe).toHaveBeenCalledWith('pk_test_stub'));
+    expect(
+      await screen.findByRole('button', { name: 'Hold to put this card on file' }),
+    ).toBeInTheDocument();
+    // The disabled stand-in from the unkeyed path must NOT be what rendered.
+    expect(screen.queryByText('Stripe card fields')).not.toBeInTheDocument();
+  });
+
+  it('still says the add is not sealed, on this page too', async () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      stripePublishableKey: 'pk_test_stub',
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+
+    // Scoped to the PANEL's own note: this register's lead also names
+    // G-PAY-SETUP, and a page-wide match would pass even if the panel had
+    // dropped the sentence entirely.
+    const note = await screen.findByText(/not a seal the server/i);
+    expect(note.textContent).toMatch(/G-PAY-SETUP/);
+    // The two ROW acts are sealed; the add mints nothing.
+    expect(mintPaymentSeal).not.toHaveBeenCalled();
   });
 
   it('names the BROWSER’s missing key when the gateway is ready and the bundle is not', () => {

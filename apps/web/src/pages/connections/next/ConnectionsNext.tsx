@@ -61,10 +61,26 @@
  *      because both are `assertCanManageRestaurant` acts and a move that left
  *      them behind would have deleted them.
  *   3. Three stopNotes that said "on /profile" were corrected. Two now say
- *      "on this page"; the third — adding or removing a card — says that
- *      nothing can do it today, because the Stripe Elements panel did not
- *      travel. That is a real subtraction, filed as §9 G-C9 rather than
- *      papered over with a link to a page that no longer carries it.
+ *      "on this page"; the third — adding or removing a card — said that
+ *      nothing could do it today, because the Stripe Elements panel did not
+ *      travel. That was a real subtraction, filed as §9 G-C9 rather than
+ *      papered over with a link to a page that no longer carried it.
+ *
+ * THE PANEL ARRIVED, 2026-09-05 (founder: "port the card panel to /connections
+ * now")
+ * ------------------------------------------------------------------------
+ * G-C9 is closed. `components/mudavym/StripeCardPanel.tsx` is the SAME
+ * component `/profile` renders — it was moved out of that page's directory and
+ * its two bindings cut, rather than copied here. Register II therefore owns the
+ * whole payment story: add, prefer, remove, and the provider's own state.
+ *
+ * One thing did not change and must not read as if it had: adding a card is
+ * still the one payment act with NO redeemed seal. Preferring and removing an
+ * instrument each spend a one-time token (`paymentSeal`); the add path confirms
+ * a SetupIntent on Stripe's origin and reconciles, and neither of those two
+ * routes takes a seal today. The panel says exactly that in its own words, and
+ * the gap stays filed as G-PAY-SETUP in `profile.md` §9 until the route itself
+ * is sealed.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -98,6 +114,7 @@ import {
 } from './AttachmentRow';
 import { grantHolds, wouldAskFor } from './cx-permissions';
 import { HouseServerControls } from './HouseServerControls';
+import { StripeCardPanel } from '../../../components/mudavym/StripeCardPanel';
 import {
   DASH,
   count,
@@ -175,6 +192,37 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   }, [hash, anchorReady]);
 
   const feed = feedUrl(d.ical.data?.token);
+
+  /* ── Register II's add-a-card affordance ──────────────────────────────
+   *
+   * Three facts decide it, and each is a different sentence when it is false:
+   * the gateway's credential, this bundle's credential, and whether anything is
+   * on file yet. The ROLE is not one of them — this page returns the refusal
+   * above for anyone who is not a manager or an owner, so a "your role is…"
+   * reason would describe a reader who cannot be looking at it.
+   */
+  const [addOpen, setAddOpen] = useState(false);
+  const methods = d.payments.data?.methods ?? [];
+  const providerConnected = d.payments.data?.provider.connected === true;
+  // `?? null` because a caller that never set the member and a deployment whose
+  // bundle has no key are the same fact to this page, and `undefined !== null`
+  // would quietly make the first one look keyed.
+  const publishable: string | null = d.stripePublishableKey ?? null;
+  const canAddCard = providerConnected && publishable !== null;
+
+  /**
+   * Why the card fields cannot open, or null when they can.
+   *
+   * The gateway's own sentence is preferred over ours whenever it sent one:
+   * `provider.reason` is what `POST /billing/setup-intent` would answer 503
+   * with, so the disabled control and the refused request say the same thing.
+   */
+  const addCardReason: string | null = !providerConnected
+    ? (d.payments.data?.provider.reason ??
+        'No payment provider credential is configured on this deployment, so no SetupIntent can be minted and nothing could be stored.')
+    : publishable === null
+      ? 'VITE_STRIPE_PUBLISHABLE_KEY is not set in this web bundle, so Stripe’s own card fields cannot be rendered. The gateway is ready; the browser is not.'
+      : null;
 
   /**
    * What the gateway said about the last attempt on THIS instrument.
@@ -406,7 +454,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   ? { label: d.provider.data.mode ?? 'Connected', tone: 'on' as const }
                   : { label: 'Key missing', tone: 'warn' as const },
               ]}
-              subtitle={secretList(d.provider.data)}
+              subtitle={secretList(d.provider.data, publishable)}
               why={
                 <>
                   Everything except the credential exists: SetupIntent, Elements
@@ -818,17 +866,23 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               lastLabel="Last reconciled"
               last={null}
               lastDetail="Nothing has ever been synced."
-              controls={[{ label: 'Add a card', disabled: true }]}
+              // THE PANEL ARRIVED, 2026-09-05. Until this pass the control was
+              // disabled unconditionally, because the Stripe Elements panel had
+              // stayed on `/profile`. It is now the shared
+              // `components/mudavym/StripeCardPanel`, opened below this
+              // register. What still disables the control is a missing
+              // credential — and the stop note prints WHICH one, in the
+              // gateway's own words wherever the gateway sent them.
+              controls={[
+                {
+                  label: 'Add a card',
+                  disabled: !canAddCard,
+                  onClick: () => setAddOpen(true),
+                },
+              ]}
               stopNote={
-                d.payments.data?.provider.connected
-                  ? // THE COLLAPSE, 2026-09-04. Register V left `/profile`, and the
-                    // Stripe Elements panel that mounted the card fields did NOT
-                    // come with it — it is bound to that page's data hook and UI
-                    // kit. So this control is disabled and says so, rather than
-                    // pointing at a page that no longer carries it. Filed as
-                    // `connections.md` §9 G-C9.
-                    'A provider is connected, so a card could be added — but the panel that mounts the provider’s own card fields has not been rebuilt here yet, and it is no longer on /profile. Nothing on this page can add one today.'
-                  : 'Disabled because the provider is not connected, not because of your role.'
+                addCardReason ??
+                'A provider is connected and this bundle holds the publishable key, so the card fields open below this register. The number is typed into Stripe’s own iframes and never reaches this page.'
               }
             />
           ) : (
@@ -893,9 +947,51 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   },
                 ]}
                 alert={paymentAlert(m.id)}
-                stopNote="Removal detaches the instrument at the provider first, then drops the row here — dropping the row alone would leave a live card the next reconcile faithfully restores. Adding one still is not here: that needs the provider’s own card fields, which is a panel rather than a request (G-C9)."
+                stopNote="Removal detaches the instrument at the provider first, then drops the row here — dropping the row alone would leave a live card the next reconcile faithfully restores. Adding one is below this register, in the provider’s own card fields."
               />
             ))
+          )}
+
+          {/* ── ADDING ONE ──────────────────────────────────────────────
+              The panel is the same component `/profile` mounts, so there is one
+              card form in the product and not two that drift.
+
+              WHERE THE BUTTON IS. Exactly one place at a time: in the empty
+              row's control column when nothing is on file — the four columns
+              are that row's whole subject — and here once instruments exist,
+              where an action bar under a list belongs. Two buttons offering the
+              same act would make a reader wonder which one is the real one.
+
+              WHEN IT CANNOT OPEN. The control is disabled and the reason is the
+              gateway's own sentence (`addCardReason`) — never an empty box, and
+              never a form to type a brand and four digits into by hand: a row
+              typed by a person looks chargeable and is not. On THIS deployment
+              `STRIPE_SECRET_KEY` is unset, so that is the state you will see. */}
+          {!d.payments.loading && !d.payments.error && (
+            <div className="cx-add">
+              {addOpen && canAddCard && publishable ? (
+                <StripeCardPanel
+                  client={d}
+                  publishableKey={publishable}
+                  onClose={() => setAddOpen(false)}
+                />
+              ) : methods.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className="cx-btn is-seal"
+                    disabled={!canAddCard}
+                    onClick={() => setAddOpen(true)}
+                  >
+                    Add a card
+                  </button>
+                  <p className="cx-ctl-note">
+                    {addCardReason ??
+                      'The card fields are Stripe’s own iframes, served from Stripe’s origin. The number never reaches this page or our servers.'}
+                  </p>
+                </>
+              ) : null}
+            </div>
           )}
         </section>
 
@@ -1188,13 +1284,15 @@ function posSources(
  * send is reported as unknown rather than as unset: "we were not told" and "it
  * is not set" are different facts about a credential.
  */
-function secretList(p: ProviderStateVM | null): string {
+function secretList(p: ProviderStateVM | null, publishableKey: string | null): string {
   if (!p) return 'the provider did not report its state';
   const state = (v: boolean | undefined) =>
     v === undefined ? 'not reported' : v ? 'set' : 'unset';
-  const publishable = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined)
-    ? 'set'
-    : 'unset';
+  // Read through the hook (2026-09-05) rather than off `import.meta.env` twice.
+  // The card panel decides whether it can open from the same value, and two
+  // reads of one variable is how a page ends up printing "set" beside a control
+  // disabled for being unset.
+  const publishable = publishableKey ? 'set' : 'unset';
   return [
     `STRIPE_SECRET_KEY ${state(p.secretKeyPresent)}`,
     `STRIPE_WEBHOOK_SECRET ${state(p.webhookSecretPresent)}`,

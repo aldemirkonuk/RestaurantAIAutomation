@@ -560,7 +560,7 @@ deleted rather than kept and disabled.
 
 | | Was (second pass) | Is (third pass) |
 |---|---|---|
-| **Collecting a card** | four fields typed by hand, submit disabled | Stripe Elements against a SetupIntent, on Stripe's origin. `StripeCardPanel.tsx`, `stripe-js.ts` |
+| **Collecting a card** | four fields typed by hand, submit disabled | Stripe Elements against a SetupIntent, on Stripe's origin. `components/mudavym/StripeCardPanel.tsx`, `components/mudavym/stripe-js.ts` (both moved out of this directory 2026-09-05 and shared with `/connections`) |
 | **The commitment** | a disabled `Save payment method` button | `HoldToApprove` — *Hold to put this card on file*. The second and only other seal on the page |
 | **Provider state** | one boolean + one sentence | each of three secrets named with the process it lives in, the key's mode from its own prefix, the pinned API version, and **when a signed delivery last arrived** |
 | **Freshness** | nothing | `synced_at` per row, plus **Reconcile now** which also DROPS what the provider no longer holds |
@@ -937,16 +937,16 @@ state, so under the per-restaurant FLAG (not the localStorage override, which re
 synchronously) both reads still fire **once** on first paint before the verdict lands.
 This removes the steady-state reads, not the first pair. Filed in §13.
 
-**What the move cost, stated rather than hidden — G12a.** Three controls had their only
-mount on this page. Declare and revoke moved to
-`connections/next/HouseServerControls.tsx`. **Adding or removing a card did not.**
-`StripeCardPanel.tsx` mounts Stripe's own iframes and is bound to this page's data hook
-(`ProfileNextData`) and UI kit (`pf-ui`); porting it needs both. So with the flag on
-there is nowhere in the product to add a card, and `/connections`' row says exactly
-that instead of pointing at a page that no longer carries it. It costs nothing **today**
-— `STRIPE_SECRET_KEY` is unset on this deployment, the create path 503s and the control
-was already disabled carrying that sentence — and it becomes urgent the day a key is
-set. See §9 G12a and `connections.md` §9 G-C9.
+**What the move cost, and what repaid it the next day — G12a.** Three controls had their
+only mount on this page. Declare and revoke moved to
+`connections/next/HouseServerControls.tsx`. **Adding a card did not**, on 2026-09-04:
+`StripeCardPanel.tsx` mounted Stripe's own iframes and was bound to this page's data hook
+(`ProfileNextData`) and UI kit (`pf-ui`), so for one day there was nowhere in the product
+to add a card with the flag on, and `/connections`' row said exactly that instead of
+pointing at a page that no longer carried it. **Repaid 2026-09-05:** the panel left this
+directory for `components/mudavym/StripeCardPanel.tsx` and both bindings were cut, so the
+one component now renders on both pages. See §9 G12a (closed) and `connections.md` §9 G-C9
+(closed).
 
 **Retire-to-write.** This pass retires the duplicate: Registers IV, V and VI are
 described by [[connections]] from now on, and §13a's status block above is superseded
@@ -1015,9 +1015,12 @@ In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header
   `useProfileNextData.ts` (six reads and fifteen writes, tenant-keyed) ·
   `IdentityRegister.tsx` (I) · `SecurityRegister.tsx` (II) ·
   `ConnectionsRegister.tsx` (III — sign-in + workspace) · `McpRegister.tsx` (IV) ·
-  `PaymentRegister.tsx` (V) · `StripeCardPanel.tsx` (V — Stripe Elements, the
-  hold, the four states) · `stripe-js.ts` (V — the loader for
-  `https://js.stripe.com/v3` and the sliver of its API this page types by hand) ·
+  `PaymentRegister.tsx` (V) ·
+  `components/mudavym/StripeCardPanel.tsx` (V — Stripe Elements, the hold, the four
+  states; **shared with `/connections` since 2026-09-05**, which is why it is no
+  longer in this directory) ·
+  `components/mudavym/stripe-js.ts` (V — the loader for `https://js.stripe.com/v3`
+  and the sliver of its API this product types by hand) ·
   `HouseRegister.tsx` (VI) ·
   `GoogleLink.tsx` (the one real token acquisition) ·
   `pf-ui.tsx` (the row shape, chip, rail, card, field, select) · `pf-format.ts` ·
@@ -1084,8 +1087,8 @@ because that file is outside this page's paths.
 | Method | Path | Where called | Guard / posture |
 |---|---|---|---|
 | GET | `/billing/provider` | not called by the page (the same state rides on `GET /payment-methods`); exists for a deployment check | `JwtAuthGuard`. `webhookLastReceivedAt: null` means no delivery has EVER been authenticated here — not health |
-| POST | `/billing/setup-intent` | `createSetupIntent` → `StripeCardPanel` | `JwtAuthGuard` + `assertCanManageRestaurant`; **503 with the reason** while `STRIPE_SECRET_KEY` is unset |
-| POST | `/billing/sync` | `syncPayments` — after a confirmation, and behind **Reconcile now** | `JwtAuthGuard` + `assertCanManageRestaurant`; DROPS instruments the provider no longer holds |
+| POST | `/billing/setup-intent` | `createSetupIntent` → `StripeCardPanel` | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED `create` seal** from `X-Seal-Challenge` (2026-09-05), spent BEFORE the provider is touched and stamped onto the intent's metadata; **503 with the reason** while `STRIPE_SECRET_KEY` is unset. The panel does not mint yet, so this is refused today — §9 G-PAY-SETUP |
+| POST | `/billing/sync` | `syncPayments` — after a confirmation, and behind **Reconcile now** | `JwtAuthGuard` + `assertCanManageRestaurant`; with `setupIntentId`, the seal id is read back FROM STRIPE off that intent and proven redeemed by this person (2026-09-05); without it, a plain reconcile — `provenance` in the response says which. DROPS instruments the provider no longer holds |
 | POST | `/billing/webhook` | Stripe | **`@Public()`** — authenticated by HMAC over the exact request bytes, not by a JWT. Fails closed with no `STRIPE_WEBHOOK_SECRET`. Always answers **200**, even on a refusal, so a permanently-wrong secret cannot become a retry storm; the body says `received: false` and names the failing check. Idempotent on the event id |
 | PATCH | `/payment-methods/:id/default` | `setDefaultPaymentMethod` — "Charge this first" | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED seal** from `X-Seal-Challenge` (2026-09-04); written at the provider **before** the local flag |
 
@@ -1168,14 +1171,49 @@ Core, every role. No `S..` touches it directly (OD-48).
   gateway's own sentence rather than as a status code. Six tests pin it, all six
   failing against HEAD copies of the directory. See §1b, sixth pass.
 
+- **G-PAY-SETUP — HALF CLOSED 2026-09-05 (gateway sealed; the panel does not yet
+  mint, so adding a card is REFUSED until it does).** The founder's call, put at
+  the end of this row, was answered: *"do option 1"* — seal the setup-intent
+  route. `POST /billing/setup-intent` now redeems a `create` seal from
+  `X-Seal-Challenge` **before** it asks the provider for anything, and stamps the
+  spent seal's id into the SetupIntent's metadata; `POST /billing/sync` names the
+  intent it is recording, reads that id back **from Stripe**, and proves it was
+  redeemed by this person for this house's register. `SyncResponse.provenance`
+  says which check ran, so a plain reconcile can never be read as a proven one.
+  A guard covers the routes that do not exist yet:
+  `scripts/check_money_routes_are_sealed.py` (CI, beside `check_route_exposure`)
+  fails any non-GET route under `payment-methods/**` or `billing/**` that does not
+  redeem, or carry an allow-list row with its reason. Measured: PASS on this tree,
+  FAIL naming `setupIntent` and `sync` on a `git show HEAD:` copy. Live on `:4000`,
+  `POST /billing/setup-intent` with no seal header answers **403** with the whole
+  refusal sentence and asks the provider for nothing. Census, rejected
+  alternatives and the webhook's four replay defences: ADR 0110's third addendum.
+  **What is left, and it is user-visible:** `StripeCardPanel.tsx` still calls
+  `createSetupIntent()` with no seal, so the Add-a-card panel is refused on both
+  surfaces until it mints — a deliberate, explained refusal, the same shape ADR
+  0116's addendum took for the legacy orders page. The panel is builder p4y's file
+  and was mid-flight, so the hunks are written and left ready rather than applied:
+  `p4-scratch/p4ae/client-mint-for-setup-intent.patch.md`. They move the hold to
+  the front of the panel (*Hold to open the card form* mints and spends the seal on
+  the intent; the existing hold then confirms and syncs naming the intent), because
+  Stripe Elements needs the client secret before it can mount the fields — a seal
+  minted on the existing hold would be minted after the capability it authorises
+  had already been handed out. Mirror: `connections.md` §9 G-C9.
+
+  *The original entry, kept because the reasoning it records is the reasoning that
+  was acted on:*
+
 - **G-PAY-SETUP — adding a card is the one payment act with no redeemed seal, and
   the sealed `create` route has no caller (added 2026-09-04).** ADR 0110's
   addendum seals three writes; `POST /payment-methods` is one of them, and
   **nothing in `apps/web` or `apps/mobile` calls it** — measured by grep over both
   apps, not assumed. The real add-a-card path is `POST /billing/setup-intent` →
-  Stripe's own iframes → `POST /billing/sync` (`StripeCardPanel.tsx`,
-  `useProfileNextData.ts`), and both of those routes are role-gated and
-  seal-free (`billing.controller.ts:101-166`). So the act the addendum most wanted
+  Stripe's own iframes → `POST /billing/sync`
+  (`components/mudavym/StripeCardPanel.tsx`, and since 2026-09-05 BOTH
+  `useProfileNextData.ts` and `useConnectionsNextData.ts` — the port widened the
+  blast radius of this gap from one page to two, which is a reason to close it and
+  not a reason to have left the panel where it was), and both of those routes are
+  role-gated and seal-free (`billing.controller.ts:101-166`). So the act the addendum most wanted
   to protect — "an attacker attaches their own instrument" — is protected on the
   route nobody uses and unprotected on the route everybody uses. *Why not yet:*
   the fix is in `apps/api-gateway/src/billing/**`, a module this pass's brief did
@@ -1185,17 +1223,21 @@ Core, every role. No `S..` touches it directly (OD-48).
   seal it does not have. **Founder's call: seal `POST /billing/setup-intent`, or
   make the panel record through the sealed `create` route instead?**
 
-**G12a — nowhere to add a card while `mudavym_design_connections` is on (opened
-2026-09-04 by the collapse; the one thing this pass subtracted).** Register V moved to
-`/connections`, but `StripeCardPanel.tsx` did not: it mounts Stripe's iframes and is
-bound to `ProfileNextData` and `pf-ui`, so porting it means porting both. The
-`/connections` row therefore renders **Add a card** disabled with "the panel that mounts
-the provider's own card fields has not been rebuilt here yet, and it is no longer on
-/profile" — the truth, rather than a link to a page that no longer carries it. **Why it
-is not closed now:** it is a port of ~400 lines into a directory another builder is
-live in, and it buys nothing today — `STRIPE_SECRET_KEY` is unset on this deployment, so
-the create path 503s and the control was already disabled with that sentence. It becomes
-urgent the day a key is set. Mirror: `connections.md` §9 G-C9.
+~~**G12a — nowhere to add a card while `mudavym_design_connections` is on (opened
+2026-09-04 by the collapse; the one thing that pass subtracted).**~~ **CLOSED
+2026-09-05** (founder: *"port the card panel to /connections now"*). The panel was not
+copied — it was moved and unbound. `pages/profile/next/StripeCardPanel.tsx` is now
+`components/mudavym/StripeCardPanel.tsx`, and `pages/profile/next/stripe-js.ts` is now
+`components/mudavym/stripe-js.ts` (the panel is its only `loadStripe` caller). The two
+bindings that had kept it here are gone: the data prop is `CardPanelClient`
+(`createSetupIntent` + `syncPayments`, which `ProfileNextData` satisfies structurally, so
+`PaymentRegister.tsx` passes `data` in unchanged and `useConnectionsNextData` grew the same
+two members), and the four `pf-ui` primitives are redrawn inside the component over the
+house tokens with their hover and focus rules in `components/mudavym/stripe-card-panel.css`.
+One component, two callers: `/profile` with the flag off (production's state) and
+`/connections` Register II with it on. **Not changed by the port:** adding a card still
+redeems no seal — that is G-PAY-SETUP above, and it is a separate build. Mirror:
+`connections.md` §9 G-C9.
 
 - Restaurant section edits (`PATCH /organizations/locations/:id`) rely on server-side role enforcement; the page gate is client-side only.
 - The v3.0 UX catalog's "dashboard profile card with no handler" item (L102) was never located (`v3.0-TECH-DEBT.md:502`) — unverified, tracked there, not here.
@@ -1357,8 +1399,10 @@ credentials, which restaurants you belong to, and the exit.
 >    (`locationQ`, `paymentsQ`). The fix is a tri-state (`true | false | 'unknown'`)
 >    in `apps/web/src/lib/mudavym/useMudavymDesign.ts` — a file every gated page
 >    shares, so it is a wave-level change, not a page's.
-> 2. **Port the card panel to `/connections`** (§9 G12a) — `StripeCardPanel.tsx` plus
->    `stripe-js.ts`, and the four `pf-ui` primitives they use.
+> 2. ~~**Port the card panel to `/connections`** (§9 G12a) — `StripeCardPanel.tsx` plus
+>    `stripe-js.ts`, and the four `pf-ui` primitives they use.~~ **Done 2026-09-05:**
+>    both files moved to `components/mudavym/` and the `pf-ui` primitives were redrawn
+>    inside the component, so there is one panel and two callers rather than two panels.
 > 3. **The model-context ownership fork is still open** (ADR 0114, "what this decision
 >    does NOT settle"). This pass split the register along the gateway's own role
 >    gates, which is the cut the CODE already makes; it does not answer whose a

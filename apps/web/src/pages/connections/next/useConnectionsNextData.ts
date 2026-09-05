@@ -44,6 +44,7 @@ import { useCallback, useContext, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AuthContext } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
+import { stripePublishableKey } from '../../../components/mudavym/stripe-js';
 import { readError } from './cx-format';
 
 /* ── view models ──────────────────────────────────────────────────────── */
@@ -549,6 +550,79 @@ export function useConnectionsNextData() {
     onSuccess: () => invalidate('connections-next-payments'),
   });
 
+  /* ── adding a card: the two routes the panel actually walks ───────────
+   *
+   * G-C9's other half, closed 2026-09-05 ("port the card panel to /connections
+   * now"). `StripeCardPanel` is shared with `/profile` and asks a page for
+   * exactly these two functions (`CardPanelClient`), so this hook grows the two
+   * members rather than the page growing a second copy of the panel.
+   *
+   * NEITHER OF THESE REDEEMS A SEAL TODAY, and that is stated rather than
+   * hidden. `POST /payment-methods` — the create route ADR 0110's addendum
+   * sealed — has no caller anywhere in `apps/web` or `apps/mobile`; a card is
+   * attached by confirming a SetupIntent on Stripe's origin and then
+   * reconciling, and both of those routes are role-gated and seal-free
+   * (`billing.controller.ts`). Minting a `create` challenge on the panel's hold
+   * would spend nothing and claim a proof that was never redeemed. The gap is
+   * G-PAY-SETUP in `profile.md` §9; sealing `POST /billing/setup-intent` is a
+   * separate build, and when it lands the change here is one `onChallenge`
+   * mint beside these two — nothing about the panel itself.
+   */
+
+  /**
+   * Permission to STORE an instrument, not a payment.
+   *
+   * The client secret authorises Stripe.js to attach ONE instrument to ONE
+   * customer; it cannot charge, list or read. `POST /billing/setup-intent`
+   * answers 503 with the provider's own sentence while `STRIPE_SECRET_KEY` is
+   * unset — which is this deployment's state — so the panel's failure text is
+   * the server's, never page prose.
+   */
+  const createSetupIntent = useCallback(async (): Promise<{
+    clientSecret: string;
+    setupIntentId: string;
+    livemode: boolean;
+  }> => {
+    const { data } = await apiClient.post<{
+      clientSecret: string;
+      setupIntentId: string;
+      livemode: boolean;
+    }>('/billing/setup-intent', {});
+    if (!data?.clientSecret) {
+      throw new Error(
+        'The provider answered without a client secret, so the card form cannot open. Nothing was stored.',
+      );
+    }
+    return data;
+  }, []);
+
+  /**
+   * Reconcile the register against the provider's list.
+   *
+   * Called right after a confirmation so the row appears without waiting for a
+   * webhook. It DROPS instruments the provider no longer has — a sync that only
+   * inserted would leave the register showing a card that cannot be charged.
+   *
+   * The refetch is awaited, not merely invalidated: the panel prints the count
+   * the sync returned and the register beside it must already agree, or the two
+   * would state different numbers of instruments in the same eyeful.
+   */
+  const syncPayments = useCallback(async (): Promise<{
+    syncedAt: string;
+    kept: number;
+    removed: number;
+    note: string | null;
+  }> => {
+    const { data } = await apiClient.post<{
+      syncedAt: string;
+      kept: number;
+      removed: number;
+      note: string | null;
+    }>('/billing/sync', {});
+    await paymentsQ.refetch();
+    return data;
+  }, [paymentsQ]);
+
   const revokeTool = useMutation({
     mutationFn: async (v: { id: string; tool: string }) => {
       await apiClient.delete(
@@ -650,6 +724,17 @@ export function useConnectionsNextData() {
     paymentSeal,
     setDefaultPayment,
     removePayment,
+    /* `CardPanelClient` — the two members `StripeCardPanel` asks a page for. */
+    createSetupIntent,
+    syncPayments,
+    /**
+     * The BROWSER's half of the Stripe credential, read here rather than asked
+     * of the gateway: `VITE_STRIPE_PUBLISHABLE_KEY` is baked into this bundle at
+     * build time and the gateway has no view of the bundle that is running, so a
+     * server-reported value would be a guess. Null renders as a named missing
+     * variable, never as a generic "not configured".
+     */
+    stripePublishableKey: stripePublishableKey(),
     refetchMcp,
   };
 }

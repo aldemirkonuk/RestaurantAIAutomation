@@ -112,9 +112,30 @@ the two registers that would actually leak are refused at the gateway as well.
   its own act when it begins, and the write carries it back to be spent exactly
   once. A mint that fails approves nothing and says so; a refused write prints the
   gateway's own sentence on the row it was refused for, never as a page-wide
-  banner and never as a status code. *Adding* a card is still not here, and is the
-  one payment act with no redeemed seal anywhere — see §9 G-C9 and `profile.md`
-  §9 G-PAY-SETUP.
+  banner and never as a status code.
+- **A card is added here, in the provider's own fields** *(new 2026-09-05; §9
+  G-C9 closed)*. `components/mudavym/StripeCardPanel.tsx` — the SAME component
+  `/profile` mounts, moved out of that page's directory rather than copied — opens
+  under Register II. The number is typed into Stripe's iframes on Stripe's origin
+  and never reaches this page, this bundle or the gateway. The control sits in
+  exactly one place at a time: the empty row's control column when nothing is on
+  file, an action bar under the list when something is. When it cannot open, the
+  disabled control carries the reason as a sentence — the gateway's own words when
+  the gateway sent them (`STRIPE_SECRET_KEY`), ours when the missing half is this
+  bundle's (`VITE_STRIPE_PUBLISHABLE_KEY`) — never an empty box and never a form
+  to type a brand and four digits into by hand.
+- **Adding a card is sealed at the gateway as of 2026-09-05, and the panel does not
+  yet mint — so it is REFUSED here too.** ~~Charge-this-first and Remove each spend a
+  one-time token; the add confirms a SetupIntent on Stripe's origin and then
+  reconciles, and neither of those two routes takes a seal today.~~ Both of those
+  routes now do: `POST /billing/setup-intent` redeems a `create` seal before it
+  touches Stripe, and `POST /billing/sync` proves the same seal by reading its id
+  back off the intent at the provider (ADR 0110's third addendum). Until
+  `StripeCardPanel.tsx` mints on a hold — ready hunks at
+  `p4-scratch/p4ae/client-mint-for-setup-intent.patch.md` — the Add-a-card panel
+  answers with the gateway's refusal sentence on both surfaces. That is deliberate
+  and explained rather than silent, and it is the one thing a founder should look
+  at. See `profile.md` §9 G-PAY-SETUP.
 - **Register III — personal grants that act inside this house.** Every OAuth
   grant recorded against this restaurant, named with its owner, plus a count of
   live grants belonging to people who work here that carry no recorded
@@ -261,12 +282,92 @@ re-consent hold.
 **What was deliberately not built.** The card panel. Adding a card needs Stripe's own
 iframes, which is a ~400-line port bound to `/profile`'s hook and UI kit, into a directory
 another builder is live in — and it buys nothing while `STRIPE_SECRET_KEY` is unset. The
-row says so instead of pointing at a page that no longer holds it.
+row says so instead of pointing at a page that no longer holds it. **Built the next day —
+see the third pass below.**
 
 **Proof.** `vitest run src/pages/connections/next/ConnectionsNext.test.tsx` — **43
 passed**; six of them fail against a HEAD copy of the whole directory (`git show HEAD:`
 into a same-depth probe, never a git state change). Live on `:4000`, both writes answer
 403 with the whole refusal sentence when no seal is sent, and neither writes anything.
+
+### Third pass, 2026-09-05 — the card panel arrives, and there is only one of it
+
+**What the founder asked.** *"Port the card panel to /connections now"* — one home for the
+whole payment register before the flag reaches any house.
+
+**What was built.** `pages/profile/next/StripeCardPanel.tsx` →
+`apps/web/src/components/mudavym/StripeCardPanel.tsx`, plus
+`pages/profile/next/stripe-js.ts` → `components/mudavym/stripe-js.ts` (the panel is its
+only `loadStripe` caller) and a new `components/mudavym/stripe-card-panel.css`. Register II
+renders it under its rows; `PaymentRegister.tsx` renders the same file. Two things had to
+be cut for that to be one component rather than two copies:
+
+- **The data binding.** The panel called exactly two functions on `ProfileNextData`. The
+  prop is now `CardPanelClient` — `createSetupIntent` and `syncPayments`, nothing else —
+  which `ProfileNextData` satisfies structurally (so `/profile` still passes its hook in
+  unchanged) and which `useConnectionsNextData` grew.
+- **The chrome binding.** `Card`, `Note`, `StatusLine` and `Btn` came from `pf-ui`, whose
+  hover and focus rules are injected by `/profile` alone. They are redrawn inside the
+  component over the house tokens, and `.scp-btn`'s three rules travel with it.
+
+**Measured, not assumed.** `components/mudavym/index.ts` does NOT re-export the panel, and
+the file says why: it imports a stylesheet, `App.tsx` takes `PageGate` from that barrel, and
+a CSS import in a barrel is a side effect no bundler tree-shakes. Both callers import by
+path.
+
+**Where the button is.** Exactly one place at a time — the empty row's control column when
+nothing is on file, an action bar under the list when something is. Two buttons for one act
+would make a reader ask which is the real one.
+
+**The disabled state stopped being about us.** It used to read *"the panel … has not been
+rebuilt here yet"*, which is a sentence about our backlog printed to an operator. It now
+names the missing credential, preferring the gateway's own words
+(`provider.reason`) over ours so the disabled control and the 503 the create path would
+answer with say the same thing. `secretList` stopped reading
+`import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY` a second time and takes the hook's value, so
+the subtitle cannot print "set" beside a control disabled for being unset.
+
+**What the port did NOT do.** It did not seal `create`, and says so in the same words as
+before: the hold is the house's ceremony, not a redeemed seal; `POST /payment-methods` has
+no caller in either app; the real path is `POST /billing/setup-intent` → Stripe's origin →
+`POST /billing/sync`, and neither of those two routes takes a seal today. That gap is
+`profile.md` §9 G-PAY-SETUP and is a separate build.
+
+**Two charcoal defects this pass found by capturing, and fixed in passing.** Neither was
+caused by the port; both were found because the port required a charcoal capture of
+Register II, which this page had never had.
+
+1. **The page never painted its own ground.** `connections-next.css` opened with
+   `.mudavym .cx { background: var(--paper-0); color: var(--ink-1) }` — a DESCENDANT
+   selector — while the page root is one element carrying both classes (`<div
+   className="mudavym cx" data-ground={ground}>`). So the rule could never match.
+   Invisible on paper, because the app shell behind it is already light; on charcoal the
+   tokens flipped and the background did not. Measured:
+   `getComputedStyle(root).backgroundColor` was `rgba(0, 0, 0, 0)` with `--paper-0`
+   resolving to `#15130F`. Fixed by adding the compound selector `.mudavym.cx` beside the
+   descendant one; the same measurement now reads `rgb(21, 19, 15)`.
+2. **Three headings could not inherit a colour.** `globals.css:129-136` sets `h1` and `h2`
+   to `text-slate-900` app-wide, and any matching rule beats an inherited value, so
+   `.cx-title`, `.cx-sec-h h2` and `.cx-refused h1` rendered slate-900 on both grounds —
+   dark headings on the dark one. Each now states `color: var(--ink-1)`.
+
+**Measured live, and it is not what the tests show — G-C10.** With a dev-bypass session
+against the running gateway, `GET /api/v1/billing/provider` answers exactly the sentence
+this page prints (*"Stripe is not connected — STRIPE_SECRET_KEY is not set on this
+deployment…"*), but `GET /api/v1/payment-methods` answers **500**:
+*"The payment register could not be read: Could not find the table
+'public.payment_methods' in the schema cache"*. So Register II on this deployment is an
+**unread** register, not an empty one, and the page says so — the add-a-card bar correctly
+renders nothing, because it is gated on `!d.payments.error` rather than on the register
+being empty. Filed in §9 as G-C10; it is a deployment fact, not a page defect, and it is
+the reason the live captures show a named failure where the stubbed ones show the row.
+
+**Proof.** `npx vitest run src/pages/profile/next src/pages/connections/next
+--reporter=basic` from `apps/web` — **122 passed / 3 files**. Against a same-depth probe
+built with `git show HEAD:` (never a git state change), **7 of 49** connections cases fail
+and **1 of 65** profile cases fails; the second new profile case pins copy that already
+existed and is a guard against the port dropping it, which is stated rather than counted as
+a proof.
 
 ## 2. Entry
 
@@ -410,26 +511,44 @@ Each is rendered honestly on the page rather than hidden.
   *Still not here:* CHANGING a credential afterwards. `PUT /:id/secret` answers;
   what is missing is a button, and the declare panel says which.
 
-- **G-C9 — nothing on this page can ADD a card; removing and preferring one work
-  again. Opened 2026-09-04 by the collapse, half-closed the same day.** Register V
-  left `/profile`, but `profile/next/StripeCardPanel.tsx` did not: it mounts
-  Stripe's own iframes and is bound to that page's data hook (`ProfileNextData`)
-  and UI kit (`pf-ui`), so moving it means moving both. **Add a card** therefore
-  stays disabled saying *"the panel that mounts the provider's own card fields has
-  not been rebuilt here yet, and it is no longer on /profile"*.
-  **What is closed:** *Remove* and *Charge this first* are live on every
-  instrument row and both are `HoldToApprove`, because the gateway REDEEMS a
+- **G-C10 — `payment_methods` is not in this deployment's schema cache, so Register II
+  reads as UNREAD (measured 2026-09-05).** `GET /payment-methods` answers 500 with
+  *"Could not find the table 'public.payment_methods' in the schema cache"*, while the
+  migration that creates it (`20260903094600_payment_methods.sql`) is applied. The page
+  behaves correctly — it NAMES the failed read and carries the gateway's sentence rather
+  than drawing an empty register (ADR 0020) — and every control below it is therefore
+  absent rather than disabled. **Not a page defect and not fixed here:** it is a PostgREST
+  schema-cache state on the deployment, and reloading that cache is an operator act. It is
+  recorded because it is the state a founder opening `/connections` today will see, and
+  because it means no capture on this deployment can show a real instrument row.
+
+- ~~**G-C9 — nothing on this page can ADD a card; removing and preferring one work
+  again.**~~ **CLOSED 2026-09-05.** Opened 2026-09-04 by the collapse, half-closed
+  the same day, closed whole the next.
+  **The first half (2026-09-04):** *Remove* and *Charge this first* are live on
+  every instrument row and both are `HoldToApprove`, because the gateway REDEEMS a
   one-time seal on each of those writes (ADR 0110's addendum) — a plain button
   there would be a control that always fails, not a lighter ceremony. The write
   client is `useConnectionsNextData.ts` (`paymentSeal`, `setDefaultPayment`,
   `removePayment`); a refused write prints the gateway's own sentence on its own
   row (`.cx-ctl-alert`), keyed by the mutation's `variables` so no untouched row
   is told nothing changed.
-  *Why the add is still not yet:* it is a ~400-line port into a directory another
-  builder is live in, and it buys nothing today — `STRIPE_SECRET_KEY` is unset on
-  this deployment and the create path 503s. It becomes urgent the day a key is
-  set. Mirror: `profile.md` §9 G12a, and G-PAY-SETUP there for the seal the
-  add-a-card path does not carry.
+  **The second half (2026-09-05, founder: "port the card panel to /connections
+  now"):** the panel is not a copy. `profile/next/StripeCardPanel.tsx` became
+  `components/mudavym/StripeCardPanel.tsx` and its two bindings were cut — the
+  data (it wanted two functions, never a page object: `CardPanelClient`) and the
+  chrome (four `pf-ui` primitives redrawn over the house tokens, with the hover
+  and focus rules moved into `stripe-card-panel.css` so the component looks
+  finished on a page that has never had a `.pf-` class). `useConnectionsNextData`
+  grew `createSetupIntent` and `syncPayments` and exposes
+  `stripePublishableKey`; `pages/profile/next/stripe-js.ts` moved to
+  `components/mudavym/stripe-js.ts` with the panel, its only `loadStripe` caller.
+  Both pages render the one component: `/profile` with the flag off (which is
+  production), `/connections` with it on. The disabled state is now about the
+  DEPLOYMENT — which credential is missing, in the gateway's words where the
+  gateway sent them — and never about our own backlog.
+  *What the port did NOT change:* adding a card still redeems no seal. Mirror:
+  `profile.md` §9 G12a, and G-PAY-SETUP there for the route that has none.
 
 **Correction to the commit message (a9747074, 2026-09-04).** Its body says the two ungated
 reads were closed and "the old test pinned the defect and was replaced with its reason". There
@@ -621,4 +740,7 @@ is unread would see the dash only in that cell.
    new route in exchange for four tabs and three registers. What is NOT done is
    deleting the four sections' code; it still renders with the flag off, and its
    retirement is gated on the flag reaching production (`settings.md` §13).
-10. **Port the card panel** (G-C9 below) — the one thing the collapse subtracted.
+10. ~~**Port the card panel** (G-C9 below) — the one thing the collapse
+    subtracted.~~ **Done 2026-09-05.** `components/mudavym/StripeCardPanel.tsx`,
+    one component with two callers rather than a second copy; the row that said
+    adding a card had no home is the panel. §9 G-C9 closed.

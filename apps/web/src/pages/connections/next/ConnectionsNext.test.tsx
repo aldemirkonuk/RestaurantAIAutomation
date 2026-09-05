@@ -27,6 +27,36 @@ vi.mock('./useConnectionsNextData', () => ({
   useConnectionsNextData: () => mockData.current,
 }));
 
+/**
+ * Stripe.js, stubbed at the LOADER.
+ *
+ * The real module injects a `<script>` from `js.stripe.com` and hands back
+ * whatever `window.Stripe` becomes; in jsdom that is a network call that never
+ * resolves. Stubbing the loader rather than the panel keeps the panel itself —
+ * its four phases, its copy and its hold — under test, which is the half that
+ * can regress.
+ */
+const stripeJs = vi.hoisted(() => {
+  const element = { mount: vi.fn(), unmount: vi.fn(), destroy: vi.fn(), on: vi.fn() };
+  const elements = {
+    create: vi.fn(() => element),
+    getElement: vi.fn(() => element),
+    submit: vi.fn(async () => ({}) as { error?: { message?: string } }),
+  };
+  const instance = {
+    elements: vi.fn(() => elements),
+    confirmSetup: vi.fn(async () => ({
+      setupIntent: { id: 'seti_1', status: 'succeeded' },
+    })),
+  };
+  return { element, elements, instance, loadStripe: vi.fn(async () => instance) };
+});
+
+vi.mock('../../../components/mudavym/stripe-js', () => ({
+  loadStripe: stripeJs.loadStripe,
+  stripePublishableKey: () => 'pk_test_stub',
+}));
+
 import ConnectionsNext from './ConnectionsNext';
 
 /**
@@ -91,6 +121,11 @@ interface Fixture {
   paymentSeal: unknown;
   setDefaultPayment: unknown;
   removePayment: unknown;
+  /* `CardPanelClient` — what the shared card panel asks this hook for. */
+  createSetupIntent: unknown;
+  syncPayments: unknown;
+  /** The BROWSER's half of the Stripe credential. Null is a state, not a gap. */
+  stripePublishableKey: string | null;
 }
 
 const setHouseGrantAccess = { mutate: vi.fn(), isPending: false };
@@ -165,6 +200,22 @@ function base(): Fixture {
       error: null,
       variables: undefined,
     },
+    createSetupIntent: vi.fn(async () => ({
+      clientSecret: 'seti_1_secret_x',
+      setupIntentId: 'seti_1',
+      livemode: false,
+    })),
+    syncPayments: vi.fn(async () => ({
+      syncedAt: '2026-09-05T08:00:00.000Z',
+      kept: 1,
+      removed: 0,
+      note: null,
+    })),
+    // Null by DEFAULT, because that is what this deployment's bundle holds. A
+    // fixture that shipped a key would make every other test render a card form
+    // the product cannot open, and would hide the reason sentence that matters
+    // most here.
+    stripePublishableKey: null,
   };
 }
 
@@ -937,7 +988,12 @@ describe('the collapse — anchors and the acts that moved', () => {
     expect(screen.queryByRole('button', { name: 'Hold to revoke Square bridge' })).not.toBeInTheDocument();
   });
 
-  it('says a card cannot be added here rather than pointing at a page that no longer holds it', () => {
+  it('names the credential that is missing, not a page that no longer holds the panel', () => {
+    // The collapse's subtraction, re-pinned from the other side (2026-09-05).
+    // This test used to assert the control was disabled BECAUSE the panel had
+    // not been ported — a claim about our own backlog, printed to an operator.
+    // The control is still disabled in this fixture, and the sentence is now
+    // about the deployment: a provider is connected, the bundle has no key.
     const d = base();
     d.payments = reg({
       provider: { connected: true, reason: null },
@@ -947,8 +1003,152 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
-    expect(screen.getByText(/Nothing on this page can add one today\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/VITE_STRIPE_PUBLISHABLE_KEY is not set in this web bundle/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/has not been rebuilt here yet/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Adding a card happens on \/profile/)).not.toBeInTheDocument();
+  });
+
+  it("prefers the gateway's own reason when the provider itself is unkeyed", () => {
+    const d = base();
+    d.payments = reg({
+      provider: {
+        connected: false,
+        reason: 'STRIPE_SECRET_KEY is not set on this deployment.',
+      },
+      methods: [],
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
+    // The gateway's sentence, so the disabled control and the 503 the create
+    // path would answer with say the same thing.
+    expect(
+      screen.getByText(/STRIPE_SECRET_KEY is not set on this deployment\./),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * G-C9's other half — the card panel is HERE, and it is the same one.
+ *
+ * The collapse moved Register II to this page and left `StripeCardPanel` on
+ * `/profile`, so adding a card had no home at all while the flag was on. The
+ * panel is now `components/mudavym/StripeCardPanel`, rendered by both pages.
+ *
+ * Every test below pins something that would otherwise rot quietly:
+ *   - the button exists in exactly ONE place at a time;
+ *   - opening it asks the GATEWAY for a SetupIntent before it fetches a script,
+ *     so a refusal is the provider's sentence and not a loading state;
+ *   - the panel says, in words, that adding a card is NOT sealed — the one
+ *     payment act with no redeemed token (G-PAY-SETUP), and the thing a reader
+ *     would otherwise assume from the hold's appearance;
+ *   - a completed hold reconciles against the provider rather than drawing the
+ *     row from the confirmation.
+ */
+describe('the card panel is on this page, and claims no seal it never redeems', () => {
+  const keyed = (over: Record<string, unknown> = {}) => {
+    const d = base();
+    d.payments = reg({
+      provider: { connected: true, reason: null },
+      methods: [],
+    });
+    d.stripePublishableKey = 'pk_test_stub';
+    return { ...d, ...over };
+  };
+
+  it('opens the provider’s own card fields from the empty register’s control', async () => {
+    const d = keyed();
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const add = screen.getByRole('button', { name: 'Add a card' });
+    expect(add).not.toBeDisabled();
+    fireEvent.click(add);
+
+    expect(await screen.findByText('Add a card', { selector: 'h3' })).toBeInTheDocument();
+    // The intent is minted BEFORE Stripe.js is fetched: a gateway that refuses
+    // must produce its own sentence, not a script that loads and then has
+    // nothing to confirm.
+    await waitFor(() => expect(d.createSetupIntent).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(stripeJs.loadStripe).toHaveBeenCalledWith('pk_test_stub'));
+  });
+
+  it('says the add is not sealed, while the two row acts are', async () => {
+    const d = keyed();
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+
+    // Scoped to the panel's own note, so the assertion cannot be satisfied by
+    // the word appearing anywhere else on the page later.
+    const note = await screen.findByText(/not a seal the server/i);
+    expect(note.textContent).toMatch(/G-PAY-SETUP/);
+    // And nothing minted a challenge for it — a `create` token would be one no
+    // request ever spends.
+    expect(d.paymentSeal).not.toHaveBeenCalled();
+  });
+
+  it('reconciles against the provider on a completed hold, rather than drawing the row itself', async () => {
+    const d = keyed();
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+
+    const hold = await screen.findByRole('button', {
+      name: 'Hold to put this card on file',
+    });
+    await waitFor(() => expect(hold).not.toBeDisabled());
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    await waitFor(() => expect(stripeJs.instance.confirmSetup).toHaveBeenCalled());
+    await waitFor(() => expect(d.syncPayments).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/reconciled against the provider/)).toBeInTheDocument();
+  });
+
+  it('shows the provider’s own refusal when the intent cannot be minted, and stores nothing', async () => {
+    const d = keyed({
+      createSetupIntent: vi.fn(async () => {
+        throw new Error('Stripe is not configured on this deployment.');
+      }),
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+
+    expect(
+      await screen.findByText(/Stripe is not configured on this deployment\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/no\s+instrument was created at the provider/i),
+    ).toBeInTheDocument();
+    expect(stripeJs.loadStripe).not.toHaveBeenCalled();
+  });
+
+  it('offers the add in exactly one place — the row when empty, the bar when not', () => {
+    const empty = keyed();
+    mockData.current = empty;
+    const { unmount } = render(<ConnectionsNext />);
+    expect(screen.getAllByRole('button', { name: 'Add a card' })).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Add a card' }).closest('.cx-row'),
+    ).not.toBeNull();
+    unmount();
+
+    const withOne = keyed();
+    withOne.payments = reg({
+      provider: { connected: true, reason: null },
+      methods: [instrument()],
+    });
+    mockData.current = withOne;
+    render(<ConnectionsNext />);
+    expect(screen.getAllByRole('button', { name: 'Add a card' })).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Add a card' }).closest('.cx-add'),
+    ).not.toBeNull();
   });
 });
 

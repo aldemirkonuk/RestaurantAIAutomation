@@ -122,7 +122,7 @@ import {
   type IntegrationId,
 } from '../../../services/api/integrations';
 import { apiMessage, describeDevice } from './pf-format';
-import { stripePublishableKey } from './stripe-js';
+import { stripePublishableKey } from '../../../components/mudavym/stripe-js';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 
 /** What a read is: not asked, in flight, answered, or refused. */

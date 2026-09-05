@@ -15,6 +15,16 @@
    attachment richer than a poor one flatters itself.
    ============================================================ */
 
+/* MEASURED 2026-09-05, while capturing the charcoal ground for the card panel.
+   The page root is ONE element carrying both classes — `<div className="mudavym
+   cx" data-ground={ground}>` (`ConnectionsNext.tsx`) — so the descendant
+   selector `.mudavym .cx` could never match it and this page has never painted a
+   ground of its own. On paper that was invisible (the app shell behind it is
+   already light); on charcoal the tokens flipped while the background did not,
+   giving pale ink on white. Measured: `getComputedStyle(el).backgroundColor` was
+   `rgba(0, 0, 0, 0)` with `--paper-0` resolving to `#15130F`. The compound
+   selector is added ahead of the descendant one so both shapes match. */
+.mudavym.cx,
 .mudavym .cx {
   background: var(--paper-0);
   color: var(--ink-1);
@@ -33,7 +43,14 @@
   color: var(--ink-3);
 }
 
+/* The three headings state their colour, because inheritance cannot reach them.
+   `globals.css:129-136` sets `h1`/`h2` to `text-slate-900` on every heading in
+   the app, and ANY matching rule beats an inherited value — so `.cx`'s
+   `color: var(--ink-1)` never applied to them. Invisible on paper (slate-900 is
+   close enough to the house ink); on charcoal it rendered dark headings on the
+   dark ground. Measured 2026-09-05 while capturing both grounds. */
 .mudavym .cx-title {
+  color: var(--ink-1);
   font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
   font-size: 36px;
   font-weight: 600;
@@ -130,6 +147,7 @@
   white-space: nowrap;
 }
 .mudavym .cx-sec-h h2 {
+  color: var(--ink-1);
   font-family: 'Fraunces', Georgia, serif;
   font-size: 25px;
   font-weight: 600;
@@ -397,6 +415,7 @@
   border-left: 2px solid var(--seal);
 }
 .mudavym .cx-refused h1 {
+  color: var(--ink-1);
   font-family: 'Fraunces', Georgia, serif;
   font-size: 24px;
   font-weight: 600;
@@ -451,3 +470,18 @@
   padding-top: 6px;
   padding-bottom: 6px;
 }
+
+/* ── Register II's add-a-card bar (2026-09-05) ────────────────────────────
+   The panel it opens is `components/mudavym/StripeCardPanel`, which brings its
+   own rules and draws everything else over the house tokens. What belongs here
+   is only the bar's place in the register: indented to the row's text column
+   (24px icon + 16px gap) so the button lines up with the instrument titles
+   above it rather than with the icon gutter, and carrying the same rule the
+   rows are separated by. */
+.mudavym .cx-add {
+  border-top: 1px solid var(--paper-2);
+  padding: 14px 0 0 40px;
+  max-width: 680px;
+}
+.mudavym .cx-add:empty { border-top: 0; padding: 0; }
+.mudavym .cx-add .cx-ctl-note { margin-top: 6px; max-width: 600px; }

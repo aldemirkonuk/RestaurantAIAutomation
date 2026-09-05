@@ -68,3 +68,26 @@ listed here because a motions file that omits the only moving thing on a row is
 the same omission this page exists to argue against. The refused-write line
 (`.cx-ctl-alert`) does not animate: a refusal that faded in would be an event,
 and it is a fact about the row that stays true until something changes.
+
+## The card panel arrives, 2026-09-05 — one new hover, no new gesture
+
+`components/mudavym/StripeCardPanel.tsx` is the same component `/profile` mounts,
+and it brings its ceremony with it: **Hold to put this card on file** uses the
+shared `HoldToApprove`, so `cx-hold-pour` / `cx-hold-tuck` / `cx-hold-stamp`
+above describe it too. Nothing was invented for this page.
+
+| id | token | curve / ms | when it fires |
+|---|---|---|---|
+| `scp-btn-hover` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)` · 160ms | the panel's own Cancel/Close button, border and ground only (`components/mudavym/stripe-card-panel.css`, `.scp-btn`) |
+
+**Why the panel carries its own hover rule rather than borrowing `.cx-btn`.**
+The panel is shared, and its other caller has no `.cx-` class in it. A component
+whose hover only exists on one of its two pages is a fork hidden in a
+stylesheet — so the rule travels with the component. It is the same token and
+the same figure as `cx-btn-hover`; only the selector differs.
+
+**The stamp is not drawn here, and that is the point.** The panel's hold
+completes without a redeemed token, because the write it precedes happens on
+Stripe's origin and neither route behind it takes a seal (G-PAY-SETUP). The
+panel says so in words directly under the hold rather than letting the gesture
+imply a proof. `prefers-reduced-motion: reduce` drops `.scp-btn`'s transition.

@@ -48,11 +48,22 @@
  * `create` is NOT sealed here, and the reason is measured rather than assumed:
  * nothing in `apps/web` or `apps/mobile` calls `POST /payment-methods` at all.
  * A card is added by confirming a SetupIntent on Stripe's origin and then
- * reconciling (`StripeCardPanel.tsx:200-222` → `POST /billing/sync`), and
+ * reconciling (`components/mudavym/StripeCardPanel.tsx` → `POST /billing/sync`),
+ * and
  * neither of those two routes redeems a seal. Minting a `create` token here
  * would put an unspent row in `mcp_seal_challenges` and a seal on a control
  * that approves nothing — the ceremony without the proof, which is the exact
  * thing this pass removed. Filed as G-PAY-SETUP in `profile.md` §9.
+ *
+ * FIFTH PASS, 2026-09-05 — THE PANEL LEFT THIS DIRECTORY (founder: "port the
+ * card panel to /connections now")
+ * -----------------------------------------------------------------------
+ * `StripeCardPanel` is now `components/mudavym/StripeCardPanel.tsx`, rendered
+ * unchanged here and by `/connections` Register II. Nothing else about this
+ * register moved with it, and nothing here is conditional on the flag: with
+ * `mudavym_design_connections` OFF this page is the only home the panel has,
+ * which is exactly the state production is in. What the port bought is that
+ * with the flag ON there is now a home at all — `profile.md` §9 G12a.
  *
  * WHAT IS STILL NOT HERE, PER §6: plan MANAGEMENT and any charge. The plan is
  * shown because the restaurant is on one and it already decides something real;
@@ -76,7 +87,7 @@ import {
   RetryLink,
   StatusLine,
 } from './pf-ui';
-import { StripeCardPanel } from './StripeCardPanel';
+import { StripeCardPanel } from '../../../components/mudavym/StripeCardPanel';
 import type { PaymentMethodVM, ProfileNextData } from './useProfileNextData';
 
 const KIND_LABEL: Record<PaymentMethodVM['kind'], string> = {
@@ -500,7 +511,12 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
         <div style={{ marginTop: 10 }}>
           {addOpen && canCollect && publishable ? (
             <StripeCardPanel
-              data={data}
+              // The panel wants two functions, not this page's data object —
+              // `ProfileNextData` satisfies `CardPanelClient` structurally, so
+              // the same component is what `/connections` mounts (2026-09-05,
+              // G12a). Passing `data` keeps that fact visible: nothing was
+              // adapted, the binding was simply never needed.
+              client={data}
               publishableKey={publishable}
               onClose={() => setAddOpen(false)}
             />

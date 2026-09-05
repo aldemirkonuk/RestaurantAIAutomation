@@ -1,6 +1,11 @@
 /**
  * Stripe.js, loaded from Stripe's own host.
  *
+ * Moved here from `pages/profile/next` on 2026-09-05 with `StripeCardPanel`,
+ * which is its only caller for `loadStripe`. Leaving the loader on `/profile`
+ * while the panel it serves is shared would have made `/connections` reach into
+ * another page's directory for a script tag.
+ *
  * WHY NOT `@stripe/stripe-js` (ADR 0110, option 3.2)
  * --------------------------------------------------
  * That package is itself a loader: it injects this exact script tag, because
