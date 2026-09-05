@@ -136,7 +136,7 @@ export function parseUsdaShellEgg(
 ): SeriesParseRun {
   const observations: SeriesObservation[] = [];
   const refusals: ObservationRefusal[] = [];
-  const text = payload.replace(/^﻿/, "");
+  const text = payload.replace(/^\ufeff/, "");
   const lines = text.split(/\r?\n/);
 
   const dated = REPORT_FOR.exec(text);
