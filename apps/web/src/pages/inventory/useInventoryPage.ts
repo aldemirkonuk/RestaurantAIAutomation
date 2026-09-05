@@ -141,7 +141,12 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         producer: item.wineProducer || "Unknown Producer",
         vintage: null,
         price: 0,
-        type: "red",
+        // Was `'red'`. This fallback fires whenever the library wine has not
+        // loaded for an inventory row, and it asserted a colour for the bottle
+        // — 26 of 27 rows on a cocktail bar said Red, a Moët and two rosés
+        // among them (Antalya night). An inventory row we could not resolve has
+        // an UNKNOWN type; that is the fact, and it renders in grey.
+        type: "unknown",
         grape: "",
         country: "",
         region: "",
