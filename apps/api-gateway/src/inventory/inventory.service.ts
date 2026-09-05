@@ -947,7 +947,7 @@ export class InventoryService {
         (line.wineId ? `wine ${line.wineId}` : "unknown");
 
       try {
-        const resolved = await this.resolveBulkLineWine(line);
+        const resolved = await this.resolveBulkLineWine(line, restaurantId);
         const outcome = await this.receiveBulkLine(
           restaurantId,
           line,
@@ -964,6 +964,10 @@ export class InventoryService {
           wineName: resolved.wineName || wineName,
           libraryMatched: resolved.matched,
           libraryTier: resolved.libraryTier,
+          // ADR 0130: this line's name was too generic to join the shared
+          // library, so it became this venue's own wine. Reported so the
+          // receiving screen can say that rather than implying a library hit.
+          venueProvisional: resolved.provisional,
         });
       } catch (error: any) {
         const message =
@@ -1005,11 +1009,15 @@ export class InventoryService {
   }
 
   /** Resolves a bulk line to a master wine ID, creating a Provisional row if needed. */
-  private async resolveBulkLineWine(line: BulkInventoryLineDto): Promise<{
+  private async resolveBulkLineWine(
+    line: BulkInventoryLineDto,
+    restaurantId: string,
+  ): Promise<{
     masterWineId: string;
     wineName: string | null;
     matched: boolean;
     libraryTier: number | null;
+    provisional?: boolean;
   }> {
     const client = this.dbService.getClient();
 
@@ -1048,20 +1056,24 @@ export class InventoryService {
       );
     }
 
-    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine({
-      name: line.wineDraft.name,
-      producer: line.wineDraft.producer ?? null,
-      vintage: line.wineDraft.vintage ?? null,
-      country: line.wineDraft.country ?? null,
-      region: line.wineDraft.region ?? null,
-      grapeVariety: line.wineDraft.grapeVariety ?? null,
-    });
+    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine(
+      {
+        name: line.wineDraft.name,
+        producer: line.wineDraft.producer ?? null,
+        vintage: line.wineDraft.vintage ?? null,
+        country: line.wineDraft.country ?? null,
+        region: line.wineDraft.region ?? null,
+        grapeVariety: line.wineDraft.grapeVariety ?? null,
+      },
+      restaurantId,
+    );
 
     return {
       masterWineId: resolution.masterWineId,
       wineName: line.wineDraft.name,
       matched: resolution.matched,
       libraryTier: resolution.libraryTier,
+      provisional: resolution.provisional,
     };
   }
 
@@ -1132,12 +1144,22 @@ export class InventoryService {
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 
-      const { data: mw } = await client
-        .from("master_wine_library")
-        .select("name")
-        .eq("id", masterWineId)
-        .maybeSingle();
-      insertData.wine_name = mw?.name ?? null;
+      // The venue's own label wins (ADR 0130). This used to read the library
+      // row's name and store THAT, which is how "House White Wine" came back
+      // from the Antalya receiving screen as "HOUSE WHITE" — a Sim Meyhouse
+      // row, on every screen, forever, because restaurant_inventory.wine_name
+      // is what /inventory renders. The library name is the fallback for a
+      // line that arrived as a bare wineId and carries no label of its own.
+      let libraryName: string | null = null;
+      if (!line.wineDraft?.name) {
+        const { data: mw } = await client
+          .from("master_wine_library")
+          .select("name")
+          .eq("id", masterWineId)
+          .maybeSingle();
+        libraryName = mw?.name ?? null;
+      }
+      insertData.wine_name = line.wineDraft?.name ?? libraryName;
 
       const { data: created, error: insertError } = await client
         .from("restaurant_inventory")
