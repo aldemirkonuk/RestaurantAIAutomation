@@ -65,6 +65,7 @@ import BookRow from './BookRow';
 import BookFilterBar from './BookFilterBar';
 import { NoteDays } from './NoteDays';
 import MarketPricePanel from './MarketPricePanel';
+import MarketIndexPanel from './MarketIndexPanel';
 import { HouseBand } from './HouseBand';
 import { matchesQuery } from './nt-book';
 import { DURATIONS } from './nt-snooze';
@@ -762,6 +763,8 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
             </section>
 
             <MarketPricePanel />
+
+            <MarketIndexPanel />
 
             <section
               aria-labelledby="nt-live"

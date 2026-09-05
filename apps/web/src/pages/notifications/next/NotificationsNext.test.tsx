@@ -51,6 +51,19 @@ vi.mock('./useMarketPrice', () => ({
   useMarketPrice: () => mockMarket.current,
 }));
 
+/**
+ * The posted-price index is a SECOND register with its own read. Mocked to the
+ * measured production answer (`GET /price-index/me` on 2026-09-04: no state
+ * recorded on this house, so words and no lines) so the day-book's assertions
+ * are never answered by an index line, and the box's own states are covered in
+ * `MarketIndexPanel.test.tsx`.
+ */
+const mockIndex = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./useHouseIndex', () => ({
+  INDEX_POLL_MS: 300_000,
+  useHouseIndex: () => mockIndex.current,
+}));
+
 import NotificationsNext from './NotificationsNext';
 
 function row(over: Partial<Notification>): Notification {
@@ -94,8 +107,23 @@ const EMPTY_MARKET = {
   skippedThin: 0,
   skippedNotBelow: 0,
   skippedMixedCurrency: 0,
+  publicSiteItems: [],
+  scannedComparisons: 0,
+  skippedUnrecognisedClass: 0,
   windowDays: 30,
   minObservations: 3,
+  refresh: vi.fn(),
+};
+
+const EMPTY_INDEX = {
+  state: 'ready',
+  failure: null,
+  jurisdiction: null,
+  requested: 'me',
+  lines: [],
+  sources: [],
+  silence:
+    'This house has no state recorded, so no jurisdiction can be scoped. Set the address in Settings to draw an index line.',
   refresh: vi.fn(),
 };
 
@@ -134,6 +162,7 @@ beforeEach(() => {
   Object.values(spies).forEach((s) => s.mockClear());
   mockData.current = base([]);
   mockMarket.current = { ...EMPTY_MARKET };
+  mockIndex.current = { ...EMPTY_INDEX };
 });
 
 describe('NotificationsNext — the day-book', () => {
@@ -630,5 +659,94 @@ describe('NotificationsNext — the market-price box', () => {
     expect(within(box).getByText(/refused this account/)).toBeInTheDocument();
     expect(within(box).queryByText(/holds no sightings at all/)).not.toBeInTheDocument();
     expect(within(box).queryByText(/Nothing is below its recent average/)).not.toBeInTheDocument();
+  });
+});
+
+describe('NotificationsNext — a tier-4 public-site price is shown, and shown apart', () => {
+  const siteItem = {
+    productKey: 'sig:abc',
+    sourceClass: 'public_site',
+    productName: 'Barolo Cannubi 2019',
+    currency: 'USD',
+    latestPrice: 62,
+    latestAt: '2026-09-03T09:00:00.000Z',
+    latestVendor: 'K&L Wines',
+    latestSource: 'website_scrape',
+    averagePrice: 80,
+    averageOf: 4,
+    absoluteBelow: 18,
+    fractionBelow: 0.225,
+  };
+
+  it('gives the tier-4 list its own heading and its own comparison rule', () => {
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      scannedObservations: 22,
+      scannedProducts: 5,
+      scannedComparisons: 6,
+      publicSiteItems: [siteItem],
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByText('Public vendor sites, tier 4')).toBeInTheDocument();
+    expect(within(box).getByText('Barolo Cannubi 2019')).toBeInTheDocument();
+    expect(
+      within(box).getByText(/never against a price a vendor quoted this house/),
+    ).toBeInTheDocument();
+    expect(
+      within(box).getByText(/only ever compared with another of its own class/),
+    ).toBeInTheDocument();
+  });
+
+  it('does not print “nothing is below average” above a populated tier-4 list', () => {
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      scannedObservations: 22,
+      scannedProducts: 5,
+      publicSiteItems: [siteItem],
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).queryByText(/Nothing is below its recent average/)).not.toBeInTheDocument();
+    expect(within(box).queryByText(/holds no sightings at all/)).not.toBeInTheDocument();
+  });
+
+  it('counts a sighting whose source has no class rather than folding it in silently', () => {
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      scannedObservations: 22,
+      scannedProducts: 5,
+      skippedUnrecognisedClass: 3,
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByText(/3 sightings arrived with a source this box has no class for/)).toBeInTheDocument();
+  });
+});
+
+describe('NotificationsNext — the index line is its own register, never beside a quote', () => {
+  it('draws the posted index as a second labelled box, below the market box', () => {
+    mockData.current = base([]);
+    draw();
+    const market = screen.getByRole('region', { name: 'Cheaper than lately' });
+    const index = screen.getByRole('region', { name: /Posted price index/ });
+    expect(index).toBeInTheDocument();
+    // Two distinct regions — the index is never inside the market box.
+    expect(market.contains(index)).toBe(false);
+    expect(index.contains(market)).toBe(false);
+    // ...and it follows it in the document, so no side-by-side ladder is possible.
+    expect(market.compareDocumentPosition(index) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('the index box says why it is silent instead of rendering empty', () => {
+    mockData.current = base([]);
+    draw();
+    const index = screen.getByRole('region', { name: /Posted price index/ });
+    expect(within(index).getByRole('status').textContent).toContain(
+      'This house has no state recorded',
+    );
   });
 });

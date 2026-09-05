@@ -34,6 +34,13 @@ import { num } from './nt-format';
 
 export interface MarketPriceItem {
   productKey: string;
+  /**
+   * The class every sighting in this comparison shares — 'quoted' |
+   * 'public_site' | 'other:<type>' (ADR 0117, `price-below-average.ts:91`).
+   * A product with both quotes and scraped prices yields up to one item per
+   * class, never one item mixing them.
+   */
+  sourceClass: string;
   productName: string | null;
   currency: string;
   latestPrice: number | null;
@@ -50,13 +57,27 @@ export interface MarketPriceVM {
   state: 'loading' | 'unreadable' | 'ready';
   failure: FailureVM | null;
   items: MarketPriceItem[];
+  /**
+   * Tier-4 public vendor-site comparisons. Its OWN line, never merged into
+   * `items`: the founder's rule of 2026-09-04 is that a public page price is
+   * shown, and shown apart from anything a vendor actually quoted.
+   */
+  publicSiteItems: MarketPriceItem[];
   /** How much the sweep actually looked at — the empty state depends on it. */
   scannedObservations: number | null;
   scannedProducts: number | null;
+  /**
+   * (product, class) groups the products split into. When it exceeds
+   * `scannedProducts`, at least one product carried more than one class of
+   * sighting and they were NOT averaged together.
+   */
+  scannedComparisons: number | null;
   /** Groups dropped, and the reason, so a short list can be read. */
   skippedThin: number | null;
   skippedNotBelow: number | null;
   skippedMixedCurrency: number | null;
+  /** Sightings whose `source_type` has no class. Counted so a new one is loud. */
+  skippedUnrecognisedClass: number | null;
   windowDays: number | null;
   minObservations: number | null;
 }
@@ -65,11 +86,14 @@ const LOADING: MarketPriceVM = {
   state: 'loading',
   failure: null,
   items: [],
+  publicSiteItems: [],
   scannedObservations: null,
   scannedProducts: null,
+  scannedComparisons: null,
   skippedThin: null,
   skippedNotBelow: null,
   skippedMixedCurrency: null,
+  skippedUnrecognisedClass: null,
   windowDays: null,
   minObservations: null,
 };
@@ -79,6 +103,7 @@ function itemOf(raw: Record<string, unknown>): MarketPriceItem {
   const average = (raw.average ?? {}) as Record<string, unknown>;
   return {
     productKey: String(raw.productKey ?? ''),
+    sourceClass: typeof raw.sourceClass === 'string' ? raw.sourceClass : 'quoted',
     productName: typeof raw.productName === 'string' ? raw.productName : null,
     currency: typeof raw.currency === 'string' ? raw.currency : 'USD',
     latestPrice: num(latest.unitPrice),
@@ -123,11 +148,16 @@ export function useMarketPrice(): MarketPriceVM & { refresh: () => void } {
         items: Array.isArray(d.items)
           ? (d.items as Array<Record<string, unknown>>).map(itemOf)
           : [],
+        publicSiteItems: Array.isArray(d.publicSiteItems)
+          ? (d.publicSiteItems as Array<Record<string, unknown>>).map(itemOf)
+          : [],
         scannedObservations: num(scanned.observations),
         scannedProducts: num(scanned.products),
+        scannedComparisons: num(scanned.comparisons),
         skippedThin: num(skipped.thinHistory),
         skippedNotBelow: num(skipped.notBelow),
         skippedMixedCurrency: num(skipped.mixedCurrency),
+        skippedUnrecognisedClass: num(skipped.unrecognisedClass),
         windowDays: num(window_.days),
         minObservations: num(d.minObservations),
       });

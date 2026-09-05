@@ -100,3 +100,13 @@ The one motion this page still owns on the strip is **none**: the bar drawn in
 a cell's mark slot is a proportion of the busiest day on screen, painted at its
 height. A bar that grew would make a count of lines already loaded look like a
 measurement being taken.
+
+## The posted price index, 2026-09-04
+
+`MarketIndexPanel.tsx` uses **no motion at all**, and that is a choice rather
+than an omission. The market box beside it is a moving register: it re-reads
+every 60 seconds and its rows can change on any read. A posted list does not
+change on that timescale — it changes when a state issues a new one, monthly or
+weekly — so anything that animated a re-read would advertise freshness the
+issuer never claimed. The box re-reads on a 5-minute interval and repaints in
+place; only the shared `.nt-skel` block stands in while the first read is out.

@@ -19,7 +19,7 @@
  */
 
 import { Link } from 'react-router-dom';
-import { RotateCw, Tag, TrendingDown, TriangleAlert } from 'lucide-react';
+import { Globe, RotateCw, Tag, TrendingDown, TriangleAlert } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, stampOf } from './nt-format';
 import { MarketPriceItem, useMarketPrice } from './useMarketPrice';
 
@@ -151,7 +151,32 @@ export function MarketPricePanel() {
         </>
       )}
 
-      {m.state === 'ready' && m.items.length === 0 && m.scannedObservations === 0 && (
+      {m.state === 'ready' && m.publicSiteItems.length > 0 && (
+        <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--paper-2)' }}>
+          <h3
+            className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
+            style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
+          >
+            <Globe size={12} strokeWidth={1.75} aria-hidden />
+            Public vendor sites, tier 4
+          </h3>
+          <p className="mt-1 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+            List prices read off vendors&rsquo; own web pages. They are compared only with each
+            other, never against a price a vendor quoted this house, and they are never the basis
+            of the list above.
+          </p>
+          <ul className="mt-1.5">
+            {m.publicSiteItems.map((i) => (
+              <Row key={`site:${i.productKey}`} item={i} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {m.state === 'ready' &&
+        m.items.length === 0 &&
+        m.publicSiteItems.length === 0 &&
+        m.scannedObservations === 0 && (
         <>
           <p className="mt-1.5 text-[11.5px]" style={{ fontFamily: SANS, color: 'var(--ink-2)' }}>
             The price register holds no sightings at all — not for this house and not for the
@@ -164,7 +189,10 @@ export function MarketPricePanel() {
         </>
       )}
 
-      {m.state === 'ready' && m.items.length === 0 && (m.scannedObservations ?? 0) > 0 && (
+      {m.state === 'ready' &&
+        m.items.length === 0 &&
+        m.publicSiteItems.length === 0 &&
+        (m.scannedObservations ?? 0) > 0 && (
         <>
           <p className="mt-1.5 text-[11.5px]" style={{ fontFamily: SANS, color: 'var(--ink-2)' }}>
             Nothing is below its recent average. {m.scannedObservations} sightings across{' '}
@@ -179,14 +207,23 @@ export function MarketPricePanel() {
         </>
       )}
 
+      {m.state === 'ready' && (m.skippedUnrecognisedClass ?? 0) > 0 && (
+        <p className="mt-1 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          {m.skippedUnrecognisedClass} sightings arrived with a source this box has no class for.
+          They were ranked nowhere rather than folded in silently.
+        </p>
+      )}
+
       <p
         className="mt-2.5 pt-2 text-[10.5px]"
         style={{ fontFamily: SANS, color: 'var(--ink-4)', borderTop: '1px solid var(--paper-2)' }}
       >
         The rule, in full: the newest sighting of a product against the mean of its{' '}
         {m.minObservations ?? EM} or more earlier sightings in the last {m.windowDays ?? EM} days,
-        per 750ml equivalent, this house&rsquo;s own quotes plus public list prices. The latest is
-        not folded into its own average. This box reads prices; it never places an order.
+        per 750ml equivalent, from prices this house was quoted. Public vendor-site list prices are
+        ranked separately below, never in this list. The latest is
+        not folded into its own average, and a sighting is only ever compared with another of its
+        own class. This box reads prices; it never places an order.
       </p>
 
       <p className="mt-1 text-[10.5px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>

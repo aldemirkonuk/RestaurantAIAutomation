@@ -27,6 +27,8 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 - **Settings** → (in-page tab, `/notifications?tab=settings`)
 - **One-tap action "Open"** → [[inventory]] `/inventory` or [[orders]] `/orders` by action type; gmail actions point at `/emails` (no such route)
 - **Copy link** → clipboard deep link back to this page
+- **Re-read the price register** (*Cheaper than lately*, refresh icon) → in-place re-read of `GET /vendor-intel/below-average`; goes nowhere
+- **Re-read the price index** (*Posted price index*, refresh icon) → in-place re-read of `GET /price-index/me`; goes nowhere
 
 ## 1. Purpose
 
@@ -165,6 +167,26 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   says "the register holds no sightings at all", which is deliberately not the
   same sentence as "nothing is cheap". A price drop does **not** write a line in
   the book; the producer that would is specified in §13.
+- **A tier-4 public-site price is shown, and shown apart.** Since 2026-09-04 the
+  endpoint partitions each product's sightings by class before comparing, and
+  the box draws the quoted comparisons and the public-vendor-site ones as two
+  separate lists under two headings, with the rule ("a sighting is only ever
+  compared with another of its own class") printed on the box. A sighting whose
+  source has no class is COUNTED on the box rather than folded in silently.
+- **The posted-price index register** — *Posted price index*: the state posted
+  list or control-state shelf line for this house's own jurisdiction, read from
+  `GET /price-index/me` and drawn as its **own box below the market box**, on a
+  different ground, never beside a vendor quote (the founder, 2026-09-04: *"Run
+  it, labelled tier 4, never beside a quote"*, *"Show as a labelled index line,
+  own register"*; ADR 0117). Each line carries its class, issuer, issue date,
+  posted unit and basis, and is printed as posted — never reduced to a 750ml
+  bottle. 🚧 Measured 2026-09-04 against the project this gateway reads: the
+  demo house has **no `state_province`**, so the box prints the endpoint's own
+  sentence; and `price_index_postings` is **not present on that project** (the
+  migration exists on this branch, unapplied), so every recognised state
+  currently answers *"The index register could not be read. This is unknown, not
+  empty."* A withheld publisher (Michigan's 403) is named on the box even while
+  the register is silent for some other reason.
 - **Three directions drawn** for the founder's fork, with a recommendation and
   its strongest counter-argument argued on the page:
   `.planning/sketches/093-notifications-directions-2/` — `index.html`,
@@ -726,13 +748,16 @@ number.
 - Mudavym redesign (flag-gated): `apps/web/src/pages/notifications/next/` —
   `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`, `NoteDays.tsx`
   (`DayRail.tsx` **deleted** 2026-09-04 — the strip is the house's now),
-  `BookFilterBar.tsx`, `MarketPricePanel.tsx`, `useNotificationsNextData.ts`,
-  `useMarketPrice.ts`, `nt-format.ts`, `nt-book.ts`, `nt-snooze.ts`, and five
-  test files — `NotificationsNext.test.tsx` (25 render-contract tests, both
-  hooks mocked), `useNotificationsNextData.test.tsx` (11 hook tests, `apiClient`
+  `BookFilterBar.tsx`, `MarketPricePanel.tsx`, `MarketIndexPanel.tsx`
+  (added 2026-09-04), `useNotificationsNextData.ts`,
+  `useMarketPrice.ts`, `useHouseIndex.ts` (added 2026-09-04), `nt-format.ts`, `nt-book.ts`, `nt-snooze.ts`, and six
+  test files — `NotificationsNext.test.tsx` (31 render-contract tests, all three
+  data hooks mocked), `MarketIndexPanel.test.tsx` (16, the index box's own hook
+  mocked), `useNotificationsNextData.test.tsx` (11 hook tests, `apiClient`
   mocked), `nt-format.test.ts` (12), `nt-book.test.ts` (12, including the
   measured stale-fold case and the filter-map invariants), `nt-snooze.test.ts`
-  (8) — plus `MOTIONS.md`. **68 tests in the directory.** It shares `lib/notificationStack.ts` with the
+  (8) — plus `MOTIONS.md`. **96 tests in the directory** (measured
+  2026-09-04 by `vitest run src/pages/notifications/next`). It shares `lib/notificationStack.ts` with the
   legacy page (and, in `nt-book.ts`, asks that library rather than
   re-implementing its keys) and imports nothing from `pages/Notifications.tsx`.
 - Moved out 2026-09-03: the one-tap desk, formerly `notifications/next/HouseBand.tsx`
@@ -775,7 +800,8 @@ the action center's order reads.
 | DELETE | `/notifications/:id` | `useDeleteNotification` → `notifications.ts:171` |
 | GET | `/procurement/orders/pending` (+ list) | OneTapActionCenter → `services/api/orders.ts:206,217` |
 | GET | `/notifications?userId=&restaurantId=&type=&status=&dateFrom=&dateTo=&page=&limit=` | the rebuild's own read — all four narrowings are `GetNotificationsQueryDto` fields (`notifications/dto/notifications.dto.ts:63-80`) applied as `eq`/`eq`/`gte`/`lte` (`notifications.service.ts:811-821`); `notifications/next/useNotificationsNextData.ts` |
-| GET | `/vendor-intel/below-average?windowDays=&minObservations=&limit=` | **new 2026-09-03**, built for the market-price box — `vendor-intel/vendor-intel.controller.ts`, `VendorComparisonService.belowTrailingAverage`, arithmetic in `vendor-intel/price-below-average.ts`; owner/manager only, read by `notifications/next/useMarketPrice.ts` |
+| GET | `/vendor-intel/below-average?windowDays=&minObservations=&limit=` | **new 2026-09-03**, built for the market-price box — `vendor-intel/vendor-intel.controller.ts`, `VendorComparisonService.belowTrailingAverage`, arithmetic in `vendor-intel/price-below-average.ts`; owner/manager only, read by `notifications/next/useMarketPrice.ts`. Since 2026-09-04 it also returns `publicSiteItems` (tier-4, its own list), `scanned.comparisons`, `byClass`, `classesRanked` and `skipped.unrecognisedClass` (`vendor-intel/price-below-average.ts:166-192`) |
+| GET | `/price-index/me` | **new 2026-09-04**, the posted-price index box — `price-index/price-index.controller.ts:57-82` resolves `restaurants.state_province` server-side and returns `{ requested, state, lines[], sources[], silence }`; owner/manager only, read by `notifications/next/useHouseIndex.ts`. Verified live on :4000 (dev-bypass owner session): `me` → `state: null` + the "no state recorded" sentence; `Michigan`/`Illinois`/`California` → `lines: []` + "could not be read"; `Turkey` → "not a jurisdiction this register recognises" |
 
 ## 5. Signals
 
@@ -819,6 +845,7 @@ dashboard.md §7.
 | Register narrowing | `type` and `status` pills and the day strip all send query params; the search box and the hide-read fold are screen-side and the bar says which is which |
 | Registers read | `GET /notifications` and `GET /vendor-intel/below-average`, since 2026-09-03. `/one-tap-actions` moved to the dashboard rail with the desk; pinned by `useNotificationsNextData.test.tsx` ("reads the notifications register and nothing else" — the market-price read lives in its own hook and its own test) |
 | Market-price poll | 60s (`useMarketPrice.ts` `MARKET_POLL_MS`), window 30 days, minimum 3 earlier sightings |
+| Price-index poll | 300s (`useHouseIndex.ts` `INDEX_POLL_MS`) — a posted list moves on a weekly-to-monthly cadence, so a faster poll would only cost requests |
 
 ## 9. Gaps
 
@@ -1125,6 +1152,21 @@ next to it and in the footer.
    is a downgrade rather than a design. Until then the page keeps the local
    record and says on the band, the row and the footer that the server was not
    told (§9.13).
+3a. **Arm the price index, and give the houses a state.** The index box
+   (`MarketIndexPanel.tsx`) is built and honest, but it can draw a LINE only
+   when three things are true and today none of them is: the
+   `price_index_postings` migration
+   (`supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`) is
+   applied to the project the gateway reads; `PRICE_INDEX_FETCH_ENABLED` names
+   at least one source so a row is ever written; and the house has a
+   `state_province` recorded (the demo tenant has none, and 2 of 14 tenants had
+   none when ADR 0117 measured them). Until then the box's true first screen is
+   the endpoint's sentence, which is the point — but it is not the founder's
+   picture of the feature. **Michigan stays withheld** and no parser will be
+   written for it until an honest sample exists; Türkiye and the UK are not
+   jurisdictions the register recognises at all (`normalizeJurisdiction`
+   returns null for both), which is ADR 0117 Q4, still the founder's call.
+
 4. ~~**Make the eight scheduled crons per-restaurant**~~ — **done 2026-08-26**
    (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)).
    All eight now iterate `ScheduledTenantsService.runPerTenant`, with per-tenant
@@ -1403,9 +1445,19 @@ sibling's implementation differs, the sibling's file is the truth.
          `scanned.comparisons`, `byClass` and `skipped.unrecognisedClass` are new
          alongside it. Measured against a copy of HEAD's file, the pre-fix
          function reported a $50 scrape as a **50% saving** against a $100
-         invoice average. **The UI has not been changed** — `MarketPricePanel.tsx`
-         and `useMarketPrice.ts` were off-limits this pass; a ready patch adding
-         the second line sits in the build report, unapplied.
+         invoice average. **The UI was not changed in that pass** —
+         `MarketPricePanel.tsx` and `useMarketPrice.ts` were off-limits then and
+         a ready patch sat in the build report. **That patch is now APPLIED
+         (2026-09-04):** `useMarketPrice.ts` carries `sourceClass` and
+         `publicSiteItems` (plus `scanned.comparisons` and
+         `skipped.unrecognisedClass`, added beyond the patch so a new source type
+         is loud on the box rather than silently dropped), and
+         `MarketPricePanel.tsx` draws the tier-4 list under its own heading with
+         both empty states gated on it. What the patch proposed and this build
+         did NOT keep: its wording *"this house's own quotes plus public list
+         prices"* in the rule paragraph, which became false the moment the two
+         were separated — the paragraph now says the ladder is built from quoted
+         prices and that public-site prices are ranked separately below.
        * The remaining unscreened writer is the **manual observation**
          (`vendor-comparison.service.ts:260`), which still writes `is_outlier`
          at its `false` default.
