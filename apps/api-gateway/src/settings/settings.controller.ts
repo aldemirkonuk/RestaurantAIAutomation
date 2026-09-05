@@ -73,11 +73,40 @@ export class SettingsController {
     description: "Feature flags updated successfully",
     type: FeatureFlagsDto,
   })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. A switch anybody may flip is not a policy.",
+  })
   async updateFeatureFlags(
     @CurrentUser("restaurantId") restaurantId: string,
     @Body() updateDto: UpdateFeatureFlagsDto,
     @CurrentUser("userId") userId: string,
   ): Promise<FeatureFlagsDto> {
+    // ONE RULE FOR EVERY FLAG (the founder's call, 2026-09-05).
+    //
+    // Until today this route carried `JwtAuthGuard, TenantGuard` and no role
+    // check, while the approval thresholds fifty lines below called
+    // `assertCanManageRestaurant`. The two routes govern the same kind of thing
+    // — what this house lets the system do without a person — and disagreed
+    // about who may say it. Neither consequence was theoretical: any
+    // authenticated member could flip `enable_ai_autonomous_send`, which sends
+    // AI-written email to a vendor with nobody having read it; and
+    // `enable_house_inbox_read` was kept OUT of the DTO for exactly this reason
+    // (commit `3925cde6`, ADR 0118 D8-D11), which left the mailbox reader with
+    // no way to be switched on by anything at all.
+    //
+    // The check is the SAME helper the thresholds use
+    // (`organizations/organizations.service.ts:192` ->
+    // `assertManagerOrOwner:124`), so "may this person manage this house" keeps
+    // one implementation and one spec behind it; the refusal is the sentence
+    // that helper already writes, so the page prints the server's words rather
+    // than a guess of its own.
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "change a feature flag for this restaurant",
+    );
     // The author of the change comes from the signed token and nowhere else.
     // `public.users.user_id` — never an `auth.users` id: the two tables are
     // disjoint in this database and `system_audit_log.actor_id` has no FK, so a

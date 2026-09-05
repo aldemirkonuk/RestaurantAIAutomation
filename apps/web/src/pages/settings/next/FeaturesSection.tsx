@@ -17,6 +17,15 @@
  *     OD-86 settlement: 21 of the old 22 switches wrote to columns that never
  *     existed and were read by nothing.
  *
+ * WHO MAY FLIP ONE (2026-09-05)
+ * ----------------------------
+ * `PUT /settings/feature-flags` runs `assertCanManageRestaurant`, the same
+ * helper the approval thresholds use, so a member who is neither owner nor
+ * manager is refused by the route. Every control below is therefore rendered
+ * DISABLED with the reason for anybody else — never a live control that fails
+ * after the click (ADR 0083) — and the values stay visible, because a switch
+ * you cannot see is one you cannot plan around.
+ *
  * Everything with a control here is a key the gateway's registry declares
  * ACTIVE and returned from `GET /settings/feature-flags`. The page renders the
  * SERVER's key set, not a list of its own — so a flag added to
@@ -33,12 +42,16 @@ import type { SettingsNextData } from './useSettingsNextData';
 
 const AUTONOMY = 'enable_ai_autonomous_send';
 const NEGOTIATION = 'enable_ai_negotiation';
+const HOUSE_INBOX = 'enable_house_inbox_read';
+
+/** The sentence the route's refusal carries, said before the click. */
+const NOT_YOURS = 'Only an owner or a manager of this restaurant may change this.';
 
 /** The settings row carries `created_at` and no update column — so no date. */
 const NO_DATE = 'the settings row has no changed-at column';
 
 export default function FeaturesSection({ data }: { data: SettingsNextData }) {
-  const { flags, saveFlag, writer } = data;
+  const { flags, saveFlag, writer, canManage } = data;
   const [attempt, setAttempt] = useState(0);
 
   return (
@@ -46,7 +59,10 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
       {(values) => {
         const keys = Object.keys(values);
         const redesign = keys.filter(isRedesignFlag).sort();
-        const other = keys.filter((k) => !isRedesignFlag(k) && k !== AUTONOMY && k !== NEGOTIATION);
+        const other = keys.filter(
+          (k) => !isRedesignFlag(k) && k !== AUTONOMY && k !== NEGOTIATION && k !== HOUSE_INBOX,
+        );
+        const hasHouseInbox = Object.prototype.hasOwnProperty.call(values, HOUSE_INBOX);
         const autonomyOn = values[AUTONOMY] === true;
         const failure = writer.failed;
 
@@ -57,6 +73,14 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
               <code style={{ fontFamily: MONO, fontSize: 11 }}>apps/api-gateway/src/settings/feature-flag-registry.ts</code>{' '}
               — and this page renders whatever it returns, so it cannot drift out of step with it.
             </Note>
+
+            {!canManage && (
+              <p role="status" style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 10px' }}>
+                {NOT_YOURS} The switches below show what is set and cannot be moved from
+                here; the route refuses the write too, so none of them is a control that
+                would fail after you pressed it.
+              </p>
+            )}
 
             {failure && (
               <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1)', background: 'var(--paper-2)', borderRadius: 8, padding: '8px 11px', margin: '0 0 10px' }}>
@@ -84,7 +108,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 autonomyOn ? (
                   <Action
                     tone="grave"
-                    disabled={writer.busy === AUTONOMY}
+                    disabled={!canManage || writer.busy === AUTONOMY}
                     onClick={() => void saveFlag(AUTONOMY, false)}
                   >
                     {writer.busy === AUTONOMY ? 'Stopping…' : 'Stop sending on its own'}
@@ -96,6 +120,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 <div style={{ maxWidth: 340, marginTop: 10 }}>
                   <HoldToApprove
                     key={attempt}
+                    disabled={!canManage}
                     label="Hold to allow AI to send"
                     approvedLabel="Autonomous sending granted"
                     onApprove={() => {
@@ -126,11 +151,39 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 <Toggle
                   label="Let AI handle vendor email"
                   checked={values[NEGOTIATION] === true}
+                  disabled={!canManage}
                   busy={writer.busy === NEGOTIATION}
                   onChange={(next) => void saveFlag(NEGOTIATION, next)}
                 />
               }
             />
+
+            {hasHouseInbox && (
+              <Row
+                label="Read this house's mailbox"
+                tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
+                provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
+                consequence={
+                  <>
+                    ON means a scheduled job reads the mail in the account somebody here
+                    connected, and files vendor replies against your orders. A person&apos;s
+                    consent is necessary and not sufficient: they agreed for themselves, and
+                    this switch is the house agreeing. Off is the default and every uncertain
+                    answer — no row, a failed read — is treated as off. Read at{' '}
+                    <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>.
+                  </>
+                }
+                control={
+                  <Toggle
+                    label="Read this house's mailbox"
+                    checked={values[HOUSE_INBOX] === true}
+                    disabled={!canManage}
+                    busy={writer.busy === HOUSE_INBOX}
+                    onChange={(next) => void saveFlag(HOUSE_INBOX, next)}
+                  />
+                }
+              />
+            )}
 
             {/* ── 2. The redesign flags ───────────────────────────────── */}
             {redesign.length > 0 && (
@@ -157,6 +210,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                       <Toggle
                         label={`${titleFromFlagKey(key)} — Mudavym design`}
                         checked={values[key] === true}
+                        disabled={!canManage}
                         busy={writer.busy === key}
                         onChange={(next) => void saveFlag(key, next)}
                       />
@@ -185,6 +239,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                       <Toggle
                         label={titleFromFlagKey(key)}
                         checked={values[key] === true}
+                        disabled={!canManage}
                         busy={writer.busy === key}
                         onChange={(next) => void saveFlag(key, next)}
                       />

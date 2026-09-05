@@ -15,6 +15,12 @@ export interface FeatureFlags {
   enable_ai_negotiation: boolean;
   /** AI replies leave for the vendor with no human approval. */
   enable_ai_autonomous_send: boolean;
+  /**
+   * A scheduled job reads this house's mailbox through a person's Gmail grant.
+   * Writable since 2026-09-05, when `PUT /settings/feature-flags` gained
+   * `assertCanManageRestaurant` — the condition ADR 0118 D8-D11 withheld it on.
+   */
+  enable_house_inbox_read: boolean;
 }
 
 export type UpdateFeatureFlagsRequest = Partial<FeatureFlags>;

@@ -412,20 +412,24 @@ chrome per dashboard.md §7.
 
 ### The house inbox's own gaps, 2026-09-04 (ADR 0118 D8-D11)
 
-- **BLOCKING — no house can switch the reader on, because the switch has no
-  control.** `enable_house_inbox_read` is a real column and a real gate
-  (`communications/inbox/house-inbox.service.ts:339`, registry entry with its
-  anchor guarded by `check_flag_readby_anchors.py`), and **nothing anywhere can
-  set it**. `PUT /settings/feature-flags` was deliberately left alone: its class
-  guards are `JwtAuthGuard, TenantGuard` and it has **no role check**
-  (`settings.controller.ts:38-40`) — unlike the approval thresholds beside it,
-  which call `assertCanManageRestaurant` (`:141`) — so adding the key to that DTO
-  would have let **any authenticated member start reading a colleague's mailbox**.
-  **Why not yet:** the fix is either role-gating a route that also governs
-  `enable_ai_negotiation` and `enable_ai_autonomous_send` (a behaviour change for
-  two existing flags, and the founder's call) or a manager-gated control in
-  `settings/**` or `connections/next/**`, both other builders' paths this pass.
-  Founder question 5 on the ADR.
+- **CLOSED 2026-09-05 — the house can switch the reader on.** The founder was
+  shown the fork and chose *"the flags route gains a manager check"* — one rule
+  for every flag rather than a second control elsewhere. `PUT
+  /settings/feature-flags` now calls `assertCanManageRestaurant`
+  (`settings.controller.ts:105-109`), the same helper the approval thresholds in
+  that controller already used, so the route refuses anyone who is neither owner
+  nor manager with the sentence that helper writes. With the route asking who is
+  asking, `enable_house_inbox_read` joined `UpdateFeatureFlagsDto`
+  (`settings/dto/feature-flags.dto.ts`) — it had been withheld from it in commit
+  `3925cde6` for exactly this reason — and the rebuilt `/settings` grew its own
+  row for it, disabled with the reason for a non-manager (ADR 0083,
+  `pages/settings/next/FeaturesSection.tsx`). The same pass closed the wider
+  hole the fork exposed: `enable_ai_autonomous_send`, which puts AI-written
+  email in front of a vendor unread, had been flippable by any authenticated
+  member since it shipped. Proven both ways in
+  `apps/api-gateway/src/settings/flag-writes-are-role-gated.spec.ts` (8 cases),
+  with the pre-fix acceptance measured against a `git show HEAD:` copy of the
+  controller.
 - **CLOSED 2026-09-04 — the consent screen refused `gmail_send` outright.**
   `AuthorizeIntegration.tsx` held `const VALID_IDS = ['google_drive', 'excel']`
   and checked the route parameter against it *before* reading the catalogue. Every
@@ -654,12 +658,14 @@ lands, this route is open.
 11. **Attachments on a house letter**, if the founder wants them — a storage
     path, a size bound, and a decision about whether an attachment may carry a
     figure the body may not.
-12. **A manager-gated switch for the house-inbox reader** — the one thing between
-    this build and a working read (§9). Either `PUT /settings/feature-flags` gains
-    `assertCanManageRestaurant` (which also changes who may flip autonomous
-    sending — the founder's call) or `/connections` grows a manager-only control
-    beside the reading grant's row. Nothing else in ADR 0118 D8-D11 is blocked on
-    anything.
+12. ~~**A manager-gated switch for the house-inbox reader**~~ — **DONE
+    2026-09-05.** The founder took the first of the two paths: `PUT
+    /settings/feature-flags` gained `assertCanManageRestaurant`, and it does also
+    change who may flip autonomous sending, which was the point rather than a
+    side effect. §9 carries the detail. What is left here is smaller and separate:
+    `/connections` still has no row for the reading grant's house-level switch, so
+    a manager who arrives from the consent screen has to cross to `/settings` to
+    finish switching the reader on.
 13. **A per-grant `users.watch` instead of the five-minute poll** — a Pub/Sub
     topic per grant with an IAM binding Gmail can publish to, a renewal before the
     7-day expiry, and a push endpoint that resolves the house from the

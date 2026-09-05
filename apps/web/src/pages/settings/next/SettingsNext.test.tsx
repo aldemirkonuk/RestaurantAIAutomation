@@ -364,6 +364,39 @@ describe('SettingsNext — features', () => {
     expect(saveFlag).toHaveBeenCalledWith('mudavym_design_settings', true);
   });
 
+  it('gives the house-inbox reader its own row, naming what ON means', () => {
+    mock.current = base({ flags: remote({ ...flags, enable_house_inbox_read: false }) });
+    mount('/settings?tab=features');
+    const toggle = screen.getByRole('switch', { name: /Read this house's mailbox/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText(/reads the mail in the account somebody here connected/i)).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(saveFlag).toHaveBeenCalledWith('enable_house_inbox_read', true);
+  });
+
+  // 2026-09-05: `PUT /settings/feature-flags` runs `assertCanManageRestaurant`,
+  // so the route refuses a member who is neither owner nor manager. The state
+  // under test is `role: null` — a role that could not be RESOLVED — because
+  // staff never reach this page at all (the gate above it sends them to "Ask a
+  // manager"), so a staff fixture would prove nothing about these controls.
+  // Disabled, not hidden: a switch you cannot see is one you cannot plan around.
+  it('renders every feature control disabled, with the reason, for a non-manager', () => {
+    mock.current = base({
+      canManage: false,
+      role: null,
+      flags: remote({ ...flags, enable_house_inbox_read: false }),
+    });
+    mount('/settings?tab=features');
+
+    expect(screen.getByText(/Only an owner or a manager of this restaurant may change this/i))
+      .toBeInTheDocument();
+    for (const sw of screen.getAllByRole('switch')) expect(sw).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Hold to allow AI to send/i })).toBeDisabled();
+    // The values stay legible.
+    expect(screen.getByRole('switch', { name: /Calendar — Mudavym design/i }))
+      .toHaveAttribute('aria-checked', 'true');
+  });
+
   it('lists switch-less capabilities without a control', () => {
     mock.current = base({ flags: remote(flags) });
     mount('/settings?tab=features');

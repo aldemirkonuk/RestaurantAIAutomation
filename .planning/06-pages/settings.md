@@ -71,7 +71,7 @@ the same day).
 - **Locations**: multi-location chains — create, assign, edit
 - **Measurement**: units
 - **Map**: storage map
-- **Features**: per-restaurant feature flags
+- **Features**: per-restaurant feature flags — owner/manager only to write, since 2026-09-05
 - **POS**: connect a POS provider, see connection status
 - **Calendar**: iCal subscribe URL + regenerate token
 - **Cellar** *(rebuilt page only, `?tab=cellar`, added 2026-09-03)*: which of the
@@ -152,9 +152,12 @@ OFF by default; with it off `Settings.tsx` renders byte-for-byte):
   and to the open register's own subtitle, which is what made fourteen rows read
   as cleanly as eleven did. Membership and order are declared once, on each
   `SectionSpec`'s `group`/`order`, and `GROUPS` is derived from them.
-- **Features**: only registry-ACTIVE flags get controls, with the 17
+- **Features**: only registry-ACTIVE flags get controls, with the 19
   `mudavym_design_*` keys rendered as their own labelled *Mudavym redesign*
-  group (opt-in per restaurant, off by default). `enable_ai_autonomous_send` is
+  group (opt-in per restaurant, off by default). `enable_house_inbox_read` has
+  its own row from 2026-09-05, and every control on the register is disabled
+  with the reason for anyone who is not an owner or a manager, because the route
+  refuses them (§9.18). `enable_ai_autonomous_send` is
   granted by hold-to-approve completing into the seal, and revoked by one plain
   button — never a toggle.
 - **Settings the product stores but never reads render WITHOUT controls**,
@@ -717,7 +720,7 @@ changes, where the value is kept, and who may change it.
 | 05 | Locations | Adds a branch, renames a chain, moves a branch between chains — changes what the header switches between | `restaurants` and `restaurant_chains` | Owner creates and renames chains; manager or owner edits a branch | **changed** — real, both, as of this pass |
 | 06 | Measurement | Changes how volumes are written **for you on this machine only**. Nothing about what is stored changes | `localStorage["restaurant-settings-storage"]` | Whoever is at this browser. Not shared, not synced to the phone | never — a browser keeps a value, not a history |
 | 07 | Map | The frame Find distributors opens at | `user_preferences.preferences.mapDefaultScope` | Anyone signed in — yours | **changed** — the whole record's date, shared |
-| 08 | Features | Turns capabilities on for **everyone at this restaurant** — including autonomous AI sending, and including this redesign | `restaurant_feature_flags`, one row per restaurant, one column per flag | Owner or manager (JWT + TenantGuard, `settings.controller.ts:33`) | never — no update column exists |
+| 08 | Features | Turns capabilities on for **everyone at this restaurant** — including autonomous AI sending, mailbox reading, and this redesign | `restaurant_feature_flags`, one row per restaurant, one column per flag | Owner or manager — **enforced since 2026-09-05** (`assertCanManageRestaurant`, `settings.controller.ts:105-109`; this cell claimed it while only `JwtAuthGuard, TenantGuard` ran, §9.18) | never — no update column exists |
 | 09 | POS | Nothing to the till. It bookmarks whose connector documentation you are reading | `user_preferences.preferences.posConfig` | Anyone signed in | the preference record's date, shared |
 | 10 | Calendar | Regenerating **silently breaks every existing subscription**, with no undo | `restaurants.calendar_ical_token` | Owner or manager | never — the token has no date of its own |
 | 11 | Cellar | Declares which of the seven drinks registers the house carries, which decides which registers `/cellar` draws at all. Switching one on with nothing in the books behind it is allowed and asks you to confirm | `restaurant_cellar_registers`, one row per (restaurant, register) — and **only** where a person said something; an inference is computed at read time and never stored | Owner or manager (JWT on `/cellar`) | **changed** · — the readout carries no date per answer (§13.19) |
@@ -818,7 +821,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):527 (`settings`), :516
 
 | Method | Path | Call site |
 |---|---|---|
-| GET/PUT | `/settings/feature-flags` | `Settings.tsx:894,920` → `services/api/settings.ts:58,66` |
+| GET/PUT | `/settings/feature-flags` | `Settings.tsx:894,920` → `services/api/settings.ts:58,66`. The PUT is owner/manager-only since 2026-09-05 (`assertCanManageRestaurant`, §9.18); the GET is not role-gated, deliberately — a member may read what is set. |
 | GET | `/calendar/ical-token`; POST `…/regenerate` | `Settings.tsx:159,177` |
 | GET | `/restaurants/:rid/members`, `…/invites` | `Settings.tsx:769,778` |
 | PATCH/DELETE | `/restaurants/:rid/members/:userId` | role change / remove, `Settings.tsx:805,842` |
@@ -1081,6 +1084,34 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
     (`common/orchestrator/commercial-terms.ts:33`) but writes it nowhere this
     register can read (§13.28).
 
+18. **CLOSED 2026-09-05 — the flags route asked nothing about who was asking.**
+    `PUT /settings/feature-flags` carried `JwtAuthGuard, TenantGuard` and no role
+    check, while `PUT /settings/approval-thresholds` in the same controller
+    called `assertCanManageRestaurant`. Any authenticated member of a restaurant
+    could therefore flip `enable_ai_autonomous_send` — ON means an AI-written
+    reply reaches a vendor with nobody having read it — and the consequence was
+    measured, not inferred: a `git show HEAD:` copy of the controller accepted a
+    staff member's write (`jest src/settings/zz-prefix-head.spec.ts`, 1 passed,
+    2026-09-05, probe deleted after the run). The founder's call was **one rule
+    for every flag**: the route now runs the same helper the thresholds use
+    (`settings.controller.ts:105-109`), and both directions are held by
+    `apps/api-gateway/src/settings/flag-writes-are-role-gated.spec.ts` (8 cases).
+    Two consequences: `enable_house_inbox_read` could finally join
+    `UpdateFeatureFlagsDto` (ADR 0118 D8-D11 had withheld it for exactly this
+    reason), and the controls on both `/settings` builds render disabled with the
+    reason for a non-manager rather than failing after the click (ADR 0083).
+19. **STILL OPEN — the two flag READ routes are not tenant-scoped the way the
+    write is.** `GET /settings/feature-flags/:restaurantId` is documented "admin
+    only" and has no admin check, and `POST /settings/feature-flags/check` takes
+    `restaurant_id` from the request body; both therefore answer for a restaurant
+    the caller names rather than the one the token carries
+    (`settings.controller.ts:213-227`, `:186-206`). What leaks is a boolean per
+    flag, not tenant data, which is why this is filed rather than fixed inside a
+    write-side pass — but "admin only" in an `@ApiOperation` that nothing
+    enforces is the shape ADR 0020 exists to forbid, and it should be closed by
+    whoever next owns this controller.
+
+
 ## 10. Maturity
 
 **partial** — moved from **hollow** on 2026-09-02 by the Mudavym rebuild
@@ -1112,7 +1143,7 @@ the denominator is not.
 | Locations | **yes** | chains and branches; `assertManagerOrOwner` enforced server-side; both now carry a real last-changed date (§1b second pass) |
 | Measurement | **yes, but per-browser** | `stores/restaurantSettingsStore.ts` localStorage (§9.6) |
 | Map | **yes** | `pages/distributors/command/DistributorMapPage.tsx:36` |
-| Features | **yes** | 19 registry-ACTIVE flags, 2 AI + 17 redesign; `feature-flag-registry.ts` is the single source |
+| Features | **yes** | 22 registry-ACTIVE flags, 3 AI/mailbox + 19 redesign (counted 2026-09-05 from `ACTIVE_FEATURE_FLAGS`); `feature-flag-registry.ts` is the single source |
 | POS | **split** | `/pos-hub/status/:rid` is real and its failure is rendered as failure; the connector picker reads back only to itself (§9.4) |
 | Calendar | **token yes, subscription unproven** | `v3.0-TECH-DEBT.md:346-348`; the page now labels the client steps *Untested* |
 | Cellar | **yes** | `pages/cellar/next/CellarRegistersControl` mounted over `GET/PUT /cellar/:restaurantId/registers` (`apps/api-gateway/src/cellar/`); a failed readout renders as words, not as seven registers switched off |
@@ -1260,7 +1291,16 @@ that flipping something changed something.
    it was never blocking this, which is why the removal shipped without it.
 2. ~~**Expose `enable_ai_autonomous_send`.**~~ **Done 2026-08-26** —
    `AiAutonomySection` (`Settings.tsx:27,1299`), with tests at
-   `components/settings/AiAutonomySection.test.tsx`.
+   `components/settings/AiAutonomySection.test.tsx`. **Extended 2026-09-05:**
+   exposing it was half the job; until that date any authenticated member could
+   flip it. The route is role-gated now (§9.18) and both `/settings` builds
+   render the control disabled with the reason for a non-manager.
+2a. **Close the two ungated flag READ routes** (§9.19) — `GET
+   /settings/feature-flags/:restaurantId` claims "admin only" and checks nothing,
+   and `POST /settings/feature-flags/check` reads the restaurant id out of the
+   body. Both should take the tenant from the token like every other route on
+   this controller, and the `:restaurantId` one should either grow the admin
+   check its description promises or be deleted.
 3. **Test the iCal feed against a real client** and try dropping
    `Content-Disposition: attachment` (`calendar.controller.ts:601-604`). Cheapest
    possible resolution of `v3.0-TECH-DEBT.md:346-348`; today the copy promises what

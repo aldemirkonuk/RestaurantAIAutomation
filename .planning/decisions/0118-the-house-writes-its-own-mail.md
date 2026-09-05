@@ -26,9 +26,32 @@
     (`https://www.googleapis.com/auth/gmail.readonly`), separate ids, separate
     consent screens, separate disconnects. The reading is **off by default**
     behind `enable_house_inbox_read` and reads nothing until a person consents
-    AND a restaurant switches it on. What is *not* closed: the flag has no
-    manager-gated control anywhere (see Consequences), and no live read has been
-    made — see "What only the founder can decide", item 5.
+    AND a restaurant switches it on. What is *not* closed: no live read has been
+    made. Founder-question 5 is answered — see the next line.
+  - **2026-09-05: founder-question 5 answered, and the reader's switch exists.**
+    Shown the fork — role-gate the flags route, or build a second manager-only
+    control beside the reading grant — the founder chose **"the flags route gains
+    a manager check"**, one rule for every flag. `PUT /settings/feature-flags`
+    now calls `assertCanManageRestaurant`
+    (`apps/api-gateway/src/settings/settings.controller.ts:105-109`), the same
+    helper the approval thresholds in that controller already used, and
+    `enable_house_inbox_read` joined `UpdateFeatureFlagsDto` — the key this ADR's
+    Consequences withheld from it. So the **BLOCKING** consequence below is
+    closed: a manager can switch the reader on from `/settings`. The decision
+    reaches past this ADR, which is why it was the founder's: the same route
+    governs `enable_ai_autonomous_send`, which any authenticated member could
+    flip until now. Proof:
+    `apps/api-gateway/src/settings/flag-writes-are-role-gated.spec.ts`, 8 cases,
+    both directions, with the pre-fix acceptance measured against a
+    `git show HEAD:` copy of the controller. Still open: no live read has been
+    made.
+  - **2026-09-05: founder-question 7 researched, not answered.** The founder
+    asked which of three retention shapes is SOTA "for ML purposes and
+    training, and for privacy" — see **"Proposed, not decided: retention"**
+    below and the evidence table at
+    `.planning/07-reference/messaging-senders.md` §8. Nothing is built or
+    decided by this entry; it exists so the founder's question is answered with
+    fetched sources rather than a plausible-sounding default.
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — the sender rule, the send costs, the recipient
   rule, the paid tier and the staff-broadcast exclusion were all decided in
@@ -495,7 +518,14 @@ they already have.
   `getFeatureFlags` selects every ACTIVE key. It resolves when the wave merges
   and the migrations auto-apply. Recorded because a reader meeting that 500
   should not attribute it here.
-- **BLOCKING — the switch has no control anywhere, and deliberately did not get one.**
+- **CLOSED 2026-09-05 (was BLOCKING) — the switch has a control.** The two
+  paths below were put to the founder, who chose the first: the route is
+  role-gated, the key is in the DTO, and `/settings` renders the switch
+  (disabled with the reason for a non-manager). The paragraph is kept as written
+  because it is the reason the key was withheld, and a reader meeting
+  `3925cde6` needs it.
+
+  ~~**The switch has no control anywhere, and deliberately did not get one.**~~
   `PUT /settings/feature-flags` is guarded by `JwtAuthGuard, TenantGuard` and
   **no role check** (`settings.controller.ts:38-40`) — unlike the approval
   thresholds beside it, which call `assertCanManageRestaurant` (`:141`). Adding
@@ -556,13 +586,15 @@ they already have.
 4. **Should a queued letter be visible to the whole house, or only its author?**
    Built house-wide (`GET /communications/letters/queued` is tenant-scoped), so a
    second manager can pull back a letter they did not write.
-5. **Who may switch the reading on, and where does that control live?** The flag
-   exists and has no surface (see Consequences). The two paths are: role-gate
-   `PUT /settings/feature-flags` with `assertCanManageRestaurant` — which also
-   changes who may flip `enable_ai_autonomous_send`, arguably overdue and
-   arguably a separate decision — or build a manager-only control on
-   `/connections` beside the reading grant's row. **Until one is chosen, no
-   house can turn the reader on**, and that is the honest state of this build.
+5. ~~**Who may switch the reading on, and where does that control live?**~~
+   **ANSWERED 2026-09-05: an owner or a manager, from `/settings`.** The founder
+   took the first of the two paths — role-gate `PUT /settings/feature-flags` with
+   `assertCanManageRestaurant` — explicitly including its reach beyond this ADR:
+   the same route governs `enable_ai_autonomous_send`, which any authenticated
+   member could flip until then. The second path is not foreclosed and is now a
+   convenience rather than a blocker: `/connections` still has no row for the
+   house-level switch beside the reading grant, so a manager who consents there
+   crosses to `/settings` to finish (`06-pages/communications.md` §13.12).
 6. **May the reader read a vendor who is not in the book yet?** Today it cannot,
    by construction (D9). A vendor who writes from a new address, or a prospect
    writing for the first time, reaches the shared mailbox's cold-email path and
@@ -573,3 +605,118 @@ they already have.
    `procurement_conversations` from a person's private mailbox. Nothing in this
    build deletes it, and nothing says how long the house keeps it. That is a
    policy question the consent screen currently answers with silence.
+
+## Proposed, not decided: retention (2026-09-05)
+
+Full evidence, every claim carrying a URL fetched 2026-09-05, in
+`.planning/07-reference/messaging-senders.md` §8. This section is the
+recommendation drawn from it; the table stays there under retire-to-write
+rather than being copied in twice.
+
+**The founder's question, verbatim:** which of three keeps is best, SOTA, "for
+ML purposes and training, and for privacy" — (A) kept as long as the vendor
+relationship, deleted when the grant is revoked; (B) kept with the house's
+records regardless of revocation; (C) a fixed window (90 days) then deleted.
+
+### Recommendation
+
+**The three options are one object short of the real answer, because they
+treat "a vendor reply" as a single thing when it is two.** The raw mirrored
+mail — body, headers, attachments, the person's mailbox it came from — is what
+Google's grant is about and what a person's privacy expectation actually
+reaches. The *facts* a reply carries — a quoted price, a confirmed delivery
+date, a written commitment — are the house's own procurement record the
+moment they are read (ADR 0118 D5's `analysis.vendor_offers`; D10's own point
+that a house-mailbox reply becomes the same kind of row a shared-mailbox reply
+already is), and GDPR Art. 28(3)(g) names exactly this split: deletion on
+revocation is "the choice of the controller" (the house), "unless Union or
+Member State law requires storage" — and for a restaurant's own commercial
+correspondence, TR and UK law does (5–10 years TR, 3–6 years UK; messaging-senders.md
+§8.5–8.6). None of options A, B or C survives contact with that law unmodified:
+A deletes evidence the house has an independent legal duty to keep; B keeps a
+person's private mail on file for years after they revoked reading it, for no
+stated purpose; C's "90 days" is a number nobody derived from anything.
+
+**So: bind the two objects to two different rules, both grounded rather than
+picked.**
+
+1. **The raw mirrored mail (body, attachments) gets a fixed, purpose-derived
+   window, and is deleted immediately on revocation regardless of where that
+   window sits.** Not 90 days because 90 is round — derived from how long a
+   procurement conversation on this platform actually stays open (`max_rounds`
+   and the order's own lifecycle already measure this; whatever that number is,
+   cite it, don't invent a new one) plus a stated margin. This satisfies GDPR's
+   storage-limitation test (tied to a purpose, Art. 5(1)(e)), matches the one
+   comparable product with a published day-count (Zendesk's schedule, the
+   closest live precedent), and gives Google's annual CASA reassessment a
+   shrinking rather than growing dataset to scope.
+2. **The structured facts already extracted onto the order — the price, the
+   date, the commitment — persist under the house's own statutory bookkeeping
+   retention, untouched by the Gmail grant's revocation,** because once written
+   as the house's own structured field (not a copy of the email) they are the
+   house's procurement record, not "Gmail data" in the sense Google's Limited
+   Use clause or GDPR's controller-processor split reaches. This is ADR 0118
+   D4's own rule (a figure goes into a letter as the engine's computed
+   sentence, never scraped back out of a reply) run in the other direction: a
+   figure a vendor confirms is captured as a fact at read-time, so the mail
+   body's own deletion later does not delete the order's history of what was
+   agreed.
+3. **On the ML axis, the retention window is nearly beside the point: Google's
+   Limited Use clause bans cross-tenant training on the raw body regardless of
+   how long it is kept**, and the one lawful use (a per-house personalization
+   model, inside the clause's own stated exception) is not built and has no
+   consent-screen disclosure today — so there is currently nothing to protect
+   by keeping raw mail longer, and nothing gained for "ML purposes" by choosing
+   B over A or C. If a house-only model is ever built, it should train on the
+   same structured facts in (2), which already outlive the window in (1) —
+   never on the raw body.
+
+**On all three axes together:** this is closer to (A) than to (B) or (C) on
+the object that is actually privacy-sensitive (the mail), closer to (B) on the
+object that is actually the house's record (the facts), and it uses a fixed
+window only where GDPR's own test asks for one and only once that window has
+an actual derivation. "SOTA" here is not one of the three named shapes; it is
+naming which object each rule is a rule *for*.
+
+### The strongest counter-argument
+
+**Splitting raw mail from derived facts is a build the founder did not ask
+for, and it can destroy the one thing a dispute actually needs.** ADR 0118 D4
+extracts `analysis.vendor_offers` as a *structured* fact — a price, a
+quantity — but a real disagreement with a vendor is rarely about the number
+alone; it is about the exact wording ("net 30" vs "net 30 from delivery", a
+qualifier in a throwaway sentence, a promise made in prose the structured
+extraction was never built to capture). Deleting the raw body on a fixed
+window and keeping only what the extractor chose to pull out means that six
+months from now, when a vendor disputes what they actually wrote, the house
+holds a paraphrase of its own making and not the evidence. Plain-(A) — keep the
+whole mail, for as long as the relationship is open, full stop, no fixed
+window — does not have this failure mode, at the cost of keeping a person's
+private correspondence on file for the life of a vendor relationship that can
+run for years. This is a real trade, not a rounding error, and it is the
+argument for asking whether the extraction in D4/D5 is trusted enough to be the
+system of record before building retention rules that assume it is.
+
+### Founder-only questions
+
+1. **Is the raw-mail / derived-facts split acceptable at all**, or is a single
+   retention rule wanted for the whole conversation row — accepting either A's
+   evidence risk or B's privacy cost as the price of simplicity?
+2. **If a fixed window is wanted for the raw mail, what is it actually derived
+   from** — the order lifecycle, a stated dispute window, something else? A
+   number with no stated derivation is the same "plausible default" ADR 0118
+   itself names as the fault in ten other mail products' merge fields.
+3. **Should the window be jurisdiction-aware per house** (TR: 5–10 years of
+   statutory retention already binds the *facts*; UK: 3–6; a US house has no
+   equivalent researched yet), or one deployment-wide default regardless of
+   where the house operates?
+4. **Does revoking the `gmail_read` grant mean "stop reading" only, or does it
+   also mean "delete what you already learned from my mail"** — i.e. should
+   revocation reach backward into `analysis.vendor_offers` rows already
+   written from a mirrored reply, or only stop future ones? The recommendation
+   above assumes only future ones; the founder may mean the stronger version.
+5. **Is a per-house ML personalization model (draft-reply suggestions trained
+   only on that restaurant's own mail) wanted at all?** If not, the ML axis of
+   this question is currently moot on either retention choice, and today's
+   answer should say so rather than build toward a use case nobody has asked
+   for.

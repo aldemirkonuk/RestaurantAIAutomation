@@ -1307,8 +1307,12 @@ export default function Settings() {
 
         {/* ── Features ── */}
         <div id="features" className="scroll-mt-32 space-y-3">
-          {/* The two switches that actually govern something. */}
-          <AiAutonomySection />
+          {/* The two switches that actually govern something. The route refuses a
+              non-manager since 2026-09-05, so the section renders its controls
+              disabled with the reason rather than live (ADR 0083). */}
+          <AiAutonomySection
+            canManage={effectiveRole === 'owner' || effectiveRole === 'manager'}
+          />
 
           {/* Connected accounts — real OAuth state, not a flag. */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

@@ -21,6 +21,15 @@ import { cn } from '../../lib/utils';
  *  - every write is confirmed by the server before the switch settles. A save
  *    that fails reverts the switch and says so (ADR 0020) — a dial that looks
  *    ON while the server holds OFF is worse than no dial.
+ *
+ * WHO MAY TOUCH IT (2026-09-05)
+ * ----------------------------
+ * `PUT /settings/feature-flags` now runs `assertCanManageRestaurant`, so a
+ * member who is neither owner nor manager is refused by the route. The switches
+ * are therefore rendered DISABLED with the reason for anybody else, rather than
+ * live controls that throw after the click (ADR 0083). The values stay visible:
+ * a setting you cannot see is one you cannot plan around, and the rule that
+ * stops the write lives on the route, not on this component.
  */
 
 type FlagKey = keyof FeatureFlags;
@@ -69,7 +78,7 @@ function Switch({
   );
 }
 
-export function AiAutonomySection() {
+export function AiAutonomySection({ canManage }: { canManage: boolean }) {
   const [flags, setFlags] = useState<FeatureFlags | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -158,6 +167,7 @@ export function AiAutonomySection() {
   }
 
   const autonomyOn = flags.enable_ai_autonomous_send;
+  const locked = !canManage;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -167,6 +177,16 @@ export function AiAutonomySection() {
           How much the AI is allowed to do with your vendors on its own.
         </p>
       </div>
+
+      {locked && (
+        <div role="status" className="px-6 py-3 bg-gray-50 border-b border-gray-100">
+          <p className="text-xs text-gray-600">
+            Only an owner or a manager of this restaurant may change these. The
+            switches show what is set, because a setting you cannot see is one you
+            cannot plan around.
+          </p>
+        </div>
+      )}
 
       {saveError && (
         <div role="alert" className="px-6 py-3 bg-red-50 border-b border-red-100">
@@ -224,7 +244,7 @@ export function AiAutonomySection() {
             label="Send AI replies without my approval"
             tone="amber"
             checked={autonomyOn}
-            disabled={savingKey === 'enable_ai_autonomous_send'}
+            disabled={locked || savingKey === 'enable_ai_autonomous_send'}
             onClick={() => {
               if (autonomyOn) {
                 setConfirmingAutonomy(false);
@@ -250,7 +270,7 @@ export function AiAutonomySection() {
                   <button
                     type="button"
                     data-testid="autonomy-confirm"
-                    disabled={savingKey === 'enable_ai_autonomous_send'}
+                    disabled={locked || savingKey === 'enable_ai_autonomous_send'}
                     onClick={() => {
                       setConfirmingAutonomy(false);
                       void write('enable_ai_autonomous_send', true);
@@ -296,7 +316,7 @@ export function AiAutonomySection() {
           testId="autonomy-ai-negotiation"
           label="Let AI handle vendor email"
           checked={flags.enable_ai_negotiation}
-          disabled={savingKey === 'enable_ai_negotiation'}
+          disabled={locked || savingKey === 'enable_ai_negotiation'}
           onClick={() =>
             void write('enable_ai_negotiation', !flags.enable_ai_negotiation)
           }
