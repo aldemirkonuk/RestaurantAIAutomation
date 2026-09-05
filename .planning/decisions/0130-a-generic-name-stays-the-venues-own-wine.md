@@ -132,15 +132,40 @@ resolver asks it.
 
 ### The mechanism, after the adversarial pass
 
-The gate alone is not enough, and the reason is the interesting part. Today a
-generic query cannot reach the fuzzy path against a *fabricated* row, because
-that row's `normalized_producer` is its own name and `psim` collapses to 0. The
-Antalya link came through a row with an **empty** producer. **So the moment the
-ops track stops fabricating — the fix everyone wants — every generic query and
-every generic row will have an empty producer, `psim` becomes 1.0 by that same
-branch, and the number of venues one house wine can capture goes up, not
-down.** A fix that only removed the fabrication would have made this worse. The
-gate has to sit on the question.
+The gate alone is not enough, and the reason is the interesting part. Before
+2026-09-06 a generic query could not reach the fuzzy path against a *fabricated*
+row, because that row's `normalized_producer` was its own name and `psim`
+collapsed to 0. The Antalya link came through a row with an **empty** producer.
+So the prediction was: the moment the fabrication stops — the fix everyone wants
+— every generic query and every generic row has an empty producer, `psim`
+becomes 1.0 by that same branch, and one house wine captures *more* venues, not
+fewer.
+
+**That is no longer a prediction.** PR #318
+(`20260906023000_the_library_may_say_it_does_not_know.sql`) landed on `main` as
+`f4f9e4a6` while this was being built, and correctly made `producer` and
+`country` nullable so the writer stops inventing them. Measured on a DB built
+from `main` at that commit — every migration except this one — with the row
+main's own writer now creates for a generic menu line (`producer` NULL,
+`country` NULL):
+
+```
+match_library_wine('House White Wine', NULL,NULL,NULL,NULL,NULL) -> confidence 100
+match_library_wine('House White',      NULL,NULL,NULL,NULL,NULL) -> confidence 100
+```
+
+Up from 90, and now by the **exact-signature** branch as well as the fuzzy one:
+with producer and country both absent, two venues' "House White Wine" hash
+*identically*. Which also means neither can have its own row —
+
+```
+INSERT ... 'House White Wine', producer NULL, country NULL   (second venue)
+ERROR: duplicate key value violates unique constraint
+       "idx_master_wine_library_signature_hash"
+```
+
+Removing the fabrication was right and had to happen; on its own it widened this
+hole from one shape to two. The gate has to sit on the question.
 
 So the rule is enforced in **SQL first**:
 
@@ -190,22 +215,21 @@ The consequences of that one choice, all measured on the built schema:
 - promotion is one `UPDATE`: clear the owner, the trigger recomputes the shared
   key (`shared_key_now = t`).
 
-### One thing the venue-owned row does differently from the shared path
+### Absence is written as absence, on both paths
 
-It writes `producer: item.producer ?? ""` and `country: item.country ?? ""`
-rather than the wine's own name and `"Unknown"`. This is *not* the ops track's
-change arriving early; it is forced. The trigger rehashes from the **stored**
-fields, so a row written with `country = "Unknown"` and looked up by a hash
-computed from an absent country cannot find itself. `wine_normalize_text` maps
-`NULL` and `''` to the same empty segment, so `''` hashes identically to the
-absence it records — and will keep hashing identically once those columns are
-made nullable.
+The venue-owned row writes `producer: item.producer ?? null` and
+`country: item.country ?? null`. That is now the same rule the shared path
+follows (PR #318), and it is *also* forced here for a second reason: the trigger
+rehashes from the **stored** fields, so a row written with `country = "Unknown"`
+and looked up by a hash computed from an absent country could never find itself,
+and every rescan would add another house wine to that venue's cellar.
 
-Measuring that turned up a **pre-existing defect on the shared path**, filed
-rather than fixed here: because the app computes the key from the draft and the
-trigger stores the key of the fabricated row, a second import of the same
-countryless wine raises *"insert was skipped but no row carries signature"*.
-Filed in `v3.0-TECH-DEBT.md`; it belongs with the fabrication removal.
+Measuring that, before #318 landed, turned up a defect on the shared path: the
+app computed the key from the draft while the trigger stored the key of the
+*fabricated* row, so a second import of the same countryless wine raised
+*"insert was skipped but no row carries signature"*. **#318 closed it** by
+making the stored row agree with the key. Recorded because it is the same class
+of fault and because the two fixes had to agree about it.
 
 ## Consequences
 
@@ -249,13 +273,19 @@ WHITE"), read every FK's delete behaviour before touching a library row
 the writer is gone from `main` first — which is what this PR makes true.
 Repairing before that would refill.
 
-**No CHECK constraint yet.** `CHECK (provisional_for_restaurant_id IS NOT NULL
-OR wine_identity_is_specific(producer, name, vintage, region))` is the shape
-that would make an unowned generic row impossible. It cannot be added today:
-the app still writes `producer = the wine's own name`, so every generic row
-*looks* specific to SQL and the constraint would be a green light that checks
-nothing — `memory/absence-reported-as-health`. It becomes enforceable the moment
-the fabrication is removed, and is filed against that stop.
+**No CHECK constraint yet — and the reason changed mid-build.** `CHECK
+(provisional_for_restaurant_id IS NOT NULL OR wine_identity_is_specific(
+producer, name, vintage, region))` is the shape that would make an unowned
+generic row impossible. When this was written it could not bite at all: the app
+wrote `producer = the wine's own name`, so every generic row *looked* specific
+to SQL and the constraint would have been a green tick over nothing
+(`memory/absence-reported-as-health`). #318 removed that fabrication, so the
+constraint is now **enforceable** — and is still not added here, for a different
+and smaller reason: `processPendingSubmissions` upserts into
+`master_wine_library` with no venue to own a row
+(`wine-submissions.service.ts`, the submission-promotion path), so the
+constraint would turn a bad row there into a `23514` on a path this PR does not
+wire. Filed with that path named, rather than added blind.
 
 **What would trigger revisiting.** A venue that legitimately needs its house
 wine in the shared library (a group with ten sites pouring one bulk cuvée) —
@@ -272,3 +302,4 @@ wrong place rather than that the mechanism is wrong.
 | 2026-09-05 | Aldemir (founder) | Locked in session: generic names never auto-link; producer + name, or name + vintage + region |
 | 2026-09-05 | Adversarial pass | Killed the "remove the fabrication and it is fixed" reading: an empty producer on both sides scores `psim = 1.0`, so that fix alone *widens* the hole. Gate moved onto the query, in SQL, ahead of the resolver. |
 | 2026-09-05 | Schema measurement | Four storage mechanisms tried against the built schema; three rejected with reasons above; the adopted one proved on T1–T9 (pre-fix control: confidence 90; post-fix: 0 candidates) |
+| 2026-09-06 | PR #318 landed on main | The adversarial prediction became a measurement: with the fabrication removed, the same generic draft scores **100**, by the exact-signature branch as well as the fuzzy one, and two venues cannot both hold the row (`23505`). Re-measured against `main f4f9e4a6`: 0 candidates with this migration, 2 rows / 2 hashes for two venues. |

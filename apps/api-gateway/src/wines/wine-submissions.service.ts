@@ -323,8 +323,11 @@ export class WineSubmissionsService {
         price_reference: payload.priceReference ?? null,
         primary_type: identity.primaryType ?? "unknown",
         grape_variety: identity.grapeVariety ?? null,
-        country: identity.country ?? "Unknown",
-        region: identity.region ?? "Unknown",
+        // Null, not "Unknown". The submission path accounts for the other 251
+        // of production's 328 `country = 'Unknown'` rows, and 'Unknown' sorts,
+        // groups and filters as though it were a country.
+        country: identity.country ?? null,
+        region: identity.region ?? null,
         appellation: identity.appellation ?? null,
         sub_region: payload.subRegion ?? null,
         wine_structure: payload.wineStructure ?? null,
@@ -478,9 +481,23 @@ export class WineSubmissionsService {
     const insertPayload = {
       wine_id: this.generateWineId(),
       name: item.name,
-      producer: item.producer || item.name,
+      // NULL, not the wine's own name and not the word "Unknown". This is the
+      // SHARED catalogue: producer is an identity attribute, so a row whose
+      // producer is "House White Wine" asserts that such a producer exists, to
+      // every tenant matching against it. Measured 2026-09-05: 48 of 77
+      // menu-import rows carried their own name as producer, and all 77
+      // carried country 'Unknown'.
+      //
+      // It also disagreed with the key: `signatureHash` above is computed over
+      // `item.producer ?? null` / `item.country ?? null`, so the stored row
+      // misrepresented the very identity its dedup hash was taken over.
+      //
+      // `primary_type: "unknown"` stays — that is a vocabulary member meaning
+      // "unclassified", read by the beverage_kind trigger, not a placeholder
+      // standing in for an answer.
+      producer: item.producer ?? null,
       primary_type: "unknown",
-      country: item.country || "Unknown",
+      country: item.country ?? null,
       region: item.region ?? null,
       grape_variety: item.grapeVariety ?? null,
       vintage: parsedVintage,
@@ -595,19 +612,16 @@ export class WineSubmissionsService {
     const insertPayload = {
       wine_id: this.generateWineId(),
       name: item.name,
-      // Empty, not invented. `producer` and `country` are NOT NULL columns,
-      // which is why the shared path writes the wine's own name and the
-      // literal "Unknown" into them; that fabrication is the ops track's to
-      // remove. It cannot be carried here, because the hash the trigger
-      // recomputes is taken from the STORED fields: writing "Unknown" into
-      // country while keying the lookup on an absent one makes this venue
-      // unable to find its own row on the next scan. `wine_normalize_text`
-      // maps NULL and '' to the same empty segment, so '' hashes identically
-      // to the absence it records — and keeps hashing identically once those
-      // columns are made nullable.
-      producer: item.producer ?? "",
+      // Absent, not invented — the same rule the shared path now follows
+      // (`20260906023000_the_library_may_say_it_does_not_know.sql` dropped the
+      // NOT NULLs that used to force a placeholder here). A venue's own row
+      // needs it for a second reason: `trg_sync_signature_hash` rehashes from
+      // the STORED fields, so a row written with "Unknown" in country while
+      // the lookup key is computed from an absent one could never be found
+      // again, and every rescan would add another house wine to the cellar.
+      producer: item.producer ?? null,
       primary_type: "unknown",
-      country: item.country ?? "",
+      country: item.country ?? null,
       region: item.region ?? null,
       grape_variety: item.grapeVariety ?? null,
       vintage: parsedVintage,
@@ -805,16 +819,15 @@ export class WineSubmissionsService {
         rowBySignature.set(signatureHash, {
           wine_id: this.generateWineId(),
           name: item.name,
-          // A venue's own row records absence as absence — see
-          // resolveVenueProvisionalWine for why it cannot inherit the shared
-          // path's fabricated producer/country and still find itself again.
-          producer: provisional
-            ? (item.producer ?? "")
-            : item.producer || item.name,
+          // Same rule as the single-row path above: null, never a
+          // placeholder. This is the door 26 of 26 Antalya rows came through.
+          // A venue's own row needs it for a second reason (ADR 0130): the
+          // trigger rehashes from the STORED fields, so a row written with a
+          // placeholder could not be found again by the key computed from the
+          // draft.
+          producer: item.producer ?? null,
           primary_type: "unknown",
-          country: provisional
-            ? (item.country ?? "")
-            : item.country || "Unknown",
+          country: item.country ?? null,
           region: item.region ?? null,
           grape_variety: item.grapeVariety ?? null,
           vintage,
