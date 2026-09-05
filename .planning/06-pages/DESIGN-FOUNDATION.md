@@ -305,6 +305,12 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
 6. **Motion signature** — adopt/reject the 043–046 specs per moment.
 7. **Density, responsiveness, accessibility baselines.**
 
+   **2026-09-05 — the census (sketch 102).** Every overlay in the web app — 141 sites folded
+   into 117 — now has this policy's shape or a reason it has none: 31 built, 10 migrate (eight
+   on `/inventory`, whose flag turns on the same component), 10 owed, 7 target, 40 retire,
+   16 delete. Specimens at the primitive's real widths, and seven forks for the founder, in
+   `.planning/sketches/102-modal-census/README.md`; ADR 0112 carries the summary.
+
 ## 4. Candidate directions (fork — founder call, OD-106)
 
 - **A. Command-surface first.** Ratify the 037/038 lineage as the default

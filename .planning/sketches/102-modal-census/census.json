@@ -1,0 +1,4386 @@
+{
+ "meta": {
+  "sketch": 102,
+  "name": "modal-census",
+  "date": "2026-09-05",
+  "tree": "feat/mudavym-design-p4 @ origin tip, read 2026-09-05",
+  "primitive": "apps/web/src/components/mudavym/Sheet.tsx (Sheet · Panel · Popover)"
+ },
+ "pages": [
+  {
+   "route": "shell",
+   "slug": "shell",
+   "doc": null,
+   "rebuilt": true,
+   "flag": null,
+   "verdict": "Nine overlays render over every page. Eight wear the house shape while a rebuilt page is on screen and their legacy markup otherwise (lib/mudavym/shellGround.ts). Two of them now exist twice.",
+   "overlays": [
+    {
+     "name": "Command palette",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Command palette",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Search pages, actions, insights…",
+       true
+      ],
+      [
+       "sect",
+       "Pages"
+      ],
+      [
+       "item",
+       "Orders",
+       "/orders",
+       true,
+       "↵"
+      ],
+      [
+       "item",
+       "Inventory",
+       "/inventory"
+      ],
+      [
+       "sect",
+       "Actions"
+      ],
+      [
+       "item",
+       "Approve what is waiting",
+       "3 orders on the ledger"
+      ],
+      [
+       "item",
+       "Write a letter",
+       "/communications"
+      ],
+      [
+       "sect",
+       "Insights"
+      ],
+      [
+       "item",
+       "Öküzgözü sold 41% above its 30-day pace",
+       "reports · 2 Sept"
+      ]
+     ],
+     "footer": "↑↓ to navigate · ↵ to run · esc closes",
+     "why": "A question the reader answers by typing: the middle of the screen, the page dimmed, focus trapped.",
+     "source": "components/command/CommandPalette.tsx:260",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Ask AI",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Ask AI",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Ask for an action — reorder stock, draft a vendor reply…",
+       true
+      ],
+      [
+       "note",
+       "<b>Ask AI proposes; you confirm.</b> Nothing runs until you do."
+      ],
+      [
+       "quiet",
+       "Drafts only — nothing reaches a vendor without a second approval."
+      ]
+     ],
+     "footer": "esc closes",
+     "why": "A question; the answer is a proposal the person still has to hold.",
+     "source": "components/askai/AskAiBar.tsx:166",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Keyboard shortcuts",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The house",
+     "title": "Keyboard shortcuts",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Open the palette",
+       "",
+       false,
+       "⌘ K"
+      ],
+      [
+       "item",
+       "Ask AI",
+       "",
+       false,
+       "⌘ J"
+      ],
+      [
+       "item",
+       "Recently viewed",
+       "",
+       false,
+       "⌘ E"
+      ],
+      [
+       "quiet",
+       "Page-specific shortcuts appear in each page's toolbar."
+      ]
+     ],
+     "footer": null,
+     "why": "A reference the reader consults and dismisses — a panel, never a sheet: there is no object.",
+     "source": "components/command/ShortcutsSheet.tsx:67",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Recently viewed",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Where you have been",
+     "title": "Recently viewed",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Orders",
+       "2 minutes ago"
+      ],
+      [
+       "item",
+       "Reports",
+       "14 minutes ago"
+      ],
+      [
+       "item",
+       "Team",
+       "yesterday"
+      ],
+      [
+       "quiet",
+       "No recent pages yet — they collect as you navigate."
+      ]
+     ],
+     "footer": null,
+     "why": "A list to jump from.",
+     "source": "components/command/RecentlyViewed.tsx:69",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The bell",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "3 folded lines",
+     "title": "Notifications",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Kavaklıdere confirmed order 118",
+       "12 min ago · a reply on the thread"
+      ],
+      [
+       "item",
+       "Öküzgözü 2022 is below par",
+       "2 left · 6 is par"
+      ],
+      [
+       "item",
+       "Week 37 is published",
+       "yesterday · 5 have opened it"
+      ]
+     ],
+     "footer": "Rule all off · Read the whole book",
+     "why": "A control's own menu. It never carries the seal (founder, 2026-09-04) — approving from here opens the panel first.",
+     "source": "components/layout/Header.tsx:147 · components/mudavym/HouseBell.tsx:127 — TWO implementations (fork F6)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "User menu",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "ayse@example.com",
+     "title": "Ayşe Yılmaz",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Profile"
+      ],
+      [
+       "item",
+       "Settings"
+      ],
+      [
+       "item",
+       "Help & Support"
+      ],
+      [
+       "item",
+       "Log out"
+      ]
+     ],
+     "footer": null,
+     "why": "A control's own menu.",
+     "source": "components/layout/Header.tsx:351 · components/mudavym/HouseUserMenu.tsx:79 — TWO implementations (fork F6)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Theme",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Theme",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Paper",
+       "",
+       true
+      ],
+      [
+       "item",
+       "Charcoal"
+      ],
+      [
+       "item",
+       "Follow the system"
+      ]
+     ],
+     "footer": null,
+     "why": "Dimming the whole page to pick 'Dark' is ceremony; this house rations ceremony.",
+     "source": "components/layout/ThemeMenu.tsx:65",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Switch location",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "3 locations",
+     "title": "Switch location",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Meyhane Sim · Kaleiçi",
+       "Active",
+       true
+      ],
+      [
+       "item",
+       "Meyhane Sim · Lara",
+       "live sync"
+      ],
+      [
+       "item",
+       "The Grill Co."
+      ]
+     ],
+     "footer": "Add location · Manage locations",
+     "why": "A choice from a short list, hanging off the control that shows the choice.",
+     "source": "components/layout/RestaurantBranchSwitcher.tsx:80",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Mobile navigation scrim",
+     "status": "none",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/layout/DashboardLayout.tsx:60",
+     "acts": "Dims the page behind the drawer on small screens",
+     "went": "Paint only (`.mdv-scrim`) — not a shape, and it never was one.",
+     "fork": null
+    },
+    {
+     "name": "Nav-rail hint",
+     "status": "none",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/layout/Sidebar.tsx:255",
+     "acts": "The label that appears when the collapsed rail is hovered",
+     "went": "An anchored, non-interactive label, portalled only so it can wear the ground. Not a shape.",
+     "fork": null
+    },
+    {
+     "name": "Header search",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/layout/Header.tsx:464",
+     "acts": "'Search wines, orders, reports…' — a second search box in the header",
+     "went": "The palette is the search.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/",
+   "slug": "dashboard",
+   "doc": "dashboard.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_dashboard",
+   "verdict": "Four legacy modals. Three retire into surfaces the rebuilt page already has; the figure detail is owed, or becomes an in-place expansion (fork F7).",
+   "overlays": [
+    {
+     "name": "The working behind a figure",
+     "status": "owed",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Vendor spend · last 30 days",
+     "title": "₺ 84,200 paid on delivered orders",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Orders summed",
+       "14"
+      ],
+      [
+       "fact",
+       "Vendors",
+       "6"
+      ],
+      [
+       "sect",
+       "The rows"
+      ],
+      [
+       "item",
+       "Kavaklıdere · 24 Aug",
+       "order 118 · delivered",
+       false,
+       "₺ 12,000"
+      ],
+      [
+       "item",
+       "Sevilen · 21 Aug",
+       "order 116 · delivered",
+       false,
+       "₺ 9,840"
+      ],
+      [
+       "item",
+       "Banfi · 19 Aug",
+       "order 114 · delivered",
+       false,
+       "$ 1,320"
+      ],
+      [
+       "quiet",
+       "Every figure on this page names the rows it summed (ADR 0020)."
+      ]
+     ],
+     "footer": "Show the working",
+     "why": "A figure is one object; the reader wants what it is made of, not a question. The alternative is the house idiom — the KPI row expands in place — which is fork F7.",
+     "source": "pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today",
+     "acts": null,
+     "went": null,
+     "fork": "F7"
+    },
+    {
+     "name": "Add an important date",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/dashboard/AddImportantDateModal.tsx:125",
+     "acts": "Add events, deadlines and reminders: title, date, time, type, colour, notes",
+     "went": "The calendar's entry sheet — the house has one day-book (ADR 0111).",
+     "fork": null
+    },
+    {
+     "name": "Edit a quick action",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/dashboard/QuickActionsPanel.tsx:332",
+     "acts": "A person-authored quick action: title, description, URL, icon, colour theme",
+     "went": "One-tap actions moved to the dashboard rail (OneTapPanel, producer-defined). A person's own bookmark is not recreated — fork F4.",
+     "fork": "F4"
+    },
+    {
+     "name": "Daily sales report (a day)",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Dashboard.tsx:1414",
+     "acts": "Everything that happened on one day: spend, bottles sold, top seller, events",
+     "went": "DayDetail expands in place under the sales calendar (pages/dashboard/next/SalesCalendar.tsx:217).",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/orders",
+   "slug": "orders",
+   "doc": "orders.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_orders",
+   "verdict": "Three house overlays are built. The manual 'new order' and its guard are owed (fork F5); six legacy modals retire into what is built; two dead files are deleted.",
+   "overlays": [
+    {
+     "name": "What was agreed",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "New agreement",
+     "title": "What was agreed",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Wine",
+        "Öküzgözü 2022 · Kavaklıdere"
+       ],
+       [
+        "Vendor",
+        "Kavaklıdere"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Quantity",
+        "5"
+       ],
+       [
+        "Order unit",
+        "case · 12 bottles"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Agreed price",
+        "₺ 2,400.00"
+       ],
+       [
+        "Price unit",
+        "per case"
+       ]
+      ],
+      [
+       "field",
+       "Currency",
+       "TRY"
+      ],
+      [
+       "note",
+       "An agreed price states its unit (ADR 0119). <b>unit not stated</b> is written down as exactly that."
+      ],
+      [
+       "btns",
+       [
+        "Write it down",
+        true
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question the house asks before it writes a price.",
+     "source": "pages/orders/next/AgreementSheet.tsx:349",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Make this order repeat",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "New recurrence",
+     "title": "Make this order repeat",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "How often",
+       "Every month"
+      ],
+      [
+       "field",
+       "On which day",
+       "the 1st — 1 to 28, so that every month has one"
+      ],
+      [
+       "field",
+       "Starting from",
+       "1 Oct 2026"
+      ],
+      [
+       "fact",
+       "What this will ask for",
+       "5 cases Öküzgözü 2022 · ₺ 2,400 per case"
+      ],
+      [
+       "btns",
+       [
+        "Set a recurring order",
+        true
+       ],
+       [
+        "Pause it"
+       ],
+       [
+        "End it"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A commitment about the future — a question, answered once.",
+     "source": "pages/orders/next/RecurrenceSheet.tsx:222",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Vendor answers",
+     "status": "built",
+     "shape": "sheet",
+     "wide": true,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Vendor answers",
+     "title": "Öküzgözü 2022",
+     "action": "Previous · Next",
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "Answer 2 of 3 · Kavaklıdere · 3 Sept"
+      ],
+      [
+       "text",
+       "We can deliver Thursday. The 2022 is ₺2,400 per case and we can hold that until the 15th. — Hasan"
+      ],
+      [
+       "fact",
+       "Read as",
+       "a confirmation · price unchanged"
+      ],
+      [
+       "sect",
+       "Why this order is rejected"
+      ],
+      [
+       "field",
+       "",
+       "In words: what is wrong with this answer",
+       true
+      ],
+      [
+       "hold",
+       "Hold to reject"
+      ]
+     ],
+     "footer": "Left and right arrows step through the answers.",
+     "why": "One order's correspondence is one object, read at 640 because letters are prose — the wide case ADR 0112 anticipated.",
+     "source": "pages/orders/next/ResponsesSheet.tsx:353",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A new order",
+     "status": "owed",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The order book",
+     "title": "A new order",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Search the register — Öküzgözü, Banfi, gin…",
+       true
+      ],
+      [
+       "sect",
+       "Lines"
+      ],
+      [
+       "item",
+       "Öküzgözü 2022 · Kavaklıdere",
+       "5 cases · ₺ 2,400 per case",
+       false,
+       "₺ 12,000"
+      ],
+      [
+       "item",
+       "Chianti Classico 2021 · Banfi",
+       "2 cases · $ 210 per case",
+       false,
+       "$ 420"
+      ],
+      [
+       "fact",
+       "Vendor",
+       "Kavaklıdere"
+      ],
+      [
+       "note",
+       "Price and unit come from the agreement on the vendor's row; a line without one asks first (<b>What was agreed</b>)."
+      ]
+     ],
+     "footer": "Nothing is sent by saving a draft.",
+     "why": "The order being written is one object. Owed — unless the founder rules that orders start from a row, the palette or Ask AI (fork F5).",
+     "source": "pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found",
+     "acts": null,
+     "went": null,
+     "fork": "F5"
+    },
+    {
+     "name": "Add a vendor first",
+     "status": "owed",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Before an order",
+     "title": "Add a vendor to place orders",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "quiet",
+       "An order needs someone to send it to. There is no vendor in the book yet."
+      ],
+      [
+       "btns",
+       [
+        "Go to Providers",
+        true
+       ],
+       [
+        "Back to the order"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question with two answers. Travels with the new-order sheet.",
+     "source": "components/orders/OrderGuardModal.tsx:27",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Wine config",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Orders.tsx:2903",
+     "acts": "Order unit (bottles/cases), bottles per case, custom price vs 'ask provider', providers to contact",
+     "went": "What was agreed (unit · price · currency) on the ledger row.",
+     "fork": null
+    },
+    {
+     "name": "Reject this order?",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Orders.tsx:3359 (SealedRejectDie)",
+     "acts": "A confirmation naming the wine before a rejection",
+     "went": "Vendor answers — 'Hold to reject', with the reason in words.",
+     "fork": null
+    },
+    {
+     "name": "Provider comms thread",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/orders/CommsThreadDrawer.tsx:436",
+     "acts": "One order's thread: DKIM state, Resume/Pause AI, a manual reply in the same email thread",
+     "went": "Vendor answers reads the thread; the composer writes. <b>Pause AI on a thread</b> is not recreated — fork F4.",
+     "fork": "F4"
+    },
+    {
+     "name": "AI-detected deal",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/orders/DealApprovalModal.tsx:45",
+     "acts": "A deal read from a vendor's mail: quantity, total, terms, a low-confidence warning; Decline / Ask for more",
+     "went": "An answer kind inside Vendor answers; 'what the AI read' survives as the provenance line.",
+     "fork": null
+    },
+    {
+     "name": "Active drafts",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/orders/ActiveConversationsPanel.tsx:65",
+     "acts": "The AI's pending drafts: view, quick approve, discard",
+     "went": "/communications lists threads with their drafts; approval is the panel drawn there.",
+     "fork": null
+    },
+    {
+     "name": "AI draft ready",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/orders/DraftEmailApprovalPanel.tsx:130",
+     "acts": "Review, edit and send the reply the house drafted",
+     "went": "Drawn on /communications as <b>The house's reply, drafted</b> (owed).",
+     "fork": null
+    },
+    {
+     "name": "Recurring order (page)",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/RecurringOrders.tsx:530 — nobody imports the page",
+     "acts": "Automated reordering with a negotiated price, deal duration and manager override",
+     "went": "Recurrence lives on the order (Make this order repeat). Delete.",
+     "fork": null
+    },
+    {
+     "name": "Record an auction purchase",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/orders/AuctionPurchaseModal.tsx:133 — nobody imports it",
+     "acts": "Hammer price, buyer's premium, lot number, into inventory",
+     "went": "Not recreated anywhere. Delete unless the act is wanted — fork F4.",
+     "fork": "F4"
+    }
+   ]
+  },
+  {
+   "route": "/receiving · /receiving/:orderId/door",
+   "slug": "receiving",
+   "doc": "receiving.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_receiving · mudavym_design_receiving_door",
+   "verdict": "No overlays. The door is six points on one page; a sealed step is a panel-shaped section inside the page, not a portal (DoorNext.tsx:697 declares a local Panel).",
+   "overlays": []
+  },
+  {
+   "route": "/receipts",
+   "slug": "receipts",
+   "doc": "receipts.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_receipts",
+   "verdict": "No overlays. Editable-and-confirmable in one step wants no dialog; SwipeToConfirm is inline.",
+   "overlays": []
+  },
+  {
+   "route": "/documents/:id",
+   "slug": "document",
+   "doc": "documents-reports.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_document",
+   "verdict": "No overlays. CanonicalSheet is a page section, not a portal.",
+   "overlays": []
+  },
+  {
+   "route": "/inventory",
+   "slug": "inventory",
+   "doc": "inventory.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_inventory",
+   "verdict": "The one page whose flag turns on nothing new: legacy and next are the same component (App.tsx:311), so its eight fixed-inset modals are live inside a house-flagged page today. Seven migrate; one retires to /receipts.",
+   "overlays": [
+    {
+     "name": "Carry this bottle",
+     "status": "migrate",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The register",
+     "title": "Carry this bottle",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "Start from"
+      ],
+      [
+       "item",
+       "The library",
+       "search the 4,120 bottles the house knows",
+       true
+      ],
+      [
+       "item",
+       "A label photo",
+       "the reader names it; you confirm"
+      ],
+      [
+       "item",
+       "A menu scan",
+       "many at once"
+      ],
+      [
+       "field",
+       "",
+       "Search the library — Öküzgözü, Banfi, Talisker…",
+       true
+      ],
+      [
+       "two",
+       [
+        "Initial quantity",
+        "12 bottles"
+       ],
+       [
+        "Cost per bottle",
+        "₺ 190.00"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Vendor",
+        "Kavaklıdere"
+       ],
+       [
+        "Zone",
+        "Cellar · rack B"
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Carry it",
+        true
+       ]
+      ]
+     ],
+     "footer": "A house item exists only through 'carry this' (ADR 0115). One component, shared with /cellar.",
+     "why": "One bottle entering the book is one object; three ways to start, one sheet.",
+     "source": "components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Place 14 bottles by their zones?",
+     "status": "migrate",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Auto-locate · preview",
+     "title": "Place 14 bottles by their zones?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "table",
+       [
+        "Bottle",
+        "Proposed zone",
+        "Score",
+        "Why"
+       ],
+       [
+        [
+         "Öküzgözü 2022",
+         "Cellar · rack B",
+         "0.92",
+         "same producer shelved here"
+        ],
+        [
+         "Talisker 10",
+         "Bar · back shelf",
+         "0.81",
+         "spirits zone, room left"
+        ],
+        [
+         "Efes Pilsen",
+         "Walk-in · door",
+         "0.77",
+         "beer, kept cold"
+        ]
+       ]
+      ],
+      [
+       "fact",
+       "Skipped",
+       "3 · no zone matched"
+      ],
+      [
+       "chips",
+       [
+        "Include bottles already placed",
+        false
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Place them",
+        true
+       ],
+       [
+        "Leave them"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question about a batch. Bulk, so no wax — the plain die.",
+     "source": "components/inventory/AutoLocatePreviewModal.tsx:70",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A delivery without an order",
+     "status": "migrate",
+     "shape": "sheet",
+     "wide": true,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Receiving",
+     "title": "A delivery without an order",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Vendor",
+        "Sevilen"
+       ],
+       [
+        "Invoice or reference",
+        "INV-4471"
+       ]
+      ],
+      [
+       "field",
+       "Default zone for new lines",
+       "Cellar · rack C"
+      ],
+      [
+       "field",
+       "",
+       "Search the library to add a line…",
+       true
+      ],
+      [
+       "sect",
+       "Lines"
+      ],
+      [
+       "item",
+       "Sevilen Kalecik Karası 2021",
+       "6 bottles · ₺ 240.00",
+       false,
+       "₺ 1,440"
+      ],
+      [
+       "item",
+       "Free sample · Sevilen Blanc de Noir",
+       "2 bottles · ₺ 0.00 (sample)",
+       false,
+       "₺ 0"
+      ],
+      [
+       "quiet",
+       "Stock that arrived without a purchase order — including free samples."
+      ],
+      [
+       "btns",
+       [
+        "Record the delivery",
+        true
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "Lines read as a table; 640 like the composer. Or a route under /receipts — fork F3.",
+     "source": "components/inventory/ManualReceiptWorkspace.tsx:234",
+     "acts": null,
+     "went": null,
+     "fork": "F3"
+    },
+    {
+     "name": "POS buttons and stock",
+     "status": "migrate",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The queue",
+     "title": "POS buttons and stock",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "quiet",
+       "12 POS lines have arrived and moved no stock. 41 units unaccounted for across 4 buttons — a floor, not the total."
+      ],
+      [
+       "sect",
+       "Öküzgözü glass · 27 sales"
+      ],
+      [
+       "btns",
+       [
+        "One glass",
+        true
+       ],
+       [
+        "One bottle"
+       ],
+       [
+        "Not this"
+       ]
+      ],
+      [
+       "sect",
+       "Efes 50cl · 9 sales"
+      ],
+      [
+       "btns",
+       [
+        "One bottle",
+        true
+       ],
+       [
+        "Not this"
+       ]
+      ]
+     ],
+     "footer": "No inventory row matched 'Rakı Yeni' — carry the bottle first.",
+     "why": "One queue, worked line by line, the register still visible beneath.",
+     "source": "components/inventory/PosMappingPanel.tsx:294",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Write off 6 bottles?",
+     "status": "migrate",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Öküzgözü 2022 · Kavaklıdere",
+     "title": "Write off 6 bottles?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "On-hand value",
+       "₺ 1,140.00 leaves the book"
+      ],
+      [
+       "field",
+       "Reason",
+       "Broken in transit — 2 Sept delivery"
+      ],
+      [
+       "quiet",
+       "Keeps the bottle in the library — carry it again anytime."
+      ],
+      [
+       "hold",
+       "Hold to write it off"
+      ]
+     ],
+     "footer": null,
+     "why": "A ledger write is a real commitment — wax.",
+     "source": "components/inventory/RemoveFromInventoryModal.tsx:121",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The zones",
+     "status": "migrate",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Cellar floor",
+     "title": "The zones",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Cellar · rack A",
+       "capacity 96 · 88 bottles"
+      ],
+      [
+       "item",
+       "Cellar · rack B",
+       "capacity 96 · 61 bottles"
+      ],
+      [
+       "item",
+       "Bar · back shelf",
+       "capacity not recorded · 24 bottles"
+      ],
+      [
+       "item",
+       "Walk-in · door",
+       "12 bottles"
+      ],
+      [
+       "btns",
+       [
+        "Add a zone"
+       ]
+      ],
+      [
+       "quiet",
+       "Drag to reorder. A zone holding bottles cannot be deleted until they are moved."
+      ]
+     ],
+     "footer": "Zones are confirmed on the cellar floor first (2026-09-04) — this is that same list, opened from /inventory.",
+     "why": "The zones are one object the house owns.",
+     "source": "components/inventory/StorageLocationManager.tsx:327",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Spot count",
+     "status": "migrate",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Öküzgözü 2022 · Cellar · rack B",
+     "title": "Spot count",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Counted",
+        "9"
+       ],
+       [
+        "On the book",
+        "11"
+       ]
+      ],
+      [
+       "fact",
+       "Difference",
+       "−2 bottles"
+      ],
+      [
+       "field",
+       "",
+       "Why, if you know — e.g. two poured for a tasting, unrecorded",
+       true
+      ],
+      [
+       "hold",
+       "Hold to record the count"
+      ]
+     ],
+     "footer": "The count writes a correction; the book keeps both figures.",
+     "why": "Opened from the row expander; one bottle's count is one record.",
+     "source": "pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Receipt record",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/inventory/command/ReceivingWorkspace.tsx:376",
+     "acts": "Ordered · shipped · invoiced · accepted per line, agreed vs invoice price, credit due, a line not on the invoice",
+     "went": "/receipts is the receipts desk (ReceiptsNext). /inventory links there and never overlays it.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks",
+   "slug": "cellar",
+   "doc": "wines.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_cellar",
+   "verdict": "The old library added a bottle through six modals and a scanner. The register keeps one — 'carry this bottle', shared with /inventory — plus two panels for the reader's questions. The register still mounts one legacy modal today.",
+   "overlays": [
+    {
+     "name": "Carry these bottles (from a menu scan)",
+     "status": "migrate",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The register",
+     "title": "Carry these bottles",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "From the menu scan · 9 found"
+      ],
+      [
+       "item",
+       "Öküzgözü 2022 · Kavaklıdere",
+       "read with confidence 0.91",
+       true
+      ],
+      [
+       "item",
+       "Boğazkere 2021 · Kavaklıdere",
+       "0.88",
+       true
+      ],
+      [
+       "item",
+       "Chianti Classico 2021 · Banfi",
+       "0.74 — check the producer"
+      ],
+      [
+       "btns",
+       [
+        "Carry the 8 I ticked",
+        true
+       ]
+      ]
+     ],
+     "footer": "The detection half is real; the approve half wrote nothing before (WineRegister.tsx:32-47).",
+     "why": "The same sheet as /inventory's, opened at its 'menu scan' start.",
+     "source": "pages/cellar/next/WineRegister.tsx imports components/wines/MenuScannerModal.tsx:21 (legacy, fixed-inset)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Is this the bottle?",
+     "status": "owed",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The label reader",
+     "title": "Is this the bottle?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Name",
+        "Öküzgözü"
+       ],
+       [
+        "Producer",
+        "Kavaklıdere"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Vintage",
+        "2022"
+       ],
+       [
+        "Type",
+        "Red"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Region",
+        "Elazığ"
+       ],
+       [
+        "Grape",
+        "Öküzgözü"
+       ]
+      ],
+      [
+       "note",
+       "The reader is sure of the producer and unsure of the vintage — check the <b>2</b> before you confirm."
+      ],
+      [
+       "btns",
+       [
+        "Yes, carry it",
+        true
+       ],
+       [
+        "Fix a field"
+       ],
+       [
+        "Not this bottle"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question the reader must answer before anything is written.",
+     "source": "components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Photograph the label",
+     "status": "target",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Camera",
+     "title": "Photograph the label",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "frame",
+       "viewfinder"
+      ],
+      [
+       "quiet",
+       "Hold the bottle so the label fills the frame."
+      ],
+      [
+       "btns",
+       [
+        "Take the photo",
+        true
+       ],
+       [
+        "Upload a file instead"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A step answered once; the page stays dimmed beneath.",
+     "source": "components/scanner/CameraCapture.tsx:607 — also mounted by /get-started and the orders scanner",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Wine detail",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/WineLibrary.tsx:1297",
+     "acts": "Country and region, grape, vintage, stock against threshold; add to inventory, reorder, remove",
+     "went": "The register row expands in place (sketch 095 — the house pattern for ledger tables).",
+     "fork": null
+    },
+    {
+     "name": "Reorder wine",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/WineLibrary.tsx:1486",
+     "acts": "Quantity, custom price vs 'ask provider', providers, notes, auto-reorder frequency",
+     "went": "An order is written on /orders (What was agreed · Make this order repeat).",
+     "fork": null
+    },
+    {
+     "name": "How to add (chooser)",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/AddWineSelectionModal.tsx:33",
+     "acts": "Single wine · Menu scanner · Receive a delivery · Spreadsheet",
+     "went": "The carry sheet's 'Start from'.",
+     "fork": null
+    },
+    {
+     "name": "Add wine (label photo)",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/AddWineModal.tsx:148",
+     "acts": "Upload a label, the AI reads it, detected fields",
+     "went": "Carry this bottle + Is this the bottle?",
+     "fork": null
+    },
+    {
+     "name": "Add to inventory from the library",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/AddToInventoryFromLibraryModal.tsx:498",
+     "acts": "Quick add; already in inventory → add stock or a separate entry; presets, cost, providers",
+     "went": "Carry this bottle.",
+     "fork": null
+    },
+    {
+     "name": "Dev: manual wine entry",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/DevManualWineEntry.tsx:330",
+     "acts": "Keyboard rapid entry for developers",
+     "went": "Dev-only. Delete, or move under /dev-sandbox.",
+     "fork": null
+    },
+    {
+     "name": "Dev: label test photos",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/DevWinePhotoUpload.tsx:106",
+     "acts": "'YOLOv8 + OCR detection — programmer access only'",
+     "went": "Dev-only. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Add wine (unified chooser)",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/AddWineUnifiedModal.tsx:53 — nobody imports it",
+     "acts": "Choose how to add wines",
+     "went": "Dead code. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Wine research queue",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/wines/WineResearchQueue.tsx:225 — nobody imports it",
+     "acts": "Queue unknown wines for research",
+     "went": "Dead code. Delete.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/providers",
+   "slug": "providers",
+   "doc": "providers.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_providers",
+   "verdict": "The twin sheet is built and carries the vendor's terms. Adding a vendor is owed: the catalogue search, the custom vendor and the duplicate check are one sheet and one question.",
+   "overlays": [
+    {
+     "name": "The vendor's twin",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Wine distributor",
+     "title": "Kavaklıdere",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "What the platform has learned"
+      ],
+      [
+       "fact",
+       "Contact",
+       "Hasan Demir"
+      ],
+      [
+       "fact",
+       "Phone",
+       "+90 312 000 00 00"
+      ],
+      [
+       "fact",
+       "Lead time",
+       "4 days · from 11 deliveries"
+      ],
+      [
+       "fact",
+       "Payment terms",
+       "Net 30 · written 2 Sept by Ayşe"
+      ],
+      [
+       "fact",
+       "Minimum order",
+       "₺ 5,000"
+      ],
+      [
+       "fact",
+       "Regions",
+       "Ankara · Antalya"
+      ],
+      [
+       "fact",
+       "Last contact",
+       "3 Sept · a reply on order 118"
+      ]
+     ],
+     "footer": "Terms sit on the vendor's row with a provenance per field (ADR 0116).",
+     "why": "One vendor, opened from the list you can still see.",
+     "source": "pages/providers/next/TwinSheet.tsx:68",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A new vendor",
+     "status": "owed",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The book of vendors",
+     "title": "A new vendor",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Search the catalogue — Sevilen",
+       false
+      ],
+      [
+       "sect",
+       "From the catalogue · 2 found"
+      ],
+      [
+       "item",
+       "Sevilen Şarapları",
+       "İzmir · importer and distributor · verified",
+       true
+      ],
+      [
+       "item",
+       "Sevilen US Imports",
+       "New Jersey · importer"
+      ],
+      [
+       "sect",
+       "Or a vendor of your own"
+      ],
+      [
+       "two",
+       [
+        "Name",
+        "Premium Wine Distributors",
+        true
+       ],
+       [
+        "Contact",
+        "First and last name",
+        true
+       ]
+      ],
+      [
+       "two",
+       [
+        "Phone",
+        "",
+        true
+       ],
+       [
+        "Email",
+        "",
+        true
+       ]
+      ],
+      [
+       "field",
+       "Address",
+       "Start typing the address…",
+       true
+      ],
+      [
+       "btns",
+       [
+        "Add to the book",
+        true
+       ]
+      ]
+     ],
+     "footer": "Terms are written on the vendor's row afterwards, each with its provenance.",
+     "why": "The vendor being added is one object; the old page split it across three modals.",
+     "source": "components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A vendor you already have?",
+     "status": "owed",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Possible duplicate",
+     "title": "This looks like a vendor already in the book",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Kavaklıdere",
+       "in your providers · 14 orders",
+       true
+      ],
+      [
+       "item",
+       "Kavaklidere Şarapları (new)",
+       "same phone, same city"
+      ],
+      [
+       "btns",
+       [
+        "Use the one on file",
+        true
+       ],
+       [
+        "Keep both — they are different"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question with two answers before a write.",
+     "source": "components/providers/VendorMatchModal.tsx:108",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Edit provider",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/providers/EditProviderModal.tsx:678",
+     "acts": "Rating, type, terms, minimum order, contact, recent orders",
+     "went": "The twin sheet's edit half; terms on the row.",
+     "fork": null
+    },
+    {
+     "name": "Send message",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/providers/SendMessageSlideOver.tsx:319",
+     "acts": "Email or SMS from a template",
+     "went": "The composer (letters); the text sender is ADR 0121.",
+     "fork": null
+    },
+    {
+     "name": "Provider card",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Providers.tsx:1355",
+     "acts": "Email, website, portfolio, address, contacts, regions; favourite, edit, remove, call",
+     "went": "The twin sheet.",
+     "fork": null
+    },
+    {
+     "name": "Add provider type",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/providers/AddProviderModal.tsx:629",
+     "acts": "A custom business type with an icon",
+     "went": "A field inside the new-vendor sheet.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/communications",
+   "slug": "communications",
+   "doc": "communications.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_communications",
+   "verdict": "The composer and the template library are built at 640. Eight legacy modals retire with the two builders (ADR 0118). One act is owed: approving a reply the house drafted.",
+   "overlays": [
+    {
+     "name": "A letter from the house",
+     "status": "built",
+     "shape": "sheet",
+     "wide": true,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "The house writes",
+     "title": "A letter from the house",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "Start from"
+      ],
+      [
+       "chips",
+       [
+        "A blank letter",
+        true
+       ],
+       [
+        "Something the house noticed",
+        false
+       ]
+      ],
+      [
+       "two",
+       [
+        "To",
+        "Hasan Demir · Kavaklıdere"
+       ],
+       [
+        "From",
+        "orders@meyhanesim.mudavym.com"
+       ]
+      ],
+      [
+       "field",
+       "Subject",
+       "Order 118 — delivery Thursday"
+      ],
+      [
+       "text",
+       "Hasan Bey, thank you for confirming Thursday. Five cases of the 2022 at ₺2,400 per case, held to the 15th — we will take it. Ayşe"
+      ],
+      [
+       "hold",
+       "Hold to send"
+      ]
+     ],
+     "footer": "Nothing was queued and nothing was sent.",
+     "why": "A letter is prose; 440 minus padding is ~46 characters — the one wide case ADR 0112 anticipated.",
+     "source": "pages/communications/next/Compose/ComposeSheet.tsx:209",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Templates",
+     "status": "built",
+     "shape": "sheet",
+     "wide": true,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "House letters",
+     "title": "Templates",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "btns",
+       [
+        "Write a new template",
+        true
+       ]
+      ],
+      [
+       "sect",
+       "Start from something the house noticed"
+      ],
+      [
+       "item",
+       "Öküzgözü sold 41% above its 30-day pace",
+       "reports · 2 Sept · the engine's sentence, with its provenance"
+      ],
+      [
+       "sect",
+       "On file · 4"
+      ],
+      [
+       "item",
+       "Delivery confirmation",
+       "used 12 times · last 3 Sept"
+      ],
+      [
+       "item",
+       "Price check",
+       "used 3 times"
+      ],
+      [
+       "two",
+       [
+        "Name",
+        "Delivery confirmation"
+       ],
+       [
+        "Purpose",
+        "Confirm a delivery day with the vendor"
+       ]
+      ],
+      [
+       "field",
+       "Subject",
+       "Order {{order}} — delivery {{day}}"
+      ]
+     ],
+     "footer": null,
+     "why": "The library is one object; a template is edited in place inside it.",
+     "source": "pages/communications/next/TemplateSheet.tsx:132",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "The house's reply, drafted",
+     "status": "owed",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "Drafted · order 118 · round 2",
+     "title": "The house's reply, drafted",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "To",
+       "Hasan Demir · Kavaklıdere"
+      ],
+      [
+       "field",
+       "Subject",
+       "Re: Order 118 — five cases"
+      ],
+      [
+       "text",
+       "Thank you — five cases of the 2022 at ₺2,400 per case, delivery Thursday. Please confirm the hold to the 15th."
+      ],
+      [
+       "quiet",
+       "The Mudavym disclaimer is appended and cannot be removed."
+      ],
+      [
+       "hold",
+       "Hold to send"
+      ],
+      [
+       "btns",
+       [
+        "Edit first"
+       ],
+       [
+        "Discard"
+       ]
+      ]
+     ],
+     "footer": "A draft never looks sent (prc-02).",
+     "why": "A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).",
+     "source": "components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Gmail template builder",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/GmailTemplateBuilder.tsx:852",
+     "acts": "The old email builder: subject, to, cc, bcc, blocks, categories",
+     "went": "The composer and the template library (ADR 0118 retires both builders).",
+     "fork": null
+    },
+    {
+     "name": "SMS template builder",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/SMSTemplateBuilder.tsx:423",
+     "acts": "SMS templates with variables",
+     "went": "The house's text sender (ADR 0121, research).",
+     "fork": null
+    },
+    {
+     "name": "Select report type",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/communications/ReportTypeModal.tsx:122",
+     "acts": "Pick a report type and a template for a report email",
+     "went": "'Start from something the house noticed'.",
+     "fork": null
+    },
+    {
+     "name": "Create category",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/NewCategoryModal.tsx:112",
+     "acts": "A template category with icon and colour",
+     "went": "A template's Purpose.",
+     "fork": null
+    },
+    {
+     "name": "Switch component type",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/VariationSelectorModal.tsx:124",
+     "acts": "Convert a builder block to another format",
+     "went": "Builder-internal; goes with the builder.",
+     "fork": null
+    },
+    {
+     "name": "Quick Gmail send",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/emails/QuickGmailModal.tsx:238",
+     "acts": "Send from a saved template or compose custom; CC/BCC",
+     "went": "The composer.",
+     "fork": null
+    },
+    {
+     "name": "Send email (saved template)",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/SavedTemplates.tsx:580",
+     "acts": "Recipient, subject, 'Email sent!'",
+     "went": "The composer; the seal on the subdomain, an undo window on the house's own mailbox.",
+     "fork": null
+    },
+    {
+     "name": "Send SMS (saved template)",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/SavedSMSTemplates.tsx:619",
+     "acts": "Recipient phone, preview, 'SMS sent!'",
+     "went": "The text sender (ADR 0121).",
+     "fork": null
+    },
+    {
+     "name": "Template library (new template · sent)",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/documents/TemplateLibrary.tsx:606 and :945 — nobody imports it",
+     "acts": "'Choose how you'd like to start' and a 'Sent!' confirmation",
+     "went": "Dead code. Delete.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/calendar",
+   "slug": "calendar",
+   "doc": "calendar.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_calendar",
+   "verdict": "The entry sheet is built and says a failed save in words. The meeting-note prompt is owed as a panel; the ⌘K day-book assistant (ADR 0111) is planned as a panel.",
+   "overlays": [
+    {
+     "name": "The entry",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The entry",
+     "title": "Kavaklıdere delivery",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "chips",
+       [
+        "Delivery",
+        true
+       ],
+       [
+        "Meeting",
+        false
+       ],
+       [
+        "Shift",
+        false
+       ],
+       [
+        "Reminder",
+        false
+       ],
+       [
+        "custom",
+        false
+       ]
+      ],
+      [
+       "field",
+       "Title",
+       "Kavaklıdere delivery"
+      ],
+      [
+       "two",
+       [
+        "Date",
+        "Thu 11 Sept"
+       ],
+       [
+        "All day",
+        "No"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Starts",
+        "10:00"
+       ],
+       [
+        "Ends",
+        "11:00"
+       ]
+      ],
+      [
+       "field",
+       "Repeat",
+       "Does not repeat"
+      ],
+      [
+       "field",
+       "Status",
+       "Expected"
+      ],
+      [
+       "alert",
+       "Not saved",
+       "The gateway refused the dates: 'Ends' is before 'Starts'. The entry is unchanged."
+      ],
+      [
+       "btns",
+       [
+        "Keep it",
+        true
+       ],
+       [
+        "Remove"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "One entry is one object; the month stays readable beneath.",
+     "source": "pages/calendar/next/EventSheet.tsx:230",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A note from this meeting?",
+     "status": "owed",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Tuesday's meeting · Kavaklıdere tasting",
+     "title": "A note from this meeting?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "What was said, what was decided…",
+       true
+      ],
+      [
+       "two",
+       [
+        "Filed under",
+        "Vendors · Kavaklıdere"
+       ],
+       [
+        "Document type",
+        "Meeting note"
+       ]
+      ],
+      [
+       "quiet",
+       "Obsidian sync — coming soon."
+      ],
+      [
+       "btns",
+       [
+        "Save the note",
+        true
+       ],
+       [
+        "Later"
+       ],
+       [
+        "Skip"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders).",
+     "source": "pages/calendar/MeetingMemoPrompt.tsx:109",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Ask the day-book",
+     "status": "target",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "⌘K on the calendar",
+     "title": "Ask the day-book",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Move Thursday's delivery to Friday…",
+       true
+      ],
+      [
+       "sect",
+       "It would do"
+      ],
+      [
+       "item",
+       "Move 'Kavaklıdere delivery' to Fri 12 Sept, 10:00",
+       "one entry changes"
+      ],
+      [
+       "item",
+       "Tell Hasan Demir",
+       "a letter, drafted — you hold to send"
+      ],
+      [
+       "btns",
+       [
+        "Do it",
+        true
+       ],
+       [
+        "Not that"
+       ]
+      ]
+     ],
+     "footer": "The assistant proposes; the seal applies (ADR 0113).",
+     "why": "A question — the palette's shape, scoped to one page.",
+     "source": "sketch 098 · ADR 0111 (planned, not built)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Event modal",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/calendar/EventModal.tsx:1511 (1,593 lines)",
+     "acts": "The old event editor",
+     "went": "The entry sheet.",
+     "fork": null
+    },
+    {
+     "name": "Mobile sidebar scrim",
+     "status": "none",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/calendar/CalendarPage.tsx:597",
+     "acts": "Dims the page behind the calendar's mobile sidebar",
+     "went": "Paint only — not a shape.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/reports",
+   "slug": "reports",
+   "doc": "reports.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_reports",
+   "verdict": "Ask the book is built; the insight palette and the KPI spotlight retire into it and into cuttings that expand in place. Seven dashboard-builder modals are dead code.",
+   "overlays": [
+    {
+     "name": "Ask the book",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Ask the book",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "",
+       "Search what the engine has already said…",
+       true
+      ],
+      [
+       "sect",
+       "The register · 2 match"
+      ],
+      [
+       "item",
+       "Öküzgözü sold 41% above its 30-day pace",
+       "2 Sept · velocity · confidence high"
+      ],
+      [
+       "item",
+       "Kavaklıdere's price is 6% under its 30-day average",
+       "1 Sept · market price"
+      ],
+      [
+       "quiet",
+       "The book holds no sentence about 'labour' for this house — nothing is invented to fill the gap (ADR 0020)."
+      ]
+     ],
+     "footer": null,
+     "why": "A question; the answer is only what the engine already said.",
+     "source": "pages/reports/next/AskTheBook.tsx:94",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Insight palette",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/organisms/AICommandPalette.tsx:77",
+     "acts": "Search insights (⌘K)",
+     "went": "Ask the book.",
+     "fork": null
+    },
+    {
+     "name": "KPI spotlight",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/molecules/KPISpotlightView.tsx:507",
+     "acts": "Detailed breakdown of one KPI",
+     "went": "A cutting is a question and expands in place (sketch 096).",
+     "fork": null
+    },
+    {
+     "name": "Arrange charts",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/ChartArrangementModal.tsx:108 — nobody imports it",
+     "acts": "Drag to reorder, toggle visibility, reset",
+     "went": "The sheet is arranged from the keyboard (sketch 096). Delete.",
+     "fork": null
+    },
+    {
+     "name": "Configure chart",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/ChartConfigModal.tsx:104 — reached only from dead files",
+     "acts": "Data source, chart type, size",
+     "went": "Dead code. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Add widget",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/DashboardGrid.tsx:361 — nobody imports it",
+     "acts": "Choose a widget type",
+     "went": "Dead code. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Edit layout",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/EditLayoutPanel.tsx:223 — nobody imports it",
+     "acts": "Layout presets, edit mode",
+     "went": "Dead code. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Widget selector",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/WidgetSelector.tsx:119 — nobody imports it",
+     "acts": "Search widget options",
+     "went": "Dead code. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Choose KPI metric · Add KPI card",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/organisms/KPISection.tsx:148 and :217 — nobody imports it",
+     "acts": "Pick what a KPI card displays",
+     "went": "Dead code. Delete.",
+     "fork": null
+    },
+    {
+     "name": "Preview overlay",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/reports/preview/PreviewOverlay.tsx:73 — nobody imports it",
+     "acts": "Full-screen preview",
+     "went": "Dead code. Delete.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/documents-reports",
+   "slug": "documents-reports",
+   "doc": "documents-reports.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_documents_reports",
+   "verdict": "No overlay on the rebuilt page: the Sorting Office's reading pane is the detail surface (Direction D). One legacy preview retires.",
+   "overlays": [
+    {
+     "name": "Document preview",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/DocumentsPage.tsx:985",
+     "acts": "Preview a report: download, print, email, copy link, delete",
+     "went": "The reading pane.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/notifications",
+   "slug": "notifications",
+   "doc": "notifications.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_notifications",
+   "verdict": "The rebuilt page opens a row in place and has no overlay of its own. The ratified rule is drawn: a one-click approval from the bell opens the panel first.",
+   "overlays": [
+    {
+     "name": "Approve from the bell",
+     "status": "owed",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "From the bell · order 118",
+     "title": "Approve the Kavaklıdere order?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Lines",
+       "5 cases Öküzgözü 2022"
+      ],
+      [
+       "fact",
+       "Agreed",
+       "₺ 2,400 per case · ₺ 12,000"
+      ],
+      [
+       "fact",
+       "Delivery",
+       "Thu 11 Sept"
+      ],
+      [
+       "hold",
+       "Hold to approve"
+      ]
+     ],
+     "footer": "The seal never sits in a popover; the bell hands off to this panel.",
+     "why": "The bell is a menu; a commitment needs a room that cannot be dismissed by accident.",
+     "source": "ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Notification detail",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Notifications.tsx:1513",
+     "acts": "'Gathering context…', suggested next steps, review and approve a draft, take action",
+     "went": "The row expands in place (`.nt-expand`); a sealed act opens the panel above.",
+     "fork": null
+    },
+    {
+     "name": "Create one-tap action",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/Notifications.tsx:1705",
+     "acts": "Categories, quick-start templates, a trigger: time-based, threshold or manual",
+     "went": "One-tap actions moved to the dashboard rail; a person-authored action is not recreated — fork F4.",
+     "fork": "F4"
+    },
+    {
+     "name": "Add vendor deadline",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/notifications/VendorDeadlineSettings.tsx:184 — nobody imports it",
+     "acts": "A vendor's order cutoff by weekday and time, hours-before notice",
+     "went": "Cutoffs live in vendor terms (ADR 0116). Delete.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/recommendations",
+   "slug": "recommendations",
+   "doc": "recommendations.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_recommendations",
+   "verdict": "The docket dismisses inline and schedules through a route. The old assignee picker has no house surface — fork F4.",
+   "overlays": [
+    {
+     "name": "Who takes this?",
+     "status": "owed",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Assign",
+     "title": "Who takes this?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Mehmet Kaya",
+       "bar",
+       true
+      ],
+      [
+       "item",
+       "Elif Şahin",
+       "floor"
+      ],
+      [
+       "item",
+       "Nobody — clear it"
+      ]
+     ],
+     "footer": null,
+     "why": "A choice from a short list, anchored to the entry's control. Only if assignment stays on the docket (fork F4).",
+     "source": "pages/Recommendations.tsx:980 — not on the rebuilt docket",
+     "acts": null,
+     "went": null,
+     "fork": "F4"
+    }
+   ]
+  },
+  {
+   "route": "/settings",
+   "slug": "settings",
+   "doc": "settings.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_settings",
+   "verdict": "The four location dialogs migrated on 2026-09-04. Two shared dialogs still render legacy inside the rebuilt page — both are questions.",
+   "overlays": [
+    {
+     "name": "Add a location",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The locations",
+     "title": "Add New Location",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Location name",
+       "Meyhane Sim · Lara"
+      ],
+      [
+       "field",
+       "Chain / Brand",
+       "Meyhane Sim"
+      ],
+      [
+       "field",
+       "Country",
+       "Türkiye"
+      ],
+      [
+       "field",
+       "Street address",
+       "Lara Cd. 112"
+      ],
+      [
+       "two",
+       [
+        "City",
+        "Antalya"
+       ],
+       [
+        "Postal",
+        "07230"
+       ]
+      ],
+      [
+       "field",
+       "Phone",
+       "",
+       true
+      ],
+      [
+       "btns",
+       [
+        "Add the location",
+        true
+       ]
+      ],
+      [
+       "quiet",
+       "Not added — nothing is written until you do."
+      ]
+     ],
+     "footer": null,
+     "why": "One location being written.",
+     "source": "components/locations/AddLocationDialog.tsx:185 (opened at pages/settings/next/LocationsSection.tsx)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "New chain",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The locations",
+     "title": "New chain",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Chain name",
+       "Meyhane Sim"
+      ],
+      [
+       "sect",
+       "Add locations to this chain"
+      ],
+      [
+       "chips",
+       [
+        "Kaleiçi",
+        true
+       ],
+       [
+        "Lara",
+        true
+       ],
+       [
+        "The Grill Co.",
+        false
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Create the chain",
+        true
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "One chain being written.",
+     "source": "components/locations/CreateChainDialog.tsx:121",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Edit location",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The locations",
+     "title": "Edit location",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Name",
+        "Meyhane Sim · Lara"
+       ],
+       [
+        "City",
+        "Antalya"
+       ]
+      ],
+      [
+       "field",
+       "Chain",
+       "Meyhane Sim"
+      ],
+      [
+       "note",
+       "Moving from <b>Standalone</b> — this places Lara under Meyhane Sim in the branch switcher."
+      ],
+      [
+       "btns",
+       [
+        "Save",
+        true
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "One location's record.",
+     "source": "components/locations/EditLocationChainDialog.tsx:134",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Add to Meyhane Sim",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The locations",
+     "title": "Add to Meyhane Sim",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "quiet",
+       "Pick existing locations to move into this chain."
+      ],
+      [
+       "chips",
+       [
+        "Lara",
+        true
+       ],
+       [
+        "Kaş",
+        false
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Add them",
+        true
+       ],
+       [
+        "Create a brand-new location instead"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question about which.",
+     "source": "components/locations/AssignToChainDialog.tsx:106",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Share this with the engine?",
+     "status": "migrate",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Consent",
+     "title": "Turn on the reading of sales?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "What gets shared"
+      ],
+      [
+       "item",
+       "Sale lines by item and hour"
+      ],
+      [
+       "item",
+       "Stock levels"
+      ],
+      [
+       "sect",
+       "What never leaves"
+      ],
+      [
+       "item",
+       "Guest names, card details, staff pay"
+      ],
+      [
+       "quiet",
+       "Read the privacy notice."
+      ],
+      [
+       "btns",
+       [
+        "Turn it on",
+        true
+       ],
+       [
+        "Keep it off"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question. Settings stay asserted, not sealed (2026-09-04).",
+     "source": "components/settings/ConsentDialog.tsx:71 (opened from components/settings/ServicesPermissions.tsx:300)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Carry your vendors to the new location?",
+     "status": "migrate",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Lara · just added",
+     "title": "Carry your vendors to the new location?",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "chips",
+       [
+        "Kavaklıdere",
+        true
+       ],
+       [
+        "Sevilen",
+        true
+       ],
+       [
+        "Southern Glazer's",
+        false
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Carry them",
+        true
+       ],
+       [
+        "Skip for now"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question about a batch, asked once after a write.",
+     "source": "components/providers/BranchProviderTransferModal.tsx:109",
+     "acts": null,
+     "went": null,
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/team",
+   "slug": "team",
+   "doc": "team.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_team",
+   "verdict": "Eleven house overlays are built, including the wave's one named exception. The legacy desk's seven surfaces retire with it the day a house's flag turns on; certifications have no house surface (fork F4).",
+   "overlays": [
+    {
+     "name": "People",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The roster",
+     "title": "People",
+     "action": "Add",
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Mehmet Kaya",
+       "bar · full time · Kaleiçi"
+      ],
+      [
+       "item",
+       "Elif Şahin",
+       "floor · part time"
+      ],
+      [
+       "item",
+       "Team member",
+       "display name not yet linked — 'links the account on signup'"
+      ]
+     ],
+     "footer": null,
+     "why": "The roster is one object.",
+     "source": "pages/team/next/RosterSheet.tsx:219",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "On the roster",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "On the roster",
+     "title": "Mehmet Kaya",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "two",
+       [
+        "Name",
+        "Mehmet Kaya"
+       ],
+       [
+        "Email",
+        "mehmet@example.com"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Phone",
+        "+90 5xx"
+       ],
+       [
+        "Position",
+        "Bartender"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Employment",
+        "Full time"
+       ],
+       [
+        "Home location",
+        "Kaleiçi"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Hourly wage",
+        "₺ 180"
+       ],
+       [
+        "Status",
+        "Active"
+       ]
+      ],
+      [
+       "field",
+       "Skills",
+       "bar, somm, closer"
+      ],
+      [
+       "btns",
+       [
+        "Keep them",
+        true
+       ],
+       [
+        "Remove"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "One person's record.",
+     "source": "pages/team/next/RosterSheet.tsx:392 (MemberSheet)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Edit this shift",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Shift on the schedule",
+     "title": "Edit this shift",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Who",
+       "Mehmet Kaya"
+      ],
+      [
+       "two",
+       [
+        "Date",
+        "Thu 11 Sept"
+       ],
+       [
+        "Station",
+        "Main bar"
+       ]
+      ],
+      [
+       "two",
+       [
+        "Start",
+        "16:00"
+       ],
+       [
+        "End",
+        "00:30"
+       ]
+      ],
+      [
+       "field",
+       "Kind",
+       "Service"
+      ],
+      [
+       "alert",
+       "Not removed",
+       "The shift was not removed. It is still on the schedule."
+      ],
+      [
+       "btns",
+       [
+        "Keep it",
+        true
+       ],
+       [
+        "Remove"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "One shift's record; the week stays visible beneath.",
+     "source": "pages/team/next/ShiftSheet.tsx:98",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Publish this week",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "8–14 Sept",
+     "title": "Publish this week",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Shifts",
+       "34 · 2 open"
+      ],
+      [
+       "sect",
+       "Who has opened the week"
+      ],
+      [
+       "item",
+       "Elif Şahin",
+       "yesterday"
+      ],
+      [
+       "item",
+       "Mehmet Kaya",
+       "not yet"
+      ],
+      [
+       "field",
+       "",
+       "The week's note",
+       true
+      ],
+      [
+       "hold",
+       "Hold to publish"
+      ],
+      [
+       "btns",
+       [
+        "Not yet"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A commitment the whole crew sees — wax.",
+     "source": "pages/team/next/TeamOverlays.tsx:90 (PublishPanel)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Copy last week",
+     "status": "built",
+     "shape": "panel",
+     "wide": false,
+     "modal": false,
+     "seal": true,
+     "eyebrow": "into 15–21 Sept",
+     "title": "Copy last week",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Last week",
+       "34 shifts · 6 people"
+      ],
+      [
+       "note",
+       "Replaces what is on 15–21 Sept."
+      ],
+      [
+       "hold",
+       "Hold to replace the week"
+      ],
+      [
+       "btns",
+       [
+        "Leave it"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "A question about a batch that overwrites — the hold, because it replaces.",
+     "source": "pages/team/next/TeamOverlays.tsx:167 (CopyWeekPanel)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "A note to the crew",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "On the week of 8 Sept",
+     "title": "A note to the crew",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Note",
+       "Saturday is the Kavaklıdere tasting — Mehmet opens the bar at 15:00."
+      ],
+      [
+       "sect",
+       "Delivered · read"
+      ],
+      [
+       "item",
+       "Elif Şahin",
+       "read 09:12"
+      ],
+      [
+       "item",
+       "Mehmet Kaya",
+       "delivered"
+      ],
+      [
+       "btns",
+       [
+        "Send",
+        true
+       ],
+       [
+        "Cancel"
+       ]
+      ]
+     ],
+     "footer": "Inbox and push only (2026-09-04).",
+     "why": "One note with its receipts.",
+     "source": "pages/team/next/TeamOverlays.tsx:519 (CrewNoteSheet)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Time off",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Requests on file",
+     "title": "Time off",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "Waiting on you"
+      ],
+      [
+       "item",
+       "Elif Şahin · 20–22 Sept",
+       "family"
+      ],
+      [
+       "btns",
+       [
+        "Approve",
+        true
+       ],
+       [
+        "Deny"
+       ]
+      ],
+      [
+       "sect",
+       "Decided"
+      ],
+      [
+       "item",
+       "Mehmet Kaya · 3 Sept",
+       "approved by Ayşe"
+      ],
+      [
+       "btns",
+       [
+        "File a request for someone"
+       ]
+      ],
+      [
+       "alert",
+       "Not recorded",
+       "The decision was not recorded, so the request is still where it was."
+      ]
+     ],
+     "footer": null,
+     "why": "The requests are one register.",
+     "source": "pages/team/next/TeamOverlays.tsx:640 (TimeOffSheet)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Export the week",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Export the week",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Print the floor sheet",
+       "opens the print dialog"
+      ]
+     ],
+     "footer": null,
+     "why": "A control's own menu.",
+     "source": "pages/team/next/TeamOverlays.tsx:828 (ExportPopover)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Shift actions",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Shift actions",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Edit shift"
+      ],
+      [
+       "item",
+       "Duplicate onto the same day"
+      ],
+      [
+       "item",
+       "Report a call-out"
+      ],
+      [
+       "item",
+       "Offer cover",
+       "Cover, if this falls through"
+      ],
+      [
+       "item",
+       "Delete shift"
+      ],
+      [
+       "alert",
+       "Did not send",
+       "The cover offer did not send. Nobody was asked."
+      ]
+     ],
+     "footer": null,
+     "why": "A row's own menu.",
+     "source": "pages/team/next/WeekGrid.tsx:424",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "What changed here",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "The record",
+     "title": "What changed here",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "labor_target_pct 28 → unset",
+       "3 Sept · Ayşe · a default rendered as unset"
+      ],
+      [
+       "item",
+       "Mehmet Kaya · wage ₺160 → ₺180",
+       "1 Sept · Ayşe"
+      ],
+      [
+       "item",
+       "Week 36 published",
+       "31 Aug · Ayşe"
+      ]
+     ],
+     "footer": null,
+     "why": "The audit trail of one record.",
+     "source": "pages/team/next/TeamRecord.tsx:273 (TrailSheet)",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Invite a team member",
+     "status": "built",
+     "shape": "popover",
+     "wide": false,
+     "modal": true,
+     "seal": false,
+     "eyebrow": "The exception",
+     "title": "Invite a team member",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Email (optional)",
+       "colleague@restaurant.com",
+       true
+      ],
+      [
+       "chips",
+       [
+        "Manager",
+        false
+       ],
+       [
+        "Staff",
+        true
+       ]
+      ],
+      [
+       "fact",
+       "Expires",
+       "7 days from generation · single-use"
+      ],
+      [
+       "chips",
+       [
+        "Add roster-only staff (no Mudavym login)",
+        false
+       ]
+      ],
+      [
+       "btns",
+       [
+        "Generate the code",
+        true
+       ],
+       [
+        "Cancel"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "Anchored under its button like a popover, but a form that commits — so it traps focus and dims. One exception is a seam; two would collapse the policy (fork F2).",
+     "source": "components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Desk row menu",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/team/command/ManagerShiftDesk.tsx:868",
+     "acts": "Message · Edit shift · Duplicate · Delete shift · Copy last week · Re-publish",
+     "went": "Shift actions, Publish this week, Copy last week.",
+     "fork": null
+    },
+    {
+     "name": "Desk message composer",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/team/command/ManagerShiftDesk.tsx:981",
+     "acts": "A message to the crew",
+     "went": "A note to the crew.",
+     "fork": null
+    },
+    {
+     "name": "Desk confirm sheet",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/team/command/ManagerShiftDesk.tsx:1061",
+     "acts": "Confirm publish or copy",
+     "went": "Publish this week · Copy last week.",
+     "fork": null
+    },
+    {
+     "name": "Desk people sheet",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/team/command/ManagerShiftDesk.tsx:1132",
+     "acts": "People · Rules · Add",
+     "went": "People (the roster sheet).",
+     "fork": null
+    },
+    {
+     "name": "Desk editors",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/team/command/editors.tsx:23",
+     "acts": "Shift and member editors",
+     "went": "Edit this shift · On the roster.",
+     "fork": null
+    },
+    {
+     "name": "Ops rules",
+     "status": "retire",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "pages/team/command/OpsRulesPanel.tsx:37",
+     "acts": "Coverage rules (day, period, minimum staff, role) and certifications (type, issued, expires)",
+     "went": "The first-rule form is inline on the rebuilt page (ADR 0089). <b>Certifications</b> have no house surface — fork F4.",
+     "fork": "F4"
+    },
+    {
+     "name": "Import shift configurations",
+     "status": "delete",
+     "shape": null,
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": null,
+     "action": null,
+     "close": "Close",
+     "body": [],
+     "footer": null,
+     "why": null,
+     "source": "components/team/ShiftImportModal.tsx:135 — opened only from the legacy desk",
+     "acts": "Upload CSV, Excel or JSON shift templates; the apply path was simulated (file.size / 80)",
+     "went": "No import route exists. Delete with the desk.",
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/promotions",
+   "slug": "promotions",
+   "doc": "promotions.md",
+   "rebuilt": false,
+   "flag": null,
+   "verdict": "Not rebuilt. Two legacy overlays take their shapes now so the rebuild inherits them.",
+   "overlays": [
+    {
+     "name": "The offer",
+     "status": "target",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Sevilen · by mail · 2 Sept",
+     "title": "12% off Kalecik Karası, cases of 6",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "fact",
+       "Ends",
+       "30 Sept"
+      ],
+      [
+       "fact",
+       "Applies to",
+       "Kalecik Karası 2021 · 2022"
+      ],
+      [
+       "fact",
+       "Code",
+       "SEV-KK-12"
+      ],
+      [
+       "fact",
+       "Read with confidence",
+       "0.86"
+      ],
+      [
+       "btns",
+       [
+        "Apply to a new order",
+        true
+       ],
+       [
+        "Dismiss"
+       ]
+      ]
+     ],
+     "footer": "Offer dismissed — Undo.",
+     "why": "One offer is one object.",
+     "source": "pages/Promotions.tsx:336",
+     "acts": null,
+     "went": null,
+     "fork": null
+    },
+    {
+     "name": "Offer menu",
+     "status": "target",
+     "shape": "popover",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": null,
+     "title": "Offer",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "item",
+       "Copy code"
+      ],
+      [
+       "item",
+       "Apply to a new order"
+      ],
+      [
+       "item",
+       "Dismiss"
+      ]
+     ],
+     "footer": null,
+     "why": "A row's own menu.",
+     "source": "pages/Promotions.tsx:328",
+     "acts": null,
+     "went": null,
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/distributors",
+   "slug": "distributors",
+   "doc": "distributors.md",
+   "rebuilt": false,
+   "flag": null,
+   "verdict": "Not rebuilt. Already a right drawer — the shape was right, the primitive was not.",
+   "overlays": [
+    {
+     "name": "Distributor detail",
+     "status": "target",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Distributor · verified by Mudavym",
+     "title": "Southern Glazer's Wine & Spirits",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "sect",
+       "Contact"
+      ],
+      [
+       "fact",
+       "Phone",
+       "+1 312 000 0000"
+      ],
+      [
+       "fact",
+       "Email",
+       "orders@example.com"
+      ],
+      [
+       "sect",
+       "Where they can sell"
+      ],
+      [
+       "fact",
+       "Licence territory",
+       "Illinois · Michigan"
+      ],
+      [
+       "sect",
+       "Portfolio"
+      ],
+      [
+       "fact",
+       "Producers",
+       "Banfi · Kavaklıdere · 214 more"
+      ],
+      [
+       "sect",
+       "Data quality"
+      ],
+      [
+       "fact",
+       "Verified",
+       "details verified by Mudavym · 2 Sept"
+      ],
+      [
+       "btns",
+       [
+        "Add to my providers",
+        true
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "One distributor is one object.",
+     "source": "pages/distributors/command/DistributorDrawer.tsx:125",
+     "acts": null,
+     "went": null,
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/studio/certify",
+   "slug": "studio-certify",
+   "doc": "studio-certify.md",
+   "rebuilt": false,
+   "flag": null,
+   "verdict": "Not rebuilt. The same act as the team invite — reuse the one exception component, or collapse the policy (fork F2).",
+   "overlays": [
+    {
+     "name": "Invite a contributor",
+     "status": "target",
+     "shape": "popover",
+     "wide": false,
+     "modal": true,
+     "seal": false,
+     "eyebrow": "Studio",
+     "title": "Invite a contributor",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "field",
+       "Email",
+       "contributor@example.com",
+       true
+      ],
+      [
+       "chips",
+       [
+        "Certified Contributor",
+        true
+       ],
+       [
+        "Developer",
+        false
+       ],
+       [
+        "Review Admin",
+        false
+       ]
+      ],
+      [
+       "fact",
+       "Expiry",
+       "7 days (standard)"
+      ],
+      [
+       "btns",
+       [
+        "Generate the invite",
+        true
+       ],
+       [
+        "Cancel"
+       ]
+      ]
+     ],
+     "footer": null,
+     "why": "The same shape as Invite a team member. A second component would be the 'second anchored modal' ADR 0112 says collapses the policy — so it is the same component with a second opener, or the founder collapses to two shapes.",
+     "source": "pages/studio/certify/InviteDialog.tsx:106 (Radix dialog today)",
+     "acts": null,
+     "went": null,
+     "fork": "F2"
+    }
+   ]
+  },
+  {
+   "route": "/admin/health",
+   "slug": "admin-health",
+   "doc": "admin-health.md",
+   "rebuilt": false,
+   "flag": null,
+   "verdict": "Not rebuilt. One overlay: a payload, which is a record.",
+   "overlays": [
+    {
+     "name": "Live payload",
+     "status": "target",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Live payload from /api/v1/health/live",
+     "title": "Live payload",
+     "action": null,
+     "close": "Close",
+     "body": [
+      [
+       "mono",
+       "{ \"status\": \"ok\",\n  \"commit\": \"a26f265c\",\n  \"bootedAt\": \"2026-09-05T14:02:11Z\" }"
+      ],
+      [
+       "fact",
+       "Fetched",
+       "14:02:19Z · 41 ms"
+      ]
+     ],
+     "footer": null,
+     "why": "One response is one object; reading it wants the page beside it.",
+     "source": "pages/AdminHealth.tsx:226",
+     "acts": null,
+     "went": null,
+     "fork": null
+    }
+   ]
+  },
+  {
+   "route": "/get-started",
+   "slug": "get-started",
+   "doc": "get-started.md",
+   "rebuilt": false,
+   "flag": null,
+   "verdict": "Not rebuilt. Mounts two overlays drawn elsewhere: Photograph the label (cellar) and Invite a team member (team).",
+   "overlays": []
+  }
+ ],
+ "no_overlay": [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/invite/:code",
+  "/no-access",
+  "/privacy",
+  "/v/:slug",
+  "/onboarding (redirect)",
+  "/studio",
+  "/studio/queue",
+  "/studio/invite/:token",
+  "/simpos/:restaurantId (+orders, scenarios)",
+  "/authorize/:integrationId",
+  "/inventory-legacy (redirect)",
+  "/vendor-prices",
+  "/dev/truth",
+  "/recommendations/catalog",
+  "/credits",
+  "/logs",
+  "/profile",
+  "/connections",
+  "/help",
+  "/admin",
+  "/sommelier (HOLD)",
+  "/services",
+  "/dev-sandbox (mounts the retiring builders)",
+  "/calendar-classic"
+ ],
+ "forks": [
+  {
+   "id": "F1",
+   "title": "Ratify the three shapes.",
+   "text": "ADR 0112 is still Proposed. Everything drawn here assumes Sheet · Panel · Popover; if the founder wants one shape everywhere, this census is the list of what that costs (the sheet exists so the list stays readable; an anchored menu with no anchor has lost its meaning)."
+  },
+  {
+   "id": "F2",
+   "title": "The studio invite.",
+   "text": "Reuse the one exception component (Popover modal) with a second opener — my recommendation: one component, however many openers, is still one exception — or collapse the policy to two modal shapes as the ADR's revisit clause says."
+  },
+  {
+   "id": "F3",
+   "title": "A delivery without an order.",
+   "text": "A 640 sheet on /inventory (drawn), or a route under /receipts where the receipts desk already lives."
+  },
+  {
+   "id": "F4",
+   "title": "Acts no house surface recreates.",
+   "text": "Pause AI on a thread · a person-authored one-tap action or quick-action bookmark · an auction purchase · certifications on file · assign a recommendation to a person. One call per act: delete, or build the drawn shape."
+  },
+  {
+   "id": "F5",
+   "title": "Where a manual order starts.",
+   "text": "The owed 'A new order' sheet on /orders, or from a register row, the palette, or Ask AI — OrdersNext has no create path today."
+  },
+  {
+   "id": "F6",
+   "title": "Two bells, two user menus.",
+   "text": "Header.tsx's house branch and HouseHeader's HouseBell/HouseUserMenu both exist. Which survives when the house header lands on every page."
+  },
+  {
+   "id": "F7",
+   "title": "The figure behind a dashboard number.",
+   "text": "A sheet ('the working', drawn) or the house idiom — the KPI row expands in place."
+  }
+ ]
+}

@@ -160,9 +160,40 @@ spectrum, not a shape (see Consequences).
 |---|---|---|
 | 2026-09-03 | — | Created (Proposed). Built, gated, 19 tests green. Founder ratification open. |
 | 2026-09-04 | — | **Migration complete for the two held pages.** `pages/calendar/next/EventSheet.tsx` → `Sheet`, `pages/reports/next/AskTheBook.tsx` → `Panel`; the per-page scrim/panel/keyframe CSS named above is deleted. Status unchanged (**Proposed**) — the founder has still not ratified the three-shape policy itself. Tests: `Sheet.test.tsx` 15, `shellOverlays.test.tsx` 25, `InviteTeamDialog.test.tsx` 5, calendar 44, reports 77, all green. |
+| 2026-09-05 | — | **Census (sketch 102).** Every overlay in the web app read and given a shape or a reason: 141 sites folded into 117 overlays — 31 built, 10 migrate, 10 owed, 7 target, 40 retire, 16 delete, 3 not a shape. Seven forks for the founder (F1–F7). Status unchanged (**Proposed**). |
 
 ## Founder answers (2026-09-04)
 
 - **The seal never appears inside an anchored popover.** Anything sealed opens a sheet or a
   panel; a one-click approval from the bell opens the panel first. The third shape stays a
   choice, not a commitment. (Sketch 099's rule, ratified.)
+
+## Census (2026-09-05, sketch 102)
+
+`.planning/sketches/102-modal-census/` reads every place `apps/web/src` opens something over the
+page — a house `<Sheet>`/`<Panel>`/`<Popover>`, a `fixed inset-0` wrapper, or a Radix `*Content` —
+and gives each one this ADR's shape or a reason it has none. 141 sites fold into 117 overlays:
+
+| Status | Count | Meaning |
+|---|---|---|
+| Built | 31 | on the primitive today (the shell's eight, team's eleven, orders' three, settings' four, …) |
+| Migrate | 10 | legacy overlays that render **inside a house-flagged page today** — eight of them on `/inventory`, whose flag turns on the same component (`App.tsx:311`), plus `ConsentDialog` and `BranchProviderTransferModal` under `/settings` |
+| Owed | 10 | acts the legacy page had that the rebuilt page does not offer yet (a manual new order, a new vendor, the drafted reply's approval, the meeting-note prompt, the figure detail, the bell's approval panel, …) |
+| Target | 7 | pages not yet rebuilt whose overlays take their shape now (promotions, distributors, studio, admin health, the camera) |
+| Retires | 40 | acts that already live in something built |
+| Delete | 16 | files nobody imports (the reports dashboard-builder set, two dev-only wine modals, the recurring-orders page, the template library, …) |
+
+Three findings the census surfaced, none of which changes the decision:
+
+- **Two bells and two user menus exist** — `Header.tsx`'s house branch and `HouseHeader`'s
+  `HouseBell`/`HouseUserMenu`. One survives when the house header lands everywhere (fork F6).
+- **The studio invite is the same act as the team invite.** Reusing `InviteTeamDialog`'s
+  `Popover modal` with a second opener keeps the policy at one exception; a second *component*
+  would be the "second anchored surface" this ADR's revisit clause names (fork F2).
+- **The seal appears in the specimens exactly where the ration says**: publish a week, replace a
+  week, write off stock, record a count, send a letter, approve from the bell. Never in a popover.
+
+The seven forks (F1 ratify the three shapes · F2 the studio invite · F3 a delivery without an
+order — sheet or route · F4 the acts nothing recreates · F5 where a manual order starts · F6 the
+two bells · F7 the figure behind a dashboard number) are stated in full in the sketch's README. Published gallery: <https://claude.ai/code/artifact/23f77c68-7766-40c8-934a-cfa7148c7508>.
+
