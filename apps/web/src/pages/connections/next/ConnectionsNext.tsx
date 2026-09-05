@@ -74,13 +74,12 @@
  * its two bindings cut, rather than copied here. Register II therefore owns the
  * whole payment story: add, prefer, remove, and the provider's own state.
  *
- * One thing did not change and must not read as if it had: adding a card is
- * still the one payment act with NO redeemed seal. Preferring and removing an
- * instrument each spend a one-time token (`paymentSeal`); the add path confirms
- * a SetupIntent on Stripe's origin and reconciles, and neither of those two
- * routes takes a seal today. The panel says exactly that in its own words, and
- * the gap stays filed as G-PAY-SETUP in `profile.md` §9 until the route itself
- * is sealed.
+ * All three payment acts are sealed since 2026-09-05. Preferring and removing an
+ * instrument each spend a one-time token (`paymentSeal`); adding one spends a
+ * `create` token minted by the panel's FIRST hold, which `POST
+ * /billing/setup-intent` redeems before it asks the provider for anything and
+ * `POST /billing/sync` proves back off the intent. G-PAY-SETUP in `profile.md`
+ * §9 is closed.
  */
 
 import { useEffect, useMemo, useState } from 'react';

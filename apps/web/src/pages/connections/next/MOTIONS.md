@@ -86,8 +86,9 @@ whose hover only exists on one of its two pages is a fork hidden in a
 stylesheet — so the rule travels with the component. It is the same token and
 the same figure as `cx-btn-hover`; only the selector differs.
 
-**The stamp is not drawn here, and that is the point.** The panel's hold
-completes without a redeemed token, because the write it precedes happens on
-Stripe's origin and neither route behind it takes a seal (G-PAY-SETUP). The
-panel says so in words directly under the hold rather than letting the gesture
-imply a proof. `prefers-reduced-motion: reduce` drops `.scp-btn`'s transition.
+**Two holds, and the first one is the sealed one (2026-09-05).** *Hold to open
+the card form* mints a `create` token and `POST /billing/setup-intent` redeems it
+before the provider is touched — the hold has to come first because the client
+secret it fetches IS the capability. The confirm hold that follows spends no
+second seal; the sync names the intent so the provider proves the first one back,
+and the panel says which `provenance` came back. G-PAY-SETUP is closed. `prefers-reduced-motion: reduce` drops `.scp-btn`'s transition.

@@ -48,12 +48,11 @@
  * `create` is NOT sealed here, and the reason is measured rather than assumed:
  * nothing in `apps/web` or `apps/mobile` calls `POST /payment-methods` at all.
  * A card is added by confirming a SetupIntent on Stripe's origin and then
- * reconciling (`components/mudavym/StripeCardPanel.tsx` → `POST /billing/sync`),
- * and
- * neither of those two routes redeems a seal. Minting a `create` token here
- * would put an unspent row in `mcp_seal_challenges` and a seal on a control
- * that approves nothing — the ceremony without the proof, which is the exact
- * thing this pass removed. Filed as G-PAY-SETUP in `profile.md` §9.
+ * reconciling (`components/mudavym/StripeCardPanel.tsx` → `POST /billing/sync`).
+ * Neither of those routes redeemed a seal when this was written; both do since
+ * 2026-09-05, and the panel mints `create` on the hold that OPENS the card form
+ * — before the client secret, which is the capability, exists at all
+ * (G-PAY-SETUP, closed).
  *
  * FIFTH PASS, 2026-09-05 — THE PANEL LEFT THIS DIRECTORY (founder: "port the
  * card panel to /connections now")
@@ -423,7 +422,7 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
       <Rail
         title="Payment methods"
         icon={<Landmark size={12} aria-hidden />}
-        lead="Cards, bank debits and whatever else the provider holds for this restaurant. Each row is Stripe's answer, with the moment we last heard it. Choosing which is charged first, and detaching one, are held rather than clicked: the gesture mints a one-time seal and the write carries it back, so the server can tell a person from a session. Adding one is not sealed — the card is attached on Stripe's own origin and the register is then reconciled, and neither of those two routes redeems a seal today (G-PAY-SETUP)."
+        lead="Cards, bank debits and whatever else the provider holds for this restaurant. Each row is Stripe's answer, with the moment we last heard it. Choosing which is charged first, and detaching one, are held rather than clicked: the gesture mints a one-time seal and the write carries it back, so the server can tell a person from a session. Adding one is sealed too, at the door: the panel's first hold mints the permission to store an instrument, and the intent it opens the form with cannot be minted without it."
       >
         {data.paymentsState === 'loading' && <Note>Reading the payment register…</Note>}
 

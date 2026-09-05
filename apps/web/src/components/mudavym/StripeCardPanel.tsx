@@ -48,25 +48,38 @@
  * control would be the wrong die pressed on a decision the operator cannot take
  * back with a click.
  *
- * THE HOLD HERE IS NOT A REDEEMED SEAL, AND SAYS SO (2026-09-04)
- * -------------------------------------------------------------
- * ADR 0110's addendum seals the three `/payment-methods` writes, `create` among
- * them. This panel reaches none of them: it confirms a SetupIntent on Stripe's
- * origin and then calls `POST /billing/sync`, and NOTHING in `apps/web` or
- * `apps/mobile` calls `POST /payment-methods` — measured, not assumed. So
- * minting a `create` challenge on this gesture would produce a token no request
- * ever spends: a seal on the screen with no redemption behind it, which is the
- * shape the addendum exists to remove.
+ * TWO HOLDS, BECAUSE THE CAPABILITY ARRIVES BEFORE THE CARD (G-PAY-SETUP,
+ * closed 2026-09-05)
+ * ---------------------------------------------------------------------
+ * `POST /billing/setup-intent` now REDEEMS a `create` seal before it asks the
+ * provider for anything, and stamps the spent seal's id onto the intent; `POST
+ * /billing/sync` names that intent and has Stripe prove the id back. So the
+ * seal has to be minted at the gesture that OPENS this form, not at the one
+ * that confirms it: Stripe Elements needs the `clientSecret` before it can
+ * mount a field, and the client secret IS the capability — whoever holds one
+ * can attach an instrument to this house's customer on Stripe's origin, where
+ * none of our guards reach. A seal minted on the confirm hold would be minted
+ * after the thing it authorises had already been handed out.
  *
- * The gesture therefore stays and the claim does not, and the gap is filed as
- * G-PAY-SETUP in `profile.md` §9. Sealing `POST /billing/setup-intent` is a
- * separate build (p4ae) and is not asserted here by a single word until it
- * lands: the honest hook for it is `onChallenge` on the `HoldToApprove` below
- * plus a mint in each caller's hook, and nothing else in this file has to
- * change for it.
+ *   Hold to open the card form     mints `create`, spends it on the intent,
+ *                                  mounts the fields
+ *   (type the card)
+ *   Hold to put this card on file  confirms at Stripe, then syncs NAMING the
+ *                                  intent
  *
- * FOUR STATES, EACH REAL
+ * The second hold is not sealed and does not need to be: `sync` PROVES the
+ * first seal rather than spending a second. Two holds is not ceremony — the
+ * first is permission to store an instrument on this house, the second is this
+ * instrument.
+ *
+ * Rejected: deferred Elements (`elements({mode:'setup'})`, fetch the secret at
+ * `confirmSetup`) keeps one hold and mints at it. It is the better shape and it
+ * is a rewrite of this file's whole mount/confirm cycle against an Elements API
+ * this repo has never used. Worth doing on purpose later; not blind, here.
+ *
+ * FIVE STATES, EACH REAL
  * ----------------------
+ *   sealing   nothing has been asked of the provider; the gate is armed
  *   opening   the SetupIntent is being minted and Stripe.js fetched
  *   ready     the fields are mounted and the hold is armed
  *   working   confirming; the hold is disabled so it cannot fire twice
@@ -82,7 +95,7 @@ const EM = '—';
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 const SANS = '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif';
 
-type Phase = 'opening' | 'ready' | 'working' | 'failed' | 'done';
+type Phase = 'sealing' | 'opening' | 'ready' | 'working' | 'failed' | 'done';
 
 /**
  * The whole of what the panel asks a page for.
@@ -94,16 +107,23 @@ type Phase = 'opening' | 'ready' | 'working' | 'failed' | 'done';
  * sync — this component does not know either query key and must not.
  */
 export interface CardPanelClient {
-  createSetupIntent: () => Promise<{
+  /**
+   * Minted at the moment the FIRST hold begins, and spent on the intent.
+   * `create` has no instrument, so it names none: its subject is the house's
+   * register (`payment-methods/payment-seal.ts`).
+   */
+  mintPaymentSeal: (act: 'create') => Promise<string | null>;
+  createSetupIntent: (challenge: string) => Promise<{
     clientSecret: string;
     setupIntentId: string;
     livemode: boolean;
   }>;
-  syncPayments: () => Promise<{
+  syncPayments: (setupIntentId?: string) => Promise<{
     syncedAt: string;
     kept: number;
     removed: number;
     note: string | null;
+    provenance: 'sealed-intent' | 'reconcile-only';
   }>;
 }
 
@@ -270,7 +290,10 @@ function houseAppearance(root: HTMLElement | null): Record<string, unknown> {
 }
 
 export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardPanelProps) {
-  const [phase, setPhase] = useState<Phase>('opening');
+  const [phase, setPhase] = useState<Phase>('sealing');
+  /** The redeemed seal's token, held only long enough to spend it on the intent. */
+  const [seal, setSeal] = useState<string | null>(null);
+  const [intentId, setIntentId] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [livemode, setLivemode] = useState<boolean | null>(null);
@@ -281,15 +304,18 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
 
   useEffect(() => {
     let cancelled = false;
+    // Nothing is asked of the provider until a seal exists to spend.
+    if (!seal) return;
 
     const open = async () => {
       try {
         // The intent first: if the gateway refuses (no STRIPE_SECRET_KEY, or
         // the caller is not a manager), we must say THAT rather than load a
         // script and then discover we had nothing to confirm.
-        const intent = await client.createSetupIntent();
+        const intent = await client.createSetupIntent(seal);
         if (cancelled) return;
         setLivemode(intent.livemode);
+        setIntentId(intent.setupIntentId);
 
         const stripe = await loadStripe(publishableKey);
         if (cancelled) return;
@@ -328,10 +354,12 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
         // The element is already gone with the node; nothing to report.
       }
     };
-    // Mount once. Re-running would mint a second SetupIntent for the same act,
-    // and `client` is a fresh object on every render of either hook.
+    // Runs once per MINTED SEAL, which is once per gesture. `client` is a fresh
+    // object on every render of either hook, so it is deliberately not a dep; a
+    // second run would spend a spent token and be refused, which is the
+    // mechanism working rather than a bug to code around.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publishableKey]);
+  }, [publishableKey, seal]);
 
   const confirm = useCallback(() => {
     const stripe = stripeRef.current;
@@ -366,11 +394,19 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
         // Do not draw the row from the confirmation. Reconcile against the
         // provider and let the register show what Stripe actually holds — the
         // difference between "we think it worked" and "the provider says so".
-        const sync = await client.syncPayments();
+        // Name the intent: the gateway reads the spent seal's id off it AT
+        // STRIPE and proves this person opened this card form. `provenance`
+        // comes back saying which check ran, and it is printed rather than
+        // assumed.
+        const sync = await client.syncPayments(intentId ?? undefined);
         setResult(
           `Confirmed, and the register was reconciled against the provider at ${new Date(
             sync.syncedAt,
-          ).toLocaleTimeString()}. ${sync.kept} instrument(s) on file.`,
+          ).toLocaleTimeString()}. ${sync.kept} instrument(s) on file. ${
+            sync.provenance === 'sealed-intent'
+              ? 'The provider confirmed this form was opened under a redeemed seal.'
+              : 'Recorded as a plain reconcile: no intent was named, so no seal was proven.'
+          }`,
         );
         setPhase('done');
       } catch (e) {
@@ -378,13 +414,37 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
         setPhase('ready');
       }
     })();
-  }, [client]);
+  }, [client, intentId]);
 
   return (
     <PanelCard
       title="Add a card"
       lead="The number is typed into Stripe's own fields, on Stripe's origin. It never reaches this page or our servers."
     >
+      {phase === 'sealing' && (
+        <div>
+          <HoldToApprove
+            onChallenge={() => client.mintPaymentSeal('create')}
+            onApprove={(challenge) => {
+              // `HoldToApprove` will not approve on a null mint — it says the
+              // seal could not be issued and sends nothing. This guard is the
+              // second lock on the same door: no seal, no form.
+              if (!challenge) return;
+              setSeal(challenge);
+              setPhase('opening');
+            }}
+            label="Hold to open the card form"
+            approvedLabel="Opening"
+          />
+          <PanelNote>
+            Opening the form asks the provider for permission to store one
+            instrument on this house. That permission is sealed: the gesture
+            mints a one-time seal and the gateway refuses to mint an intent
+            without it, so a session alone cannot open a card form here.
+          </PanelNote>
+        </div>
+      )}
+
       {phase === 'opening' && (
         <PanelNote>Asking the provider for permission to store an instrument…</PanelNote>
       )}
@@ -400,7 +460,10 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
           rebuilt every time a message appears above them. */}
       <div
         ref={mountRef}
-        style={{ marginTop: phase === 'failed' ? 0 : 10, minHeight: phase === 'failed' ? 0 : 90 }}
+        style={{
+          marginTop: phase === 'failed' || phase === 'sealing' ? 0 : 10,
+          minHeight: phase === 'failed' || phase === 'sealing' ? 0 : 90,
+        }}
       />
 
       {problem && phase === 'ready' && (
@@ -411,7 +474,7 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
 
       {phase === 'done' && <PanelStatus tone="done">{result}</PanelStatus>}
 
-      {phase !== 'failed' && phase !== 'done' && (
+      {phase !== 'failed' && phase !== 'done' && phase !== 'sealing' && (
         <div style={{ marginTop: 14 }}>
           <HoldToApprove
             onApprove={confirm}
@@ -425,12 +488,10 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
             take — this product cannot create a charge at all.
           </PanelNote>
           <PanelNote>
-            This hold is the house&rsquo;s ceremony, not a seal the server
-            redeems. The two acts on the instrument rows in this register —
-            charge this first, and remove — are sealed; adding a card is not,
-            because the card is attached on Stripe&rsquo;s origin and the
-            register is then reconciled, and neither of those two routes takes a
-            seal today (G-PAY-SETUP).
+            This hold is not a second seal. The permission was sealed when you
+            opened the form, and the sync below names the intent so the provider
+            proves that seal back — which is why this gesture does not mint
+            another one.
           </PanelNote>
           {livemode !== null && (
             <p

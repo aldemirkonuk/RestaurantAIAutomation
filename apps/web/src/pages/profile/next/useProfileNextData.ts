@@ -814,13 +814,17 @@ export function useProfileNextData() {
    */
   const mintPaymentSeal = useCallback(
     async (
-      act: 'set_default' | 'remove',
-      methodId: string,
+      act: 'create' | 'set_default' | 'remove',
+      methodId?: string,
     ): Promise<string | null> => {
       try {
         const { data } = await apiClient.post<{ challenge?: string }>(
           '/payment-methods/seal-challenge',
-          { act, methodId },
+          // `create`'s subject is the HOUSE's register, not an instrument —
+          // there is no card yet to name. The gateway nulls `methodId` for a
+          // `create` regardless (`payment-methods.controller.ts:148`); not
+          // sending it keeps the request the same shape as the binding.
+          act === 'create' ? { act } : { act, methodId },
         );
         return data?.challenge ?? null;
       } catch {
@@ -859,22 +863,48 @@ export function useProfileNextData() {
    * own sentence while `STRIPE_SECRET_KEY` is unset, so the panel's failure
    * text is the server's, never page prose.
    */
-  const createSetupIntent = useCallback(async (): Promise<{
+  const createSetupIntent = useCallback(async (
+    challenge: string,
+  ): Promise<{
     clientSecret: string;
     setupIntentId: string;
     livemode: boolean;
   }> => {
-    const { data } = await apiClient.post<{
-      clientSecret: string;
+    // A refused mint answers 403 with a whole sentence naming the check that
+    // failed. Axios hides it in `response.data.message`, so it is lifted here:
+    // the panel prints `.message`, and a status code is not an explanation.
+    let data: {
+      clientSecret?: string;
       setupIntentId: string;
       livemode: boolean;
-    }>('/billing/setup-intent', {});
+    } | undefined;
+    try {
+      ({ data } = await apiClient.post<{
+        clientSecret: string;
+        setupIntentId: string;
+        livemode: boolean;
+      }>(
+        '/billing/setup-intent',
+        {},
+        // The seal travels in a HEADER, never in the body: it is not one of the
+        // arguments it is a seal over. The gateway reads `x-seal-challenge` and
+        // REDEEMS before it asks the provider for anything
+        // (`billing.controller.ts`, `setupIntent`).
+        { headers: { 'X-Seal-Challenge': challenge } },
+      ));
+    } catch (e) {
+      throw spoken(e);
+    }
     if (!data?.clientSecret) {
       throw new Error(
         'The provider answered without a client secret, so the card form cannot open. Nothing was stored.',
       );
     }
-    return data;
+    return {
+      clientSecret: data.clientSecret,
+      setupIntentId: data.setupIntentId,
+      livemode: data.livemode,
+    };
   }, []);
 
   /**
@@ -885,18 +915,25 @@ export function useProfileNextData() {
    * longer has — a sync that only inserted would leave the register showing a
    * card that cannot be charged.
    */
-  const syncPayments = useCallback(async (): Promise<{
+  const syncPayments = useCallback(async (
+    setupIntentId?: string,
+  ): Promise<{
     syncedAt: string;
     kept: number;
     removed: number;
     note: string | null;
+    provenance: 'sealed-intent' | 'reconcile-only';
   }> => {
     const { data } = await apiClient.post<{
       syncedAt: string;
       kept: number;
       removed: number;
       note: string | null;
-    }>('/billing/sync', {});
+      provenance: 'sealed-intent' | 'reconcile-only';
+      // Naming the intent is what lets the gateway read the spent seal's id
+      // back FROM STRIPE and prove this person opened that card form. Omitting
+      // it is the register's plain refresh, and `provenance` says which ran.
+    }>('/billing/sync', setupIntentId ? { setupIntentId } : {});
     await paymentsQ.refetch();
     return data;
   }, [paymentsQ]);

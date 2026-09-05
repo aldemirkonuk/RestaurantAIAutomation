@@ -94,19 +94,30 @@ const setDefaultPaymentMethod = vi.fn((_id: string, _challenge?: string | null) 
  * caring about the seal does not silently exercise the failure path.
  */
 const mintPaymentSeal = vi.fn(
-  (_act: 'set_default' | 'remove', _methodId: string): Promise<string | null> =>
-    Promise.resolve('tok-default'),
+  (
+    _act: 'create' | 'set_default' | 'remove',
+    _methodId?: string,
+  ): Promise<string | null> => Promise.resolve('tok-default'),
 );
 const syncPayments = vi.fn(
-  (): Promise<{ syncedAt: string; kept: number; removed: number; note: string | null }> =>
+  (
+    _setupIntentId?: string,
+  ): Promise<{
+    syncedAt: string;
+    kept: number;
+    removed: number;
+    note: string | null;
+    provenance: 'sealed-intent' | 'reconcile-only';
+  }> =>
     Promise.resolve({
       syncedAt: '2026-09-03T12:00:00.000Z',
       kept: 1,
       removed: 0,
       note: null,
+      provenance: 'sealed-intent',
     }),
 );
-const createSetupIntent = vi.fn(() =>
+const createSetupIntent = vi.fn((_challenge: string) =>
   Promise.resolve({ clientSecret: 'seti_1_secret', setupIntentId: 'seti_1', livemode: false }),
 );
 const refetchMe = vi.fn();
@@ -675,6 +686,19 @@ const CARD_ROW = {
 };
 
 describe('ProfileNext — the payment register (the provider path)', () => {
+  /**
+   * The FIRST hold — permission to store an instrument on this house
+   * (G-PAY-SETUP, closed 2026-09-05). Nothing reaches the provider before it
+   * completes, so every test that wants a card form walks through here.
+   */
+  const openTheForm = async () => {
+    const gate = await screen.findByRole('button', {
+      name: 'Hold to open the card form',
+    });
+    fireEvent.keyDown(gate, { key: 'Enter' });
+    fireEvent.keyDown(gate, { key: 'Enter' });
+  };
+
   it('opens the panel with NO typeable field, and names the secret that is missing', () => {
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
@@ -712,8 +736,16 @@ describe('ProfileNext — the payment register (the provider path)', () => {
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
 
-    // The gateway is asked for the intent BEFORE Stripe.js is fetched.
+    // The gate first: nothing has been asked of the provider yet.
+    expect(createSetupIntent).not.toHaveBeenCalled();
+    expect(stripeJs.loadStripe).not.toHaveBeenCalled();
+    await openTheForm();
+
+    // The gateway is asked for the intent BEFORE Stripe.js is fetched, and it
+    // carries the token the gesture minted.
     await waitFor(() => expect(createSetupIntent).toHaveBeenCalledTimes(1));
+    expect(mintPaymentSeal).toHaveBeenCalledWith('create');
+    expect(createSetupIntent).toHaveBeenCalledWith('tok-default');
     await waitFor(() => expect(stripeJs.loadStripe).toHaveBeenCalledWith('pk_test_stub'));
     expect(
       await screen.findByRole('button', { name: 'Hold to put this card on file' }),
@@ -722,21 +754,77 @@ describe('ProfileNext — the payment register (the provider path)', () => {
     expect(screen.queryByText('Stripe card fields')).not.toBeInTheDocument();
   });
 
-  it('still says the add is not sealed, on this page too', async () => {
+  it('opens no card form when the seal cannot be minted, and says why', async () => {
+    mintPaymentSeal.mockResolvedValueOnce(null);
     mockData.current = base({
       paymentProvider: CONNECTED_PROVIDER,
       stripePublishableKey: 'pk_test_stub',
     });
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
 
-    // Scoped to the PANEL's own note: this register's lead also names
-    // G-PAY-SETUP, and a page-wide match would pass even if the panel had
-    // dropped the sentence entirely.
-    const note = await screen.findByText(/not a seal the server/i);
-    expect(note.textContent).toMatch(/G-PAY-SETUP/);
-    // The two ROW acts are sealed; the add mints nothing.
-    expect(mintPaymentSeal).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText('The seal could not be issued — nothing sent.'),
+    ).toBeInTheDocument();
+    expect(createSetupIntent).not.toHaveBeenCalled();
+    expect(stripeJs.loadStripe).not.toHaveBeenCalled();
+  });
+
+  it('renders the gateway’s 403 sentence as itself when the intent is refused', async () => {
+    createSetupIntent.mockRejectedValueOnce(
+      new Error(
+        'This request carried no seal. Hold the control to mint one; nothing was changed.',
+      ),
+    );
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      stripePublishableKey: 'pk_test_stub',
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
+
+    expect(
+      await screen.findByText(/This request carried no seal\./),
+    ).toBeInTheDocument();
+    // Not a status code, and not page prose about trying again.
+    expect(screen.queryByText(/status code 403/)).not.toBeInTheDocument();
+  });
+
+  it('names the intent on the sync, so the provider proves the seal back', async () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      stripePublishableKey: 'pk_test_stub',
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
+
+    const hold = await screen.findByRole('button', {
+      name: 'Hold to put this card on file',
+    });
+    await waitFor(() => expect(hold).not.toBeDisabled());
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    await waitFor(() => expect(syncPayments).toHaveBeenCalledWith('seti_1'));
+    expect(
+      await screen.findByText(/opened under a redeemed seal/),
+    ).toBeInTheDocument();
+  });
+
+  it('no longer claims the add is unsealed', async () => {
+    mockData.current = base({
+      paymentProvider: CONNECTED_PROVIDER,
+      stripePublishableKey: 'pk_test_stub',
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
+
+    await screen.findByRole('button', { name: 'Hold to put this card on file' });
+    expect(screen.queryByText(/not a seal the server/i)).not.toBeInTheDocument();
   });
 
   it('names the BROWSER’s missing key when the gateway is ready and the bundle is not', () => {
@@ -854,6 +942,7 @@ describe('ProfileNext — the provider row is the honesty seam', () => {
       kept: 0,
       removed: 1,
       note: '1 instrument(s) were on file here and no longer exist at the provider; they have been dropped.',
+      provenance: 'reconcile-only',
     });
     mockData.current = base({ paymentProvider: CONNECTED_PROVIDER });
     draw();
@@ -1015,18 +1104,18 @@ describe('ProfileNext — the payment register is sealed, not asserted', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
 
-  it('states which payment acts are sealed and which is not', () => {
-    // `POST /payment-methods` IS sealed at the gateway and has no caller at all:
-    // a card is attached on Stripe's origin and the register is then reconciled,
-    // and neither of those routes redeems a seal. Claiming one on the add-a-card
-    // gesture would be the ceremony without the proof — the exact thing this
-    // pass removed from the two acts that do have it.
+  it('states that all three payment acts are sealed, the add at the door', () => {
+    // Since 2026-09-05 the add is sealed too: the panel's first hold mints
+    // `create` and `POST /billing/setup-intent` redeems it before the provider
+    // is touched. The lead had said the opposite, which would now be a page
+    // claiming less protection than the server gives.
     mockData.current = base();
     draw();
     expect(
       screen.getByText(/held rather than clicked: the gesture mints a one-time seal/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Adding one is not sealed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Adding one is sealed too, at the door/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Adding one is not sealed/i)).not.toBeInTheDocument();
   });
 });
 

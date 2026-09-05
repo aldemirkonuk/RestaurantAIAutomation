@@ -987,14 +987,12 @@ seal exists to produce.
 `MOTIONS.md` restates the rule they now follow: the seal appears exactly where the server
 redeems one, plus the single irreversible act that has no server to ask.
 
-**What stays open, and why.** `create` is sealed at the gateway and is NOT sealed here,
-because nothing in `apps/web` or `apps/mobile` calls `POST /payment-methods` at all —
-measured, not assumed. A card is attached by confirming a SetupIntent on Stripe's origin
-and then reconciling, and neither `POST /billing/setup-intent` nor `POST /billing/sync`
-redeems a seal (`billing.controller.ts:101-166`). Minting a `create` token on the panel's
-hold would put an unspent row in `mcp_seal_challenges` and draw a seal over a redemption
-that never happens. The panel and the register both say so in words, and the gap is filed
-as **G-PAY-SETUP**.
+**What stayed open then, and closed on 2026-09-05.** `create` was sealed at the gateway
+and not here, because nothing in `apps/web` or `apps/mobile` calls `POST /payment-methods`
+at all — measured, not assumed — and the real path, `POST /billing/setup-intent` → Stripe's
+origin → `POST /billing/sync`, took no seal. Both of those routes now redeem and prove one,
+and the panel mints on a hold that comes BEFORE the client secret exists. See §9
+**G-PAY-SETUP**, closed.
 
 **Proof.** `vitest run src/pages/profile/next` — **63 passed**. Against HEAD copies of the
 whole directory (`git show HEAD:` into a same-depth probe directory, never a git state
@@ -1087,7 +1085,7 @@ because that file is outside this page's paths.
 | Method | Path | Where called | Guard / posture |
 |---|---|---|---|
 | GET | `/billing/provider` | not called by the page (the same state rides on `GET /payment-methods`); exists for a deployment check | `JwtAuthGuard`. `webhookLastReceivedAt: null` means no delivery has EVER been authenticated here — not health |
-| POST | `/billing/setup-intent` | `createSetupIntent` → `StripeCardPanel` | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED `create` seal** from `X-Seal-Challenge` (2026-09-05), spent BEFORE the provider is touched and stamped onto the intent's metadata; **503 with the reason** while `STRIPE_SECRET_KEY` is unset. The panel does not mint yet, so this is refused today — §9 G-PAY-SETUP |
+| POST | `/billing/setup-intent` | `createSetupIntent(challenge)` → `StripeCardPanel`, from the panel's FIRST hold | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED `create` seal** from `X-Seal-Challenge` (2026-09-05), spent BEFORE the provider is touched and stamped onto the intent's metadata; **503 with the reason** while `STRIPE_SECRET_KEY` is unset — §9 G-PAY-SETUP, closed |
 | POST | `/billing/sync` | `syncPayments` — after a confirmation, and behind **Reconcile now** | `JwtAuthGuard` + `assertCanManageRestaurant`; with `setupIntentId`, the seal id is read back FROM STRIPE off that intent and proven redeemed by this person (2026-09-05); without it, a plain reconcile — `provenance` in the response says which. DROPS instruments the provider no longer holds |
 | POST | `/billing/webhook` | Stripe | **`@Public()`** — authenticated by HMAC over the exact request bytes, not by a JWT. Fails closed with no `STRIPE_WEBHOOK_SECRET`. Always answers **200**, even on a refusal, so a permanently-wrong secret cannot become a retry storm; the body says `received: false` and names the failing check. Idempotent on the event id |
 | PATCH | `/payment-methods/:id/default` | `setDefaultPaymentMethod` — "Charge this first" | `JwtAuthGuard` + `assertCanManageRestaurant` + **a REDEEMED seal** from `X-Seal-Challenge` (2026-09-04); written at the provider **before** the local flag |
@@ -1171,8 +1169,8 @@ Core, every role. No `S..` touches it directly (OD-48).
   gateway's own sentence rather than as a status code. Six tests pin it, all six
   failing against HEAD copies of the directory. See §1b, sixth pass.
 
-- **G-PAY-SETUP — HALF CLOSED 2026-09-05 (gateway sealed; the panel does not yet
-  mint, so adding a card is REFUSED until it does).** The founder's call, put at
+- **G-PAY-SETUP — CLOSED 2026-09-05 (gateway sealed, and the panel now mints).**
+  The founder's call, put at
   the end of this row, was answered: *"do option 1"* — seal the setup-intent
   route. `POST /billing/setup-intent` now redeems a `create` seal from
   `X-Seal-Challenge` **before** it asks the provider for anything, and stamps the
@@ -1188,17 +1186,24 @@ Core, every role. No `S..` touches it directly (OD-48).
   `POST /billing/setup-intent` with no seal header answers **403** with the whole
   refusal sentence and asks the provider for nothing. Census, rejected
   alternatives and the webhook's four replay defences: ADR 0110's third addendum.
-  **What is left, and it is user-visible:** `StripeCardPanel.tsx` still calls
-  `createSetupIntent()` with no seal, so the Add-a-card panel is refused on both
-  surfaces until it mints — a deliberate, explained refusal, the same shape ADR
-  0116's addendum took for the legacy orders page. The panel is builder p4y's file
-  and was mid-flight, so the hunks are written and left ready rather than applied:
-  `p4-scratch/p4ae/client-mint-for-setup-intent.patch.md`. They move the hold to
-  the front of the panel (*Hold to open the card form* mints and spends the seal on
-  the intent; the existing hold then confirms and syncs naming the intent), because
-  Stripe Elements needs the client secret before it can mount the fields — a seal
-  minted on the existing hold would be minted after the capability it authorises
-  had already been handed out. Mirror: `connections.md` §9 G-C9.
+  **The browser half landed the same day.** `StripeCardPanel.tsx` opens on a
+  `sealing` phase and asks the provider for nothing until a hold completes:
+  *Hold to open the card form* mints `create` through each caller's hook
+  (`mintPaymentSeal` in `useProfileNextData.ts`, `mintPaymentSeal` beside
+  `paymentSeal` in `useConnectionsNextData.ts`) and spends it on the intent; the
+  existing hold then confirms at Stripe and syncs **naming the intent**, and the
+  panel prints which `provenance` came back rather than assuming the sealed one.
+  A mint that resolves null opens nothing and says "The seal could not be issued
+  — nothing sent." The hold had to move to the FRONT because Stripe Elements
+  needs the client secret before it can mount a field, and the client secret is
+  the capability: a seal minted on the confirm hold would be minted after the
+  thing it authorises had already been handed out. Rejected: deferred Elements
+  (`elements({mode:'setup'})`) keeps one hold and is a rewrite of the panel's
+  mount/confirm cycle against an Elements API this repo has never used. Proof:
+  `vitest run src/pages/profile/next src/pages/connections/next
+  src/components/mudavym` — **219 passed**; pre-fix, a `git show HEAD:` copy of
+  the panel rendered under a probe test called `createSetupIntent()` with zero
+  arguments on mount and had no gate at all. Mirror: `connections.md` §9 G-C9.
 
   *The original entry, kept because the reasoning it records is the reasoning that
   was acted on:*
@@ -1235,9 +1240,9 @@ bindings that had kept it here are gone: the data prop is `CardPanelClient`
 two members), and the four `pf-ui` primitives are redrawn inside the component over the
 house tokens with their hover and focus rules in `components/mudavym/stripe-card-panel.css`.
 One component, two callers: `/profile` with the flag off (production's state) and
-`/connections` Register II with it on. **Not changed by the port:** adding a card still
-redeems no seal — that is G-PAY-SETUP above, and it is a separate build. Mirror:
-`connections.md` §9 G-C9.
+`/connections` Register II with it on. **Changed the next day:** `CardPanelClient` gained a
+third member, `mintPaymentSeal`, and adding a card is sealed on both surfaces — G-PAY-SETUP
+above, closed. Mirror: `connections.md` §9 G-C9.
 
 - Restaurant section edits (`PATCH /organizations/locations/:id`) rely on server-side role enforcement; the page gate is client-side only.
 - The v3.0 UX catalog's "dashboard profile card with no handler" item (L102) was never located (`v3.0-TECH-DEBT.md:502`) — unverified, tracked there, not here.

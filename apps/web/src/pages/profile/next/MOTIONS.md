@@ -20,9 +20,11 @@ die", because it is not a taste question: **the seal appears exactly where the
 server redeems one, plus the one act that is irreversible here and has no
 server to ask** (deleting the account). *Reconcile now* stays a plain button
 because reconciling asks the provider what it holds and changes nothing we
-chose. The add-a-card hold is the odd one and says so in its own words: it is
-the ceremony without a redemption, because the write it precedes happens on
-Stripe's origin and the two routes behind it take no seal (G-PAY-SETUP).
+chose. The add-a-card panel has TWO holds since 2026-09-05, both on `pour`. The first,
+*Hold to open the card form*, redeems a `create` seal at
+`POST /billing/setup-intent`; the second confirms at Stripe and syncs naming the
+intent, so the provider proves that same seal back. G-PAY-SETUP is closed and no
+hold here is a ceremony without a redemption.
 
 | id | token | curve · ms | fires |
 |---|---|---|---|

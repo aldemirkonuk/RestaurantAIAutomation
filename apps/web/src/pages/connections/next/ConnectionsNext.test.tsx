@@ -122,6 +122,7 @@ interface Fixture {
   setDefaultPayment: unknown;
   removePayment: unknown;
   /* `CardPanelClient` — what the shared card panel asks this hook for. */
+  mintPaymentSeal: unknown;
   createSetupIntent: unknown;
   syncPayments: unknown;
   /** The BROWSER's half of the Stripe credential. Null is a state, not a gap. */
@@ -200,16 +201,20 @@ function base(): Fixture {
       error: null,
       variables: undefined,
     },
-    createSetupIntent: vi.fn(async () => ({
+    // The `create` mint. Resolves a token by default for the same reason
+    // `paymentSeal` does.
+    mintPaymentSeal: vi.fn(async (_act: 'create') => 'tok-create'),
+    createSetupIntent: vi.fn(async (_challenge: string) => ({
       clientSecret: 'seti_1_secret_x',
       setupIntentId: 'seti_1',
       livemode: false,
     })),
-    syncPayments: vi.fn(async () => ({
+    syncPayments: vi.fn(async (_setupIntentId?: string) => ({
       syncedAt: '2026-09-05T08:00:00.000Z',
       kept: 1,
       removed: 0,
       note: null,
+      provenance: 'sealed-intent' as const,
     })),
     // Null by DEFAULT, because that is what this deployment's bundle holds. A
     // fixture that shipped a key would make every other test render a card form
@@ -1042,13 +1047,13 @@ describe('the collapse — anchors and the acts that moved', () => {
  *   - the button exists in exactly ONE place at a time;
  *   - opening it asks the GATEWAY for a SetupIntent before it fetches a script,
  *     so a refusal is the provider's sentence and not a loading state;
- *   - the panel says, in words, that adding a card is NOT sealed — the one
- *     payment act with no redeemed token (G-PAY-SETUP), and the thing a reader
- *     would otherwise assume from the hold's appearance;
+ *   - NOTHING is asked of the provider until a `create` seal is minted by the
+ *     first hold (G-PAY-SETUP, closed 2026-09-05): the client secret is the
+ *     capability, so the gesture has to come before it, not after;
  *   - a completed hold reconciles against the provider rather than drawing the
  *     row from the confirmation.
  */
-describe('the card panel is on this page, and claims no seal it never redeems', () => {
+describe('the card panel is on this page, and is sealed at the door', () => {
   const keyed = (over: Record<string, unknown> = {}) => {
     const d = base();
     d.payments = reg({
@@ -1057,6 +1062,19 @@ describe('the card panel is on this page, and claims no seal it never redeems', 
     });
     d.stripePublishableKey = 'pk_test_stub';
     return { ...d, ...over };
+  };
+
+  /**
+   * The FIRST hold — permission to store an instrument on this house. Nothing
+   * reaches the provider before it completes, so every test that wants a card
+   * form walks through here.
+   */
+  const openTheForm = async () => {
+    const gate = await screen.findByRole('button', {
+      name: 'Hold to open the card form',
+    });
+    fireEvent.keyDown(gate, { key: 'Enter' });
+    fireEvent.keyDown(gate, { key: 'Enter' });
   };
 
   it('opens the provider’s own card fields from the empty register’s control', async () => {
@@ -1069,26 +1087,48 @@ describe('the card panel is on this page, and claims no seal it never redeems', 
     fireEvent.click(add);
 
     expect(await screen.findByText('Add a card', { selector: 'h3' })).toBeInTheDocument();
+    // Before the gesture: no seal, no intent, no script. The panel is a gate.
+    expect(d.mintPaymentSeal).not.toHaveBeenCalled();
+    expect(d.createSetupIntent).not.toHaveBeenCalled();
+    expect(stripeJs.loadStripe).not.toHaveBeenCalled();
+
+    await openTheForm();
+
+    await waitFor(() => expect(d.mintPaymentSeal).toHaveBeenCalledWith('create'));
     // The intent is minted BEFORE Stripe.js is fetched: a gateway that refuses
     // must produce its own sentence, not a script that loads and then has
-    // nothing to confirm.
+    // nothing to confirm. And it carries the token the gesture minted.
     await waitFor(() => expect(d.createSetupIntent).toHaveBeenCalledTimes(1));
+    expect(d.createSetupIntent).toHaveBeenCalledWith('tok-create');
     await waitFor(() => expect(stripeJs.loadStripe).toHaveBeenCalledWith('pk_test_stub'));
   });
 
-  it('says the add is not sealed, while the two row acts are', async () => {
+  it('opens nothing at all when the seal cannot be minted, and says why', async () => {
+    const d = keyed({ mintPaymentSeal: vi.fn(async () => null) });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
+
+    expect(
+      await screen.findByText('The seal could not be issued — nothing sent.'),
+    ).toBeInTheDocument();
+    // The one thing that must not happen: a form that opens anyway.
+    expect(d.createSetupIntent).not.toHaveBeenCalled();
+    expect(stripeJs.loadStripe).not.toHaveBeenCalled();
+  });
+
+  it('no longer claims the add is unsealed, on this page', async () => {
     const d = keyed();
     mockData.current = d;
     render(<ConnectionsNext />);
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
 
-    // Scoped to the panel's own note, so the assertion cannot be satisfied by
-    // the word appearing anywhere else on the page later.
-    const note = await screen.findByText(/not a seal the server/i);
-    expect(note.textContent).toMatch(/G-PAY-SETUP/);
-    // And nothing minted a challenge for it — a `create` token would be one no
-    // request ever spends.
-    expect(d.paymentSeal).not.toHaveBeenCalled();
+    // The pre-2026-09-05 sentence and its gap tag are gone from the panel.
+    await screen.findByRole('button', { name: 'Hold to put this card on file' });
+    expect(screen.queryByText(/not a seal the server/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/G-PAY-SETUP/)).not.toBeInTheDocument();
   });
 
   it('reconciles against the provider on a completed hold, rather than drawing the row itself', async () => {
@@ -1096,6 +1136,7 @@ describe('the card panel is on this page, and claims no seal it never redeems', 
     mockData.current = d;
     render(<ConnectionsNext />);
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
 
     const hold = await screen.findByRole('button', {
       name: 'Hold to put this card on file',
@@ -1106,7 +1147,12 @@ describe('the card panel is on this page, and claims no seal it never redeems', 
 
     await waitFor(() => expect(stripeJs.instance.confirmSetup).toHaveBeenCalled());
     await waitFor(() => expect(d.syncPayments).toHaveBeenCalledTimes(1));
+    // Named, so the gateway can read the spent seal's id back FROM STRIPE.
+    expect(d.syncPayments).toHaveBeenCalledWith('seti_1');
     expect(await screen.findByText(/reconciled against the provider/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/opened under a redeemed seal/),
+    ).toBeInTheDocument();
   });
 
   it('shows the provider’s own refusal when the intent cannot be minted, and stores nothing', async () => {
@@ -1118,6 +1164,7 @@ describe('the card panel is on this page, and claims no seal it never redeems', 
     mockData.current = d;
     render(<ConnectionsNext />);
     fireEvent.click(screen.getByRole('button', { name: 'Add a card' }));
+    await openTheForm();
 
     expect(
       await screen.findByText(/Stripe is not configured on this deployment\./),

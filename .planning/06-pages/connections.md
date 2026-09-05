@@ -125,17 +125,17 @@ the two registers that would actually leak are refused at the gateway as well.
   bundle's (`VITE_STRIPE_PUBLISHABLE_KEY`) — never an empty box and never a form
   to type a brand and four digits into by hand.
 - **Adding a card is sealed at the gateway as of 2026-09-05, and the panel does not
-  yet mint — so it is REFUSED here too.** ~~Charge-this-first and Remove each spend a
+  mints — so it is SEALED here too.** ~~Charge-this-first and Remove each spend a
   one-time token; the add confirms a SetupIntent on Stripe's origin and then
   reconciles, and neither of those two routes takes a seal today.~~ Both of those
   routes now do: `POST /billing/setup-intent` redeems a `create` seal before it
   touches Stripe, and `POST /billing/sync` proves the same seal by reading its id
-  back off the intent at the provider (ADR 0110's third addendum). Until
-  `StripeCardPanel.tsx` mints on a hold — ready hunks at
-  `p4-scratch/p4ae/client-mint-for-setup-intent.patch.md` — the Add-a-card panel
-  answers with the gateway's refusal sentence on both surfaces. That is deliberate
-  and explained rather than silent, and it is the one thing a founder should look
-  at. See `profile.md` §9 G-PAY-SETUP.
+  back off the intent at the provider (ADR 0110's third addendum). And
+  `StripeCardPanel.tsx` now mints on a hold that comes before the client secret
+  exists: *Hold to open the card form* mints `create` through this hook's
+  `mintPaymentSeal` and spends it on the intent, and the confirm hold syncs
+  naming the intent so the provider proves the same seal back. A mint that fails
+  opens no form and says so. See `profile.md` §9 G-PAY-SETUP, closed.
 - **Register III — personal grants that act inside this house.** Every OAuth
   grant recorded against this restaurant, named with its owner, plus a count of
   live grants belonging to people who work here that carry no recorded
@@ -327,11 +327,12 @@ answer with say the same thing. `secretList` stopped reading
 `import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY` a second time and takes the hook's value, so
 the subtitle cannot print "set" beside a control disabled for being unset.
 
-**What the port did NOT do.** It did not seal `create`, and says so in the same words as
-before: the hold is the house's ceremony, not a redeemed seal; `POST /payment-methods` has
-no caller in either app; the real path is `POST /billing/setup-intent` → Stripe's origin →
-`POST /billing/sync`, and neither of those two routes takes a seal today. That gap is
-`profile.md` §9 G-PAY-SETUP and is a separate build.
+**What the port did NOT do, and what the next day did.** The port did not seal `create`,
+and said so in words: the hold was the house's ceremony, not a redeemed seal. On 2026-09-05
+the gap closed at both ends — `POST /billing/setup-intent` redeems a `create` seal and
+`POST /billing/sync` proves it back off the intent, and the panel mints at a first hold
+that opens the form. `POST /payment-methods` still has no caller in either app. See
+`profile.md` §9 G-PAY-SETUP, closed.
 
 **Two charcoal defects this pass found by capturing, and fixed in passing.** Neither was
 caused by the port; both were found because the port required a charcoal capture of
@@ -547,8 +548,9 @@ Each is rendered honestly on the page rather than hidden.
   production), `/connections` with it on. The disabled state is now about the
   DEPLOYMENT — which credential is missing, in the gateway's words where the
   gateway sent them — and never about our own backlog.
-  *What the port did NOT change:* adding a card still redeems no seal. Mirror:
-  `profile.md` §9 G12a, and G-PAY-SETUP there for the route that has none.
+  *What the port did NOT change, and 2026-09-05 did:* adding a card now redeems a
+  seal — the panel's first hold mints `create` and the intent spends it. Mirror:
+  `profile.md` §9 G12a, and G-PAY-SETUP there, closed.
 
 **Correction to the commit message (a9747074, 2026-09-04).** Its body says the two ungated
 reads were closed and "the old test pinned the defect and was replaced with its reason". There

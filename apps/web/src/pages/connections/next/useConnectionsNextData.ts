@@ -525,6 +525,30 @@ export function useConnectionsNextData() {
   );
 
   /**
+   * The same mint, for the act that has no instrument.
+   *
+   * `create` approves putting ONE instrument on this house's register, so its
+   * subject is the register and no `methodId` is sent. It is a separate member
+   * from `paymentSeal` above only because `CardPanelClient` asks for the
+   * positional shape and the row controls already use the object one; both call
+   * the same route.
+   */
+  const mintPaymentSeal = useCallback(
+    async (act: 'create'): Promise<string | null> => {
+      try {
+        const { data } = await apiClient.post<{ challenge?: string }>(
+          '/payment-methods/seal-challenge',
+          { act },
+        );
+        return data?.challenge ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  /**
    * The seal travels in a HEADER on both writes — it is not one of the
    * arguments it is a seal over, and `DELETE` carries no body here at all.
    * `payment-methods.controller.ts` reads `x-seal-challenge` on both.
@@ -557,16 +581,13 @@ export function useConnectionsNextData() {
    * exactly these two functions (`CardPanelClient`), so this hook grows the two
    * members rather than the page growing a second copy of the panel.
    *
-   * NEITHER OF THESE REDEEMS A SEAL TODAY, and that is stated rather than
-   * hidden. `POST /payment-methods` — the create route ADR 0110's addendum
-   * sealed — has no caller anywhere in `apps/web` or `apps/mobile`; a card is
-   * attached by confirming a SetupIntent on Stripe's origin and then
-   * reconciling, and both of those routes are role-gated and seal-free
-   * (`billing.controller.ts`). Minting a `create` challenge on the panel's hold
-   * would spend nothing and claim a proof that was never redeemed. The gap is
-   * G-PAY-SETUP in `profile.md` §9; sealing `POST /billing/setup-intent` is a
-   * separate build, and when it lands the change here is one `onChallenge`
-   * mint beside these two — nothing about the panel itself.
+   * BOTH OF THESE NOW CARRY THE SEAL (G-PAY-SETUP closed, 2026-09-05).
+   * `POST /billing/setup-intent` REDEEMS a `create` seal before it asks the
+   * provider for anything and stamps the spent seal's id onto the intent;
+   * `POST /billing/sync` names that intent and has the provider prove the id
+   * back. So the pairing cannot be authored in this browser: the panel mints at
+   * the hold that OPENS the form, because the client secret is the capability
+   * and it exists the moment the form opens.
    */
 
   /**
@@ -578,22 +599,48 @@ export function useConnectionsNextData() {
    * unset — which is this deployment's state — so the panel's failure text is
    * the server's, never page prose.
    */
-  const createSetupIntent = useCallback(async (): Promise<{
+  const createSetupIntent = useCallback(async (
+    challenge: string,
+  ): Promise<{
     clientSecret: string;
     setupIntentId: string;
     livemode: boolean;
   }> => {
-    const { data } = await apiClient.post<{
-      clientSecret: string;
+    // A refused mint answers 403 with a whole sentence naming the check that
+    // failed. Axios hides it in `response.data.message`, so it is lifted here:
+    // the panel prints `.message`, and a status code is not an explanation.
+    let data: {
+      clientSecret?: string;
       setupIntentId: string;
       livemode: boolean;
-    }>('/billing/setup-intent', {});
+    } | undefined;
+    try {
+      ({ data } = await apiClient.post<{
+        clientSecret: string;
+        setupIntentId: string;
+        livemode: boolean;
+      }>(
+        '/billing/setup-intent',
+        {},
+        // The seal travels in a HEADER, never in the body: it is not one of the
+        // arguments it is a seal over. The gateway reads `x-seal-challenge` and
+        // REDEEMS before it asks the provider for anything
+        // (`billing.controller.ts`, `setupIntent`).
+        { headers: { 'X-Seal-Challenge': challenge } },
+      ));
+    } catch (e) {
+      throw new Error(readError(e));
+    }
     if (!data?.clientSecret) {
       throw new Error(
         'The provider answered without a client secret, so the card form cannot open. Nothing was stored.',
       );
     }
-    return data;
+    return {
+      clientSecret: data.clientSecret,
+      setupIntentId: data.setupIntentId,
+      livemode: data.livemode,
+    };
   }, []);
 
   /**
@@ -607,18 +654,25 @@ export function useConnectionsNextData() {
    * the sync returned and the register beside it must already agree, or the two
    * would state different numbers of instruments in the same eyeful.
    */
-  const syncPayments = useCallback(async (): Promise<{
+  const syncPayments = useCallback(async (
+    setupIntentId?: string,
+  ): Promise<{
     syncedAt: string;
     kept: number;
     removed: number;
     note: string | null;
+    provenance: 'sealed-intent' | 'reconcile-only';
   }> => {
     const { data } = await apiClient.post<{
       syncedAt: string;
       kept: number;
       removed: number;
       note: string | null;
-    }>('/billing/sync', {});
+      provenance: 'sealed-intent' | 'reconcile-only';
+      // Naming the intent is what lets the gateway read the spent seal's id
+      // back FROM STRIPE and prove this person opened that card form. Omitting
+      // it is the register's plain refresh, and `provenance` says which ran.
+    }>('/billing/sync', setupIntentId ? { setupIntentId } : {});
     await paymentsQ.refetch();
     return data;
   }, [paymentsQ]);
@@ -724,7 +778,8 @@ export function useConnectionsNextData() {
     paymentSeal,
     setDefaultPayment,
     removePayment,
-    /* `CardPanelClient` — the two members `StripeCardPanel` asks a page for. */
+    /* `CardPanelClient` — the three members `StripeCardPanel` asks a page for. */
+    mintPaymentSeal,
     createSetupIntent,
     syncPayments,
     /**
