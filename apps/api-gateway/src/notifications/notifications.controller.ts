@@ -14,7 +14,9 @@ import {
   Optional,
   Inject,
   forwardRef,
+  Req,
 } from "@nestjs/common";
+import type { Request } from "express";
 import { ApiOperation } from "@nestjs/swagger";
 import { NotificationsService } from "./notifications.service";
 import { LowStockAlertsService } from "./low-stock-alerts.service";
@@ -34,6 +36,39 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { NotificationProducersService } from "./producers/notification-producers.service";
+
+/**
+ * The tenant a notification read is scoped to — from the VERIFIED JWT, never
+ * from the query string (Antalya night).
+ *
+ * Measured on main: a brand-new tenant owning exactly one notification rendered
+ * "20 unread", including a CRITICAL card naming seven wines from a different
+ * restaurant. The SPA never sent a restaurant and the service filtered only
+ * when asked, so the read was scoped to the USER — and one owner with two
+ * venues is the ordinary case here, not an edge case.
+ *
+ * A client-supplied `restaurantId` is deliberately IGNORED rather than merged.
+ * It is not a security boundary: a client can send any uuid, and if the query
+ * string could widen or redirect the scope then this fix would be decoration.
+ * Switching venue re-issues the token (`switchRestaurant`), which is what makes
+ * the token the right source.
+ *
+ * No restaurant on the token means the read is REFUSED. Falling back to "no
+ * filter" is precisely how the bug renders: every notification the user has
+ * ever received, across every tenant, presented as this venue's inbox.
+ */
+function scopeRestaurantId(req: {
+  user?: { restaurantId?: string | null };
+}): string {
+  const id = req?.user?.restaurantId;
+  if (!id || String(id).trim() === "") {
+    throw new HttpException(
+      "No active restaurant on this session — notifications cannot be scoped, and an unscoped read would show other restaurants' notifications.",
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  return String(id);
+}
 
 /**
  * OD-20 — guarded at class level 2026-08-25.
@@ -95,11 +130,15 @@ export class NotificationsController {
   }
 
   @Get()
-  async getNotifications(@Query() query: GetNotificationsQueryDto) {
+  async getNotifications(
+    @Query() query: GetNotificationsQueryDto,
+    @Req() req: Request & { user?: { restaurantId?: string | null } },
+  ) {
+    const restaurantId = scopeRestaurantId(req);
     try {
       return await this.notificationsService.getNotifications({
         userId: query.userId,
-        restaurantId: query.restaurantId,
+        restaurantId,
         type: query.type,
         status: query.status,
         dateFrom: query.dateFrom,
@@ -114,11 +153,15 @@ export class NotificationsController {
   }
 
   @Get("unread")
-  async getUnreadNotifications(@Query() query: GetUnreadQueryDto) {
+  async getUnreadNotifications(
+    @Query() query: GetUnreadQueryDto,
+    @Req() req: Request & { user?: { restaurantId?: string | null } },
+  ) {
+    const restaurantId = scopeRestaurantId(req);
     try {
       return await this.notificationsService.getUnreadNotifications({
         userId: query.userId,
-        restaurantId: query.restaurantId,
+        restaurantId,
         limit: query.limit,
       });
     } catch (error) {
@@ -128,11 +171,15 @@ export class NotificationsController {
   }
 
   @Get("unread/count")
-  async getUnreadCount(@Query() query: GetUnreadCountQueryDto) {
+  async getUnreadCount(
+    @Query() query: GetUnreadCountQueryDto,
+    @Req() req: Request & { user?: { restaurantId?: string | null } },
+  ) {
+    const restaurantId = scopeRestaurantId(req);
     try {
       const count = await this.notificationsService.getUnreadCount({
         userId: query.userId,
-        restaurantId: query.restaurantId,
+        restaurantId,
       });
       return { count };
     } catch (error) {
