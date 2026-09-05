@@ -74,6 +74,11 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
   price. Where either is missing the box prints the reason instead of a blank,
   because "nobody has stated this bottle's strength" is something a person can
   go and fix (2026-09-05)
+- **Türkiye's own CPI line**, beside FAO and ONS: TÜİK's food index read over the
+  publisher's documented SDMX service, with TÜİK's re-use notice cited on the
+  line because the licence requires the source to be named (2026-09-05)
+- A series read **over a credential** says when THIS deployment does not hold
+  one, and calls it a missing setting rather than a publisher refusing us
 
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
@@ -2266,3 +2271,53 @@ only null and negatives.
 
 **An index series draws no duty line at all**, and a test pins that: an index
 number is not a tax, and computing one from it would be inventing a liability.
+
+### 13.37 Türkiye gets a line, and it is the first one read with a key (2026-09-05, batch 58)
+
+Every commodity series in this box until now was keyless: FAO and ONS are read
+by anybody, and the shell-egg report and the three rate schedules are brought by
+a person. **TÜİK is the first source this product reads on a schedule with a
+credential**, and that is a different kind of fact about a source, so the box
+says it out loud.
+
+**What a Türkiye house now sees.** `Tüketici fiyat endeksi (TÜFE), 01 Gıda ve
+alkolsüz içecekler` — **134.31**, `Index, base year = 100 · base 2025=100 ·
+August 2026` — beside the FAO world index and above TÜİK's own ÖTV rate. Before
+this, a Turkish house saw one line (FAO) and the register recorded Türkiye as
+`silent: no_machine_endpoint`. ADR 0117's Q22 closes here.
+
+**The licence travels with the number, because it has to.** TÜİK states no
+licence on the service or in its manual; the only statement is a site-wide legal
+notice, in Turkish, that the English site does not link to, and it permits re-use
+*provided the source is cited*. So the series is `attribution_required` — the
+same slot ONS sits in — and the line carries an attribution string that is
+**ours**, because TÜİK prescribes none.
+
+**"Read on", not "issued".** The SDMX payload states no publication date.
+`YAYIM_DONEMI` is the release ROUND the figures belong to, not the day they were
+published, and reading it as one would invent a date the issuer never gave. So
+this series is `fetch_date` and says "read on" — the same distinction FAO's line
+makes, for the same measured reason.
+
+**A missing key is a missing SETTING, and the box says so.** When a deployment
+does not hold `TUIK_SDMX_API_KEY` the line reads *"Read over a credential this
+deployment does not hold: TUIK_SDMX_API_KEY is not set here, so nothing has been
+fetched. That is a missing setting, not a publisher refusing us."* Those are
+different facts and only one of them is fixable in a dashboard. **This is the
+state of production today** — the key is set in the repo's root `.env` and
+nothing built here can set it on Railway.
+
+**TT09 shows CODES and names nothing.** The founder's words were *"TT09 as well,
+codes unnamed for now"*. Its three beverage subclasses read 128.89, 126.50 and
+140.20 at 2026-08, and TÜİK's codelist endpoint answers 401 — the labels have
+never been read. So the box prints the codes and the sentence saying so, and a
+test asserts that no renderable field on that series contains a beverage noun in
+any language. Guessing which subclass is wine would be inventing a fact about a
+series a house might act on.
+
+**What was built against, and it would have been invisible.** The payload's
+`UNIT_MEASURE` column is **empty on every row**, and the thing that makes 134.31
+an index and 0.22 a monthly percentage is a dimension called `DEGISIM` that the
+file never explains. A parser that trusted the file would have put both on this
+box and both would have looked like data. The axis is declared on the series and
+any other value is refused by name.

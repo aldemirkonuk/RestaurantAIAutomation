@@ -99,6 +99,21 @@ export interface CommoditySeriesVM {
   redistribution: string;
   admission: string;
   /**
+   * Reading this source needs a credential, and WHICH environment variable
+   * holds it. Never the credential itself. `keyConfiguredHere` false is a
+   * DEPLOYMENT fact — this environment was never given the key — and is a
+   * different sentence from a publisher refusing us.
+   */
+  accessKeyRequired: boolean;
+  keyEnvVar: string | null;
+  keyConfiguredHere: boolean | null;
+  /** What the host said when asked for its crawl rules, in words. */
+  robotsReading: string | null;
+  /** OUR self-imposed ceiling, not the publisher's limit. */
+  requestBudgetPerDay: number | null;
+  /** Where the licence text was read. `licence` holds the words. */
+  licenceUrl: string | null;
+  /**
    * TRUE when this series' only route in is a person's own download and that
    * download has not happened. The parser exists and has never seen real bytes,
    * so the panel must never draw it as working (the founder's Q1 answer,
@@ -230,6 +245,14 @@ function seriesOf(raw: Record<string, unknown>): CommoditySeriesVM {
     attribution: str(raw.attribution),
     redistribution: str(raw.redistribution) ?? 'unstated',
     admission: str(raw.admission) ?? 'fetch',
+    accessKeyRequired: raw.accessKeyRequired === true,
+    keyEnvVar: str(raw.keyEnvVar),
+    keyConfiguredHere:
+      typeof raw.keyConfiguredHere === 'boolean' ? raw.keyConfiguredHere : null,
+    robotsReading: str(raw.robotsReading),
+    requestBudgetPerDay:
+      typeof raw.requestBudgetPerDay === 'number' ? raw.requestBudgetPerDay : null,
+    licenceUrl: str(raw.licenceUrl),
     awaitingHumanDownload: raw.awaitingHumanDownload === true,
     statute: str(raw.statute),
     effectiveFrom: str(raw.effectiveFrom),

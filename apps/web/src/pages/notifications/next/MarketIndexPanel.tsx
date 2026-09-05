@@ -392,6 +392,22 @@ function CommodityLine({ s }: { s: CommoditySeriesVM }) {
         </p>
       ) : null}
 
+      {/* A series read over a credential says so, and says whether THIS
+          deployment holds one. "The publisher refused us" and "this environment
+          was never given the key" are different facts and only the second is
+          something a person can fix in a dashboard. */}
+      {s.accessKeyRequired && s.keyConfiguredHere === false ? (
+        <p
+          role="status"
+          className="mt-0.5 text-[11px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
+        >
+          Read over a credential this deployment does not hold: {s.keyEnvVar} is not set
+          here, so nothing has been fetched. That is a missing setting, not a publisher
+          refusing us.
+        </p>
+      ) : null}
+
       {/* A parser that has never seen real bytes must never look like a working
           feed. The founder's call, 2026-09-05: a one-off human read, logged. */}
       {s.awaitingHumanDownload ? (

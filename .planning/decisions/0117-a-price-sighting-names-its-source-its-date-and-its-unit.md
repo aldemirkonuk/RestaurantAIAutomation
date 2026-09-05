@@ -1294,10 +1294,43 @@ until the founder decides whether a drinks house should see a produce line at al
     "JavaScript Required" to a fetcher. Even if found it yields index numbers, not prices, so it
     cannot enter this table today (Q23) — but it would give Türkiye a labelled index line the day
     that changes.
+    **ANSWERED by the founder, 2026-09-05 (batch 58), and CLOSED — the endpoint was found
+    and it is now armed.** The one more agent was worth it. TÜİK runs a real SDMX 2.1 REST
+    service at `https://nsiws.tuik.gov.tr/rest`; its documentation is complete and ships
+    inside the portal's own static bundle, which is why a fetcher saw only "JavaScript
+    Required". Every path is gated behind a Keycloak token, and the founder minted a
+    **personal API key** in the Veri Portalı — *institutional credentials later* — put it in
+    the repo root `.env` as `TUIK_SDMX_API_KEY`, and said *"act safely and healthy, and check
+    if it works"*. It works: token `expires_in` 300, then `DF_TUFE_SDMX_TT01` at
+    `TR.M.2.1._Z.2025.2026_01._Z.01.F_TFE` answered **HTTP 200, 891 bytes**, 8 monthly rows,
+    **2026-08 = 134.31**, base **2025=100**.
+
+    **BUILT** as a class-E series in the commodity register, not here: TT01 armed on the
+    supported route, and TT09 registered beside it on the founder's *"TT09 as well, codes
+    unnamed for now"* — 325 COICOP levels, fetched at most every 28 days because its unbounded
+    payload measured 7,532,768 bytes, and its beverage subclasses held as **codes** because
+    their labels answer 401 and have never been read. `nsiws.tuik.gov.tr/robots.txt` answers
+    **401** — a fourth distinct robots answer in this register, recorded as itself — and the
+    licence is TÜİK's site-wide notice: re-use *provided the source is cited*, so
+    `attribution_required` with an attribution string of ours. **Türkiye stops being
+    `silent: no_machine_endpoint` and gets its labelled index line.**
+
 23. **Class E has no home in `price_index_postings` for an index NUMBER.** The type union and the
     CHECK both admit `public_index`, but the columns require a price in a currency with a unit.
     Every genuine public index found for either market (ONS `d7bv`, TÜİK CPI) is unitless. Add
     the columns, keep a separate table, or drop class E from the union and say so?
+
+    **ANSWERED, and it was decided before this question was asked: KEEP A SEPARATE TABLE.**
+    The founder's batch-37 call was *"a seperate table for index series"*, and
+    `commodity_index_series` is it. Nothing was added to `price_index_postings` and class E
+    stays in its type union as the CENSUS of what a source is, never as a place to put one.
+    TÜİK is what makes the reasoning concrete rather than theoretical: 134.31, unitless, base
+    2025=100, world-shaped in every way that matters — and **all five** of the columns that
+    refuse an index series refuse it (`price NOT NULL`, `currency NOT NULL DEFAULT 'USD'`,
+    `price_unit VARCHAR(24)`, `product_name NOT NULL`, and a `state` regex). Its SDMX-CSV also
+    carries an EMPTY `UNIT_MEASURE` on every row, so the payload itself cannot say whether
+    134.31 is an index or 0.22 a percentage; that lives in the `DEGISIM` dimension, is
+    hard-coded on the series, and any other value is refused by name. **Q23 CLOSED.**
 24. **Should a drinks house be shown a PRODUCE line?** Defra is real, dated, licensed, fetchable
     and about vegetables. It is built and disarmed. This is Q11's other half, now with a working
     parser behind it, and it is one environment variable from being live.

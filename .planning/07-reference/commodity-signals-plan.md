@@ -125,6 +125,8 @@ something adjacent was measured, `no` means the fetch failed and the reason is s
 | **BLS Public Data API v1** | PPI and CPI series, and the **AP average-price series which are prices in dollars, not index numbers** | monthly | `https://api.bls.gov/publicAPI/v1/timeseries/data/` | yes, in the payload, including a `"Preliminary"` footnote | **the terms page named by the FAQ, `bls.gov/bls/termsofservice.htm`, returned 404 — the terms are unread and are not asserted here** | **v1: 25 queries/day, 25 series, 10 years, no key. v2: 500/day, 50 series, 20 years, free annual key. Both 50 requests / 10 s** — quoted from `bls.gov/developers/api_faqs.htm` | **yes, and then a problem.** `APU0000708111` (*Eggs, grade A, large, per doz., US city average*) returned 2026 M07 = **2.189**, M02 = 2.500. `WPU017107` (*PPI, eggs for fresh use*) and `WPU0223` both returned clean. **Then `https://api.bls.gov/robots.txt` returned 200 with `User-agent: * / Disallow: /`** — see §3c. **Q1 CLOSED by the founder 2026-09-05: register a v2 key and use the API under its terms.** One gap that must close before arming: the terms document itself is **unread** — `bls.gov/bls/termsofservice.htm`, the page the FAQ names, returned **404** — so the only BLS terms this plan can currently point at are the published limits in `api_faqs.htm`. **The source row's `terms_url` may not be a 404** |
 | **FAO Food Price Index** | A world index of food commodity prices, plus five sub-indices: cereals, vegetable oils, dairy, meat, sugar | **monthly**, on a published calendar | **CSV**, keyless: `www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv` | **yes** — the page states the release date and the next one; the CSV states its own base | **no licence declared on the page.** Footer is "© FAO 2026" with a general terms link. **Unstated, recorded as unstated** | `robots.txt` **200**: `*` disallows `/index.php`, `/t3lib/`, `/typo3/`, `/*?id=*` and two `user_upload` paths. **The CSV path is permitted; no crawl-delay is declared** | **yes.** August 2026 = **133.3**, released **2026-09-04**, next **2026-10-02**. CSV: 48,006 B, sha256 `746104cf…c62f`, 444 lines, base **2014-2016=100**, last row `2026-08,133.3` |
 | **ONS time series (JSON)** | UK CPI, including **`d7bu` — CPI INDEX 01: FOOD AND NON-ALCOHOLIC BEVERAGES 2015=100** | monthly | keyless per-series URL: `.../timeseries/d7bu/mm23/data` | **yes** — `releaseDate`, `nextRelease`, and an `updateDate` on **every observation** | **Open Government Licence v3.0** | `www.ons.gov.uk/robots.txt` returns **404** (re-read 2026-09-05T14:12:41Z: 404, 101,929 B, an ONS "Page not found" page with zero `disallow` lines) — unrestricted per RFC 9309, the same reading the registry already applies to `ilcc.illinois.gov` | **yes.** 125,504 B, 463 months, 2026 JUL = **144.0**, `unit: "Index, base year = 100"` |
+| **TÜİK SDMX — `DF_TUFE_SDMX_TT01`** | Türkiye CPI by main expenditure group, including **01 food and non-alcoholic beverages** | **monthly**, first days of the following month | SDMX 2.1 REST, `nsiws.tuik.gov.tr/rest`, `?format=SDMX-CSV`; **a Keycloak bearer token is required** | **partly** — the payload states the period and the base and states **no publication date**; `UNIT_MEASURE` is empty on every row | **the site-wide legal notice** at `tuik.gov.tr/Kurumsal/Yasal_Uyari`: re-use permitted *provided the source is cited*. No licence on the service or in the manual. `attribution_required`, and the attribution string is OURS because TÜİK prescribes none | **none stated anywhere.** The 24-a-day ceiling is ours | **yes, with the founder's key, 2026-09-05.** Token `expires_in` 300; `TR.M.2.1._Z.2025.2026_01._Z.01.F_TFE` → **200, 891 B**, sha256 `5760a5fa…`, 8 rows, **2026-08 = 134.31**, base 2025=100. `nsiws.tuik.gov.tr/robots.txt` answers **401** |
+| **TÜİK SDMX — `DF_TUFE_SDMX_TT09`** | The same CPI at **325 COICOP-2018 levels**, index only, including three beverage subclasses | monthly | as above; **7,532,768 B / 84,500 rows unbounded** | as above | as above | as above | **yes (keyless route, by the researcher).** `02110`=128.89, `02121`=126.50, `02130`=140.20 at 2026-08. **Their LABELS were never read**: the codelist endpoint answers 401 and the Data Explorer view went blank five times. Registered as codes, `silent: codelist_unread` |
 | **USDA ERS Food Price Outlook** | **Forecasts** of annual food price change by category, plus the CPI and PPI series behind them | **monthly, on the 25th**; next **2026-09-25** | CSV and XLSX | yes | not stated on the page; a USDA work | not measured | **partial.** Both pages read. Its own documentation states it *"generates 95 percent forecast intervals"* — **the only source in this register that publishes an interval rather than a point** |
 | **Defra wholesale fruit and vegetable prices** | England and Wales wholesale produce, GBP per kg | fortnightly | CSV | yes, a date on every row | **OGL v3.0** | — | **Measured by the market-research builder on 2026-09-05 and already built as `parse-defra.ts`.** Cited, not re-fetched. See `price-sources.md` §"United Kingdom — one found" |
 | **EIA open data (diesel, natural gas)** | The input cost under every delivery and every kitchen | daily to monthly | REST v2, JSON | yes | *"EIA data is provided free of charge"* subject to its API Terms of Service and Copyrights and Reuse Policy | **free key required**; `api.eia.gov/robots.txt` answers `403 API_KEY_MISSING`; JSON max 5,000 rows, XML 300; throttle limits **not stated on the documentation page** | **partial.** Documentation read; no series pulled |
@@ -146,7 +148,14 @@ Both were re-measured on 2026-09-05 by the market-research builder and the resul
 `price-sources.md` §"Türkiye and the United Kingdom, re-measured 2026-09-05". **Nothing
 here re-crawls those hosts.** What this plan adds is two facts measured today:
 
-- **Türkiye has no machine-readable index this plan can use.** `veriportali.tuik.gov.tr/robots.txt`
+- **CORRECTED 2026-09-05, and this sentence is superseded: Türkiye HAS a machine-readable
+  index and it is now armed.** What this paragraph said next was true of a fetcher without a
+  credential, and stopped being the whole story the moment there was one. TÜİK runs a
+  documented SDMX 2.1 REST service at `https://nsiws.tuik.gov.tr/rest`; the founder minted a
+  personal API key in the Veri Portalı on 2026-09-05, and the exchanged token read
+  `DF_TUFE_SDMX_TT01` — CPI, food and non-alcoholic beverages, base 2025=100, 2026-08 =
+  **134.31** — HTTP 200, 891 bytes. §2a and §10 carry it; the original observation below is
+  kept because it is what a KEYLESS reader still sees. `veriportali.tuik.gov.tr/robots.txt`
   is **200** and names `anthropic-ai`, `ClaudeBot`, `ClaudeUser` and `Claude-SearchBot` in
   an explicit allow group — the only source in either register that permits us by name —
   and the portal behind it renders "JavaScript Required" with token-signed downloads and
@@ -396,6 +405,10 @@ per series, one row per observation.
 | `daily_request_budget` | `integer NULL` | **My rendering of the founder's *"stays under the daily limit"*, not their words.** A number the fetcher counts against, refusing rather than exceeding. It exists because I demonstrably needed it: §3c records that I spent **13-14 of the v1 tier's 25** on a research pass while believing I had spent 7 |
 | `rise_threshold` / `step_guard` | `numeric NULL` | derived from the series' own history — §9b. **NULL means the rule cannot fire for this series**, and that is said out loud |
 | `threshold_window_from` / `_to` / `_n_obs` / `_computed_at` | | so the number on the screen can be traced to the window that produced it |
+| `access_key_required` / `key_env_var` | `boolean NOT NULL DEFAULT false` / `text` | **Added 2026-09-05 for TÜİK, the first source read WITH a credential.** The register names the VARIABLE and never the key: a register that stored one would be a register that leaks one. A CHECK requires the pair to move together and requires the name to be shell-shaped, which a pasted credential is not. **Holding a key says nothing about `redistribution`** — a publisher letting us read is not a publisher letting us publish |
+| `robots_reading` | `text` | What the host said when ASKED. Four distinct answers now exist across this register — 200 with rules (FAO), 404 absent (ONS), 403 refused (USDA AMS), **401 unauthenticated (TÜİK `nsiws`)** — and flattening any into another is a different claim about a different publisher |
+| `user_agent` / `request_budget_per_day` | `text` / `integer` | The identity we present, on the row rather than in a constant. And a ceiling that is **OURS**: TÜİK states no rate limit anywhere, and a source with no stated limit is exactly where a runaway loop does its damage. A budget of zero is refused — that is `admission`, not a budget |
+| `licence_url` | `text` | Where the words in `licence` were read. TÜİK's re-use sentence lives in a Turkish site-wide notice the English site does not link to |
 | `armed` | `boolean NOT NULL DEFAULT false` | |
 | `withheld_reason` / `silent` | `text NULL` | mirroring `price-index.registry.ts`'s existing distinction: unreadable versus read-but-unusable |
 
@@ -636,6 +649,17 @@ rules rather than the two that would be most useful:**
 - **ONS `d7bu`.** OGL v3.0, keyless, per-observation `updateDate`, `robots.txt` 404 and
   therefore unrestricted. Serves the one UK house and sits beside the Defra produce line
   another builder shipped on 2026-09-05.
+
+**A THIRD ARMED SOURCE, added 2026-09-05 on the founder's batch-58 decision.**
+**TÜİK `DF_TUFE_SDMX_TT01`** — Türkiye's CPI for food and non-alcoholic beverages, monthly,
+base 2025=100, read over the publisher's own documented SDMX service with a key the founder
+minted himself. It is unlike the first two in one way that had to be built for rather than
+noted: it is the first source here that needs a **credential**, so the register gained
+columns for that fact (`access_key_required`, `key_env_var`, `robots_reading`, `user_agent`,
+`request_budget_per_day`, `licence_url`) and the reader gained a token holder that never logs
+the key or the token. **TT09** is registered beside it at a lower fetch cadence — 28 days,
+because its unbounded payload measured 7,532,768 bytes — and its beverage subclasses land as
+**codes**, because their labels have never been read.
 
 **Two sources handled by the Michigan path instead of a fetcher**, because their hosts refuse
 to state their crawl rules: the **USDA AMS shell-egg index** (`www.ams.usda.gov/robots.txt` is
@@ -1096,3 +1120,95 @@ through below rather than removed; the other five are open.**
    the three non-US houses something real. It is also the second half of `price-sources.md`'s
    Q9 (the derived per-bottle duty line), which is still open, and this table would make that
    easier to build without deciding it.
+
+#### Phase 0, continued — TÜİK, and Q22 CLOSED (the founder's batch 58, 2026-09-05)
+
+**The founder's words:** he minted a personal API key in TÜİK's Veri Portalı —
+*institutional credentials later* — put it in the repo root `.env` as
+`TUIK_SDMX_API_KEY`, said *"act safely and healthy, and check if it works"*, and
+on the dataflow question chose *"TT09 as well, codes unnamed for now"*.
+
+**It works, and the check is logged.** The parent, once: a POST to
+`giris.tuik.gov.tr/realms/web/protocol/openid-connect/token` (client
+`nsi-ws-consumer`, `grant_type=password`) answered a bearer token with
+`expires_in` **300**; the CPI food key then answered **HTTP 200, 891 bytes**,
+8 monthly rows, **2026-08 = 134.31**, base 2025=100. The whole response is the
+fixture (`__fixtures__/tuik-tt01-cpi-food-2026-09-05.sample.csv`, sha256
+`5760a5fa…72a2d9`), unreduced, and a test asserts that hash so the parser can
+never be proved against something nobody fetched. **This builder made zero
+outbound requests.**
+
+**ADR 0117 Q22 is CLOSED.** Türkiye was `silent: no_machine_endpoint` in the
+price register and had no index line at all. It now has a documented, dated,
+base-stamped monthly series on the publisher's own supported route, and a
+Türkiye house sees four series where it saw one.
+
+**Q23 is closed too, and it was already decided.** The separate commodity table
+is where an index number lands — the founder's batch-37 call, *"a seperate table
+for index series"*. TÜİK makes the case concrete rather than theoretical:
+`DF_TUFE_SDMX_TT01` yields 134.31, unitless, base 2025=100, and every one of the
+five columns §6 lists would refuse it.
+
+**What "act safely" turned into, and it is five things.**
+
+1. **The key and the token are never logged, thrown or returned.** Every failure
+   path builds its sentence from a STATUS, never from a body — a rejected
+   credential's response is the single most plausible place for an echoed key —
+   and a scrubber strips anything JWT- or key-shaped from any message that could
+   still carry one. Tests assert the absence directly, including on a thrown
+   fetch error whose message contains the key.
+2. **An unset variable refuses in words, naming the variable.** A missing
+   credential and a broken publisher are different facts; the first is a
+   DEPLOYMENT fact and the sentence says so, because the person reading it is the
+   person who can fix it.
+3. **The 300-second life is respected with a 30-second margin**, so a slow read
+   started with a "valid" token cannot finish after it died.
+4. **A request budget we impose on ourselves** — 24 a day for TT01, 2 for TT09.
+   TÜİK states no rate limit anywhere, measured, and a source with no stated
+   limit is where a runaway loop does its damage. The budget is checked BEFORE
+   the token, so a misconfigured environment cannot spend the day's allowance
+   discovering it is misconfigured.
+5. **The identity is honest and reachable** — `MudavymBot/1.0` with a contact —
+   and `nsiws.tuik.gov.tr/robots.txt` answering **401** is recorded as itself,
+   not flattened into FAO's 200, ONS's 404 or USDA AMS's 403. The politeness
+   reading differs here and is written down: this is not a crawl, it is an
+   authenticated read of a documented API on a key the publisher issued.
+
+**The two traps the researcher found, both built against.**
+
+* **`UNIT_MEASURE` is empty on every row, and `DEGISIM` is the unit.** `1` is the
+  index level, `2` a monthly percentage change, `4` an annual one. Nothing in the
+  payload says so. A parser that trusted the file would put a 0.22 beside a
+  134.31 and both would look like data. The axis is declared on the series and
+  every other row is **refused and named**, never filtered out quietly.
+* **`BASE_PER` moved and both bases are still published.** TÜİK rebased off
+  2003=100 within the last year. The base is read back out of the file and
+  compared with the register's — the same gate that catches FAO's older CSV path
+  — and a test proves the 2003 file is refused as `base_changed`.
+
+**The ten-dimension key order is pinned against the recorded header.** The
+service's own `/structure` advertises **six** dimensions; the payload has ten.
+Building a key from `/structure` produces a wrong key that still looks right, so
+`KEY_DIMENSIONS` is the payload's order and a test asserts it equals the recorded
+file's columns 1..10.
+
+**TT09 stays codes.** `02110` = 128.89, `02121` = 126.50, `02130` = 140.20 at
+2026-08. The codelist endpoint answers 401 and the Data Explorer view went blank
+five times, so the labels have never been read; the entry is
+`silent: codelist_unread`, the panel prints the sentence, and a test asserts no
+renderable field on that series contains a beverage noun in any language.
+Guessing that `02130` is wine would be inventing a fact about a series a house
+might act on.
+
+**Verified.** `npx jest src/commodity` — **242 passed, 15 suites**. `npx vitest
+run src/pages/notifications/next` — **146 passed, 7 suites**. Gateway `tsc` clean
+under both configs; web `tsc` clean. `check_gateway_boots.sh` PASS. The migration
+applied twice on PGlite with six CHECK probes refused — keyed with no variable, a
+pasted credential where a name belongs, a lowercase name, keyless-but-naming-one,
+a zero budget and a negative one — and the real TT01 shape admitted.
+
+**OWED, AND NOT OURS TO DO: the key must be set on the production deployment's
+environment (Railway) before this series arms there.** Nothing built here sets
+it, and nothing can. Until it is, `GET /commodity-index/me` on production says,
+in words, *"Read over a credential this deployment does not hold: TUIK_SDMX_API_KEY
+is not set here"* — which is the honest sentence and not a silence.

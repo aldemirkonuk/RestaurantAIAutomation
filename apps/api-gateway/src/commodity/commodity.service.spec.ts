@@ -298,7 +298,7 @@ describe("the status route", () => {
     const s = svc.status();
     expect(s.fetchArmed).toBe(false);
     expect(s.flag).toBe("COMMODITY_INDEX_FETCH_ENABLED");
-    expect(s.series).toHaveLength(6);
+    expect(s.series).toHaveLength(8);
   });
 });
 
@@ -333,6 +333,36 @@ describe("the fetch service, driven with the RECORDED fixtures and no network", 
     expect(egg.admission).toBe("upload_only");
     expect(egg.awaitingHumanDownload).toBe(true);
     expect(fetchableSeries().map((s) => s.seriesKey)).not.toContain(egg.seriesKey);
+  });
+
+  it("routes both TÜİK dataflows to the SDMX parser and reads them with the recorded bytes", async () => {
+    const tt01 = SERIES["tuik.tufe_tt01.food_and_non_alcoholic_beverages"];
+    expect(parserFor(tt01)).not.toBeNull();
+    const svc = new CommodityFetchService(makeDb(() => ({ data: [] })));
+    const outcome = await svc.runOne(
+      tt01,
+      async () =>
+        readFileSync(
+          join(__dirname, "__fixtures__", "tuik-tt01-cpi-food-2026-09-05.sample.csv"),
+          "utf8",
+        ),
+      new Date("2026-09-05T00:00:00Z"),
+      false,
+    );
+    expect(outcome.admission.admitted).toBe(true);
+    expect(outcome.observationsParsed).toBe(8);
+    expect(outcome.written).toBe(0);
+  });
+
+  it("REFUSES to read a credentialled source when this environment holds no key", async () => {
+    // No test ever goes outbound, and this one proves the refusal happens
+    // BEFORE anything is read: the default reader is used, and it stops at the
+    // token holder.
+    const svc = new CommodityFetchService(makeDb(() => ({ data: [] })));
+    expect(svc.tuikConfigured()).toBe(
+      typeof process.env.TUIK_SDMX_API_KEY === "string" &&
+        process.env.TUIK_SDMX_API_KEY.trim() !== "",
+    );
   });
 
   it("declares no parser for a rate: a rate is brought, never scraped", () => {

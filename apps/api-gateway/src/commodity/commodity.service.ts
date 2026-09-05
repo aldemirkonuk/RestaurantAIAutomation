@@ -120,6 +120,22 @@ export interface CommoditySeriesLine {
    * so no surface may report the series as working (the founder's Q1 answer).
    */
   awaitingHumanDownload: boolean;
+  /**
+   * Reading this source needs a credential, and WHICH environment variable
+   * holds it. Never the credential. A screen that shows a series as silent
+   * should be able to say whether the reason is a deployment that was never
+   * given a key.
+   */
+  accessKeyRequired: boolean;
+  keyEnvVar: string | null;
+  /** Whether THIS process actually holds it. `null` when none is needed. */
+  keyConfiguredHere: boolean | null;
+  /** What the host said when asked for its crawl rules, in words. */
+  robotsReading: string | null;
+  /** OUR self-imposed ceiling, not the publisher's limit. */
+  requestBudgetPerDay: number | null;
+  /** Where the licence text was read. `licence` holds the words. */
+  licenceUrl: string | null;
   /** A rate's instrument, in the issuer's own citation. Null for anything else. */
   statute: string | null;
   /** The date the issuer says a rate is in force from. */
@@ -264,6 +280,18 @@ export class CommodityService {
       attribution: entry.attribution,
       redistribution: entry.redistribution,
       admission: entry.admission,
+      accessKeyRequired: entry.accessKeyRequired === true,
+      keyEnvVar: entry.keyEnvVar ?? null,
+      // Read from the environment, never the value. `false` here is a
+      // DEPLOYMENT fact and is the difference between "the publisher refused
+      // us" and "this environment was never given the key".
+      keyConfiguredHere: entry.accessKeyRequired
+        ? typeof process.env[entry.keyEnvVar ?? ""] === "string" &&
+          (process.env[entry.keyEnvVar ?? ""] ?? "").trim() !== ""
+        : null,
+      robotsReading: entry.robotsReading ?? null,
+      requestBudgetPerDay: entry.requestBudgetPerDay ?? null,
+      licenceUrl: entry.licenceUrl ?? null,
       awaitingHumanDownload: entry.awaitingHumanDownload === true,
       statute: entry.statute ?? null,
       effectiveFrom: entry.effectiveFrom ?? null,
@@ -327,6 +355,10 @@ export class CommodityService {
     }
 
     if (!seriesId) {
+      if (entry.accessKeyRequired && base.keyConfiguredHere === false) {
+        base.note = `This series is registered and reads over a credential this environment does not hold: ${entry.keyEnvVar} is not set here. That is a deployment that was never given the key, not a publisher that refused us.`;
+        return base;
+      }
       base.note = entry.awaitingHumanDownload
         ? `This series is registered and waits for a person's own download. ${entry.withheld?.reason ?? ""} Nothing here fetches it, and nothing may report it as working until the file lands.`.trim()
         : entry.withheld
