@@ -609,6 +609,35 @@ jobs:
       - name: ...and that guard's own failure path fires
         run: ./scripts/check_read_columns_exist.py --self-test
 
+      # The read side of ADR 0119 Q4 (founder, 2026-09-05): `price_history`
+      # carries a STATED unit, and every comparison over it groups by unit
+      # first. The NOT NULL + vocabulary CHECK added by
+      # 20260905072500_the_price_series_states_its_unit.sql enforces the write
+      # half; no constraint can enforce the read half. Once a case price and a
+      # bottle price share the table, a mean over both is wrong by the pack
+      # size, with no error attached. Landed while the tree has one writer and
+      # ZERO readers, so the first reader that forgets fails CI rather than
+      # silently averaging.
+      - name: Every read of price_history states its unit
+        run: ./scripts/check_price_history_reads_group_by_unit.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_price_history_reads_group_by_unit.py --self-test
+
+      # The same question one layer up. The guard above asks whether a column a
+      # READ names exists in the database; this asks whether a KEY a web or
+      # mobile type declares exists on the gateway DTO it mirrors. `Order`
+      # declared `unitPrice`, `totalPrice` and seven more names
+      # `OrderResponseDto` has never sent, so `formatMoney(undefined)` printed
+      # "$0" on the approval seal, `a ?? b * c` printed "$NaN" on the provider
+      # card, and a `typeof x === "number"` clause vanished from every receipt —
+      # all of it type-checking, because nothing connected the two files.
+      - name: Every DTO key a client type declares exists on the gateway DTO
+        run: ./scripts/check_web_reads_gateway_dto_keys.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_web_reads_gateway_dto_keys.py --self-test
+
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
@@ -983,8 +1012,8 @@ jobs:
       # scripts/test_docgen.py is NOT here: measured in a clean venv it errors at
       # collection (it imports cv2/PIL/jinja2 through scripts/docgen). It stays
       # unguarded and is named here so that is a known gap, not a forgotten one.
-      - name: scripts/ unit tests (simulator, operating hours, FK targets)
-        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py -q -p no:cacheprovider
+      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units)
+        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:
