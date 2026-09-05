@@ -153,6 +153,7 @@ class VendorSelectionUnavailable(RuntimeError):
     "this house has no vendors" from "we could not look".
     """
 
+
 # one_tap_actions.action_type is a Postgres enum (public.one_tap_action_type,
 # migration 20260805000000_baseline_from_production.sql:173). 'custom' is the
 # interim carrier ACTION-SCHEMA-SPEC §4.1 prescribes until step 6 of its

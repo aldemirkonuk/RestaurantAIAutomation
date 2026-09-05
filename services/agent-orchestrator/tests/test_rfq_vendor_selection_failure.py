@@ -167,7 +167,9 @@ class TestThePreFixFileHadTheFault:
                 providers = await database.providers.get_active_providers()
                 if not providers:
                     return []
-                return sorted(providers, key=lambda p: p.rating or 0, reverse=True)[:count]
+                return sorted(providers, key=lambda p: p.rating or 0, reverse=True)[
+                    :count
+                ]
             except Exception:  # noqa: BLE001 — this IS the pre-fix code
                 return []
 

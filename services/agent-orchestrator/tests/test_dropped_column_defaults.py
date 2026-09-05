@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -60,14 +60,21 @@ class TestProviderToleratesDroppedDefaults:
     def test_a_real_value_still_arrives_intact(self):
         """Tolerating the unknown must not discard the known."""
         p = Provider.model_validate(
-            {"id": "p1", "name": "Anadolu", "lead_time_days": 21, "payment_terms": "Net 45"}
+            {
+                "id": "p1",
+                "name": "Anadolu",
+                "lead_time_days": 21,
+                "payment_terms": "Net 45",
+            }
         )
         assert p.lead_time_days == 21
         assert p.payment_terms == "Net 45"
 
     def test_a_seven_that_survived_the_migration_is_a_term(self):
         """Post-migration, a 7 is a 7 somebody typed — not a default."""
-        p = Provider.model_validate({"id": "p1", "name": "Anadolu", "lead_time_days": 7})
+        p = Provider.model_validate(
+            {"id": "p1", "name": "Anadolu", "lead_time_days": 7}
+        )
         assert p.lead_time_days == 7
 
 
@@ -116,7 +123,11 @@ class TestNoModelReAssertsADroppedDefault:
     @pytest.mark.parametrize("model,field", DROPPED)
     def test_field_accepts_none(self, model: type[BaseModel], field: str):
         """Non-Optional is the half that turns a fabricated value into a crash."""
-        base = {"id": "x", "name": "n"} if model is Provider else {"id": "x", "manager_id": "u"}
+        base = (
+            {"id": "x", "name": "n"}
+            if model is Provider
+            else {"id": "x", "manager_id": "u"}
+        )
         model.model_validate({**base, field: None})
 
 
@@ -182,7 +193,14 @@ class TestRepositoryDoesNotLoseTheWholeQuery:
     @pytest.mark.asyncio
     async def test_an_all_null_provider_row_survives_end_to_end(self):
         """The post-migration row, through the repository rather than the model."""
-        rows = [{"id": "p1", "name": "Anadolu", "lead_time_days": None, "payment_terms": None}]
+        rows = [
+            {
+                "id": "p1",
+                "name": "Anadolu",
+                "lead_time_days": None,
+                "payment_terms": None,
+            }
+        ]
         out = await self._repo(rows).find_many({"is_active": True})
         assert len(out) == 1
         assert out[0].lead_time_days is None

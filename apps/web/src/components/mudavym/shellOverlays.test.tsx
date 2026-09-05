@@ -351,7 +351,6 @@ describe('the pinned strings are origin/main\'s own', () => {
     // a skipped provenance check must be visible rather than read as a pass.
     expect(typeof available).toBe('boolean');
     if (!available) {
-      // eslint-disable-next-line no-console
       console.warn('provenance check skipped: origin/main is not readable in this checkout');
     }
   });
