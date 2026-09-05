@@ -165,14 +165,17 @@ describe('CommunicationsNext', () => {
    * Reading the source is the only check that can see that.
    */
   it('no rebuilt page imports the legacy template builders', async () => {
-    const { readFileSync, readdirSync, statSync } = await import('node:fs');
+    const { readFileSync, readdirSync } = await import('node:fs');
     const { join } = await import('node:path');
     const root = join(process.cwd(), 'src', 'pages');
     const offenders: string[] = [];
     const walk = (dir: string, insideNext: boolean) => {
-      for (const entry of readdirSync(dir)) {
+      // withFileTypes: the kind comes back WITH the entry, so there is no
+      // separate stat of the same path to go stale between check and read.
+      for (const dirent of readdirSync(dir, { withFileTypes: true })) {
+        const entry = dirent.name;
         const full = join(dir, entry);
-        if (statSync(full).isDirectory()) {
+        if (dirent.isDirectory()) {
           walk(full, insideNext || entry === 'next');
           continue;
         }

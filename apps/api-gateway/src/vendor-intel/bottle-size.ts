@@ -724,16 +724,30 @@ function classSegments(openTag: string): string[] {
     .filter(Boolean);
 }
 
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  rsquo: "'",
+  ndash: "–",
+  mdash: "—",
+  nbsp: " ",
+};
+
 /** The handful of entities that appear in a product title. */
 function decodeEntities(s: string): string {
+  // ONE pass. The old chain decoded `&amp;` first and then ran five more
+  // replacements over its own output, so `&amp;quot;` came out as `"` -- a
+  // double-unescape. A single regex with a lookup never re-scans what it wrote.
   return s
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;|&apos;|&rsquo;/g, "'")
-    .replace(/&ndash;/g, "–")
-    .replace(/&mdash;/g, "—")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d{2,5});/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(
+      /&(?:(amp|quot|apos|rsquo|ndash|mdash|nbsp)|#0?(\d{2,5}));/g,
+      (whole: string, name?: string, digits?: string) => {
+        if (name) return ENTITIES[name] ?? whole;
+        if (digits) return String.fromCharCode(Number(digits));
+        return whole;
+      },
+    )
     .trim();
 }
 

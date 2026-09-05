@@ -274,6 +274,8 @@ def test_the_prefix_file_fails_and_the_fixed_one_passes(tmp_path):
         ).stdout
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         pytest.skip(f"{THE_COMMIT} is not reachable from this checkout: {e}")
+        raise  # pytest.skip already raises; this makes that visible to readers
+               # and to analysis, so `prefix` below is provably assigned.
 
     for src in sorted(MIGRATIONS.glob("*.sql")):
         (tmp_path / src.name).symlink_to(src)

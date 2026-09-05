@@ -189,14 +189,12 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
         )}
       </Register>
 
-      {restaurantId && (
-        <InviteTeamDialog
-          open={inviting}
-          onClose={() => { setInviting(false); team.reload(); }}
-          restaurantId={restaurantId}
-          anchorRef={inviteAnchor}
-        />
-      )}
+      <InviteTeamDialog
+        open={inviting}
+        onClose={() => { setInviting(false); team.reload(); }}
+        restaurantId={restaurantId}
+        anchorRef={inviteAnchor}
+      />
     </>
   );
 }

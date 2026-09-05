@@ -848,20 +848,22 @@ def _synthetic_schema(extra: str = "") -> str:
     floor being lowered for it.
     """
     out = [
-        "create table public.procurement_orders (\n"
-        "  id uuid not null,\n"
-        "  order_number varchar(50) not null,\n"
-        "  restaurant_id uuid not null,\n"
-        "  inventory_id uuid not null,\n"
-        "  status varchar(50) not null,\n"
-        "  constraint procurement_orders_pkey primary key (id)\n"
-        ");\n",
-        "create table public.procurement_order_items (\n"
-        "  id uuid not null,\n"
-        "  order_id uuid not null,\n"
-        "  master_wine_id uuid,\n"
-        "  bottles_per_unit integer\n"
-        ");\n",
+        """create table public.procurement_orders (
+  id uuid not null,
+  order_number varchar(50) not null,
+  restaurant_id uuid not null,
+  inventory_id uuid not null,
+  status varchar(50) not null,
+  constraint procurement_orders_pkey primary key (id)
+);
+""",
+        """create table public.procurement_order_items (
+  id uuid not null,
+  order_id uuid not null,
+  master_wine_id uuid,
+  bottles_per_unit integer
+);
+""",
         "create table public.price_history (id uuid not null, price numeric);\n",
     ]
     for i in range(MIN_TABLES_WITH_COLUMNS + 5):

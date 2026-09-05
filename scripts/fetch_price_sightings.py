@@ -82,12 +82,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -252,7 +254,7 @@ def _as_float(value: Any) -> float | None:
         f = float(value)
     except (TypeError, ValueError):
         return None
-    return f if f == f else None  # reject NaN
+    return None if math.isnan(f) else f  # reject NaN
 
 
 def _as_int(value: Any) -> int | None:
@@ -506,7 +508,11 @@ def _get(url: str, timeout: int = 60) -> bytes:
         "Accept": "application/json",
     })
     token = _env("SOCRATA_APP_TOKEN")
-    if token and "data.oregon.gov" in url:
+    # The HOST, not a substring: "data.oregon.gov" appears anywhere in
+    # "https://evil.example/?x=data.oregon.gov", and the app token must not
+    # travel to whatever that is.
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    if token and (host == "data.oregon.gov" or host.endswith(".data.oregon.gov")):
         req.add_header("X-App-Token", token)
     with urllib.request.urlopen(req, timeout=timeout) as res:
         return res.read()
@@ -559,7 +565,7 @@ def load_fixture(name: str) -> list[dict[str, Any]]:
 SOURCES = {
     "iowa": {
         "fixture": "iowa-liquor-products-2026-09-01.sample.ndjson",
-        "fetch": lambda: fetch_iowa(),
+        "fetch": fetch_iowa,
         "parse": parse_iowa,
         # Monthly file. Two months without a new report_as_of means the publication
         # stopped, or we are reading a cached copy, and either way the numbers are not
@@ -568,7 +574,7 @@ SOURCES = {
     },
     "oregon": {
         "fixture": "oregon-olcc-pricing-2026-09-01.sample.json",
-        "fetch": lambda: fetch_oregon(),
+        "fetch": fetch_oregon,
         "parse": parse_oregon,
         "max_age_days": 62,
     },

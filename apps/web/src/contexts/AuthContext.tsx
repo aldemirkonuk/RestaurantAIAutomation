@@ -397,9 +397,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
         if (cancelled) return
         const r = data.role as string | null | undefined
-        if (!cancelled && r && ['owner', 'manager', 'staff'].includes(r)) {
+        if (r && ['owner', 'manager', 'staff'].includes(r)) {
           setActiveRole(r as 'owner' | 'manager' | 'staff')
-        } else if (!cancelled) setActiveRole(null)
+        } else setActiveRole(null)
       } catch {
         if (!cancelled) setActiveRole(null)
       }

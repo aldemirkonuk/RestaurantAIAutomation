@@ -134,8 +134,13 @@ export class SettingsService {
     // One audit row per SAVE, carrying only the keys that actually moved. A row
     // per key would fill the ledger with a burst every time somebody toggles
     // two switches, and a row per save with no diff would say nothing at all.
+    // The keys are walked from the ALLOWLIST, not from the request. Going
+    // through `Object.keys(patch)` launders a request-controlled string into a
+    // property write (`__proto__` included); iterating the constant keeps the
+    // allowlist visible at the write itself.
     const fields: Record<string, FieldChange> = {};
-    for (const key of Object.keys(patch)) {
+    for (const key of ACTIVE_FEATURE_FLAG_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
       const from = before ? (before[key] ?? null) : null;
       const to = after[key] ?? patch[key];
       if (from !== to) fields[key] = { from, to };

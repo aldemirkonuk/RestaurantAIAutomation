@@ -399,6 +399,10 @@ describe("a reply from the book reaches the book, and nothing else does", () => 
 
     const run = await service.readDue(CURSOR + 300_000);
 
+    // The run must SAY it mirrored. A publish with a run reporting zero is the
+    // absence-as-health shape this suite exists to catch.
+    expect(run.mirrored).toBe(1);
+    expect(run.outcomes[0].mirrored).toBe(1);
     expect(publish).toHaveBeenCalledTimes(1);
     const [exchange, routingKey, event] = publish.mock.calls[0];
     expect(exchange).toBe("email.events");

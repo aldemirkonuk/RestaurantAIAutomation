@@ -124,7 +124,11 @@ export interface BookEntry {
 const COMMITMENT_RE = COMMITMENT_PATTERN_SOURCES.map((s) => new RegExp(s, "i"));
 
 /** An unresolved merge token: `{{ anything }}`. */
-const UNRESOLVED_TOKEN_RE = /\{\{\s*[^}]+\s*\}\}/;
+// `[^{}]+` between the literal braces: one quantifier, nothing adjacent for it
+// to share a character with, so the match is linear in the letter's length. The
+// earlier `\s*[^}]+\s*` let a space match either side and backtracked
+// quadratically on a body full of them.
+const UNRESOLVED_TOKEN_RE = /\{\{[^{}]+\}\}/;
 
 @Injectable()
 export class HouseLettersService {
@@ -871,12 +875,15 @@ export function mergeFieldsIn(
 ): { key: string }[] {
   const seen = new Set<string>();
   const out: { key: string }[] = [];
-  const re = /\{\{\s*([^}\s][^}]*?)\s*\}\}/g;
+  // Linear for the same reason as UNRESOLVED_TOKEN_RE; the surrounding
+  // whitespace the old pattern stripped is stripped below instead.
+  const re = /\{\{([^{}]+)\}\}/g;
   for (const source of [subject, body]) {
     let m: RegExpExecArray | null;
     re.lastIndex = 0;
     while ((m = re.exec(source)) !== null) {
       const key = m[1].trim();
+      if (!key) continue;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({ key });
