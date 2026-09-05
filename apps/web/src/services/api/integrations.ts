@@ -29,6 +29,55 @@ export interface DataHandlingDisclosure {
   doesNotRead: string
   landsIn: string
   visibleTo: string
+  /**
+   * How long what is fetched is kept, and what a disconnect does to it
+   * (ADR 0118, retention). Optional on the client only, for the same reason the
+   * block itself is: a gateway deployed before 2026-09-05 does not send it, and
+   * the page renders nothing rather than inventing a reassurance about
+   * deletion.
+   */
+  keptFor?: string
+}
+
+/** One statute, with the URL it was read from and the date it was read. */
+export interface StatuteCitation {
+  statute: string
+  says: string
+  url: string
+  fetchedOn: string
+}
+
+/**
+ * `GET /communications/retention/disclosure` — the per-house half of the
+ * retention disclosure (ADR 0118).
+ *
+ * The gateway route lives under `communications` because retention of mirrored
+ * mail is a fact about the reading, not about the integration record; it is
+ * called from here because the consent screen is the one page that needs it.
+ * Nothing on the page may compose these sentences or this figure itself.
+ */
+export interface RetentionDisclosure {
+  restaurantId: string
+  figureDays: number
+  figureFrom: 'stored_derivation' | 'measured_now'
+  storedAt: string | null
+  wouldBeDays: number | null
+  basis: string
+  jurisdiction: {
+    code: string
+    label: string
+    factsFloorYears: number
+    bindsCorrespondence: boolean
+    why: string
+    defaultedBecause: string | null
+    citations: StatuteCitation[]
+  }
+  storageLimitation: StatuteCitation[]
+  split: string
+  revocation: string
+  windowIntro: string
+  /** Which grants this disclosure covers. Never hard-code an id against it. */
+  appliesTo: string[]
 }
 
 export interface IntegrationCatalogEntry {
@@ -40,6 +89,14 @@ export interface IntegrationCatalogEntry {
   scopes: ScopeDisclosure[]
   notRequested: string[]
   dataHandling?: DataHandlingDisclosure
+  /**
+   * Whether consenting puts a copy of the person's mail into the house's book,
+   * and therefore whether the per-house retention disclosure applies (ADR
+   * 0118). Optional on the client only: a gateway deployed before 2026-09-05
+   * does not send it, and on such a deployment there is no retention rule to
+   * describe, so absent reads as false rather than as unknown.
+   */
+  mirrorsMail?: boolean
   available: boolean
   unavailableReason: string | null
 }
@@ -85,5 +142,21 @@ export const integrationsApi = {
 
   async disconnect(id: IntegrationId): Promise<void> {
     await apiClient.delete(`/integrations/oauth/${id}`)
+  },
+
+  /**
+   * How long this house keeps mirrored mail, and what revoking does to it.
+   *
+   * Separate from `getCatalog` on purpose: the catalogue is the same for every
+   * house on the deployment and this is not — the figure is derived from THIS
+   * restaurant's own disputes and the floor from THIS restaurant's country. A
+   * single call would have made a per-house number look like a constant.
+   */
+  async getRetentionDisclosure(): Promise<RetentionDisclosure> {
+    const { data } = await apiClient.get<{
+      success: boolean
+      retention: RetentionDisclosure
+    }>('/communications/retention/disclosure')
+    return data.retention
   },
 }

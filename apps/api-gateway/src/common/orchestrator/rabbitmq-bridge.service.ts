@@ -567,6 +567,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     // the global limit(1) cross-tenant misrouting. When absent (legacy Gmail path) we fall back
     // to the prior behaviour: unscoped match, and triage-safe attribution for cold email.
     const restaurantIdFromEvent: string | null = payload.restaurant_id || null;
+    // ADR 0118 (retention) — which reading grant mirrored this message out of a
+    // person's private mailbox, or null for the shared mailbox and the
+    // dedicated-domain webhook, neither of which any personal grant covers.
+    // Carried onto the row so a revocation can delete exactly the mail that
+    // grant produced and nothing else. Published by
+    // `HouseInboxService.readOneGrant`.
+    const mirroredByGrantId: string | null =
+      payload.mirrored_by_grant_id || null;
 
     try {
       // 1. Find provider by email (scoped to the attributed restaurant when we know it).
@@ -763,6 +771,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             transport: transportSignals,
           },
           confidence_score: orderId ? 1.0 : null,
+          mirrored_by_grant_id: mirroredByGrantId,
         })
         .select("id")
         .single();

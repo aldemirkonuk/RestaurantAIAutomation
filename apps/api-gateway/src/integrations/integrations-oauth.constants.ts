@@ -40,6 +40,23 @@ export interface DataHandlingDisclosure {
   landsIn: string;
   /** Who can then read it, and who cannot. */
   visibleTo: string;
+  /**
+   * How long what is fetched is kept, and what a disconnect does to it
+   * (ADR 0118, retention, decided 2026-09-05).
+   *
+   * The FIFTH question, and required like the other four. It is the one a scope
+   * list is furthest from answering and the one every retention regime here
+   * actually asks for in words: GDPR Art. 5(1)(e) wants the purpose the period
+   * is tied to, and CCPA Cal. Civ. Code s.1798.100(a)(3) wants "the length of
+   * time... or, if that is not possible, the criteria used to determine that
+   * period". A grant that keeps nothing says so here; that is a real answer and
+   * a different one from silence.
+   *
+   * The NUMBER is not here, because it is per-house and changes quarterly.
+   * `GET /communications/retention/disclosure` serves the figure and its
+   * derivation; this field is the rule the figure is an instance of.
+   */
+  keptFor: string;
 }
 
 export interface IntegrationDefinition {
@@ -107,6 +124,8 @@ export const INTEGRATION_DEFINITIONS: Record<
         "Nothing from Drive is copied into Mudavym. The grant is used to WRITE exports out; the connected address is stored on `integration_oauth_connections.account_email`, and the tokens beside it are AES-256-GCM encrypted.",
       visibleTo:
         "You, on /profile. A manager or owner of a restaurant this grant is recorded against sees that it exists and whose it is, and may stop the house using it — they can never read your Drive through it and can never revoke it for you.",
+      keptFor:
+        "Nothing from your Drive is kept, because nothing from it is copied here. What is kept is the grant row itself — the connected address and the encrypted tokens — and disconnecting drops the tokens on the spot and marks the row revoked. The files this app wrote into your Drive are yours and stay in your Drive; disconnecting does not delete them, and neither does anything else here.",
     },
   },
   /**
@@ -166,6 +185,8 @@ export const INTEGRATION_DEFINITIONS: Record<
         "The letters this house writes, on `procurement_conversations`, alongside the vendor replies already there. The letter is written before it is sent and is readable in this house's conversation book from the moment it is queued.",
       visibleTo:
         "Everyone who works in this restaurant, because a letter to a vendor is the house's record and a second manager must be able to pull one back inside its two-minute window. Nobody outside this restaurant.",
+      keptFor:
+        "Nothing of yours is kept, because nothing of yours is read. A letter this house sent is the HOUSE's own record of what it told a vendor, and it stays on the order under this restaurant's bookkeeping retention — disconnecting the grant stops future letters leaving from your mailbox and does not erase the ones already sent, any more than closing an account unsends a letter.",
     },
   },
   /**
@@ -232,6 +253,8 @@ export const INTEGRATION_DEFINITIONS: Record<
         "This restaurant's conversation book — `procurement_conversations` — through the same path a reply to the shared mailbox already takes, so a house-mailbox reply and a shared-mailbox reply are the same kind of row. Attachments land in the private `vendor-attachments` store.",
       visibleTo:
         "Everyone who works in this restaurant, which is the point of the grant: a vendor reply stops being private to whoever's inbox it happened to reach. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it — either one stops the reading on the next run.",
+      keptFor:
+        "A reply is kept as two separate things. The MAIL ITSELF — the body, its headers and any attachment — is a copy of your mailbox and has a window: the longest dispute this restaurant has actually recorded, plus a margin, worked out again every quarter from this restaurant's own conversations. When it runs out, the body, headers and attachment bytes are deleted and the row says when and why. Disconnecting deletes that raw mail straight away, without waiting for the window. What the ORDER needs from the reply — a quoted price, a confirmed date, a commitment and the exact sentence it was stated in — is written onto this restaurant's own order record and stays there under the bookkeeping law of the country the restaurant is in, because that is the house's record and not a copy of your mailbox. The current figure, its derivation and the statute behind the floor are on this page.",
     },
   },
   excel: {
@@ -273,6 +296,8 @@ export const INTEGRATION_DEFINITIONS: Record<
         "Nothing from OneDrive is copied into Mudavym. The grant is used to WRITE report workbooks out; the connected profile name is stored on `integration_oauth_connections.account_email` and the tokens beside it are AES-256-GCM encrypted.",
       visibleTo:
         "You, on /profile. A manager or owner of a restaurant this grant is recorded against sees that it exists and whose it is, and may stop the house using it — never read through it, never revoke it for you.",
+      keptFor:
+        "Nothing from OneDrive is kept, because nothing from it is copied here. What is kept is the grant row — the connected profile name and the encrypted tokens — and disconnecting drops the tokens on the spot and marks the row revoked. The workbooks this app wrote into your OneDrive are yours and stay there; disconnecting does not delete them.",
     },
   },
 };
@@ -280,6 +305,22 @@ export const INTEGRATION_DEFINITIONS: Record<
 export const INTEGRATION_IDS = Object.keys(
   INTEGRATION_DEFINITIONS,
 ) as IntegrationId[];
+
+/**
+ * The grants that MIRROR a person's mail into this house's conversation book,
+ * and are therefore the grants whose revocation deletes raw mail (ADR 0118,
+ * retention, decided 2026-09-05).
+ *
+ * A LIST AND NOT A PREDICATE ON THE ID. `gmail_send` is a Gmail grant and
+ * mirrors nothing — it hands Gmail a message and cannot read one back
+ * (`dataHandling.reads` above says so). A rule like "any id starting with
+ * gmail_" would delete on revoking the sending grant, which stores no raw mail
+ * to delete and would make the consent screen's promise describe an act that
+ * never happens. Adding a mirroring grant means adding it here; the retention
+ * disclosure route serves this list as `appliesTo`, so the consent screen never
+ * hard-codes it either.
+ */
+export const MIRRORING_INTEGRATION_IDS: IntegrationId[] = ["gmail_read"];
 
 export function isIntegrationId(value: string): value is IntegrationId {
   return Object.prototype.hasOwnProperty.call(INTEGRATION_DEFINITIONS, value);

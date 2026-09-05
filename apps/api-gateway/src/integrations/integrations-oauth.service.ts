@@ -5,17 +5,25 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { TokenCryptoService } from "../common/crypto/token-crypto.service";
+// The SERVICE file, not `retention.module`. Importing the module here would put
+// `AuthModule` on this file's require chain twice over; the service itself
+// imports only DatabaseService and NotificationsService, so requiring it
+// directly adds no module edge. `IntegrationsModule` imports `RetentionModule`
+// so the injector has something to supply.
+import { RawMailRetentionService } from "../communications/retention/raw-mail-retention.service";
 import {
   INTEGRATION_DEFINITIONS,
   IntegrationDefinition,
   IntegrationId,
   IntegrationProvider,
+  MIRRORING_INTEGRATION_IDS,
   isIntegrationId,
   scopeStringFor,
 } from "./integrations-oauth.constants";
@@ -111,6 +119,18 @@ export class IntegrationsOauthService {
     private readonly db: DatabaseService,
     private readonly config: ConfigService,
     private readonly crypto: TokenCryptoService,
+    /**
+     * ADR 0118 (retention, 2026-09-05) — revoking a reading grant deletes the
+     * raw mail it mirrored, immediately.
+     *
+     * `@Optional` because this class is ALSO provided bare from its file inside
+     * `CommunicationsModule` (see the long note there), where no injector can
+     * supply this. It is not a silent fallback: `disconnect` REFUSES to report
+     * success for a mirroring grant when it is absent, because a revocation
+     * that quietly deleted nothing is exactly the promise the consent screen
+     * makes and does not keep.
+     */
+    @Optional() private readonly rawMailRetention?: RawMailRetentionService,
   ) {}
 
   // ── configuration ────────────────────────────────────────────────────────
@@ -836,7 +856,9 @@ export class IntegrationsOauthService {
   async disconnect(userId: string, integrationId: IntegrationId) {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
-      .select("id, provider, refresh_token_encrypted, access_token_encrypted")
+      .select(
+        "id, provider, restaurant_id, refresh_token_encrypted, access_token_encrypted",
+      )
       .eq("user_id", userId)
       .eq("integration_id", integrationId)
       .is("revoked_at", null)
@@ -873,7 +895,36 @@ export class IntegrationsOauthService {
       );
     }
 
-    return { success: true };
+    // ADR 0118 (retention) — "stop reads AND delete the raw mail" is one
+    // promise, made on the consent screen before the grant. The stopping is
+    // above (no token, `revoked_at` set, and `getAccessToken` is the single
+    // door the reader uses). The deleting is here, and it happens for every
+    // grant that can mirror mail into the house's book.
+    //
+    // It runs AFTER the local record is revoked, not before: if the deletion
+    // fails, the grant is already dead and no further mail arrives, whereas
+    // deleting first and failing to revoke would leave a live reader refilling
+    // what was just deleted.
+    const mirrors = MIRRORING_INTEGRATION_IDS.includes(integrationId);
+    if (mirrors) {
+      if (!this.rawMailRetention) {
+        // Loud, not silent. The grant IS revoked; what did not happen is the
+        // deletion, and the person is told that rather than shown a success
+        // that did not include the half they care about.
+        throw new InternalServerErrorException(
+          "The grant was revoked and nothing more will be read, but the raw mail it mirrored was NOT deleted: the retention service is not available here. The mail is still in this restaurant's conversation book.",
+        );
+      }
+      const run = await this.rawMailRetention.sweepForRevokedGrant({
+        connectionId: String(data.id),
+        restaurantId: String(data.restaurant_id ?? ""),
+        ownerUserId: userId,
+      });
+      this.logger.log(`disconnect ${integrationId}: ${run.says}`);
+      return { success: true, retention: run };
+    }
+
+    return { success: true, retention: null };
   }
 
   private async revokeAtProvider(provider: string, token: string) {

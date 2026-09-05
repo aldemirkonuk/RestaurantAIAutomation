@@ -505,6 +505,14 @@ export class HouseInboxService {
                 .map((h) => [h.name!.toLowerCase(), h.value]),
             ),
             source: "house-inbox",
+            // WHICH GRANT MIRRORED IT (ADR 0118, retention, 2026-09-05).
+            // `source: "house-inbox"` says a personal mailbox was the origin
+            // and nothing more, and the bridge never read it. Without the
+            // connection id, a revocation could not find the rows it must
+            // delete except by deleting every reply in the house — including
+            // shared-mailbox replies that no personal grant covers. The bridge
+            // writes this onto `procurement_conversations.mirrored_by_grant_id`.
+            mirrored_by_grant_id: connectionId,
           },
         );
 

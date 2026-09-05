@@ -47,11 +47,28 @@
     made.
   - **2026-09-05: founder-question 7 researched, not answered.** The founder
     asked which of three retention shapes is SOTA "for ML purposes and
-    training, and for privacy" — see **"Proposed, not decided: retention"**
-    below and the evidence table at
-    `.planning/07-reference/messaging-senders.md` §8. Nothing is built or
-    decided by this entry; it exists so the founder's question is answered with
+    training, and for privacy" — see **D12-D15** below and the evidence table at
+    `.planning/07-reference/messaging-senders.md` §8. Nothing was built or
+    decided by that entry; it existed so the founder's question was answered with
     fetched sources rather than a plausible-sounding default.
+  - **2026-09-05 (later the same day): founder-question 7 ANSWERED, and built.**
+    Shown the recommendation's four forks, the founder decided all four in
+    session: **the split** (a mirrored reply is two objects — raw mail with a
+    stated window that also goes on revocation, and facts that keep the order's
+    paper trail under the house's bookkeeping retention); **the window basis**
+    (the longest open dispute the house has recorded plus a stated margin,
+    measured from the house's own conversations, re-derived quarterly, printed
+    on the consent screen with its basis); **jurisdiction** (per house from its
+    country, each rule naming its floor and its source, a house with no country
+    recorded getting the strictest rule and a sentence why); and **revocation**
+    (stop reads AND delete the raw mail, facts stay, the consent screen says so
+    before the grant). The section below moves from a recommendation to
+    **D12-D15**, built in `apps/api-gateway/src/communications/retention/` with
+    migration `20260905190000_a_mirrored_reply_states_how_long_it_is_kept.sql`.
+    The consent screen no longer answers the retention question with silence.
+    One question stays open and is named rather than defaulted: **a per-house ML
+    personalization model is not wanted until asked for**, so nothing here builds
+    toward it (question 5 of the old list, now D15's own note).
 - **Date:** 2026-09-04
 - **Decider:** Aldemir (founder) — the sender rule, the send costs, the recipient
   rule, the paid tier and the staff-broadcast exclusion were all decided in
@@ -381,6 +398,163 @@ being read — `where` states what IS happening, not what could be — and the w
 then name which of the two doors is shut, so nobody is sent to connect a grant
 they already have.
 
+### D12 — A mirrored reply is TWO objects, and they get two rules (founder, 2026-09-05)
+
+The founder's first answer to question 7. The three shapes he was offered —
+(A) keep while the relationship is open and delete on revocation, (B) keep with
+the house's records regardless, (C) a fixed 90-day window — are all answers to
+"how long do we keep *a vendor reply*", and a vendor reply is not one thing.
+
+- **The RAW MAIL** — `procurement_conversations.message_text`, `email_headers`,
+  `content`, and the attachment bytes in the private `vendor-attachments`
+  bucket. This is a copy of somebody's mailbox. It has a stated window (D13) and
+  it goes on revocation (D15).
+- **The FACTS** — `detected_intent`, `detected_sentiment`, `rolling_summary`,
+  and every branch of `conversation_context` the understand step writes
+  (`analysis.vendor_offers`, `key_facts`, `commercial_terms`, `classification`;
+  `inbound-responder.service.ts:308-339`), plus `procurement_orders.*` and
+  `negotiation_facts.exact_quote`. These are the house's own procurement record
+  and keep the order's paper trail under the bookkeeping floor in D14. Neither
+  the window nor a revocation touches them.
+
+This is D4's own line — a figure goes into a letter as the engine's computed
+sentence, never scraped back out of a reply — run in the other direction.
+
+**What made the split safe to build, and it was not in the recommendation.**
+The recommendation's own strongest counter-argument was that structured
+extraction captures a number and loses the wording, so deleting the body leaves
+the house holding a paraphrase of its own making. Measured on this tree:
+`public.negotiation_facts.exact_quote` is `text NOT NULL` (baseline:3866) and
+holds the vendor's own sentence beside the number, with `commitment_type` and
+`stated_by`. The counter-argument is weaker than it read, and it is weaker
+because of a table nobody cited, not because the argument was wrong.
+
+### D13 — The window is the house's longest dispute plus one re-derivation interval
+
+The founder's second answer: *the longest open dispute the house has recorded,
+plus a margin, stated; measured from the house's own conversations; re-derived
+quarterly; the consent screen prints the current figure and its basis.*
+
+- **A dispute** is a `procurement_credits` row — the house's own claim ledger
+  (open, requested, promised, credited, rejected, written_off; baseline:4353).
+- **Its span** runs from the FIRST MESSAGE ON THE DISPUTED ORDER, not from the
+  claim's `opened_at`: a claim is opened after the argument has been running,
+  and the mail that matters is the mail from before it was opened.
+- **It ends** at `settled_at`, or at today while it is still open — which is
+  what "the longest OPEN dispute" means.
+- **The margin is 92 days and it is derived, not chosen.** The figure is only
+  re-derived quarterly, so a dispute that opens the day after a derivation is
+  invisible to the figure for up to one quarter — 92 days at its longest (1 July
+  to 1 October). A margin shorter than the gap between two derivations would let
+  raw mail expire on a figure a dispute opened since has already made too short,
+  with nothing reporting it. The margin is exactly one re-derivation interval:
+  the number the cadence forces. `retention-rules.spec.ts` fails if the two ever
+  come apart.
+- **A house with no dispute recorded gets the margin alone**, `basis_kind` is
+  `no_dispute_recorded`, and `longest_dispute_days` is **NULL, never 0** — 0
+  would read as "we measured a dispute and it lasted no time". This is the
+  SHORTEST window the rule can produce, which is the right direction: no
+  evidence of long disputes means the most privacy-preserving answer, and it
+  lengthens the first time a dispute actually runs long. **Measured, this is the
+  ordinary case and not the edge case:** on 2026-09-05 the one production tenant
+  readable through the local gateway (`550e8400-e29b-41d4-a716-446655440000`)
+  returned `{"items":[]}` from `GET /procurement/credits` and
+  `{"total":0}` from `GET /conversations/stats/overview`.
+- **A failed read is never "no disputes."** supabase-js resolves
+  `{ data, error }`, so a swallowed error would turn a database outage into
+  "this house has never disputed anything" and shorten the window on the
+  strength of it. `computeWindow` throws instead, and the spec asserts the
+  sentence.
+
+### D14 — The floor for the FACTS is per house, from its country, with the default stated
+
+The founder's third answer. `communications/retention/retention-rules.ts` is the
+table; every row names its statute, quotes the operative words, and carries the
+URL and the date it was fetched (all 2026-09-05, by this session).
+
+| Rule | Floor for the facts | Named statutes | Reaches the correspondence itself? |
+|---|---|---|---|
+| **TR** | 10 years | TTK 6102 Art. 82(5); VUK 213 Art. 253 (5 years) | **Yes** — Art. 82(1)(b)-(c) + 82(2) |
+| **GB** | 6 years | Companies Act 2006 s.388(4) (3 private / 6 public); HMRC's own six | No |
+| **US** | 7 years | IRS periods of limitation (3 / 6 / 7; 4 for employment tax) | No |
+| **US-CA** | 7 years | the above, plus CDTFA Pub. 116 (4 years) and CCPA s.1798.100(a)(3)/(c) | No |
+| **UNKNOWN** | 10 years | TTK 6102 Art. 82, as the strictest row | Yes, by inheritance |
+
+**The default carries a sentence, not just a number.** A house with no
+`restaurants.country` gets the UNKNOWN row and the consent screen prints
+`defaultedBecause` verbatim: the strictest rule is applied rather than a guess,
+because a floor that is too long costs storage and a floor that is too short
+costs a record the house may be legally required to produce. A country the table
+has not researched is UNKNOWN too — not the nearest guess — because the table's
+authority is the statutes in it.
+
+**The primary Turkish text was fetched this pass, closing §8.6's own caveat.**
+`messaging-senders.md` §8.6 read the Turkish figures from a law firm's Q&A and
+flagged them as one step short of primary because `mevzuat.gov.tr` would not
+resolve. It still will not (`unable to verify the first certificate`,
+2026-09-05), but the consolidated statutes are published on two other `.gov.tr`
+hosts and were read directly: TTK 6102 from the Ministry of Justice
+(`mgm.adalet.gov.tr`) and VUK 213 from `hukukmusavirligi.diyanet.gov.tr`.
+
+**And the primary text moved the finding.** TTK Art. 82(1)(b) requires a trader
+to keep *"alınan ticari mektupları"* — the commercial letters RECEIVED — and
+82(2) defines a commercial letter as *"bir ticari işe ilişkin tüm yazışmalar"*,
+all correspondence relating to a commercial matter, for ten years from the end
+of the calendar year of the correspondence. A vendor's reply about an order is
+squarely inside that, which is the "unless Union or Member State law requires
+storage" carve-out of GDPR Art. 28(3)(g) landing on the raw mail rather than
+only on the facts. **The reconciliation this build rests on is that Mudavym
+holds a MIRROR and the house's own record is the message still sitting in the
+mailbox it was read from** — deleting a copy does not destroy the original. That
+is a legal reading, not a certainty, and it is a founder-only question below
+rather than a settled point.
+
+**A floor is not a ceiling and the two are not mixed.** The floors above bind
+the facts. The raw-mail window comes from D13 and from no statute at all,
+because no statute compels a *processor* to hold a *copy* of a person's mailbox
+— what the storage-limitation regimes (GDPR Art. 5(1)(e), KVKK Art. 4(2)(ç),
+CCPA s.1798.100(c)) require is the opposite direction, and they are listed
+separately in `STORAGE_LIMITATION_SOURCES` for exactly that reason.
+
+### D15 — Revoking the grant deletes the raw mail, immediately, and says so first
+
+The founder's fourth answer: *stop reads and delete the raw mail; facts stay;
+the consent screen says so before the grant.*
+
+- **Scoped to the grant, not the house.** `procurement_conversations
+  .mirrored_by_grant_id` is new, because the row did not know. The reader
+  published `source: "house-inbox"` and the bridge never read it, so before this
+  column a revocation could only have deleted every reply in the house —
+  including shared-mailbox replies that no personal grant covers, and including a
+  second person's mirrored replies.
+- **The body is tombstoned, not emptied.** `message_text` is `text NOT NULL` on
+  the production baseline and dropping that constraint is not this change's
+  business, so the sweep writes a sentence naming the date and the reason. An
+  empty string would read as "the vendor sent nothing".
+- **The order of operations is revoke-then-delete.** A deletion that failed
+  after a revoke leaves a dead grant; a revoke that failed after a deletion
+  leaves a live reader refilling what was just deleted.
+- **A revocation whose deletion cannot run REFUSES.** With no retention service
+  in the injector, `disconnect` throws rather than returning `{success: true}`
+  for a revocation whose second half silently did not happen.
+- **A count is recorded whether or not anything changed** (ADR 0078's rule).
+  `house_mail_retention_sweeps` has `considered` and `deleted` as NOT NULL with
+  no default, so an omitted count fails instead of reading as zero, and a sweep
+  that deleted nothing still leaves a row. A table holding only the sweeps that
+  deleted something would make every rate over it 1.0 by construction.
+- **The consent screen prints all of it before the grant**, from the gateway
+  (`GET /communications/retention/disclosure`), never composed on the page. If
+  that read fails, the Continue button for a mirroring grant is **disabled** —
+  because a button that still works when the retention answer could not be
+  loaded is this ADR's own silence with a step in front of it.
+- **The ML axis is answered by not building it.** Google's Limited Use clause
+  bans cross-tenant training on the raw body however long it is kept, and the
+  one lawful shape — a per-house personalization model — **is not wanted until
+  the founder asks for it** (2026-09-05). Nothing here builds toward it, and
+  there is no consent-screen disclosure for it, which is the honest state: a
+  disclosure for a model nobody has asked for would be a promise about a feature
+  that does not exist.
+
 ## Alternatives rejected
 
 1. **Send through `GmailService`, and put the house's name in the From
@@ -570,6 +744,45 @@ they already have.
   which is the correct behaviour and is why the entry is part of this change
   rather than a follow-up.
 
+### From the retention half (D12-D15, 2026-09-05)
+
+- **THE DELETION IS NOT COMPLETE, AND THAT IS STATED RATHER THAN IMPLIED.**
+  `public.conversation_embeddings.message_text` is `text NOT NULL` and holds a
+  second copy of a message's text beside its vector, written by
+  `services/agent-orchestrator/agents/provider_conversation_agent.py:1161-1175`.
+  That table carries `session_id`, `provider_id` and `restaurant_id` and **no
+  `conversation_id`**, so there is no deterministic join from a mirrored
+  conversation row to its embedding row and this sweep cannot reach it. A
+  "deleted" mirrored reply whose text also reached that table still has its text
+  in the database. Filed in `06-pages/communications.md` §9. Closing it needs
+  either a `conversation_id` on that table or a rule that the Python agent never
+  embeds a mirrored row, and both are outside this change.
+- **Google's required Limited Use sentence is STILL not on the consent screen.**
+  `messaging-senders.md` §8.1 measured its absence on 2026-09-04 and it is still
+  absent: no `dataHandling` field carries "The use of information received from
+  Google Workspace APIs will adhere to the Google User Data Policy, including the
+  Limited Use requirements", which Google's policy requires be disclosed in the
+  application. One sentence in `integrations-oauth.constants.ts`; deliberately
+  not done here because it is a use disclosure and this change is a retention
+  one, and quietly folding it into a retention field would hide it.
+- **The CASA reassessment is annual and priced, and this ADR still does not
+  own it.** `gmail.readonly` is a restricted scope, so the grant carries a
+  yearly third-party security assessment (§8.2, market rate USD 540-1,500 at
+  Tier 2). A shorter raw-mail window is one fewer thing an assessor scopes; it
+  is not a substitute for booking one.
+- **A second grant in the same house is a second scope of deletion.** Because
+  the sweep keys on `mirrored_by_grant_id`, one person revoking deletes only
+  what their mailbox produced. Two people consenting in one house therefore give
+  the house two independently deletable halves of the same order's thread, and
+  the conversation view will show one half tombstoned and the other intact. That
+  is correct and it will look odd; `communications.md` §9 records it so the first
+  person to see it does not file it as a bug.
+- **`RetentionModule` adds a module edge from `IntegrationsModule`.** It imports
+  only Database, Auth and Notifications; nothing on `AuthModule`'s require chain
+  reaches `IntegrationsModule`, and only `app.module` imports that one, so no new
+  ring closes. `scripts/check_gateway_boots.sh` is what proves it — tsc and jest
+  cannot see a Nest injector.
+
 ## What only the founder can decide
 
 1. **What does a Mudavym address cost, and who may take one?** OD-23. Sharper
@@ -601,12 +814,48 @@ they already have.
    never the house's own. Lifting it means either an unbounded read (rejected,
    alternative 11) or a second, wider consent — and that is the founder's call,
    not a default.
-7. **Should reading imply a retention rule?** A vendor reply now lands in
-   `procurement_conversations` from a person's private mailbox. Nothing in this
-   build deletes it, and nothing says how long the house keeps it. That is a
-   policy question the consent screen currently answers with silence.
+7. ~~**Should reading imply a retention rule?**~~ **ANSWERED 2026-09-05, all
+   four parts, and built as D12-D15.** The consent screen no longer answers the
+   question with silence: it prints the split, the current figure with its
+   derivation, the jurisdiction floor with its statutes and their fetch dates,
+   and the revocation rule — and it refuses the grant when it cannot.
+8. **Is the mirror the house's own Art. 82 record, or is the original?** New,
+   and it is new because the primary Turkish text was fetched (D14). TTK 6102
+   Art. 82 obliges a Turkish trader to keep the commercial letters it RECEIVED
+   for ten years, and Art. 82(2) makes that all correspondence about a
+   commercial matter — a vendor's reply included. This build deletes Mudavym's
+   MIRROR of that letter on the D13 window and on revocation, on the reading
+   that the house's Art. 82 record is the message still in the mailbox it was
+   read from. That reading holds while the mailbox is reachable by the house and
+   stops holding the day the person leaves. The founder may want, for a Turkish
+   house specifically, either (a) the window to be at least the Art. 82 floor,
+   or (b) an export of the raw mail to the house before the sweep deletes it, or
+   (c) this reading kept as it is, stated on the consent screen. Nothing here
+   assumes which.
+9. **Should `setHouseGrantAccess(houseUses: false)` delete raw mail too?** Built
+   as NO. ADR 0114's control is the house withdrawing its own use of a member's
+   grant; the member has not revoked anything and the consent that produced the
+   mail is still standing. Deleting on it would let a manager destroy a
+   colleague's mirrored correspondence without that colleague acting. If the
+   founder means the stronger version, it is one call added beside the upsert in
+   `setHouseGrantAccess`.
 
-## Proposed, not decided: retention (2026-09-05)
+## Superseded: the recommendation this section used to carry (2026-09-05)
+
+Everything below was written before the founder decided, and is kept rather than
+deleted because the rejected alternatives are the argument. The recommendation
+itself is now **D12-D15** above; the founder took its shape and sharpened three
+of its four numbers (the dispute basis, the per-house jurisdiction, and
+revocation reaching the raw mail rather than only future reads).
+
+**What the founder changed from the recommendation, and it matters:** the
+recommendation derived the window from "how long a procurement conversation
+stays open" and pointed at `max_rounds`. Measured, `max_rounds` is a COUNT of
+three outbound rounds (`inbound-responder.service.ts:932`), not a duration — it
+could not have produced a day-count at all. The founder's basis, the house's own
+recorded disputes, is a real span with a real clock behind it.
+
+## The original recommendation, as written (2026-09-05)
 
 Full evidence, every claim carrying a URL fetched 2026-09-05, in
 `.planning/07-reference/messaging-senders.md` §8. This section is the
@@ -697,7 +946,27 @@ run for years. This is a real trade, not a rounding error, and it is the
 argument for asking whether the extraction in D4/D5 is trusted enough to be the
 system of record before building retention rules that assume it is.
 
-### Founder-only questions
+### Founder-only questions — ALL FIVE ANSWERED 2026-09-05
+
+Kept verbatim below with the answers, because a question and its answer read
+together are the record; the answers are built as D12-D15.
+
+1. **ANSWERED: yes, the split.** Two objects, two rules (D12).
+2. **ANSWERED: the longest open dispute the house has recorded**, measured from
+   the house's own conversations, plus a stated margin (D13). Not the order
+   lifecycle: `max_rounds` turned out to be a count, not a duration.
+3. **ANSWERED: jurisdiction-aware per house**, from `restaurants.country`, with
+   the strictest rule and a stated sentence when no country is recorded (D14).
+4. **ANSWERED: revocation reaches backward, but only into the RAW MAIL.** It
+   deletes the body, headers and attachment bytes of every reply that grant
+   mirrored, immediately. It does not touch `analysis.vendor_offers` or any
+   other fact, because those are the house's record and not a copy of a mailbox
+   (D15). This is stronger than the recommendation's "only future ones" on the
+   mail and unchanged on the facts.
+5. **ANSWERED: not wanted until asked for.** No per-house ML personalization
+   model is built, and no consent-screen disclosure claims one (D15).
+
+The original five, as they were asked:
 
 1. **Is the raw-mail / derived-facts split acceptable at all**, or is a single
    retention rule wanted for the whole conversation row — accepting either A's

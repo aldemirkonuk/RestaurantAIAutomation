@@ -5,15 +5,19 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
+  Clock,
   ExternalLink,
   Loader2,
   Lock,
+  Scale,
   ShieldCheck,
+  Trash2,
   X,
 } from 'lucide-react'
 import {
   integrationsApi,
   type IntegrationCatalogEntry,
+  type RetentionDisclosure,
 } from '../services/api/integrations'
 import { BrandMark } from '../components/brand/BrandMark'
 
@@ -53,6 +57,18 @@ export default function AuthorizeIntegration() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [redirecting, setRedirecting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [retention, setRetention] = useState<RetentionDisclosure | null>(null)
+  /**
+   * Why the retention read has its OWN error state instead of joining
+   * `loadError`. A catalogue that will not load leaves nothing to consent to,
+   * so the page stops. A retention figure that will not load leaves a page that
+   * could still send somebody to Google without telling them how long their
+   * mail is kept — which is the silence ADR 0118 named as the fault. So the
+   * failure is shown in the retention section's own place, in words, and the
+   * Continue button is refused for a grant that mirrors mail until the figure
+   * is there to read.
+   */
+  const [retentionError, setRetentionError] = useState<string | null>(null)
 
   const returnPath = useMemo(() => {
     const raw = searchParams.get('returnPath')
@@ -73,6 +89,19 @@ export default function AuthorizeIntegration() {
           e?.response?.data?.message || e?.message || 'Could not load integration details',
         ),
       )
+    integrationsApi
+      .getRetentionDisclosure()
+      .then((r) => {
+        if (!cancelled) setRetention(r)
+      })
+      .catch((e: any) => {
+        if (cancelled) return
+        setRetentionError(
+          e?.response?.data?.message ||
+            e?.message ||
+            'The retention figure could not be read.',
+        )
+      })
     return () => {
       cancelled = true
     }
@@ -82,6 +111,28 @@ export default function AuthorizeIntegration() {
     () => catalog?.find((c) => c.id === integrationId) ?? null,
     [catalog, integrationId],
   )
+
+  /**
+   * Does THIS grant mirror mail into the house's book? The SERVER says so, on
+   * the catalogue entry, and the page never decides it from the id — a page
+   * that hard-codes `gmail_read` is the same fault as the `VALID_IDS` array
+   * this file used to carry, and it would get `gmail_send` wrong (a sending
+   * grant reads nothing and mirrors nothing).
+   *
+   * `?? false` rather than a guess: a gateway deployed before 2026-09-05 does
+   * not send the field, and on such a deployment there is no retention rule to
+   * describe either, so "does not mirror" is the true answer for it.
+   */
+  const mirrorsMail = entry?.mirrorsMail ?? false
+
+  /**
+   * A grant that mirrors mail may not be consented to while its retention
+   * disclosure is missing. Deliberately a REFUSAL and not a warning: ADR 0118's
+   * own finding was that the consent screen answered the retention question
+   * with silence, and a Continue button that still works when the answer could
+   * not be loaded is that silence with an extra step.
+   */
+  const retentionBlocks = mirrorsMail && retention === null
 
   const handleAllow = async () => {
     if (!entry) return
@@ -224,16 +275,131 @@ export default function AuthorizeIntegration() {
                       ['What we never read', entry.dataHandling.doesNotRead],
                       ['Where it lands', entry.dataHandling.landsIn],
                       ['Who can see it', entry.dataHandling.visibleTo],
-                    ] as const
-                  ).map(([term, detail]) => (
-                    <div key={term}>
-                      <dt className="text-sm font-medium text-gray-800">{term}</dt>
-                      <dd className="mt-0.5 text-xs leading-relaxed text-gray-500">
-                        {detail}
-                      </dd>
-                    </div>
-                  ))}
+                      // The fifth question, rendered only when the gateway
+                      // answers it. An older gateway sends four and the page
+                      // shows four, rather than inventing a fifth answer.
+                      ['How long it is kept', entry.dataHandling.keptFor],
+                    ] as Array<[string, string | undefined]>
+                  )
+                    .filter((pair): pair is [string, string] => Boolean(pair[1]))
+                    .map(([term, detail]) => (
+                      <div key={term}>
+                        <dt className="text-sm font-medium text-gray-800">{term}</dt>
+                        <dd className="mt-0.5 text-xs leading-relaxed text-gray-500">
+                          {detail}
+                        </dd>
+                      </div>
+                    ))}
                 </dl>
+              </section>
+            )}
+
+            {mirrorsMail && (
+              <section
+                className="border-t border-gray-100 bg-gray-50/60 px-7 py-6"
+                data-testid="retention-disclosure"
+              >
+                <h2 className="text-sm font-semibold text-gray-900">
+                  How long this restaurant keeps it
+                </h2>
+
+                {retention ? (
+                  <div className="mt-3 space-y-4">
+                    <p className="text-xs leading-relaxed text-gray-600">
+                      {retention.split}
+                    </p>
+
+                    <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                      <Clock className="mt-0.5 h-4 w-4 shrink-0 text-wine-500" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800">
+                          The mail itself: {retention.figureDays} days
+                          {retention.figureFrom === 'measured_now'
+                            ? ' (measured now)'
+                            : null}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                          {retention.windowIntro}
+                        </p>
+                        <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+                          {retention.basis}
+                        </p>
+                        {retention.storedAt && (
+                          <p className="mt-1.5 text-[11px] text-gray-400">
+                            Worked out on{' '}
+                            {retention.storedAt.slice(0, 10)}; worked out again
+                            every quarter.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                      <Scale className="mt-0.5 h-4 w-4 shrink-0 text-wine-500" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800">
+                          The order&apos;s facts:{' '}
+                          {retention.jurisdiction.factsFloorYears} years —{' '}
+                          {retention.jurisdiction.label}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                          {retention.jurisdiction.why}
+                        </p>
+                        {retention.jurisdiction.defaultedBecause && (
+                          <p className="mt-1.5 text-xs leading-relaxed text-[#8B6363]">
+                            {retention.jurisdiction.defaultedBecause}
+                          </p>
+                        )}
+                        <ul className="mt-2 space-y-1.5">
+                          {retention.jurisdiction.citations.map((c) => (
+                            <li key={c.url + c.statute}>
+                              <a
+                                href={c.url}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="text-[11px] font-medium text-wine-600 underline-offset-2 hover:underline"
+                              >
+                                {c.statute}
+                              </a>
+                              <span className="text-[11px] text-gray-400">
+                                {' '}
+                                — read {c.fetchedOn}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                      <Trash2 className="mt-0.5 h-4 w-4 shrink-0 text-wine-500" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800">
+                          If you disconnect
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                          {retention.revocation}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-900">
+                        {retentionError
+                          ? 'This restaurant’s retention figure could not be read'
+                          : 'Reading this restaurant’s retention figure'}
+                      </p>
+                      <p className="mt-0.5 text-sm text-amber-800">
+                        {retentionError
+                          ? `${retentionError} This grant copies mail out of your mailbox, so you are not being asked to agree to it until this page can tell you how long that copy is kept and what happens when you disconnect.`
+                          : 'One moment — this grant copies mail out of your mailbox, and you are owed the figure before you agree to it.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -276,7 +442,12 @@ export default function AuthorizeIntegration() {
               <button
                 type="button"
                 onClick={handleAllow}
-                disabled={redirecting}
+                disabled={redirecting || retentionBlocks}
+                title={
+                  retentionBlocks
+                    ? 'This grant copies mail out of your mailbox. You cannot agree to it until this page can tell you how long that copy is kept.'
+                    : undefined
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-wine-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)] transition-colors hover:bg-wine-700 disabled:opacity-60"
               >
                 {redirecting ? (

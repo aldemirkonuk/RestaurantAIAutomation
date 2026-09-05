@@ -20,6 +20,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { IntegrationsOauthService } from "./integrations-oauth.service";
 import {
   INTEGRATION_DEFINITIONS,
+  MIRRORING_INTEGRATION_IDS,
   isIntegrationId,
 } from "./integrations-oauth.constants";
 
@@ -74,6 +75,12 @@ export class IntegrationsOauthController {
           // copy can drift from what the server actually does, and a privacy
           // sentence that has drifted is worse than none.
           dataHandling: definition.dataHandling,
+          // Whether consenting to this grant puts a copy of a person's mail
+          // into the house's book, and therefore whether the retention
+          // disclosure applies to it (ADR 0118, retention). Served rather than
+          // inferred on the page from the id, which would get `gmail_send`
+          // wrong: it is a Gmail grant that reads nothing and mirrors nothing.
+          mirrorsMail: MIRRORING_INTEGRATION_IDS.includes(definition.id),
           available: availability[definition.id].available,
           unavailableReason: availability[definition.id].reason ?? null,
         }),

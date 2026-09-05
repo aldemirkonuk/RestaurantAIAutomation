@@ -29,7 +29,14 @@ import AuthorizeIntegration from './AuthorizeIntegration'
 import { integrationsApi } from '../services/api/integrations'
 
 vi.mock('../services/api/integrations', () => ({
-  integrationsApi: { getCatalog: vi.fn(), authorize: vi.fn() },
+  integrationsApi: {
+    getCatalog: vi.fn(),
+    authorize: vi.fn(),
+    // ADR 0118 (retention) — the page now also asks the gateway how long this
+    // house keeps mirrored mail. Mocked here so these tests keep testing the
+    // catalogue; the retention rendering has its own file.
+    getRetentionDisclosure: vi.fn(),
+  },
 }))
 
 const READ_ENTRY = {
@@ -86,6 +93,11 @@ describe('the consent screen offers what the server offers', () => {
       SEND_ENTRY,
       READ_ENTRY,
     ] as never)
+    // These entries carry no `mirrorsMail`, which is the shape an older gateway
+    // sends: the page shows no retention section and does not block Continue.
+    vi.mocked(integrationsApi.getRetentionDisclosure).mockRejectedValue(
+      new Error('not asked for in these cases'),
+    )
   })
 
   it('renders the sending grant, which HEAD refused as an unknown integration', async () => {
