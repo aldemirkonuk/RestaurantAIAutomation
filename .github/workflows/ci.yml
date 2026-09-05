@@ -679,6 +679,18 @@ jobs:
       - name: ...and that guard's own failure path fires
         run: ./scripts/check_web_reads_gateway_dto_keys.py --self-test
 
+      # ADR 0125: the order transition table lives in TypeScript
+      # (order-transitions.ts) and is enforced a second time by a BEFORE UPDATE
+      # trigger whose two ARRAY literals are generated from it. A renderer bug
+      # could make both halves agree on the wrong table, so this guard parses
+      # BOTH files itself and compares edge sets. Exit 2 is CANNOT CHECK (a file
+      # moved, a literal became unparsable), a failure, not a skip.
+      - name: The order transition table is one table in two languages
+        run: ./scripts/check_order_transition_sql.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_order_transition_sql.py --self-test
+
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
@@ -1132,7 +1144,16 @@ jobs:
         # locationDialogs.test.tsx and shellOverlays.test.tsx read `git show origin/main:<path>`
         # to prove the legacy branch is byte-identical; a shallow checkout has no origin/main,
         # so without this fetch the first fails and the second silently skips.
-        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+        run: |
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+          # A provenance test may also pin a COMMIT (openapi-export.spec.ts's
+          # PRE_FIX_SHA proves the guard fails against the pre-fix source). A
+          # depth-1 checkout does not have it, and "cannot read that commit"
+          # must not pass as "the guard fired". Fetch every 40-hex constant a
+          # spec declares; a sha that no longer exists fails this step loudly.
+          for sha in $(grep -rhoE '\b[0-9a-f]{40}\b' apps/api-gateway/src apps/web/src --include='*.spec.ts' --include='*.test.ts' --include='*.test.tsx' | sort -u); do
+            git fetch --no-tags --depth=1 origin "$sha"
+          done
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6

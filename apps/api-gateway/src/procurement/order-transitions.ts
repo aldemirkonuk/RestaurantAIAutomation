@@ -139,6 +139,14 @@ export const ORDER_TRANSITIONS: Record<
   ],
   // Placed with the vendor. Still cancellable — nothing has arrived.
   [ProcurementOrderStatus.CONFIRMED]: [
+    // A vendor may decline an order it has already confirmed — it went short,
+    // the vintage is gone, the truck is not coming. That returns the order to
+    // NEGOTIATING, never to a terminal state (founder, 2026-09-05, answering
+    // ADR 0125 Q3): the house may still buy this wine from this vendor at
+    // another price, or from another vendor entirely, and an order marked
+    // REJECTED drops out of every open-order list before anyone decides.
+    // Dynamics 365 does the same, holding such a PO "In external review".
+    ProcurementOrderStatus.NEGOTIATING,
     ProcurementOrderStatus.IN_TRANSIT,
     ProcurementOrderStatus.DELIVERED,
     ProcurementOrderStatus.PARTIALLY_RECEIVED,
@@ -333,4 +341,60 @@ export function decideTransition(
   }
   if (canTransition(from, to)) return { allowed: true, from };
   return { allowed: false, sentence: refuseTransition(from, to), from };
+}
+
+/* ── The same table, for the database ─────────────────────────────────────── */
+
+/**
+ * THE EDGE LIST, RENDERED. This is the ONE definition; the migration's copy is
+ * generated from it and a spec plus `scripts/check_order_transition_sql.py`
+ * assert the two are identical (founder, 2026-09-05, answering ADR 0125 Q2:
+ * *"Enforce the table as a database trigger"* — with the standing condition
+ * that the TypeScript table and the SQL table must be one definition).
+ *
+ * WHY THE DATABASE NEEDS ITS OWN COPY AT ALL
+ * ------------------------------------------
+ * `services/agent-orchestrator/agents/procurement_agent.py` writes terminal
+ * statuses straight to Supabase, bypassing the gateway entirely. No service
+ * check reaches it. A `BEFORE UPDATE OF status` trigger reaches every writer in
+ * every language, including a hand at the SQL console.
+ *
+ * WHAT THE SQL COPY DELIBERATELY DOES **NOT** CARRY
+ * -------------------------------------------------
+ * The same-state rule. `sameStateIsPermitted` refuses re-entering a TERMINAL
+ * state — cancelling an already-cancelled order overwrites its reason and files
+ * a second audit row naming a second person. Postgres cannot see that: an
+ * `UPDATE ... SET status = 'CANCELLED'` on a row already CANCELLED and an
+ * `UPDATE` that never mentions `status` are the same event to a trigger, and
+ * refusing it would forbid editing the notes on a cancelled order. So the
+ * trigger returns early on a same-state write, and the terminal re-entry rule
+ * stays where it can be judged: in the service.
+ *
+ * The equality the spec and the guard enforce is therefore over the EDGES —
+ * `from != to` — which is the part that must never drift.
+ */
+export function orderTransitionEdges(): string[] {
+  const out: string[] = [];
+  for (const from of Object.keys(ORDER_TRANSITIONS) as ProcurementOrderStatus[]) {
+    for (const to of ORDER_TRANSITIONS[from]) out.push(`${from}>${to}`);
+  }
+  return out.sort();
+}
+
+/** Every member, so the trigger can refuse a state it does not recognise. */
+export function orderStatusVocabulary(): string[] {
+  return (Object.keys(ORDER_TRANSITIONS) as string[]).slice().sort();
+}
+
+/** The two `ARRAY[...]` literals the migration carries, rendered exactly as it carries them. */
+export function renderOrderTransitionSqlArrays(): {
+  edges: string;
+  vocabulary: string;
+} {
+  const lit = (values: string[], indent: string) =>
+    `ARRAY[\n${values.map((v) => `${indent}'${v}'`).join(",\n")}\n${indent.slice(2)}]`;
+  return {
+    edges: lit(orderTransitionEdges(), "      "),
+    vocabulary: lit(orderStatusVocabulary(), "      "),
+  };
 }

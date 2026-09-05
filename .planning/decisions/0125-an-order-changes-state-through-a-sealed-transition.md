@@ -1,6 +1,6 @@
 # 0125 — An order changes state through a sealed transition
 
-- **Status:** Proposed — researched and built 2026-09-05 on the founder's instruction; the founder locks.
+- **Status:** Proposed — researched and built 2026-09-05 on the founder's instruction. **Q1, Q2 and Q3 were ANSWERED by the founder the same day and are built; see the addendum. Q4 remains open.** The founder locks.
 - **Date:** 2026-09-05
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** procurement order, state machine, transition table, cancel, reject, seal,
@@ -204,6 +204,8 @@ write, with the cancellation sealed as its own act.**
 
 ### The role gate is deliberately NOT applied to a cancellation
 
+**Superseded the same day.** The founder answered Q1 ("manager or owner, like approval") and the gate is built on both ends of the cancel; see the addendum below. The paragraph stands as the record of the draft's reasoning.
+
 `assertApprovalAllowed` answers "may this role commit this much money". Refusing to let a
 junior STOP a spend is that rule pointed backwards: it would leave an order live because
 the only person at the desk could not have afforded to approve it. The seal proves a person
@@ -294,3 +296,143 @@ becomes a bulk ceremony with one reason and N seals.
 | Date | Who | What |
 |---|---|---|
 | 2026-09-05 | Claude (p4ap, research + build) | Census of eleven writers, ten flaws, four fetched comparables; built the table, the `cancel` act, the two web controls, 81 new cases, the ADR. Sonnet review to follow, dispatched by the parent. |
+
+
+---
+
+## Addendum — 2026-09-05: three of the four questions, answered and built
+
+The founder answered Q1, Q2 and Q3 within the hour. Q4 (bulk rejection) stands.
+
+### Q1 — *"Manager or owner, like approval."*
+
+The builder's draft left the cancellation ungated on the argument that refusing to let a
+junior STOP a spend is the approval rule pointed backwards. The founder's answer: an order
+is the house's money whichever way it moves, and the register that says who may commit it
+says who may un-commit it.
+
+Built with `OrganizationsService.assertCanManageRestaurant` — **the same helper** the
+approval gate, the settings registers and the payment methods use, not a second copy of the
+rule — on **both ends**: the mint (`POST orders/:id/cancel-seal-challenge`) and the write
+(`DELETE orders/:id`). Twice for the reason the approval gate gives: a manager demoted
+between the hold and the write must not spend a token they were legitimately given, and a
+person who could never cancel this order must not be handed a seal that is refused two
+seconds later. The role is checked **before** the state, so somebody who may not cancel
+anything is told that rather than being told about this order and refused for a different
+reason at the write.
+
+`SealedRejectDie` renders **disabled with the reason** (ADR 0083: a control that disappears
+teaches nothing). Three states, not two: `activeRole` comes from `/auth/me/role` and is
+`null` **both** while it loads and when that read FAILED, so an unresolved role disables
+too, with its own sentence — *"Your role at this restaurant has not been read yet, so
+whether you may cancel an order is unknown. It is not assumed."* Collapsing `null` into
+`staff` would accuse a manager; collapsing it into "allowed" would be
+[[absence-reported-as-health]] on a destructive write.
+
+### Q2 — *"Enforce the table as a database trigger."*
+
+`supabase/migrations/20260905230000_an_order_changes_state_by_the_table.sql` — one function
+and one `BEFORE UPDATE OF status` trigger. Additive: no column, no table, no RLS surface, no
+backfill. `OF status` so an UPDATE that never mentions the column neither pays for the check
+nor can be refused by it.
+
+**ONE definition, two languages.** The migration's two `ARRAY` literals are GENERATED from
+`ORDER_TRANSITIONS` by `renderOrderTransitionSqlArrays()`. Two independent things stop them
+drifting, because drift here is asymmetric in the worst direction — an edge added to the
+`.ts` leaves the DATABASE still refusing it, so the service reports a legal move and the
+write fails underneath it, in production, where no TypeScript runs:
+* `order-transition-sql.spec.ts` (9 cases) renders the arrays and matches the file
+  character for character, then parses the SQL back out and compares SETS;
+* `scripts/check_order_transition_sql.py` parses **both files itself, in Python**, so a bug
+  in the renderer cannot make both halves agree on the wrong thing. Its `--self-test`
+  proves it bites on a dropped edge, on an `AFTER` trigger, and on an unparsable table.
+
+**What the SQL deliberately does NOT carry:** the same-state rule. `sameStateIsPermitted`
+refuses re-entering a terminal state; Postgres cannot see that, because `SET status =
+'CANCELLED'` on an already-cancelled row and an UPDATE that never mentions status are the
+same event to a trigger, and refusing it would forbid editing the notes on a cancelled
+order. The trigger returns early on a same-state write and the rule stays in the service,
+where intent is visible. The enforced equality is over the EDGES.
+
+**Proven by execution, not by parsing.** Docker is down, so
+`$SP/pglite-probe/p4ap-transition-trigger.mjs` applies the migration to a real Postgres
+(PGlite) and drives every branch. It reads the edge list back OUT of `pg_proc.prosrc`
+rather than carrying its own copy. `node p4ap-transition-trigger.mjs` -> **17 ok, 0
+failed**: the in-file assertions pass, **all 40 legal edges permitted, all 112 illegal
+edges refused** each naming a rule, the three sentences name from/to/rule, an unrecognised
+state is refused rather than guessed at, a same-state write passes, a notes-only UPDATE is
+untouched, and — the point of the whole exercise — **`procurement_agent.py`'s
+`CONFIRMED -> REJECTED` is refused at the database** while `CONFIRMED -> NEGOTIATING` is
+permitted.
+
+**What it costs production today: nothing.** Read-only against project
+`exzueerziesmczwlhomd`, 2026-09-05, before the migration was written:
+
+```sql
+select status, count(*) from public.procurement_orders group by status;
+-- APPROVED 1, PENDING 1
+select count(*) filter (where status not in (<the twelve>))  as outside_vocabulary,
+       count(*) filter (where status in ('COMPLETED','CANCELLED','REJECTED','FAILED')) as would_be_frozen,
+       count(*) filter (where status in ('DELIVERED','PARTIALLY_RECEIVED','COMPLETED')) as goods_arrived
+  from public.procurement_orders;
+-- 0, 0, 0   (total_orders 2, order_audit_rows 0)
+```
+
+**Zero rows violate the table and zero are frozen by it.** No data was fixed and none needed
+fixing. Stated plainly: there is no transition HISTORY in this database — `system_audit_log`
+holds 0 rows for `procurement_order` — so a count "by status pair" of past moves **cannot be
+made**, and this is a count of current states instead.
+
+### Q3 — *"Return to NEGOTIATING, with the decline recorded."*
+
+A vendor's no is not the order's death. `procurement_agent.py:780` wrote terminal
+`REJECTED`, which dropped the order out of every open-order list, outstanding count and
+reorder widget before a person decided anything. Corrected to `NEGOTIATING`, with a
+notification that says the order is open again rather than "rejected". The gateway's own
+inbound path never handled a decline at all; `syncOrderState` now checks it **first**, above
+the acceptance branches, so a decline cannot fall through into a deal. `DECLINE_INTENTS` is
+`rejection | declined | out_of_stock` — `counter_offer` deliberately excluded, because
+haggling is not refusing.
+
+**The decline is recorded where it already was, and is not copied.** `persistConversation`
+writes the inbound row with the provider, its `created_at`, the vendor's own words and
+`detected_intent`. That row IS who declined, when, and in what words; duplicating it onto
+the order would create two accounts of one event that can disagree. The responses sheet
+marks such an answer and prints the thing a manager would otherwise get wrong — *"The order
+was returned to negotiation rather than closed, so it is still open."*
+
+The table gained exactly one edge for this: **`CONFIRMED -> NEGOTIATING`**. Every other
+from-state a decline can arrive in already had it.
+
+### Q4 — *"No bulk; one at a time."*
+
+Answered 2026-09-05 (batch 46). A rejection is its own hold with its own reason and its
+own seal; there is no bulk act. The desk keeps the per-order path and the bulk bar says why
+there is no bulk. Rejected: one hold over N selected orders with one typed reason and N
+seals minted in a loop (the reason is genuinely shared only when the orders are alike, and
+the sheet cannot know that); bulk only for PENDING / APPROVAL_NEEDED drafts (the same
+argument, on the cheap case). Nothing to build: the bulk handler was removed in 71a6d9fd
+and the one-at-a-time notice is what ships.
+
+### Verification of this addendum (my runs, the commands named)
+
+| What | Command | Result |
+|---|---|---|
+| the table, incl. the decline edge | `cd apps/api-gateway && npx jest src/procurement/order-transitions.spec.ts` | **54 passed** |
+| the sealed cancel, incl. the role gate | `... npx jest src/procurement/order-cancel-seal.spec.ts` | **20 passed** |
+| one table, two languages | `... npx jest src/procurement/order-transition-sql.spec.ts` | **9 passed** |
+| the trigger, on real Postgres | `cd $SP/pglite-probe && node p4ap-transition-trigger.mjs` | **17 ok, 0 failed** |
+| the drift guard | `python3 scripts/check_order_transition_sql.py` / `--self-test` | **exit 0** / self-test passed |
+| gateway, all touched modules | `cd apps/api-gateway && npx jest src/procurement src/one-tap-actions src/common/seal src/common/orchestrator` | **1014 passed, 3 skipped, 0 failed** (60 suites) |
+| the CI-red spec, repaired | `... npx jest src/common/orchestrator/inbound-responder.service.spec.ts` | **25 passed** |
+| the reject die, incl. both role answers | `cd apps/web && npx vitest run src/components/orders/__tests__/SealedRejectDie.test.tsx` | **20 passed** |
+| web, all touched suites | `... npx vitest run src/pages/orders/next src/components/orders src/pages/__tests__/OrdersLegacy*.test.ts src/pages/dashboard/next` | **15 files, 239 passed** |
+| tsc | both apps, `-p tsconfig.spec.json` for the gateway | **0 errors** |
+| guards | the twelve, plus prefix uniqueness | **all exit 0**; `check_decision_claims.sh` **231 checked, 231 holding**; `check_gateway_boots.sh` PASS |
+
+## Review trail
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-05 | Claude (p4ap, research + build) | Census of eleven writers, ten flaws, four fetched comparables; built the table, the `cancel` act, the two web controls, 81 new cases, the ADR. |
+| 2026-09-05 | Claude (p4ap, follow-up) | Q1/Q2/Q3 answered by the founder and built: the role gate on both ends of the cancel, the transition table as a database trigger with a generated definition and two independent anti-drift checks, and a vendor's decline returned to NEGOTIATING in both the gateway and the Python agent. Also repaired `inbound-responder.service.spec.ts`, which commit `71a6d9fd` left red on CI. |

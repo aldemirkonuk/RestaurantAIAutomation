@@ -42,7 +42,23 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
   useCancelOrder: () => cancelMock,
 }));
 
-import { SealedRejectDie } from '../SealedRejectDie';
+/**
+ * The role, as the page sees it. `activeRole` comes from `/auth/me/role` and is
+ * `null` both while it loads and when that read FAILED — the browser cannot tell
+ * the two apart, and neither is permission.
+ */
+const roleMock = vi.hoisted(() => ({
+  current: 'manager' as 'owner' | 'manager' | 'staff' | null,
+}));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: roleMock.current }),
+}));
+
+import {
+  REJECT_NEEDS_A_MANAGER,
+  REJECT_ROLE_UNKNOWN,
+  SealedRejectDie,
+} from '../SealedRejectDie';
 
 const die = () => screen.getByRole('button', { name: /hold to reject/i });
 const box = () => screen.getByTestId('legacy-reject-reason');
@@ -63,6 +79,75 @@ beforeEach(() => {
   cancelMock.mutateAsync.mockResolvedValue({});
   mintMock.mockReset();
   mintMock.mockResolvedValue('cancel-seal-token');
+  roleMock.current = 'manager';
+});
+
+/**
+ * ADR 0125 Q1, founder 2026-09-05: "Manager or owner, like approval."
+ * The endpoint is the gate (`assertCanManageRestaurant` on the mint AND the
+ * write); this is the courtesy in front of it, and ADR 0083 says a control a
+ * person may not use is DISABLED with the reason, never hidden.
+ */
+describe('who may end an order', () => {
+  it.each(['owner', 'manager'] as const)('arms for %s', (role) => {
+    roleMock.current = role;
+    render(<SealedRejectDie orderId="ord-1" />);
+    say('Because.');
+    expect(die()).not.toBeDisabled();
+    expect(screen.queryByTestId('legacy-reject-role-note')).toBeNull();
+  });
+
+  it('shows staff the control, disabled, with the reason', () => {
+    roleMock.current = 'staff';
+    render(<SealedRejectDie orderId="ord-1" />);
+    // Present, not hidden.
+    expect(die()).toBeInTheDocument();
+    expect(die()).toBeDisabled();
+    expect(box()).toBeDisabled();
+    expect(screen.getByTestId('legacy-reject-role-note')).toHaveTextContent(
+      REJECT_NEEDS_A_MANAGER.slice(0, 40),
+    );
+  });
+
+  it('does not nag staff about a reason they cannot give', () => {
+    roleMock.current = 'staff';
+    render(<SealedRejectDie orderId="ord-1" />);
+    fireEvent.blur(box());
+    expect(screen.queryByTestId('legacy-reject-needs-reason')).toBeNull();
+  });
+
+  it('treats an UNRESOLVED role as "not yet", never as permission', () => {
+    roleMock.current = null;
+    render(<SealedRejectDie orderId="ord-1" />);
+    expect(die()).toBeDisabled();
+    expect(screen.getByTestId('legacy-reject-role-note')).toHaveTextContent(
+      REJECT_ROLE_UNKNOWN.slice(0, 40),
+    );
+    // And it says which of the two it is, rather than accusing the person.
+    expect(screen.getByTestId('legacy-reject-role-note')).not.toHaveTextContent(
+      /your role here is not one of those/i,
+    );
+  });
+
+  it.each(['staff', null] as const)(
+    'mints nothing and writes nothing for %s',
+    async (role) => {
+      roleMock.current = role;
+      render(<SealedRejectDie orderId="ord-1" />);
+      hold();
+      // A disabled `HoldToApprove` fires NOTHING — not `onChallenge`, not
+      // `onApprove` — so there is no refusal to render either. That is the
+      // property asserted: the gesture cannot start, so no seal is asked for
+      // and no cancellation is attempted. The role check inside `onChallenge`
+      // is defence behind this, unreachable while the control honours its own
+      // `disabled`, and is there because that function is the only thing
+      // between a disabled control and a mint.
+      await new Promise((r) => setTimeout(r, 20));
+      expect(mintMock).not.toHaveBeenCalled();
+      expect(cancelMock.mutateAsync).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('legacy-reject-refusal')).toBeNull();
+    },
+  );
 });
 
 describe('a reason comes first', () => {

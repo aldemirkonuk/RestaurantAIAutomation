@@ -72,7 +72,9 @@ import {
   NO_ANSWER_YET,
   NO_SUMMARY_WRITTEN,
   REJECT_NEEDS_A_REASON,
+  VENDOR_DECLINED_NOTE,
   describeOrderedQuantity,
+  isDecline,
   readVendorResponses,
   reasonIsGiven,
   summaryProvenance,
@@ -528,5 +530,56 @@ describe('an order past the pending stage', () => {
     );
     // The answers stay readable — the record does not close with the order.
     expect(screen.getByTestId('response-summary')).toBeInTheDocument();
+  });
+});
+
+
+/**
+ * ADR 0125 Q3 — founder, 2026-09-05: "Return to NEGOTIATING, with the decline
+ * recorded."
+ *
+ * The gateway stopped writing terminal REJECTED for a vendor's no, so the order
+ * stays OPEN after one. The sheet has to say that: a refusal sitting on a live
+ * order, with nothing explaining why it is still live, is worse than the old
+ * behaviour because it looks like a bug.
+ */
+describe('a vendor decline', () => {
+  it.each(['rejection', 'declined', 'out_of_stock', 'OUT_OF_STOCK', ' Rejection '])(
+    'is read from intent %s',
+    (intent) => {
+      expect(isDecline(intent)).toBe(true);
+    },
+  );
+
+  it.each(['counter_offer', 'price_acceptance', 'question', '', null, undefined, 7])(
+    'is NOT read from %s',
+    (intent) => {
+      // `counter_offer` is the one that matters: haggling is not refusing, and
+      // marking it as a decline would put the note on every negotiation.
+      expect(isDecline(intent)).toBe(false);
+    },
+  );
+
+  it('is carried onto the response the sheet renders', () => {
+    const [row] = readVendorResponses([convo({ detectedIntent: 'out_of_stock' })]);
+    expect(row.declined).toBe(true);
+    expect(readVendorResponses([convo()])[0].declined).toBe(false);
+  });
+
+  it('is said on the answer, and says the order is still open', () => {
+    convosMock.current = {
+      data: [convo({ detectedIntent: 'rejection' })],
+      isError: false,
+      error: null,
+    };
+    mount();
+    const note = screen.getByTestId('response-declined');
+    expect(note).toHaveTextContent(VENDOR_DECLINED_NOTE.slice(0, 40));
+    expect(note).toHaveTextContent(/still open/i);
+  });
+
+  it('says nothing of the kind on an ordinary answer', () => {
+    mount();
+    expect(screen.queryByTestId('response-declined')).toBeNull();
   });
 });

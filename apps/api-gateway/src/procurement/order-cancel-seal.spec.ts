@@ -5,6 +5,8 @@ import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { OrganizationsService } from "../organizations/organizations.service";
+import { ForbiddenException } from "@nestjs/common";
 import { ProcurementOrderStatus } from "./dto/procurement.dto";
 import { ORDER_CANCEL_ACT, ORDER_SEAL_ACT, orderSealArgs } from "./order-seal";
 import { hashCallArgs, hashSealToken } from "../common/seal/seal-token";
@@ -38,6 +40,28 @@ interface Harness {
   order: Row;
 }
 
+/**
+ * The role gate, controllable per test. `allow` is the default because every
+ * case that is not ABOUT the role needs a manager to get past it.
+ */
+const roleGate = {
+  allow: true,
+  calls: [] as Array<{ userId: string; restaurantId: string; action: string }>,
+  assert: jest.fn(async (userId: string, restaurantId: string, action: string) => {
+    roleGate.calls.push({ userId, restaurantId, action });
+    if (!roleGate.allow)
+      throw new ForbiddenException(
+        `Only a manager or an owner of this restaurant can ${action}.`,
+      );
+  }),
+};
+
+beforeEach(() => {
+  roleGate.allow = true;
+  roleGate.calls = [];
+  roleGate.assert.mockClear();
+});
+
 async function build(supabaseHolder: any): Promise<ProcurementService> {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
@@ -53,6 +77,14 @@ async function build(supabaseHolder: any): Promise<ProcurementService> {
         useValue: { publishEvent: jest.fn(), triggerDraftHttp: jest.fn() },
       },
       { provide: SealChallengeService, useValue: new SealChallengeService(supabaseHolder) },
+      {
+        // The REAL helper's contract, stubbed at its boundary: it either
+        // returns or it throws a ForbiddenException with a sentence. Which
+        // roles satisfy it is `organizations.service.ts`'s own spec, not this
+        // file's — one implementation, one spec (ADR 0125 Q1).
+        provide: OrganizationsService,
+        useValue: { assertCanManageRestaurant: roleGate.assert },
+      },
     ],
   }).compile();
   const svc = module.get<ProcurementService>(ProcurementService);
@@ -427,5 +459,74 @@ describe("the PATCH route is held to the same table", () => {
     } as any);
     expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
     expect(h.order.manager_notes).toBe("call the rep");
+  });
+});
+
+
+/**
+ * ADR 0125 Q1 — the founder, 2026-09-05: "Manager or owner, like approval."
+ *
+ * The rule itself is `OrganizationsService.assertCanManageRestaurant`, the same
+ * helper the approval gate and the settings registers use. What is asserted
+ * here is that the cancel path CONSULTS it, at both ends, and writes nothing
+ * when it refuses.
+ */
+describe("ending an order is a manager's or an owner's act", () => {
+  it("asks the same helper the approval gate asks, naming the act", async () => {
+    const h = await makeService();
+    await mint(h);
+    expect(roleGate.assert).toHaveBeenCalledWith(MANAGER, HOUSE, "cancel an order");
+  });
+
+  it("refuses to MINT a seal for somebody who may not cancel", async () => {
+    roleGate.allow = false;
+    const h = await makeService();
+    const err = await refusal(() =>
+      h.service.issueOrderCancelSealChallenge(HOUSE, ORDER_ID, MANAGER),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(String(err.message)).toMatch(/manager or an owner/);
+    // No token was issued, so there is nothing to spend later.
+    expect(h.seals).toHaveLength(0);
+  });
+
+  it("refuses the WRITE too, so a seal minted before a demotion cannot be spent", async () => {
+    const h = await makeService();
+    const token = await mint(h);
+    // The manager is demoted between the hold and the write.
+    roleGate.allow = false;
+    const err = await refusal(() =>
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
+    // The seal is left UNSPENT: a refused act burns nothing.
+    expect(h.seals.filter((s) => s.redeemed_at)).toHaveLength(0);
+    // And nothing was filed as though it had happened.
+    expect(h.audits.filter((a) => a.action === "order_cancelled")).toHaveLength(0);
+  });
+
+  it("checks the role BEFORE the state, so the person is told the true reason", async () => {
+    roleGate.allow = false;
+    const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
+    const err = await refusal(() =>
+      h.service.issueOrderCancelSealChallenge(HOUSE, ORDER_ID, MANAGER),
+    );
+    // A delivered order would also be refused 422. The role is the reason this
+    // person cannot do it at all, and that is the sentence they get.
+    expect(err.getStatus()).toBe(403);
+  });
+
+  it("refuses rather than cancels when the helper is not wired in at all", async () => {
+    // [[absence-reported-as-health]] written into a constructor: a gate that
+    // opens when its own dependency is missing is not a gate.
+    const h = await makeService();
+    (h.service as any).organizations = undefined;
+    const err = await refusal(() =>
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "because", "anything"),
+    );
+    expect(err.getStatus()).toBe(500);
+    expect(String(err.message)).toMatch(/could not be established/);
+    expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
   });
 });

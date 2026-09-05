@@ -2284,6 +2284,38 @@ export class ProcurementService {
     "Nothing was changed.";
 
   /**
+   * May this person end this order at all?
+   *
+   * ADR 0125 Q1, answered by the founder 2026-09-05: *"Manager or owner, like
+   * approval."* One helper, shared with the approval gate and the settings
+   * registers, so "managers and owners" means the same thing on the button and
+   * at the endpoint.
+   *
+   * REFUSES when the helper is missing rather than allowing the cancel.
+   * `ProcurementModule` imports `OrganizationsModule`, so this is unreachable in
+   * the running gateway; it exists so a future wiring mistake refuses loudly
+   * instead of quietly dropping the only role check on a destructive write —
+   * [[absence-reported-as-health]] written into a constructor.
+   */
+  private async assertMayCancelOrder(
+    restaurantId: string,
+    userId: string,
+  ): Promise<void> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may cancel an order could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was cancelled. This is a gateway fault, not a " +
+          "decision about this order.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "cancel an order",
+    );
+  }
+
+  /**
    * Mint the proof, at the moment the hold on a REJECT begins.
    *
    * ADR 0125. The mirror of `issueOrderSealChallenge`, and separate from it for
@@ -2309,6 +2341,10 @@ export class ProcurementService {
       );
     }
 
+    // The role FIRST, then the state. A person who may not cancel anything is
+    // told that, rather than being told about this order's state and then
+    // refused for a different reason at the write.
+    await this.assertMayCancelOrder(restaurantId, userId);
     await this.assertStatusTransition(
       restaurantId,
       orderId,
@@ -2410,13 +2446,20 @@ export class ProcurementService {
    *   5. LEAVES PAPER. `order_cancelled` in `system_audit_log`, naming the
    *      actor, the state left, and the reason.
    *
-   * The role gate deliberately is NOT applied. `assertApprovalAllowed` answers
-   * "may this role commit this much money", and refusing to let a junior STOP a
-   * spend would be that rule pointed backwards — it would leave an order live
-   * because the only person at the desk could not afford to have approved it.
-   * The seal proves a person did it and the audit row names them; that is the
-   * property this act needs. Recorded as a founder question in ADR 0125 rather
-   * than settled by a builder.
+   *   6. IS A MANAGER'S OR AN OWNER'S ACT. **Founder, 2026-09-05, answering ADR
+   *      0125 Q1: "Manager or owner, like approval."** The builder's draft left
+   *      this open on the argument that refusing to let a junior STOP a spend is
+   *      the approval rule pointed backwards. The founder's answer is that an
+   *      order is the house's money whichever way it moves, and the register
+   *      that says who may commit it says who may un-commit it.
+   *
+   *      It is `OrganizationsService.assertCanManageRestaurant` — the SAME
+   *      helper the approval gate, the settings registers and the payment
+   *      methods use — not a second copy of the rule. It runs on the MINT and
+   *      again on the WRITE, for the reason the approval gate gives: a manager
+   *      demoted between the two must not spend a token they were legitimately
+   *      given, and a person who could never cancel this order must not be
+   *      handed a seal that will be refused two seconds later.
    */
   async cancelOrder(
     restaurantId: string,
@@ -2429,6 +2472,11 @@ export class ProcurementService {
     if (spokenReason === "") {
       throw new BadRequestException(ProcurementService.CANCEL_NEEDS_A_REASON);
     }
+
+    // Checked again here, not only at the mint (ADR 0125 Q1). A seal minted
+    // while the person was a manager must not be spendable after they stop
+    // being one.
+    await this.assertMayCancelOrder(restaurantId, userId);
 
     // The state, read once and refused here rather than inside `updateOrder`:
     // this caller needs `from` for the shadow-stock decision and the audit row.

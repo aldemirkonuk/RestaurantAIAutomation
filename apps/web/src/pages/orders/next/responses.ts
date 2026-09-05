@@ -79,6 +79,15 @@ export interface VendorResponse {
   intent: string | null;
   sentiment: string | null;
   specialConditions: string[];
+  /**
+   * The vendor said no to this order (ADR 0125 Q3).
+   *
+   * Derived from `intent` rather than stored, so the page marks exactly the rows
+   * the gateway acted on. A decline does NOT close the order any more: it
+   * returns it to NEGOTIATING, and the sheet has to say so or a manager reads a
+   * live order with a refusal in it and no explanation of why it is still open.
+   */
+  declined: boolean;
   /** DKIM/DMARC verdict on the sender. Null is UNKNOWN, never "unverified". */
   senderVerified: boolean | null;
   /** The vendor's own words. Null when the row carried no body at all. */
@@ -146,6 +155,32 @@ function intOrNull(v: unknown): number | null {
  * and the sheet would say "no answer from the vendor" about a full mailbox —
  * absence reported as health, through a string case.
  */
+/**
+ * The intents that mean the vendor said no — the SAME list the gateway acts on
+ * (`inbound-responder.service.ts` `DECLINE_INTENTS`), restated here because the
+ * web cannot import from the gateway and a second, drifting opinion about what
+ * a decline is would mark different rows than the ones that moved the order.
+ * `check_decision_claims.sh` is where that pairing is kept honest.
+ *
+ * `counter_offer` is deliberately absent: haggling is not refusing.
+ */
+export const DECLINE_INTENTS = ['rejection', 'declined', 'out_of_stock'];
+
+export function isDecline(intent: unknown): boolean {
+  return (
+    typeof intent === 'string' &&
+    DECLINE_INTENTS.includes(intent.trim().toLowerCase())
+  );
+}
+
+/**
+ * What the sheet says over a declined answer. It has to carry the thing a
+ * manager will otherwise get wrong: the order is still OPEN.
+ */
+export const VENDOR_DECLINED_NOTE =
+  'This vendor declined. The order was returned to negotiation rather than closed, ' +
+  'so it is still open: re-price it, try another vendor, or reject it yourself.';
+
 export function readVendorResponses(
   rows: ConversationWire[] | null | undefined,
 ): VendorResponse[] {
@@ -161,6 +196,7 @@ export function readVendorResponses(
       summaryModel: text(r.summaryModel),
       summaryReadAt: text(r.summaryAnalyzedAt),
       intent: text(r.detectedIntent),
+      declined: isDecline(r.detectedIntent),
       sentiment: text(r.detectedSentiment),
       specialConditions: Array.isArray(r.specialConditions)
         ? r.specialConditions.filter((c): c is string => typeof c === 'string' && c.trim() !== '')

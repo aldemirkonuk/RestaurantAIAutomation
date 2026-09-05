@@ -158,7 +158,7 @@ describe("the moves this house already makes are all legal", () => {
     [
       ProcurementOrderStatus.NEGOTIATING,
       ProcurementOrderStatus.REJECTED,
-      "procurement_agent.py on a vendor rejection",
+      "a rejection recorded against an order still in negotiation",
     ],
   ];
 
@@ -310,5 +310,68 @@ describe("an unreadable state is refused, never treated as permission", () => {
     expect(verdict.allowed).toBe(true);
     expect(verdict.from).toBe(ProcurementOrderStatus.APPROVED);
     expect(verdict.sentence).toBeUndefined();
+  });
+});
+
+
+/**
+ * ADR 0125 Q3 — the founder, 2026-09-05: "Return to NEGOTIATING, with the
+ * decline recorded."
+ *
+ * A vendor's no used to be written as terminal REJECTED by
+ * `procurement_agent.py:780`, which dropped the order out of every open-order
+ * list, outstanding count and reorder widget before a person decided anything.
+ * Dynamics 365 holds such a PO "In external review" for the same reason: the
+ * house may still buy the wine at another price or from another vendor.
+ */
+describe("a vendor's decline returns the order to negotiation", () => {
+  it.each([
+    ProcurementOrderStatus.PENDING,
+    ProcurementOrderStatus.APPROVAL_NEEDED,
+    ProcurementOrderStatus.APPROVED,
+    ProcurementOrderStatus.CONFIRMED,
+  ])("allows %s -> NEGOTIATING, the state a decline lands in", (from) => {
+    expect(canTransition(from, ProcurementOrderStatus.NEGOTIATING)).toBe(true);
+  });
+
+  it("allows a decline on an order already in negotiation to change nothing", () => {
+    expect(
+      canTransition(
+        ProcurementOrderStatus.NEGOTIATING,
+        ProcurementOrderStatus.NEGOTIATING,
+      ),
+    ).toBe(true);
+  });
+
+  it("CONFIRMED -> NEGOTIATING is the edge this decision added", () => {
+    // The one edge the census did not already contain: before ADR 0125 Q3
+    // nothing walked an order backwards out of CONFIRMED, because the only
+    // thing that answered a decline wrote REJECTED instead.
+    expect(
+      ORDER_TRANSITIONS[ProcurementOrderStatus.CONFIRMED],
+    ).toContain(ProcurementOrderStatus.NEGOTIATING);
+  });
+
+  it("still refuses a decline written the old way, from a placed order", () => {
+    // `CONFIRMED -> REJECTED` is what `procurement_agent.py` used to write. The
+    // table refuses it, and since the trigger landed so does the database.
+    expect(
+      canTransition(
+        ProcurementOrderStatus.CONFIRMED,
+        ProcurementOrderStatus.REJECTED,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not walk an order backwards out of the delivery chain", () => {
+    // A decline after the wine is on its way is not a negotiation; it is a
+    // delivery problem, and it belongs at the door.
+    for (const from of [
+      ProcurementOrderStatus.IN_TRANSIT,
+      ProcurementOrderStatus.DELIVERED,
+      ProcurementOrderStatus.PARTIALLY_RECEIVED,
+    ]) {
+      expect(canTransition(from, ProcurementOrderStatus.NEGOTIATING)).toBe(false);
+    }
   });
 });

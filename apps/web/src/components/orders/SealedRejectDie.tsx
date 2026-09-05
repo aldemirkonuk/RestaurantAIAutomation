@@ -33,8 +33,17 @@
  *    with a REASON arrives first: the gateway will not mint for a cancellation
  *    it would not perform, so "the wine is already on the shelf" is said at the
  *    start of the hold rather than after it.
- * 4. A REFUSAL IS PRINTED AS ITSELF. 400 (no reason), 403 (the seal) and 422
- *    (the state) all carry a whole sentence written to be read;
+ * 4. A NON-MANAGER SEES IT DISABLED, WITH THE REASON (ADR 0083: a control that
+ *    disappears teaches nothing). The founder, 2026-09-05, answering ADR 0125
+ *    Q1: *"Manager or owner, like approval."* The gate is the endpoint's —
+ *    `assertCanManageRestaurant` runs on the mint AND the write — and this is
+ *    the courtesy in front of it. **An UNRESOLVED role disables too**: the role
+ *    comes from `/auth/me/role` and is `null` while it is loading and `null`
+ *    again when that read FAILED. Treating "I don't know" as "yes" is the
+ *    house's [[absence-reported-as-health]] fault pointed at a destructive
+ *    write, and the sentence says which of the two it is.
+ * 5. A REFUSAL IS PRINTED AS ITSELF. 400 (no reason), 403 (the seal or the
+ *    role) and 422 (the state) all carry a whole sentence written to be read;
  *    `services/api/orders.ts` promotes it onto `.message`. Wrapping those in
  *    "The gateway refused (…)" would bury them. Anything else keeps the generic
  *    framing, because a dropped connection explains nothing about this order.
@@ -48,6 +57,7 @@
 
 import { useId, useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
+import { useAuth } from '@/contexts/AuthContext';
 import { useCancelOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 
@@ -55,6 +65,22 @@ import * as ordersApi from '@/services/api/orders';
 export const REJECT_NEEDS_A_REASON_LEGACY =
   'Say why this order is being rejected. The reason is written onto the order ' +
   'and is the only account anyone will have of why this wine was not bought.';
+
+/** Said to somebody whose role cannot end an order. Never hidden — ADR 0083. */
+export const REJECT_NEEDS_A_MANAGER =
+  'Cancelling an order is a manager\u2019s or an owner\u2019s act in this house, and your ' +
+  'role here is not one of those. Nothing was changed. Ask a manager to reject it, or ' +
+  'ask an owner to change your role.';
+
+/**
+ * Said while the role is unknown — which is BOTH "still loading" and "that read
+ * failed", because `/auth/me/role` resolves `null` for each and the browser
+ * cannot tell them apart. Either way it is not permission.
+ */
+export const REJECT_ROLE_UNKNOWN =
+  'Your role at this restaurant has not been read yet, so whether you may cancel an ' +
+  'order is unknown. It is not assumed. If this does not clear in a moment, reload \u2014 ' +
+  'a role that cannot be read is not a role that allows this.';
 
 /** Said when the seal could not be minted for a reason the gateway did not give. */
 export const REJECT_SEAL_NOT_ISSUED =
@@ -82,6 +108,7 @@ export function SealedRejectDie({
   onRejected,
 }: SealedRejectDieProps) {
   const cancel = useCancelOrder();
+  const { activeRole } = useAuth();
   const reasonId = useId();
   const [reason, setReason] = useState('');
   const [reasonTouched, setReasonTouched] = useState(false);
@@ -93,11 +120,30 @@ export function SealedRejectDie({
   /** The seal for THIS gesture. One order, one token. */
   const sealRef = useRef<string | null>(null);
 
-  const armed = reasonIsGiven(reason);
+  /**
+   * The role, as three states rather than two. `null` is not `staff`: one means
+   * "this person may not", the other means "nobody has said yet", and a control
+   * that collapsed them would either accuse a manager or admit a stranger.
+   */
+  const mayCancel = activeRole === 'owner' || activeRole === 'manager';
+  const roleUnknown = activeRole === null || activeRole === undefined;
+  const roleNote = roleUnknown
+    ? REJECT_ROLE_UNKNOWN
+    : mayCancel
+      ? null
+      : REJECT_NEEDS_A_MANAGER;
+
+  const armed = reasonIsGiven(reason) && mayCancel;
 
   const onChallenge = async (): Promise<string | null> => {
     sealRef.current = null;
     setRefusal(null);
+    if (!mayCancel) {
+      // Unreachable while the die is disabled; kept because the ONLY thing
+      // standing between a disabled control and a mint is this function.
+      setRefusal(roleUnknown ? REJECT_ROLE_UNKNOWN : REJECT_NEEDS_A_MANAGER);
+      return null;
+    }
     if (!armed) {
       setReasonTouched(true);
       return null;
@@ -180,7 +226,7 @@ export function SealedRejectDie({
         aria-label="Why this order is rejected"
         rows={2}
         value={reason}
-        disabled={disabled || running}
+        disabled={disabled || running || !mayCancel}
         onChange={(e) => {
           setReason(e.target.value);
           setRefusal(null);
@@ -209,7 +255,12 @@ export function SealedRejectDie({
           onChallenge={onChallenge}
         />
       </div>
-      {!armed && reasonTouched && (
+      {roleNote && (
+        <p style={said} role="status" data-testid="legacy-reject-role-note">
+          {roleNote}
+        </p>
+      )}
+      {mayCancel && !armed && reasonTouched && (
         <p style={said} role="alert" data-testid="legacy-reject-needs-reason">
           {REJECT_NEEDS_A_REASON_LEGACY}
         </p>

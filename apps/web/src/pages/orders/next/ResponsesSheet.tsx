@@ -74,6 +74,7 @@ import {
   NO_DELIVERY_ESTIMATE,
   NO_SUMMARY_WRITTEN,
   REJECT_NEEDS_A_REASON,
+  VENDOR_DECLINED_NOTE,
   describeOrderedQuantity,
   readVendorResponses,
   reasonIsGiven,
@@ -597,6 +598,30 @@ export function ResponsesSheet({
                   <Field name="Arrived">{fmtDate(current.arrivedAt)}</Field>
                   <Field name="Round">{current.round === null ? EM : current.round}</Field>
                 </div>
+
+                {/*
+                  The decline, said where the answer is read (ADR 0125 Q3).
+                  Placed directly under WHO answered and WHEN, because those two
+                  plus the vendor's own words further down ARE the record of the
+                  decline — the order carries no separate copy, deliberately.
+                  The sentence exists because the order stays OPEN now: without
+                  it a manager reads a refusal on a live order and cannot tell
+                  whether anything happened.
+                */}
+                {current.declined && (
+                  <div
+                    data-testid="response-declined"
+                    style={{
+                      marginTop: 10,
+                      padding: '8px 10px',
+                      borderLeft: '2px solid var(--seal, #1A5E6B)',
+                      background: 'var(--paper-2, #EAE4D8)',
+                    }}
+                  >
+                    {label('The vendor declined')}
+                    <p style={{ ...said, marginTop: 3 }}>{VENDOR_DECLINED_NOTE}</p>
+                  </div>
+                )}
 
                 {/* Full width, not a fourth column: when there is no estimate
                     the field is a SENTENCE about the record, and a sentence

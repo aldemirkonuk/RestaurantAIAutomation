@@ -338,16 +338,51 @@ describe("InboundResponderService (deterministic core)", () => {
   });
 
   describe("syncOrderState — lifecycle (confirmed→APPROVED, matching receipt→ORDERED)", () => {
-    // Capture the payload passed to supabase.update() so we can assert on the
-    // status transition without a real DB.
-    const withCapturingDb = () => {
+    /**
+     * Capture what `syncOrderState` writes, PER TABLE, without a real database.
+     *
+     * WHY PER TABLE (fixed 2026-09-05, ADR 0119 Q2 fallout)
+     * ----------------------------------------------------
+     * This mock used to implement `from().update().eq()` and nothing else, and
+     * kept ONE `captured.update`. That was enough while the method wrote one
+     * row. It is not any more: the header's `final_price` became a
+     * trigger-maintained echo of `procurement_order_items.final_unit_price`, so
+     * an accepted price is now written to the LINE, and the method first READS
+     * the order's first line to find it.
+     *
+     * The mock had no `select`, so that read threw, the catch swallowed it, and
+     * NOTHING was captured — the acceptance case asserted `status` on an
+     * `undefined` payload and failed. The fix is here rather than in the
+     * service: the service's behaviour is correct and deliberate, and a mock
+     * that cannot answer a read the code makes is a broken mock, not a broken
+     * write path.
+     *
+     * `lineRead` lets a case make that read FAIL, which is its own asserted
+     * behaviour: the status still advances and no price is written anywhere.
+     */
+    const withCapturingDb = (
+      lineRead: { data: any; error: any } = { data: { id: "line1" }, error: null },
+    ) => {
+      const updates: Record<string, Record<string, any>> = {};
       const captured: { update?: Record<string, any> } = {};
       const supabase = {
-        from: () => ({
+        from: (table: string) => ({
           update: (payload: Record<string, any>) => {
-            captured.update = payload;
+            updates[table] = payload;
+            // Kept so the cases that only care about the order keep reading the
+            // way they always did.
+            if (table === "procurement_orders") captured.update = payload;
             return { eq: () => Promise.resolve({ error: null }) };
           },
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: () => Promise.resolve(lineRead),
+                }),
+              }),
+            }),
+          }),
         }),
       };
       const s = new InboundResponderService(
@@ -357,7 +392,7 @@ describe("InboundResponderService (deterministic core)", () => {
         {} as any,
         {} as any, // nfVerdicts — the graded path is not the core under test
       );
-      return { s: s as any, captured };
+      return { s: s as any, captured, updates };
     };
 
     const acceptanceAnalysis = (overrides: Record<string, any> = {}) =>
@@ -377,7 +412,7 @@ describe("InboundResponderService (deterministic core)", () => {
       });
 
     it("vendor accepts under full autonomy → APPROVED, never straight to ORDERED (CONFIRMED)", async () => {
-      const { s, captured } = withCapturingDb();
+      const { s, updates } = withCapturingDb();
       const order = {
         id: "o1",
         status: "NEGOTIATING",
@@ -392,8 +427,34 @@ describe("InboundResponderService (deterministic core)", () => {
         6,
         /* autonomyFull */ true,
       );
-      expect(captured.update?.status).toBe("APPROVED");
-      expect(captured.update?.final_price).toBe(1050);
+      expect(updates.procurement_orders?.status).toBe("APPROVED");
+      // The accepted price goes on the LINE, and the header is left alone: it is
+      // a trigger-maintained echo, and a direct write here that disagreed with
+      // the line comes back as a 23514 that would take the status update down
+      // with it (ADR 0119 Q2).
+      expect(updates.procurement_order_items?.final_unit_price).toBe(1050);
+      expect(updates.procurement_orders).not.toHaveProperty("final_price");
+    });
+
+    it("a line that cannot be READ advances the status and writes no price at all", async () => {
+      // A failed read is not an empty one. Without knowing whether a line
+      // exists, writing the header could hit the echo trigger and take the whole
+      // status update down, so the price is left unwritten and said out loud.
+      const { s, updates } = withCapturingDb({
+        data: null,
+        error: { message: "relation unavailable" },
+      });
+      const order = {
+        id: "o5",
+        status: "NEGOTIATING",
+        quantity: 6,
+        final_price: null,
+        negotiated_price: null,
+      };
+      await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
+      expect(updates.procurement_orders?.status).toBe("APPROVED");
+      expect(updates.procurement_orders).not.toHaveProperty("final_price");
+      expect(updates.procurement_order_items).toBeUndefined();
     });
 
     it("APPROVED order + matching verification receipt → ORDERED (CONFIRMED)", async () => {

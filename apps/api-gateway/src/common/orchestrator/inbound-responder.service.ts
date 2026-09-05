@@ -108,6 +108,22 @@ export interface ResponderResult {
   reason?: string;
 }
 
+/**
+ * The intents that mean the vendor said no.
+ *
+ * ADR 0125 Q3. Taken from the model's own prompt, which names
+ * `price_acceptance | counter_offer | rejection | question | promo_offer |
+ * out_of_stock | confirmation | general` — plus `declined`, which
+ * `procurement_agent.py` has always branched on and which writes the same
+ * column. Exported so the responses sheet marks the same rows the gateway acts
+ * on, rather than keeping a second opinion about what a decline is.
+ *
+ * `counter_offer` is deliberately NOT here: a counter-offer is a negotiation
+ * continuing, not a refusal, and treating it as one would make every haggle
+ * read as a rejection.
+ */
+export const DECLINE_INTENTS = ["rejection", "declined", "out_of_stock"];
+
 interface Analysis {
   intent: string;
   sentiment: string;
@@ -1122,6 +1138,14 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       ];
       if (terminal.includes(currentStatus)) return;
 
+      // The intents the model is told to emit for a refusal, in its own prompt's
+      // words: "rejection" and "out_of_stock". `declined` is accepted too
+      // because `procurement_agent.py` has always branched on it and the two
+      // paths read the same column.
+      const isDecline = DECLINE_INTENTS.includes(
+        String(analysis.intent || "").toLowerCase(),
+      );
+
       const accepted =
         analysis.intent === "price_acceptance" ||
         (vendorPrice != null &&
@@ -1156,7 +1180,36 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       const receiptMatches =
         isVerification && !priceContradicts && !qtyContradicts;
 
-      if (currentStatus === "APPROVED") {
+      // A VENDOR'S NO IS NOT THE ORDER'S DEATH (ADR 0125 Q3, founder 2026-09-05:
+      // "Return to NEGOTIATING, with the decline recorded").
+      //
+      // Checked FIRST, above the acceptance branches, because a decline is not a
+      // deal and must not fall through into one. The order returns to
+      // NEGOTIATING — never to a terminal state — because the house may still
+      // buy this wine at another price, or from another vendor, and an order
+      // marked REJECTED drops out of every open-order list before anybody
+      // decides. Dynamics 365 does the same, holding such a PO "In external
+      // review"; `procurement_agent.py` did the opposite and is corrected in the
+      // same pass.
+      //
+      // WHO DECLINED, WHEN, AND IN WHAT WORDS is already recorded, and is not
+      // re-recorded here: `persistConversation` writes the inbound row with the
+      // provider, its `created_at`, the vendor's own message and
+      // `detected_intent`. That row IS the record; copying it onto the order
+      // would make two accounts of one event that can disagree. The transition
+      // table permits every from-state this can fire in
+      // (PENDING/APPROVAL_NEEDED/NEGOTIATING/APPROVED/CONFIRMED -> NEGOTIATING);
+      // CONFIRMED -> NEGOTIATING was added to it for exactly this branch.
+      if (isDecline) {
+        if (currentStatus !== "NEGOTIATING") {
+          update.status = "NEGOTIATING";
+          this.logger.log(
+            `Order ${order.id}: the vendor declined, so it returns to NEGOTIATING ` +
+              `from ${currentStatus || "an unread state"} rather than being closed. ` +
+              `The decline is the inbound conversation row.`,
+          );
+        }
+      } else if (currentStatus === "APPROVED") {
         if (receiptMatches) {
           update.status = "CONFIRMED"; // -> UI "ordered"
           update.confirmed_at = new Date().toISOString();

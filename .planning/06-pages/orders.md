@@ -687,6 +687,21 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
     is the strongest answer and the most work); whether a vendor's rejection should return
     an order to NEGOTIATING rather than kill it (Dynamics 365 keeps such a PO "In external
     review"); and whether bulk rejection should return as a real ceremony.
+    **Three of the four were answered and built the same day** (ADR 0125's addendum):
+    a cancellation is now a manager's or an owner's act through
+    `assertCanManageRestaurant` on both the mint and the write, with the legacy control
+    disabled and the reason said; the table is enforced as a `BEFORE UPDATE OF status`
+    trigger generated from the TypeScript and held to it by a spec and
+    `scripts/check_order_transition_sql.py`; and a vendor's decline returns the order to
+    NEGOTIATING with the inbound conversation row as the record. **Only bulk rejection
+    is still the founder's call.**
+
+17. **A vendor's decline no longer closes the order** (2026-09-05, ADR 0125 Q3). The
+    responses sheet marks a declined answer and says the order is still open. What is NOT
+    built, and is the next thing somebody will want: a way to act on it from there — re-price
+    and re-send to the same vendor, or send the same request to another. Today the manager
+    reads the decline in the sheet and starts again from the composer.
+    *Blocker: none — it is new work, not a defect.*
 
 15. **Say on the LEDGER ROW which orders have an answer.** The row offers "The vendor's
     answers" unconditionally, because nothing on the page knows which orders have one:
