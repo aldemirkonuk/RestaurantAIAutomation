@@ -1,9 +1,15 @@
 # 0119 — An agreed price states its unit
 
-- **Status:** Proposed — research only. No code, no migration, no schema change. This
-  ADR answers ADR 0117's Q6 (*"a case-priced agreement has no unit to state its price
-  in"*) with a mapped fork and a recommendation; the call is the founder's.
-- **Date:** 2026-09-04
+- **Status:** **Accepted in part — O1 phase 0 and phase 1 built, 2026-09-04.** Q1 and Q5
+  are answered by the founder; **Q2, Q3, Q4, Q6 and Q7 remain open and are restated
+  below.** The ADR was written as research only ("No code, no migration, no schema
+  change") and that is no longer true of it: phase 0's mail half shipped in `f7ae750e`,
+  and on 2026-09-04 the founder chose *"ship the columns and the /orders field
+  together"*, which built phase 1 — the migration
+  `supabase/migrations/20260905010000_an_agreed_price_states_its_unit.sql`, the writers,
+  and the price-unit control on `/orders`. What was NOT built is listed under
+  "Still open after phase 1" at the end of the Recommendation.
+- **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided and built)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** agreed price, price unit, unit of measure, case price, bottle price,
   pack size, split case, deposit, allowance, freight, `procurement_orders.final_price`,
@@ -454,9 +460,64 @@ wrong today and it reaches a vendor.
 > mail now says what the order holds, but the register still cannot tell a case price
 > from a bottle price, which is what O1's phase 1 is for.
 
-**Phase 1 (the migration this ADR does NOT write).** Sketch only — no file, no
-timestamp claimed, gated per ADR 0070's rule that no migration lands before the
-schema-parity fix:
+**Phase 1 — BUILT 2026-09-04.** The founder was asked Q1 (*ship the column before the
+desk can set it?*) and answered neither half of the fork as posed: **"ship the columns
+and the /orders field together"** — one bounded build, so the schema never holds a
+column nobody can state and the desk never states a unit the schema cannot store. What
+landed:
+
+> * **The migration.**
+>   `supabase/migrations/20260905010000_an_agreed_price_states_its_unit.sql` — two
+>   nullable columns on `procurement_order_items`, three CHECKs (the seven-word
+>   vocabulary; both-or-neither; a non-multiplying unit's pack is exactly 1), four column
+>   comments including `procurement_orders.final_price` demoted to *an echo of the line*,
+>   three in-file assertions, and **no backfill**. Measured against the local Postgres in
+>   a rolled-back transaction: nine insert probes, the four legal shapes accepted
+>   (case/12, bottle/1 beside a case QUANTITY, keg/1, NULL pair) and the five illegal
+>   ones refused by name (uom without pack, pack without uom, `'cases'`, bottle-per-12,
+>   pack 0).
+> * **The writers.** `createOrder` resolves and refuses the pair before anything is
+>   written and passes it to `upsertOrderLine`, which writes `price_uom` /
+>   `price_pack_size` as explicit keys; the order's value is drawn from the pair
+>   (`agreedOrderTotal`) instead of `finalPrice × bottlesTotal`;
+>   `recordOwnPaperSighting` receives the PRICE's `(unit, pack)` rather than the
+>   quantity's, so a case-priced agreement now enters the register and
+>   `normalizeUnitPrice` performs the one conversion; `recordPriceHistory` converts once
+>   to the per-bottle figure its `unit = 'BOTTLE'` column asserts, records the arithmetic
+>   in the row's `notes`, and REFUSES a per-keg price in words rather than filing it as a
+>   bottle price; `describeConfirmedOrderTerms` states the price's own unit when the row
+>   has one and falls back to phase 0's sentence when it does not.
+> * **The `/orders` field.** `apps/web/src/pages/orders/next/AgreementSheet.tsx` — the
+>   rebuilt page's own composer, with a price-unit picker (nothing preselected), a pack
+>   field shown only for a multiplying unit, the total drawn from the pair with its
+>   working printed, and the register's refusal shown BEFORE the save when no unit is
+>   stated. That closes phase 0's `/orders` half and invariant 6 for this surface.
+> * **Proof.** 42 jest assertions in
+>   `apps/api-gateway/src/procurement/agreed-price-states-its-unit.spec.ts`, each pre-fix
+>   behaviour transcribed from `git show HEAD:` copies at `129fbfc6` and asserted beside
+>   the post-fix one; 14 vitest assertions in
+>   `apps/web/src/pages/orders/next/AgreementUnit.test.tsx`.
+
+**Still open after phase 1**, stated so it is not discovered later:
+
+> * **Q2 is only half-answered.** `procurement_orders.final_price` is now *documented* as
+>   an echo (a column comment) and is still independently writable at
+>   `procurement.service.ts` `confirmDeal`. Making it GENERATED from the line is a
+>   second migration and a change to four readers; it was not in this dispatch.
+> * **Q3, Q4, Q6, Q7 are untouched.** Deposit/freight/split-case money still has no home
+>   on the agreement (Q3); `price_history.unit` is still the hardcoded `'BOTTLE'` and a
+>   per-keg price is now *refused* rather than recorded, which sharpens Q4 rather than
+>   answering it; `split_case` is still a word in the vocabulary rather than a decision
+>   (Q6); `normalizeUnitPrice` still reads a 12×375 and a 6×750 as the same per-750 price
+>   (Q7).
+> * **The ledger row still prints a bare number.** `GET /procurement/orders` returns the
+>   HEADER (`mapOrderRow`), which carries no price unit, so `LedgerRow` cannot show one
+>   without the list endpoint joining the line. Filed in `06-pages/orders.md` §13.
+> * **The legacy `/orders`** (`apps/web/src/pages/Orders.tsx`, what production shows with
+>   `mudavym_design_orders` off) is deliberately unchanged and cannot state a price unit.
+
+The sketch the migration was written from, kept for the record — no file, no timestamp
+claimed, gated per ADR 0070's rule that no migration lands before the schema-parity fix:
 
 ```
 -- SKETCH ONLY. Not a migration. Not written to supabase/migrations/.
@@ -581,10 +642,8 @@ found to need a *different* list from the quantity vocabulary; or the header
 
 ## Founder-only questions
 
-1. **Ship the column before the desk can set it?** O1's columns are free to add against
-   0–2 rows and stay NULL until `/orders` grows a unit control. Add them now and let the
-   refusal narrow gradually, or hold the whole thing until the page can state a unit —
-   accepting that the register keeps refusing every case order meanwhile?
+1. ~~**Ship the column before the desk can set it?**~~ **ANSWERED 2026-09-04: neither —
+   "ship the columns and the /orders field together."** Built; see phase 1 above.
 2. **Is `procurement_orders.final_price` demoted to an echo of the line?** Today it is
    independently writable (`:4715-4716`) and independently read. Making it derived
    removes a divergence permanently; keeping it writable keeps a second number that can
@@ -598,9 +657,9 @@ found to need a *different* list from the quantity vocabulary; or the header
    conversion recorded. Option B: it carries the stated unit and every reader must group
    by it. B is more truthful and more expensive; A is the current shape and is a lie the
    moment a keg is priced.
-5. **Fix the confirmation email now?** *"5 bottles … at $X per bottle"* on an order of 5
-   cases (`:4701, :4804-4810`) is wrong today and reaches a vendor. This is phase 0 and
-   needs no migration — do it in the next dispatch, or hold it with the rest?
+5. ~~**Fix the confirmation email now?**~~ **ANSWERED: yes.** The mail half shipped in
+   `f7ae750e` (phase 0) and phase 1 taught the same sentence to state the price's own
+   unit when the line carries one.
 6. **Is a split case a different agreement line from a case?** GS1 says a pack change is
    a new trade item. Treat `split_case` as its own line with its own price and its own
    fee, or as a case line carrying a surcharge?
@@ -614,4 +673,5 @@ found to need a *different* list from the quantity vocabulary; or the header
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-04 | Claude (build, phase 1) | Founder chose *"ship the columns and the /orders field together"* over both halves of Q1's fork. Built the migration, the four writers and the `/orders` price-unit control in one pass; 42 jest + 14 vitest assertions, each pre-fix behaviour transcribed from `git show HEAD:` copies at `129fbfc6` rather than reverted (the shared worktree's stash rule). The migration was measured against a local Postgres inside a rolled-back transaction: 4 legal shapes accepted, 5 illegal ones refused by constraint name. Q2 answered only as a comment, not as a GENERATED column, and said so. Status moved off "research only", which the ADR's own first line had made untrue. |
 | 2026-09-04 | Claude (research) | Created in answer to ADR 0117 Q6 on the founder's *"research. cover every angle."* Six options mapped across five cost surfaces; the leading candidate (O1) attacked with the two-units-on-one-row objection and the objection's residue conceded rather than argued away; O3 killed on external regulatory evidence (CT's statutory bottle-price formula) rather than on taste. Nine external sources cited with URLs, fetch status marked per source. No code, no migration, no OPEN-DECISIONS edit. ADR number `0119` from `check_adr_numbers_unique.py next_free()` over 628 refs **plus** a `git worktree list` sweep of 51 worktrees, both re-run immediately before writing. |

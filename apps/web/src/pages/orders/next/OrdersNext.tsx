@@ -11,6 +11,9 @@
  * - approve = HoldToApprove completing into the Seal landing (stamp);
  * - bulk approve = the dry emboss — same die, no wax, ONE impression;
  * - AI drafts never look sent (DraftRail, prc-02);
+ * - writing an agreement down states the unit its price is in (AgreementSheet,
+ *   ADR 0119 phase 1) — the order's unit and the price's unit are two fields,
+ *   not one assumption;
  * - row expand = settle, with the working shown for every total;
  * - countdowns drain un-eased.
  *
@@ -21,6 +24,7 @@
 
 import { useMemo, useState } from 'react';
 import { HoldToApprove, Wordmark } from '@/components/mudavym';
+import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
@@ -103,6 +107,7 @@ export default function OrdersNext() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [writing, setWriting] = useState(false);
 
   const visibleRows = useMemo(() => {
     const byDate = (a: OrderRowVM, b: OrderRowVM) =>
@@ -153,6 +158,25 @@ export default function OrdersNext() {
               Orders
             </h1>
           </div>
+          <div className="flex items-end gap-4">
+            <button
+              type="button"
+              onClick={() => setWriting(true)}
+              data-testid="write-agreement"
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '7px 13px',
+                borderRadius: 9,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'transparent',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: 'pointer',
+              }}
+            >
+              Write down an agreement
+            </button>
           <div className="text-right" style={{ fontFamily: SANS }}>
             <span
               style={{
@@ -186,7 +210,17 @@ export default function OrdersNext() {
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
             </span>
           </div>
+          </div>
         </header>
+
+        {/* The composer. Its own overlay so the ledger under it never moves,
+            and so the two units — the order's and the price's — are read
+            together in one place (ADR 0119 phase 1). */}
+        <AgreementSheet
+          open={writing}
+          onClose={() => setWriting(false)}
+          onSaved={() => data.refetch()}
+        />
 
         {/* ── the gateway, when it cannot be reached, is said plainly ──── */}
         {data.isError && (

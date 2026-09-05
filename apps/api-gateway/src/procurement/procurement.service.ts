@@ -52,6 +52,16 @@ import {
   isOutlierAgainstPriors,
   isOwnPaperSource,
 } from "./own-paper-sighting";
+import { Uom } from "./documents/document-types";
+import {
+  agreedOrderTotal,
+  describeAgreedPrice,
+  perBottleFromAgreedPrice,
+  readStatedPriceUnit,
+  resolveStatedPriceUnit,
+  unstatedPriceUnitSentence,
+  type StatedPriceUnit,
+} from "./agreed-price";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -182,6 +192,16 @@ export function describeOrderedQuantity(order: {
  * the mail SAYS the pack is not on record and asks — it does not quietly assume
  * one bottle per unit, which is exactly the assumption that made the old
  * sentence wrong.
+ *
+ * ADR 0119 PHASE 1: THE PRICE NOW STATES ITS OWN UNIT WHEN THE ROW DOES.
+ * Phase 0 said "per <unit_type>" — the order's QUANTITY unit — because nothing
+ * on the row named the price's own. That was the least-wrong sentence available
+ * then and it is still an inference: an order of five cases at a per-bottle
+ * price would have been mailed as "per case". Where the line now carries
+ * `price_uom`/`price_pack_size` the mail states THAT pair, pack and all
+ * ("$35.00 per bottle" on a case order, and it means it); where the pair is
+ * NULL the sentence is unchanged, because a fallback that changed its wording
+ * would imply knowledge the row does not have.
  */
 export function describeConfirmedOrderTerms(input: {
   quantity: number;
@@ -189,6 +209,8 @@ export function describeConfirmedOrderTerms(input: {
   bottlesPerUnit: number | null;
   wineName: string;
   finalPrice: number | null;
+  /** The line's stated price unit, when it has one. NULL keeps phase 0's sentence. */
+  statedPriceUnit?: StatedPriceUnit | null;
 }): string {
   const unit = (input.unitType ?? "").trim() || "unit";
   const isBottle = unit === "bottle";
@@ -201,8 +223,16 @@ export function describeConfirmedOrderTerms(input: {
       ? ` (${pack} bottle${pack === 1 ? "" : "s"} each)`
       : "");
 
-  const priceLine =
-    input.finalPrice != null
+  const statedPrice = input.statedPriceUnit
+    ? describeAgreedPrice({
+        price: input.finalPrice,
+        stated: input.statedPriceUnit,
+      })
+    : null;
+
+  const priceLine = statedPrice
+    ? ` at ${statedPrice}`
+    : input.finalPrice != null
       ? ` at $${Number(input.finalPrice).toFixed(2)} per ${unit}`
       : "";
 
@@ -519,14 +549,66 @@ export class ProcurementService {
       });
     }
 
+    // The unit the PRICE is stated in — ADR 0119. Independent of `units` above:
+    // an order of five cases at a per-bottle price is ordinary trade, so nothing
+    // here checks the two against each other. What is refused is HALF a
+    // statement, a word outside the vocabulary, and a pack that contradicts its
+    // own unit — the same three things the database CHECKs added by
+    // `20260905010000_an_agreed_price_states_its_unit.sql` refuse, said here
+    // first so the desk gets a sentence instead of a 23514.
+    //
+    // An ABSENT pair is not an error. It is the state of every order placed
+    // before this shipped, and it means the agreement does not enter the price
+    // register — which `/orders` now says out loud rather than the gateway
+    // logging it to itself (ADR 0119 invariant 6).
+    const priceUnit = resolveStatedPriceUnit({
+      priceUom: dto.priceUom,
+      pricePackSize: dto.pricePackSize,
+    });
+    if (!priceUnit.ok) {
+      this.logger.warn("Refused an order whose price unit cannot be resolved", {
+        restaurantId,
+        inventoryId: dto.inventoryId,
+        reason: priceUnit.reason,
+        priceUom: dto.priceUom ?? null,
+        pricePackSize: dto.pricePackSize ?? null,
+      });
+      throw new BadRequestException({
+        reason: priceUnit.reason,
+        message: priceUnit.message,
+      });
+    }
+    const statedPriceUnit = priceUnit.stated;
+
     const finalPrice = dto.finalPrice ?? dto.quotedPrice ?? 0;
     const bottlesTotal = units.bottlesTotal;
-    // Prices in this table are per BOTTLE — `confirmDeal` emails the vendor
-    // "$X per bottle" from the same column. Multiplying by `quantity` therefore
-    // understated a case order by the pack size, which is the same wound as
-    // `bottles_total` seen through the money. An opaque unit (keg, litre) has no
-    // bottle count, so its quantity is the only multiplier available.
-    const totalCost = dto.totalCost ?? finalPrice * bottlesTotal;
+    // The order's value, worked out from the unit the price is actually stated
+    // in (ADR 0119). Without a stated pair this is byte-for-byte the historical
+    // `finalPrice × bottlesTotal` — the per-bottle convention, unchanged, for
+    // every order that does not state a unit. With one, "$420 per case of 12"
+    // over 60 bottles totals 5 × 420, not 60 × 420.
+    const agreedTotal = agreedOrderTotal({
+      price: finalPrice,
+      stated: statedPriceUnit,
+      bottlesTotal,
+      quantity: dto.quantity,
+      unitType: units.unitType,
+      opaque: units.opaque,
+    });
+    if (!agreedTotal.ok) {
+      this.logger.warn("Refused an order whose value cannot be worked out", {
+        restaurantId,
+        inventoryId: dto.inventoryId,
+        reason: agreedTotal.reason,
+        unitType: units.unitType,
+        priceUom: statedPriceUnit?.priceUom ?? null,
+      });
+      throw new BadRequestException({
+        reason: agreedTotal.reason,
+        message: agreedTotal.message,
+      });
+    }
+    const totalCost = dto.totalCost ?? agreedTotal.total;
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
@@ -619,6 +701,7 @@ export class ProcurementService {
         dto,
         units,
         finalPrice,
+        statedPriceUnit,
       });
 
       const updatedRow = updated as any;
@@ -718,6 +801,7 @@ export class ProcurementService {
       dto,
       units,
       finalPrice,
+      statedPriceUnit,
     });
 
     // Emit order_change event for cross-page sync
@@ -832,10 +916,23 @@ export class ProcurementService {
     restaurantId: string;
     orderId: string;
     dto: CreateOrderDto;
-    units: { unitType: string; bottlesPerUnit: number; bottlesTotal: number };
+    units: {
+      unitType: Uom;
+      bottlesPerUnit: number;
+      bottlesTotal: number;
+      opaque?: boolean;
+    };
     finalPrice: number;
+    /**
+     * The unit the price is stated in (ADR 0119), already resolved and refused
+     * by `createOrder`. NULL means the desk stated none — the row keeps both
+     * columns NULL and the price register goes on refusing it, which is the
+     * status quo rather than a guess.
+     */
+    statedPriceUnit?: StatedPriceUnit | null;
   }): Promise<void> {
     const { restaurantId, orderId, dto, units, finalPrice } = args;
+    const statedPriceUnit = args.statedPriceUnit ?? null;
 
     // The wine identity. `restaurant_inventory.master_wine_id` is NOT NULL
     // (`baseline`), so a resolvable inventory row always yields one.
@@ -876,9 +973,26 @@ export class ProcurementService {
       });
     }
 
-    const lineTotal = Number.isFinite(finalPrice)
-      ? Math.round(finalPrice * units.bottlesTotal * 100) / 100
+    // Worked out from the price's own unit when the row states one, and from
+    // the historical per-bottle convention when it does not (ADR 0119). A
+    // refusal cannot happen here — `createOrder` already refused the one
+    // incomputable shape before reaching this method — but it is handled rather
+    // than cast away, because an unreachable branch that silently returns a
+    // number is how a wrong total gets written the day it becomes reachable.
+    const lineTotalResolution = Number.isFinite(finalPrice)
+      ? agreedOrderTotal({
+          price: finalPrice,
+          stated: statedPriceUnit,
+          bottlesTotal: units.bottlesTotal,
+          quantity: dto.quantity,
+          unitType: units.unitType,
+          opaque: units.opaque === true,
+        })
       : null;
+    const lineTotal =
+      lineTotalResolution && lineTotalResolution.ok
+        ? Math.round(lineTotalResolution.total * 100) / 100
+        : null;
 
     const line = {
       order_id: orderId,
@@ -900,6 +1014,15 @@ export class ProcurementService {
       quoted_unit_price: dto.quotedPrice ?? null,
       negotiated_unit_price: dto.negotiatedPrice ?? null,
       final_unit_price: finalPrice || null,
+      // ADR 0119: the price states its own unit, the same way the quantity two
+      // columns up already does. Written as two EXPLICIT keys rather than a
+      // conditional spread — `check_order_capture_contract.py` reads write
+      // payloads without executing them, and a `...(x ? {a:1} : {})` is a key
+      // set it counts as unreadable. Both keys are always present; NULL is the
+      // honest value for an agreement that stated no unit, and the database
+      // CHECK `..._price_unit_pair_check` refuses either half alone.
+      price_uom: statedPriceUnit?.priceUom ?? null,
+      price_pack_size: statedPriceUnit?.pricePackSize ?? null,
       line_total: lineTotal,
       line_no: 1,
     };
@@ -974,6 +1097,23 @@ export class ProcurementService {
     quantity?: number | null;
     notes?: string | null;
     /**
+     * The unit `price` above is stated in, when the agreement states one
+     * (ADR 0119, `procurement_order_items.price_uom`/`price_pack_size`).
+     *
+     * `price_history.unit` is the hardcoded literal `'BOTTLE'` and the docblock
+     * below records why it stays that way, so a stated per-CASE price has to
+     * become a per-bottle one before it enters the table. The conversion is
+     * `perBottleFromAgreedPrice` — one division, and the sentence it returns is
+     * written into this row's `notes` so the arithmetic is re-derivable from
+     * the row itself. A unit with no bottle inside it (keg, litre) is REFUSED
+     * in words rather than divided by one and filed as a bottle price.
+     *
+     * Absent means the caller asserts the historical per-bottle convention,
+     * which is what all three callers did before this and what every order
+     * without a stated pair still does.
+     */
+    statedPriceUnit?: StatedPriceUnit | null;
+    /**
      * The same event as a row in the PRICE REGISTER — `vendor_price_observations`
      * — which is the table every price reader actually joins on (ADR 0117 class
      * A, "own paper"). Carried separately from the `price` above because the two
@@ -1002,10 +1142,36 @@ export class ProcurementService {
     // it, and the sighting's refusals are different refusals.
     await this.recordOwnPaperSighting(args);
 
-    const price = Number(args.price);
+    // The per-bottle figure this table's `unit` column asserts. With no stated
+    // pair this is `args.price` unchanged — the convention every caller has
+    // always passed. With one, the division happens here, once, and says so.
+    let price = Number(args.price);
+    let unitNote: string | null = null;
+    if (args.statedPriceUnit) {
+      const perBottle = perBottleFromAgreedPrice({
+        price: args.price,
+        stated: args.statedPriceUnit,
+      });
+      if (!perBottle.ok) {
+        // Not a silent skip. A price this table cannot hold is a fact about the
+        // agreement, and a series that quietly omits every keg is a series that
+        // reports its own absence as health.
+        this.logger.warn(
+          `No price_history row written for ${args.source} on order ${args.orderId}: ` +
+            `${perBottle.reason}. The price register (vendor_price_observations) ` +
+            `still carries it in its own unit.`,
+        );
+        return;
+      }
+      price = perBottle.perBottle;
+      unitNote = perBottle.note;
+    }
+
     // A zero or absent price is not an observation. Writing one would put a
     // fabricated $0 into the series and drag every average through it.
     if (!Number.isFinite(price) || price <= 0) return;
+
+    const notes = [args.notes ?? null, unitNote].filter(Boolean).join(" ") || null;
 
     try {
       const { error } = await this.databaseService.supabase
@@ -1037,7 +1203,7 @@ export class ProcurementService {
           effective_date: new Date().toISOString().slice(0, 10),
           source: args.source,
           order_id: args.orderId,
-          notes: args.notes ?? null,
+          notes,
         });
       if (error) throw new Error(error.message);
 
@@ -1109,6 +1275,15 @@ export class ProcurementService {
     masterWineId: string | null;
     source: PriceHistorySource;
     notes?: string | null;
+    /**
+     * ADR 0119. Present means the agreement states its price's unit and the
+     * caller has put THAT pair into `sighting.unitLabel`/`sighting.packSize`,
+     * so `normalizeUnitPrice` converts from the document's own unit exactly as
+     * it does for an invoice. Absent means unstated, and the refusal below
+     * names that rather than leaving `decideOwnPaperSighting` to report a null
+     * pack size — the same refusal, said in the words a person can act on.
+     */
+    statedPriceUnit?: StatedPriceUnit | null;
     sighting?: {
       vendorName?: string | null;
       productName?: string | null;
@@ -1131,6 +1306,17 @@ export class ProcurementService {
           `that cannot name all five.`,
       );
       return;
+    }
+
+    // ADR 0119 invariant 6: a refusal a person cannot see is not a refusal.
+    // When the agreement stated no price unit, say THAT — the caller is about
+    // to be refused by `decideOwnPaperSighting` for a null pack size, which is
+    // true but names the symptom rather than the thing the desk can fix.
+    if (args.source === "order_confirmed" && !args.statedPriceUnit) {
+      this.logger.warn(
+        unstatedPriceUnitSentence(`Order ${args.orderId}`) +
+          ` Stating the unit on the order line (price_uom / price_pack_size) is what admits it.`,
+      );
     }
 
     const provisional = decideOwnPaperSighting({
@@ -1385,6 +1571,48 @@ export class ProcurementService {
     }
 
     return { unitType, bottlesPerUnit: null };
+  }
+
+  /**
+   * The unit this order's AGREED PRICE is stated in, or null — ADR 0119.
+   *
+   * Read from the LINE and only from the line. `procurement_orders.final_price`
+   * names no unit and, per the column comment added by
+   * `20260905010000_an_agreed_price_states_its_unit.sql`, is an echo rather than
+   * a second source of truth; a header that could state its own unit would be
+   * the next place the two readings diverge, which is the fault this fixes.
+   *
+   * Deliberately NOT folded into `resolveOrderMatchUnits`: that method answers
+   * "how many bottles is one of the thing we ordered", which the receiving door
+   * and the invoice matcher both need and neither of which cares what unit the
+   * money is in. Two questions, two reads, and a failure of one does not
+   * silently answer the other.
+   *
+   * A read that FAILS returns null, which is the same value as "no unit stated"
+   * — and that is safe only because null is a refusal here, never a default: an
+   * unreadable line loses a sighting, it never gains a wrong one.
+   */
+  private async readAgreedPriceUnit(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<StatedPriceUnit | null> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_order_items")
+        .select("price_uom, price_pack_size")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return readStatedPriceUnit(data as any);
+    } catch (e: any) {
+      this.logger.warn(
+        `Could not read the order line's stated price unit for order ${orderId}: ` +
+          `${e?.message}. Treating it as unstated, which refuses a sighting ` +
+          `rather than filing one under a guessed unit.`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -4945,18 +5173,24 @@ export class ProcurementService {
       (order as any).negotiated_price ??
       (order as any).quoted_price;
 
-    // The unit the agreed price is stated in. `price_history` hardcodes
-    // `unit: 'BOTTLE'` and its docblock (:925) records that all three of its
-    // callers pass a per-bottle figure — an assertion this mirror INHERITS
-    // rather than re-derives, because nothing on `procurement_orders` states
-    // the unit of `final_price` separately from the order's own unit.
+    // The unit the agreed price is stated in.
     //
-    // So the register only accepts this price when the order's unit holds
-    // exactly one bottle. On an order placed in cases the two readings diverge
-    // by the pack size, and a case price filed as a bottle price — or the
-    // reverse — is the single error that makes a whole ladder wrong. Refusing
-    // is the ADR 0117 answer; the founder's call on how to state a case-priced
-    // agreement is a question, not a default.
+    // ADR 0119 PHASE 1. Until the line could state it, this block INHERITED the
+    // per-bottle convention `price_history.unit = 'BOTTLE'` asserts and the
+    // register therefore accepted the price only when the order's unit held
+    // exactly one bottle — `packSize: bottlesPerConfirmedUnit === 1 ? 1 : null`
+    // — so every case-priced agreement was refused, for a reason no screen
+    // showed. That refusal was correct while nothing on the row could tell a
+    // case price from a bottle price. Now the line can:
+    // `price_uom`/`price_pack_size` (`20260905010000_an_agreed_price_states_its
+    // _unit.sql`).
+    //
+    // With the pair stated, the sighting carries the DOCUMENT's own figure in
+    // the DOCUMENT's own unit — `unitLabel` and `packSize` come from the PRICE's
+    // pair, not the quantity's — and `normalizeUnitPrice` performs the one
+    // allowed conversion with all its operands stored beside the result (ADR
+    // 0119 invariant 2). Without it, nothing changes: the same refusal, now also
+    // said in words a person can act on.
     const confirmUnits = await this.resolveOrderMatchUnits(
       restaurantId,
       orderId,
@@ -4967,6 +5201,10 @@ export class ProcurementService {
       (confirmUnits.unitType == null || confirmUnits.unitType === "bottle"
         ? 1
         : null);
+    const statedPriceUnit = await this.readAgreedPriceUnit(
+      restaurantId,
+      orderId,
+    );
 
     await this.recordPriceHistory({
       restaurantId,
@@ -4977,12 +5215,15 @@ export class ProcurementService {
       source: "order_confirmed",
       quantity: (order as any).bottles_total ?? quantity ?? 1,
       notes: `Agreed on order confirmation${finalPrice != null ? "" : " (price unchanged from the order)"}.`,
+      statedPriceUnit,
       sighting: {
         vendorName: (order as any)?.providers?.name ?? null,
         productName: shelfItem.wineName ?? wineName ?? null,
         unitPrice: agreedPrice ?? null,
-        unitLabel: confirmUnits.unitType ?? "bottle",
-        packSize: bottlesPerConfirmedUnit === 1 ? 1 : null,
+        unitLabel: statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
+        packSize:
+          statedPriceUnit?.pricePackSize ??
+          (bottlesPerConfirmedUnit === 1 ? 1 : null),
         unitVolumeMl: shelfItem.bottleSizeMl,
         // `confirmed_at` was just written onto the order above: the moment the
         // house committed to these terms. That is the date this quote carries.
@@ -5021,6 +5262,11 @@ export class ProcurementService {
           bottlesPerUnit: confirmUnits.bottlesPerUnit,
           wineName,
           finalPrice,
+          // The price's OWN unit when the line states one (ADR 0119 phase 1);
+          // phase 0's "per <unit_type>" when it does not. The mail may not
+          // assert a unit it has not read, and phase 0's version read the
+          // quantity's unit because that was all there was.
+          statedPriceUnit,
         });
         const body =
           `Hi ${greetName},\n\n` +

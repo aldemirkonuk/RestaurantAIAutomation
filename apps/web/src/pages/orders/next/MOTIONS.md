@@ -18,6 +18,7 @@ hold-to-approve gesture becomes a two-step press-to-arm / press-to-confirm.
 | 7 | `orders.bulk.emboss` | The dry emboss | `BulkApproveBar` — after the bulk run finishes, ONE ink-coloured impression (no wax, no accent, rotate −4°) lands bottom-right of the group bar at reduced travel (scale 0.94→1). Fourteen approvals, one impression; the rows underneath simply settle via cache invalidation. | `stamp` curve at ~⅓ amplitude · 360ms |
 | 8 | `orders.draft.turn` | The draft turns in | `DraftRail` / `DraftDetail` — the drafted letter and its thread reveal on expand, slower than settle on purpose ("show the working" for the letter itself). | `turn` — cubic-bezier(0.32,0.72,0,1) · 420ms |
 | 9 | `orders.draft.drain` | Auto-send countdown | `DraftRail` / `CountdownBar` — when a scheduled send exists (`scheduledSendAt`, no `sentAt`), the bar drains scaleX 1→0 over the exact remaining ms, with Cancel live (`cancel-scheduled-send`) and growing stronger under 30s. | **linear**, duration = ms remaining (an eased countdown lies about time) |
+| 9a | `orders.agreement.panel` | The composer opens | `AgreementSheet` — "Write down an agreement" opens the house `Panel` (centered: it asks for an answer). No motion of its own; the primitive's, unchanged, so the composer moves like every other ask in the house. | `settle` — cubic-bezier(0.16,1,0.3,1) · 320ms (from `components/mudavym/Sheet.tsx`) |
 | 10 | `orders.micro.ink` | Micro-states | Hovers, chip borders, the deliver button's pressed/disabled states, the error banner's retry. Nothing travels more than 2px. | `ink` — house curve · 160ms |
 
 Not used on this page, on purpose: no shake anywhere (a refusal is stated as a
@@ -25,3 +26,13 @@ fact in place), no bouncing checkmarks (the house spends its one emphatic
 motion — the stamp — on the seal and nowhere else), and no skeleton shimmer
 theatre (loading is the sentence "Reaching the gateway…", and an unknown is an
 em dash, never a zero).
+
+## Added 2026-09-04 — the agreement composer (ADR 0119 phase 1)
+
+`AgreementSheet` deliberately introduces **no new motion**. The price-unit
+picker reveals its pack field by mounting it, not by animating it: a field that
+grows in reads as decoration on a control whose whole job is to be unambiguous,
+and the founder's rationing rule (`p4-page-brief.md`) spends this page's
+emphatic motion on the seal and nowhere else. The refusal sentences appear and
+disappear with the state that produced them — a refusal is stated as a fact in
+place, never announced with movement.

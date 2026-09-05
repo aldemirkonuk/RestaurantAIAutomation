@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 4
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-04
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
@@ -49,6 +49,10 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - Live updates while the page is open (realtime order events)
 - Approve behind a PROVEN seal: the hold mints a one-time, 120-second challenge bound to this manager, this order, and this order's own total and vendor; the approval carries it back and it is redeemed exactly once (2026-09-04, ADR 0116 addendum)
 - Bulk approve mints one seal per selected order at gesture start and approves nothing at all if any of them fails to mint
+- **The LEGACY desk holds too** (2026-09-04, founder's call in the ADR 0116 addendum) — the flag is OFF in production, so this is the approve control a house actually uses. Its bulk approve is now the same hold, through the same mint (`components/orders/SealedApproveDie.tsx`), and it is a real write: before this it changed local state and alerted "N order(s) approved!" without calling anything. Cmd/Ctrl+Shift+A moves focus to the hold rather than approving on one keystroke
+- **Write down an agreement, stating the unit its price is in** (2026-09-04, ADR 0119 phase 1) — the rebuilt page's own composer: wine, vendor, quantity in the order's own unit with its pack, and separately the price with a **price-unit picker** (per bottle / per case / per keg / per pack / per split case / per each / per litre) and a pack field shown only for a unit that holds more than one. The two units may differ, and the page says that is ordinary. Behind the flag only; the legacy desk (`pages/Orders.tsx`) is unchanged and cannot state a price unit
+- **The agreement's total is drawn from the stated pair, with its working printed** — five cases of twelve at $420 per case reads $2,100, not the $25,200 the old per-bottle arithmetic gave; a quantity or price not yet typed leaves the total an em dash, never a zero
+- **The price register's refusal is said on the page, before the save** — an agreement saved with no price unit shows, in the register's own words, that it will not enter the price register and why. It still saves (a NULL pair is an ordinary row); nobody saves one unknowingly. A price unit the order cannot be counted in (a keg order priced per bottle) blocks the save with the sentence the gateway would answer
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
 
@@ -73,10 +77,70 @@ this list is the note-side index (ADR 0044 §2).
 | `orders.bulk.emboss` | The dry emboss | after a bulk run: ONE ink impression, no wax — fourteen approvals, one impression |
 | `orders.draft.turn` | The draft turns in | drafted letter + thread reveal, slower than settle on purpose |
 | `orders.draft.drain` | Auto-send countdown | scheduled sends drain linear over the exact remaining ms, cancel live |
+| `orders.agreement.panel` | The composer opens | "Write down an agreement" opens the house `Panel` on `settle`; the composer adds NO motion of its own — a refusal is stated in place, never announced with movement |
 | `orders.micro.ink` | Micro-states | hovers, chips, deliver button; ≤2px travel |
 
 Not used, on purpose: no shake, no bouncing checkmarks, no skeleton shimmer for
 unknowns.
+
+### Third pass, 2026-09-04 — the agreed price states its unit (ADR 0119 phase 1)
+
+**What the founder asked.** Presented with ADR 0119's Q1 — ship the price-unit
+columns before `/orders` can set them, or hold everything until the page can —
+the founder took neither half: **"Ship the columns and the /orders field
+together."** One bounded build, so the schema never holds a column nobody can
+state and the desk never states a unit the schema cannot store.
+
+**What was built.**
+
+- `supabase/migrations/20260905010000_an_agreed_price_states_its_unit.sql` —
+  `procurement_order_items.price_uom` / `.price_pack_size`, both nullable, with
+  three CHECKs (the seven-word vocabulary, both-or-neither, a non-multiplying
+  unit's pack is exactly 1), a comment on `final_unit_price` saying to read the
+  pair first, a comment demoting `procurement_orders.final_price` to an echo,
+  and three in-file assertions. **No backfill** — an unstated unit stays
+  unstated.
+- `apps/api-gateway/src/procurement/agreed-price.ts` (new, pure) — the resolver,
+  the total, the one per-bottle conversion, and the refusal sentences.
+- `procurement.service.ts` — `createOrder` refuses a half-stated pair with a
+  sentence before anything is written; `upsertOrderLine` writes the two columns
+  as explicit keys; the order's value comes from `agreedOrderTotal` instead of
+  `finalPrice × bottlesTotal`; `recordOwnPaperSighting` gets the PRICE's pair
+  rather than the quantity's, so a case-priced agreement finally enters
+  `vendor_price_observations`; `recordPriceHistory` converts once and says so in
+  the row's `notes`, and refuses a per-keg price rather than filing it under a
+  column that says BOTTLE; `describeConfirmedOrderTerms` states the price's own
+  unit when the row has one.
+- `apps/web/src/pages/orders/next/AgreementSheet.tsx` + `price-unit.ts` — the
+  composer described in §1a.
+
+**The structure that enforces it.** Two units, adjacent, each with its own
+field: how much was bought, and what the price is per. The ambiguity ADR 0117's
+Q6 named was only possible because the second was inferred from the first; two
+fields that can legally disagree make the inference impossible to make.
+
+**What stays open, and why.**
+
+- The **ledger row still prints a bare price**. `GET /procurement/orders`
+  returns the header (`mapOrderRow`), which carries no price unit; `LedgerRow`
+  would need the list endpoint to join `procurement_order_items`. Filed in §13.
+- **`final_price` is demoted by comment, not by construction** (ADR 0119 Q2) —
+  it is still independently written by `confirmDeal`. Making it GENERATED is a
+  second migration and four readers; it was not this dispatch's.
+- **`price_history.unit` is still the hardcoded `'BOTTLE'`** (ADR 0119 Q4). A
+  per-keg agreement is now REFUSED from that table in words rather than filed as
+  a bottle price, which sharpens the question rather than answering it.
+- The **legacy `/orders`** — what production shows, the flag being off — is
+  untouched and cannot state a price unit.
+
+**Two alternatives considered and not built.** (1) Putting the picker on the
+LEDGER ROW as an inline edit, so an existing agreement could be told its unit
+after the fact: rejected because ADR 0119 invariant 3 says a pack change is a
+new agreement line, never an edit — restating an agreement's unit retroactively
+restates every sighting already written from it. (2) A single "price is per
+ordered unit / per bottle" toggle instead of the full vocabulary: rejected for
+the same reason the ADR rejected it in the schema — it cannot say *per litre* or
+*per kg*, so it dies the day ADR 0115 phase 2 widens the intake vocabulary.
 
 ## 2. Entry
 
@@ -101,7 +165,7 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | Method | Path | Call site |
 |---|---|---|
 | GET | `/procurement/orders` (list) | `useOrders` → `services/api/orders.ts:53` |
-| POST | `/procurement/orders` | `pages/Orders.tsx:966` |
+| POST | `/procurement/orders` | `pages/Orders.tsx:966`; `pages/orders/next/AgreementSheet.tsx` (the rebuilt composer, via `apiClient` — it posts the gateway's own `CreateOrderDto`, including `priceUom`/`pricePackSize`, because `services/api/orders.ts::createOrder` still takes the older `{ wineId, unitPrice }` shape the gateway does not accept) |
 | PATCH / DELETE | `/procurement/orders/:id` | `pages/Orders.tsx:583` / `:532,3323` |
 | POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275`; `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`, `pages/dashboard/next/WaitingOnYou.tsx` — all via `services/api/orders.ts`. **Can answer 403** since ADR 0116 |
 | GET | `/procurement/order-approval-gate` | `pages/orders/next/useOrdersNextData.ts` — one call per house, not per row |
@@ -136,6 +200,10 @@ outbound mail: `pages/Orders.tsx:430,1039,3457,3535`. Plus shared layout chrome
 
 ## 8. State & config
 
+- Flag `mudavym_design_orders` (localStorage override `mudavym.design.orders`) —
+  gates the rebuilt tree under `pages/orders/next/`, including the agreement
+  composer that states a price's unit. OFF in production, so the legacy desk is
+  what a house sees.
 - `VITE_API_GATEWAY_URL` (`Orders.tsx:60`) — one call uses raw axios against it (:684).
 - Realtime order updates via `useRealtimeDispatch` (`Orders.tsx:49`).
 - Table export via `ExportMenu`/`exportTable` (`Orders.tsx:56-57`).
@@ -159,10 +227,44 @@ not, the mail says the pack is not on record and asks, rather than assuming one
 bottle per unit. Pinned in
 `apps/api-gateway/src/procurement/confirm-deal-states-its-unit.spec.ts` (11
 cases: case/known pack, case/unknown pack, bottle, keg, each also run against
-the pre-fix builder). **Still open:** this page does not yet print the unit
-beside the price it shows (phase 0's `/orders` half), and the price register
-still refuses a case-priced agreement — no schema change was made, so nothing
-can yet tell a case price from a bottle price. That is ADR 0119 phase 1.
+the pre-fix builder).
+
+**The agreed price now states its unit, 2026-09-04 — ADR 0119 phase 1 (CLOSES
+the paragraph above).** The founder's call was *"ship the columns and the
+/orders field together"*, so the schema half and the desk half landed as one
+build: `supabase/migrations/20260905010000_an_agreed_price_states_its_unit.sql`
+gives `procurement_order_items` a `price_uom`/`price_pack_size` pair with three
+CHECKs and no backfill; `apps/api-gateway/src/procurement/agreed-price.ts` is
+the pure resolver; `createOrder` refuses a half-stated pair before writing
+anything; `recordOwnPaperSighting` is handed the PRICE's pair instead of the
+quantity's, so a case-priced agreement enters `vendor_price_observations` for
+the first time; and `pages/orders/next/AgreementSheet.tsx` is the control that
+states it. 42 jest + 14 vitest assertions, pre-fix behaviours transcribed from
+`git show HEAD:` copies at `129fbfc6`.
+
+**What is STILL open on this axis, each with a why-not-yet:**
+
+- **This page's LEDGER rows still show a bare price.** `GET /procurement/orders`
+  returns the header via `mapOrderRow`, and no price column on
+  `procurement_orders` names a unit — the pair lives on the LINE. *Why not yet:*
+  printing it needs the list endpoint to join `procurement_order_items`, which
+  is a gateway read-shape change on a route four surfaces share, and this
+  dispatch was scoped to the columns and the field. §13.10.
+- **`procurement_orders.final_price` is an echo by COMMENT, not by
+  construction** (ADR 0119 Q2). `confirmDeal` still writes it independently
+  (`procurement.service.ts` `update.final_price = finalPrice`). *Why not yet:*
+  making it GENERATED from the line is a second migration plus four readers that
+  treat it as authoritative; Q2 is the founder's and is unanswered.
+- **`price_history.unit` is still the hardcoded `'BOTTLE'`** (ADR 0119 Q4). A
+  per-keg agreement is now refused from that table in a sentence rather than
+  filed as a bottle price. *Why not yet:* Q4 asks what the series MEANS, which
+  is a decision, not a column widening.
+- **The legacy desk cannot state a price unit.** `pages/Orders.tsx` offers
+  `case | bottle`, sends no `bottlesPerUnit` — so `resolveOrderUnits` already
+  refuses every case order it attempts — and sends no price unit at all.
+  `mudavym_design_orders` is OFF in production, so the legacy desk is what a
+  house sees today. *Why not yet:* the legacy page is explicitly out of this
+  wave's scope and changing it unasked would edit a surface nobody reviewed.
 
 **The awaiting state, added 2026-09-04 — ADR 0116.** Until now
 `POST /procurement/orders/:id/approve` read neither a role nor an amount, so
@@ -223,15 +325,47 @@ holding a manager's session could seal an order by calling the endpoint. Now:
   ("The seal could not be issued — nothing sent."). That is the one failure the
   whole mechanism exists to prevent, and it must not arrive through the UI.
 
-**STILL OPEN, and user-visible: two approval call sites send no seal.** The
-legacy `pages/Orders.tsx` (via `hooks/useOrdersData.ts`) and
-`pages/dashboard/next/WaitingOnYou.tsx` were outside the pass that built this and
-still call approve with an id alone. `mudavym_design_orders` is OFF in
-production, so the legacy page is what a house sees today — approval from it is
-now REFUSED, in words, until it mints. Why not yet: changing either was fenced
-off by the brief that built the seal, and doing it unasked would have edited a
-page and a dashboard nobody had reviewed. The change is one line at each call
-site (mint, then pass `{ orderId, challenge }`).
+**CLOSED 2026-09-04 — the legacy sites hold too.** The founder chose the hold
+gesture for both remaining call sites rather than a one-click mint-and-approve.
+`components/orders/SealedApproveDie.tsx` is the one control they share: it mints
+one seal per order when the gesture begins, approves nothing if any mint fails,
+prints a 403 as itself and keeps the generic wrapper only for a failure that
+carries no decision. `pages/Orders.tsx` now contains no `/approve` POST of its
+own; `hooks/useOrdersData.ts` takes a challenge and exposes the mint.
+
+Three things the note above said, corrected by measurement (2026-09-04):
+
+- **Not "via `hooks/useOrdersData.ts`".** That hook has **no consumers** —
+  `grep -rn useOrdersData apps packages` finds its definition and the barrel
+  re-export at `hooks/index.ts:9`, nothing else. The legacy page posted through
+  `apiClient` directly.
+- **The legacy page did not "get refused"; it never asked.** The only REACHABLE
+  approve control was the bulk bar's `handleBulkApprove`, and it called no
+  endpoint at all — it rewrote local state to `approved` and alerted "N
+  order(s) approved!". The two paths that did POST were unreachable: nothing in
+  the repo set `showApprovalModal` or `showOrderApprovalModal` to true. All
+  three are sealed now; the reachable one is the only behaviour change a house
+  will see.
+- **`finalPrice` was read by nothing.** `POST orders/:id/approve` takes no
+  body (`procurement.controller.ts` `approveOrder`: id + `X-Seal-Challenge`).
+  The modal's price input is disabled with one line saying so.
+
+**The ground, measured rather than inferred.** A grep said `Orders.tsx` carries
+zero `dark:` classes, which suggested the page was permanently light and the
+control's own light fallbacks would always be right. In the running app the die's
+inline styles were injected into the live page and the computed colours read
+back: under `html.dark` the legacy page IS charcoal (`styles/globals.css:163-177`
+repaints `.dark .bg-white → #1D1813`) while an unwrapped die stayed `#F3EFE6`.
+So the control carries `mudavym` on its own root — tokens scoped to the control,
+never `:root`. Captures and the probe JSON:
+`$SP/shots-legacy-hold/{orders-legacy,orders-legacy-charcoal,dashboard-next,dashboard-next-charcoal}.png`
+and `ground-probe*.json`.
+
+**Still open here.** No live redemption has ever been exercised: the tenant the
+local dev-bypass session reaches has zero orders (`GET /procurement/orders` →
+`total: 0`) and the local gateway points at production, so nothing may be
+approved from here. Both routes answer a non-existent id with the gate's 404
+sentence; the seal's own refusal sentences remain proven only by the specs.
 
 ## 10. Maturity
 
@@ -326,14 +460,34 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
 6. Add a role gate for approval controls so staff do not see buttons the server will
    reject.
 
-### An agreed price has no unit — research, 2026-09-04 (ADR 0119, Proposed)
+10. **Print the unit beside the price on the LEDGER row.** The composer states it;
+    the rows still show a bare number, because `GET /procurement/orders` returns the
+    header (`mapOrderRow`) and the pair lives on `procurement_order_items`. Needs the
+    list endpoint to join the line and `OrderResponseDto` to carry
+    `priceUom`/`pricePackSize`; `useOrdersNextData.toRow` and `LedgerRow`'s "working"
+    block then read it. *Blocker: none — a gateway read-shape change on a route four
+    surfaces share, deliberately not made in the dispatch that built the columns.*
+11. **Decide ADR 0119 Q2 and, if it goes that way, make `final_price` GENERATED.**
+    It is documented as an echo of the line and is still independently written by
+    `confirmDeal`. *Blocker: founder — ADR 0119 Q2.*
+12. **Teach the legacy desk the pair, or retire it.** `pages/Orders.tsx` is what
+    production shows and it cannot place a case order at all (`unitType: 'case'` with
+    no `bottlesPerUnit` is refused by `resolveOrderUnits`), let alone state a price
+    unit. *Blocker: none technically; it is out of the Mudavym wave's scope by
+    instruction.*
+
+### An agreed price has no unit — research 2026-09-04, phase 1 BUILT 2026-09-04 (ADR 0119)
 
 The founder asked for the full graph behind ADR 0117's Q6 (*"a case-priced agreement has
 no unit to state its price in"*). The research is
 [[0119-an-agreed-price-states-its-unit]]; this page is where it lands, because `/orders`
-is the surface that both creates the ambiguity and hides it. Nothing was built.
+is the surface that both creates the ambiguity and hides it. The research built nothing;
+**phase 0 and phase 1 have since been built** — see §1b "Third pass, 2026-09-04" and the
+§9 paragraph above for what landed and what is still open.
 
-**What this page shows today that is not true.** Measured at `HEAD` = `e8a7d6f5`:
+**What this page showed BEFORE phase 1 — kept as the record of the defect, not as a
+description of today.** Measured at `HEAD` = `e8a7d6f5`; the first three bullets are
+FIXED (the fourth's `logger.warn` still stands for an existing row, which is §13.10):
 
 - `procurement_orders` holds four price columns — `quoted_price`, `negotiated_price`,
   `final_price`, `invoice_unit_price` (`20260805000000_baseline_from_production.sql:4523-4525,
@@ -373,25 +527,26 @@ linearity in the warehouse, and back-deriving pack size at this exact table is t
 documented cause of the receiving door's pack-size defect
 (`procurement.service.ts:1259-1268`).
 
-**What this page would owe if the founder takes it.** Three items, in order of
-independence:
+**What this page owed, and what it now owes.** The three items below were written
+while ADR 0119 was research. Two are DONE:
 
-7. **Print the unit beside the price.** Every price this page renders — the order card,
-   the approval ceremony, the negotiation panel — shows a bare number today. Whatever
-   the schema decides, the page should never show a price without the unit it is in.
-   *Blocker: none for the display of the current per-bottle convention; the stated-unit
-   version waits on ADR 0119.*
-8. **Say the refusal out loud.** A case-priced order that could not enter the price
-   register should say so on the row, in the words the gateway already logs, with the
-   one thing that would fix it. A silent refusal is the same failure as a silent
-   default. *Blocker: ADR 0119 Q1 — whether the column ships before the desk can set
-   it.*
-9. **Fix the confirmation email before anything else.** *"5 bottles … at $X per bottle"*
-   on a five-case order is wrong now and reaches a vendor now; it needs no migration and
-   no decision beyond "state the real unit and the real count, or state neither". This
-   is ADR 0119's phase 0 and its Q5. *Blocker: none.*
+7. ~~**Print the unit beside the price.**~~ **PARTLY DONE 2026-09-04.** The composer
+   prints it and shows the working for the total; the LEDGER ROWS still show a bare
+   number, which is now §13.10 above with the exact reason (the list endpoint returns
+   the header, and the pair lives on the line).
+8. ~~**Say the refusal out loud.**~~ **DONE 2026-09-04.** The composer prints the
+   register's own refusal before the save, so an agreement with no stated price unit
+   is never saved unknowingly (`pages/orders/next/price-unit.ts`
+   `UNSTATED_PRICE_UNIT_REFUSAL`, mirroring
+   `apps/api-gateway/src/procurement/agreed-price.ts::unstatedPriceUnitSentence`).
+   Still not said on an EXISTING row — that is §13.10's other half.
+9. ~~**Fix the confirmation email.**~~ **DONE** — phase 0 (`f7ae750e`), and phase 1
+   taught the same sentence to state the price's own unit when the line carries one.
 
-**Deliberately not proposed.** A unit control on the order form. Until the founder rules
-on ADR 0119 Q1–Q2 (does the column ship ahead of the UI; is header `final_price` demoted
-to an echo of the line), adding a picker would let the desk state a unit the schema
-cannot store, which is worse than the current refusal.
+**No longer "deliberately not proposed."** This section used to end: *"A unit control on
+the order form. Until the founder rules on ADR 0119 Q1–Q2 … adding a picker would let
+the desk state a unit the schema cannot store."* The founder ruled on Q1 on 2026-09-04
+by refusing the fork's framing — *ship the columns and the field together* — so the
+picker and the columns landed in one build and the objection never applied. **Q2 is
+still unanswered**, and the picker does not depend on it: the pair lives on the LINE,
+and the header's `final_price` is an echo whether or not it is ever made GENERATED.

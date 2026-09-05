@@ -14,6 +14,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
+import { PRICE_UOM_TYPES } from "../agreed-price";
 
 export enum ProcurementOrderStatus {
   PENDING = "PENDING",
@@ -77,6 +78,33 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   vendorSku?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The unit the AGREED PRICE is stated in — bottle | case | keg | pack | split_case | " +
+      "each | liter. INDEPENDENT of unitType: five cases at a per-bottle price is an " +
+      "ordinary order, and a bottle price and a case price for the same item are posted " +
+      "separately by the trade (ADR 0119). Omitted means UNSTATED, never 'bottle': an " +
+      "agreement with no stated price unit does not enter the price register, and the " +
+      "page says so rather than the number being filed under a guess. Must be sent " +
+      "together with pricePackSize — half a statement is refused with a 400.",
+    enum: PRICE_UOM_TYPES as unknown as string[],
+  })
+  @IsString()
+  @IsOptional()
+  priceUom?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "How many bottles are in one of priceUom. Exactly 1 for a unit that holds one " +
+      "(bottle/each/keg/liter); the real pack for case/pack/split_case. Required " +
+      "whenever priceUom is sent, and refused without it.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  pricePackSize?: number;
 
   @ApiPropertyOptional()
   @IsNumber()
