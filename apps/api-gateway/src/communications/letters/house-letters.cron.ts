@@ -18,11 +18,17 @@
  *
  * WHAT IT DOES TODAY, MEASURED
  * ----------------------------
- * Nothing, and it says so. `HouseSenderService.resolve` returns `kind: "none"`
- * for every house on this tree, because no `IntegrationDefinition` requests
- * `gmail.send` (integrations-oauth.constants.ts:36-98), so no letter can be
- * queued and this run has nothing to consider. `lastRun` records that rather
- * than leaving the surface to guess.
+ * ~~Nothing, and it says so, because no `IntegrationDefinition` requests
+ * `gmail.send`.~~ **STALE, corrected 2026-09-04.** That sentence stopped being
+ * true the same day it was written: `gmail_send` was declared in
+ * `integrations-oauth.constants.ts` (commit 9efef112), so a house one consent
+ * away from a sender is no longer "no house". What is still true is the shape:
+ * `HouseSenderService.resolve` returns `kind: "none"` for a house nobody has
+ * consented for, nothing can be queued there, and this run has nothing to
+ * consider. `lastRun` records that rather than leaving the surface to guess.
+ * The correction is here rather than deleted because a comment that was wrong
+ * for a day is worth knowing about — it is the reason the cron's own claim
+ * about itself now names a commit instead of a line range.
  */
 
 import { Injectable, Logger } from "@nestjs/common";

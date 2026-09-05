@@ -25,6 +25,8 @@ import { HouseLettersController } from "./letters/house-letters.controller";
 import { HouseLettersService } from "./letters/house-letters.service";
 import { HouseLettersCron } from "./letters/house-letters.cron";
 import { HouseSenderService } from "./letters/house-sender.service";
+import { HouseInboxService } from "./inbox/house-inbox.service";
+import { HouseInboxCron } from "./inbox/house-inbox.cron";
 
 @Module({
   imports: [
@@ -91,6 +93,19 @@ import { HouseSenderService } from "./letters/house-sender.service";
     HouseSenderService,
     HouseLettersService,
     HouseLettersCron,
+    /**
+     * ADR 0118, receive half — the house's own inbox reaches the book.
+     *
+     * Needs no new module edge: `OrchestratorModule` (for `publishEvent`) and
+     * `DatabaseModule` are already imported above, `IntegrationsOauthService`
+     * is already provided from its class for the letters dispatcher, and
+     * `HouseLettersService` is where the vendor book comes from. That last one
+     * is why the reader must not be injected into `HouseSenderService`: it
+     * would close the ring sender -> inbox -> letters -> sender. The two share
+     * `inbox/house-inbox-flag.ts` instead, which is a plain module and no edge.
+     */
+    HouseInboxService,
+    HouseInboxCron,
   ],
   exports: [
     GmailService,

@@ -14,24 +14,35 @@ import {
 import {
   integrationsApi,
   type IntegrationCatalogEntry,
-  type IntegrationId,
 } from '../services/api/integrations'
 import { BrandMark } from '../components/brand/BrandMark'
-
-const VALID_IDS: IntegrationId[] = ['google_drive', 'excel']
-
-function isValidId(value: string | undefined): value is IntegrationId {
-  return !!value && (VALID_IDS as string[]).includes(value)
-}
 
 /**
  * Consent screen shown before we hand the user to Google/Microsoft.
  *
  * Providers show their own consent screen, but theirs describes scopes in their
  * vocabulary ("See, edit, create and delete all of your Google Drive files").
- * This page states, in our vocabulary, what we will do with the grant and what
- * we deliberately do not ask for — so the provider screen confirms a decision
- * the user has already understood rather than being the first they hear of it.
+ * This page states, in our vocabulary, what we will do with the grant, what we
+ * deliberately do not ask for, and where what we fetch lands — so the provider
+ * screen confirms a decision the user has already understood rather than being
+ * the first they hear of it.
+ *
+ * WHAT DECIDES WHETHER AN ID IS REAL (fixed 2026-09-04)
+ * ----------------------------------------------------
+ * The catalogue the server returns, and nothing else. This file used to hold
+ * `const VALID_IDS = ['google_drive', 'excel']` and check the route parameter
+ * against it before looking at the catalogue at all. The consequence was
+ * measured on this branch: `gmail_send` was declared on the gateway on
+ * 2026-09-04 and appeared as a Connect row everywhere, and every one of those
+ * rows links here — so the only way to consent to a sending grant led to
+ * "Unknown integration. That integration doesn't exist." The grant was
+ * unreachable and nothing failed.
+ *
+ * A hard-coded copy of a server list is the same fault as a hard-coded copy of
+ * a scope list: it is right on the day it is written. Now the catalogue is
+ * loaded first and an id that is not in it gets the honest sentence — this
+ * DEPLOYMENT does not offer that integration — which is a claim about the
+ * server's answer rather than about a literal in a page.
  */
 export default function AuthorizeIntegration() {
   const { integrationId } = useParams<{ integrationId: string }>()
@@ -68,10 +79,7 @@ export default function AuthorizeIntegration() {
   }, [])
 
   const entry = useMemo(
-    () =>
-      isValidId(integrationId)
-        ? catalog?.find((c) => c.id === integrationId) ?? null
-        : null,
+    () => catalog?.find((c) => c.id === integrationId) ?? null,
     [catalog, integrationId],
   )
 
@@ -91,12 +99,12 @@ export default function AuthorizeIntegration() {
     }
   }
 
-  if (!isValidId(integrationId)) {
+  if (!integrationId) {
     return (
       <Shell>
         <EmptyState
-          title="Unknown integration"
-          body="That integration doesn't exist. Pick one from Settings instead."
+          title="No integration named"
+          body="This link is missing the integration it was meant to connect. Pick one from Connections instead."
           returnPath="/settings"
         />
       </Shell>
@@ -127,7 +135,7 @@ export default function AuthorizeIntegration() {
       <Shell>
         <EmptyState
           title="Unknown integration"
-          body="That integration isn't offered on this deployment."
+          body={`This deployment's integration catalogue does not include "${integrationId}", so there is nothing to consent to. Pick one from Connections instead.`}
           returnPath={returnPath}
         />
       </Shell>
@@ -203,6 +211,31 @@ export default function AuthorizeIntegration() {
                 ))}
               </ul>
             </section>
+
+            {entry.dataHandling && (
+              <section className="border-t border-gray-100 px-7 py-6">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Where it goes, and who can see it
+                </h2>
+                <dl className="mt-3 space-y-3">
+                  {(
+                    [
+                      ['What we read', entry.dataHandling.reads],
+                      ['What we never read', entry.dataHandling.doesNotRead],
+                      ['Where it lands', entry.dataHandling.landsIn],
+                      ['Who can see it', entry.dataHandling.visibleTo],
+                    ] as const
+                  ).map(([term, detail]) => (
+                    <div key={term}>
+                      <dt className="text-sm font-medium text-gray-800">{term}</dt>
+                      <dd className="mt-0.5 text-xs leading-relaxed text-gray-500">
+                        {detail}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )}
 
             <section className="border-t border-gray-100 px-7 py-5">
               <div className="flex items-start gap-3">

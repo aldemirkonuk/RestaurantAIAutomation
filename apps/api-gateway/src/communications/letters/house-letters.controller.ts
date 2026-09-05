@@ -33,6 +33,8 @@ import {
 } from "./house-letters.service";
 import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersCron } from "./house-letters.cron";
+import { HouseInboxCron } from "../inbox/house-inbox.cron";
+import { HouseInboxService } from "../inbox/house-inbox.service";
 import { QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
 
 interface Actor {
@@ -48,22 +50,33 @@ export class HouseLettersController {
     private readonly letters: HouseLettersService,
     private readonly sender: HouseSenderService,
     private readonly cron: HouseLettersCron,
+    private readonly inboxCron: HouseInboxCron,
+    private readonly inbox: HouseInboxService,
   ) {}
 
   @Get("sender")
   @ApiOperation({
-    summary: "Which address this house's own letters would leave from",
+    summary:
+      "Where this house's conversation with a vendor lives — which address letters leave from, and whether replies come back to the same mailbox",
   })
   @ApiResponse({
     status: 200,
     description:
-      "`kind: none` means no letter may be sent and says why; `kind: unknown` means the read failed and is NOT the same answer.",
+      "`kind: none` means no letter may be sent and says why; `kind: unknown` means the read failed and is NOT the same answer. `conversation.where` states the whole thing in four words: `whole_conversation_here`, `letters_leave_only`, `replies_arrive_only`, `shared_mailbox` (plus `unknown` for a failed read), and `conversation.words` says it in a sentence.",
   })
   async senderIdentity(@CurrentUser() user: Actor) {
     const identity = await this.sender.resolve(user.restaurantId, user.id);
     return {
       ...identity,
       dispatcher: this.cron.lastRun(),
+      // The receive half's own report. `dispatcher` says whether letters can
+      // still leave; this says whether replies are still arriving, and from
+      // when. Both are null until their cron has run once — never a fabricated
+      // "nothing to do".
+      reader: {
+        lastRun: this.inboxCron.lastRun(),
+        ...(await this.inbox.statusFor(user.restaurantId)),
+      },
       categories: LETTER_CATEGORIES,
     };
   }

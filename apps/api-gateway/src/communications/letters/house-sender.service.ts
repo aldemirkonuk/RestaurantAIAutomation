@@ -48,12 +48,39 @@
  * facts — "this house has no sending identity" and "we could not read whether
  * it has one" — and a reader who cannot tell them apart is being told the
  * second is the first.
+ *
+ * WHAT CHANGED ON 2026-09-04, SECOND (founder: the send grant stays send-only
+ * "on condition the house can also receive on its own mailbox and have the
+ * whole comms there")
+ * ---------------------------------------------------------------------------
+ * A sending identity was never the whole answer to "where is this house's
+ * conversation?". A letter leaving from the house's own mailbox whose reply
+ * lands in the mailbox every restaurant here shares is HALF a conversation, and
+ * a sender line that said only "sends from X" was quietly reporting the half it
+ * could see as the whole.
+ *
+ * So this resolver now answers on two axes — `gmail_send` and `gmail_read` —
+ * and `conversation.where` states the four combinations in words:
+ * `whole_conversation_here`, `letters_leave_only`, `replies_arrive_only`,
+ * `shared_mailbox`, plus `unknown` for a failed read of the grants, which is a
+ * fact about our knowledge rather than a fifth placement.
+ *
+ * READING NEEDS TWO THINGS, AND THE LINE SAYS BOTH. A person's consent (a
+ * `gmail_read` grant) and the house's switch (`enable_house_inbox_read`) are
+ * different facts, and neither implies the other. A house where somebody
+ * consented and the switch is off is NOT being read, and the line says so
+ * rather than showing the consent and letting a manager infer the rest.
  */
 
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
 import { INTEGRATION_DEFINITIONS } from "../../integrations/integrations-oauth.constants";
+import {
+  GMAIL_READ_SCOPE,
+  HOUSE_INBOX_FLAG,
+  isHouseInboxReadEnabled,
+} from "../inbox/house-inbox-flag";
 
 /**
  * The integration that asks for sending. Read from the catalogue rather than
@@ -96,6 +123,41 @@ export type HouseSenderKind =
   | "none"
   | "unknown";
 
+/**
+ * Where this house's conversation with a vendor actually lives.
+ *
+ * Four placements and one non-placement. `unknown` is not a fifth arrangement:
+ * it is the answer when the grants could not be read, and collapsing it into
+ * `shared_mailbox` would tell a manager their house is on the shared mailbox
+ * when the truth is that we do not know (ADR 0051 clause 3).
+ */
+export type HouseConversationPlacement =
+  | "whole_conversation_here"
+  | "letters_leave_only"
+  | "replies_arrive_only"
+  | "shared_mailbox"
+  | "unknown";
+
+export interface HouseConversationState {
+  where: HouseConversationPlacement;
+  /** The whole answer in one paragraph. Always populated; never a bare em dash. */
+  words: string;
+  /** The sending half, restated so a surface never has to infer it from `kind`. */
+  sending: { granted: boolean | "unknown" };
+  /**
+   * The receiving half. `consented` is a person's decision; `switchedOn` is
+   * this restaurant's. Both are required before a single message is read, and
+   * they are separate fields because they are separate facts — a surface that
+   * showed one boolean would have to lie about the other.
+   */
+  receiving: {
+    consented: boolean | "unknown";
+    switchedOn: boolean;
+    /** The flag whose value `switchedOn` is, named so it can be found. */
+    switch: string;
+  };
+}
+
 export interface HouseSenderIdentity {
   kind: HouseSenderKind;
   /** The address a letter would leave from, or null when none may. */
@@ -129,6 +191,8 @@ export interface HouseSenderIdentity {
   missing: string[];
   /** The subdomain option's commercial standing, in words. No price, ever. */
   subdomain: { provisioned: boolean; tier: "paid"; words: string };
+  /** Where the WHOLE conversation lives, not just the outbound half. */
+  conversation: HouseConversationState;
 }
 
 @Injectable()
@@ -205,6 +269,34 @@ export class HouseSenderService {
   ): Promise<HouseSenderIdentity> {
     const base = this.base();
 
+    // BOTH axes come from ONE read of the same rows. The house's Google grants
+    // answer "may a letter leave?" and "may a reply be read?" together, and
+    // asking twice would let the two halves of one sentence disagree.
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select(
+        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("provider", "google")
+      .is("revoked_at", null);
+
+    const rows = error
+      ? []
+      : ((data ?? []) as unknown as Record<string, unknown>[]);
+    const scopesOf = (r: Record<string, unknown>): string[] =>
+      Array.isArray(r.scopes) ? (r.scopes as string[]) : [];
+    const withSend = rows.filter((r) => scopesOf(r).includes(GMAIL_SEND_SCOPE));
+    const readConsented: boolean | "unknown" = error
+      ? "unknown"
+      : rows.some((r) => scopesOf(r).includes(GMAIL_READ_SCOPE));
+    // The switch is read even when the grants could not be, because "nobody
+    // switched it on" stays true and useful either way.
+    const readSwitchedOn = await isHouseInboxReadEnabled(
+      this.db.client,
+      restaurantId,
+    );
+
     if (base.subdomain.provisioned) {
       // Reachable only once a domain exists. Written now so the shape is real
       // rather than retro-fitted, and so the ceremony fork has both arms.
@@ -218,20 +310,18 @@ export class HouseSenderService {
         undoMs: null,
         words: `Sends as siparis@${domain}, the house's own line on Mudavym's sending domain. Because one house's letter affects every other house's deliverability on that domain, Send is held rather than clicked.`,
         grant: null,
+        conversation: this.conversation({
+          sendGranted: true,
+          sendAddress: `siparis@${domain}`,
+          readConsented,
+          readSwitchedOn,
+          deploymentAddress: base.deployment.address,
+        }),
       };
     }
 
     // The house's own connected mailbox. A grant qualifies when it is live,
     // Google's, attached to THIS house, and carries the send scope.
-    const { data, error } = await this.db.client
-      .from("integration_oauth_connections")
-      .select(
-        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at",
-      )
-      .eq("restaurant_id", restaurantId)
-      .eq("provider", "google")
-      .is("revoked_at", null);
-
     if (error) {
       // Not "none". We do not know.
       this.logger.error(
@@ -249,15 +339,15 @@ export class HouseSenderService {
         missing: [
           "The connections register could not be read; retry before concluding anything about this house.",
         ],
+        conversation: this.conversation({
+          sendGranted: "unknown",
+          sendAddress: null,
+          readConsented: "unknown",
+          readSwitchedOn,
+          deploymentAddress: base.deployment.address,
+        }),
       };
     }
-
-    const rows = (data ?? []) as unknown as Record<string, unknown>[];
-    const withSend = rows.filter((r) =>
-      (Array.isArray(r.scopes) ? (r.scopes as string[]) : []).includes(
-        GMAIL_SEND_SCOPE,
-      ),
-    );
 
     if (withSend.length === 0) {
       const missing = [
@@ -281,6 +371,13 @@ export class HouseSenderService {
             : `No house sender. This house has not connected a mailbox of its own, and a Mudavym address is a paid-tier option that is not provisioned yet. Connect "${GMAIL_SEND_DEFINITION.label}" on /connections; nothing is sent until somebody has.`,
         grant: null,
         missing,
+        conversation: this.conversation({
+          sendGranted: false,
+          sendAddress: null,
+          readConsented,
+          readSwitchedOn,
+          deploymentAddress: base.deployment.address,
+        }),
       };
     }
 
@@ -320,6 +417,107 @@ export class HouseSenderService {
         accountEmail: (chosen.account_email as string | null) ?? null,
         personUserId: String(chosen.user_id),
       },
+      conversation: this.conversation({
+        sendGranted: true,
+        sendAddress: address,
+        readConsented,
+        readSwitchedOn,
+        deploymentAddress: base.deployment.address,
+      }),
+    };
+  }
+
+  /**
+   * Where the whole conversation lives, in words.
+   *
+   * FOUR STATES, AND NEVER A BOOLEAN. "This house has its own mailbox" is not a
+   * fact a boolean can carry, because it is two facts: letters leaving and
+   * replies arriving are separately granted, separately revocable, and a house
+   * routinely has one without the other. A single "own mailbox: yes" would have
+   * been true of a house whose vendors' replies all land in the mailbox every
+   * restaurant on this deployment shares — which is the arrangement the founder
+   * made the send grant conditional on ending.
+   *
+   * READING TAKES BOTH A CONSENT AND A SWITCH. `readConsented` is a person's
+   * `gmail_read` grant; `readSwitchedOn` is this restaurant's
+   * `enable_house_inbox_read`. A house with the first and not the second is NOT
+   * being read, and it is placed with the houses that are not, because
+   * `where` states what IS happening rather than what could be. The words then
+   * say which of the two is missing, so nobody has to guess which door to open.
+   */
+  private conversation(params: {
+    sendGranted: boolean | "unknown";
+    sendAddress: string | null;
+    readConsented: boolean | "unknown";
+    readSwitchedOn: boolean;
+    deploymentAddress: string;
+  }): HouseConversationState {
+    const {
+      sendGranted,
+      sendAddress,
+      readConsented,
+      readSwitchedOn,
+      deploymentAddress,
+    } = params;
+
+    const sending = { granted: sendGranted };
+    const receiving = {
+      consented: readConsented,
+      switchedOn: readSwitchedOn,
+      switch: HOUSE_INBOX_FLAG,
+    };
+
+    if (sendGranted === "unknown" || readConsented === "unknown") {
+      return {
+        where: "unknown",
+        words:
+          "Where this house's conversation lives could not be read, so neither half is stated. This is a failed read, not an answer: the house may well have both a sending and a reading grant. Retry before concluding anything.",
+        sending,
+        receiving,
+      };
+    }
+
+    const reading = readConsented && readSwitchedOn;
+    // The reason reading is off, when a person has in fact agreed to it. Said
+    // in the same breath, because "connect the reading grant" is useless advice
+    // to a house that already has one.
+    const readCaveat = readConsented
+      ? ` Somebody here has consented to reading, but ${HOUSE_INBOX_FLAG} is off for this restaurant, so nothing is being read; the consent is not the switch.`
+      : ` Connect "${INTEGRATION_DEFINITIONS.gmail_read.label}" on /connections — it asks for one permission and reads only mail from the vendors already in this house's book.`;
+    const from = sendAddress ? ` ${sendAddress}` : " this house's own mailbox";
+
+    if (sendGranted && reading) {
+      return {
+        where: "whole_conversation_here",
+        words: `The whole conversation is on this house's mailbox. Letters leave from${from}, and a vendor's reply comes back to the same mailbox and is filed in this house's book, where everyone who works here can read it. Nothing about this house's vendor mail passes through ${deploymentAddress}, the address every restaurant on this deployment shares.`,
+        sending,
+        receiving,
+      };
+    }
+
+    if (sendGranted && !reading) {
+      return {
+        where: "letters_leave_only",
+        words: `Half of it. Letters leave from${from}, so a vendor sees this house's own address — but replies still arrive through ${deploymentAddress}, the mailbox every restaurant on this deployment shares, and are filed from there.${readCaveat}`,
+        sending,
+        receiving,
+      };
+    }
+
+    if (!sendGranted && reading) {
+      return {
+        where: "replies_arrive_only",
+        words: `The other half. A vendor's reply to this house is read from its own mailbox and filed in the book, so nothing arrives only in one person's inbox — but no letter may leave from it, because nobody here has consented to sending. Connect "${GMAIL_SEND_DEFINITION.label}" on /connections; it asks for one permission, to send, and cannot read a single message.`,
+        sending,
+        receiving,
+      };
+    }
+
+    return {
+      where: "shared_mailbox",
+      words: `Neither half is on this house's mailbox. No letter may leave at all, and a vendor's reply arrives through ${deploymentAddress} — the address every restaurant on this deployment shares — and is filed from there. Two separate connections put the conversation here, and each asks for one thing: "${GMAIL_SEND_DEFINITION.label}" and "${INTEGRATION_DEFINITIONS.gmail_read.label}".${readConsented ? readCaveat : ""}`,
+      sending,
+      receiving,
     };
   }
 }

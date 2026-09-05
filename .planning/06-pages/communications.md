@@ -78,6 +78,37 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   sender line still says "no house sender" in words and Send stays disabled, but
   it now names the row to click. Google app verification for the scope is
   outstanding (ADR 0111) — see §9
+- **The receiving mailbox** (2026-09-04, founder: the send grant stays send-only
+  *"on condition the house can also receive on its own mailbox and have the whole
+  comms there"*; asked how, *"A second grant, read-only, house-declared and
+  person-consented"*): `gmail_read` is a declared `IntegrationDefinition`
+  requesting `https://www.googleapis.com/auth/gmail.readonly` **and no other
+  scope** — its own id, its own consent screen, its own disconnect. Two grants,
+  each asking for one thing
+- **The house-inbox reader** (ADR 0118 D9/D10): a scheduled read every five
+  minutes, **OFF unless a restaurant sets `enable_house_inbox_read`**, through the
+  consented grant's own token. Bounded **twice** — every request carries a
+  `from:` filter built from this house's vendor book, and any message Gmail's own
+  fuzzy sender matching returns from outside the book is discarded before its
+  body is read. The **first tick seeds the cursor at now**, so switching it on
+  never reaches backwards into somebody's mail. An admitted reply is mirrored by
+  **publishing the same `email.inbound.received` event the shared mailbox
+  publishes**, so `RabbitMqBridgeService.handleInboundEmail` writes the row, runs
+  the dedupe and hands it to the same triage — a house-mailbox reply is the same
+  kind of thing as a shared-mailbox one
+- **The sender line states the WHOLE conversation, in four states** (ADR 0118 D11):
+  `whole_conversation_here` · `letters_leave_only` ("letters leave from X; replies
+  still arrive through the shared mailbox until someone consents to reading") ·
+  `replies_arrive_only` · `shared_mailbox`, plus `unknown` for a failed read,
+  which is not a fifth arrangement. **A consent is not a switch**: a house where
+  somebody granted reading but the flag is off is placed with the houses that are
+  not being read, and the words name which of the two doors is shut
+- **The consent screen says where what is read lands, and who can see it**
+  (founder's rule: everything valuable is welcome, no person's privacy touched by
+  surprise). Every integration carries a required four-part `dataHandling` block —
+  what we read, what we never read, where it lands, who can see it — served from
+  the same constant the scope list comes from, so the sentence cannot drift from
+  what the server does
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
 
@@ -281,7 +312,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):495 (`reports`), :180
 
 | Method | Path | Call site | Answers today |
 |---|---|---|---|
-| GET | `/communications/letters/sender` | `Compose/useComposeData.ts` | `kind: "none"` for every house — no `gmail.send` grant exists (§9) |
+| GET | `/communications/letters/sender` | `Compose/useComposeData.ts` | Measured live 2026-09-04 on the demo tenant: `kind: "none"`, `conversation.where: "shared_mailbox"`, `reader: {granted:false, enabled:false, lastRun:{grants:0, error:null}}` — nobody has consented to either grant, and the reader cron ran and truthfully found nothing (§9). Also carries `dispatcher` (letters out) and `conversation` (the four states, ADR 0118 D11) |
 | GET | `/communications/letters/book` | `Compose/useComposeData.ts` | the vendor addresses on record; a failed read THROWS rather than answering `[]` |
 | GET | `/communications/letters/templates` | `Compose/useComposeData.ts` | **400 in words** until migration `20260904150000` applies |
 | GET | `/communications/letters/queued` | `Compose/useComposeData.ts` | letters still inside their undo window |
@@ -378,6 +409,66 @@ chrome per dashboard.md §7.
   founder call, filed in the session report, not one to take by default.
 - **NOT BUILT — a letter carries no attachment.** There is no attachment path on the
   manager-written route, and the composer does not pretend there is.
+
+### The house inbox's own gaps, 2026-09-04 (ADR 0118 D8-D11)
+
+- **BLOCKING — no house can switch the reader on, because the switch has no
+  control.** `enable_house_inbox_read` is a real column and a real gate
+  (`communications/inbox/house-inbox.service.ts:339`, registry entry with its
+  anchor guarded by `check_flag_readby_anchors.py`), and **nothing anywhere can
+  set it**. `PUT /settings/feature-flags` was deliberately left alone: its class
+  guards are `JwtAuthGuard, TenantGuard` and it has **no role check**
+  (`settings.controller.ts:38-40`) — unlike the approval thresholds beside it,
+  which call `assertCanManageRestaurant` (`:141`) — so adding the key to that DTO
+  would have let **any authenticated member start reading a colleague's mailbox**.
+  **Why not yet:** the fix is either role-gating a route that also governs
+  `enable_ai_negotiation` and `enable_ai_autonomous_send` (a behaviour change for
+  two existing flags, and the founder's call) or a manager-gated control in
+  `settings/**` or `connections/next/**`, both other builders' paths this pass.
+  Founder question 5 on the ADR.
+- **CLOSED 2026-09-04 — the consent screen refused `gmail_send` outright.**
+  `AuthorizeIntegration.tsx` held `const VALID_IDS = ['google_drive', 'excel']`
+  and checked the route parameter against it *before* reading the catalogue. Every
+  Connect row on `/connections` and `/profile` links to `/authorize/:id`, so the
+  only path to consenting to the sending grant declared that morning ended at
+  *"Unknown integration. That integration doesn't exist."* — the grant was
+  unreachable and no test failed. Measured against `git show HEAD:` (5 of 5
+  assertions fail on HEAD's page; a one-off run confirms HEAD rendered the wall).
+  Fixed by removing the copy: the server's catalogue decides. Widening
+  `IntegrationId` then surfaced two more copies of the same fault at compile time
+  and both are corrected.
+- **NOT FIXED, BY DESIGN — a vendor who writes from an address the book does not
+  hold is invisible to this reader.** The `from:` bound is the grant's promise, so
+  the reader cannot widen itself to catch a new address. That mail still reaches
+  the shared mailbox's cold-email/prospect path, which is unchanged. **Why not
+  yet:** lifting it means either an unbounded read (refused) or a second, wider
+  consent — the founder's call, ADR question 6.
+- **NOT FIXED, BY DESIGN — `gmail_read` records no email address.** Same shape as
+  the send grant: the scope list is one scope, so no `openid`/`email`, so
+  `fetchAccountEmail` stores `null` and the reader's status names the **person**
+  who consented rather than a mailbox address.
+- **NOT BUILT — the reader polls; it does not watch.** A per-grant `users.watch`
+  with Pub/Sub push would be lower-latency and cheaper per tick. **Why not yet:**
+  a topic per grant with an IAM binding, a 7-day renewal and a per-house push
+  endpoint is Google Cloud plumbing nobody has been asked to buy. §13.
+- **NOT MEASURED LIVE — no mailbox has been read.** Every claim above is proved by
+  spec with a stubbed `fetch`, plus read-only curls of the catalogue and the
+  sender route. **Why not measured live:** consenting a real Google account
+  through the local gateway would put a real credential into the **production**
+  Supabase project it points at and read a real person's mail. ADR 0020 — a
+  verification that requires fabricating production state is not a verification
+  worth having.
+- **STATED, NOT FIXED — nothing says how long a read reply is kept.** A vendor
+  reply now reaches `procurement_conversations` from a person's private mailbox
+  and no retention rule covers it. ADR question 7.
+- **PRE-EXISTING, NOT CAUSED HERE — `GET /settings/feature-flags` answers 500 on
+  this branch.** Measured live on `:4000`, 2026-09-04:
+  `{"message":"Could not read your feature settings.","statusCode":500}`. The
+  cause is that the p4 wave's own flag-column migrations
+  (`20260903150000_mudavym_design_flags_connections.sql` and the rest) are not on
+  `origin/main` yet while `getFeatureFlags` selects every ACTIVE key. This build
+  adds one more column to that same select and does not change the outcome;
+  recorded so a reader meeting the 500 does not attribute it here.
 - **NOT MEASURED LIVE — the guardrail refusal and the no-sender refusal are proved by spec, not by
   curl, on this deployment.** The demo tenant
   (`550e8400-e29b-41d4-a716-446655440000`) has **zero** providers, so the
@@ -563,7 +654,20 @@ lands, this route is open.
 11. **Attachments on a house letter**, if the founder wants them — a storage
     path, a size bound, and a decision about whether an attachment may carry a
     figure the body may not.
-12. **The house's text sender** — [ADR 0121](../decisions/0121-the-houses-text-sender.md),
+12. **A manager-gated switch for the house-inbox reader** — the one thing between
+    this build and a working read (§9). Either `PUT /settings/feature-flags` gains
+    `assertCanManageRestaurant` (which also changes who may flip autonomous
+    sending — the founder's call) or `/connections` grows a manager-only control
+    beside the reading grant's row. Nothing else in ADR 0118 D8-D11 is blocked on
+    anything.
+13. **A per-grant `users.watch` instead of the five-minute poll** — a Pub/Sub
+    topic per grant with an IAM binding Gmail can publish to, a renewal before the
+    7-day expiry, and a push endpoint that resolves the house from the
+    notification. Lower latency, `history.list` at 2 units instead of
+    `messages.list` at 5 — but `history.list` takes no `q`, so the book bound
+    would have to move from the query into a post-filter over the whole mail flow,
+    which is a weaker promise. Worth doing only if the latency is felt.
+14. **The house's text sender** — [ADR 0121](../decisions/0121-the-houses-text-sender.md),
     survey in [`07-reference/messaging-senders.md`](../07-reference/messaging-senders.md).
     The founder answered ADR 0118's founder-question 2 on 2026-09-04: *"No letters
     only, however, we def need a sms sender, and text mesg sender since most

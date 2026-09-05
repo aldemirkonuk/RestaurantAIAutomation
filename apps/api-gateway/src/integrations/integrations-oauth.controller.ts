@@ -68,6 +68,12 @@ export class IntegrationsOauthController {
           description: definition.description,
           scopes: definition.scopes,
           notRequested: definition.notRequested,
+          // What is fetched, what is deliberately not, where it lands and who
+          // can read it. Served rather than written into the page for the same
+          // reason the scope list is: a consent screen that composes its own
+          // copy can drift from what the server actually does, and a privacy
+          // sentence that has drifted is worse than none.
+          dataHandling: definition.dataHandling,
           available: availability[definition.id].available,
           unavailableReason: availability[definition.id].reason ?? null,
         }),

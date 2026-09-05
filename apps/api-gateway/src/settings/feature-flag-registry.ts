@@ -185,6 +185,17 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
   },
   {
+    key: "enable_house_inbox_read",
+    // OFF by default, and the default is the point: ON means a scheduled job
+    // reads a person's Gmail mailbox. Consent (a `gmail_read` grant, ADR 0114)
+    // is necessary and NOT sufficient — a person agreeing is a fact about that
+    // person, and a deployment reading is a fact about this restaurant. Read
+    // fails-closed: no row, a read error or a thrown client all mean OFF
+    // (communications/inbox/house-inbox.service.ts `isEnabled`).
+    defaultValue: false,
+    readBy: "communications/inbox/house-inbox.service.ts:339",
+  },
+  {
     key: "mudavym_design_cellar",
     // OFF by default: the Mudavym `/cellar` parent surface and its `/wines` `/beer` `/whiskey` `/cocktails` children (ADR 0044 p4 wave; IA decided 2026-08-30, the crowded redesign rejected — "more character", keep "see everything").
     defaultValue: false,

@@ -574,11 +574,22 @@ export class HouseLettersService {
       ),
     );
     const names = new Map<string, string>();
+    // A failed lookup here is NOT "these templates have no author": the rows
+    // carry `updated_by`, and rendering them as unauthored would state that the
+    // column was null when it was the join that failed. supabase-js resolves
+    // with { data, error } rather than throwing, so a discarded `error` makes
+    // the two indistinguishable. Logged and left as an empty map — every id
+    // then renders through the same "unknown" path the pre-migration rows use.
     if (editorIds.length > 0) {
-      const { data: people } = await this.db.client
+      const { data: people, error: peopleError } = await this.db.client
         .from("users")
         .select("user_id, name")
         .in("user_id", editorIds);
+      if (peopleError) {
+        this.logger.error(
+          `letter templates: who last edited them could not be read (${peopleError.message}); every author renders as unknown.`,
+        );
+      }
       for (const p of (people ?? []) as unknown as Record<string, unknown>[]) {
         if (p.name) names.set(String(p.user_id), String(p.name));
       }

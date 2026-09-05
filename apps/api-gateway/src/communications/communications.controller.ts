@@ -21,6 +21,12 @@ import { GmailService } from "./gmail.service";
 import { SmsService } from "./sms.service";
 import { GmailWatchService } from "./gmail-watch.service";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
+// The one Gmail MIME walk, shared with the house-inbox reader. See gmail-mime.ts.
+import {
+  extractEmailContent as extractGmailContent,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_ATTACHMENT_B64_LEN,
+} from "./gmail-mime";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -1507,11 +1513,11 @@ export class CommunicationsController {
   }
 
   /**
-   * Recursively walk a Gmail MIME tree to pull the best text body and list any
-   * image/PDF attachments. When an email carries an attachment the text nests one
-   * or more levels deep (multipart/mixed → multipart/alternative → text/plain), so
-   * a flat scan of the top-level parts misses it and yields an empty body — which
-   * is what broke inbound emails that included a confirmation/receipt image.
+   * The Gmail MIME walk moved to `gmail-mime.ts` on 2026-09-04 and is imported
+   * rather than reimplemented: the house-inbox reader parses messages fetched
+   * through a HOUSE's own grant, and two walkers would eventually give the same
+   * vendor reply two different bodies depending on which mailbox it arrived on.
+   * Kept as a thin method so the two call sites below read unchanged.
    */
   private extractEmailContent(payload: any): {
     text: string;
@@ -1521,46 +1527,7 @@ export class CommunicationsController {
       attachmentId: string;
     }>;
   } {
-    let text = "";
-    let html = "";
-    const attachmentRefs: Array<{
-      filename: string;
-      mimeType: string;
-      attachmentId: string;
-    }> = [];
-
-    const walk = (part: any): void => {
-      if (!part) return;
-      const mimeType: string = part.mimeType || "";
-      const data = part.body?.data;
-      if (mimeType === "text/plain" && data && !text) {
-        text = Buffer.from(data, "base64url").toString("utf-8");
-      } else if (mimeType === "text/html" && data && !html) {
-        html = Buffer.from(data, "base64url").toString("utf-8");
-      } else if (
-        (mimeType.startsWith("image/") || mimeType === "application/pdf") &&
-        part.body?.attachmentId
-      ) {
-        attachmentRefs.push({
-          filename: part.filename || "attachment",
-          mimeType,
-          attachmentId: part.body.attachmentId,
-        });
-      }
-      for (const child of part.parts || []) walk(child);
-    };
-    walk(payload);
-
-    // No text/plain anywhere → render the HTML part down to text so we never
-    // hand the AI an empty body.
-    if (!text && html) {
-      text = html
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-    return { text, attachmentRefs };
+    return extractGmailContent(payload);
   }
 
   /**
@@ -1571,8 +1538,11 @@ export class CommunicationsController {
     messageId: string,
     refs: Array<{ filename: string; mimeType: string; attachmentId: string }>,
   ): Promise<Array<{ filename: string; mime_type: string; data: string }>> {
-    const MAX_ATTACHMENTS = 3;
-    const MAX_B64_LEN = 7_000_000; // ~5 MB raw
+    // The caps are shared with the house-inbox reader (`gmail-mime.ts`) so the
+    // same vendor receipt is admitted or dropped identically whichever mailbox
+    // it arrived on.
+    const MAX_ATTACHMENTS = MAX_ATTACHMENTS_PER_MESSAGE;
+    const MAX_B64_LEN = MAX_ATTACHMENT_B64_LEN;
     const out: Array<{ filename: string; mime_type: string; data: string }> =
       [];
     for (const ref of refs.slice(0, MAX_ATTACHMENTS)) {

@@ -32,6 +32,9 @@ import { EM, SANS, fmtDay } from './pf-format';
 import { Btn, ConnectionRow, Note, Rail, Register, RetryLink, StatusLine } from './pf-ui';
 import { GoogleLink } from './GoogleLink';
 import type { ProfileNextData } from './useProfileNextData';
+// The catalogue's own id union, not a copy of it: a hard-coded pair here is how
+// `gmail_send` shipped with a Disconnect handler that would not compile for it.
+import type { IntegrationId } from '../../../services/api/integrations';
 
 export function ConnectionsRegister({
   data,
@@ -60,7 +63,7 @@ export function ConnectionsRegister({
     }
   };
 
-  const disconnect = async (id: 'google_drive' | 'excel', label: string) => {
+  const disconnect = async (id: IntegrationId, label: string) => {
     setWorkMsg(null);
     try {
       await data.disconnectWorkspace(id);
