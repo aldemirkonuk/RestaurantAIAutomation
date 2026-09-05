@@ -5,6 +5,7 @@ import { DatabaseModule } from "../database/database.module";
 import { PriceIndexController } from "./price-index.controller";
 import { PriceIndexService } from "./price-index.service";
 import { PriceIndexFetchService } from "./price-index-fetch.service";
+import { PriceIndexUploadService } from "./price-index-upload.service";
 
 /**
  * AuthModule is required, not optional: PriceIndexController is guarded by
@@ -16,7 +17,7 @@ import { PriceIndexFetchService } from "./price-index-fetch.service";
 @Module({
   imports: [DatabaseModule, ConfigModule, AuthModule],
   controllers: [PriceIndexController],
-  providers: [PriceIndexService, PriceIndexFetchService],
-  exports: [PriceIndexService, PriceIndexFetchService],
+  providers: [PriceIndexService, PriceIndexFetchService, PriceIndexUploadService],
+  exports: [PriceIndexService, PriceIndexFetchService, PriceIndexUploadService],
 })
 export class PriceIndexModule {}

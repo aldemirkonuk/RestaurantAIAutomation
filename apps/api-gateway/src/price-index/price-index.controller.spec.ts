@@ -1,6 +1,7 @@
 import { PriceIndexController } from "./price-index.controller";
 import { PriceIndexService } from "./price-index.service";
 import { PriceIndexFetchService } from "./price-index-fetch.service";
+import { PriceIndexUploadService } from "./price-index-upload.service";
 
 /**
  * The controller is a thin adapter. These tests check the two things it decides:
@@ -19,6 +20,7 @@ describe("PriceIndexController", () => {
     const controller = new PriceIndexController(
       { forState } as unknown as PriceIndexService,
       {} as unknown as PriceIndexFetchService,
+      {} as unknown as PriceIndexUploadService,
     );
     const res = await controller.forState(USER, "CA", "coopers", "Retailers", "10");
     expect(forState).toHaveBeenCalledWith("CA", "coopers", "Retailers", 10);
@@ -33,6 +35,7 @@ describe("PriceIndexController", () => {
     const controller = new PriceIndexController(
       { forState } as unknown as PriceIndexService,
       {} as unknown as PriceIndexFetchService,
+      {} as unknown as PriceIndexUploadService,
     );
     await controller.forState(USER, "CA", undefined, undefined, "abc");
     expect(forState).toHaveBeenCalledWith("CA", undefined, undefined, undefined);
@@ -45,6 +48,7 @@ describe("PriceIndexController", () => {
     const controller = new PriceIndexController(
       { forHouse } as unknown as PriceIndexService,
       {} as unknown as PriceIndexFetchService,
+      {} as unknown as PriceIndexUploadService,
     );
     const res = await controller.forState(USER, "me");
     expect(forHouse).toHaveBeenCalledWith("r-1");
@@ -66,6 +70,7 @@ describe("PriceIndexController", () => {
     const controller = new PriceIndexController(
       { status } as unknown as PriceIndexService,
       { lastRunFor } as unknown as PriceIndexFetchService,
+      {} as unknown as PriceIndexUploadService,
     );
     const res = await controller.status();
     expect(res.sources[0].lastRun?.silentBecause).toContain("REFUSED (stale)");
