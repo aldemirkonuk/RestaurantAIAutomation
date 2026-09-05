@@ -313,7 +313,23 @@ EMPTY_HEADLINE = (
 )
 
 
+def _under_root(path: Path) -> str:
+    """`path` relative to the repo when it is inside it, else the path itself.
+
+    NOT `relative_to` unguarded. A relative `--out` (or one outside the repo)
+    made that raise -- AFTER the JSON had already been written and BEFORE the
+    Markdown was, so the run exited non-zero having left half a report on disk
+    and printed a traceback instead of a headline. Measured 2026-09-05 with
+    `--out datasets/canonical/after-pr-306`.
+    """
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
+    out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"corpus-run-{today}.json"
     md_path = out_dir / f"CORPUS-RUN-{today}.md"
@@ -419,7 +435,7 @@ def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
         f"- bytes: min {stats['bytes_min']}, median {stats['bytes_median']}, max {stats['bytes_max']}",
         f"- page count: {stats['page_count']}",
         "",
-        f"Machine-readable: `{json_path.relative_to(ROOT)}`",
+        f"Machine-readable: `{_under_root(json_path)}`",
         "",
     ]
     md_path.write_text("\n".join(lines))
@@ -711,7 +727,7 @@ def main() -> int:
 
     json_path, md_path = write_report(Path(args.out), today, payload)
     print(headline)
-    print(f"wrote {json_path.relative_to(ROOT)} and {md_path.relative_to(ROOT)}")
+    print(f"wrote {_under_root(json_path)} and {_under_root(md_path)}")
     return 0
 
 
