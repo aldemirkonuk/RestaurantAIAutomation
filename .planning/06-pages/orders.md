@@ -47,6 +47,8 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - View conversation attachments (invoices, price lists)
 - Contextual insights rail; table export; pending-order count badge in the sidebar
 - Live updates while the page is open (realtime order events)
+- Approve behind a PROVEN seal: the hold mints a one-time, 120-second challenge bound to this manager, this order, and this order's own total and vendor; the approval carries it back and it is redeemed exactly once (2026-09-04, ADR 0116 addendum)
+- Bulk approve mints one seal per selected order at gesture start and approves nothing at all if any of them fails to mint
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
 
@@ -142,6 +144,26 @@ outbound mail: `pages/Orders.tsx:430,1039,3457,3535`. Plus shared layout chrome
 
 ## 9. Gaps
 
+**The confirmation mail states the order's own unit, 2026-09-04 — ADR 0119
+phase 0 (the mail half).** `confirmDeal` used to mail the vendor
+*"N bottles … at $X per bottle"* for every order, while `procurement_orders.quantity`
+is a count in the order's `unit_type` and no price column names a unit at all —
+so a five-case order of a twelve-pack told the vendor **five bottles** for a
+sixty-bottle delivery and quoted a case price as a bottle price. The sentence is
+now built by `describeConfirmedOrderTerms`
+(`apps/api-gateway/src/procurement/procurement.service.ts:186-216`, used at
+`:5005`): the quantity in the order's own unit word, the price as
+`per <unit_type>`, the pack named only when `resolveOrderMatchUnits` resolved
+one — *"5 cases (12 bottles each) … at $120.00 per case"* — and where it did
+not, the mail says the pack is not on record and asks, rather than assuming one
+bottle per unit. Pinned in
+`apps/api-gateway/src/procurement/confirm-deal-states-its-unit.spec.ts` (11
+cases: case/known pack, case/unknown pack, bottle, keg, each also run against
+the pre-fix builder). **Still open:** this page does not yet print the unit
+beside the price it shows (phase 0's `/orders` half), and the price register
+still refuses a case-priced agreement — no schema change was made, so nothing
+can yet tell a case price from a bottle price. That is ADR 0119 phase 1.
+
 **The awaiting state, added 2026-09-04 — ADR 0116.** Until now
 `POST /procurement/orders/:id/approve` read neither a role nor an amount, so
 anyone who could reach it could seal any figure, and this page rendered
@@ -185,6 +207,31 @@ generic line for anything else.
   axios instead of `apiClient` (`Orders.tsx:684`) — skips the client's auth/refresh
   interceptors; works only because a token header is attached manually.
 - 3,614 lines in one file; the co-located `pages/orders/` split is partial.
+
+**The seal is redeemed, not asserted — added 2026-09-04 (ADR 0116 addendum).**
+The gate above answers *may this role seal this figure*; it had no way to answer
+*did a person do this*, because the hold lived entirely in the browser. Anything
+holding a manager's session could seal an order by calling the endpoint. Now:
+
+- `POST /procurement/orders/:id/seal-challenge` mints the proof when the hold
+  BEGINS (`services/api/orders.ts:mintOrderSeal`, wired through
+  `HoldToApprove`'s `onChallenge` in `LedgerRow.tsx` and `BulkApproveBar.tsx`);
+  the approval carries it in `X-Seal-Challenge` and it is spent exactly once.
+- The order's own total is hashed into the seal, so one minted at 2,000 cannot
+  be spent after the order became 20,000.
+- A mint that fails or returns null approves NOTHING and says so on the control
+  ("The seal could not be issued — nothing sent."). That is the one failure the
+  whole mechanism exists to prevent, and it must not arrive through the UI.
+
+**STILL OPEN, and user-visible: two approval call sites send no seal.** The
+legacy `pages/Orders.tsx` (via `hooks/useOrdersData.ts`) and
+`pages/dashboard/next/WaitingOnYou.tsx` were outside the pass that built this and
+still call approve with an id alone. `mudavym_design_orders` is OFF in
+production, so the legacy page is what a house sees today — approval from it is
+now REFUSED, in words, until it mints. Why not yet: changing either was fenced
+off by the brief that built the seal, and doing it unasked would have edited a
+page and a dashboard nobody had reviewed. The change is one line at each call
+site (mint, then pass `{ orderId, challenge }`).
 
 ## 10. Maturity
 

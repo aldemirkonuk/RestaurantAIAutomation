@@ -165,6 +165,56 @@ export function describeOrderedQuantity(order: {
   return `${order.quantity} ${unit}${order.quantity === 1 ? "" : "s"}`;
 }
 
+/**
+ * The confirmation sentence a vendor reads — ADR 0119 phase 0.
+ *
+ * `confirmDeal` used to write "${quantity} bottles ... at $X per bottle" for
+ * every order, while `procurement_orders.quantity` is a count in the order's
+ * own `unit_type` and `final_price` names no unit at all. A five-case order of
+ * a twelve-pack therefore told the vendor **five bottles** for a sixty-bottle
+ * delivery and quoted a case price as a bottle price — the outbound twin of the
+ * calendar defect `describeOrderedQuantity` (above) fixed.
+ *
+ * The rule here is the ADR 0020/0083 one: **the mail states only what it has
+ * read.** The quantity is stated in the order's own unit word; the price is
+ * "per <unit_type>", never "per bottle" unless the unit IS bottle; the pack is
+ * named only when `bottlesPerUnit` was actually resolved, and where it was not,
+ * the mail SAYS the pack is not on record and asks — it does not quietly assume
+ * one bottle per unit, which is exactly the assumption that made the old
+ * sentence wrong.
+ */
+export function describeConfirmedOrderTerms(input: {
+  quantity: number;
+  unitType: string | null;
+  bottlesPerUnit: number | null;
+  wineName: string;
+  finalPrice: number | null;
+}): string {
+  const unit = (input.unitType ?? "").trim() || "unit";
+  const isBottle = unit === "bottle";
+  const pack = input.bottlesPerUnit;
+  const packKnown = pack != null && Number.isFinite(pack) && pack > 0;
+
+  const quantityPhrase =
+    `${input.quantity} ${unit}${input.quantity === 1 ? "" : "s"}` +
+    (!isBottle && packKnown
+      ? ` (${pack} bottle${pack === 1 ? "" : "s"} each)`
+      : "");
+
+  const priceLine =
+    input.finalPrice != null
+      ? ` at $${Number(input.finalPrice).toFixed(2)} per ${unit}`
+      : "";
+
+  // Nothing to ask about when the unit IS the bottle, or when the pack is known.
+  const packNote =
+    isBottle || packKnown
+      ? ""
+      : ` Our records do not state how many bottles are in a ${unit}, so please confirm the pack size.`;
+
+  return `We'd like to confirm our order: ${quantityPhrase} of ${input.wineName}${priceLine}.${packNote}`;
+}
+
 interface ProcurementOrderRow {
   id: string;
   order_number: string;
@@ -4945,13 +4995,23 @@ export class ProcurementService {
         >;
         const subject =
           inHeaders.subject || `Re: Order Confirmation: ${wineName}`;
-        const priceLine =
-          finalPrice != null
-            ? ` at $${Number(finalPrice).toFixed(2)} per bottle`
-            : "";
+        // The vendor's copy of the terms, stated in the order's OWN unit.
+        // Until ADR 0119 phase 0 this sentence said "${quantity} bottles ... at
+        // $X per bottle" unconditionally, while `quantity` is a count in
+        // `unit_type` (:4890) — so a five-case order told the vendor five
+        // bottles for sixty and priced a case as a bottle. The mail may not
+        // assert a unit it has not read (ADR 0020/0083), and it has read only
+        // `confirmUnits` (:4897).
+        const confirmSentence = describeConfirmedOrderTerms({
+          quantity,
+          unitType: confirmUnits.unitType,
+          bottlesPerUnit: confirmUnits.bottlesPerUnit,
+          wineName,
+          finalPrice,
+        });
         const body =
           `Hi ${greetName},\n\n` +
-          `We'd like to confirm our order: ${quantity} bottles of ${wineName}${priceLine}. ` +
+          `${confirmSentence} ` +
           `Please send an order confirmation along with the expected delivery date.\n\n` +
           `Thank you!`;
         const ids = await this.sendProviderEmail({

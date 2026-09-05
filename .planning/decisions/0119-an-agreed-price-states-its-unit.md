@@ -436,6 +436,24 @@ count from `bottles_total`, or state neither. `/orders` should print the unit be
 price it shows. This is worth doing whatever the founder decides on O1, because it is
 wrong today and it reaches a vendor.
 
+> **DONE — 2026-09-04 (the mail half).** The founder took phase 0 without a migration.
+> `confirmDeal`'s confirmation mail now states the quantity in the order's own unit word
+> and the price as `per <unit_type>`, names the pack only when `resolveOrderMatchUnits`
+> actually resolved one, and where it did not, says so and asks — it never assumes one
+> bottle per unit. The sentence is built by the exported `describeConfirmedOrderTerms`
+> (`apps/api-gateway/src/procurement/procurement.service.ts:168-216`) and used at
+> `:4998-5012`; eleven assertions in
+> `apps/api-gateway/src/procurement/confirm-deal-states-its-unit.spec.ts` pin the exact
+> sentence for a case order with a known pack, a case order with an unknown pack, a
+> bottle order and a keg order, each also run against the pre-fix builder transcribed
+> from `d870800d`.
+>
+> **Still open in phase 0:** the `/orders` half — printing the unit beside the price on
+> the page — was out of this dispatch's scope and is not built. No schema, no migration,
+> and `recordPriceHistory` still refuses a case-priced agreement exactly as before: the
+> mail now says what the order holds, but the register still cannot tell a case price
+> from a bottle price, which is what O1's phase 1 is for.
+
 **Phase 1 (the migration this ADR does NOT write).** Sketch only — no file, no
 timestamp claimed, gated per ADR 0070's rule that no migration lands before the
 schema-parity fix:
