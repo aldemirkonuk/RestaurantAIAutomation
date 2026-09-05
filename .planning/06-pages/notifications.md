@@ -2136,3 +2136,7 @@ answer) draws no basis rather than a guessed one.
 **Still not built:** no web call site admits, refuses or reopens a book — see the
 gap in §9. The reopen route added for Q3 is a fourth thing a manager cannot do
 from the product.
+
+### 13.z Two corrections to fb7248ec's message (audit a3fd525b, 2026-09-05)
+
+The commit message of fb7248ec said `check_new_tables_are_locked_down: OK (268 CREATE TABLE / 268 live)`. Measured on an isolated archive of that commit: **258 / 258**. The 268 was the number the guard printed on the SHARED worktree, which carried other builders' uncommitted migrations — the parent pasted the tree's number rather than the archive's, the exact habit p4-rules.md forbids. The verdict (every table locked down) was right; the count was not. Also: the two `nt-book.test.ts` failures that message called "not this commit's" were confirmed pre-existing on the parent 59e25f92 and fixed in d35d27e2.

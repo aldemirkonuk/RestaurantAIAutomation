@@ -685,3 +685,9 @@ stay dark and untouched until a real house's recurrence has generated a child on
 path; then the Python agent is repointed and `recurring_orders` retired in its own PR.
 Nothing races today: the old rows number zero in production. Rejected: retire now (the
 new path has never run against a real house); keep both indefinitely.
+
+## Corrections to 5105838d's message (audit a3fd525b, parent, 2026-09-05)
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-05 | Claude (parent) | 5105838d said "gateway tsc on the index tree: 0 errors" — true for tsconfig.json, false for tsconfig.spec.json, which carried one error from a main-merged spec (notifications-are-tenant-scoped.spec.ts:41) at that tip; fixed in 7bbc37c9. It also said "check_decision_claims.sh: PASS (240 rows)"; the guard printed 239 checked, 239 holding — 240 is the file's line count including the comment header, not the claims checked. Everything else in that message reproduced exactly on an isolated archive, including the pre-fix probes (gateway 6 failed / 2 passed against both bdce73f4 and its parent; Python 3 failed / 2 passed). |
