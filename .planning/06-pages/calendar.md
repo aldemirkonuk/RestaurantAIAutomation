@@ -1310,3 +1310,5 @@ ADR's; the order is not preference — each slice earns the trust the next one s
     `{ armed, cron, lastRun }` and no endpoint exposes it, so an operator cannot see whether
     the sweep is running without reading the logs. The reminder job's
     `GET /calendar/reminders/status` is the shape to copy.
+
+- **Correction to a commit message (recorded 2026-09-05).** Commit `bf6d57e9` (`?new=` opens the sheet prefilled) said "4 of 6 new tests fail" against the pre-fix code; its audit rebuilt the pre-fix copies and measured 6 of 6 failing. The real number is stronger evidence than claimed; the claim itself was wrong.

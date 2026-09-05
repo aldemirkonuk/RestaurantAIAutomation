@@ -10,7 +10,7 @@ On 2026-09-04, commit 29e439c4 shipped
 
 against a table that an EARLIER migration had already renamed away:
 
-    supabase/migrations/20260903151000_the_house_declares_a_person_consents.sql:63
+    supabase/migrations/20260903151000_the_house_declares_a_person_consents.sql:64
         ALTER TABLE public.user_mcp_connections
           RENAME TO restaurant_mcp_connections;
 

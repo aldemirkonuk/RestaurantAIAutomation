@@ -8,8 +8,9 @@
  * "no fixed days" — over whatever the register actually held.
  *
  * Every test here is written against the DIALOG because that is where the
- * refusal lives. Run against `git show HEAD:` copy of the component, the two
- * `pending` tests fail: Save fires and `onSave` is called with an empty
+ * refusal lives. Run against `git show HEAD:` copy of the component, all four
+ * tests in the pending block fail (measured 4 failed / 3 passed against the
+ * `git show 3b4cf88c^:` copy): Save fires and `onSave` is called with an empty
  * selection.
  */
 import { render, screen, cleanup } from '@testing-library/react'

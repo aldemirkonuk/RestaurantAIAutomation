@@ -28,7 +28,7 @@ export interface ScopeDisclosure {
  * present on the one grant whose author thought about it and absent on the
  * others, and a reader cannot tell "this grant stores nothing" from "nobody
  * wrote the sentence" — which is this repo's named cardinal fault applied to a
- * consent screen. `every-grant-says-where-the-data-lands.spec.ts` fails the
+ * consent screen. `gmail-read-asks-for-one-thing.spec.ts` fails the
  * build if any of the four is blank.
  */
 export interface DataHandlingDisclosure {

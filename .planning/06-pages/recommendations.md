@@ -1346,3 +1346,5 @@ execution, no first-fired timestamp — in the same way.
     (`origin_rule_key`, "where the conversation started", distinct from "what
     this goal watches") would keep both facts. New column, new decision — filed,
     not built.
+
+- **Correction to a commit message (recorded 2026-09-05).** Commit `f45ada70` ("the small defects the audits of 2026-09-04 named") claimed the six citation corrections in this note and said providers/next "no longer imports settings/next"; the six citation fixes landed in `71916602`, and only the formatters were hoisted — `pages/providers/next/{TermsSection.tsx,TermSection.test.tsx,useProviderTerms.ts}` still import `../../settings/next/useSettingsNextData` (a coupling still to hoist). The message also said "eight" fixes and enumerated six.

@@ -199,3 +199,4 @@ is still a guard. The pytest joins the `scripts-tests` job.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-04 | — | Created. Guard, pytest and CI wiring written and measured; proof pasted above. |
+| 2026-09-05 | Claude (audit correction) | Commit `3b4cf88c`'s message claimed four commit-message corrections were recorded; only `29e439c4`'s (notifications.md §13.35) was in the commit — the three ADR 0117 rows sat in the working tree and were lost in the scratchpad wipe of 2026-09-05, and are being re-added to ADR 0117's trail. Its "41 passed / 2 suites" was `jest src/notifications/producers/grant-suspended src/notifications/producers/market-price` (25 + 16), a command the message did not name. The script's docstring cited the rename at `:63`; it is `:64`, fixed. |
