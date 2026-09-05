@@ -78,7 +78,7 @@ export function parseFao(
   const refusals: ObservationRefusal[] = [];
   // A UTF-8 BOM survives `readFileSync(..., 'utf8')` and would make the title
   // line unmatchable. Measured on the fetched bytes: this file has one.
-  const lines = csv.replace(/^﻿/, "").split(/\r?\n/);
+  const lines = csv.replace(/^\ufeff/, "").split(/\r?\n/);
 
   // The base period is line 2 of the file. It is looked for in the first four
   // lines rather than at a fixed index, because a header line appearing or
