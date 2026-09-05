@@ -257,7 +257,10 @@ export class WineSubmissionsService {
 
       const best = (candidates ?? [])[0];
 
-      if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+      if (
+        best &&
+        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+      ) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
@@ -306,8 +309,11 @@ export class WineSubmissionsService {
         price_reference: payload.priceReference ?? null,
         primary_type: identity.primaryType ?? "unknown",
         grape_variety: identity.grapeVariety ?? null,
-        country: identity.country ?? "Unknown",
-        region: identity.region ?? "Unknown",
+        // Null, not "Unknown". The submission path accounts for the other 251
+        // of production's 328 `country = 'Unknown'` rows, and 'Unknown' sorts,
+        // groups and filters as though it were a country.
+        country: identity.country ?? null,
+        region: identity.region ?? null,
         appellation: identity.appellation ?? null,
         sub_region: payload.subRegion ?? null,
         wine_structure: payload.wineStructure ?? null,
@@ -428,7 +434,10 @@ export class WineSubmissionsService {
     }
 
     const best = (candidates ?? [])[0];
-    if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+    if (
+      best &&
+      best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+    ) {
       return {
         masterWineId: best.id,
         matched: true,
@@ -449,9 +458,23 @@ export class WineSubmissionsService {
     const insertPayload = {
       wine_id: this.generateWineId(),
       name: item.name,
-      producer: item.producer || item.name,
+      // NULL, not the wine's own name and not the word "Unknown". This is the
+      // SHARED catalogue: producer is an identity attribute, so a row whose
+      // producer is "House White Wine" asserts that such a producer exists, to
+      // every tenant matching against it. Measured 2026-09-05: 48 of 77
+      // menu-import rows carried their own name as producer, and all 77
+      // carried country 'Unknown'.
+      //
+      // It also disagreed with the key: `signatureHash` above is computed over
+      // `item.producer ?? null` / `item.country ?? null`, so the stored row
+      // misrepresented the very identity its dedup hash was taken over.
+      //
+      // `primary_type: "unknown"` stays — that is a vocabulary member meaning
+      // "unclassified", read by the beverage_kind trigger, not a placeholder
+      // standing in for an answer.
+      producer: item.producer ?? null,
       primary_type: "unknown",
-      country: item.country || "Unknown",
+      country: item.country ?? null,
       region: item.region ?? null,
       grape_variety: item.grapeVariety ?? null,
       vintage: parsedVintage,
@@ -620,9 +643,11 @@ export class WineSubmissionsService {
         rowBySignature.set(signatureHash, {
           wine_id: this.generateWineId(),
           name: item.name,
-          producer: item.producer || item.name,
+          // Same rule as the single-row path above: null, never a
+          // placeholder. This is the door 26 of 26 Antalya rows came through.
+          producer: item.producer ?? null,
           primary_type: "unknown",
-          country: item.country || "Unknown",
+          country: item.country ?? null,
           region: item.region ?? null,
           grape_variety: item.grapeVariety ?? null,
           vintage,

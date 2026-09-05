@@ -1,71 +1,87 @@
-import { useState, useMemo, useCallback } from 'react'
-import { Wine } from '../../data/wineData'
-import { useInventoryData } from '../../hooks/useInventoryData'
-import { useWinesByIds } from '../../hooks/queries'
-import { mapApiWinesToUiWines } from '../../lib/wine-library'
-import { classifyStock } from '../../lib/inventoryStatus'
+import { useState, useMemo, useCallback } from "react";
+import { Wine } from "../../data/wineData";
+import { useInventoryData } from "../../hooks/useInventoryData";
+import { useWinesByIds } from "../../hooks/queries";
+import { mapApiWinesToUiWines } from "../../lib/wine-library";
+import { classifyStock } from "../../lib/inventoryStatus";
 
 export interface InventoryItem extends Wine {
-  inventoryId?: string
-  storageLocation?: string
-  location?: string
-  liveStock: number | null
-  shadowStock?: number
-  threshold: number
-  lastCounted: string | null
-  isActive: boolean
-  marketPrice?: number
-  wac?: number
-  costProvenance?: 'invoice' | 'estimated'
-  lotLocationCount?: number
-  openMl?: number
-  velocityPerDay?: number
-  daysOfCover?: number
-  reorderSuggested?: boolean
-  abcClass?: 'A' | 'B' | 'C'
-  deadStock?: boolean
-  daysSinceSale?: number
-  locations?: { locationId: string | null; qty: number; wac: number | null }[]
+  inventoryId?: string;
+  storageLocation?: string;
+  location?: string;
+  liveStock: number | null;
+  shadowStock?: number;
+  threshold: number;
+  lastCounted: string | null;
+  isActive: boolean;
+  marketPrice?: number;
+  wac?: number;
+  costProvenance?: "invoice" | "estimated";
+  lotLocationCount?: number;
+  openMl?: number;
+  velocityPerDay?: number;
+  daysOfCover?: number;
+  reorderSuggested?: boolean;
+  abcClass?: "A" | "B" | "C";
+  deadStock?: boolean;
+  daysSinceSale?: number;
+  locations?: { locationId: string | null; qty: number; wac: number | null }[];
   lastManualAdjustment?: {
-    timestamp: Date
-    managerName: string
-  }
+    timestamp: Date;
+    managerName: string;
+  };
 }
 
-export type ViewMode = 'all' | 'live' | 'shadow'
-export type SortField = 'name' | 'liveStock' | 'shadowStock' | 'price' | 'menuPrice' | 'margin' | 'threshold' | 'bottleSizeMl' | 'type' | 'location'
-export type SortOrder = 'asc' | 'desc'
+export type ViewMode = "all" | "live" | "shadow";
+export type SortField =
+  | "name"
+  | "liveStock"
+  | "shadowStock"
+  | "price"
+  | "menuPrice"
+  | "margin"
+  | "threshold"
+  | "bottleSizeMl"
+  | "type"
+  | "location";
+export type SortOrder = "asc" | "desc";
 
 function calculateMargin(costPrice: number, menuPrice?: number): number {
-  if (!menuPrice || menuPrice === 0) return 0
-  return ((menuPrice - costPrice) / menuPrice) * 100
+  if (!menuPrice || menuPrice === 0) return 0;
+  return ((menuPrice - costPrice) / menuPrice) * 100;
 }
 
 function getDefaultMenuPrice(costPrice: number): number {
-  return Math.round(costPrice * 3)
+  return Math.round(costPrice * 3);
 }
 
 export interface UseInventoryPageOptions {
   /** Hide these `restaurant_inventory.id` rows until the server list no longer contains them */
-  excludeInventoryRowIds?: string[]
+  excludeInventoryRowIds?: string[];
 }
 
 export function useInventoryPage(options: UseInventoryPageOptions = {}) {
   // Filter state
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filterType, setFilterType] = useState('all')
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [filterActiveStatus, setFilterActiveStatus] = useState<'all' | 'active' | 'inactive'>('all')
-  const [filterBottleSize, setFilterBottleSize] = useState<number | 'all'>('all')
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
-  const [selectedLocationFilter, setSelectedLocationFilter] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterActiveStatus, setFilterActiveStatus] = useState<
+    "all" | "active" | "inactive"
+  >("all");
+  const [filterBottleSize, setFilterBottleSize] = useState<number | "all">(
+    "all",
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
+  const [selectedLocationFilter, setSelectedLocationFilter] = useState<
+    string | null
+  >(null);
 
   // Sort state
-  const [sortField, setSortField] = useState<SortField>('name')
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
   // Selection state
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
   // Data from hooks
   const {
@@ -76,60 +92,68 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     error: inventoryError,
     refetch: refetchInventory,
     updateItem: updateInventoryItem,
-  } = useInventoryData()
+  } = useInventoryData();
 
   const excludeRowIdSet = useMemo(
     () => new Set((options.excludeInventoryRowIds ?? []).filter(Boolean)),
     [options.excludeInventoryRowIds],
-  )
+  );
 
   const visibleApiInventory = useMemo(
     () => apiInventory.filter((row) => !excludeRowIdSet.has(row.id)),
     [apiInventory, excludeRowIdSet],
-  )
+  );
 
   /** Row IDs present in the last successful API payload (before client-side exclusions) */
   const serverInventoryRowIds = useMemo(
     () => apiInventory.map((row) => row.id),
     [apiInventory],
-  )
+  );
 
   const wineIds = useMemo(
-    () => Array.from(new Set(visibleApiInventory.map((item) => item.wineId).filter(Boolean))),
+    () =>
+      Array.from(
+        new Set(visibleApiInventory.map((item) => item.wineId).filter(Boolean)),
+      ),
     [visibleApiInventory],
-  )
-  const { data: apiWines = [] } = useWinesByIds(wineIds)
+  );
+  const { data: apiWines = [] } = useWinesByIds(wineIds);
   const winesById = useMemo(() => {
-    const map = new Map<string, Wine>()
-    mapApiWinesToUiWines(apiWines).forEach(wine => {
-      map.set(wine.id, wine)
-    })
-    return map
-  }, [apiWines])
+    const map = new Map<string, Wine>();
+    mapApiWinesToUiWines(apiWines).forEach((wine) => {
+      map.set(wine.id, wine);
+    });
+    return map;
+  }, [apiWines]);
 
   // Convert API data to local format
   const inventory = useMemo(() => {
     if (inventoryLoading || visibleApiInventory.length === 0) {
-      return []
+      return [];
     }
 
     return visibleApiInventory.map((item) => {
-      const wine = winesById.get(item.wineId)
+      const wine = winesById.get(item.wineId);
       const fallback: Wine = wine || {
         id: item.wineId,
         sku: undefined,
-        name: item.wineName || 'Unknown Wine',
-        producer: item.wineProducer || 'Unknown Producer',
+        name: item.wineName || "Unknown Wine",
+        producer: item.wineProducer || "Unknown Producer",
         vintage: null,
         price: 0,
-        type: 'red',
-        grape: '',
-        country: '',
-        region: '',
-        appellation: '',
-        body: '',
-        sweetness: '',
-        acidity: '',
+        // Was `'red'`. This fallback fires whenever the library wine has not
+        // loaded for an inventory row, and it asserted a colour for the bottle
+        // — 26 of 27 rows on a cocktail bar said Red, a Moët and two rosés
+        // among them (Antalya night). An inventory row we could not resolve has
+        // an UNKNOWN type; that is the fact, and it renders in grey.
+        type: "unknown",
+        grape: "",
+        country: "",
+        region: "",
+        appellation: "",
+        body: "",
+        sweetness: "",
+        acidity: "",
         alcohol: 0,
         aromas: [],
         flavors: [],
@@ -137,15 +161,15 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         threshold: 10,
         bottleSizeMl: 750,
         provider: {
-          name: '',
-          contact: '',
-          phone: '',
+          name: "",
+          contact: "",
+          phone: "",
           email: undefined,
           address: undefined,
         },
         image: undefined,
         isActive: true,
-      }
+      };
 
       return {
         ...fallback,
@@ -177,109 +201,121 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         deadStock: (item as any).deadStock ?? false,
         daysSinceSale: (item as any).daysSinceSale ?? undefined,
         locations: (item as any).locations ?? [],
-      } as InventoryItem
-    })
-  }, [visibleApiInventory, inventoryLoading, winesById])
+      } as InventoryItem;
+    });
+  }, [visibleApiInventory, inventoryLoading, winesById]);
 
   // Computed values
   const filteredInventory = useMemo(() => {
-    let items = [...inventory]
+    let items = [...inventory];
 
     // Search filter
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      items = items.filter(item =>
-        item.name.toLowerCase().includes(query) ||
-        item.producer.toLowerCase().includes(query) ||
-        item.grape.toLowerCase().includes(query)
-      )
+      const query = searchQuery.toLowerCase();
+      items = items.filter(
+        (item) =>
+          item.name.toLowerCase().includes(query) ||
+          item.producer.toLowerCase().includes(query) ||
+          item.grape.toLowerCase().includes(query),
+      );
     }
 
     // Type filter
-    if (filterType !== 'all') {
-      items = items.filter(item => item.type === filterType)
+    if (filterType !== "all") {
+      items = items.filter((item) => item.type === filterType);
     }
 
     // Status filter (shared classifier — cards, badges, and filters agree)
-    if (filterStatus !== 'all') {
-      items = items.filter(item => classifyStock(item.liveStock, item.threshold).key === filterStatus)
+    if (filterStatus !== "all") {
+      items = items.filter(
+        (item) =>
+          classifyStock(item.liveStock, item.threshold).key === filterStatus,
+      );
     }
 
     // Active status filter
-    if (filterActiveStatus === 'active') {
-      items = items.filter(item => item.isActive)
-    } else if (filterActiveStatus === 'inactive') {
-      items = items.filter(item => !item.isActive)
+    if (filterActiveStatus === "active") {
+      items = items.filter((item) => item.isActive);
+    } else if (filterActiveStatus === "inactive") {
+      items = items.filter((item) => !item.isActive);
     }
 
     // Bottle size filter
-    if (filterBottleSize !== 'all') {
-      items = items.filter(item => (item.bottleSizeMl || 750) === filterBottleSize)
+    if (filterBottleSize !== "all") {
+      items = items.filter(
+        (item) => (item.bottleSizeMl || 750) === filterBottleSize,
+      );
     }
 
     // View mode filter
-    if (viewMode === 'live') {
-      items = items.filter(item => (item.liveStock || 0) > 0)
-    } else if (viewMode === 'shadow') {
-      items = items.filter(item => (item.shadowStock || 0) > 0)
+    if (viewMode === "live") {
+      items = items.filter((item) => (item.liveStock || 0) > 0);
+    } else if (viewMode === "shadow") {
+      items = items.filter((item) => (item.shadowStock || 0) > 0);
     }
 
     // Sort
     items.sort((a, b) => {
-      let aVal: any, bVal: any
+      let aVal: any, bVal: any;
       switch (sortField) {
-        case 'name':
-          aVal = a.name.toLowerCase()
-          bVal = b.name.toLowerCase()
-          break
-        case 'liveStock':
-          aVal = a.liveStock || 0
-          bVal = b.liveStock || 0
-          break
-        case 'shadowStock':
-          aVal = a.shadowStock || 0
-          bVal = b.shadowStock || 0
-          break
-        case 'price':
-          aVal = a.price
-          bVal = b.price
-          break
-        case 'menuPrice':
-          aVal = a.menuPrice || getDefaultMenuPrice(a.price)
-          bVal = b.menuPrice || getDefaultMenuPrice(b.price)
-          break
-        case 'margin':
-          aVal = calculateMargin(a.price, a.menuPrice || getDefaultMenuPrice(a.price))
-          bVal = calculateMargin(b.price, b.menuPrice || getDefaultMenuPrice(b.price))
-          break
-        case 'threshold':
-          aVal = a.threshold
-          bVal = b.threshold
-          break
-        case 'bottleSizeMl':
-          aVal = a.bottleSizeMl || 750
-          bVal = b.bottleSizeMl || 750
-          break
-        case 'type':
-          aVal = (a.type || '').toLowerCase()
-          bVal = (b.type || '').toLowerCase()
-          break
-        case 'location':
+        case "name":
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
+          break;
+        case "liveStock":
+          aVal = a.liveStock || 0;
+          bVal = b.liveStock || 0;
+          break;
+        case "shadowStock":
+          aVal = a.shadowStock || 0;
+          bVal = b.shadowStock || 0;
+          break;
+        case "price":
+          aVal = a.price;
+          bVal = b.price;
+          break;
+        case "menuPrice":
+          aVal = a.menuPrice || getDefaultMenuPrice(a.price);
+          bVal = b.menuPrice || getDefaultMenuPrice(b.price);
+          break;
+        case "margin":
+          aVal = calculateMargin(
+            a.price,
+            a.menuPrice || getDefaultMenuPrice(a.price),
+          );
+          bVal = calculateMargin(
+            b.price,
+            b.menuPrice || getDefaultMenuPrice(b.price),
+          );
+          break;
+        case "threshold":
+          aVal = a.threshold;
+          bVal = b.threshold;
+          break;
+        case "bottleSizeMl":
+          aVal = a.bottleSizeMl || 750;
+          bVal = b.bottleSizeMl || 750;
+          break;
+        case "type":
+          aVal = (a.type || "").toLowerCase();
+          bVal = (b.type || "").toLowerCase();
+          break;
+        case "location":
           // Location name is resolved on the page (getWineLocation); the page re-sorts.
-          aVal = 0
-          bVal = 0
-          break
+          aVal = 0;
+          bVal = 0;
+          break;
         default:
-          aVal = a.name
-          bVal = b.name
+          aVal = a.name;
+          bVal = b.name;
       }
 
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1
-      return 0
-    })
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
 
-    return items
+    return items;
   }, [
     inventory,
     searchQuery,
@@ -290,56 +326,85 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     sortOrder,
     filterActiveStatus,
     filterBottleSize,
-  ])
+  ]);
 
   const stats = useMemo(() => {
-    const total = inventory.length
-    const liveTotal = inventory.reduce((sum, item) => sum + (item.liveStock || 0), 0)
-    const shadowTotal = inventory.reduce((sum, item) => sum + (item.shadowStock || 0), 0)
-    const critical = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'critical').length
-    const low = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'low').length
-    const healthy = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'healthy').length
-    const unknown = inventory.filter(item => classifyStock(item.liveStock, item.threshold).key === 'unknown').length
-    const needsReconciliation = inventory.filter(item => (item.shadowStock || 0) > 0).length
+    const total = inventory.length;
+    const liveTotal = inventory.reduce(
+      (sum, item) => sum + (item.liveStock || 0),
+      0,
+    );
+    const shadowTotal = inventory.reduce(
+      (sum, item) => sum + (item.shadowStock || 0),
+      0,
+    );
+    const critical = inventory.filter(
+      (item) =>
+        classifyStock(item.liveStock, item.threshold).key === "critical",
+    ).length;
+    const low = inventory.filter(
+      (item) => classifyStock(item.liveStock, item.threshold).key === "low",
+    ).length;
+    const healthy = inventory.filter(
+      (item) => classifyStock(item.liveStock, item.threshold).key === "healthy",
+    ).length;
+    const unknown = inventory.filter(
+      (item) => classifyStock(item.liveStock, item.threshold).key === "unknown",
+    ).length;
+    const needsReconciliation = inventory.filter(
+      (item) => (item.shadowStock || 0) > 0,
+    ).length;
 
-    return { total, liveTotal, shadowTotal, critical, low, healthy, unknown, needsReconciliation }
-  }, [inventory])
+    return {
+      total,
+      liveTotal,
+      shadowTotal,
+      critical,
+      low,
+      healthy,
+      unknown,
+      needsReconciliation,
+    };
+  }, [inventory]);
 
   const uniqueBottleSizes = useMemo(() => {
-    const sizes = new Set(inventory.map(item => item.bottleSizeMl || 750))
-    return Array.from(sizes).sort((a, b) => a - b)
-  }, [inventory])
+    const sizes = new Set(inventory.map((item) => item.bottleSizeMl || 750));
+    return Array.from(sizes).sort((a, b) => a - b);
+  }, [inventory]);
 
   // Actions
-  const toggleSort = useCallback((field: SortField) => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortOrder('asc')
-    }
-  }, [sortField, sortOrder])
+  const toggleSort = useCallback(
+    (field: SortField) => {
+      if (sortField === field) {
+        setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+      } else {
+        setSortField(field);
+        setSortOrder("asc");
+      }
+    },
+    [sortField, sortOrder],
+  );
 
   const toggleSelection = useCallback((id: string) => {
-    setSelectedItems(prev => {
-      const newSelected = new Set(prev)
+    setSelectedItems((prev) => {
+      const newSelected = new Set(prev);
       if (newSelected.has(id)) {
-        newSelected.delete(id)
+        newSelected.delete(id);
       } else {
-        newSelected.add(id)
+        newSelected.add(id);
       }
-      return newSelected
-    })
-  }, [])
+      return newSelected;
+    });
+  }, []);
 
   const clearFilters = useCallback(() => {
-    setFilterType('all')
-    setFilterStatus('all')
-    setFilterActiveStatus('all')
-    setFilterBottleSize('all')
-    setSearchQuery('')
-    setSelectedLocationFilter(null)
-  }, [])
+    setFilterType("all");
+    setFilterStatus("all");
+    setFilterActiveStatus("all");
+    setFilterBottleSize("all");
+    setSearchQuery("");
+    setSelectedLocationFilter(null);
+  }, []);
 
   return {
     // Filter state
@@ -383,5 +448,5 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     filteredInventory,
     stats,
     uniqueBottleSizes,
-  }
+  };
 }
