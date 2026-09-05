@@ -2,6 +2,7 @@ import { ConfigService } from "@nestjs/config";
 import {
   DocumentExtractorService,
   settledEventId,
+  stripJsonFence,
 } from "./document-extractor.service";
 import { isDocumentLike } from "./document-intake.service";
 import { NfEventRef } from "../../common/model-client/model-client.service";
@@ -365,5 +366,190 @@ describe("DocumentExtractorService — printed literals", () => {
       "test",
     );
     expect(d.lines[0].printed).toEqual({ unitPrice: "10,00" });
+  });
+});
+
+/**
+ * CodeQL #1328 (`js/remote-property-injection`, high) — the `printed` map's
+ * keys are written into an object, and since PR #301 that map can be supplied
+ * by a client through `POST /procurement/documents/:id/extraction`. A key is a
+ * key: `__proto__`, `constructor` and `prototype` are keys the model never
+ * emits and a caller can.
+ *
+ * The fix is not an escape or a denylist — it is that only the money and
+ * quantity fields the prompt names are ever copied. Anything else is dropped
+ * and COUNTED, because a silently discarded field is the absence-as-health
+ * fault on the smallest possible scale.
+ */
+describe("DocumentExtractorService — printed keys are an allow-list (CodeQL #1328)", () => {
+  // Written as TEXT, not built from an object literal. A JS literal's
+  // `__proto__` key sets the prototype instead of defining a property, so an
+  // object literal physically cannot express the body a client posts;
+  // `JSON.parse` defines it as an own property, which is exactly what the door
+  // hands `normalize`.
+  const HOSTILE_JSON = `{
+    "docType": "invoice",
+    "total": 10,
+    "printed": {
+      "total": "10,00",
+      "__proto__": "polluted",
+      "constructor": "polluted",
+      "prototype": "polluted",
+      "vendorName": "ACME"
+    },
+    "lines": [
+      {
+        "qty": 1,
+        "uom": "bottle",
+        "unitPrice": 10,
+        "printed": {
+          "unitPrice": "10,00",
+          "__proto__": "polluted",
+          "constructor": "polluted",
+          "prototype": "polluted",
+          "description": "not a money field"
+        }
+      }
+    ]
+  }`;
+
+  it("puts __proto__ on the wire as an own key, which an object literal cannot", () => {
+    // Guards the fixture itself: if this stops holding, every assertion below
+    // is testing a weaker input than the door accepts.
+    const body = JSON.parse(HOSTILE_JSON) as {
+      printed: Record<string, unknown>;
+    };
+    expect(Object.keys(body.printed)).toContain("__proto__");
+  });
+
+  it("copies only the named money/quantity keys onto a line", () => {
+    const d = svc.normalize(HOSTILE_JSON, "test");
+    expect(d.lines[0].printed).toEqual({ unitPrice: "10,00" });
+    for (const k of ["__proto__", "constructor", "prototype", "description"])
+      expect(Object.keys(d.lines[0].printed ?? {})).not.toContain(k);
+  });
+
+  it("copies only the named money/quantity keys onto the document", () => {
+    const d = svc.normalize(HOSTILE_JSON, "test");
+    expect(d.printed).toEqual({ total: "10,00" });
+    expect(Object.keys(d.printed ?? {})).not.toContain("vendorName");
+  });
+
+  it("leaves Object.prototype untouched", () => {
+    svc.normalize(HOSTILE_JSON, "test");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).constructor).toBe(Object);
+  });
+
+  it("counts the dropped keys in warnings rather than discarding them silently", () => {
+    const d = svc.normalize(HOSTILE_JSON, "test");
+    // 4 on the line + 4 on the document = 8 keys the parse refused to keep.
+    expect(d.warnings.join(" ")).toMatch(/8 printed field/);
+  });
+
+  it("keeps every key the prompt names", () => {
+    const d = svc.normalize(
+      JSON.stringify({
+        docType: "invoice",
+        printed: {
+          subtotal: "1",
+          freight: "2",
+          fuelSurcharge: "3",
+          splitCaseFee: "4",
+          deliveryFee: "5",
+          depositTotal: "6",
+          tax: "7",
+          otherCharges: "8",
+          discountTotal: "9",
+          total: "10",
+        },
+        lines: [
+          {
+            qty: 1,
+            uom: "bottle",
+            printed: {
+              qty: "1",
+              uom: "BT",
+              packSize: "12",
+              formatMl: "750",
+              unitPrice: "10,00",
+              priceBaseQty: "12",
+              priceBaseUom: "KS",
+              lineTotal: "120,00",
+              allowance: "0,00",
+              deposit: "0,00",
+            },
+          },
+        ],
+      }),
+      "test",
+    );
+    expect(Object.keys(d.printed ?? {}).sort()).toEqual(
+      [
+        "deliveryFee",
+        "depositTotal",
+        "discountTotal",
+        "freight",
+        "fuelSurcharge",
+        "otherCharges",
+        "splitCaseFee",
+        "subtotal",
+        "tax",
+        "total",
+      ].sort(),
+    );
+    expect(Object.keys(d.lines[0].printed ?? {}).length).toBe(10);
+    // Nothing was dropped, so nothing is reported as dropped.
+    expect(d.warnings.join(" ")).not.toMatch(/printed field/);
+  });
+});
+
+/**
+ * CodeQL #1327 (`js/polynomial-redos`, high) — `stripJsonFence` ran
+ * `/^```json\s*|\s*```$/g` over `rawText`. The second alternative has no
+ * anchor at its start, so the engine retries `\s*` from every offset in a run
+ * of whitespace: quadratic in the length of that run.
+ *
+ * Measured against the unmodified regex on this machine (node v22):
+ * 200 kB of spaces took **21_833 ms**, and `" ".repeat(50_000) + "x"` took
+ * **1_702 ms**. Both are supplied straight from a request body by the
+ * extraction door PR #301 added, so either one is a single-request stall of
+ * the gateway's event loop.
+ *
+ * The bound below is deliberately generous — the point is the two orders of
+ * magnitude, not a benchmark.
+ */
+describe("DocumentExtractorService — fence stripping is linear (CodeQL #1327)", () => {
+  const BOUND_MS = 200;
+
+  const elapsed = (fn: () => void): number => {
+    const t0 = process.hrtime.bigint();
+    fn();
+    return Number(process.hrtime.bigint() - t0) / 1e6;
+  };
+
+  it("survives 200 kB of whitespace", () => {
+    const ms = elapsed(() => stripJsonFence(" ".repeat(200_000)));
+    expect(ms).toBeLessThan(BOUND_MS);
+  });
+
+  it("survives a whitespace run that cannot close the fence", () => {
+    const ms = elapsed(() => stripJsonFence(" ".repeat(50_000) + "x"));
+    expect(ms).toBeLessThan(BOUND_MS);
+  });
+
+  it("survives the same body through normalize(), which is what the door calls", () => {
+    const ms = elapsed(() => svc.normalize(" ".repeat(200_000), "test"));
+    expect(ms).toBeLessThan(BOUND_MS);
+  });
+
+  it("still strips the fences it always stripped", () => {
+    expect(stripJsonFence('```json\n{"a":1}\n```')).toBe('{"a":1}');
+    expect(stripJsonFence('{"a":1}')).toBe('{"a":1}');
+    expect(stripJsonFence("```json```")).toBe("");
+    expect(stripJsonFence("```")).toBe("");
+    // A trailing fence with nothing after it is still a fence; a trailing
+    // space after it defeated the old regex's `$` and still does.
+    expect(stripJsonFence('{"a":1}\n```  ')).toBe('{"a":1}\n```');
   });
 });
