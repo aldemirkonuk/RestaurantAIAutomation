@@ -46,6 +46,8 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 - **Receipts & invoices depth in the dropdown, behind `mudavym_design_inventory` (OFF)** — the founder's named gap (MAKEOVER: KEEP the dropdowns, deepen receipt/invoice actions): for the wine's recent orders, every attached invoice / delivery receipt / packing slip with total, tie-out state and review status, E49-honest (null tie-out = dash, never a pass), linking into `/receipts`
 - **The house header, behind the same flag (OFF)** — `/inventory` is enrolled in `PageGate` (2026-09-04) with the SAME command page on both branches, purely so the page gets the chrome every other rebuilt page has: mark, page name, ⌘K "Search or act", house/branch switcher, bell, theme menu, account menu. No redesign, and no style change inside the page (measured — §1b)
 
+- A house may name a bottle the library does not have; the item carries that **provisional** identity until Mudavym curates it, and promotion re-points the item (ADR 0124 Q3)
+- The house names its own bottles: one editable display name per item (`wine_name`), used everywhere the house sees it; the library row is never written from here, and BOTH names stay searchable (ADR 0124, the naming rule)
 ## 1b. Motions used — Mudavym addition (flag `mudavym_design_inventory`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -451,3 +453,58 @@ So the house item's identity comes from the library link it already has, not fro
 its own fields — which is a question for the founder rather than a fact this
 build settled: whether a house item may ever carry an identity the library does
 not have (ADR 0124 §Founder-only questions, Q3, beside ADR 0115's house-item key).
+
+### 13.y A house may name a bottle the library does not have (ADR 0124 Q3, 2026-09-05)
+
+The founder: **"Provisional on the item, curated into the library."** A house
+states an identity for a bottle the shared library has never heard of; that
+identity is **provisional**, named to the person, the time and the house
+(`beverage_identities.asserted_for_restaurant_id`,
+`supabase/migrations/20260906050000_a_house_may_name_a_bottle_the_library_does_not_have.sql`),
+and it waits in a curation queue until Mudavym promotes it.
+
+**Promotion re-points this page's rows.** When a provisional identity is
+promoted, every `restaurant_inventory` row carrying that `identity_id` has its
+`master_wine_id` moved to the newly shared library entry, and the number
+re-pointed is reported — zero is a real answer and is printed rather than
+implied. If the re-point fails the call fails and says the identity was
+promoted, because a half-done promotion reporting success would leave this
+page's row pointing at a placeholder forever.
+
+**The house's assertion survives promotion.** `asserted_for_restaurant_id` is
+written once and never cleared — deliberately a different column from ADR 0130's
+`master_wine_library.provisional_for_restaurant_id`, which IS cleared on
+promotion because there it is state and here it is provenance.
+
+**Standing is generated, not flagged.** `library` / `provisional` / `source` is
+a GENERATED column, so "printed as provisional everywhere it appears, never as
+official" cannot drift from the two columns it describes. Three values and not
+two on purpose: calling an Iowa transcription "official" would be the same class
+of falsehood the register exists to stop.
+
+### 13.z One alias on the item, library immutable (ADR 0124, the naming rule, 2026-09-05)
+
+The founder: **"One alias on the item, library immutable."** *"Names are the
+house's; identity is the library's."* His own words: *"let each restaurant to
+name their products to match their likings, eg. instead of 1988 Wine X ...
+maybe they would prefer to name it: Wine X only."*
+
+**No column was added.** `restaurant_inventory.wine_name` already existed and
+this page already rendered it — `inventory.service.ts:83` reads
+`row.wine_name || row.master_wine_library?.name`. Measured read-only on
+production 2026-09-05: 233 rows, `wine_name` present on **180**, **156**
+distinct, and **0 differ from the library's own name**, because nothing let a
+house set it (`UpdateInventoryItemDto` had no such field). It does now, and an
+empty string CLEARS the alias rather than storing a name of `""`.
+
+**Both names stay searchable.** `wineName` is whichever name is shown, so
+matching on it alone would make the other unfindable — rename "1988 Wine X" to
+"Wine X" and "1988" stops finding it. The item read now also carries
+`libraryName` (matched, never displayed in the alias's place) and `houseAlias`
+(whether the house set one at all, which `wineName` cannot say because it is
+non-null either way), and `useInventoryPage`'s filter matches both.
+
+**The library is immutable from this path, and a test reads the source to prove
+it:** `house-item-alias.spec.ts` pulls the real `updateInventoryItem` body out
+of the file and fails if it ever contains `from("master_wine_library")`.
+

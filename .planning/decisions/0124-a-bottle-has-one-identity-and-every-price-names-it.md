@@ -3,8 +3,9 @@
 - **Status:** Proposed — **BUILT on `feat/mudavym-design-p4`, 2026-09-05, and the
   migration is NOT applied anywhere.** The register, the keys table, the candidate
   queue, the nullable `identity_id` on three price/stock registers, the exact-key
-  joiner, the candidate generator, the owner/manager confirm route (Q2) and the reader
-  change all exist; **not one identity row is written by anything that runs on its
+  joiner, the candidate generator, the confirm/reject/undo routes with their
+  decision log (Q2, answered by the founder 2026-09-05 and built the same day) and
+  the reader change all exist; **not one identity row is written by anything that runs on its
   own.** Every number below was measured by this session on the tree it reports.
 - **Date:** 2026-09-05
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -329,29 +330,373 @@ items. A column would force the library to pick one. Rejected in §Rejected.
    Iowa and Michigan cannot. It also means carrying an attribution string on derived
    rows (the constant is written) and a download that is not in this repo. Take it,
    and if so as a one-off recorded file or as a periodic fetch?
-2. **Who confirms a candidate?** The routes are owner/manager today, matching the rest
-   of `/vendor-intel` (vendor pricing is the house's negotiating position). Identity is
-   not commercially sensitive in the same way, and the people who actually know whether
-   two bottles are the same are the cellar staff. Should confirming be a staff action
-   while the price ladder stays owner/manager?
-3. **The house item's relation to the identity (ADR 0115).** ADR 0115 locked *one house
-   item id across all beverages*, and this measurement says **0 of 206 house items can
-   be read as an identity from their own columns** — 153 have no producer and 53 no
-   name — while **205 of 206 can be read through their library row**. So the house item
-   reaches its identity through the link it already has. Is that the rule (`identity_id`
-   is set only from the library/beverage row a house item points at), or should the
-   house item be able to carry an identity the library does not have — a bottle the
-   house buys that is not in the library?
-4. **Q28 itself: what should the sweep read now?** With the register in place the
-   answer is *"the identities a house has confirmed"* — but until somebody confirms
-   one, that list is empty and the sweep reads nothing. Do we (a) leave it empty and
-   let the register fill from the house's own invoices, (b) take the LWIN database
-   (Q1) so a house can search a real list, or (c) let a house nominate wines by hand
-   and turn each nomination into an identity assertion?
+2. ~~**Who confirms a candidate?**~~ **ANSWERED 2026-09-05 (batch 47), and BUILT.**
+   The founder: **"staff may confirm, log the decisions."** See §"Q2, answered" below.
+3. ~~**The house item's relation to the identity (ADR 0115).**~~ **ANSWERED 2026-09-05
+   (batch 48), and BUILT.** The founder: **"Provisional on the item, curated into the
+   library."** See §"Q3, answered" below.
+
+
+4. ~~**Q28 itself: what should the sweep read now?**~~ **ANSWERED 2026-09-05
+   (batch 49), and BUILT.** The founder: **"LWIN search + hand nominations."**
+   See §"Q4, answered" below.
+
+
 5. **A 12 × 375 case and a 6 × 750 case are now two keys — is `price_history` next?**
    ADR 0119 Q4 asked whether `price_history.unit` stays hardcoded `'BOTTLE'`. Grouping
    by identity in the ladder makes the two tables disagree about what a price is a
    price *of*. Fixing that is a separate change and is not in this one.
+
+---
+
+## Q2, answered: staff may confirm, and every decision is logged (2026-09-05)
+
+The founder's words, verbatim: **"staff may confirm, log the decisions."**
+
+### Why the two gates differ, stated rather than left to be inferred
+
+Everything else under `/vendor-intel` is owner/manager, and that is not an
+accident this change is undoing. Those routes expose **what a vendor quoted this
+house** — its negotiating position, the same reason the pricing column carries a
+role gate. A candidate exposes none of that: it is the question *"are these two
+bottles the same bottle"*, and it carries no price, no vendor and no terms. The
+people who can answer it are the ones holding the bottles.
+
+So the gate is drawn by **what the route exposes**, not by the module it sits in:
+
+| Route | Who | Why |
+|---|---|---|
+| `GET  /vendor-intel/identity/candidates` | owner · manager · **staff** | Confirming without being able to see the queue is not a capability, so the queue moves with the decision. |
+| `POST /vendor-intel/identity/candidates/decide` | owner · manager · **staff** | The founder's call. No price is visible on a candidate. |
+| `GET  /vendor-intel/identity/decisions` | owner · manager · **staff** | A person who takes a decision has to be able to see the decisions. |
+| `POST /vendor-intel/identity/decisions/undo` | owner · manager | Taking a decision back is a supervisory act; it is also refused inside `IdentityService.undo`, not only by the decorator. |
+| `identity/status`, `identity/lookup`, `identity/suggest`, `identity/assert`, and every other `/vendor-intel` route | owner · manager | Unchanged. `assert` MINTS an identity rather than confirming one, which is a different act from the one the founder opened. |
+
+### The log, and the one thing it had to be able to survive
+
+`beverage_identity_candidates` already carried `status`, `decided_by`,
+`decided_at` and `decision_note` — and those are the **current state of one
+proposal**, which is exactly what an undo destroys. The table's own
+`bic_decision_is_dated` CHECK says a `pending` row has NO decision recorded, so
+returning a candidate to pending must clear `decided_by`/`decided_at`. **A
+manager who undid a confirmation would erase the confirmation.**
+
+So `beverage_identity_decisions`
+(`supabase/migrations/20260906030000_a_confirmation_is_a_logged_decision.sql`)
+is the event log beside that projection. It adds only what was missing, and the
+overlap with the candidate row is one row's worth of who/when for the latest
+decision — which is the point, since that overlap is what makes an undo
+reversible without forgetting:
+
+* **the action**, including `undone`, which the candidate cannot express;
+* **the actor's role and name AS THEY WERE.** `decided_by` is `ON DELETE SET
+  NULL` everywhere in this repo, so a person who leaves would take "who
+  confirmed this" with them. `decided_by_label` and `decided_by_role` are
+  NOT NULL, and a decision from an account with neither a name nor an email is
+  **refused** rather than logged against a placeholder;
+* **the evidence the person saw** — the candidate's method, confidence and
+  evidence plus the identity and subject it named — captured **server-side**
+  from the same rows the queue route rendered. Never taken from the request
+  body: a client-supplied *"here is what I saw"* is an attestation, not a
+  record. When the identity row cannot be read the log still lands, with
+  `{ unread: true, reason }` in its place — a decision that happened must be
+  logged even when the decoration around it could not be fetched;
+* **the link back** from an undo to the decision it reverses
+  (`bid_undo_names_its_decision`: only an undo names one and every undo must;
+  `uq_beverage_identity_decisions_undo`: a decision is undone at most once, so
+  two managers racing cannot take one link back twice).
+
+**Append-only, enforced by a trigger** that raises on UPDATE and DELETE, proved
+in the migration's own `DO $$` block against a real UPDATE rather than asserted.
+The consequence is stated instead of discovered: `restaurant_id` is `ON DELETE
+RESTRICT`, so a house holding identity decisions is retired by soft delete and
+never hard-deleted — ADR 0115's rule for the library link.
+
+The undo takes the link back before it logs: a column link returns to NULL
+(filtered on **both** the subject id and the identity id, so an undo cannot
+blank a link somebody else wrote), and a key link is **deleted**, because the
+keys table has no state — a key is an assertion and withdrawing one is removing
+it. The undo row names which of the two happened.
+
+### The read
+
+`GET /vendor-intel/identity/decisions` returns this house's decisions plus those
+on the public registers, newest first, capped at 200. **A failed read throws
+with its reason.** An empty array would say *"nobody in this house has ever
+decided anything"*, which is a claim; a query that failed has made no claim at
+all. The response also carries `complete`, false when the page came back full,
+because `items.length` behind a `.limit()` is a floor and not a total.
+
+The register page's own list is `apps/web/src/pages/IdentityDecisionLog.tsx`,
+mounted on `/vendor-prices` **outside** the comparison's data branch — the log
+is a fact about the house and stays readable when no wine is picked and when the
+ladder itself fails, which is when somebody is most likely to be asking who
+confirmed what. It prints the failure and its reason rather than an empty list,
+reads "at least N" when the page was capped, hides the undo control from staff
+with a sentence saying why (the gateway refuses independently, so hiding it is a
+courtesy and not the protection), and its query key carries the active house so
+`switchRestaurant` cannot serve the previous one's log from cache.
+
+### Rejected
+
+1. **Owner/manager only** — the status quo. Rejected by the founder. Recorded
+   because it was the shipped behaviour until this change and the argument for
+   it (identity work touches the same module as pricing) is a fact about our
+   file layout, not about what the route exposes.
+2. **Staff proposes, a manager confirms.** The obvious middle, and it is worse
+   in a way that is specific: `proposeCandidates` already generates the
+   proposals mechanically, so "staff proposes" would be staff pressing a button
+   that runs a function, and the only judgement in the flow — *is this the same
+   bottle* — would still sit with the person furthest from the shelf. It also
+   doubles the queue depth for no new information.
+3. **A confidence threshold above which staff may confirm.** Rejected on this
+   ADR's own decision: a confidence is not a decision, and a threshold that
+   changes WHO may decide is a threshold that decides.
+4. **Logging by mutating the candidate row** (adding `decided_by_role`,
+   `decided_by_label` and an `undone_at` to it). Rejected on the measurement
+   above: the CHECK that makes `pending` mean "no decision recorded" is what
+   makes the row honest, and an undo would still erase the history it is meant
+   to preserve.
+
+---
+
+## Q3, answered: provisional on the item, curated into the library (2026-09-05)
+
+The founder chose **"Provisional on the item, curated into the library
+(Recommended)"**, whose option text reads: *"As described: item-level identity
+is provisional and named; a curation queue; promotion re-points the item;
+provenance kept; a provisional identity is printed as such everywhere it
+appears, never as official."* His own words that led there (batch 48): *"do
+option 1, + let each restaurant to name their products to match their likings,
+eg. instead of 1988 Wine X ... restaurant maybe they would prefer to name it:
+Wine X only and so on. maybe the /menu is editable, but masterwinelibrary parts
+/wines not at all."*
+
+### What already existed, and is therefore not rebuilt
+
+ADR 0130 shipped the LIBRARY side of this the same day:
+`master_wine_library.provisional_for_restaurant_id` marks a row as one venue's
+own, keeps it out of every other venue's matching, and is cleared on promotion.
+Nothing here duplicates it. This is the IDENTITY side — the thing ADR 0124
+introduced and ADR 0130 does not touch. The two columns share a name on
+purpose: `provisional_for_restaurant_id` means one thing in this repo, and a
+synonym would be a second word for one fact.
+
+### The shape
+
+`supabase/migrations/20260906050000_a_house_may_name_a_bottle_the_library_does_not_have.sql`
+adds to `beverage_identities`:
+
+* **`asserted_for_restaurant_id`** — the house that named the bottle. Written
+  once and **never cleared**. This is the founder's "provenance kept", and it is
+  a separate column from the state for a measured reason: ADR 0130 promotes by
+  *clearing* its provisional marker, so one column doing both jobs would erase
+  the house's assertion at the moment of promotion.
+* **`master_wine_id`** — the shared library row a promotion attaches it to. This
+  is the many-to-one side of the relation whose other side ADR 0124 deliberately
+  keeps as a KEY: one library entry, several trade items (750 ml and magnum).
+* **`curation_state`** (`none` · `queued` · `promoted` · `declined`),
+  `curated_by`, `curated_at`, `curation_note`.
+* **`standing`, GENERATED** — `library` once promoted, `provisional` while it is
+  a house's own, `source` when transcribed from a published file. Generated,
+  because *"printed as provisional everywhere it appears, never as official"* is
+  only true if the thing being printed cannot drift from the facts.
+
+**Three standings and not two, deliberately.** The founder named two. Collapsing
+everything that is not provisional into "official" would call an Iowa
+transcription an official library entry — the exact class of falsehood this
+register exists to stop — so a row that is neither a house's assertion nor
+promoted says what it is.
+
+**The queue is a query, not a table** (`WHERE curation_state = 'queued'`, oldest
+first). A queue table would carry its own copy of "is this waiting", which can
+disagree with the identity's own state; there is one fact and it lives on the
+row.
+
+### Who curates, and why it is a key rather than a role
+
+`identity-curation.controller.ts`, its own controller with **no class-level
+guard**, each route `@Public()` + `@UseGuards(ServiceKeyGuard)` +
+`X-Admin-Key` — the ADR 0099 service credential, the same shape as
+`POST /communications/email` and the experiment both-arms report. Splitting the
+controller is not cosmetic: `VendorIntelController` carries
+`@UseGuards(JwtAuthGuard, RolesGuard)`, Nest requires every class guard to pass
+before a method guard runs, and `RolesGuard` reads `request.user` — which a
+service key does not carry. On the same controller these routes could not work.
+
+**No platform-admin role is invented.** `RolesGuard` knows owner, manager and
+staff, all three roles *within* a house; a fourth created to hold a curation
+queue would be a permission system built as a side effect. The service key
+already means "not a tenant", and it fails closed on an unset `ADMIN_API_KEY`.
+
+### Promotion, in four steps, in that order
+
+1. the library row is chosen or created; 2. the identity names it, which flips
+`standing` to `library`; 3. **every house item carrying this identity is
+re-pointed** (`restaurant_inventory.master_wine_id`) — the founder's "promotion
+re-points the item"; 4. the curation is stamped. If (3) fails the call fails
+**and says the identity was promoted**, because a half-done promotion reporting
+success would leave an item pointing at the placeholder row forever. How many
+items were re-pointed is returned and printed: zero is a real answer.
+
+Promoting onto another venue's provisional row is **refused** — ADR 0130's own
+rule, enforced from this side too, since it would move the identity from one
+provisional state into another and call the result official. A **decline** keeps
+the identity, keeps the house, and requires a reason, because "declined" with no
+reason is a verdict the house cannot act on.
+
+### Rejected
+
+1. **"Provisional, and auto-promote on match."** Rejected by the founder, and it
+   is the same fault this ADR already measured: an exact key is evidence, not
+   proof — 1,736 of Iowa's 9,118 UPCs name more than one product. Auto-promotion
+   on a match would put a machine's guess into the shared library, where every
+   other house then inherits it.
+2. **"Item identity is permanent."** Rejected by the founder. It would make the
+   library unable to ever learn what a house already knows.
+3. **A `beverage_identity_curation` queue table.** Rejected on retire-to-write
+   and on correctness: a second copy of "is this waiting" can disagree with the
+   identity's own `curation_state`.
+4. **A platform-admin role in `RolesGuard`.** Rejected: see above.
+
+---
+
+## The naming rule: names are the house's, identity is the library's (2026-09-05)
+
+The founder chose **"One alias on the item, library immutable (Recommended)"**,
+whose option text reads: *"One house-owned display name per item, used
+everywhere the house sees it (menu, inventory, orders); the library row and the
+identity are untouched; both names searchable. One name to maintain; provenance
+intact."* The rule as put to him: **"Names are the house's; identity is the
+library's."**
+
+### No column was added, because the column already existed
+
+`restaurant_inventory.wine_name` is the alias. It has been there since the
+baseline, and `inventory.service.ts:83` already reads
+`row.wine_name || row.master_wine_library?.name` — the house's name first, the
+library's as fallback. ADR 0130 had already made bulk receive write it from the
+draft rather than from the row it resolved to.
+
+**Measured read-only on production, 2026-09-05, before deciding:** 233
+`restaurant_inventory` rows; `wine_name` present on **180**, **156** distinct
+values, and **0 of them differ from the library's own `name`**. So the column
+existed, was rendered, and carried no house-specific value anywhere — because
+**nothing let a house set it**. `UpdateInventoryItemDto` had no such field.
+
+That is the whole change: the DTO gains `wineName`, the update path maps it, and
+an empty string **clears** the alias so the row falls back to the library name
+rather than storing a name of `""`.
+
+### Both names searchable, which needed a second value to travel
+
+`wineName` collapses the two names into whichever one is displayed, so on its
+own it makes the other unfindable: a house that renames *"1988 Wine X"* to
+*"Wine X"* could no longer find it by searching *"1988"*. The item read now also
+carries **`libraryName`** (the library's own name, matched but never rendered in
+the alias's place) and **`houseAlias`** (whether the house has actually set one,
+which `wineName` cannot express because it is non-null either way). The
+inventory page's filter matches both.
+
+### The library stays immutable from this path
+
+Asserted rather than described: `house-item-alias.spec.ts` reads the real
+`updateInventoryItem` body out of the source file and fails if it ever contains
+`from("master_wine_library")`. A test that only exercised a copy of the branch
+could not see a future edit that started writing the library, and the founder's
+line — *"masterwinelibrary parts /wines not at all"* — is exactly about that.
+
+### Rejected
+
+1. **"Alias per surface"** (a different name on menu, inventory and orders).
+   Rejected by the founder, and it multiplies the thing that has to stay true:
+   three names to maintain and three ways for them to disagree about one bottle.
+2. **"House-scoped copy of the library row."** Rejected by the founder. It is
+   the shape ADR 0130 already had to contain — a venue-owned library row exists
+   only because `restaurant_inventory.master_wine_id` is NOT NULL — and
+   generalising it would give every house its own fork of the library and no
+   shared identity at all.
+3. **A new `display_name` column on `restaurant_inventory`.** Rejected on the
+   measurement: `wine_name` is already there, already read, already preferred.
+   A second column would be two homes for one fact, and the read would have to
+   pick.
+
+---
+
+## Q4, answered: LWIN search + hand nominations (2026-09-05)
+
+The founder chose **"LWIN search + hand nominations (Recommended)"**: *"A house
+searches the LWIN file and confirms identities from it, and can also nominate a
+wine by hand, each nomination becoming a named identity assertion (provisional,
+per the curation rule). The sweep reads confirmed identities and says how many
+it read. **Two ways in; nothing invented.**"* LWIN itself was settled in batch
+43: **taken as a recorded one-off file, refreshed on a stated cadence** — not a
+live fetch.
+
+### Way one: the recorded LWIN file
+
+`lwin-file.ts` reads a CSV, **validates its header against the columns it binds
+to** and refuses a file it does not recognise BY NAME rather than parsing it
+into empty strings. Every bad row is refused and counted by reason
+(`lwin_not_seven_digits`, `no_display_name`, `no_producer`), so a house is told
+"5 rows read, 3 refused" instead of a number that quietly means something else.
+Search requires **every** word of the query to appear in the producer or the
+display name, in any order — a prefix match would find neither *"margaux 2015"*
+nor *"krug grande cuvee"* — and a year in the query is matched as a word and
+**never as a vintage filter**, because an LWIN-7 names the wine and carries no
+vintage at all.
+
+**Confirming a row takes the wine from the file and the FORMAT from the house.**
+The vintage, size and pack come from the bottle in front of the person. The
+identity's standing is `source`, not `provisional`: it came from a published
+file, so it is nobody's house assertion and it does not enter the curation
+queue. The CC BY 4.0 attribution travels on the key row, the same rule Iowa's
+licence gets in the sibling register.
+
+### There is no LWIN file in this repo, and that is stated rather than papered over
+
+Probed 2026-09-05 with an identifying UA: the LWIN page (147,184 bytes) carries
+**no `.csv`, `.xlsx` or `.zip` link at all**, and three guessed paths under
+`wp-content/uploads` and `/lwin/download/` returned **404**. Liv-ex serves the
+database through a form. So a person downloads it, points `LWIN_FILE_PATH` at
+it, and refreshes it on the recorded cadence — and until then the search route
+answers `available: false` with the path, the licence and where to get it,
+**never an empty hit list**: "no wine matched your words" and "there is no file
+on this deployment" are different answers and only the first is about the wine.
+
+The committed fixture is **synthetic and named so**, in a `99xxxxx` code block,
+with the reason in its own header. Not one row claiming to be Liv-ex's is in
+this repo — inventing them would be a falsehood wearing a fixture's clothes, and
+a licence problem wearing a data problem's.
+
+### Way two: a hand nomination
+
+`POST /vendor-intel/identity/nominate` is `assertIdentity` with the house
+attached, which by Q3's rule makes it **provisional** and queues it for
+curation. It is its own route because the response says the standing out loud: a
+house that nominates a bottle is told in the same breath that what it just made
+is provisional and will be shown that way until Mudavym promotes it.
+
+### What the sweep reads, and how many
+
+`GET /vendor-intel/identity/sweep-subjects` counts identities whose standing is
+`library` or `source` — **provisional ones are excluded**, because a house's own
+unconfirmed name is not a subject to go fetching prices for. Zero is reported as
+a real zero with the reason ("identities are confirmed by people ... nothing
+fills the register on its own"), and a failed count returns null with its
+message rather than 0.
+
+**This is the answer to ADR 0117 Q28.** The sweep's subject list is the confirmed
+identities, and it says how many it read.
+
+### Rejected
+
+1. **"Leave it empty until invoices fill it."** Rejected by the founder. It is
+   also the option this ADR's own counter-argument section already conceded was
+   the slow path: class A fills only as the house receives paper.
+2. **"Nominations only, no LWIN search yet."** Rejected by the founder. It would
+   make every wine a house's provisional assertion needing curation, which puts
+   the whole 200,000-wine public catalogue through a queue one person runs.
 
 ---
 

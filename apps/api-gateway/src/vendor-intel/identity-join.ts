@@ -127,6 +127,21 @@ export function joinByExactKey(
 export interface RegisteredIdentity extends IdentityParts {
   id: string;
   displayLabel: string;
+  /**
+   * `library` once Mudavym has promoted it, `provisional` while it is one
+   * house's own assertion, `source` when it was transcribed from a published
+   * file. Generated in the database, so it cannot drift from the two columns it
+   * describes.
+   *
+   * Optional here because the pure module never needs it to SCORE anything —
+   * a provisional identity is exactly as matchable as an official one. It rides
+   * along so that whatever renders a candidate can obey the founder's rule of
+   * 2026-09-05: a provisional identity is printed as provisional everywhere it
+   * appears, never as official.
+   */
+  standing?: "library" | "provisional" | "source";
+  /** The house that asserted it, when it is a house's own. Provenance, kept. */
+  assertedForRestaurantId?: string | null;
 }
 
 export type PartVerdict = "agreed" | "disagreed" | "unstated";

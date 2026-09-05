@@ -170,6 +170,33 @@ export class UpdateInventoryItemDto {
   @IsIn(["bottle", "glass", "both"])
   saleType?: "bottle" | "glass" | "both";
 
+  /**
+   * The house's own name for this bottle (ADR 0124, the naming rule).
+   *
+   * The founder, 2026-09-05 (batch 49): "One alias on the item, library
+   * immutable." The rule as put to him: "Names are the house's; identity is the
+   * library's."
+   *
+   * This is `restaurant_inventory.wine_name`, which ALREADY EXISTED and which
+   * this page already renders (`inventory.service.ts:83` reads
+   * `row.wine_name || row.master_wine_library?.name`). NO second column was
+   * added: that column is the alias, and until now nothing let a house set it.
+   * Measured on production 2026-09-05: present on 180 of 233 rows, 156 distinct
+   * values, and 0 of them differ from the library's own name -- the column
+   * existed and carried no house-specific value at all.
+   *
+   * An empty string CLEARS the alias and the row falls back to the library
+   * name; it is not a name of "". Nothing here writes to master_wine_library.
+   */
+  @ApiPropertyOptional({
+    description:
+      "The house's own display name for this item. Empty clears it and the library name shows instead. Never writes to master_wine_library.",
+  })
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  wineName?: string;
+
   @ApiPropertyOptional({ description: "Pour size in ml" })
   @IsOptional()
   @IsNumber()

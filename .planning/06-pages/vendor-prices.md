@@ -37,6 +37,7 @@ surface.
 - Source provenance per price: invoice / catalogue / quote / rep message / social / manual
 - 7/30/90-day trend chips; "No comparable data" rendered honestly, never 0%
 - Record a manually observed price
+- **Identity decisions log** — who confirmed or rejected which bottle identity, when, in what role, and the evidence the server showed them; a manager can undo one and the undo is logged as its own decision (ADR 0124 Q2)
 - 🚧 Unreachable by navigation — no page links here (§9)
 
 ## 2. Entry
@@ -167,4 +168,42 @@ of them.
    producer lands.
 5. Add a client-side permission state so a non-owner is told why, rather than shown a
    failed request.
+
+### 13.x Staff may confirm, and every decision is logged (ADR 0124 Q2, 2026-09-05)
+
+The founder, asked who may confirm a proposed bottle identity: **"staff may
+confirm, log the decisions."** Built the same day; this page carries the second
+half.
+
+**The gate on this page is now two gates, and the line is what a route
+exposes.** Everything else here stays owner/manager because it shows what a
+vendor quoted this house — its negotiating position. The identity routes show
+the question *"are these two bottles the same bottle"*: no price, no vendor, no
+terms. So `identity/candidates` (the queue), `identity/candidates/decide` and
+`identity/decisions` (the log) admit **staff**; `identity/decisions/undo` stays
+owner/manager and is refused a second time inside the service, not only by the
+decorator; and `identity/assert`, which MINTS an identity rather than confirming
+one, stays owner/manager because it is a different act from the one the founder
+opened.
+
+**The log is a second table because an undo would otherwise erase what it
+undoes.** `beverage_identity_candidates` holds the current state, and its
+`bic_decision_is_dated` CHECK means a `pending` row has no `decided_by` or
+`decided_at` — so returning a candidate to pending clears them.
+`beverage_identity_decisions`
+(`supabase/migrations/20260906030000_a_confirmation_is_a_logged_decision.sql`)
+is append-only, enforced by a trigger that the migration proves against a real
+UPDATE, and it carries what the candidate row cannot: the action (including
+`undone`), the actor's **name and role as they were** (because `decided_by` is
+`ON DELETE SET NULL` and a foreign key that forgets is not an audit trail), the
+evidence the person saw — captured server-side, never from the request body —
+and the link from an undo back to the decision it reverses.
+
+**The list is `apps/web/src/pages/IdentityDecisionLog.tsx`**, mounted outside
+the comparison's data branch so it stays readable when no wine is picked and
+when the ladder itself fails. A failed read renders as a failure **with its
+reason**, never as an empty log; a capped page reads "at least N" and says the
+page stopped; staff see no undo control and a sentence saying why; and the query
+key carries the active house so `switchRestaurant` cannot serve the previous
+one's log from cache. Eight vitest cases assert exactly those.
 6. **Seventeen vendors said "verified" because a geocoder ran.** ADR 0117 Q26, answered 2026-09-05: every `vendor_catalogue.verified_at` came from the two 2026-08-07 geocoding migrations applying on 2026-08-10 (`20260807001352` :32, `20260807001552` :36,52), never from a check of the website or the business; three of those websites were a casino, a wine school and a clothes shop. Cleared on the founder's word at 2026-09-05T20:35:56Z (`scripts/clear_vendor_catalogue_verified_at.py`, 17 of 17, re-read 0 left), and `20260906040000` now refuses a `verified_at` with no `source_ref`. The page prints "verified" for no vendor until something with a name verifies one.
