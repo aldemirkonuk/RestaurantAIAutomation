@@ -207,3 +207,54 @@ page stopped; staff see no undo control and a sentence saying why; and the query
 key carries the active house so `switchRestaurant` cannot serve the previous
 one's log from cache. Eight vitest cases assert exactly those.
 6. **Seventeen vendors said "verified" because a geocoder ran.** ADR 0117 Q26, answered 2026-09-05: every `vendor_catalogue.verified_at` came from the two 2026-08-07 geocoding migrations applying on 2026-08-10 (`20260807001352` :32, `20260807001552` :36,52), never from a check of the website or the business; three of those websites were a casino, a wine school and a clothes shop. Cleared on the founder's word at 2026-09-05T20:35:56Z (`scripts/clear_vendor_catalogue_verified_at.py`, 17 of 17, re-read 0 left), and `20260906040000` now refuses a `verified_at` with no `source_ref`. The page prints "verified" for no vendor until something with a name verifies one.
+
+### 13.x A price names the bottle it priced (ADR 0124 Q5, 2026-09-05)
+
+ADR 0124 shipped `identity_id` on `restaurant_inventory`, `vendor_price_observations`
+and `price_index_postings` and left `price_history` out, naming the gap in its own Q5:
+grouping the ladder by identity while the house's own price series can only be joined
+by `master_wine_id` makes the two registers disagree about **what a price is a price
+of** — one library row covers the 750 and the magnum, which ADR 0124 measured to be two
+trade items. The founder closed it in batch 49: **"Yes, identity_id on price_history
+now."** Rejected: keep the two apart — the argument (a column nobody can fill until
+somebody confirms an identity) loses because the cost of adding it later is not the
+column, it is every row written in the meantime that can never be joined backwards
+without inventing an assertion nobody made.
+
+`supabase/migrations/20260906060000_a_price_names_the_bottle_it_priced.sql` adds the
+column nullable with a `REFERENCES beverage_identities(id) ON DELETE RESTRICT`, exactly
+as its three siblings. Two things differ, deliberately:
+
+- **It backfills**, where the siblings did not. A `price_history` row already carries
+  `master_wine_id`, and ADR 0124's keys table records the library link as
+  `('mudavym:master_wine_library', <row id>)`, so the link is a transcription of an
+  assertion somebody already made. It resolves **only where that key names exactly one
+  identity** (`having count(distinct identity_id) = 1`); an ambiguous key is a refusal,
+  the same refusal ADR 0124's joiner makes when a person is watching. The count is
+  RAISEd unconditionally (ADR 0078 — a backfill that resolves zero rows leaves the same
+  trace as one that resolves a thousand, or "no NOTICE" reads identically to "never
+  ran") and then re-derived from the table and asserted.
+- **The index `(identity_id, unit)` is not partial**, unlike `idx_vpo_identity` and its
+  two siblings. Those filter to identified rows; here the contract is that the NULL
+  group is **printed as "unidentified"** and never dropped (ADR 0016, ADR 0020), so a
+  partial index would serve every part of the mandated read except the part the decision
+  exists to protect.
+
+**Readers changed: none, and that is measured rather than assumed.** On this tree
+`price_history` has one writer (`recordPriceHistory`) and **zero readers** —
+`grep -rn 'from("price_history")|table("price_history")|from price_history' apps services`
+returns exactly one line, the insert. The ladder and the market box read
+`vendor_price_observations`, which has carried `identity_id` since `20260905140000`, so
+nothing there needed the identity key added. Nothing under `vendor-intel/`,
+`procurement/` or `price-index/` was touched.
+
+Instead the rule is held by a guard, so the first reader cannot get it wrong silently:
+`scripts/check_price_history_reads_group_by_unit.py` gained a second arm. Grouping by
+`identity_id` **without** `unit` is exit 1, not exit 2 — unlike a grouping key the parser
+cannot follow, this key is visible and visibly insufficient. An identity fixes which
+bottle; a unit fixes what the number counts; one bottle bought by the bottle in March
+and by the case in April is two honest rows that are not addable.
+
+### 13.y The two identity migrations, proven on PGlite after their commit (parent, 2026-09-05)
+
+a276af97 said `20260906030000` and `20260906050000` had been executed nowhere. `p4-scratch/pglite-probe/p4aq-identity-chain.mjs` now applies the real chain `20260805154027 -> 20260904200000 -> 20260905140000 -> 20260906030000 -> 20260906050000` on stubbed leaf parents (users, restaurants, master_wine_library, restaurant_inventory, providers, vendor_catalogue): every file applies, the two new ones re-apply, all four `beverage_identit*` tables carry RLS, `asserted_for_restaurant_id` exists and `standing` is GENERATED ALWAYS — 9 passed / 0 failed.

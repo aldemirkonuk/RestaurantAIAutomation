@@ -691,6 +691,15 @@ jobs:
       - name: ...and that guard's own failure path fires
         run: ./scripts/check_order_transition_sql.py --self-test
 
+      # ADR 0117 Q25/Q30: a house's money is printed in the currency the house
+      # stated, or with "currency not recorded" -- never as a bare dollar sign
+      # nor a pinned USD. Three production houses are not in dollars. Baselined
+      # at introduction; the baseline may only shrink. It was NOT wired into CI
+      # when it landed (71a6d9fd), and main's SimPOS pages (#310) re-introduced
+      # bare dollars nobody saw until a builder ran it by hand on 2026-09-05.
+      - name: Money states its currency
+        run: ./scripts/check_money_states_its_currency.py
+
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
