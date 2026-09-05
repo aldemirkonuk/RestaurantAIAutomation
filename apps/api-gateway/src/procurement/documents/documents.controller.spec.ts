@@ -38,7 +38,12 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
     // class carries @UseGuards(JwtAuthGuard), and instantiating that guard's
     // own dependency chain (TokenBlacklistService, etc.) is unrelated to what
     // this test verifies.
-    controller = new DocumentsController(mockIntake as any, mockDb as any);
+    controller = new DocumentsController(
+      mockIntake as any,
+      mockDb as any,
+      {} as any,
+      {} as any,
+    );
   });
 
   it("throws 404 when the document does not exist", async () => {

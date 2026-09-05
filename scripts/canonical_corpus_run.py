@@ -184,6 +184,31 @@ LINE_COLUMNS = (
     "order_line_id,match_method,match_confidence"
 )
 
+# Migration 20260904120000 (ADR 0104 slice 2). Asked for separately so a database
+# that has not applied it yet is told apart from a document that printed no price
+# base: PostgREST answers an unknown column with 42703, and the retry below
+# records WHICH of the two the report is describing.
+DOC_COLUMNS_NEW = ",printed"
+LINE_COLUMNS_NEW = ",price_base_qty,price_base_uom,printed"
+
+
+def fetch_all_tolerating_schema_lag(
+    base: str, key: str, table: str, columns: str, extra: str
+) -> tuple[list[dict], bool]:
+    """Rows, plus whether the new columns had to be dropped to read them.
+
+    A schema lag is a FINDING, not a silent fallback: without the flag the
+    report cannot tell "the paper printed no price base" from "this database
+    cannot hold one yet", which is the same absence-as-health confusion the
+    headline rule exists to prevent.
+    """
+    try:
+        return fetch_all(base, key, table, columns + extra), False
+    except RuntimeError as exc:
+        if "42703" not in str(exc) and "does not exist" not in str(exc):
+            raise
+        return fetch_all(base, key, table, columns), True
+
 
 def run_cli(corpus: list[dict]) -> dict:
     """Run the TYPESCRIPT invariants. A crash is exit 2, never an empty result."""
@@ -254,6 +279,17 @@ def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
         f"- `{BUCKET}` bucket: {payload['counts']['vendor_attachments_objects']} objects",
         "",
     ]
+
+    if payload.get("price_base_columns_missing"):
+        lines += [
+            "> **Schema lag, named.** This database has not applied migration",
+            "> `20260904120000`, so `price_base_qty`, `price_base_uom` and the",
+            "> `printed` literals could not be read. Every BT-149/BT-150 and every",
+            "> `as printed` below is absent BECAUSE IT COULD NOT BE STORED — not",
+            "> because the document printed none. The two are different findings and",
+            "> this run is the first kind.",
+            "",
+        ]
 
     if docs_read == 0:
         lines += [
@@ -456,8 +492,21 @@ def main() -> int:
             f"{BUCKET} objects={'could not list' if objects is None else objects}"
         )
 
-        documents = fetch_all(base, key, "procurement_documents", DOC_COLUMNS) if doc_count else []
-        lines_rows = fetch_all(base, key, "procurement_document_lines", LINE_COLUMNS) if line_count else []
+        documents, doc_lag = (
+            fetch_all_tolerating_schema_lag(
+                base, key, "procurement_documents", DOC_COLUMNS, DOC_COLUMNS_NEW
+            )
+            if doc_count
+            else ([], False)
+        )
+        lines_rows, line_lag = (
+            fetch_all_tolerating_schema_lag(
+                base, key, "procurement_document_lines", LINE_COLUMNS, LINE_COLUMNS_NEW
+            )
+            if line_count
+            else ([], False)
+        )
+        schema_lag = doc_lag or line_lag
     except RuntimeError as exc:
         # A failed read is a failed read. It never becomes an empty corpus.
         print(f"CANNOT RUN: {exc}", file=sys.stderr)
@@ -477,9 +526,26 @@ def main() -> int:
         except RuntimeError as exc:
             print(f"CANNOT RUN: {exc}", file=sys.stderr)
             return 2
+        # "0 failures" is NOT the headline when nothing could be tested.
+        #
+        # Measured 2026-09-04: three real documents were read and the headline
+        # said "0 named invariant failure(s)" -- while ELEVEN of the fourteen
+        # invariants were untestable on every one of them, because extraction
+        # had failed and there were no lines to check. That reads as a clean
+        # run and is the absence-as-health fault this script's own docstring
+        # exists to refuse. The untestable share now rides in the headline.
+        per_inv = cli_out["per_invariant"]
+        all_untestable = sum(
+            1
+            for c in per_inv.values()
+            if c.get("holds", 0) == 0 and c.get("fails", 0) == 0 and c.get("untestable", 0)
+        )
+        lines_read = sum(len(e["lines"]) for e in corpus)
         headline = (
             f"{cli_out['documents_read']} documents read; "
-            f"{len(cli_out['named_failures'])} named invariant failure(s)"
+            f"{len(cli_out['named_failures'])} named invariant failure(s); "
+            f"{all_untestable} of {len(per_inv)} invariants UNTESTABLE on every "
+            f"document ({lines_read} lines extracted in total)"
         )
     else:
         cli_out = {"documents_read": 0, "per_invariant": {}, "named_failures": [], "documents": []}
@@ -504,6 +570,11 @@ def main() -> int:
         "named_failures": cli_out["named_failures"],
         "documents": cli_out["documents"],
         "intake_statistics": intake_statistics(documents),
+        # True = this database predates migration 20260904120000, so every
+        # BT-149/BT-150 and every printed literal in this report is absent
+        # BECAUSE IT COULD NOT BE STORED. Never conflate that with a document
+        # that printed no price base.
+        "price_base_columns_missing": schema_lag,
         "wrote_to_database": False,
     }
 

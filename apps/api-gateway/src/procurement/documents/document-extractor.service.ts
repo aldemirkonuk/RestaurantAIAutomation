@@ -104,6 +104,36 @@ RULES
 OUTPUT only valid JSON:
 {"docType":"invoice","docNumber":null,"docDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"printed":{}}],"unreadable":[]}`;
 
+/**
+ * The fence-stripping `normalize` applies before `JSON.parse`.
+ *
+ * Exported so a caller that wants to say WHY a body did not parse — the
+ * extraction door's 422 — can run the SAME preprocessing this parser runs.
+ * Duplicating the logic there would eventually let a body the door rejects be
+ * one `normalize` would have accepted, and vice versa.
+ *
+ * NO REGEX. This was `/^\`\`\`json\s*|\s*\`\`\`$/g` until CodeQL #1327
+ * (`js/polynomial-redos`, high). The second alternative has no anchor at its
+ * start, so on a run of whitespace the engine restarts `\s*` at every offset
+ * and backtracks the whole run each time — quadratic. Measured on node v22:
+ * 200 kB of spaces took 21_833 ms, and `" ".repeat(50_000) + "x"` took
+ * 1_702 ms. Harmless while the only caller was a model's own reply; PR #301
+ * put a client's request body on the same path, which makes one POST a
+ * multi-second stall of the gateway's single event loop.
+ *
+ * The replacement is character-for-character equivalent to that regex and
+ * linear. `\s*` after the opening fence and before the closing one both fall
+ * inside the final `.trim()`, so they never needed matching in the first
+ * place: what the regex actually decided was only WHETHER each fence was
+ * there, and `startsWith`/`endsWith` decide that in one pass.
+ */
+export function stripJsonFence(rawText: string): string {
+  let s = rawText;
+  if (s.startsWith("```json")) s = s.slice(7);
+  if (s.endsWith("```")) s = s.slice(0, -3);
+  return s.trim();
+}
+
 type MediaType =
   | "image/jpeg"
   | "image/png"
@@ -232,9 +262,13 @@ export class DocumentExtractorService {
    */
   normalize(rawText: string, model: string): ParsedDocument {
     const warnings: string[] = [];
+    // Keys the `printed` maps offered that `PRINTED_KEYS` does not accept.
+    // Collected across every line AND the document so the count below is one
+    // sentence, not one per line — but never merely swallowed.
+    const droppedPrintedKeys: string[] = [];
     let parsed: any = {};
     try {
-      parsed = JSON.parse(rawText.replace(/^```json\s*|\s*```$/g, "").trim());
+      parsed = JSON.parse(stripJsonFence(rawText));
     } catch {
       // A model that returned prose instead of JSON has told us nothing usable.
       // Returning an empty invoice here would read downstream as a vendor who
@@ -317,7 +351,7 @@ export class DocumentExtractorService {
             lineTotal: num(l?.lineTotal),
             allowance: num(l?.allowance),
             deposit: num(l?.deposit),
-            ...spreadPrinted(l?.printed),
+            ...spreadPrinted(l?.printed, droppedPrintedKeys),
             poNumber: str(parsed.poNumber),
           };
         })
@@ -331,6 +365,13 @@ export class DocumentExtractorService {
     if (docType === "invoice" && lines.every((l) => l.unitPrice == null))
       warnings.push(
         "Classified as an invoice but no line carries a price — it may actually be a packing slip.",
+      );
+
+    const docPrinted = spreadPrinted(parsed.printed, droppedPrintedKeys);
+    if (droppedPrintedKeys.length)
+      warnings.push(
+        `Dropped ${droppedPrintedKeys.length} printed field(s) that are not money or quantity: ` +
+          `${[...new Set(droppedPrintedKeys)].slice(0, 8).join(", ")}.`,
       );
 
     const doc: ParsedDocument = {
@@ -353,7 +394,7 @@ export class DocumentExtractorService {
       discountTotal: num(parsed.discountTotal),
       total: num(parsed.total),
       lines,
-      ...spreadPrinted(parsed.printed),
+      ...docPrinted,
       computedLinesTotal: null,
       tieOutDelta: null,
       tiesOut: null,
@@ -437,6 +478,42 @@ function int(v: unknown): number | null {
 }
 
 /**
+ * The money and quantity fields whose printed glyphs we keep — the ONLY keys
+ * `spreadPrinted` will ever write.
+ *
+ * These are exactly the fields SYSTEM_PROMPT names for a line and for the
+ * document totals. The list is closed on purpose: `printed` is a transcript of
+ * the paper's numbers, so a key outside it is not a number we failed to
+ * anticipate, it is a key the model was never asked for.
+ */
+const PRINTED_KEYS = [
+  // line
+  "qty",
+  "uom",
+  "packSize",
+  "formatMl",
+  "unitPrice",
+  "priceBaseQty",
+  "priceBaseUom",
+  "lineTotal",
+  "allowance",
+  "deposit",
+  // document totals
+  "subtotal",
+  "freight",
+  "fuelSurcharge",
+  "splitCaseFee",
+  "deliveryFee",
+  "depositTotal",
+  "tax",
+  "otherCharges",
+  "discountTotal",
+  "total",
+] as const;
+
+const PRINTED_KEY_SET: ReadonlySet<string> = new Set(PRINTED_KEYS);
+
+/**
  * The model's `printed` map, kept as text and NOTHING ELSE.
  *
  * Returned as a spreadable object so an ABSENT map stays absent on the line
@@ -448,14 +525,37 @@ function int(v: unknown): number | null {
  * empty or whitespace-only are DROPPED rather than stored, because an empty
  * `as_printed` beside a real value is what the `as_printed_not_mutated`
  * invariant exists to catch.
+ *
+ * KEYS COME FROM `PRINTED_KEYS`, NEVER FROM THE INPUT. This used to iterate
+ * `Object.entries(v)` and write `out[k]`, which CodeQL #1328
+ * (`js/remote-property-injection`, high) flags because the key was a
+ * user-provided value: harmless while the map could only come from our own
+ * model call, and not harmless since PR #301 put
+ * `POST /procurement/documents/:id/extraction` on the same path. Walking the
+ * allow-list instead of the input makes `__proto__`, `constructor` and
+ * `prototype` unreachable as keys by construction rather than by filter, and
+ * the result object is `Object.create(null)` so nothing downstream can reach a
+ * prototype through it either.
+ *
+ * Unknown keys are DROPPED AND COUNTED. Silently discarding them would be the
+ * absence-as-health fault at its smallest scale: a transcript that lost a
+ * field would look identical to one the paper never printed.
  */
-function spreadPrinted(v: unknown): { printed?: Record<string, string> } {
+function spreadPrinted(
+  v: unknown,
+  dropped: string[],
+): { printed?: Record<string, string> } {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
-  const out: Record<string, string> = {};
-  for (const [k, raw] of Object.entries(v as Record<string, unknown>)) {
+  const src = v as Record<string, unknown>;
+  const out: Record<string, string> = Object.create(null);
+  for (const key of PRINTED_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(src, key)) continue;
+    const raw = src[key];
     if (typeof raw !== "string" || raw.trim() === "") continue;
-    out[k] = raw;
+    out[key] = raw;
   }
+  for (const key of Object.keys(src))
+    if (!PRINTED_KEY_SET.has(key)) dropped.push(key);
   return Object.keys(out).length ? { printed: out } : {};
 }
 

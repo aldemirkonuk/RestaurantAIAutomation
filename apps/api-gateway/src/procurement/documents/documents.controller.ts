@@ -20,7 +20,9 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
-import { UploadDocumentDto } from "./dto/documents.dto";
+import { ApplyExtractionDto, UploadDocumentDto } from "./dto/documents.dto";
+import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { DeliverySpineService } from "../canonical/delivery-spine.service";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
@@ -49,7 +51,152 @@ export class DocumentsController {
   constructor(
     private readonly intake: DocumentIntakeService,
     private readonly db: DatabaseService,
+    private readonly canonical: CanonicalDocumentService,
+    private readonly spine: DeliverySpineService,
   ) {}
+
+  /**
+   * Sign the stored original for viewing, or say why it could not be signed.
+   *
+   * Shared by `GET :id` and `GET :id/canonical` so the two panes cannot drift:
+   * the canonical page's `OriginalPane` and the receipts page's `PaperPane`
+   * show the same object through the same one-hour link. `null` with a reason
+   * beats `null` alone — "no file was stored" and "the file exists and could
+   * not be signed" send a manager to two different places.
+   */
+  private async signOriginal(
+    storagePath: string | null,
+  ): Promise<{ imageUrl: string | null; reason: string | null }> {
+    if (!storagePath)
+      return {
+        imageUrl: null,
+        reason: "no original was stored for this document",
+      };
+    try {
+      const { data: signed, error } = await this.db
+        .getClient()
+        .storage.from("vendor-attachments")
+        .createSignedUrl(storagePath, 3600);
+      if (error || !signed?.signedUrl)
+        return {
+          imageUrl: null,
+          reason: `the stored original could not be signed: ${error?.message ?? "no URL returned"}`,
+        };
+      return { imageUrl: signed.signedUrl, reason: null };
+    } catch (err) {
+      return {
+        imageUrl: null,
+        reason: `the stored original could not be signed: ${err?.message ?? "unknown error"}`,
+      };
+    }
+  }
+
+  @Get(":id/canonical")
+  @ApiOperation({
+    summary: "One document as the canonical Mudavym document (ADR 0104)",
+    description:
+      "The three-layer canonical object, the delivery spine it sits on, the other documents on those deliveries, and a one-hour signed link to the original. READ-ONLY: no corrections, no claims, no writes of any kind. " +
+      "A read that FAILED is reported in `failedRead` and the affected field is null — never an empty array, which would render as 'this document is on no delivery' (ADR 0067). `deliveries: []` is a real answer and means exactly that.",
+  })
+  async canonicalDocument(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const built = await this.canonical.buildFromDocumentId(
+      user.restaurantId,
+      id,
+    );
+    if (!built.ok) {
+      // "not found" is a 404; anything else is a read that broke.
+      if (built.error.includes("not found"))
+        throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+      throw new HttpException(built.error, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    const [{ data: row, error: rowErr }, spine] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_documents")
+        /**
+         * NO `filename` COLUMN. `procurement_documents` has never had one — the
+         * web client's `ProcurementDocument.filename` is a field the API shapes,
+         * not a column — and naming it here made PostgREST answer 42703 for the
+         * WHOLE select, which then reported a stored original as "no original
+         * was stored" (measured 2026-09-04, before this line was corrected).
+         * The name comes off the end of `storage_path`, which is where intake
+         * put it.
+         */
+        .select(
+          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at",
+        )
+        .eq("id", id)
+        .eq("restaurant_id", user.restaurantId)
+        .maybeSingle(),
+      this.spine.forDocument(user.restaurantId, id),
+    ]);
+
+    const failedRead: string[] = [];
+    if (rowErr) failedRead.push(`document metadata: ${rowErr.message}`);
+    if (!spine.ok) failedRead.push(spine.error);
+
+    /**
+     * When the metadata read FAILED there is no `storage_path` to sign — and
+     * "we could not read where the file is" is not "there is no file". Saying
+     * the second would send someone to look for paper that is sitting in the
+     * bucket, so the two answers are kept apart here.
+     */
+    const original = rowErr
+      ? {
+          imageUrl: null,
+          reason:
+            "the document's stored-file metadata could not be read, so this screen cannot say whether an original exists",
+        }
+      : await this.signOriginal((row?.storage_path as string) ?? null);
+    const storagePath = (row?.storage_path as string) ?? null;
+
+    const deliveries = spine.ok ? spine.value : null;
+    const siblings = deliveries
+      ? Array.from(
+          new Map(
+            deliveries
+              .flatMap((d) => d.documents)
+              .filter((d) => d.documentId !== id)
+              .map((d) => [d.documentId, d]),
+          ).values(),
+        )
+      : null;
+
+    return {
+      canonical: built.value,
+      // NULL means the read failed and `failedRead` says so. An empty array
+      // means the reads succeeded and this document is on no delivery — the
+      // page then collapses the spine and shows the sheet alone.
+      deliveries,
+      siblings,
+      original: {
+        ...original,
+        contentType: (row?.content_type as string) ?? null,
+        // The last path segment intake wrote, not a column.
+        filename: storagePath ? (storagePath.split("/").pop() ?? null) : null,
+        // Page count is not derivable from any column we hold; it needs the
+        // object itself. Stated as unknown rather than defaulted to 1.
+        pages: null,
+      },
+      intake: {
+        status: (row?.status as string) ?? null,
+        verdict: (row?.intake_verdict as string) ?? null,
+        reason: (row?.intake_reason as string) ?? null,
+        sourceChannel: (row?.source_channel as string) ?? null,
+        extractionModel: (row?.extraction_model as string) ?? null,
+        sha256: (row?.sha256 as string) ?? null,
+        createdAt: (row?.created_at as string) ?? null,
+      },
+      // Things that are true about this READ rather than about the document:
+      // a schema lag, a partial failure. Absent when there is nothing to say.
+      ...(built.notes?.length ? { notes: built.notes } : {}),
+      ...(failedRead.length ? { failedRead } : {}),
+    };
+  }
 
   @Post()
   @ApiOperation({
@@ -186,23 +333,66 @@ export class DocumentsController {
     // a URL, so it needs a short-lived signed URL to be viewable at all.
     // Best-effort: a signing failure must not take down the rest of the
     // document, since the extraction and match evidence do not depend on it.
-    let imageUrl: string | null = null;
-    if (doc.storage_path) {
-      try {
-        const { data: signed } = await this.db
-          .getClient()
-          .storage.from("vendor-attachments")
-          .createSignedUrl(doc.storage_path, 3600);
-        imageUrl = signed?.signedUrl ?? null;
-      } catch {
-        /* best-effort — a missing object just yields no image */
-      }
-    }
+    // Shared with `GET :id/canonical` so the two panes cannot drift.
+    const { imageUrl } = await this.signOriginal(doc.storage_path ?? null);
 
     return {
       document: { ...doc, imageUrl },
       lines: lines ?? [],
       links: links ?? [],
+    };
+  }
+
+  /**
+   * The extraction door. Class-level `@UseGuards(JwtAuthGuard)` covers it, and
+   * `restaurantId` comes from the token exactly as it does on every sibling
+   * route — the id in the path is scoped by it, never trusted on its own.
+   */
+  @Post(":id/extraction")
+  @ApiOperation({
+    summary: "Apply an extraction produced outside this gateway",
+    description:
+      "Fills a document that was stored UNREAD (ADR 0104 D6) with an extraction someone else performed — today, a Claude Code session reading the PDF, because the configured Anthropic key has no credit. The body is the same JSON DocumentExtractorService asks a model for, and it goes through the same `normalize` (validation, tie-out, warnings) that a model's answer does; `model` is recorded verbatim in extraction_model so the row says who read the page. " +
+      "409 if the document already has lines or a non-degraded extraction: this door FILLS an unread document and never overwrites a read one, because overwriting would silently discard a manager's corrections. 422 if the body is not the contract's JSON, or carries no lines. Writes no stock, cost or orders — the gateway's own extractor remains the product path.",
+  })
+  async applyExtraction(
+    @Param("id") id: string,
+    @Body() body: ApplyExtractionDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    let applied: Awaited<
+      ReturnType<DocumentIntakeService["applyExternalExtraction"]>
+    >;
+    try {
+      applied = await this.intake.applyExternalExtraction(
+        user.restaurantId,
+        id,
+        body.rawText,
+        body.model,
+        user.userId,
+      );
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to apply the extraction";
+      if (msg === "NOT_FOUND")
+        throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+      if (msg.startsWith("ALREADY_READ:"))
+        throw new HttpException(msg.slice(13), HttpStatus.CONFLICT);
+      if (msg.startsWith("UNPARSABLE:"))
+        throw new HttpException(msg.slice(11), HttpStatus.UNPROCESSABLE_ENTITY);
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // The document as `GET :id` returns it, read back through that route's own
+    // code rather than reassembled here — the two shapes cannot drift if there
+    // is only one of them.
+    const detail = await this.detail(id, user);
+    return {
+      ...detail,
+      warnings: applied.warnings,
+      tieOut: applied.tieOut,
+      // Never omitted when it failed: a document whose lines landed and whose
+      // revision did not is a different thing from one where both did.
+      revision: applied.revision,
     };
   }
 
@@ -290,7 +480,10 @@ export class DocumentsController {
     } catch (error) {
       const msg: string = error?.message ?? "Failed to edit line";
       if (msg === "NOT_FOUND")
-        throw new HttpException("Document or line not found", HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          "Document or line not found",
+          HttpStatus.NOT_FOUND,
+        );
       if (msg.startsWith("NOT_EDITABLE:"))
         throw new HttpException(
           `Only a document awaiting review can be edited — this one is ${msg.slice(13)}.`,

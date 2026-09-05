@@ -22,6 +22,9 @@ import { OrganizationsModule } from "../organizations/organizations.module";
 // The seal on an order (founder, 2026-09-04). Not circular: SealModule imports
 // DatabaseModule and nothing else.
 import { SealModule } from "../common/seal/seal.module";
+import { DeliveriesController } from "./deliveries.controller";
+import { CanonicalDocumentService } from "./canonical/canonical-document.service";
+import { DeliverySpineService } from "./canonical/delivery-spine.service";
 
 /**
  * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
@@ -56,6 +59,7 @@ import { SealModule } from "../common/seal/seal.module";
     DocumentsController,
     ReceivingController,
     CreditsController,
+    DeliveriesController,
   ],
   providers: [
     ProcurementService,
@@ -63,6 +67,11 @@ import { SealModule } from "../common/seal/seal.module";
     DocumentIntakeService,
     DocumentExtractorService,
     ReceivingService,
+    // ADR 0104 D12 slice 2. Slice 1 shipped these unregistered — the class
+    // existed and Nest could not construct it, so the first route to inject one
+    // would have failed at boot with a DI error CI cannot see.
+    CanonicalDocumentService,
+    DeliverySpineService,
   ],
   // Exported for callers that already depend on procurement. The inbound-email
   // path deliberately does NOT call it directly — ProcurementModule imports

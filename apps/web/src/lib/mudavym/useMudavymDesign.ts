@@ -54,6 +54,10 @@ export const MUDAVYM_PAGES = [
   // entry is absent, so OFF means "this surface does not exist here" rather
   // than "the old design".
   'connections',
+  // ADR 0104 D12 slice 2 — the canonical document at /documents/:id. OFF by
+  // default like every other page here; the gate's `legacy` branch redirects
+  // to /receipts, which is this view's other face.
+  'document',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

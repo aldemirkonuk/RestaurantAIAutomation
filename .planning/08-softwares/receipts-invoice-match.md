@@ -56,25 +56,36 @@ filed and read.
   behind `PageGate` (`App.tsx:312`), `legacy={<DocumentsPage />}`,
   `next={<DocumentsReportsNext />}`.
 
+- **`/documents/:id`** — the canonical Mudavym document (ADR 0104 D12 slice 2), behind
+  `PageGate page="document"` with `legacy={<Navigate to="/receipts" />}`: not a third
+  page but `/receipts`'s second face, so a tenant with the gate off is sent back to the
+  list rather than shown a parallel legacy build. Sections in
+  `apps/web/src/components/documents/`; `OriginalPane` re-exports `ReceiptsNext`'s own
+  `PaperPane`, which is what keeps the two faces from drifting into two viewers.
+
 The two pages share a software because they are one filing cabinet: vendor paper on one
 screen, house reports on the other, and the redesigned `/documents-reports` explicitly
-routes its "vendor paper" register into `/receipts` ([[documents-reports]] §1a).
+routes its "vendor paper" register into `/receipts` ([[documents-reports]] §1a). The
+canonical view is the third face of the same cabinet: the same document, opened.
 
 ## §3 Backend
 
-`apps/api-gateway/src/procurement/documents/` — **10 endpoints** across two controllers,
-both `@UseGuards(JwtAuthGuard)` at class level.
+`apps/api-gateway/src/procurement/documents/` — **13 endpoints** across three
+controllers, all `@UseGuards(JwtAuthGuard)` at class level.
 
 | Endpoint | Line |
 |---|---|
 | `@Controller("procurement/documents")` | `documents.controller.ts:47` (guard `:46`) |
 | `POST /procurement/documents` | `:54` |
 | `GET /procurement/documents` | `:99` |
-| `GET /procurement/documents/:id` | `:156` |
+| `GET /procurement/documents/:id` | `:303` |
+| `GET /procurement/documents/:id/canonical` | `:94` — ADR 0104 slice 2. The three-layer canonical object, the delivery spine, the siblings on those deliveries, and a one-hour signed link to the original. READ-ONLY. A read that failed comes back in `failedRead` with the field NULL, never as `[]`. |
+| `GET /procurement/deliveries/:id` | `deliveries.controller.ts:34` (guard `:28`) — the delivery and every document on it |
 | `POST /procurement/documents/:id/match` | `:209` |
 | `POST /procurement/documents/:id/lines/:lineId/link` | `:226` |
 | `PATCH /procurement/documents/:id/lines/:lineId` | `:259` |
 | `POST /procurement/documents/:id/verify` | `:306` |
+| `POST /procurement/documents/:id/extraction` | `:351` — the extraction door. Applies an extraction produced OUTSIDE this gateway (a Claude Code session reading the PDF) to a document ADR 0104 D6 stored UNREAD, through the same `normalize` a model's answer goes through (`document-intake.service.ts:682`). 409 if the document already has lines or a non-degraded extraction — it fills, it never overwrites; 422 if the body is not the contract's JSON or carries no lines. The gateway's own extractor remains the product path. |
 | `@Controller("procurement/credits")` | `credits.controller.ts:90` (guard `:89`) |
 | `GET /procurement/credits` | `:94` |
 | `GET /procurement/credits/stats` | `:123` |

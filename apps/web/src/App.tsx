@@ -92,6 +92,7 @@ const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/Setting
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
 const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
+const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -367,6 +368,20 @@ function App() {
                   <Route path="/documents-reports" element={<PageGate page="documents_reports" legacy={<DocumentsPage />} next={<DocumentsReportsNext />} />} />
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
+                  {/* ADR 0104 D12 slice 2 — one incoming document as the canonical
+                      Mudavym document. Gated OFF by default (OD-106); the legacy
+                      branch is a redirect to /receipts rather than a second page,
+                      because /receipts already IS this view's other face. */}
+                  <Route
+                    path="/documents/:id"
+                    element={
+                      <PageGate
+                        page="document"
+                        legacy={<Navigate to="/receipts" replace />}
+                        next={<CanonicalDocumentPage />}
+                      />
+                    }
+                  />
                   <Route path="/logs" element={<LogsTimelinePage />} />
                   <Route path="/notifications" element={<PageGate page="notifications" legacy={<Notifications />} next={<NotificationsNext />} />} />
                   <Route path="/settings" element={<PageGate page="settings" legacy={<Settings />} next={<SettingsNext />} />} />

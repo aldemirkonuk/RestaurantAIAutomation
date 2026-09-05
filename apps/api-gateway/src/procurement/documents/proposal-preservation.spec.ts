@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
+import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 
 /**
  * ADR 0059 — a machine proposal shown to a human is written before the human
@@ -41,10 +42,12 @@ interface DbCall {
   filters: Array<[string, string, unknown]>;
 }
 
-function makeDb(handler: (call: DbCall) => { data: any; error: any } = () => ({
-  data: null,
-  error: null,
-})) {
+function makeDb(
+  handler: (call: DbCall) => { data: any; error: any } = () => ({
+    data: null,
+    error: null,
+  }),
+) {
   const calls: DbCall[] = [];
 
   function builder(table: string) {
@@ -112,7 +115,9 @@ function makeDb(handler: (call: DbCall) => { data: any; error: any } = () => ({
     client: { from: (table: string) => builder(table) },
     /** Every payload written to `table` by `verb`. */
     written(table: string, verb: DbCall["verb"]) {
-      return calls.filter((c) => c.table === table && c.verb === verb).map((c) => c.payload);
+      return calls
+        .filter((c) => c.table === table && c.verb === verb)
+        .map((c) => c.payload);
     },
   };
 }
@@ -123,6 +128,11 @@ async function buildService(db: ReturnType<typeof makeDb>, extractor: any) {
       DocumentIntakeService,
       { provide: DatabaseService, useValue: { getClient: () => db.client } },
       { provide: DocumentExtractorService, useValue: extractor },
+      // DocumentIntakeService gained a CanonicalDocumentService dependency
+      // with the extraction door (it appends the document's revision). It is
+      // the real service over the same mocked client — nothing on the path
+      // under test reaches it, and a stub would have to pretend otherwise.
+      CanonicalDocumentService,
     ],
   }).compile();
   return module.get<DocumentIntakeService>(DocumentIntakeService);
@@ -184,7 +194,10 @@ describe("ADR 0059 L2 — a suggestion the matcher did not apply is still record
 
   it("writes one row per candidate to procurement_line_match_suggestions", async () => {
     const db = matchFixture();
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     const result = await service.matchDocumentLines("doc-1", "rest-1");
     await settle();
@@ -212,7 +225,10 @@ describe("ADR 0059 L2 — a suggestion the matcher did not apply is still record
 
   it("a substitution is recorded AS a substitution, not flattened to a match", async () => {
     const db = matchFixture();
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.matchDocumentLines("doc-1", "rest-1");
     await settle();
@@ -226,7 +242,10 @@ describe("ADR 0059 L2 — a suggestion the matcher did not apply is still record
 
   it("re-running restates a suggestion rather than piling up duplicates", async () => {
     const db = matchFixture();
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.matchDocumentLines("doc-1", "rest-1");
     await settle();
@@ -279,10 +298,15 @@ describe("ADR 0059 L2 — a suggestion the matcher did not apply is still record
         };
       return { data: null, error: null };
     });
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     // The instrument never breaks the thing it measures.
-    await expect(service.matchDocumentLines("doc-1", "rest-1")).resolves.toBeDefined();
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).resolves.toBeDefined();
     await settle();
   });
 });
@@ -311,7 +335,10 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
       proposed_confidence: 0.94,
       proposed_method: "vendor_sku",
     });
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-1");
 
@@ -337,7 +364,10 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
       },
       { confidence: 0.71, method: "description" },
     );
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-1");
 
@@ -361,7 +391,10 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
       proposed_confidence: null,
       proposed_method: null,
     });
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-9");
 
@@ -378,17 +411,28 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
 
   it("accepting resolves the suggestion it came from", async () => {
     const db = lineFixture(
-      { id: "dl-1", order_line_id: null, proposed_confidence: null, proposed_method: null },
+      {
+        id: "dl-1",
+        order_line_id: null,
+        proposed_confidence: null,
+        proposed_method: null,
+      },
       { confidence: 0.71, method: "description" },
     );
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-1");
     await settle();
 
     const resolutions = db.written(SUGGESTIONS_TABLE, "update");
     expect(resolutions).toContainEqual(
-      expect.objectContaining({ resolved_as: "accepted", resolved_by: "user-1" }),
+      expect.objectContaining({
+        resolved_as: "accepted",
+        resolved_by: "user-1",
+      }),
     );
     // The losing candidates on the same line are `superseded`, NOT `rejected`.
     // A human never judged them, and scoring them as rejections would invent
@@ -405,7 +449,10 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
       proposed_confidence: 0.94,
       proposed_method: "vendor_sku",
     });
-    const service = await buildService(db, { available: () => false, extract: jest.fn() });
+    const service = await buildService(db, {
+      available: () => false,
+      extract: jest.fn(),
+    });
 
     await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", null);
     await settle();

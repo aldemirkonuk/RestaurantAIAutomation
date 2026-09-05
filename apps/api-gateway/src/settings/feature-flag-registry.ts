@@ -73,39 +73,39 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // OFF by default: the Mudavym redesign of `/` (ADR 0044) is opt-in per
     // restaurant while under founder review; legacy renders otherwise.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_orders",
     // OFF by default: the Mudavym redesign of `/orders` (ADR 0044), same gate.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_receiving_door",
     // OFF by default: the Mudavym redesign of the door flow (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_providers",
     // OFF by default: the Mudavym redesign of `/providers` (ADR 0045 §5 wave,
     // MERGE verdict — small buckets + twin-in-sheet), founder-reviewed per flip.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_communications",
     // OFF by default: the Mudavym redesign of `/communications` (ADR 0045 §5
     // wave, MERGE verdict — glance strip + ledger + template-clarity sheet).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_team",
@@ -113,7 +113,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // verdict + the founder's three additions: gaps-first, labour build-up,
     // credential blockers).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_inventory",
@@ -121,14 +121,14 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // the ReceiptDepth card inside the kept RowExpansion dropdown (ADR 0045
     // §5). The page renders byte-identically with the flag off.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_receipts",
     // OFF by default: the Mudavym redesign of `/receipts` (ADR 0045 §5 wave,
     // KEEP+ verdict — the founder's four requirements + the swipe-up confirm).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_documents_reports",
@@ -137,43 +137,43 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // chosen by the founder 2026-08-31 for scale: every register countable,
     // routine noise files itself, C's clean reading pane kept as the detail).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_reports",
     // OFF by default: the Mudavym redesign of `/reports` (ADR 0044 p4 wave, MERGE verdict — today's drag-to-rearrange canvas back, more graphs, insights + reports focus).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_notifications",
     // OFF by default: the Mudavym redesign of `/notifications` (ADR 0044 p4 wave, REWORK verdict — density of what is happening, handled items subdued).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_calendar",
     // OFF by default: the Mudavym redesign of `/calendar` (ADR 0044 p4 wave, KEEP verdict — the one page the founder named as unreservedly liked).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_settings",
     // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_profile",
     // OFF by default: the Mudavym redesign of `/profile` (ADR 0044 p4 wave, KEEP+ — MCPs, linked accounts and payments as first-class sections, honest about what is not yet connected).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "mudavym_design_connections",
@@ -182,7 +182,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // this flag does not swap a page's design, it routes a NEW page: off, the
     // route redirects to `/profile` and the sidebar entry is absent.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
   {
     key: "enable_house_inbox_read",
@@ -199,7 +199,15 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_cellar",
     // OFF by default: the Mudavym `/cellar` parent surface and its `/wines` `/beer` `/whiskey` `/cocktails` children (ADR 0044 p4 wave; IA decided 2026-08-30, the crowded redesign rejected — "more character", keep "see everything").
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:97",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
+  },
+  {
+    key: "mudavym_design_document",
+    // OFF by default: the canonical Mudavym document at /documents/:id
+    // (ADR 0104 D12 slice 2, D13's C-led synthesis — the delivery spine, A's
+    // sheet, B's verdict block). Column added by 20260904121000.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:101",
   },
 ];
 
@@ -241,11 +249,13 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
   },
   {
     key: "enable_check_scanning",
-    capability: "apps/web/src/components/reports/molecules/CheckScannerSection.tsx",
+    capability:
+      "apps/web/src/components/reports/molecules/CheckScannerSection.tsx",
   },
   {
     key: "enable_auto_procurement",
-    capability: "services/agent-orchestrator/agents/procurement_agent.py (reorder path)",
+    capability:
+      "services/agent-orchestrator/agents/procurement_agent.py (reorder path)",
   },
   {
     key: "enable_recurring_orders",
@@ -256,15 +266,18 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
     // Gated, but on an ORCHESTRATOR-PROCESS env var, not per restaurant:
     // agent_registry.py:153 reads FEATURE_SOMMELIER_AI. A per-restaurant flag
     // cannot drive a process-wide switch, so wiring this is not one line.
-    capability: "services/agent-orchestrator/agents/sommelier_agent.py (env FEATURE_SOMMELIER_AI)",
+    capability:
+      "services/agent-orchestrator/agents/sommelier_agent.py (env FEATURE_SOMMELIER_AI)",
   },
   {
     key: "enable_menu_analyzer",
-    capability: "services/agent-orchestrator/agents/menu_analyzer_agent.py (env FEATURE_MENU_ANALYZER)",
+    capability:
+      "services/agent-orchestrator/agents/menu_analyzer_agent.py (env FEATURE_MENU_ANALYZER)",
   },
   {
     key: "enable_visual_verification",
-    capability: "services/agent-orchestrator/agents/visual_verification_agent.py (env FEATURE_VISUAL_VERIFICATION)",
+    capability:
+      "services/agent-orchestrator/agents/visual_verification_agent.py (env FEATURE_VISUAL_VERIFICATION)",
   },
   {
     key: "enable_predictive_analytics",
@@ -282,7 +295,8 @@ export const INACTIVE_FEATURE_FLAGS: Array<{
     // settings.service.ts, and consent capture must begin by a restaurant's
     // own act — that decision should survive the cleanup, not be discarded
     // with the switch.
-    capability: "supabase/migrations/20260819000000_guest_identity_minimal_slice.sql (schema only)",
+    capability:
+      "supabase/migrations/20260819000000_guest_identity_minimal_slice.sql (schema only)",
   },
 ];
 

@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
+import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { getCorrelationId } from "../../common/model-client/correlation";
 
 describe("DocumentIntakeService — original bytes persistence (decision E47)", () => {
@@ -62,6 +63,11 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
         DocumentIntakeService,
         { provide: DatabaseService, useValue: mockDatabaseService },
         { provide: DocumentExtractorService, useValue: mockExtractor },
+        // DocumentIntakeService gained a CanonicalDocumentService dependency
+        // with the extraction door (it appends the document's revision). It is
+        // the real service over the same mocked client — nothing on the path
+        // under test reaches it, and a stub would have to pretend otherwise.
+        CanonicalDocumentService,
       ],
     }).compile();
 

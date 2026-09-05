@@ -96,6 +96,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/profile` | [[profile]] | owner | core | form | none | 2 |
 | `/promotions` | [[promotions]] | owner | core | list+detail | none | 0 |
 | `/providers` | [[providers]] | owner | core | list+detail | none | 0 |
+| `/documents/:id` | [[receipts]] | owner | core | focused | `mudavym_design_document` | 0 |
 | `/receipts` | [[receipts]] | owner | core | list+detail | none | 0 |
 | `/receiving` | [[receiving]] | staff | core | list+detail | none | 0 |
 | `/receiving/:orderId/door` | [[receiving-door]] | staff | core | focused | none | 0 |
