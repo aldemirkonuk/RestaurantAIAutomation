@@ -146,9 +146,10 @@ function ScenarioReading({ scenario, caveat }: { scenario: GoalScenario; caveat:
  * take. The one field left blank is the one the manager must decide.
  *
  * Scenarios the gateway cannot hold are LISTED and disabled rather than hidden.
- * A picker showing only the nine servable ones would say this product covers
- * the field; it covers about half of it, and the missing half is the more
- * useful thing to know.
+ * A picker showing only the servable ones would say this product covers the
+ * field; it covers about half of it, and the missing half is the more useful
+ * thing to know. The counts come from the payload, never from a number typed
+ * here, so funding a gap moves them without a page edit.
  */
 function ScenarioPicker({
   scenarios,

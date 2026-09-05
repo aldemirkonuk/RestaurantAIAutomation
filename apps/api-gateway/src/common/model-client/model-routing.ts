@@ -88,19 +88,33 @@ export const TASK_CLASSES = ["lookup", "help", "compose"] as const;
 export type TaskClass = (typeof TASK_CLASSES)[number];
 
 /**
- * The founder's exact model strings, 2026-09-04.
+ * The founder's model strings.
  *
- * `claude-haiku-4-5-20251001` is the dated pin already shipping as
- * `GOAL_CUTTING_MODEL`'s default (goals.service.ts). It resolves for pricing via
- * the prefix match in `resolvePricing`. Whether the house should standardise on
- * the undated `claude-haiku-4-5` — which is what `ASK_AI_MODEL` defaults to
- * today, so the repo currently uses both — is a founder question, not one to
- * settle by editing a string here.
+ * **Haiku is the undated `claude-haiku-4-5` — founder decision, 2026-09-04.**
+ * The first draft carried the dated pin `claude-haiku-4-5-20251001`, which is
+ * what `GOAL_CUTTING_MODEL` shipped as its default; `ASK_AI_MODEL` already
+ * defaulted to the undated alias, so the gateway named the same model two ways.
+ * Asked which to standardise on, the founder chose the alias. Two reasons it is
+ * the right way round: the alias is the canonical id in Anthropic's own model
+ * table, and a dated snapshot silently stops being the current model without
+ * anything in the repo saying so.
+ *
+ * `resolvePricing` matches the alias exactly and a dated pin by prefix, so
+ * either form is priced — this change is about which model is CALLED, not about
+ * whether the ledger can cost it.
+ *
+ * TWO PLACES STILL NAME THE DATED PIN, AND ARE NOT THIS FILE'S TO CHANGE:
+ * `ux-optimizer/ux-optimizer.service.ts:259`, and 53 pin sites across
+ * `services/agent-orchestrator`. Both are tracked as the model-pin census
+ * (`.planning/01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/`)
+ * under OD-04, which is open precisely because *"no place in the repo says
+ * which model does which job"*. Rewriting them from here would be answering
+ * that open decision as a side effect of a naming fix.
  */
 export const MODEL_FOR_CLASS: Readonly<Record<TaskClass, string>> =
   Object.freeze({
-    lookup: "claude-haiku-4-5-20251001",
-    help: "claude-haiku-4-5-20251001",
+    lookup: "claude-haiku-4-5",
+    help: "claude-haiku-4-5",
     compose: "claude-sonnet-5",
   });
 

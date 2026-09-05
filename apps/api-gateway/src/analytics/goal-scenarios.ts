@@ -35,8 +35,10 @@
  *     Nobody publishes "your wine revenue should be $X" or "you should serve N
  *     covers", because those depend on the size of the room. Four of the six
  *     measures this gateway can hold a goal on are absolute money or counts, so
- *     four of the servable scenarios below honestly carry `range.kind: "none"`
+ *     five of the servable scenarios below honestly carry `range.kind: "none"`
  *     with the reason, rather than a borrowed ratio dressed as a target.
+ *     (`goal-scenarios.spec.ts` pins that count, so this sentence cannot drift
+ *     away from the table it describes.)
  *  2. **A range is a distribution across hundreds of other houses.** The NRA's
  *     figures come from more than 900 operators; the median is a fact about
  *     that sample and about no single restaurant in it. `THE_CAVEAT` says so,
@@ -95,7 +97,16 @@ export type ScenarioRange =
       /** Who published it. */
       source: string;
       url: string;
-      /** The source's own publication or update date, YYYY-MM-DD. */
+      /**
+       * The date the SOURCE states about itself (YYYY-MM-DD or YYYY), or the
+       * literal `"undated"` when the page shows none.
+       *
+       * `"undated"` is not a gap to be filled in later with a plausible year.
+       * Three rows here carried a bare `"2026"` for pages that state no date
+       * at all, which is a small fabrication of exactly the kind the ranges
+       * exist to avoid; `goal-scenarios.spec.ts` now pins this against
+       * `__fixtures__/operator-sources.ts` in both directions.
+       */
       published: string;
       /** What is true of THIS number specifically, beyond `THE_CAVEAT`. */
       caveat: string;
@@ -165,7 +176,9 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
       source:
         "National Restaurant Association, 2025 Restaurant Operations Data Abstract (900+ operators)",
       url: "https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-operators-kept-food-cost-ratios-in-check-in-2024/",
-      published: "2025-08-27",
+      // The FOOD-cost page is 2025-09-10. It carried 2025-08-27 until
+      // 2026-09-04 — that is the LABOUR page's date, copied across.
+      published: "2025-09-10",
       caveat:
         "That is a RATIO to sales. This goal is an absolute ceiling in money, so the ratio only tells you what a ceiling implies once you know what you expect to sell.",
     },
@@ -222,7 +235,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     period: "month",
     range: {
       kind: "none",
-      why: "No operator body publishes a wine attach-rate range. The only figures found were a glassware supplier's marketing post claiming by-the-glass attach rates of 22–28% rising to 38–46% over twelve months (https://premiumwineglasses.com/2026/05/30/high-margin-wine-program-custom-glassware/, 2026-05-30) — a sales claim, not a benchmark, so it is named here rather than shown as a range.",
+      why: "No operator body publishes a wine attach-rate range. The only figures found were a glassware supplier's marketing post claiming by-the-glass attach rates of 22–28% rising to 38–46% over twelve months (https://premiumwineglasses.com/2026/05/30/high-margin-wine-program-custom-glassware/) — a sales claim, not a benchmark, so it is named here rather than shown as a range.",
     },
     cuttingId: "reading",
     cuttingWhy:
@@ -243,7 +256,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
         "In July 2026 average check rose 2.5% year over year, slightly ahead of the 2.3% rise in average price — check growth running ahead of price growth is the healthier kind.",
       source: "The Hospitality Hangout, QSR Check Growth FAQ 2026",
       url: "https://www.thehospitalityhangout.com/blog/qsr-check-growth-faq-2026/",
-      published: "2026",
+      published: "2026-08-26",
       caveat:
         "That is a RATE OF CHANGE across quick-service, not a level, and not fullservice. It tells you what kind of movement counts as healthy; it does not tell you what your check should be.",
     },
@@ -303,7 +316,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     period: "month",
     range: {
       kind: "none",
-      why: "Guest counts are a house figure — a forty-seat room and a two-hundred-seat room share no number. What gets published is the year-over-year change across a segment (quick-service traffic fell 1.4% in July 2026), which is a direction, not a level.",
+      why: "Guest counts are a house figure — a forty-seat room and a two-hundred-seat room share no number. What gets published is the year-over-year change across a segment (quick-service traffic fell 1.4% year over year in July 2026 — https://www.thehospitalityhangout.com/blog/qsr-check-growth-faq-2026/), which is a direction, not a level.",
     },
     cuttingId: "till",
     cuttingWhy:
@@ -322,10 +335,10 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     range: {
       kind: "published",
       words:
-        "Industry benchmarks for fill rates range from 92–98%, with typical benchmarks between 85% and 95% and high performers above 95%.",
+        "A general rule of thumb is that you should be fulfilling 92-98% of your orders.",
       source: "DCL Logistics, Fill Rate",
       url: "https://dclcorp.com/blog/fulfillment/fill-rate/",
-      published: "2026",
+      published: "2026-07-07",
       caveat:
         "That is a general logistics and e-commerce benchmark, not a foodservice one, and it measures a SUPPLIER's shipping, not your shelf. It is here because nothing restaurant-specific was found, and it should be read as the nearest neighbour rather than as your number.",
     },
@@ -353,7 +366,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
         "A full-service restaurant runs a prime cost of 60–65% of sales; quick service runs 55–60%; roughly 60% is the figure cited for a sustainable business.",
       source: "Restaurant365, How to Calculate Prime Cost in a Restaurant",
       url: "https://www.restaurant365.com/blog/how-to-calculate-prime-cost-in-a-restaurant/",
-      published: "2026",
+      published: "undated",
       caveat:
         "A second operator source disagrees by five points — TouchBistro calls 55–60% good and says above 70% makes profit hard (https://www.touchbistro.com/blog/important-restaurant-benchmarks/). Two published ranges that do not agree is itself the finding: neither is a line your house must sit under.",
     },
@@ -374,11 +387,14 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     range: {
       kind: "published",
       words:
-        "Food and non-alcohol beverage costs were a median of 32.0% of sales among fullservice operators in 2024, against roughly 34% averaged over the 2010, 2013 and 2016 editions.",
+        "Food and non-alcohol beverage costs among fullservice respondents represented a median of 32.0% of sales in 2024." +
+        " Limited-service respondents came in at 32.4%.",
       source:
         "National Restaurant Association, 2025 Restaurant Operations Data Abstract (900+ operators)",
       url: "https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-operators-kept-food-cost-ratios-in-check-in-2024/",
-      published: "2025-08-27",
+      // The FOOD-cost page is 2025-09-10. It carried 2025-08-27 until
+      // 2026-09-04 — that is the LABOUR page's date, copied across.
+      published: "2025-09-10",
       caveat:
         "A median over 900 houses of every size and cuisine. Pizzerias and fine dining sit at opposite ends of it, and both are inside the median.",
     },
@@ -402,8 +418,12 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
         "Salaries and wages including benefits were a median of 36.5% of sales among fullservice operators in 2024 and 31.7% among limited-service; fullservice operators who reported a pre-tax profit held labour to a median of 34.2%.",
       source:
         "National Restaurant Association, 2025 Restaurant Operations Data Abstract (900+ operators)",
-      url: "https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-labor-costs-are-well-above-historical-averages/",
-      published: "2025-08-27",
+      // Repointed 2026-09-04. This row used to cite the abstract's
+      // LABOUR-COSTS page, which carries 36.5% and 31.7% but contains
+      // neither "34.2" nor "pre-tax" — the clause is on the PROFITABILITY
+      // page, which carries all three. See `__fixtures__/operator-sources.ts`.
+      url: "https://restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/elevated-labor-costs-had-a-significant-impact-on-restaurant-profitability-in-2024/",
+      published: "2025-10-08",
       caveat:
         "The 34.2% figure is the interesting one: it is the median among operators who actually made money, which is a different population from the 36.5% median across everyone.",
     },
@@ -427,7 +447,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
         "Liquor typically runs 15–18% of sales; draft beer 15–20%; bottled or canned beer 24–28%; wine 25–40%, depending on the mix of glass pours and higher-end bottles.",
       source: "Vast CFO, Breaking Down Restaurant Sales",
       url: "https://www.vastcfo.com/breaking-down-restaurant-sales/",
-      published: "2026",
+      published: "undated",
       caveat:
         "Four ranges, not one: a house with a deep bottle list and a house pouring by the glass sit at opposite ends of the wine band, and a blended pour cost hides which one you are.",
     },
@@ -464,9 +484,11 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     id: "days-of-inventory",
     name: "Hold fewer days of stock",
     question: "Stop holding more cellar than the room actually turns.",
-    metricKey: null,
-    needsMetric:
-      "days_of_inventory. `/analytics/financial/:rid` already computes `daysInventoryOutstanding` and `inventoryTurnover` (analytics.service.ts:444-451, both null unless every on-hand row carries a recorded cost). What is missing is only a SUPPORTED_METRICS entry — this is the shortest of the unserved scenarios to close.",
+    // Held since 2026-09-04. Until then this row read `metricKey: null` with a
+    // `needsMetric` saying the figure existed and only the SUPPORTED_METRICS
+    // entry was missing — the founder read that and funded it first.
+    metricKey: "days_of_inventory",
+    needsMetric: null,
     direction: "at_most",
     period: "quarter",
     range: {
@@ -499,7 +521,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
         "The industry average table turnover rate for a family restaurant is 3.",
       source: "TouchBistro, 10 Essential Restaurant Benchmarks",
       url: "https://www.touchbistro.com/blog/important-restaurant-benchmarks/",
-      published: "2026",
+      published: "undated",
       caveat:
         "One number for one segment. A two-hour tasting menu and a forty-five-minute lunch counter are both restaurants and neither is a 3.",
     },
@@ -520,7 +542,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     period: "month",
     range: {
       kind: "none",
-      why: "There is no universal RevPASH benchmark, and the sources say so outright: a fine-dining room with two-hour turns and $150 checks and a casual room with 45-minute turns and $25 checks have different good numbers. The definition is standard (Black Box Intelligence, https://blackboxintelligence.com/resources/restaurant-glossary/revenue-per-available-seat-hour/); the level is yours alone.",
+      why: "No operator body publishes a RevPASH level, and the reason is structural rather than an oversight: the measure divides revenue by seats times open hours, so a tasting-menu room and a lunch counter produce numbers that are not on the same scale and a median across them would describe neither. The definition is standard and named here (Black Box Intelligence, https://blackboxintelligence.com/resources/restaurant-glossary/revenue-per-available-seat-hour/) — that page refused this fetcher when the citation was checked, so it is named for the term and NOT quoted for any figure. The level is yours alone.",
     },
     cuttingId: "seats",
     cuttingWhy:
@@ -558,12 +580,12 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
     range: {
       kind: "published",
       words:
-        "Industry benchmarks for fill rates range from 92–98%, with typical benchmarks between 85% and 95%; a service target of at least 90% on-time within 48 hours is recommended for specialty food distributors.",
+        "A general rule of thumb is that you should be fulfilling 92-98% of your orders.",
       source: "DCL Logistics, Fill Rate",
       url: "https://dclcorp.com/blog/fulfillment/fill-rate/",
-      published: "2026",
+      published: "2026-07-07",
       caveat:
-        "General logistics, not foodservice, and the two halves of the sentence come from different definitions of on-time — requested date or promised date, order level or line level. Whose clock and whose list is the question to settle before the number means anything.",
+        "General logistics, not foodservice, and it measures a SUPPLIER's shipping rather than whether your delivery arrived when it was promised. Searched for a foodservice on-time PERCENTAGE and found none: the nearest trade source (https://goodsource.com/trends-and-insights/vendor-performance-evaluation-metrics-for-wholesale-food-distribution-partnerships/) does not publish one at all — it defines on-time as a window around a promised slot and scores vendors on accuracy and audits instead. Whose clock, and how wide the window is, has to be settled before any percentage here means anything.",
     },
     cuttingId: null,
     cuttingWhy:
@@ -609,7 +631,7 @@ export const GOAL_SCENARIOS: readonly GoalScenario[] = Object.freeze([
         "The average full service restaurant has a staff turnover rate of 27%.",
       source: "TouchBistro, 10 Essential Restaurant Benchmarks",
       url: "https://www.touchbistro.com/blog/important-restaurant-benchmarks/",
-      published: "2026",
+      published: "undated",
       caveat:
         "Well below the figures usually quoted for hospitality turnover, and the source does not say over what period or which roles it counts. Treat it as one publisher's number, not a settled one.",
     },

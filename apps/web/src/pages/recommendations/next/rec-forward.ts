@@ -7,7 +7,7 @@
  * insight)."*
  *
  * Both doors are MAPPINGS, not measurements. Nothing in this file invents a
- * figure: it decides, per rule, which of the gateway's six goal metrics records
+ * figure: it decides, per rule, which of the gateway's seven goal metrics records
  * the thing the rule asks you to move, and which of the reports sheet's eleven
  * cuttings draws the register the rule read. Every mapping is stated to the
  * manager on screen with its basis, and a rule that maps to NEITHER says so on
@@ -21,7 +21,7 @@
  * goal is derived and shown before they commit.
  *
  * Sources for every claim below:
- *  - the six metrics, their labels and units: `analytics/goals.service.ts`
+ *  - the seven metrics, their labels and units: `analytics/goals.service.ts`
  *    `SUPPORTED_METRICS` (:32-70); `wine_attach_rate` and every ratio metric
  *    are stored as a FRACTION (`withWine / checks.length`, :387-398), which is
  *    why `toStored()` divides a typed percentage by 100;
@@ -43,16 +43,17 @@ import { EM } from './rec-format';
 
 /* ── Door one: the goal ──────────────────────────────────────────────────── */
 
-/** The six the gateway will accept. A seventh is a 400, not a goal. */
+/** The seven the gateway will accept. An eighth is a 400, not a goal. */
 export type MetricKey =
   | 'wine_revenue'
   | 'bottles_sold'
   | 'purchase_spend'
   | 'checks'
   | 'avg_check'
-  | 'wine_attach_rate';
+  | 'wine_attach_rate'
+  | 'days_of_inventory';
 
-export type MetricUnit = 'currency' | 'units' | 'count' | 'percent';
+export type MetricUnit = 'currency' | 'units' | 'count' | 'percent' | 'days';
 
 /** The two periods this page offers. `day` is an action window, not a goal. */
 export type GoalPeriod = 'week' | 'month';
@@ -70,6 +71,10 @@ export const METRICS: Record<MetricKey, MetricSpec> = {
   checks: { label: 'Checks served', unit: 'count' },
   avg_check: { label: 'Average check', unit: 'currency' },
   wine_attach_rate: { label: 'Wine attach rate', unit: 'percent' },
+  // The seventh, 2026-09-04 (ADR 0120). No rule on this page maps to it — it
+  // is reachable only by choosing the scenario from the book, which is why it
+  // appears here and not in `RULE_GOAL` below.
+  days_of_inventory: { label: 'Days of stock', unit: 'days' },
 };
 
 export const UNIT_SUFFIX: Record<MetricUnit, string> = {
@@ -77,6 +82,7 @@ export const UNIT_SUFFIX: Record<MetricUnit, string> = {
   units: 'bottles',
   count: 'checks',
   percent: '%',
+  days: 'days',
 };
 
 /**
@@ -117,7 +123,7 @@ interface RuleGoal {
  *
  * Read the `recommendation` field of each rule in `recommendations.service.ts`
  * and ask "what would record that this was done?". Where the answer is not one
- * of the six, the rule is ABSENT from this map on purpose and the control goes
+ * of the seven, the rule is ABSENT from this map on purpose and the control goes
  * dark with its reason — three of the thirteen rules are in that state, and
  * inventing a metric for them would be the fake button the house forbids.
  */
@@ -190,11 +196,11 @@ const RULE_GOAL: Record<string, RuleGoal> = {
 /** The rules that map to no metric, each with the reason the manager sees. */
 const GOAL_REFUSAL: Record<string, string> = {
   stockout_imminent:
-    'A stockout is an availability event, not one of the six figures a goal can be held on (wine revenue · bottles sold · purchasing spend · checks · average check · attach rate). Ruling it off when the order is placed is the record this one keeps.',
+    'A stockout is an availability event, not one of the seven figures a goal can be held on (wine revenue · bottles sold · purchasing spend · checks · average check · attach rate · days of stock). Ruling it off when the order is placed is the record this one keeps.',
   vendor_concentration:
-    'Vendor concentration is an HHI over your purchase book. The gateway holds goals on six figures only, and a concentration index is not among them.',
+    'Vendor concentration is an HHI over your purchase book. The gateway holds goals on seven figures only, and a concentration index is not among them.',
   revenue_concentration:
-    'Revenue concentration is a Gini coefficient across wines. The gateway holds goals on six figures only, and a distribution measure is not among them.',
+    'Revenue concentration is a Gini coefficient across wines. The gateway holds goals on seven figures only, and a distribution measure is not among them.',
 };
 
 /** The prefix the goal-behind family uses — one rule per goal already set. */

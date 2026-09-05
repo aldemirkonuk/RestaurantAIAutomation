@@ -22,6 +22,16 @@ import { DatabaseService } from "../database/database.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 
 /**
+ * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
+ * the single published `daysInventoryOutstanding` field rather than
+ * re-deriving the ratio, so two surfaces cannot disagree about one cellar.
+ */
+const analytics = {
+  getFinancialSummary: async () => ({ daysInventoryOutstanding: null }),
+} as any;
+
+
+/**
  * The verdict recorder, captured (OD-59 / ADR 0029 P3.0).
  *
  * `goal_cutting_spec` used to emit a footprint row carrying `call_level_v0`
@@ -94,6 +104,7 @@ function makeGoals(rowsByTable: Rows) {
     { get: () => undefined } as never,
     {} as never,
     verdicts,
+    analytics,
   );
   return { service, client };
 }

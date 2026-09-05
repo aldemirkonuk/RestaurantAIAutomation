@@ -1,7 +1,7 @@
 # 0120 — A goal is chosen from a book of scenarios; a model is chosen by the task
 
-- **Status:** Proposed
-- **Date:** 2026-09-04
+- **Status:** Proposed — the founder settled two of its four open questions on 2026-09-04 (Haiku standardised on the undated alias; `days_of_inventory` funded first, taking the catalogue to **10 servable / 11 unserved of 21**). The remaining two are still open.
+- **Date:** 2026-09-04 (amended the same day: citation audit, Haiku alias, `days_of_inventory`)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** goals, scenarios, benchmarks, operator ranges, model routing, task class, metering, neural_footprint_event, sonnet, haiku, reports, recommendations
 - **Links:** [[0020-honesty-first]] · [[0051-absence-is-not-zero]] · [[0113-the-assistant-proposes-the-seal-applies]] · `apps/api-gateway/src/analytics/goal-scenarios.ts` · `apps/api-gateway/src/common/model-client/model-routing.ts` · `.planning/06-pages/reports.md` §13 · `.planning/06-pages/recommendations.md` §13
@@ -52,8 +52,9 @@ Six measurements shaped both halves, and each one changed the answer:
 5. **Most of what operators actually set goals on, this product cannot hold.**
    Prime cost, food-cost ratio, labour ratio, pour cost, waste, days of stock,
    table turns, RevPASH, vendor concentration, OTIF, cash days and staff
-   turnover — twelve of the twenty-one scenarios in the catalogue — have no
-   `SUPPORTED_METRICS` key.
+   turnover — twelve of the twenty-one scenarios in the catalogue — had no
+   `SUPPORTED_METRICS` key when this was written. `days_of_inventory` was funded
+   the same day and is now the seventh metric, leaving eleven.
 6. **Three of those twelve are closer than they look, and one is further.**
    `/analytics/financial/:rid` already computes `cogsRatio`, `primeCostRatio`,
    `inventoryTurnover` and `daysInventoryOutstanding`
@@ -174,17 +175,80 @@ predates the field" and a null means "we recorded that we do not know".
   no longer matches the work it does; or an operator source in the table
   publishes a newer edition.
 
+### Amendment, 2026-09-04 — the citations are now checked, because five were wrong
+
+An audit fetched `labour-cost-ratio`'s cited URL and found the row quoting
+*"fullservice operators who reported a pre-tax profit … a median of 34.2%"*
+against the NRA's **labour-costs** page, which carries 36.5% and 31.7% verbatim
+and contains neither `34.2` nor `pre-tax`. The clause is real — it is on the
+abstract's **profitability** page — but the citation beside it was not, and
+nothing in the build could tell. That is the worst failure this catalogue can
+have: showing operator ranges is only defensible because each one carries a
+source a reader can check, so a wrong source is not a footnote error, it is the
+feature failing while reporting success.
+
+Re-reading every citation found **four more of the same class**:
+
+1. `restock-before-the-shelf-empties` and `on-time-delivery` quoted *"typical
+   benchmarks between 85% and 95%"*, *"high performers above 95%"* and *"90%
+   on-time within 48 hours"* against the DCL fill-rate page. **None of those
+   three phrases is on it** — they came from a search-result summary that had
+   blended several pages. Both rows now carry only the one figure DCL publishes
+   (92-98%), and `on-time-delivery`'s caveat reports the real finding: the
+   nearest foodservice trade source publishes **no on-time percentage at all**,
+   defining on-time as a window around a promised slot instead.
+2. `hold-purchasing-spend` and `food-cost-ratio` carried `2025-08-27` — the
+   labour page's date, copied onto the food-cost page (2025-09-10).
+3. `food-cost-ratio` quoted a historical clause ("roughly 34% averaged over the
+   2010, 2013 and 2016 editions") not confirmed on re-fetch. Cut.
+4. Three rows carried a bare `"2026"` for pages that **state no date at all**
+   (Restaurant365, TouchBistro, Vast CFO). They now say `"undated"`.
+5. `revpash` quoted concept figures ($150 checks, 45-minute turns) against a
+   Black Box Intelligence URL that **403s to this fetcher**. It now quotes no
+   figure and explains structurally why no level is publishable.
+
+**The mechanism, so this cannot recur silently.**
+`__fixtures__/operator-sources.ts` records, per cited URL, the verbatim text
+returned when it was fetched, the date of that fetch, and the date the page
+states about itself (`null` when it states none). `goal-scenarios.spec.ts` then
+asserts: every URL any row names has evidence; **every numeric token a row
+quotes appears in the recorded text of a page that row names** (URLs stripped
+first, so a date inside a path cannot satisfy itself); a row's `published`
+agrees with the page's own `pageDate` in **both** directions, so "undated"
+cannot drift into a plausible year; and **no figure may be quoted against a
+source that could not be read** — an unreadable source may be named, never
+quoted. The 34.2 counter-example is pinned as its own case, because a guard
+never shown to fire is not evidence.
+
+It is not string equality: a `words` field may be a readable sentence rather
+than a transcription. What is pinned is the part that can be wrong.
+
 ## Founder questions this leaves open
 
-1. **The dated Haiku pin.** The founder wrote `claude-haiku-4-5-20251001`; the
-   repo also uses the undated `claude-haiku-4-5` (`ASK_AI_MODEL`'s default), and
-   Anthropic's own model table lists the undated id as canonical. Standardise on
-   one, and which?
+1. ~~**The dated Haiku pin.**~~ **DECIDED 2026-09-04: the undated
+   `claude-haiku-4-5`.** `MODEL_FOR_CLASS` and its spec now carry the alias, and
+   the spec asserts it has no `-YYYYMMDD` suffix. Two sites still name the dated
+   pin and were deliberately left: `ux-optimizer.service.ts:259` and 53 pin
+   sites in `services/agent-orchestrator`. Both belong to the model-pin census
+   under **OD-04**, which is open because *"no place in the repo says which model
+   does which job"* — rewriting them here would answer that decision as a side
+   effect of a naming fix.
 2. **The consultant's Opus call.** Fourth class, or fold it into `compose`?
-3. **Which of the twelve gaps to close first.** `days_of_inventory` is nearest
-   (the figure is computed; only a `SUPPORTED_METRICS` entry is missing);
-   `prime_cost_pct` and `labour_cost_pct` need a labour feed that does not exist
-   anywhere in this gateway.
+3. ~~**Which of the twelve gaps to close first.**~~ **DECIDED 2026-09-04:
+   `days_of_inventory`**, and it is built. It is the seventh
+   `SUPPORTED_METRICS` entry — label *Days of stock*, unit `days` (a unit the
+   other six did not need), insight categories `purchasing`/`risk`. It reads the
+   single published `daysInventoryOutstanding` field rather than re-deriving the
+   ratio, so a goal and the `ledger` cutting cannot disagree about one cellar.
+   **It is computed AHEAD of `computeMetricWithSeries`'s try/catch and THROWS
+   rather than falling through to `0`** — that catch is what lets a failed query
+   read as "this house bought nothing", and "0 days of stock" would read as a
+   cellar running perfectly lean rather than an unread one. The refusal surfaces
+   through machinery that already existed: `listGoalsWithProgress` renders "this
+   goal could not be scored (<reason>)", and `createGoal` refuses rather than
+   writing a goal that can never be read. Eleven gaps remain; `prime_cost_pct`
+   and `labour_cost_pct` still need a labour feed that exists nowhere in this
+   gateway.
 4. **Whether a house may add its own scenario.** The catalogue is ours today. A
    tenant-authored scenario is a different object (it would need a metric key it
    cannot invent) and needs its own decision.

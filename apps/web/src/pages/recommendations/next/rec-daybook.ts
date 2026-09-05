@@ -170,6 +170,9 @@ export const METRIC_CATEGORIES: Record<string, string[]> = {
   checks: ['sales', 'tables'],
   avg_check: ['efficiency', 'staff', 'basket'],
   wine_attach_rate: ['efficiency', 'basket', 'staff'],
+  // The seventh, 2026-09-04 (ADR 0120). Its parity test caught this copy the
+  // moment the gateway grew a metric, which is exactly what it is for.
+  days_of_inventory: ['purchasing', 'risk'],
 };
 
 /**
@@ -234,7 +237,11 @@ export function leverWords(slip: GoalSlip, levers: EntryVM[] | null): string {
     return `The rule points at “the insight feed for this goal’s category”, and this page could not read the goal, so it cannot say which category that is ${EM} no lever is named rather than the wrong one.`;
   const cats = METRIC_CATEGORIES[slip.metricKey];
   if (!cats)
-    return `This goal is held on ${slip.metricKey}, which is not one of the six metrics the gateway maps to insight categories, so the rule’s “this goal’s category” has no answer here.`;
+    // The COUNT is read off the table, never written out. It said "six" until
+    // 2026-09-04, when the gateway grew a seventh (`days_of_inventory`, ADR
+    // 0120) and the sentence quietly became false while every test stayed
+    // green. A number about a list belongs to the list.
+    return `This goal is held on ${slip.metricKey}, which is not one of the ${Object.keys(METRIC_CATEGORIES).length} metrics the gateway maps to insight categories, so the rule’s “this goal’s category” has no answer here.`;
   const where = `The gateway holds this goal on ${slip.metricKey}, and its own table maps that metric to the ${cats.join(' and ')} ${cats.length === 1 ? 'category' : 'categories'}.`;
   if (!levers || levers.length === 0)
     return `${where} Nothing standing on this page is in ${cats.length === 1 ? 'it' : 'them'} today, so the rule’s lever is not on the book ${EM} it is somewhere the engine has not fired on.`;

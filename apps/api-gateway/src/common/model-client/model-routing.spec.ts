@@ -34,8 +34,11 @@ function config(vars: Record<string, string | undefined>) {
 describe("resolveModel — the founder's routing, 2026-09-04", () => {
   it("sends compose to Sonnet 5 and the two Haiku classes to Haiku 4.5", () => {
     expect(MODEL_FOR_CLASS.compose).toBe("claude-sonnet-5");
-    expect(MODEL_FOR_CLASS.lookup).toBe("claude-haiku-4-5-20251001");
-    expect(MODEL_FOR_CLASS.help).toBe("claude-haiku-4-5-20251001");
+    // The UNDATED alias — founder decision 2026-09-04. A dated snapshot stops
+    // being the current model without anything in the repo saying so.
+    expect(MODEL_FOR_CLASS.lookup).toBe("claude-haiku-4-5");
+    expect(MODEL_FOR_CLASS.help).toBe("claude-haiku-4-5");
+    expect(MODEL_FOR_CLASS.lookup).not.toMatch(/-\d{8}$/);
   });
 
   it("routes every declared class to a model", () => {

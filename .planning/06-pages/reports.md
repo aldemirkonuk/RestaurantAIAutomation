@@ -213,8 +213,9 @@ is what it still cannot do, and why.
 
 - **Start from a scenario.** The goals form opens on a picker above the measure
   list, read from `GET /analytics/goal-scenarios` — a static, tenant-free
-  catalogue of **21 scenarios**, 9 of which this engine can hold today and 12 of
-  which name the measure they would need. Choosing one fills the name, the
+  catalogue of **21 scenarios**, 10 of which this engine can hold today and 11 of
+  which name the measure they would need (9 and 12 until `days_of_inventory` was
+  funded on 2026-09-04). Choosing one fills the name, the
   measure, the direction and the period.
 - **It never fills the target.** A scenario carries a RANGE quoted in the
   operator source's own words, with that source's URL and the date it was
@@ -222,7 +223,7 @@ is what it still cannot do, and why.
   the houses in that report, not about yours"*. `goal-scenarios.spec.ts` asserts
   on the object's KEYS, so a `target` field added later fails the test even if
   it is left undefined.
-- **A scenario with no published range says so.** Four of the nine servable
+- **A scenario with no published range says so.** Five of the ten servable
   scenarios carry no range at all, because operator sources publish RATIOS and
   almost never LEVELS: the NRA publishes a food-cost median of 32.0% of sales
   and a labour median of 36.5% (fullservice, 2024), and nobody publishes what a
@@ -1149,10 +1150,16 @@ about it, with a visible line back to the data.
     mode already has exactly two things a keyboard needs to do.
 22. **The book of scenarios wants three metrics it cannot have yet**
     (ADR 0120). In the order they are cheapest to close:
-    **(a) `days_of_inventory`** — `/analytics/financial/:rid` already computes
-    `daysInventoryOutstanding` and `inventoryTurnover`
-    (`analytics.service.ts:444-451`); only a `SUPPORTED_METRICS` entry is
-    missing, and it is the single shortest gap on this list.
+    **(a) ~~`days_of_inventory`~~ — DONE 2026-09-04**, the first gap the founder
+    funded. It is the seventh `SUPPORTED_METRICS` entry (*Days of stock*, unit
+    `days`, categories `purchasing`/`risk`), reading the single published
+    `daysInventoryOutstanding` field rather than re-deriving the ratio, so a
+    goal and the `ledger` cutting cannot disagree about one cellar. It is
+    computed **ahead of** `computeMetricWithSeries`'s try/catch and **throws**
+    instead of falling through to `0` — that catch is what lets a failed query
+    read as "this house bought nothing", and "0 days of stock" would read as a
+    lean cellar rather than an unread one. The scenario is servable; the book is
+    now **10 held / 11 unserved of 21**.
     **(b) `food_cost_pct`** — `cogsRatio` exists but its denominator is a
     sell-price valuation of purchased stock (`:432-437`), not POS revenue. It
     needs the `pos_checks` denominator before it is the ratio an operator means.
@@ -1201,3 +1208,27 @@ about it, with a visible line back to the data.
     `ledger` draws days-of-stock, `seats` draws table turns and RevPASH,
     `service` draws the server spread, and `reading` is the only place attach
     rate reaches the sheet at all.
+
+24. **Five citations in the scenario catalogue were wrong, and are now checked
+    by machine** (ADR 0120 amendment, 2026-09-04). An audit fetched the URL
+    behind the labour-cost range and found the page carries 36.5% and 31.7% but
+    neither `34.2` nor `pre-tax` — the clause belongs to the abstract's
+    profitability page. Re-reading every citation found four more of the class:
+    two DCL fill-rate quotes that are not on the DCL page, two dates copied from
+    the wrong NRA page, three bare years on pages that state no date, and a
+    RevPASH row quoting figures against a URL that 403s.
+    `apps/api-gateway/src/analytics/__fixtures__/operator-sources.ts` now records
+    the fetched text per URL, and `goal-scenarios.spec.ts` asserts that every
+    numeric token a row quotes appears in the page that row names, that
+    `published` agrees with the page's own date in both directions, and that no
+    figure is ever quoted against a source that could not be read. **Open:**
+    nothing re-fetches these pages, so a source that is edited or retired goes
+    stale silently — the fixture records the date it was read, and only a person
+    re-reading it can move that date.
+25. **Two sites still name the dated Haiku pin** and were deliberately not
+    changed with the routing standardisation (founder decision 2026-09-04, the
+    undated `claude-haiku-4-5`): `ux-optimizer/ux-optimizer.service.ts:259` and
+    53 pin sites across `services/agent-orchestrator`. Both belong to the
+    model-pin census under **OD-04**, which is open because *"no place in the
+    repo says which model does which job"*; rewriting them from a naming fix
+    would answer that decision as a side effect.

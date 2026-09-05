@@ -972,20 +972,33 @@ and date, and each with a per-row caveat on top of the standing one.
 
 | Measure | What the source says | Source | Date |
 |---|---|---|---|
-| Food + non-alcohol beverage cost | median **32.0% of sales** fullservice, **32.4%** limited-service, 2024 | NRA, 2025 Restaurant Operations Data Abstract (900+ operators) — [link](https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-operators-kept-food-cost-ratios-in-check-in-2024/) | 2025-08-27 |
-| Salaries + wages incl. benefits | median **36.5% of sales** fullservice, **31.7%** limited-service; **34.2%** among fullservice operators who reported a pre-tax profit | NRA, same abstract — [link](https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-labor-costs-are-well-above-historical-averages/) | 2025-08-27 |
-| Prime cost | **60–65%** fullservice, **55–60%** QSR, ~60% for a sustainable business | Restaurant365 — [link](https://www.restaurant365.com/blog/how-to-calculate-prime-cost-in-a-restaurant/) | 2026 |
-| Prime cost (disagreeing) | **55–60%** is good; above **70%** makes profit hard | TouchBistro — [link](https://www.touchbistro.com/blog/important-restaurant-benchmarks/) | 2026 |
-| Pour cost | liquor **15–18%**, draft beer **15–20%**, bottled/canned **24–28%**, wine **25–40%** | Vast CFO — [link](https://www.vastcfo.com/breaking-down-restaurant-sales/) | 2026 |
+| Food + non-alcohol beverage cost | median **32.0% of sales** fullservice, **32.4%** limited-service, 2024 | NRA, 2025 Restaurant Operations Data Abstract (900+ operators) — [link](https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-operators-kept-food-cost-ratios-in-check-in-2024/) | 2025-09-10 |
+| Salaries + wages incl. benefits | median **36.5% of sales** fullservice, **31.7%** limited-service; **34.2%** among fullservice operators who reported a pre-tax profit | NRA, same abstract, **profitability page** — [link](https://restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/elevated-labor-costs-had-a-significant-impact-on-restaurant-profitability-in-2024/) | 2025-10-08 |
+| Prime cost | **60-65%** fullservice, **55-60%** QSR, ~60% for a sustainable business | Restaurant365 — [link](https://www.restaurant365.com/blog/how-to-calculate-prime-cost-in-a-restaurant/) | undated |
+| Prime cost (disagreeing) | **55-60%** is good; above **70%** makes profit hard | TouchBistro — [link](https://www.touchbistro.com/blog/important-restaurant-benchmarks/) | undated |
+| Pour cost | liquor **15-18%**, draft beer **15-20%**, bottled/canned **24-28%**, wine **25-40%** | Vast CFO — [link](https://www.vastcfo.com/breaking-down-restaurant-sales/) | undated |
 | Food waste | **4–10% of food purchases** (attributed to the NRA) | Supy — [link](https://supy.io/blog/the-impact-of-food-waste-on-restaurant-food-costs-and-how-to-reduce-it) | 2025-02-03 |
 | Inventory turnover | **4–8 times per month** | Sculpture Hospitality — [link](https://www.sculpturehospitality.com/blog/average-inventory-turnover-ratio-for-restaurant-food) | 2026-06-25 |
-| Table turnover | industry average for a family restaurant is **3** | TouchBistro — [link](https://www.touchbistro.com/blog/important-restaurant-benchmarks/) | 2026 |
-| Staff turnover | **27%** for the average full-service restaurant | TouchBistro — same page | 2026 |
-| Average check | rose **2.5% YoY** in July 2026 against a **2.3%** price rise | The Hospitality Hangout — [link](https://www.thehospitalityhangout.com/blog/qsr-check-growth-faq-2026/) | 2026 |
-| Fill rate / OTIF | **92–98%**, typical **85–95%**, high performers above **95%**; **90% on-time within 48h** for specialty food distributors | DCL Logistics — [link](https://dclcorp.com/blog/fulfillment/fill-rate/) | 2026 |
+| Table turnover | industry average for a family restaurant is **3** | TouchBistro — [link](https://www.touchbistro.com/blog/important-restaurant-benchmarks/) | undated |
+| Staff turnover | **27%** for the average full-service restaurant | TouchBistro — same page | undated |
+| Average check | rose **2.5% YoY** in July 2026 against a **2.3%** price rise | The Hospitality Hangout — [link](https://www.thehospitalityhangout.com/blog/qsr-check-growth-faq-2026/) | 2026-08-26 |
+| Fill rate | **92-98%** of orders fulfilled ("a general rule of thumb") | DCL Logistics — [link](https://dclcorp.com/blog/fulfillment/fill-rate/) | 2026-07-07 |
+| On-time delivery | **no percentage is published.** The nearest foodservice trade source defines on-time as a window around a promised slot and scores vendors on accuracy and audits instead | GoodSource Solutions — [link](https://goodsource.com/trends-and-insights/vendor-performance-evaluation-metrics-for-wholesale-food-distribution-partnerships/) | 2026-03-22 |
 | Days of cash | **three to six months** of operating expenses; restaurants typically last **16 days** without revenue (JPMorgan Chase Institute) | Relay — [link](https://relayfi.com/blog/how-much-cash-reserves-should-a-business-have/) | 2025-10-22 |
 | RevPASH | **no universal benchmark** — a fine-dining room with two-hour turns and $150 checks and a casual room with 45-minute turns and $25 checks have different good numbers | definition: Black Box Intelligence — [link](https://blackboxintelligence.com/resources/restaurant-glossary/revenue-per-available-seat-hour/) | — |
 | Wine attach rate | **no operator body publishes one.** The only figures found were a glassware supplier's marketing post (22–28% rising to 38–46% over twelve months) — a sales claim, named in the catalogue rather than shown as a range | [premiumwineglasses.com](https://premiumwineglasses.com/2026/05/30/high-margin-wine-program-custom-glassware/) | 2026-05-30 |
+
+> **Corrected 2026-09-04, after an audit.** Five rows in the first version of
+> this table cited a page that does not carry the figure beside it, or a date
+> that page does not state. The labour row cited the abstract's labour-costs
+> page for a clause only its profitability page carries; both fill-rate rows
+> quoted phrases absent from the DCL page (they came from a blended search
+> summary); two dates were copied from the wrong NRA page; three "2026"s were
+> written for pages that state no date. Every citation above has since been
+> re-fetched, and the fetched text is now recorded in
+> `apps/api-gateway/src/analytics/__fixtures__/operator-sources.ts` with a test
+> asserting that **every figure a scenario quotes appears in the page it names**.
+> The full list is in ADR 0120's amendment.
 
 **Three findings that shaped the catalogue more than any single figure.**
 
@@ -998,8 +1011,11 @@ and date, and each with a per-row caveat on top of the standing one.
 2. **Source quality is not uniform, and the catalogue says which is which.** Two rows are
    primary (the NRA abstract, 900+ operators, dated); two contradict each other by five
    points (prime cost); one is second-hand (waste, attributed to the NRA by a vendor's blog,
-   primary not located); two are outside foodservice entirely (fill rate is logistics); one
-   is a vendor's sales claim and is deliberately **not** shown as a range.
+   primary not located); one is outside foodservice entirely (fill rate is logistics); three
+   state no date at all; one is a vendor's sales claim and is deliberately **not** shown as a
+   range; and one (RevPASH's definition source) **refused this fetcher**, so it is named for
+   the term and quoted for nothing. That spread is the argument for the fixture test: a table
+   this uneven cannot be kept honest by care alone.
 3. **The most useful sources refuse to give a number.** RevPASH's own literature says there
    is no universal benchmark. That refusal is worth more to a manager than a fabricated
    band, and the catalogue quotes it.

@@ -16,7 +16,7 @@
  *     fills four fields and never the fifth. A range parsed into the number
  *     field would be indistinguishable from a target this house set.
  *  2. **An unservable scenario becomes selectable.** The gateway holds goals on
- *     six measures; the book lists the other twelve on purpose. Selectable, one
+ *     seven measures; the book lists the other eleven on purpose. Selectable, one
  *     of them writes a 400 at the moment of commitment.
  *  3. **The provenance is kept after a swap.** `source_rule_key` is what makes
  *     "this entry is being watched" true. A goal on wine revenue claiming to

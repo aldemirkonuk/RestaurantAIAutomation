@@ -25,6 +25,16 @@ import {
 import { GoalsService, stripFence } from "./goals.service";
 
 /**
+ * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
+ * the single published `daysInventoryOutstanding` field rather than
+ * re-deriving the ratio, so two surfaces cannot disagree about one cellar.
+ */
+const analytics = {
+  getFinancialSummary: async () => ({ daysInventoryOutstanding: null }),
+} as any;
+
+
+/**
  * The verdict recorder, captured (OD-59 / ADR 0029 P3.0).
  *
  * `goal_cutting_spec` used to emit a footprint row carrying `call_level_v0`
@@ -203,6 +213,7 @@ describe("GoalsService.updateGoal — an edit writes only what was sent", () => 
       { get: () => undefined } as any,
       {} as any,
       verdicts,
+      analytics,
     );
     return { service, seen };
   }
@@ -282,6 +293,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
         },
       } as any,
       verdicts,
+      analytics,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -326,6 +338,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
         }),
       } as any,
       verdicts,
+      analytics,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -368,6 +381,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
         },
       } as any,
       verdicts,
+      analytics,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -410,6 +424,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
         },
       } as any,
       verdicts,
+      analytics,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -475,6 +490,7 @@ describe("goal_cutting_spec carries a real verdict, not just call_level_v0", () 
         },
       } as any,
       verdicts,
+      analytics,
     );
   }
 
@@ -565,6 +581,7 @@ describe("goal_cutting_spec carries a real verdict, not just call_level_v0", () 
       { get: () => undefined } as any, // no ANTHROPIC_API_KEY
       { call: async () => ({}) } as any,
       verdicts,
+      analytics,
     );
     const out = await service.proposeCuttingSpec("r1", "g1");
     expect(out.available).toBe(false);

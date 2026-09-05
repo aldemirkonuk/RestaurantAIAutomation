@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { AnalyticsService } from "./analytics.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
@@ -33,8 +34,9 @@ import {
  * "what to do about it" is pulled from the stored insight feed (relevant
  * categories), so the assistance is grounded in this restaurant's own math.
  *
- * Supported metric keys (v1): wine_revenue, bottles_sold, purchase_spend,
- * checks, avg_check, wine_attach_rate.
+ * Supported metric keys: wine_revenue, bottles_sold, purchase_spend, checks,
+ * avg_check, wine_attach_rate, and — since 2026-09-04 (ADR 0120) —
+ * days_of_inventory, the first of the twelve gaps the scenario catalogue named.
  *
  * `pos_revenue` is computed by the same query but is deliberately NOT in
  * SUPPORTED_METRICS: it exists for `getPosRevenueWindow` (OD-85), and offering
@@ -57,13 +59,23 @@ export class GoalsService {
     // which says nothing about whether the assistant named an analysis this
     // sheet actually carries.
     private readonly nfVerdicts: NfVerdictService,
+    /**
+     * Only `days_of_inventory` uses this, and it reads ONE published field
+     * (`daysInventoryOutstanding`) rather than re-deriving the ratio. Two
+     * implementations of "how many days of stock" is how `/reports` and a goal
+     * end up disagreeing about the same cellar.
+     *
+     * No cycle: `AnalyticsService`'s constructor takes `DatabaseService` alone
+     * (analytics.service.ts), so it does not reach back here.
+     */
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   static readonly SUPPORTED_METRICS: Record<
     string,
     {
       label: string;
-      unit: "currency" | "units" | "count" | "percent";
+      unit: "currency" | "units" | "count" | "percent" | "days";
       insightCategories: string[];
     }
   > = {
@@ -96,6 +108,32 @@ export class GoalsService {
       label: "Wine attach rate",
       unit: "percent",
       insightCategories: ["efficiency", "basket", "staff"],
+    },
+    /**
+     * Days of stock on hand — the seventh, added 2026-09-04 (ADR 0120).
+     *
+     * The founder's answer to "which of the twelve gaps first": this one, and
+     * it was chosen because it was already computed. `/analytics/financial/:rid`
+     * has published `daysInventoryOutstanding` all along
+     * (`analytics.service.ts:444-451`); the only thing missing was an entry
+     * here, so the goals desk could hold a house to it.
+     *
+     * It is UNLIKE the other six in a way that matters downstream: they are
+     * cumulative sums over a window, and this is a STOCK LEVEL read at an
+     * instant. There is no daily series, so no Holt projection is drawn — the
+     * same shape `avg_check` and `wine_attach_rate` already have, and the page
+     * already says "there is not enough history to project the deadline".
+     *
+     * Insight categories are `purchasing` and `risk`: what moves days-of-stock
+     * is what you buy and how much capital you leave sitting, which is the same
+     * pair `purchase_spend` reads. `sales` is deliberately absent — selling
+     * faster does move it, but the levers the feed would hand back under that
+     * category are about revenue, and this goal is about the cellar.
+     */
+    days_of_inventory: {
+      label: "Days of stock",
+      unit: "days",
+      insightCategories: ["purchasing", "risk"],
     },
   };
 
@@ -765,6 +803,41 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     dailyDates: string[];
     rowCount: number;
   }> {
+    /**
+     * Days of stock, before everything else, and deliberately OUTSIDE the
+     * try/catch below.
+     *
+     * That catch logs and falls through to a sum of nothing, which returns
+     * `0` — the shape that lets a failed query read as "this house bought
+     * nothing". The other six metrics have lived with it since before this
+     * change and repairing them is its own piece of work; what must not happen
+     * is a NEW metric inheriting it, because a days-of-stock goal reading
+     * "0 days" is not a light cellar, it is an unread one.
+     *
+     * `daysInventoryOutstanding` is `null` unless every on-hand row carries a
+     * recorded cost (ADR 0051), so a null is thrown rather than zeroed. It
+     * surfaces exactly where the honesty machinery already is:
+     * `listGoalsWithProgress` catches per goal and renders "this goal could not
+     * be scored (<reason>)", and `createGoal` refuses with the same sentence
+     * rather than writing a goal that can never be read.
+     *
+     * The window arguments are ignored on purpose and the caller is not misled
+     * about it: a stock level is what is on the shelf NOW, not a total over a
+     * period, and there is no historical series of it anywhere in this gateway.
+     */
+    if (metricKey === "days_of_inventory") {
+      const financial: any = await this.analyticsService.getFinancialSummary(
+        restaurantId,
+      );
+      const dio = financial?.daysInventoryOutstanding;
+      if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        throw new Error(
+          "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
+        );
+      }
+      return { current: dio, dailySeries: [], dailyDates: [], rowCount: 1 };
+    }
+
     const client = this.dbService.getClient();
     const sinceIso = `${sinceDate}T00:00:00Z`;
     const untilIso = untilDate ? `${untilDate}T23:59:59.999Z` : null;

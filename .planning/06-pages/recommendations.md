@@ -104,7 +104,8 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 - **Two forward doors on every entry** (fourth pass, 2026-09-03). **Make this a goal** writes a
   real goal — `POST /analytics/goals/:rid` — with the metric, the direction, the period and the
   name derived from the rule that fired and **only the target asked of the manager**; nine of the
-  thirteen rules map to one of the gateway's six metrics, three map to none and render the control
+  thirteen rules map to one of the gateway's supported metrics (six when this was measured;
+  a seventh, `days_of_inventory`, landed 2026-09-04 under ADR 0120), three map to none and render the control
   disabled with the reason, and the `goal_behind_*` family refuses because it already *is* a goal.
   **See it in reports** deep-links to the one cutting of the reports sheet's eleven whose register
   answers this rule, saying whether that is the same register the rule read or a different one that
@@ -735,15 +736,25 @@ reads `getBoundingClientRect` off the rendered cells):
 
 Neither scrolls (`scrollWidth === clientWidth`), and the day number stays 11.5px at
 both. The floor enforced is `--mdv-ds-min: 30px` (`day-strip.css`). Below it the strip
-scrolls horizontally rather than shrinking the number: 31 cells at 30px plus 30 gaps of
-2px plus 12px of strip chrome needs 1002px, so on this page's shell (`.rc-wrap`,
-max-width 1120 + 16px padding) the floor bites at a viewport of about **1034px** and the
-strip gains a horizontal scrollbar under that. A legible 30px number behind a scrollbar
-beats an illegible 24px one that fits.
+scrolls horizontally rather than shrinking the number.
+
+**Corrected 2026-09-04** (`$SP/p4v-measure-floor.mjs`, same tenant and month): the floor
+figure this section carried — *"about 1034px"* — was **derived, and wrong**. It counted
+`.rc-wrap`'s 32px of padding but not the app's fixed **260px sidebar**
+(`md:pl-[260px]`), which is what governs the line at every width under 1380. Measured by
+walking the viewport down instead of deriving it, September (30 cells) scrolls on
+`/recommendations` from **1260px down** — 1262px is the last width that does not — and
+on `/notifications` from **1276px down** (1278px is the last). A 31-day month costs one
+more cell and one more gap; that arithmetic — unmeasured, because September was on
+screen — puts the two at about **1294px** and **1310px**. The
+trade is unchanged: a legible 30px number behind a scrollbar beats an illegible 24px one
+that fits.
 
 Walking the month re-asks the till: `posDaysFor(month, today)` sends
 `GET /analytics/pos-revenue/:rid?days=N` back to the 1st of the month on screen (the
-gateway clamps N to 1–365, `analytics.controller.ts:757-760`), so a month more than a
+gateway clamps N to 1–365, `analytics.controller.ts:792-795` — the clamp itself on
+`:794`, inside `getPosRevenue` (`:788`, routed at `:773`); re-measured 2026-09-04, the
+`:757-760` cited here before is the Wine-360 `@ApiOperation`), so a month more than a
 year back comes back **entirely `unknown`, never `none`**. Selecting a day does not
 survive a month change — a day selected in September is not a day in August.
 
@@ -844,8 +855,8 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | POST | `/analytics/exclusions/:rid` | **new** — `{businessDate, reason}`; `excludeDay()` |
 | DELETE | `/analytics/exclusions/:rid/:businessDate` | **new** — `includeDay()`, "Count it again" |
 | GET | `/analytics/goals/:rid?status=active` | **new 2026-09-03; EAGER since the rework** — read once per tenant, because an entry has to say "this one is being watched" on first paint and the ribbon needs the deadlines; `analytics.controller.ts:485` |
-| GET | `/analytics/pos-revenue/:rid?days=22` | **new (the rework)** — the ribbon's record marks. Its `dailySeries` is SPARSE (only days that carried a non-voided check), which is the one signal in the gateway that separates "shut" from "took nothing"; `posConnected:false` means nothing may be claimed about any day. `analytics.controller.ts:737` |
-| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction, sourceRuleKey}` — `sourceRuleKey` validated against the gateway's rule catalogue, an unknown key a 400 with words (curl-verified 2026-09-03) — and **no `createdBy`** (the controller passes the body through unfiltered at `:508`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:497` |
+| GET | `/analytics/pos-revenue/:rid?days=22` | **new (the rework)** — the ribbon's record marks. Its `dailySeries` is SPARSE (only days that carried a non-voided check), which is the one signal in the gateway that separates "shut" from "took nothing"; `posConnected:false` means nothing may be claimed about any day. `analytics.controller.ts:773` (re-measured 2026-09-04; the `:737` cited here before is the seasonality `@ApiOperation`) |
+| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction, sourceRuleKey}` — `sourceRuleKey` validated against the gateway's rule catalogue, an unknown key a 400 with words (curl-verified 2026-09-03) — and **no `createdBy`** (the controller passes the body through unfiltered at `:536`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:524`, the pass-through on `:536` (re-measured 2026-09-04; the `:497`/`:508` cited here before are inside the `goal-scenarios` doc comment) |
 
 **Endpoints researched for "see it in reports", and what each would give.** The founder asked which
 endpoints this page can reach "to give them better insight". The reports sheet's eleven cuttings are
@@ -1090,15 +1101,17 @@ than papering over them, which is what moves the verdict to *partial* rather tha
 
 Corrected 2026-09-02: every row below now sends the bearer — the legacy page through
 `apiClient` since `58113e26`, the Mudavym build by construction (§10). Controller
-line numbers are the decorators as they stand today.
+line numbers are the decorators as they stand today — **re-measured 2026-09-04**, when
+every number in this table was found to be stale by 105 lines (167 for the two digest
+rows) because the controller grew above them.
 
 | Method · Path | Auth **sent** | Auth **required** | Gateway controller | Returns |
 |---|---|---|---|---|
-| GET `/analytics/recommendations/:rid` | ✅ via `apiClient` | JWT (class) | `analytics.controller.ts:728` → `recommendations.service.ts:58` | ranked rule hits with observation / action / rationale, merged with dispositions |
-| GET `…/:rid/history`, `…/:rid/actions?status=` | ✅ | JWT | `:879`, `:857` | leaf contents (dismissed / snoozed / done / history) |
-| GET/PUT `…/:rid/digest` | ✅ | JWT | `:894`, `:902` | digest preference — **stored, never sent** (§9) |
-| POST `…/:rid/action` | ✅ | JWT | `:754` | act/dismiss/snooze/done/pin/assign/feedback write |
-| POST `…/:rid/bulk-action` | ✅ | JWT | `:808` | bulk write |
+| GET `/analytics/recommendations/:rid` | ✅ via `apiClient` | JWT (class) | `analytics.controller.ts:833` → `recommendations.service.ts:87` | ranked rule hits with observation / action / rationale, merged with dispositions |
+| GET `…/:rid/history`, `…/:rid/actions?status=` | ✅ | JWT | `:984`, `:962` | leaf contents (dismissed / snoozed / done / history) |
+| GET/PUT `…/:rid/digest` | ✅ | JWT | `:1061`, `:1069` | digest preference — **stored, never sent** (§9) |
+| POST `…/:rid/action` | ✅ | JWT | `:859` | act/dismiss/snooze/done/pin/assign/feedback write |
+| POST `…/:rid/bulk-action` | ✅ | JWT | `:913` | bulk write |
 | GET `/restaurants/:rid/team/members` | ✅ via `apiClient` | JWT | `team` module (`services/api/team.ts:124`) | assignment picker — the one call that always worked, which is why the assign menu populated on a page where nothing else did |
 
 ### Fed by
@@ -1312,11 +1325,16 @@ execution, no first-fired timestamp — in the same way.
     a day older than the oldest loaded row is `unknown`, and while a day filter is on
     every other day is. Said on the page; closing it is a gateway route.
 
-29. **The twelve scenarios this page can offer but not hold** (ADR 0120). The
+29. **The eleven scenarios this page can offer but not hold** (ADR 0120;
+    twelve until `days_of_inventory` was funded on 2026-09-04 — it is now the
+    seventh goal metric, so *Hold fewer days of stock* is selectable here and
+    `METRICS`/`UNIT_SUFFIX` in `rec-forward.ts` and `METRIC_CATEGORIES` in
+    `rec-daybook.ts` carry it; the daybook's parity test caught that copy the
+    moment the gateway grew the metric, which is what it is for). The
     book lists them greyed, each naming the measure it would take, so the gap is
     visible on the sheet rather than only in a note: prime cost, food-cost
-    ratio, labour ratio, pour cost, waste, days of stock, table turns, RevPASH,
-    vendor concentration, on-time delivery, cash days, staff turnover. Two of
+    ratio, labour ratio, pour cost, waste, table turns, RevPASH, vendor
+    concentration, on-time delivery, cash days, staff turnover. Two of
     them already have a rule on this page that fires about them —
     `vendor_concentration` and `staff_spread` — so the entry can name the
     problem and the sheet cannot hold a goal on it, which is the sharpest
