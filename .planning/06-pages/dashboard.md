@@ -75,11 +75,29 @@ while the flag is off — `apps/web/src/pages/dashboard/next/`):
   - Committing gets the wax — `HoldToApprove` completing into the seal — because it
     is a durable server write stamped with your identity. Cancelling and navigating
     are plain controls.
-  - 🚧 **"Done" records a decision, not an order.** The gateway's `triggerWorkflow`
-    is three `// TODO` branches and a default log
-    (`one-tap-actions.service.ts:404-430`); the panel says so above the die and cites
-    the line. See §9.
-  - 🚧 **The house half is permanently empty today** — `createSystemAction` has no
+  - **The first real action landed 2026-09-05, sealed** (founder: *"extend the seal
+    to it when the first real action lands, but RUN the ecosystem to run the first
+    real action"*). `triggerWorkflow` — three `// TODO` branches and a default log,
+    called AFTER the row was stamped `completed` — is replaced by a census with
+    three outcomes (`apps/api-gateway/src/one-tap-actions/one-tap-workflow.ts`,
+    mirrored for the browser in `pages/dashboard/next/one-tap-acts.ts`):
+    - **`delivery_confirm` is real and is the only control here that carries the
+      seal.** The hold mints a one-time challenge bound to this manager, the ORDER
+      the card names, the act `deliver` and the stock about to move
+      (`POST /one-tap-actions/:id/seal-challenge`); the gateway redeems it BEFORE
+      calling `ProcurementService.markDelivered`, and the card then says how many
+      bottles were booked, from what the gateway recorded. Proven, then done, then
+      recorded — in that order.
+    - **A written action is a record and gets a plain button.** The wax is rationed
+      to the act that moves the house's stock (§13.10's question, answered): a die
+      meaning "recorded" beside a die meaning "done" is how the seal stops meaning
+      anything.
+    - **Every other act is disabled and says what is not built** — the reorder in
+      particular, because placing the order needs a vendor and an agreed price the
+      card does not carry and would open a priced negotiation with the vendor. The
+      gateway refuses them too and leaves the row `pending`: ADR 0083, a control
+      may not claim a write it never makes.
+  - **The house half is permanently empty today** — `createSystemAction` has no
     production caller, so the panel truthfully shows "Nothing standing" rather than
     implying the house is idle. See §9. *Measured 2026-09-03 against the local
     gateway:* `GET /one-tap-actions?restaurantId=…` returns
@@ -121,13 +139,15 @@ this list is the note-side index (ADR 0044 §2).
 | `kpi-tally` | Figures arrive | the five KPIs + "Waiting on you" count; an em dash never counts |
 | `day-open` | Settle expansion | the day-detail panel; each Waiting-on-you row into its HoldToApprove; the "write a new one-tap action" form on the rail |
 | `day-scrub` | Scrub the day | the tape strip in day detail — un-eased on purpose, per-day samples |
-| `hold-pour` / `seal-stamp` | Hold-to-approve → the seal lands | the approvals queue **and** (2026-09-03) every card in the One-tap actions rail panel — both wired to a real mutation; the seal only stays if the server said yes |
+| `hold-pour` / `seal-stamp` | Hold-to-approve → the seal lands | the approvals queue **and** (2026-09-05) the ONE one-tap card whose act is real — a delivery confirmation, whose hold mints the seal the write carries back. The rail's written-note card lost the die that day: it is a record, and the wax is rationed to the act that moves stock. The seal only stays if the server said yes |
 | `ink-micro` | Micro-states | hovers/focus, nothing moves more than 2px |
 | `skel-sheen` | Honest skeletons | genuinely in-flight fetches only — never for "unknown" |
 
 Deliberate non-motions: unknowns never animate; month navigation does not slide;
 scrubbed figures do not tween; the one-tap panel's dashed cards never pulse — an
-action the house raised and did not carry out must look inert.
+action the house raised and did not carry out must look inert. A card whose act is
+not built has no motion at all: its control is disabled, and a disabled control that
+animates is a control that looks pressable.
 
 ### Why the one-tap desk is here and not on `/notifications` (2026-09-03)
 
@@ -145,6 +165,13 @@ rule exists so the seal does not become routine, and two dies on one screen is t
 closest this design has come to spending it. It is defensible only because both are
 durable, identity-stamped server writes — the moment a third appears for something
 reversible, the ceremony should be taken off one of them.
+
+**Resolved 2026-09-05.** The rail's die was on a card that RECORDED a decision while
+the queue's die APPROVED an order, and the two looked identical. The wax now sits
+only where a write leaves the page: approving an order, and confirming a delivery
+that books stock through the ledger. A written note is marked done with a plain
+button. The page still carries two dies, and both are now sealed writes proven by
+redemption rather than asserted — which is the condition §13.10 asked for.
 
 ## 2. Entry
 
@@ -177,7 +204,7 @@ from `/admin`, `/get-started`, `/invite/:code`, `/onboarding`, `/register`. Also
 
 All via `apiClient` (base `${VITE_API_GATEWAY_URL}/api/v1`, `services/api/client.ts:51`)
 unless noted. Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):197 (`dashboard`, 8 —
-atlas's **⚠ all unguarded** is stale; guarded at class level since 2026-08-25 (#60),
+atlas's **"all unguarded"** row is stale; guarded at class level since 2026-08-25 (#60),
 `apps/api-gateway/src/dashboard/dashboard.controller.ts:51`),
 :87 (`calendar`), :249 (`inventory`), :389 (`procurement`), :663 (`wines`).
 
@@ -206,7 +233,7 @@ GTM in `index.html`) — dev-console only.
 
 **Core** — operate ([TIER-MAP](../03-scenarios/TIER-MAP.md):10). Scenario surface:
 S10 (low-stock alerts land here as one-tap reorders) and S15 (the in-app digest panel
-is the owner's landing experience). Both are ✅-Core rows in the matrix (TIER-MAP:46,51).
+is the owner's landing experience). Both are Core rows in the matrix (TIER-MAP:46,51).
 
 ## 7. Rebrand surface
 
@@ -240,7 +267,10 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
 **Found while moving the one-tap desk here (2026-09-03).** Both are outside this
 page's paths; neither was built here, and the rail panel states both in words.
 
-- 🔴 **`createSystemAction` has no production caller.**
+- **`createSystemAction` has no production caller.** *(Re-measured 2026-09-05 and
+  still true: `grep -rn createSystemAction apps/api-gateway/src apps/web/src services`
+  returns the definition, two references in
+  `src/__tests__/one-tap-actions.service.spec.ts:279,305`, and one comment.)*
   `apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:351` is the only
   way an action is written *without* a human author, and its only references in the
   repo are in `src/__tests__/one-tap-actions.service.spec.ts:279,305`. So the "raised
@@ -248,10 +278,14 @@ page's paths; neither was built here, and the rail panel states both in words.
   the producers that should raise one (the low-stock sweep, procurement) write
   notification rows only. **Owner: `notifications/low-stock-alerts.service.ts` and
   `procurement/`** — one `createSystemAction` call per producer.
-- 🔴 **Executing a one-tap action does nothing but record it.** `triggerWorkflow`
-  (`one-tap-actions.service.ts:404-430`) is three `// TODO` branches and a default
-  log. The card states this above the die rather than letting the seal imply a
-  reorder; the fix is a gateway one.
+- **CLOSED 2026-09-05 — executing a one-tap action used to do nothing but record it.**
+  `triggerWorkflow` was three `// TODO` branches and a default log, called AFTER the
+  row had been stamped `completed`, so the die reported success for a reorder that
+  had not happened. Measured against a `git show HEAD:` copy of the service on
+  2026-09-05: **22 of 22** cases in
+  `apps/api-gateway/src/one-tap-actions/one-tap-execute.spec.ts` fail there, and the
+  pre-fix service *resolves* `{"status":"completed","executionResult":{}}` for a
+  `low_stock` card rather than refusing it. See §1a for what replaced it.
 - **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** when `getSalesChartData` rejects, the hook renders `Math.floor(Math.random()*5000)+1000` per day as sales (`hooks/useDashboardData.ts:205-230`; absence 1 — a failed read becomes a healthy business). "Vendor Spend (30d) $0 ↗ +0.0%" draws a green trend over a base with no purchase orders.
 
 - **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the Low Stock Alerts card reads camelCase (`Dashboard.tsx:998,1004,971`, modal `:1315-1320`) from a snake_case payload (`GET /inventory/:id/low-stock` → `v_low_stock_items`, `database.service.ts:57-62`), so all 7 real wines render as "Unknown wine" with blank counts (defect 1). "Top Performing Wines / This month's best sellers" never reads sales — `topPerformingWines` (`:327-345`) aggregates procurement orders and calendar entries — so it says "no sales performance data" over $2,236 of real sales.
@@ -272,6 +306,49 @@ only for a failure carrying no decision. Proven by `WaitingOnYou.seal.test.tsx`
 proven live: the tenant reachable from the local gateway has zero orders
 (`GET /procurement/orders` → `total: 0`) and that gateway points at production,
 so nothing was approved from here.
+
+**Found and fixed 2026-09-05 — the recording write itself could not succeed.**
+`one_tap_actions.executed_by` carried a foreign key to `auth.users(id)`
+(`supabase/migrations/20260805000000_baseline_from_production.sql:12814`), and the
+value written into it is `user.userId` from the JWT strategy, which is a
+`public.users.user_id` (`apps/api-gateway/src/auth/strategies/jwt.strategy.ts:56`).
+Those two tables are DISJOINT — measured in production on 2026-09-01 and recorded in
+`supabase/migrations/20260901150000_order_line_capture_and_units.sql:220-225`: 5 rows
+in `auth.users`, 7 in `public.users`, **zero** shared ids. So every
+`POST /one-tap-actions/:id/execute` raised 23503 on the key, and CI could not see it,
+because a database migrated from empty has no rows for a foreign key to violate. The
+panel's die has therefore never completed an action against production. Repointed at
+`public.users(user_id) ON DELETE SET NULL` by
+`supabase/migrations/20260905060000_a_one_tap_execution_names_a_real_person.sql`,
+which is the same repair `20260901150000` made for `procurement_orders.created_by`.
+The author column `one_tap_actions.user_id` is deliberately left with no key at all —
+an absent author is the structural proof the house raised the row — and the migration
+asserts that it stays that way.
+
+**Still open after 2026-09-05 (outside this pass's paths).**
+
+- **Nothing raises a `delivery_confirm` card.** The sealed path is built and proven by
+  spec, and it is reachable — `CreateOneTapActionDto` accepts `actionType` and
+  `relatedOrderId`, so `POST /one-tap-actions` can write one — but no producer does.
+  The natural owner is procurement, where an order becomes due:
+  `apps/api-gateway/src/procurement/procurement.service.ts` (one
+  `createSystemAction` call when an approved order reaches its expected delivery
+  date). Same owner as §13.7, and it is what turns this from a built path into a
+  used one.
+- **The happy path has still never been redeemed against a real database.** The local
+  gateway points at production and the tenant it reaches holds zero one-tap actions
+  (`GET /one-tap-actions` returned `{"actions":[],"total":0,"pending":0,"completed":0}`
+  on 2026-09-05, curl), so creating one to exercise it would be a production write.
+  What WAS exercised live, read-only, on 2026-09-05: `POST
+  /one-tap-actions/<uuid>/seal-challenge` answers 401 unauthenticated and 404 for an
+  action this house does not own, and `POST /one-tap-actions/<uuid>/execute` answers
+  404 the same way — so the routes exist, are class-guarded, and refuse before any
+  write. The 400 refusals and the 403 seal refusals are proven by spec only.
+- **`GET /procurement/orders` was answering 500 on this deployment** at 07:31 on
+  2026-09-05 (`column procurement_order_items_1.price_uom does not exist`) — another
+  builder's in-flight ADR 0119 column, not yet applied to the database the local
+  gateway reads. Named here because it is the read a delivery card's order would come
+  from.
 
 ## 10. Maturity
 
@@ -336,10 +413,10 @@ the two or three actions worth doing before service, each of which actually happ
 
 | State | Handled? | Evidence |
 |---|---|---|
-| loading | ✅ | `useDashboardData` loading flags |
-| empty | ⚠️ partial | KPI tiles render `0`/`$0` rather than "no data yet" — indistinguishable from a real zero |
-| error | ❌ | no error branch on the KPI path; a failed stats call renders zeros |
-| permission-denied | ❌ | single owner-shaped layout; no role gate (contrast [[receiving]], which does this properly) |
+| loading | yes | `useDashboardData` loading flags |
+| empty | partial | KPI tiles render `0`/`$0` rather than "no data yet" — indistinguishable from a real zero |
+| error | no | no error branch on the KPI path; a failed stats call renders zeros |
+| permission-denied | no | single owner-shaped layout; no role gate (contrast [[receiving]], which does this properly) |
 
 **Where the UI misleads**
 
@@ -376,18 +453,24 @@ the two or three actions worth doing before service, each of which actually happ
    (`procurement/procurement.service.ts:1744,2362`). Until then the rail panel's
    house half is correct and empty (§9). This is the single highest-value item for
    the panel: without it the "autonomy you can see" half of the page is a shape.
-8. **Implement `triggerWorkflow`** (`one-tap-actions.service.ts:404-430`) or rename
-   the endpoint to what it does. Today the panel has to explain that "done" is a
-   record, not a reorder (§9).
+8. ~~**Implement `triggerWorkflow`**~~ **DONE 2026-09-05, for one act.** Confirming
+   a delivery is real and sealed; a written note is a record and says so; every
+   other act is refused in words and the row stays `pending`. The census of what
+   each act would have needed is `one-tap-workflow.ts`'s header. The reorder is
+   deliberately NOT next: `CreateOrderDto` requires a `providerId` and `createOrder`
+   fires `triggerDraftHttp`, which the orchestrator may AUTO_SEND to the vendor
+   (`services/agent-orchestrator/agents/provider_communication_agent.py:669-714`) —
+   the first real action should not be one that spends money and posts a letter.
 9. **Give the command palette an appendable registry** so *One-tap actions* can be
    reached from it — the founder named the palette as a second way in.
    `components/CommandPalette.tsx` builds its items inside the component from route
    and permission context, so no page can contribute one today. Mirrored in
    [[notifications]] §13.14.
-10. **Decide whether two `HoldToApprove` dies on one screen is one too many** (§1b).
-   Both are durable identity-stamped writes today, which is what justifies it; a
-   third would not be justifiable, and the rationing rule should then take the
-   ceremony off the reversible one.
+10. ~~**Decide whether two `HoldToApprove` dies on one screen is one too many**~~
+   **ANSWERED 2026-09-05** (§1b): the wax now sits only where a write leaves the
+   page. The rail's die moved off the written note — which is a record — and onto
+   the delivery confirmation, which books stock. Both dies on this page are now
+   redeemed seals rather than asserted ones.
 
 **Added 2026-09-04 — the seal reached this card.**
 
@@ -397,9 +480,30 @@ the two or three actions worth doing before service, each of which actually happ
    has zero orders. Every claim about the happy path is a spec, on this page and
    on [[orders]]. *Blocker: a scratch database with `mcp_seal_challenges`
    applied, or a staging tenant with a disposable order.*
-12. **Give the one-tap die the same mint.** `OneTapPanel`'s `HoldToApprove`
-   executes a durable action (`executeOneTapAction`) and asserts its gesture the
-   way order approval used to; when `triggerWorkflow` stops being TODO stubs
-   (item 8) that assertion becomes a real write with no proof behind it.
-   `common/seal/` already takes any subject kind, so this is a subject-kind
-   addition rather than a new mechanism.
+12. ~~**Give the one-tap die the same mint.**~~ **DONE 2026-09-05.** It needed no
+   new subject kind after all, and that is the design decision worth recording: the
+   thing being sealed is the **order**, not the card. A card is a piece of paper
+   pointing at an order, and two cards pointing at one order must not be two
+   independent permissions to book its stock — so the seal is
+   `subject_kind: "procurement_order"`, `subject_id` the order, and the act is
+   `deliver`. An order seal minted for `approve` therefore cannot be spent here:
+   `SealChallengeService` compares the act and answers *"That seal was issued for a
+   different act on this order."* `common/seal/**` was not edited (another builder
+   holds it this session); only its service is imported.
+
+**Added 2026-09-05 — after the first real action.**
+
+13. **Raise a `delivery_confirm` card from procurement** so the sealed path is used
+   and not merely built (§9). One `createSystemAction` call in
+   `apps/api-gateway/src/procurement/procurement.service.ts` when an approved order
+   reaches its expected delivery date. This is now the single highest-value item for
+   the panel — item 7's general form, narrowed to the one act that works.
+14. **Make the reorder real behind a vendor and a price**, when there is a card that
+   carries both and a decision about the auto-send gate. Until then it is disabled
+   and says why, which is the honest state, not a placeholder.
+15. **Decide whether `markDelivered` should refuse an already-delivered order itself.**
+   The refusal lives in `one-tap-actions.service.ts` today (both on the mint and on
+   the write), because that is the caller this pass owns — but
+   `procurement.service.ts:2868-2878` books `quantity_received` and moves stock every
+   time it is called, so the same double-booking is available to every other caller
+   of it. *Owner: `procurement/`.*

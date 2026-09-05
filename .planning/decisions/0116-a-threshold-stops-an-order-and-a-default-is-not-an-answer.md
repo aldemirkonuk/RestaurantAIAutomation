@@ -340,6 +340,40 @@ no approve control anywhere in the web app reaches `/approve` without a
 redeemed seal. See "What is NOT sealed yet" below, which is kept and answered
 rather than deleted, and the three measurements that correct it.
 
+**Status, 2026-09-05: EXTENDED — the seal now covers a second act on an order.**
+The founder: *"extend the seal to it when the first real action lands, but RUN the
+ecosystem to run the first real action."* The dashboard's one-tap desk had a
+`HoldToApprove` on a control whose backend was three `// TODO` branches; the first
+of them is now real, and it is sealed by this mechanism rather than by a second
+one. Confirming a delivery from a one-tap card mints through
+`POST /one-tap-actions/:id/seal-challenge` and redeems before
+`ProcurementService.markDelivered` runs
+(`apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts`).
+
+Two things about that are decisions, not details:
+
+1. **It needed no new subject kind.** The subject is the ORDER
+   (`subject_kind: "procurement_order"`), not the card — a card is a piece of paper
+   pointing at an order, and two cards pointing at one order must not be two
+   independent permissions to book its stock. The act is `deliver`, so an order seal
+   minted for `approve` is refused here with the sentence this addendum already
+   wrote: *"That seal was issued for a different act on this order."* `common/seal/**`
+   was not edited.
+2. **What the args hash covers is the STOCK, not the money.** An approval's seal is
+   over the total and the vendor (`order-seal.ts`); a delivery's is over the card,
+   the order, the quantity and bottles about to be booked, and the order's state
+   (`one-tap-workflow.ts`). Refusing a delivery because a price note changed would
+   teach operators to mash the control; refusing it because the quantity changed is
+   the whole point.
+
+**Not proven live, and why.** The tenant the local gateway reaches holds zero
+one-tap actions (`GET /one-tap-actions` → `{"actions":[],"total":0,...}`, curl
+2026-09-05) and that gateway points at production, so creating one to redeem a seal
+would be a production write. Exercised read-only that day: the mint route answers
+401 unauthenticated and 404 for an action the house does not own, and the execute
+route answers 404 the same way — so both exist, are class-guarded, and refuse before
+any write. The 400 and 403 refusals are proven by spec.
+
 **Founder decision, 2026-09-04.** Challenge-and-redeem — built for MCP tool
 writes in ADR 0107's addendum of the same day — is extended to **order approval**
 and to **payments** (ADR 0110's addendum). Ordinary sealed settings deliberately

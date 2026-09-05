@@ -14,8 +14,8 @@ not in this table.
 | `kpi-tally` — figures arrive (num-01 lineage) | All five KPI figures and the "Waiting on you" count, on first data arrival and on refetch deltas; an unknown (em dash) never counts | `tally` sampled overdamped spring (stiffness 120 / damping 26, `linear(…)`) · 840ms · driven off `springs.tally.samples` so the on-screen curve IS the token |
 | `day-open` — settle expansion (the founder's named favourite) | The day-detail panel under the month grid when a day is clicked, each "Waiting on you" row when expanded to its HoldToApprove, and (added 2026-09-03) the "write a new one-tap action" form in the **One-tap actions** rail panel | CSS `grid-template-rows: 0fr → 1fr` · `cubic-bezier(.16,1,.3,1)` · 320ms (`settle`) |
 | `day-scrub` — scrub the day (sig-d lineage) | The tape strip inside the day detail: one bar per day of the month; dragging (or arrow keys) moves the selected day under the needle and every figure/section snaps to that day | **un-eased on purpose** — live `pointermove`, no easing, no interpolation between days: the samples are per-day and easing between them would fabricate data |
-| `hold-pour` — hold-to-approve fill | The `HoldToApprove` control inside an expanded "Waiting on you" row, and (added 2026-09-03) on every card in the **One-tap actions** rail panel, while the operator holds | `linear` · 620ms (`pour`) — the operator is timing it against their own thumb; release retreats on `tuck` (spring 380/32, ~300ms) |
-| `seal-stamp` — the seal lands | Inside `HoldToApprove` when the hold completes and the server-bound write is committed: an order approval, or a one-tap action the gateway has actually recorded as executed | `stamp` sampled spring (500/26, ~11% overshoot) · 360ms — the only motion on the page allowed to overshoot |
+| `hold-pour` — hold-to-approve fill | The `HoldToApprove` control inside an expanded "Waiting on you" row, and (revised 2026-09-05) on the ONE card in the **One-tap actions** rail panel whose act is real — a delivery confirmation — while the operator holds. It was on every card until the first real action landed; a written note now gets a plain button, because the wax is rationed to a write that leaves the page | `linear` · 620ms (`pour`) — the operator is timing it against their own thumb; release retreats on `tuck` (spring 380/32, ~300ms) |
+| `seal-stamp` — the seal lands | Inside `HoldToApprove` when the hold completes and the server-bound write is committed: an order approval, or (2026-09-05) a delivery the gateway booked into stock after redeeming the seal minted when the hold began. It never lands on a mint that failed — `HoldToApprove` returns to rest and says "The seal could not be issued — nothing sent." | `stamp` sampled spring (500/26, ~11% overshoot) · 360ms — the only motion on the page allowed to overshoot |
 | `ink-micro` — micro-states | Hover/focus borders and text colour on KPI tiles, calendar cells, queue rows, links, the Close button, and the one-tap panel's controls; nothing moves more than 2px | `ink` — `cubic-bezier(.16,1,.3,1)` · 160ms (CSS `.dn-ink`) |
 | `skel-sheen` — honest skeletons | Loading bars in the calendar cells, KPI tiles, queue, and rail panels while a fetch is genuinely in flight (never shown for "unknown" — that is the em dash, static) | `cubic-bezier(.45,0,.55,1)` · 1.9s loop (ent-02's shimmer timing) |
 
@@ -28,6 +28,9 @@ not in this table.
   `cal-arrive`; there is no carousel motion between months.
 - **Scrubbed figures do not tween.** See `day-scrub` — the tape head is
   honest about the resolution of the data under it.
+- **A card whose act is not built has no motion at all.** Its control is disabled and
+  the sentence above it says why; a disabled control that animates is a control that
+  looks pressable.
 - **The one-tap panel's dashed cards never pulse.** An action the house raised
   and did not carry out must look *inert*. It gets the `settle` expansion and
   the `ink` micro-states like everything else on the rail, and no motion of its

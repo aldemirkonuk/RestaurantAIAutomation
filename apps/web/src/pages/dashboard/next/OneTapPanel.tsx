@@ -25,20 +25,34 @@
  * the caller (`:150-152`), so an absent author is the STRUCTURAL proof that
  * the house raised the row rather than a person here — not a tone.
  *
- * AND THE HONESTY LINE THAT MUST NOT BE DROPPED. The gateway's
- * `triggerWorkflow` is three `// TODO` branches and a default log
- * (`one-tap-actions.service.ts:404-430`). Marking an action done RECORDS the
- * decision against your name and stamps `executed_at`; it does not place an
- * order, send a mail, or move stock. The card says so above the die, because
- * a seal that implies a reorder it never made is the exact lie this house's
- * ceremony exists to prevent.
+ * THE FIRST REAL ACTION (founder, 2026-09-05): "extend the seal to it when the
+ * first real action lands, but RUN the ecosystem to run the first real action."
+ * `triggerWorkflow` was three `// TODO` branches and a default log, called
+ * AFTER the row was stamped `completed` — so the die reported success for a
+ * reorder that had not happened. It is now a census with three outcomes, and
+ * the card renders the one its type deserves (`one-tap-acts.ts`):
+ *
+ *   * CONFIRM A DELIVERY is real. The hold mints a one-time seal bound to this
+ *     manager, the ORDER the card points at, the act `deliver` and the stock
+ *     about to move; the gateway redeems it BEFORE calling
+ *     `ProcurementService.markDelivered`, and the card then says how much was
+ *     booked. It is the first because it is the only act whose backend exists
+ *     end to end and neither spends money nor posts a letter — the reorder
+ *     path would have done both (`one-tap-workflow.ts` carries the census).
+ *   * A WRITTEN NOTE is a record, and its control is a plain button. The wax is
+ *     rationed: a note is not a commitment of the house's stock or money, and
+ *     a die that means "recorded" beside a die that means "done" teaches people
+ *     the seal means nothing.
+ *   * EVERYTHING ELSE is disabled and says, in one line, what is not built.
+ *     ADR 0083: a control may not claim a write it never makes.
  */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Hand, PenLine, Undo2, UserRound } from 'lucide-react';
+import { ArrowRight, Check, Hand, Lock, PenLine, Undo2, UserRound } from 'lucide-react';
 import { HoldToApprove } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '@/services/api/client';
+import { DELIVERY_WITHOUT_ORDER, dispositionOf } from './one-tap-acts';
 import { timeAgo } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -65,9 +79,13 @@ export interface OneTapAction {
   actionUrl?: string;
   priority: string;
   status: OneTapStatus;
+  /** The order a delivery card is about. Absent means there is nothing to book. */
+  relatedOrderId?: string | null;
   createdAt: string;
   executedAt?: string;
   expiresAt?: string;
+  /** What the execution actually did, as the gateway recorded it. */
+  executionResult?: Record<string, unknown> | null;
 }
 
 export interface CreateOneTapInput {
@@ -116,7 +134,12 @@ export interface OneTapDesk {
   /** The last thing that did not happen, in words. Cleared on the next try. */
   failureNote: string | null;
   refresh: () => void;
-  execute: (id: string) => Promise<void>;
+  /**
+   * Mint the seal for a real act, at the moment the hold begins. Resolves null
+   * when the gateway would not issue one — and null is what stops the write.
+   */
+  mintSeal: (id: string) => Promise<string | null>;
+  execute: (id: string, challenge?: string | null) => Promise<OneTapAction | null>;
   cancel: (id: string) => Promise<void>;
   create: (input: CreateOneTapInput) => Promise<void>;
 }
@@ -161,22 +184,84 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
     };
   }, [read]);
 
-  const act = useCallback(
-    async (id: string, path: 'execute' | 'cancel', what: string) => {
+  /**
+   * Mint the proof, once, when the gesture begins.
+   *
+   * A refusal here is not a failure of the network: the gateway refuses to
+   * issue a seal for an act it would refuse anyway (already delivered, no
+   * order, not your house), and that sentence is the useful one. It is shown as
+   * itself for a 400/403 and framed only for something that carries no
+   * decision.
+   */
+  const mintSeal = useCallback(async (id: string): Promise<string | null> => {
+    setFailureNote(null);
+    try {
+      const res = await apiClient.post<{ challenge?: string }>(
+        `/one-tap-actions/${id}/seal-challenge`,
+        {},
+      );
+      const challenge = res.data?.challenge ?? null;
+      if (!challenge) {
+        setFailureNote('The seal was not issued, so nothing was confirmed. Hold it again.');
+        return null;
+      }
+      return challenge;
+    } catch (err) {
+      const failure = failureOf(err);
+      setFailureNote(
+        failure.status === 400 || failure.status === 403
+          ? failure.message
+          : `The seal could not be issued (${failure.message}) — nothing was confirmed.`,
+      );
+      return null;
+    }
+  }, []);
+
+  /**
+   * Carry it out, carrying the seal back in the header the way an order
+   * approval does. The gateway's refusal is a whole sentence since it names
+   * which rule fired, so a 400 or 403 is printed as itself; anything else keeps
+   * the generic framing, because a dropped connection explains nothing.
+   */
+  const execute = useCallback(
+    async (id: string, challenge?: string | null): Promise<OneTapAction | null> => {
       setFailureNote(null);
       try {
-        await apiClient.post(`/one-tap-actions/${id}/${path}`, {});
+        const res = await apiClient.post<OneTapAction>(
+          `/one-tap-actions/${id}/execute`,
+          {},
+          challenge ? { headers: { 'X-Seal-Challenge': challenge } } : undefined,
+        );
         await read();
+        return res.data ?? null;
       } catch (err) {
-        setFailureNote(`${what} was refused (${failureOf(err).message}) — the action is unchanged.`);
+        const failure = failureOf(err);
+        setFailureNote(
+          failure.status === 400 || failure.status === 403
+            ? failure.message
+            : `Marking it done was refused (${failure.message}) — the action is unchanged.`,
+        );
         throw err;
       }
     },
     [read],
   );
 
-  const execute = useCallback((id: string) => act(id, 'execute', 'Marking it done'), [act]);
-  const cancel = useCallback((id: string) => act(id, 'cancel', 'Ruling it out'), [act]);
+  const cancel = useCallback(
+    async (id: string) => {
+      setFailureNote(null);
+      try {
+        await apiClient.post(`/one-tap-actions/${id}/cancel`, {});
+        await read();
+      } catch (err) {
+        setFailureNote(
+          `Ruling it out was refused (${failureOf(err).message}) — the action is unchanged.`,
+        );
+        throw err;
+      }
+    },
+    [read],
+  );
 
   const create = useCallback(
     async (input: CreateOneTapInput) => {
@@ -198,7 +283,15 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
     [read],
   );
 
-  return { register, failureNote, refresh: () => void read(), execute, cancel, create };
+  return {
+    register,
+    failureNote,
+    refresh: () => void read(),
+    mintSeal,
+    execute,
+    cancel,
+    create,
+  };
 }
 
 /* ── the card ────────────────────────────────────────────────────────────── */
@@ -225,19 +318,59 @@ function CalmChip({ children, icon: Icon }: { children: string; icon: typeof Han
   );
 }
 
+/**
+ * The words a delivery card says after the act, built from what the GATEWAY
+ * recorded rather than from what the browser asked for. A count the client
+ * assumed would be a number nobody measured.
+ */
+function deliveryWords(result: Record<string, unknown> | null | undefined): string {
+  const booked = result?.bottlesBooked ?? result?.quantityBooked;
+  const orderNumber = result?.orderNumber;
+  const named = typeof orderNumber === 'string' && orderNumber.trim() !== ''
+    ? ` on ${orderNumber}`
+    : '';
+  if (typeof booked === 'number' && Number.isFinite(booked)) {
+    return `Delivery confirmed${named} — ${booked} ${booked === 1 ? 'bottle' : 'bottles'} booked into stock.`;
+  }
+  // The write happened; the count did not come back. An em dash, never a zero.
+  return `Delivery confirmed${named} — the quantity booked came back as —.`;
+}
+
 export function ActionCard({
   action,
   byHouse,
+  onMintSeal,
   onExecute,
   onCancel,
 }: {
   action: OneTapAction;
   byHouse: boolean;
-  onExecute: (id: string) => Promise<void>;
+  onMintSeal: (id: string) => Promise<string | null>;
+  onExecute: (id: string, challenge?: string | null) => Promise<OneTapAction | null>;
   onCancel: (id: string) => Promise<void>;
 }) {
   // Bumped after a refusal so the die remounts at rest rather than staying sealed.
   const [attempt, setAttempt] = useState(0);
+  const [outcome, setOutcome] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  const disposition = dispositionOf(action.actionType);
+  const sealable = disposition.kind === 'workflow' && !!action.relatedOrderId;
+  const blocked =
+    disposition.kind === 'unbuilt'
+      ? disposition.sentence
+      : disposition.kind === 'workflow' && !action.relatedOrderId
+        ? DELIVERY_WITHOUT_ORDER
+        : null;
+
+  /** What this card's "done" is, said before it is pressed rather than after. */
+  const promise =
+    disposition.kind === 'workflow'
+      ? 'Confirming this books the delivery into stock through the order it names. The hold mints a seal the write has to carry back, so an order edited in the meantime is refused rather than booked.'
+      : disposition.kind === 'record'
+        ? 'Marking it done records the decision against your name. Nothing else moves — a written action has no workflow behind it, and the plain button says so.'
+        : null;
+
   return (
     <li
       className="rounded-md px-3 py-2.5"
@@ -258,10 +391,10 @@ export function ActionCard({
       {action.description && (
         <p className="mt-0.5 text-[11.5px] text-inkm-4">{action.description}</p>
       )}
-      <p className="mt-1 text-[11px] text-inkm-4">
-        Marking it done records the decision against your name. It does not place the order itself
-        — that happens where the link goes.
-      </p>
+      {promise && <p className="mt-1 text-[11px] text-inkm-4">{promise}</p>}
+      {blocked && (
+        <p className="mt-1 text-[11px] text-inkm-2">{blocked}</p>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {action.actionUrl && (
           <Link
@@ -280,17 +413,72 @@ export function ActionCard({
           <Undo2 size={12} strokeWidth={1.75} aria-hidden />
           Undo — rule it out
         </button>
-        <div className="min-w-[180px] flex-1">
-          <HoldToApprove
-            key={attempt}
-            label="Hold to mark it done"
-            approvedLabel="Recorded"
-            onApprove={() => {
-              void onExecute(action.id).catch(() => setAttempt((a) => a + 1));
+
+        {/* The one act that really happens gets the wax. */}
+        {sealable && (
+          <div className="min-w-[180px] flex-1">
+            <HoldToApprove
+              key={attempt}
+              label="Hold to confirm the delivery"
+              approvedLabel="Booked in"
+              disabled={running}
+              onChallenge={() => onMintSeal(action.id)}
+              onApprove={(challenge) => {
+                setRunning(true);
+                setOutcome(null);
+                void onExecute(action.id, challenge)
+                  .then((updated) => {
+                    setOutcome(deliveryWords(updated?.executionResult));
+                  })
+                  .catch(() => {
+                    // The desk's failureNote carries the gateway's sentence; the
+                    // die returns to rest so it never reads "Booked in" over an
+                    // order that is still waiting.
+                    setAttempt((a) => a + 1);
+                  })
+                  .finally(() => setRunning(false));
+              }}
+            />
+          </div>
+        )}
+
+        {/* A record is a record. No ceremony for something that commits nothing. */}
+        {disposition.kind === 'record' && (
+          <button
+            type="button"
+            disabled={running}
+            onClick={() => {
+              setRunning(true);
+              void onExecute(action.id)
+                .catch(() => undefined)
+                .finally(() => setRunning(false));
             }}
-          />
-        </div>
+            className="dn-ink inline-flex items-center gap-1.5 rounded border border-seal-ring bg-seal-tint px-2 py-1 text-[11px] font-semibold text-seal disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+          >
+            <Check size={12} strokeWidth={1.75} aria-hidden />
+            {running ? 'Writing it down…' : 'Mark it done'}
+          </button>
+        )}
+
+        {/* Nothing to press. Disabled, and the sentence above says why. */}
+        {blocked && (
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            title={blocked}
+            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded border border-paper-2 px-2 py-1 text-[11px] text-inkm-4 opacity-60"
+          >
+            <Lock size={12} strokeWidth={1.75} aria-hidden />
+            Not built yet
+          </button>
+        )}
       </div>
+      {outcome && (
+        <p role="status" className="mt-1.5 text-[11.5px] text-inkm-2">
+          {outcome}
+        </p>
+      )}
     </li>
   );
 }
@@ -387,6 +575,7 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
                 key={a.id}
                 action={a}
                 byHouse
+                onMintSeal={desk.mintSeal}
                 onExecute={desk.execute}
                 onCancel={desk.cancel}
               />
@@ -396,6 +585,7 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
                 key={a.id}
                 action={a}
                 byHouse={false}
+                onMintSeal={desk.mintSeal}
                 onExecute={desk.execute}
                 onCancel={desk.cancel}
               />
@@ -472,10 +662,11 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
         </div>
 
         <p className="mt-3 border-t border-paper-2 pt-2 text-[11px] text-inkm-4">
-          Marking an action done records the decision and stamps who made it. It does not place an
-          order or send a mail — the gateway’s workflow trigger is not built
-          (<code style={{ fontFamily: MONO }}>one-tap-actions.service.ts:404</code>), so the
-          seal here means “decided”, never “done by the house”.
+          One act on this desk is real: confirming a delivery books the stock through the order it
+          names, and it is the only control here that carries the seal. A written action is
+          recorded against your name and nothing else moves. Every other kind of action is
+          disabled and says what is not built — no control here sends a mail or places an
+          order.
         </p>
       </div>
     </section>
