@@ -53,6 +53,13 @@ plainly: "Today's KPIs, alerts, and the actions worth doing first"
 **Mudavym redesign** (flag `mudavym_design_dashboard`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/dashboard/next/`):
 
+- **Waiting-on-you approves behind a PROVEN seal** (added 2026-09-04, founder's
+  call in the ADR 0116 addendum) — the hold mints a one-time challenge bound to
+  this manager, this order and that order's own total and vendor, and the write
+  carries it back; a mint that fails approves nothing and says so on the
+  control. The card renders the same `components/orders/SealedApproveDie.tsx`
+  the legacy `/orders` desk does, so there is one mint path, and a 403 from the
+  gateway is printed as itself rather than as a claim about the network
 - **One-tap actions live on the rail, under *Waiting on you*** (added 2026-09-03 by
   the founder's decision; they were built inside `/notifications` in the p4 first
   pass and moved here). `apps/web/src/pages/dashboard/next/OneTapPanel.tsx` reads
@@ -249,6 +256,23 @@ page's paths; neither was built here, and the rail panel states both in words.
 
 - **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the Low Stock Alerts card reads camelCase (`Dashboard.tsx:998,1004,971`, modal `:1315-1320`) from a snake_case payload (`GET /inventory/:id/low-stock` → `v_low_stock_items`, `database.service.ts:57-62`), so all 7 real wines render as "Unknown wine" with blank counts (defect 1). "Top Performing Wines / This month's best sellers" never reads sales — `topPerformingWines` (`:327-345`) aggregates procurement orders and calendar entries — so it says "no sales performance data" over $2,236 of real sales.
 
+**Closed 2026-09-04 — Waiting-on-you approves behind a proven seal.** ADR 0116's
+addendum made an order approval a redeemed seal and left this card calling
+`ordersApi.approveOrder(order.id)` with an id alone (`WaitingOnYou.tsx:33`), so
+every approval from the dashboard would have been refused the moment that
+merged — and the card would have said "the approval didn't reach the server",
+a claim about the network that a refusal makes false. The founder chose the
+hold gesture over a one-click mint-and-approve. The card now renders
+`components/orders/SealedApproveDie.tsx` — the SAME control and the same mint
+as the legacy `/orders` desk, so there is one implementation of "exactly once"
+outside `pages/orders/next` — which mints when the gesture BEGINS, approves
+nothing if the mint fails, prints a 403 as itself and keeps the generic line
+only for a failure carrying no decision. Proven by `WaitingOnYou.seal.test.tsx`
+(9 cases; 6 of 8 render cases fail against the `git show HEAD:` copy). Not
+proven live: the tenant reachable from the local gateway has zero orders
+(`GET /procurement/orders` → `total: 0`) and that gateway points at production,
+so nothing was approved from here.
+
 ## 10. Maturity
 
 **hollow.**
@@ -364,3 +388,18 @@ the two or three actions worth doing before service, each of which actually happ
    Both are durable identity-stamped writes today, which is what justifies it; a
    third would not be justifiable, and the rationing rule should then take the
    ceremony off the reversible one.
+
+**Added 2026-09-04 — the seal reached this card.**
+
+11. **Prove a redemption against a database that has the seal table.** Nothing
+   anywhere has yet exercised a SUCCESSFUL redeem: the local gateway points at
+   production (so no order may be approved from it) and the tenant it reaches
+   has zero orders. Every claim about the happy path is a spec, on this page and
+   on [[orders]]. *Blocker: a scratch database with `mcp_seal_challenges`
+   applied, or a staging tenant with a disposable order.*
+12. **Give the one-tap die the same mint.** `OneTapPanel`'s `HoldToApprove`
+   executes a durable action (`executeOneTapAction`) and asserts its gesture the
+   way order approval used to; when `triggerWorkflow` stops being TODO stubs
+   (item 8) that assertion becomes a real write with no proof behind it.
+   `common/seal/` already takes any subject kind, so this is a subject-kind
+   addition rather than a new mechanism.

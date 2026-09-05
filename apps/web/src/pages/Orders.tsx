@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
 import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
+import { SealedApproveDie } from '../components/orders/SealedApproveDie'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
@@ -240,6 +241,21 @@ export function Orders() {
   const { refetch: refetchOrders } = useOrders()
   const [showApprovalModal, setShowApprovalModal] = useState(false)
   const [showOrderApprovalModal, setShowOrderApprovalModal] = useState(false)
+  /**
+   * The order a confirm handed to the seal.
+   *
+   * `OrderApprovalModal`'s Confirm is a click, and a click cannot mint the way
+   * a hold does (ADR 0116 addendum: the token must be asked for when the
+   * gesture BEGINS). So it hands the order here instead, and the one ceremony
+   * this page has does the sealing.
+   */
+  const [sealTarget, setSealTarget] = useState<{
+    orderId: string
+    title: string
+    /** Set when the order cannot be sealed at all, with the reason in words. */
+    blocked: string | null
+    onSealed: () => void
+  } | null>(null)
   const [orderApprovalData, setOrderApprovalData] = useState<OrderApprovalData | null>(null)
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
   const [showOrderGuard, setShowOrderGuard] = useState(false)
@@ -511,44 +527,42 @@ export function Orders() {
   }
 
   /**
-   * What to tell a person whose approval was refused.
+   * The house's ceremony, on the legacy page: what happens AFTER the hold.
    *
-   * A 403 from `POST /procurement/orders/:id/approve` carries a sentence naming
-   * the rule, the number and the role that may sign (ADR 0116). It is shown as
-   * itself. Anything else keeps a generic line, because a network error's
-   * message explains nothing about this order.
+   * ==========================================================================
+   * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0116 addendum)
+   * ==========================================================================
+   * Every approve control on this page now goes through `SealedApproveDie`:
+   * the hold mints a one-time seal per order when the GESTURE BEGINS, the
+   * write carries it back, and a mint that fails approves nothing and says so.
+   * No handler here posts to `/approve` itself any more — a click that mints
+   * and approves in one breath is the assertion model with extra steps, which
+   * is the thing the addendum exists to remove.
    *
-   * The two call sites here post through `apiClient` directly rather than
-   * through `services/api/orders.ts`, so they do not get that module's
-   * message promotion and have to read the body themselves.
+   * These functions are only the bookkeeping the page does once the gateway
+   * has said yes.
    */
-  const approvalRefusalText = (error: unknown): string => {
-    const status = (error as { response?: { status?: number } })?.response?.status
-    const body = (error as { response?: { data?: { message?: string } } })?.response?.data
-    if (status === 403 && body?.message) return body.message
-    return 'Failed to approve order. Please try again.'
-  }
-
-  const confirmApproval = async (price: number) => {
-    try {
-      if (selectedOrder && isUuid(selectedOrder.order_id)) {
-        await apiClient.post(`/procurement/orders/${selectedOrder.order_id}/approve`, {
-          finalPrice: price,
-        })
-      }
-      setShowApprovalModal(false)
-      setSelectedOrder(null)
+  const afterOrdersSealed = useCallback(
+    (approvedIds: string[]) => {
+      const sealed = new Set(approvedIds)
+      const at = new Date().toISOString()
+      setOrders(prev =>
+        prev.map(order =>
+          sealed.has(order.order_id)
+            ? { ...order, status: 'approved', approved_at: at }
+            : order
+        )
+      )
+      setSelectedOrders(prev => {
+        const next = new Set(prev)
+        approvedIds.forEach(id => next.delete(id))
+        return next
+      })
       // Refetch orders to sync with backend
       refetchOrders()
-    } catch (error) {
-      console.error('Approval failed:', error)
-      // ADR 0116: a 403 from this route carries the whole reason — which rule
-      // fired, what the number was, who may sign. `alert('Failed to approve
-      // order')` would replace a written explanation with a shrug, and the
-      // person would learn only to split the order in two.
-      alert(approvalRefusalText(error))
-    }
-  }
+    },
+    [setOrders, setSelectedOrders, refetchOrders]
+  )
 
   const handleReject = async (orderId: string) => {
     if (confirm('Are you sure you want to reject this order?')) {
@@ -1239,41 +1253,42 @@ Shadow stock has been moved to Live Stock.`)
   const orderedCount = oneTimeOrders.filter((o) => o.status === 'ordered').length
   const deliveredCount = oneTimeOrders.filter((o) => o.status === 'delivered').length
 
-  // Bulk action handlers with multi-status support
-  const handleBulkApprove = useCallback(async () => {
-    if (selectedOrders.size === 0) return
-    setActionLoading('bulk-approve')
-    
-    try {
-      const ordersToApprove = orders.filter(o => 
-        selectedOrders.has(o.order_id) && o.status === 'pending_approval'
-      )
-      
-      // Update all selected orders
-      setOrders(prev => prev.map(order => 
-        selectedOrders.has(order.order_id) && order.status === 'pending_approval'
-          ? { ...order, status: 'approved', approved_at: new Date().toISOString(), final_price: order.suggested_price }
-          : order
-      ))
-      
-      // Check if there are other actionable orders still selected
-      const selectedOrdersList = orders.filter(o => selectedOrders.has(o.order_id))
-      const hasOtherActionableOrders = selectedOrdersList.some(o => 
-        o.status === 'approved' || o.status === 'ordered'
-      )
-      
-      // Only clear selection if no other actionable orders remain
-      if (!hasOtherActionableOrders) {
-        setSelectedOrders(new Set())
-      }
-      
-      alert(`✅ ${ordersToApprove.length} order(s) approved!${hasOtherActionableOrders ? '\n\n📋 Other selected orders remain - you can continue with bulk actions.' : ''}`)
-    } catch (err) {
-      setError('Failed to approve orders')
-    } finally {
-      setActionLoading(null)
-    }
-  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
+  /**
+   * The selected orders that a bulk approval would actually commit.
+   *
+   * ==========================================================================
+   * WHAT THIS REPLACED, AND WHY IT MATTERED
+   * ==========================================================================
+   * `handleBulkApprove` used to be the ONLY reachable approve control on this
+   * page (measured 2026-09-04: nothing in the repo sets `showApprovalModal` or
+   * `showOrderApprovalModal` to true, and the two "Approve" buttons on the
+   * rows open the comms drawer). It called no endpoint at all: it rewrote
+   * local state to `approved`, cleared the selection and alerted "N order(s)
+   * approved!". Nothing was sent, nothing was written, and the page reported
+   * success — an absence rendered as health, pointed at the house's money.
+   *
+   * It is now the house ceremony: one deliberate hold, one seal minted per
+   * selected order when the gesture BEGINS, nothing approved at all if any of
+   * those mints fails, and each refusal printed in the gateway's own words.
+   * Only ids the gateway actually approved change status here.
+   */
+  const bulkApprovableIds = useMemo(
+    () =>
+      orders
+        .filter(o => selectedOrders.has(o.order_id) && o.status === 'pending_approval')
+        .map(o => o.order_id)
+        .filter(id => isUuid(id)),
+    [orders, selectedOrders]
+  )
+  /** Ids selected and pending but NOT approvable, because the gateway keys on a uuid. */
+  const bulkUnapprovableCount = useMemo(
+    () =>
+      orders.filter(
+        o => selectedOrders.has(o.order_id) && o.status === 'pending_approval' && !isUuid(o.order_id)
+      ).length,
+    [orders, selectedOrders]
+  )
+  const bulkDieRef = useRef<HTMLDivElement | null>(null)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1308,15 +1323,20 @@ Shadow stock has been moved to Live Stock.`)
           .map(o => o.order_id)
         setSelectedOrders(new Set(visibleOrderIds))
       }
-      // Cmd/Ctrl + Shift + A to approve selected orders
+      // Cmd/Ctrl + Shift + A takes you TO the seal — it no longer approves.
+      //
+      // A shortcut that committed fourteen orders on one keystroke is exactly
+      // the open-ended approval the seal exists to prevent (founder,
+      // 2026-09-04). It now moves focus onto the hold, which is itself
+      // keyboard-operable: Enter arms it, Enter again seals, Escape cancels.
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
         e.preventDefault()
-        handleBulkApprove()
+        bulkDieRef.current?.querySelector('button')?.focus()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [orders, showCreateOrderModal, handleBulkApprove, openCreateOrderFlow, setSelectedOrders])
+  }, [orders, showCreateOrderModal, openCreateOrderFlow, setSelectedOrders])
 
   const handleBulkMarkAsOrdered = useCallback(async () => {
     if (selectedOrders.size === 0) return
@@ -1635,20 +1655,27 @@ Shadow stock has been moved to Live Stock.`)
                    {/* Pending Actions */}
                    {pendingCount > 0 && (
                      <>
-                       <Button
-                         size="sm"
-                         onClick={handleBulkApprove}
-                         disabled={actionLoading === 'bulk-approve'}
-                         title="Shortcut: Cmd/Ctrl+Shift+A"
-                         className="bg-emerald-600 hover:bg-emerald-700"
-                       >
-                         {actionLoading === 'bulk-approve' ? (
-                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                         ) : (
-                           <CheckCircle className="w-4 h-4 mr-1" />
+                       {/*
+                         The house ceremony, on the legacy ground. One hold,
+                         one seal per selected order minted when the gesture
+                         begins, nothing approved if any of them fails.
+                       */}
+                       <div ref={bulkDieRef} className="min-w-[260px]" title="Shortcut: Cmd/Ctrl+Shift+A moves focus here">
+                         <SealedApproveDie
+                           orderIds={bulkApprovableIds}
+                           label={`Hold to approve ${bulkApprovableIds.length} order${bulkApprovableIds.length === 1 ? '' : 's'}`}
+                           approvedLabel="Sealed"
+                           onApproved={afterOrdersSealed}
+                         />
+                         {bulkUnapprovableCount > 0 && (
+                           <p className="mt-1 text-xs text-gray-600" role="status">
+                             {bulkUnapprovableCount} selected order
+                             {bulkUnapprovableCount === 1 ? ' has' : 's have'} no server id yet, so
+                             {bulkUnapprovableCount === 1 ? ' it is' : ' they are'} not in this seal
+                             and nothing about {bulkUnapprovableCount === 1 ? 'it' : 'them'} was sent.
+                           </p>
                          )}
-                         Approve ({pendingCount})
-                       </Button>
+                       </div>
                        <Button
                          size="sm"
                          variant="outline"
@@ -3298,53 +3325,67 @@ Shadow stock has been moved to Live Stock.`)
               setOrderApprovalData(allProviderResponses[prevIndex])
             }
           }}
-          onConfirm={async () => {
-            try {
-              if (isUuid(orderApprovalData.orderId)) {
-                await apiClient.post(`/procurement/orders/${orderApprovalData.orderId}/approve`, {
-                  finalPrice: orderApprovalData.finalPrice,
-                })
-              } else {
-                throw new Error('Invalid order id')
-              }
-
-              setOrders(prev => prev.map(order =>
-                order.order_id === orderApprovalData.orderId
-                  ? {
-                      ...order,
-                      status: 'approved',
-                      final_price: orderApprovalData.finalPrice,
-                      approved_at: new Date().toISOString(),
-                    }
-                  : order
-              ))
-              // Refetch orders to sync with backend
-              refetchOrders()
-              
-              // Remove from all responses
-              setAllProviderResponses(prev => {
-                const updated = prev.filter((_, idx) => idx !== currentApprovalIndex)
-                
-                // If there are more responses, show the next one (or previous if at end)
-                if (updated.length > 0) {
-                  const nextIndex = Math.min(currentApprovalIndex, updated.length - 1)
-                  setCurrentApprovalIndex(nextIndex)
-                  setOrderApprovalData(updated[nextIndex])
-                } else {
-                  // No more responses, close modal
-                  setShowOrderApprovalModal(false)
-                  setOrderApprovalData(null)
-                  setCurrentApprovalIndex(0)
-                }
-                
-                return updated
+          onConfirm={() => {
+            // A CLICK IS NOT A HOLD (founder, 2026-09-04; ADR 0116 addendum).
+            //
+            // This button used to POST `/approve` itself. Minting a seal here
+            // and spending it in the same breath would be the assertion model
+            // with extra steps — the token would be one more thing the same
+            // request asked for itself. So Confirm now hands the order to the
+            // one ceremony this page has, and the seal is minted when that
+            // hold begins.
+            //
+            // `finalPrice` is not carried, and never was: the gateway's
+            // approve route takes no body at all (`procurement.controller.ts`
+            // `approveOrder`, id + `X-Seal-Challenge` header only), so the
+            // figure this modal posted was read by nothing.
+            if (!isUuid(orderApprovalData.orderId)) {
+              setSealTarget({
+                orderId: orderApprovalData.orderId,
+                title: orderApprovalData.wineName || 'this order',
+                blocked:
+                  'This order has no server id yet, so there is nothing to seal and nothing was sent.',
+                onSealed: () => {},
               })
-              
-              alert('Order approved successfully! ✅')
-            } catch (error) {
-              console.error('Failed to confirm order:', error)
-              alert(approvalRefusalText(error))
+              return
             }
+            setSealTarget({
+              orderId: orderApprovalData.orderId,
+              title: orderApprovalData.wineName || 'this order',
+              blocked: null,
+              onSealed: () => {
+                setOrders(prev => prev.map(order =>
+                  order.order_id === orderApprovalData.orderId
+                    ? {
+                        ...order,
+                        status: 'approved',
+                        approved_at: new Date().toISOString(),
+                      }
+                    : order
+                ))
+                // Refetch orders to sync with backend
+                refetchOrders()
+
+                // Remove from all responses
+                setAllProviderResponses(prev => {
+                  const updated = prev.filter((_, idx) => idx !== currentApprovalIndex)
+
+                  // If there are more responses, show the next one (or previous if at end)
+                  if (updated.length > 0) {
+                    const nextIndex = Math.min(currentApprovalIndex, updated.length - 1)
+                    setCurrentApprovalIndex(nextIndex)
+                    setOrderApprovalData(updated[nextIndex])
+                  } else {
+                    // No more responses, close modal
+                    setShowOrderApprovalModal(false)
+                    setOrderApprovalData(null)
+                    setCurrentApprovalIndex(0)
+                  }
+
+                  return updated
+                })
+              },
+            })
           }}
           onCancel={async () => {
             try {
@@ -3598,7 +3639,7 @@ Shadow stock has been moved to Live Stock.`)
               </p>
 
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="final-price">
                   Final Price per Bottle
                 </label>
                 <div className="relative">
@@ -3606,26 +3647,50 @@ Shadow stock has been moved to Live Stock.`)
                   <input
                     type="number"
                     step="0.01"
+                    disabled
                     defaultValue={selectedOrder.suggested_price}
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-wine-500"
+                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
                     id="final-price"
                   />
                 </div>
+                {/*
+                  Disabled rather than removed. The approve route takes no body
+                  at all — `procurement.controller.ts` `approveOrder` reads the
+                  id and the `X-Seal-Challenge` header and nothing else — so
+                  every figure typed here since this modal was written went
+                  nowhere. A field that looks live and is read by nothing is
+                  the same lie as a number with no source behind it.
+                */}
+                <p className="mt-2 text-xs text-gray-600">
+                  This figure is not sent: approval writes no price. The seal is taken over
+                  the order&rsquo;s own total, so change the price on the order first if it is
+                  wrong.
+                </p>
               </div>
 
               <div className="flex gap-3">
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    const price = parseFloat(
-                      (document.getElementById('final-price') as HTMLInputElement).value
-                    )
-                    confirmApproval(price)
-                  }}
-                  className="flex-1"
-                >
-                  Approve Order
-                </Button>
+                {/*
+                  The house ceremony, on the legacy ground: the hold mints the
+                  seal, the write carries it, and a mint that fails approves
+                  nothing and says so on the control itself.
+                */}
+                <div className="flex-1">
+                  <SealedApproveDie
+                    orderIds={isUuid(selectedOrder.order_id) ? [selectedOrder.order_id] : []}
+                    label="Hold to approve this order"
+                    onApproved={(ids) => {
+                      afterOrdersSealed(ids)
+                      setShowApprovalModal(false)
+                      setSelectedOrder(null)
+                    }}
+                  />
+                  {!isUuid(selectedOrder.order_id) && (
+                    <p className="mt-1 text-xs text-gray-600" role="status">
+                      This order has no server id yet, so there is nothing to seal and nothing
+                      was sent.
+                    </p>
+                  )}
+                </div>
                 <Button
                   variant="outline"
                   onClick={() => setShowApprovalModal(false)}
@@ -3634,6 +3699,63 @@ Shadow stock has been moved to Live Stock.`)
                   Cancel
                 </Button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/*
+        THE SEAL, HANDED OVER FROM A CLICK.
+
+        `OrderApprovalModal`'s Confirm cannot mint the way a hold does, so it
+        opens this instead. One ceremony, one mint path — the same
+        `SealedApproveDie` the bulk bar and the legacy modal use.
+      */}
+      <AnimatePresence>
+        {sealTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            onClick={() => setSealTarget(null)}
+            role="dialog"
+            aria-label="Seal this order"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
+            >
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Seal this order</h3>
+              <p className="text-gray-600 mb-6">
+                {sealTarget.title} — the seal is minted when the hold begins and spent exactly
+                once. Release early and nothing is sent.
+              </p>
+              {sealTarget.blocked ? (
+                <p className="mb-6 text-sm text-gray-700" role="status">
+                  {sealTarget.blocked}
+                </p>
+              ) : (
+                <SealedApproveDie
+                  orderIds={[sealTarget.orderId]}
+                  label="Hold to approve this order"
+                  onApproved={(ids) => {
+                    afterOrdersSealed(ids)
+                    sealTarget.onSealed()
+                    setSealTarget(null)
+                  }}
+                />
+              )}
+              <Button
+                variant="outline"
+                onClick={() => setSealTarget(null)}
+                className="mt-4 w-full"
+              >
+                Cancel
+              </Button>
             </motion.div>
           </motion.div>
         )}

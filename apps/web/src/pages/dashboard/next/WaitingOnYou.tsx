@@ -1,15 +1,29 @@
 /**
  * "Waiting on you" — the pending-approvals queue (Federation's panel, the
  * founder-liked block). Every order the gateway says needs approval, oldest
- * first; a row expands (settle 0fr→1fr) into the real HoldToApprove control,
- * which calls the real approve endpoint — no fabricated success: the seal
- * only stays if the server said yes.
+ * first; a row expands (settle 0fr→1fr) into the real hold ceremony, which
+ * calls the real approve endpoint — no fabricated success: the seal only
+ * stays if the server said yes.
+ *
+ * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0116 addendum).
+ * This card used to call `ordersApi.approveOrder(order.id)` with an id alone,
+ * so from the day the gateway began demanding a seal it would have been
+ * refused, in words, on every order. It now holds through the SAME control
+ * and the SAME mint as the legacy `/orders` page — `SealedApproveDie` — which
+ * mints when the gesture BEGINS and approves nothing at all if the mint
+ * fails. One implementation, because two implementations of "exactly once"
+ * is how the two learn to disagree.
+ *
+ * It also no longer flattens every failure into one sentence. A 403 from this
+ * route carries the whole reason — which rule fired, what the number was, who
+ * may sign — and the die prints it verbatim; "the approval didn't reach the
+ * server" was a claim about the network that a refusal makes false.
  */
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { HoldToApprove, Seal } from '@/components/mudavym';
-import { ordersApi } from '@/services/api';
+import { Seal } from '@/components/mudavym';
+import { SealedApproveDie } from '@/components/orders/SealedApproveDie';
 import type { Order } from '@/services/api/types';
 import { formatMoney, formatNumber } from '@/lib/utils';
 import { DASH, timeAgo } from './format';
@@ -25,18 +39,15 @@ export interface WaitingOnYouProps {
 export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [sealedIds, setSealedIds] = useState<Set<string>>(new Set());
-  const [failedId, setFailedId] = useState<string | null>(null);
 
-  const approve = async (order: Order) => {
-    setFailedId(null);
-    try {
-      await ordersApi.approveOrder(order.id);
-      setSealedIds((s) => new Set(s).add(order.id));
-      // Let the seal land before the queue refetches the row away.
-      setTimeout(onChanged, 900);
-    } catch {
-      setFailedId(order.id);
-    }
+  const onApproved = (ids: string[]) => {
+    setSealedIds((s) => {
+      const next = new Set(s);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    // Let the seal land before the queue refetches the row away.
+    setTimeout(onChanged, 900);
   };
 
   const rows = (pending ?? []).filter((o) => !sealedIds.has(o.id));
@@ -126,17 +137,13 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                       >
                         Review
                       </Link>
-                      <HoldToApprove
-                        onApprove={() => approve(o)}
+                      <SealedApproveDie
+                        orderIds={[o.id]}
                         label={`Hold to approve · ${formatMoney(o.totalPrice, 'full')}`}
+                        onApproved={onApproved}
                       />
                     </div>
                   </div>
-                  {failedId === o.id && (
-                    <p className="px-3 pb-2 text-[11px] italic text-inkm-3">
-                      The approval didn’t reach the server — the order is still waiting.
-                    </p>
-                  )}
                 </div>
               </div>
             </div>

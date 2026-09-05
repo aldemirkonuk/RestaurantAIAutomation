@@ -334,6 +334,12 @@ how a true figure becomes a false claim.
 
 ## Addendum — 2026-09-04: the seal on an order is REDEEMED, not asserted
 
+**Status, 2026-09-04 (later the same day): CLOSED — the legacy sites hold too.**
+Both call sites this addendum left unsealed now mint through the same hold, so
+no approve control anywhere in the web app reaches `/approve` without a
+redeemed seal. See "What is NOT sealed yet" below, which is kept and answered
+rather than deleted, and the three measurements that correct it.
+
 **Founder decision, 2026-09-04.** Challenge-and-redeem — built for MCP tool
 writes in ADR 0107's addendum of the same day — is extended to **order approval**
 and to **payments** (ADR 0110's addendum). Ordinary sealed settings deliberately
@@ -397,6 +403,72 @@ asserted… nothing was changed"), until those two call sites mint. That is a
 deliberate, explained refusal rather than a silent approval, but it is a
 user-visible change and it is the one thing here a founder should look at before
 this merges. See `06-pages/orders.md` §9.
+
+### Answered — 2026-09-04: "give both legacy call sites the hold gesture"
+
+**Founder decision.** Shown that the legacy orders page and the dashboard's
+Waiting-on-you card send no seal and would be refused on merge, the founder
+chose the hold rather than a one-click mint-and-approve: **approval stays
+proven everywhere.**
+
+**What was built.** One control — `components/orders/SealedApproveDie.tsx` —
+used by both surfaces, so there is exactly one mint path outside
+`pages/orders/next`. It mints when the gesture BEGINS (`HoldToApprove`'s
+`onChallenge`), one seal per order even in bulk, approves NOTHING if any mint
+fails, prints a 403 as itself and keeps the generic wrapper only for a failure
+that carries no decision. `pages/dashboard/next/WaitingOnYou.tsx` and the
+legacy `pages/Orders.tsx` render it; `hooks/useOrdersData.ts` takes a challenge
+and exposes the mint. `pages/Orders.tsx` now contains no `/approve` POST of its
+own, and Cmd/Ctrl+Shift+A moves focus to the hold instead of approving
+fourteen orders on one keystroke.
+
+**Three things this addendum said that measurement contradicted.** Each was
+believed when written and is corrected here rather than quietly fixed:
+
+1. **"the legacy `apps/web/src/pages/Orders.tsx` (via `hooks/useOrdersData.ts`)"**
+   — it was not via that hook. `grep -rn useOrdersData apps packages` finds the
+   definition and one barrel re-export (`hooks/index.ts:9`) and **no
+   consumers at all**. The legacy page posted `/approve` through `apiClient`
+   directly. The hook was still given the seal, because an exported approve
+   that sends no seal is a refusal waiting for whoever imports it next.
+2. **"approval from it is now refused, in words"** — worse than that, and in
+   the other direction. The only REACHABLE approve control on the legacy page
+   was the bulk bar's `handleBulkApprove`, and **it called no endpoint at
+   all**: it rewrote local state to `approved`, cleared the selection and
+   alerted "N order(s) approved!". Nothing was sent and success was reported —
+   [[absence-reported-as-health]] pointed at the house's money. The two paths
+   that did POST (`confirmApproval` and `OrderApprovalModal`'s Confirm) were
+   unreachable: nothing in the repo set `showApprovalModal` or
+   `showOrderApprovalModal` to true. Both were still sealed, since dead code
+   that wakes up unsealed is the same hole on a delay.
+3. **the `finalPrice` those two modals posted was read by nothing.**
+   `POST orders/:id/approve` takes no body — the controller reads the id and
+   the `X-Seal-Challenge` header. The field is now disabled with one line
+   saying the approval writes no price and that the seal is taken over the
+   order's own total.
+
+**The ground.** The legacy page renders outside the Mudavym shell, and a grep
+("zero `dark:` classes in `Orders.tsx`") suggested it was permanently light, so
+the control's own light fallbacks would always be right. Measured in the
+running app instead — the die's inline styles injected into the live page,
+computed colours read back — that was wrong: under `html.dark` the legacy page
+IS charcoal, because `styles/globals.css:163-177` repaints its Tailwind
+utilities (`.dark .bg-white → #1D1813`), while an unwrapped die stayed
+`#F3EFE6`. The control therefore carries `mudavym` on its own root: tokens
+scoped to the control, never to `:root`, and `.dark .mudavym`'s `--paper-1` is
+byte-identical to the surface the legacy dark ground already uses.
+
+**How the sealing of these two was proven.** `vitest src/components/orders
+src/pages/dashboard/next src/pages/__tests__` — 87 passed, 0 failed, including
+15 cases in `SealedApproveDie.test.tsx` and 9 in `WaitingOnYou.seal.test.tsx`.
+Against `git show HEAD:` copies (no git state change in the shared worktree):
+6 of 8 render cases fail on the pre-fix `WaitingOnYou` and 9 of 10 source-
+contract cases fail on the pre-fix `Orders.tsx`/`useOrdersData.ts`. **NOT
+proven live, again:** the tenant the local dev-bypass session lands on has zero
+orders (`GET /procurement/orders` → `total: 0`), and the local gateway points
+at production, so no order was approved. Both routes were exercised read-only
+against a non-existent id and answered 404 with the gate's own sentence — which
+also means the seal's refusal sentences are still proven only by the specs.
 
 **How it was proven.** `jest src/procurement src/payment-methods src/billing
 src/mcp-runtime src/common/seal src/mcp-connections` — 859 passed, 3 skipped, 0
