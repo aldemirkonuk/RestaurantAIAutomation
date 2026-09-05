@@ -20,7 +20,17 @@ import { WineSubmissionsService } from "./wine-submissions.service";
  * `item.producer ?? null` / `item.country ?? null` while the ROW stored the
  * fabricated string — so the canonical row misrepresented the identity its own
  * dedup key was taken over.
+ *
+ * ADR 0130 note. Three of the four cases below are GENERIC identities — a name
+ * and nothing else — so they now resolve down the venue-provisional branch
+ * rather than into the shared library. The rule under test is unchanged and
+ * still holds there: absence is written as NULL, never as a placeholder. The
+ * resolver needs to be told whose menu it is reading, which is why these calls
+ * now carry a restaurant id; `resolveOrCreateLibraryWine` refuses a generic
+ * name with no venue rather than falling back to the shared library.
  */
+
+const RESTAURANT_ID = "22222222-2222-2222-2222-222222222222";
 
 type Row = Record<string, any>;
 
@@ -79,10 +89,13 @@ describe("master_wine_library writes carry no fabricated provenance", () => {
   it("writes producer null rather than the wine's own name", async () => {
     const { service, inserted } = makeService();
 
-    await (service as any).resolveOrCreateLibraryWine({
-      name: "House White Wine",
-      // no producer — the ordinary case for a menu line
-    });
+    await (service as any).resolveOrCreateLibraryWine(
+      {
+        name: "House White Wine",
+        // no producer — the ordinary case for a menu line
+      },
+      RESTAURANT_ID,
+    );
 
     expect(inserted).toHaveLength(1);
     expect(inserted[0].name).toBe("House White Wine");
@@ -94,7 +107,10 @@ describe("master_wine_library writes carry no fabricated provenance", () => {
   it("writes country null rather than the string 'Unknown'", async () => {
     const { service, inserted } = makeService();
 
-    await (service as any).resolveOrCreateLibraryWine({ name: "Efe Black" });
+    await (service as any).resolveOrCreateLibraryWine(
+      { name: "Efe Black" },
+      RESTAURANT_ID,
+    );
 
     expect(inserted[0].country).toBeNull();
     // 'Unknown' sorts, groups and filters as though it were a country.
@@ -104,11 +120,14 @@ describe("master_wine_library writes carry no fabricated provenance", () => {
   it("still writes a real producer and country when the line has them", async () => {
     const { service, inserted } = makeService();
 
-    await (service as any).resolveOrCreateLibraryWine({
-      name: "Akakies",
-      producer: "Kir-Yianni",
-      country: "Greece",
-    });
+    await (service as any).resolveOrCreateLibraryWine(
+      {
+        name: "Akakies",
+        producer: "Kir-Yianni",
+        country: "Greece",
+      },
+      RESTAURANT_ID,
+    );
 
     expect(inserted[0].producer).toBe("Kir-Yianni");
     expect(inserted[0].country).toBe("Greece");
@@ -120,7 +139,10 @@ describe("master_wine_library writes carry no fabricated provenance", () => {
     // classification to fix a fabrication that is not one.
     const { service, inserted } = makeService();
 
-    await (service as any).resolveOrCreateLibraryWine({ name: "Efe Black" });
+    await (service as any).resolveOrCreateLibraryWine(
+      { name: "Efe Black" },
+      RESTAURANT_ID,
+    );
 
     expect(inserted[0].primary_type).toBe("unknown");
   });
