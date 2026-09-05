@@ -216,12 +216,20 @@ def fetch_all(base: str, key: str, table: str, columns: str, page: int = 1000) -
         offset += page
 
 
+# `extracted` IS LOAD-BEARING, not decoration. `procurement_documents` has no
+# vendor-name, delivered-date, VAT-breakdown or line-kind column, so the intake
+# snapshot is the only place those four exist. Without it in this list the CLI's
+# mapping — the SAME `parsedFromDocumentRows` the route calls — has nothing to
+# read them from, and the report names `vat_breakdown_present` as failing on a
+# document whose page renders the VAT row, and grades a classified deposit line
+# as goods. Measured 2026-09-05 on b1e02edf and 5c7d4801.
 DOC_COLUMNS = (
     "id,restaurant_id,provider_id,doc_type,source_channel,doc_number,doc_date,"
     "references_doc_number,currency,subtotal,freight,fuel_surcharge,split_case_fee,"
     "delivery_fee,deposit_total,tax,other_charges,discount_total,total,"
     "computed_lines_total,tie_out_delta,ties_out,extraction_confidence,"
-    "extraction_model,sha256,content_type,file_bytes,storage_path,status,created_at"
+    "extraction_model,sha256,content_type,file_bytes,storage_path,status,created_at,"
+    "extracted"
 )
 LINE_COLUMNS = (
     "id,document_id,line_no,vendor_sku,description,vintage,format_ml,qty,uom,"
@@ -418,10 +426,11 @@ def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
     return json_path, md_path
 
 
-# A two-document synthetic corpus in the shape PostgREST returns: one that ties
-# out and one that does not. It exists so `--self-test` can prove the runner can
-# NAME a failure -- which the real corpus, being empty, cannot prove at all.
-# Every value here is invented.
+# A three-document synthetic corpus in the shape PostgREST returns: one that
+# ties out, one whose deposit is printed BOTH as a line and as a subtotal, and
+# one that does not tie. It exists so `--self-test` can prove the runner can
+# NAME a failure -- and, since 2026-09-05, that it does NOT name the two that
+# are correct. Every value here is invented.
 SELF_TEST_CORPUS = [
     {
         "document": {
@@ -445,6 +454,69 @@ SELF_TEST_CORPUS = [
                 "line_no": 2, "qty": "6", "uom": "bottle", "pack_size": 1,
                 "qty_bottles": "6", "free_goods_qty": "0",
                 "unit_price": "22.0000", "line_total": "132.00",
+            },
+        ],
+    },
+    {
+        # A deposit printed TWICE -- as line 4 AND as a "Depozito 180,00"
+        # subtotal row -- so the stated subtotal of 9352 CONTAINS it. Measured
+        # on b1e02edf 2026-09-05: the runner named `total_with_vat` (expected
+        # 11366.4, found 11186.4), `deposits_coded_and_excluded` ("Line 4 reads
+        # as a deposit but is billed as a goods line") and
+        # `vat_breakdown_present` -- the last two only because the CLI had a
+        # second mapping that never opened `extracted`. This entry is the
+        # self-test's proof that BOTH are fixed: it must be named by NOTHING.
+        "document": {
+            "id": "synthetic-deposit-stated-twice",
+            "restaurant_id": "synthetic-restaurant",
+            "doc_type": "invoice",
+            "source_channel": "email",
+            "jurisdiction": "TR",
+            "currency": "TRY",
+            "subtotal": "9352.00",
+            "deposit_total": "180.00",
+            "tax": "1834.40",
+            "total": "11186.40",
+            "extraction_confidence": "0.800",
+            # The four facts with no column of their own.
+            "extracted": {
+                "vendorName": "SYNTHETIC Uzum Bagcilik A.S.",
+                "deliveredDate": "2026-08-12",
+                "taxBreakdown": [
+                    {"rate": 20, "taxableBase": 9172, "amount": 1834.40, "category": "S"}
+                ],
+                "lines": [
+                    {"lineNo": 1, "lineKind": "goods"},
+                    {"lineNo": 2, "lineKind": "goods"},
+                    {"lineNo": 3, "lineKind": "goods"},
+                    {"lineNo": 4, "lineKind": "deposit"},
+                ],
+            },
+        },
+        "lines": [
+            {
+                "line_no": 1, "description": "SYNTHETIC Okuzgozu", "qty": "1",
+                "uom": "bottle", "pack_size": 1, "qty_bottles": "1",
+                "free_goods_qty": "0", "unit_price": "142.0000",
+                "line_total": "142.00",
+            },
+            {
+                "line_no": 2, "description": "SYNTHETIC Kalecik Karasi", "qty": "24",
+                "uom": "bottle", "pack_size": 1, "qty_bottles": "24",
+                "free_goods_qty": "0", "unit_price": "310.0000",
+                "line_total": "7440.00",
+            },
+            {
+                "line_no": 3, "description": "SYNTHETIC Narince", "qty": "6",
+                "uom": "bottle", "pack_size": 1, "qty_bottles": "6",
+                "free_goods_qty": "0", "unit_price": "265.0000",
+                "line_total": "1590.00",
+            },
+            {
+                "line_no": 4, "description": "Depozito - iade edilebilir kasa",
+                "qty": "2", "uom": "each", "pack_size": 1, "qty_bottles": "0",
+                "free_goods_qty": "0", "unit_price": "90.0000",
+                "line_total": "180.00",
             },
         ],
     },
@@ -479,8 +551,8 @@ def self_test() -> int:
         return 2
     failures = out["named_failures"]
     named = {f["document_id"] for f in failures}
-    if out["documents_read"] != 2:
-        print(f"SELF-TEST FAILED: read {out['documents_read']} of 2", file=sys.stderr)
+    if out["documents_read"] != 3:
+        print(f"SELF-TEST FAILED: read {out['documents_read']} of 3", file=sys.stderr)
         return 2
     if "synthetic-does-not-tie" not in named:
         print(
@@ -489,10 +561,24 @@ def self_test() -> int:
             file=sys.stderr,
         )
         return 2
-    if "synthetic-ties-out" in named:
-        print("SELF-TEST FAILED: a document that ties out was named as failing", file=sys.stderr)
-        return 2
-    print(f"self-test ok — 2 documents read, {len(failures)} named failure(s), all on the broken one:")
+    for clean_id in ("synthetic-ties-out", "synthetic-deposit-stated-twice"):
+        if clean_id in named:
+            print(
+                f"SELF-TEST FAILED: {clean_id} was named as failing. "
+                + (
+                    "A deposit printed as a line AND as a subtotal is ONE charge; "
+                    "naming it means the CLI is not reading `extracted` back, or "
+                    "BT-106 is carrying the deposit line."
+                    if clean_id == "synthetic-deposit-stated-twice"
+                    else "It ties out."
+                ),
+                file=sys.stderr,
+            )
+            for f in failures:
+                if f["document_id"] == clean_id:
+                    print(f"  {f['invariant']}: {f['explanation']}", file=sys.stderr)
+            return 2
+    print(f"self-test ok — 3 documents read, {len(failures)} named failure(s), all on the broken one:")
     for f in failures:
         print(f"  {f['document_id']} · {f['invariant']} · expected {f['expected']}, found {f['found']}")
     return 0

@@ -600,6 +600,50 @@ export function vatCategoryTaxableBase(
         `Not testable: VAT row ${i + 1} states no taxable amount.`,
       );
     }
+    /**
+     * A BASE CANNOT BE RECONCILED AGAINST A CLASSIFICATION NOBODY MADE.
+     *
+     * BT-151 / BT-152 are per-LINE, and `from-parsed-document` sets both to
+     * null on every line, because the extraction contract asks for no per-line
+     * VAT category or rate — a Turkish fatura prints one KDV block for the
+     * whole invoice, not a rate per row. So on any extracted document the
+     * filter below matches NOTHING, the sum comes out 0.00, and this rule used
+     * to report "covers lines worth 0.00 but states a taxable base of
+     * 9.172,00" — a finding about the DOCUMENT manufactured out of an absence
+     * in OUR OWN READING. That is this repository's absence-as-health fault
+     * pointing the other way, and it surfaced the moment the corpus runner
+     * started reading `taxBreakdown` back (2026-09-05).
+     *
+     * Untestable, then — never a pass, and never a failure either. The day the
+     * extractor returns a per-line category this becomes checkable on its own.
+     */
+    const anyLineClassified = doc.layer1.lines.some(
+      (l) => str(l.vatCategory) !== null || num(l.vatRate) !== null,
+    );
+    const anyChargeClassified = doc.layer1.allowancesCharges.some(
+      (ac) =>
+        str(ac.vatCategory ?? null) !== null ||
+        num(ac.vatRate ?? null) !== null,
+    );
+    if (
+      (cat !== null || rate !== null) &&
+      !anyLineClassified &&
+      !anyChargeClassified
+    ) {
+      return result(
+        "vat_category_taxable_base",
+        "BR-S-08",
+        path,
+        null,
+        `lines carrying a VAT category or rate to compare with ${stated.toFixed(2)}`,
+        "no line on this document carries either",
+        `Not testable: VAT row ${i + 1} states a base of ${stated.toFixed(2)} at ` +
+          `${cat ?? "?"} / ${rate ?? "?"}%, but no line or charge on this document ` +
+          "carries a VAT category or rate (BT-151/BT-152 are not extracted), so " +
+          "there is nothing to sum against it. A zero here would be OUR gap " +
+          "reported as the document's error.",
+      );
+    }
     const matches = (l: ExtractedLine) =>
       (cat === null || str(l.vatCategory) === cat) &&
       (rate === null || num(l.vatRate) === rate);

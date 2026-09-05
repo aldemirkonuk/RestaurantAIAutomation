@@ -138,6 +138,44 @@ describe("VAT breakdown", () => {
     expect(rows[0].expected).toBe(732);
   });
 
+  /**
+   * A BASE CANNOT BE RECONCILED AGAINST A CLASSIFICATION NOBODY MADE.
+   *
+   * BT-151/BT-152 are per-line and the extraction contract asks for neither, so
+   * `from-parsed-document` sets both null on every line an extracted document
+   * has. The filter then matched nothing, the sum came out 0.00, and this rule
+   * reported "covers lines worth 0.00 but states a taxable base of 9.172,00" —
+   * OUR gap presented as the document's error. Measured 2026-09-05 the moment
+   * the corpus runner began reading `taxBreakdown` back.
+   */
+  it("is UNTESTABLE, not failing, when no line carries a VAT category or rate", () => {
+    const unclassified = {
+      ...TR_WINE_INVOICE,
+      layer1: {
+        ...TR_WINE_INVOICE.layer1,
+        lines: TR_WINE_INVOICE.layer1.lines.map((l) => ({
+          ...l,
+          vatCategory: { ...l.vatCategory, value: null },
+          vatRate: { ...l.vatRate, value: null },
+        })),
+        // The document-level deposit charge loses its category too — an
+        // extracted document has neither, on lines OR on charges.
+        allowancesCharges: TR_WINE_INVOICE.layer1.allowancesCharges.map(
+          (ac) => ({
+            ...ac,
+            vatCategory: { ...ac.vatCategory!, value: null },
+            vatRate: { ...ac.vatRate!, value: null },
+          }),
+        ),
+      },
+    };
+    const r = vatCategoryTaxableBase(unclassified)[0];
+    expect(r.holds).toBeNull();
+    expect(r.explanation).toMatch(/no line or charge on this document/);
+    // and never a quiet pass: the sentence says whose gap it is
+    expect(r.explanation).toMatch(/OUR gap/);
+  });
+
   it("catches a category whose base does not cover its lines", () => {
     const broken = {
       ...TR_WINE_INVOICE,

@@ -20,108 +20,102 @@
  */
 
 import { canonicalFromParsedDocument } from "./from-parsed-document";
+import { parsedFromDocumentRows } from "./from-document-rows";
 import { runInvariants, summarise } from "./canonical-invariants";
 import { CanonicalDocument, Source } from "./canonical-types";
-import { DocType, normalizeUom, Uom } from "../documents/document-types";
-import { applyTieOut, ParsedDocument } from "../documents/parsed-document";
 
 type Row = Record<string, unknown>;
 
-const n = (v: unknown): number | null => {
-  if (v === null || v === undefined) return null;
-  const parsed = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 const s = (v: unknown): string | null =>
   typeof v === "string" && v.length > 0 ? v : null;
 
-function toParsed(document: Row, lines: Row[]): ParsedDocument {
-  return applyTieOut({
-    docType: (s(document.doc_type) ?? "unknown") as DocType,
-    docNumber: s(document.doc_number),
-    docDate: s(document.doc_date),
-    referencesDocNumber: s(document.references_doc_number),
-    poNumber: null,
-    vendorName: null,
-    vendorAccount: null,
-    currency: s(document.currency) ?? "USD",
-    subtotal: n(document.subtotal),
-    freight: n(document.freight),
-    fuelSurcharge: n(document.fuel_surcharge),
-    splitCaseFee: n(document.split_case_fee),
-    deliveryFee: n(document.delivery_fee),
-    depositTotal: n(document.deposit_total),
-    tax: n(document.tax),
-    otherCharges: n(document.other_charges),
-    discountTotal: n(document.discount_total),
-    total: n(document.total),
-    lines: lines.map((l) => ({
-      lineNo: n(l.line_no) ?? 0,
-      vendorSku: s(l.vendor_sku),
-      description: s(l.description),
-      vintage: n(l.vintage),
-      formatMl: n(l.format_ml),
-      qty: n(l.qty) ?? 0,
-      uom: (normalizeUom(s(l.uom)) ?? "bottle") as Uom,
-      packSize: n(l.pack_size) ?? 1,
-      qtyBottles: n(l.qty_bottles) ?? 0,
-      freeGoodsQty: n(l.free_goods_qty) ?? 0,
-      unitPrice: n(l.unit_price),
-      // BT-149/BT-150, persisted since migration 20260904120000. A row from a
-      // database that predates it simply has neither key, which reads here as
-      // null — the same answer as a document that printed no basis, and the
-      // runner's own report says which of the two it was looking at.
-      priceBaseQty: n(l.price_base_qty),
-      priceBaseUom: normalizeUom(s(l.price_base_uom)),
-      lineTotal: n(l.line_total),
-      allowance: n(l.allowance),
-      deposit: n(l.deposit),
-      ...(l.printed ? { printed: l.printed as Record<string, string> } : {}),
-    })),
-    computedLinesTotal: null,
-    tieOutDelta: null,
-    tiesOut: null,
-    confidence: n(document.extraction_confidence) ?? 0,
-    warnings: [],
-    extractionModel: s(document.extraction_model),
-    ...(document.printed
-      ? { printed: document.printed as Record<string, string> }
-      : {}),
+/**
+ * ONE MAPPING, SHARED WITH THE ROUTE.
+ *
+ * This used to be a second `toParsed` that never opened `extracted`, so the
+ * runner could not see `vendorName`, `deliveredDate`, `taxBreakdown` or any
+ * line's `lineKind` — and named `vat_breakdown_present` as FAILING on the very
+ * documents whose page rendered the VAT row, and read a classified deposit line
+ * as goods. `parsedFromDocumentRows` is what `CanonicalDocumentService` calls,
+ * so the report now grades the code the product runs. That is this file's own
+ * stated reason for existing, and it was not true until 2026-09-05.
+ */
+const toParsed = parsedFromDocumentRows;
+
+export interface CorpusEntry {
+  document: Row;
+  lines: Row[];
+}
+
+export interface CorpusResult {
+  documents_read: number;
+  per_invariant: Record<
+    string,
+    { holds: number; fails: number; untestable: number }
+  >;
+  named_failures: {
+    document_id: string;
+    doc_type: string;
+    invariant: string;
+    rule: string | null;
+    path: string | null;
+    expected: unknown;
+    found: unknown;
+    explanation: string;
+  }[];
+  documents: unknown[];
+}
+
+/**
+ * ONE document's canonical object, exactly as this CLI builds it.
+ *
+ * EXPORTED so `mapping-parity.spec.ts` can compare it with what
+ * `CanonicalDocumentService` builds from the SAME rows. A parity test that
+ * called the shared mapper directly would prove the mapper agrees with itself
+ * and say nothing about whether this file still uses it.
+ */
+export function canonicalForRow(
+  document: Row,
+  lines: Row[],
+): CanonicalDocument {
+  const parsed = toParsed(document, lines ?? []);
+  const channel = s(document.source_channel);
+  const source: Source =
+    channel === "edi" || channel === "sftp" ? "edi" : "extracted";
+
+  return canonicalFromParsedDocument(parsed, {
+    documentId: s(document.id) ?? "unknown",
+    restaurantId: s(document.restaurant_id) ?? "unknown",
+    source,
+    jurisdiction:
+      document.jurisdiction === "TR" ||
+      document.jurisdiction === "US-CA" ||
+      document.jurisdiction === "unknown"
+        ? (document.jurisdiction as "TR" | "US-CA" | "unknown")
+        : null,
+    direction:
+      document.direction === "issued_by_us"
+        ? "issued_by_us"
+        : "issued_by_vendor",
+    providerId: s(document.provider_id),
   });
 }
 
-function main(input: string): void {
-  const corpus = JSON.parse(input) as { document: Row; lines: Row[] }[];
-
-  const perInvariant: Record<
-    string,
-    { holds: number; fails: number; untestable: number }
-  > = {};
+/**
+ * The whole of what this CLI does, as a function.
+ *
+ * EXPORTED SO A TEST CAN CALL IT. The runner's mapping and the route's mapping
+ * drifting apart is the defect this file's own doc comment warns about, and a
+ * test that could only reach this code by spawning `npx ts-node` is a test
+ * nobody runs.
+ */
+export function runCorpus(corpus: CorpusEntry[]): CorpusResult {
+  const perInvariant: CorpusResult["per_invariant"] = {};
   const documents: unknown[] = [];
-  const namedFailures: unknown[] = [];
+  const namedFailures: CorpusResult["named_failures"] = [];
 
   for (const entry of corpus) {
-    const doc = entry.document;
-    const lines = entry.lines ?? [];
-    const parsed = toParsed(doc, lines);
-    const channel = s(doc.source_channel);
-    const source: Source =
-      channel === "edi" || channel === "sftp" ? "edi" : "extracted";
-
-    const canonical: CanonicalDocument = canonicalFromParsedDocument(parsed, {
-      documentId: s(doc.id) ?? "unknown",
-      restaurantId: s(doc.restaurant_id) ?? "unknown",
-      source,
-      jurisdiction:
-        doc.jurisdiction === "TR" ||
-        doc.jurisdiction === "US-CA" ||
-        doc.jurisdiction === "unknown"
-          ? (doc.jurisdiction as "TR" | "US-CA" | "unknown")
-          : null,
-      direction:
-        doc.direction === "issued_by_us" ? "issued_by_us" : "issued_by_vendor",
-      providerId: s(doc.provider_id),
-    });
+    const canonical = canonicalForRow(entry.document, entry.lines ?? []);
 
     const results = runInvariants(canonical);
     for (const r of results) {
@@ -157,31 +151,39 @@ function main(input: string): void {
     });
   }
 
-  process.stdout.write(
-    JSON.stringify(
-      {
-        documents_read: corpus.length,
-        per_invariant: perInvariant,
-        named_failures: namedFailures,
-        documents,
-      },
-      null,
-      2,
-    ),
-  );
+  return {
+    documents_read: corpus.length,
+    per_invariant: perInvariant,
+    named_failures: namedFailures,
+    documents,
+  };
 }
 
+function main(input: string): void {
+  const corpus = JSON.parse(input) as CorpusEntry[];
+  process.stdout.write(JSON.stringify(runCorpus(corpus), null, 2));
+}
+
+/**
+ * The stdin wrapper runs only when this file IS the entry point. Guarded so
+ * that importing `runCorpus` from a test does not attach a stdin listener that
+ * never ends and hangs the jest worker.
+ */
+const isEntryPoint = require.main === module;
+
 let buffer = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => (buffer += chunk));
-process.stdin.on("end", () => {
-  try {
-    main(buffer.trim() || "[]");
-  } catch (err) {
-    // A crash must not read as an empty corpus. Exit non-zero and say why.
-    process.stderr.write(
-      `canonical cli failed: ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-    process.exit(1);
-  }
-});
+if (isEntryPoint) {
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => (buffer += chunk));
+  process.stdin.on("end", () => {
+    try {
+      main(buffer.trim() || "[]");
+    } catch (err) {
+      // A crash must not read as an empty corpus. Exit non-zero and say why.
+      process.stderr.write(
+        `canonical cli failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+  });
+}

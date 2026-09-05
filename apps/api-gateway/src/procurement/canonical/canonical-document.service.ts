@@ -1,14 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { DocType, normalizeUom, Uom } from "../documents/document-types";
-import {
-  applyTieOut,
-  LINE_KINDS,
-  LineKind,
-  ParsedDocument,
-  ParsedLine,
-  ParsedTaxBreakdownRow,
-} from "../documents/parsed-document";
+import { normalizeUom, Uom } from "../documents/document-types";
+import { ParsedDocument } from "../documents/parsed-document";
+import { parsedFromDocumentRows } from "./from-document-rows";
 import { canonicalFromParsedDocument } from "./from-parsed-document";
 import { CanonicalDocument, ResolvedLine, Source } from "./canonical-types";
 
@@ -115,13 +109,6 @@ interface DocumentRow {
    * no correction for the snapshot to be stale about.
    */
   extracted?: Record<string, unknown> | null;
-}
-
-/** The document-level fields that live only in the `extracted` snapshot. */
-interface SnapshotOnlyFields {
-  vendorName: string | null;
-  deliveredDate: string | null;
-  taxBreakdown: ParsedTaxBreakdownRow[] | undefined;
 }
 
 interface LineRow {
@@ -566,182 +553,23 @@ export class CanonicalDocumentService {
     return channel === "edi" || channel === "sftp" ? "edi" : "extracted";
   }
 
+  /**
+   * The stored rows, as the parser would have produced them.
+   *
+   * ONE MAPPING, SHARED WITH THE CORPUS RUNNER. `parsedFromDocumentRows` is the
+   * same function `canonical/cli.ts` calls, so a document cannot read one way
+   * on the page and another way in `scripts/canonical_corpus_run.py`. Before
+   * they were shared, the runner named `vat_breakdown_present` as failing on a
+   * document whose page rendered the VAT row, and read a `deposit` line as
+   * `goods` — measured 2026-09-05.
+   */
   private toParsedDocument(
     row: DocumentRow,
     lineRows: LineRow[],
   ): ParsedDocument {
-    const snapshot = readSnapshot(row.extracted);
-    const kinds = snapshotLineKinds(row.extracted);
-    const lines: ParsedLine[] = lineRows.map((l) => ({
-      lineNo: l.line_no,
-      vendorSku: l.vendor_sku,
-      description: l.description,
-      vintage: l.vintage,
-      formatMl: l.format_ml,
-      qty: n(l.qty) ?? 0,
-      uom: (normalizeUom(l.uom) ?? "bottle") as Uom,
-      packSize: l.pack_size ?? 1,
-      qtyBottles: n(l.qty_bottles) ?? 0,
-      freeGoodsQty: n(l.free_goods_qty) ?? 0,
-      unitPrice: n(l.unit_price),
-      // BT-149 / BT-150, persisted since migration 20260904120000. NULL is
-      // still the common answer and still means "the paper printed no basis" —
-      // `lineNetFromPrice` reads that as "the price is per invoiced unit",
-      // which is the only reading that does not invent a factor of twelve.
-      priceBaseQty: n(l.price_base_qty),
-      // Re-normalised rather than trusted: the column's CHECK allows the seven
-      // singulars, but a row written before that constraint existed could hold
-      // anything, and a unit we cannot read must be null, never guessed.
-      priceBaseUom: normalizeUom(l.price_base_uom),
-      lineTotal: n(l.line_total),
-      allowance: n(l.allowance),
-      deposit: n(l.deposit),
-      /**
-       * `procurement_document_lines` has no `line_kind` column, so the
-       * classification comes back from the intake snapshot, KEYED ON
-       * `line_no` rather than on array position: a line added or reordered
-       * after intake then simply has no snapshot entry and stays `goods`,
-       * which is "nobody classified it" — never a confident claim that a CRV
-       * row is wine.
-       */
-      lineKind: kinds.get(l.line_no) ?? null,
-      // ABSENT means we never kept the literals. It never means the paper was
-      // blank — which is why this is `?? undefined` and not `?? {}`.
-      ...(l.printed ? { printed: l.printed } : {}),
-    }));
-
-    // applyTieOut recomputes computedLinesTotal / tieOutDelta / tiesOut from the
-    // rows as they stand NOW, so a human's line edit is reflected rather than
-    // the stored tie-out columns being trusted blind.
-    return applyTieOut({
-      docType: row.doc_type as DocType,
-      docNumber: row.doc_number,
-      docDate: row.doc_date,
-      // BT-72 and BG-4's name have no columns; they exist only in the intake
-      // snapshot, which is why they reached the screen as "—" and "The seller
-      // is not named on this document" on every document read 2026-09-04.
-      deliveredDate: snapshot.deliveredDate,
-      referencesDocNumber: row.references_doc_number,
-      poNumber: null,
-      vendorName: snapshot.vendorName,
-      vendorAccount: null,
-      currency: row.currency ?? "USD",
-      subtotal: n(row.subtotal),
-      freight: n(row.freight),
-      fuelSurcharge: n(row.fuel_surcharge),
-      splitCaseFee: n(row.split_case_fee),
-      deliveryFee: n(row.delivery_fee),
-      depositTotal: n(row.deposit_total),
-      tax: n(row.tax),
-      otherCharges: n(row.other_charges),
-      discountTotal: n(row.discount_total),
-      total: n(row.total),
-      // BG-23. ABSENT (undefined) means no breakdown was ever read; an EMPTY
-      // array means the extraction looked and the page printed no rate. The
-      // mapper renders both as no rows, but only the second is a finding about
-      // the document rather than about our reading of it.
-      ...(snapshot.taxBreakdown ? { taxBreakdown: snapshot.taxBreakdown } : {}),
-      lines,
-      computedLinesTotal: null,
-      tieOutDelta: null,
-      tiesOut: null,
-      confidence: n(row.extraction_confidence) ?? 0,
-      warnings: [],
-      extractionModel: row.extraction_model,
-      ...(row.printed ? { printed: row.printed } : {}),
-    });
+    return parsedFromDocumentRows(
+      row as unknown as Record<string, unknown>,
+      lineRows as unknown as Record<string, unknown>[],
+    );
   }
-}
-
-/** A trimmed string, or null. `"null"` is a model's word, not a value. */
-function snapshotStr(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  return s.length && s.toLowerCase() !== "null" ? s : null;
-}
-
-function snapshotNum(v: unknown): number | null {
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (typeof v !== "string" || v.trim() === "") return null;
-  const parsed = Number(v);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-/**
- * The three document-level fields that live ONLY in the intake snapshot.
- *
- * Read defensively: the column is jsonb written by whatever parser ran, and a
- * row inserted before these fields existed simply has none of them. Every miss
- * is NULL, which is "the paper did not say" — the same answer a fresh
- * extraction gives, so the two are indistinguishable downstream, which is
- * correct. What must never happen is a THROW here taking down a document that
- * is otherwise perfectly readable.
- */
-function readSnapshot(extracted: unknown): SnapshotOnlyFields {
-  const snap =
-    extracted && typeof extracted === "object" && !Array.isArray(extracted)
-      ? (extracted as Record<string, unknown>)
-      : null;
-  if (!snap)
-    return { vendorName: null, deliveredDate: null, taxBreakdown: undefined };
-
-  const rawRows = snap.taxBreakdown;
-  const taxBreakdown = Array.isArray(rawRows)
-    ? rawRows
-        .map((r): ParsedTaxBreakdownRow | null => {
-          const row =
-            r && typeof r === "object" ? (r as Record<string, unknown>) : null;
-          if (!row) return null;
-          const rate = snapshotNum(row.rate);
-          if (rate === null) return null;
-          const category = snapshotStr(row.category);
-          return {
-            rate,
-            taxableBase: snapshotNum(row.taxableBase),
-            amount: snapshotNum(row.amount),
-            ...(category ? { category } : {}),
-          };
-        })
-        .filter((r): r is ParsedTaxBreakdownRow => r !== null)
-    : undefined;
-
-  return {
-    vendorName: snapshotStr(snap.vendorName),
-    deliveredDate: snapshotStr(snap.deliveredDate),
-    taxBreakdown,
-  };
-}
-
-/**
- * `line_no` -> what that line IS, from the intake snapshot.
- *
- * Keyed on the line NUMBER, never on array position: the stored lines are read
- * back ordered by `line_no` and the snapshot's array is in the order the model
- * returned them, and those two can differ. An unrecognised label is dropped
- * rather than coerced, so the mapper's own `?? "goods"` fallback applies and
- * the classification is never invented here.
- */
-function snapshotLineKinds(extracted: unknown): Map<number, LineKind> {
-  const out = new Map<number, LineKind>();
-  const snap =
-    extracted && typeof extracted === "object" && !Array.isArray(extracted)
-      ? (extracted as Record<string, unknown>)
-      : null;
-  const rows = snap?.lines;
-  if (!Array.isArray(rows)) return out;
-  for (const r of rows) {
-    const row =
-      r && typeof r === "object" ? (r as Record<string, unknown>) : null;
-    if (!row) continue;
-    const lineNo = snapshotNum(row.lineNo);
-    const kind = snapshotStr(row.lineKind)?.toLowerCase() ?? null;
-    if (
-      lineNo === null ||
-      kind === null ||
-      !(LINE_KINDS as readonly string[]).includes(kind)
-    )
-      continue;
-    out.set(lineNo, kind as LineKind);
-  }
-  return out;
 }

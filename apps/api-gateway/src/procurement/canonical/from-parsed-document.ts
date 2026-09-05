@@ -248,6 +248,72 @@ function depositCharge(
   };
 }
 
+/** Two money amounts agree to the cent. */
+const centsEqual = (a: number, b: number) =>
+  Math.abs(Math.round((a - b) * 100)) <= 1;
+
+/**
+ * BT-106 — THE GOODS TOTAL, WITH A DEPOSIT LINE LIFTED OUT OF IT.
+ *
+ * MEASURED 2026-09-05 on the Turkish invoice `b1e02edf`, whose paper prints the
+ * ₺180 depozito BOTH as line 4 AND as a "Depozito (KDV %0) 180,00" subtotal
+ * row, and whose stated `subtotal` of ₺9.352,00 is the goods (₺9.172,00) PLUS
+ * that deposit. `linesNet` was `parsed.subtotal ?? parsed.computedLinesTotal`,
+ * so the stated subtotal won unconditionally and carried the deposit into
+ * BT-106 — while `depositCharge` correctly emitted the SAME ₺180 again as a
+ * BG-21 charge. The sheet then rendered Lines ₺9.352,00 + Charges ₺180,00 =
+ * Before tax ₺9.532,00, and printed the stated total ₺11.186,40 underneath a
+ * ladder that came to ₺11.366,40. The deposit was counted twice and nothing
+ * said so.
+ *
+ * `computedLinesTotal` (from `applyTieOut`) already excludes a
+ * `lineKind: "deposit"` line, so the two numbers differing BY EXACTLY THE
+ * DEPOSIT is the evidence that the stated subtotal contains it. That test is a
+ * MEASUREMENT, not an assumption:
+ *
+ *   stated − depositLines === goods   the subtotal INCLUDES the deposit lines,
+ *                                     so BT-106 is the goods sum and is marked
+ *                                     `computed` with no `as_printed` — a
+ *                                     number we derived must never borrow the
+ *                                     paper's authority.
+ *   stated === goods                  the subtotal already excludes them; it
+ *                                     stands, as printed. (The Californian CRV
+ *                                     shape, and every invoice with no deposit
+ *                                     line at all.)
+ *   neither                           WE CANNOT TELL. The stated subtotal
+ *                                     stands untouched and the tie-out and
+ *                                     `document_lines_total` name the
+ *                                     disagreement. Silently subtracting here
+ *                                     would invent a BT-106 nobody printed and
+ *                                     make BR-CO-10 unfalsifiable.
+ */
+function linesNetTotal(doc: ParsedDocument): {
+  value: number | null;
+  fromStatedSubtotal: boolean;
+} {
+  const goods =
+    typeof doc.computedLinesTotal === "number" &&
+    Number.isFinite(doc.computedLinesTotal)
+      ? doc.computedLinesTotal
+      : null;
+  const stated =
+    typeof doc.subtotal === "number" && Number.isFinite(doc.subtotal)
+      ? doc.subtotal
+      : null;
+
+  if (stated === null) return { value: goods, fromStatedSubtotal: false };
+  if (goods === null) return { value: stated, fromStatedSubtotal: true };
+
+  const depositLines = round2(
+    doc.lines.filter(isDepositLine).reduce((acc, l) => acc + lineNet(l), 0),
+  );
+  if (depositLines === 0) return { value: stated, fromStatedSubtotal: true };
+
+  return centsEqual(round2(stated - depositLines), goods)
+    ? { value: goods, fromStatedSubtotal: false }
+    : { value: stated, fromStatedSubtotal: true };
+}
+
 /**
  * Document-level charges, one group per stated fee.
  *
@@ -512,9 +578,9 @@ export function canonicalFromParsedDocument(
       .reduce((a, ac) => a + (ac.amount.value ?? 0), 0),
   );
 
-  // BT-106. `computedLinesTotal` already excludes a `lineKind: "deposit"` line,
-  // which is carried as a BG-21 charge instead.
-  const linesNet = parsed.subtotal ?? parsed.computedLinesTotal ?? null;
+  // BT-106. The stated subtotal is preferred, EXCEPT where it demonstrably
+  // contains a deposit line that BG-21 is already carrying — see linesNetTotal.
+  const { value: linesNet, fromStatedSubtotal } = linesNetTotal(parsed);
   // BT-109 = BT-106 − BT-107 + BT-108 (BR-CO-13). Untestable stays untestable:
   // with no BT-106 there is nothing to build the ladder on, and a 0 here would
   // be a total nobody stated.
@@ -614,13 +680,14 @@ export function canonicalFromParsedDocument(
     totals: {
       linesNetTotal: env(
         linesNet,
-        parsed.subtotal != null ? source : "computed",
+        fromStatedSubtotal ? source : "computed",
         revision,
         confidence,
-        // Only the SUBTOTAL was printed. `computedLinesTotal` is ours, so it
-        // gets no `as_printed` — a computed number must never borrow the paper's
-        // authority.
-        parsed.subtotal != null ? (parsed.printed?.subtotal ?? null) : null,
+        // Only the SUBTOTAL was printed, and only when it is the number we are
+        // carrying. A goods total we derived by taking a deposit line back out
+        // of the stated subtotal is OURS, so it gets no `as_printed` — a
+        // computed number must never borrow the paper's authority.
+        fromStatedSubtotal ? (parsed.printed?.subtotal ?? null) : null,
       ),
       // BT-107 / BT-108 — the SUMS of BG-20 and BG-21, marked `computed`
       // because that is what they are. `discountTotal` alone was never BT-107:
