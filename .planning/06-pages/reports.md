@@ -243,6 +243,47 @@ is what it still cannot do, and why.
   catalogue to fall back to — a copy would drift from the gateway's silently and
   would render as a working picker over a failed fetch.
 
+### Added 2026-09-05 — asking for a scenario (ADR 0120 Q4)
+
+- **"Ask for a scenario", under the picker.** The founder's answer to whether a
+  house may add its own scenario was *"Not yet; request a scenario instead."*
+  So the picker gains one control and one sentence: *"The book is Mudavym's:
+  every scenario on it carries an operator source you can check, so a house
+  cannot add one. Tell us what you want to hold your house to and it reaches us
+  in your words."* A textarea (2000 characters), one button, no target and no
+  metric key — a request is words.
+- **It writes a REQUEST, never a scenario.** `POST
+  /analytics/goal-scenarios/requests/:rid` stores four facts in
+  `public.goal_scenario_request` — the house, the person (read from the token,
+  never the body), the words, the time. Nothing reads that table into
+  `GET /analytics/goal-scenarios`: there is no join and no "custom scenarios"
+  section, because the catalogue's whole defence is that every figure on it
+  carries a source a reader can check.
+- **Not sealed, deliberately.** A request moves no money and sends nothing
+  (ADR 0113), and teaching the hold-to-approve gesture to mean "I typed a
+  sentence" would devalue it where it does matter.
+- **The confirmation is the gateway's, and only after acceptance.** The page
+  prints nothing on submit; it prints the sentence the gateway returned once the
+  row exists, and a failure says what failed rather than closing as though it
+  had worked (ADR 0020). An empty request cannot be sent — the button is
+  disabled until there are words.
+- **Offered even when the book could not be read**, because a manager whose
+  picker failed to load is exactly the one who may want to say what is missing.
+- **Only the founder reads them.** `GET /analytics/goal-scenarios/requests` is
+  cross-tenant and gated by `ServiceKeyGuard` (`X-Admin-Key`, ADR 0099) — no
+  user token reaches it. A failed read there is an error with its reason, never
+  an empty list: on this surface "nobody asked" would read as evidence that the
+  catalogue already covers the field.
+
+### Added 2026-09-05 — the consultant is its own task class (ADR 0120 Q2)
+
+- Not a `/reports` control, but it is this page's consultant surface that pays
+  for it: `POST /analytics/consult/:rid` now routes through the class registry
+  as **`consult`** (default `claude-opus-4-8` — unchanged, the same model it
+  always ran; `ANALYTICS_CONSULTANT_MODEL` still outranks the class), and the
+  usage ledger records `task_class: "consult"` beside `model_routed_by` and
+  `asked_by`, so its spend is separable from `compose`'s.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_reports`)
 
 Canonical source with curves: `apps/web/src/pages/reports/next/MOTIONS.md` —
@@ -759,6 +800,8 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | PUT | `/analytics/goals/:rid/:goalId/status` | Goals desk, archive | `analytics.controller.ts:603` |
 | POST | `/analytics/goals/:rid` | Goals desk, set a goal | `analytics.controller.ts:497` |
 | POST | `/analytics/goals/:rid/:goalId/cutting-spec` | "Ask the book" — **new route, fourth pass**; model-configured, catalogue-validated | `analytics.controller.ts:563` |
+| POST | `/analytics/goal-scenarios/requests/:rid` | "Ask for a scenario" — **new route, 2026-09-05** (ADR 0120 Q4); stores words, never a scenario | `analytics.controller.ts:536` |
+| GET | `/analytics/goal-scenarios/requests` | the founder's read of those requests — **not called by this page**; `@Public()` + `ServiceKeyGuard` (`X-Admin-Key`, ADR 0099), cross-tenant | `analytics.controller.ts:575` |
 | GET/PATCH | `/users/:userId/preferences` | the sheet: slots, subjects and drawings, key `reportsSheet` | `hooks/useUserPreferences.ts:73,83` |
 
 **Only what is on the sheet is fetched.** `useQueries` builds its query list from
@@ -1232,3 +1275,19 @@ about it, with a visible line back to the data.
     model-pin census under **OD-04**, which is open because *"no place in the
     repo says which model does which job"*; rewriting them from a naming fix
     would answer that decision as a side effect.
+26. **The scenario requests have no reader inside the product** (ADR 0120 Q4,
+    2026-09-05). `GET /analytics/goal-scenarios/requests` is the founder's read
+    and is gated by `X-Admin-Key`; there is no page for it, and the house that
+    asked never sees its own list back. Both are deliberate for now — a house
+    list would imply a queue with a state, and the table has no state column
+    precisely because nothing would ever write one. What would change this: a
+    request that has been ANSWERED is knowable from the catalogue itself, so the
+    honest reader is "here is the scenario you asked for, and it is now held",
+    not a status badge.
+27. **`ADMIN_API_KEY` is unset on the local gateway**, so the founder's read
+    refuses there — measured 2026-09-05:
+    `GET /api/v1/analytics/goal-scenarios/requests` answers 401 *"Service
+    authentication is not configured (ADMIN_API_KEY is unset) — refusing."*
+    That is `ServiceKeyGuard` failing closed and is the correct behaviour, but
+    it means the route cannot be exercised end-to-end on this machine until the
+    key is set.
