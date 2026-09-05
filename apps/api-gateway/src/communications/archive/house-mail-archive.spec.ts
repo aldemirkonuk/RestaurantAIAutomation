@@ -660,6 +660,139 @@ describe("the export", () => {
   });
 });
 
+describe("whose Drive the archive is in", () => {
+  /**
+   * ADR 0118 D16, the founder's answer to question 1 (2026-09-05): the archive
+   * stays in the grant-holder's own Drive and the house is TOLD whose it is.
+   *
+   * The four states below are the whole point. A name that was READ, an account
+   * that records NONE, and a read that FAILED must not print alike — the last
+   * one especially, because `peopleFor` on the sibling route already logs and
+   * returns an empty map on error, so a name-shaped hole would tell the house
+   * its ten-year record sits in nobody's Drive.
+   */
+  const armed = (over: Record<string, unknown> = {}) => ({
+    ...ARMED_SETTINGS[0],
+    ...over,
+  });
+
+  it("names the grant-holder, and says the account is theirs and not the house's", async () => {
+    const { db } = build({
+      house_mail_archive_settings: [armed()],
+      integration_oauth_connections: [
+        { id: GRANT, user_id: PERSON, account_email: "aylin@meyhouse.test" },
+      ],
+      users: [{ user_id: PERSON, name: "Aylin Demir", email: "aylin@meyhouse.test" }],
+    });
+    const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+
+    const settings = await service.settingsFor(HOUSE);
+    const owner = await service.ownerOf(settings);
+
+    expect(owner.name).toBe("Aylin Demir");
+    expect(owner.unreadableBecause).toBeNull();
+    expect(owner.keptIn).toBe(
+      "Kept in Aylin Demir's Google Drive. It is their personal account, not a folder this restaurant owns: if they leave, the archive leaves with them.",
+    );
+  });
+
+  it("says the NAME could not be read, which is not the same as an unowned archive", async () => {
+    const { db } = build({
+      house_mail_archive_settings: [armed()],
+      integration_oauth_connections: [
+        { id: GRANT, user_id: PERSON, account_email: "aylin@meyhouse.test" },
+      ],
+      users: { error: { message: "statement timeout" } },
+    });
+    const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+
+    const owner = await service.ownerOf(await service.settingsFor(HOUSE));
+
+    expect(owner.name).toBeNull();
+    expect(owner.userId).toBe(PERSON);
+    expect(owner.unreadableBecause).toContain("statement timeout");
+    expect(owner.keptIn).toMatch(/could NOT be read/);
+    expect(owner.keptIn).toMatch(/Somebody owns this archive/);
+    // Never a blank, and never a claim about the ACCOUNT.
+    expect(owner.keptIn.trim().length).toBeGreaterThan(60);
+    expect(owner.keptIn).not.toMatch(/no name recorded/);
+  });
+
+  it("says an account that records NO name is genuinely nameless, not unread", async () => {
+    const { db } = build({
+      house_mail_archive_settings: [armed()],
+      integration_oauth_connections: [
+        { id: GRANT, user_id: PERSON, account_email: "aylin@meyhouse.test" },
+      ],
+      users: [{ user_id: PERSON, name: "   ", email: "aylin@meyhouse.test" }],
+    });
+    const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+
+    const owner = await service.ownerOf(await service.settingsFor(HOUSE));
+
+    expect(owner.name).toBeNull();
+    expect(owner.unreadableBecause).toMatch(/genuinely absent/);
+    expect(owner.keptIn).toContain("aylin@meyhouse.test");
+    expect(owner.keptIn).toMatch(/no name recorded/);
+  });
+
+  it("says the GRANT could not be read, separately from the name", async () => {
+    const { db } = build({
+      house_mail_archive_settings: [armed()],
+      integration_oauth_connections: { error: { message: "connection reset" } },
+    });
+    const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+
+    const owner = await service.ownerOf(await service.settingsFor(HOUSE));
+
+    expect(owner.unreadableBecause).toContain("connection reset");
+    expect(owner.keptIn).toMatch(/failed read, not an unowned archive/);
+  });
+
+  it("says there is no Drive at all when the house keeps nothing", async () => {
+    const { db } = build({ house_mail_archive_settings: [] });
+    const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+
+    const owner = await service.ownerOf(await service.settingsFor(HOUSE));
+
+    expect(owner.userId).toBeNull();
+    expect(owner.keptIn).toMatch(/no Drive and no owner to name/);
+  });
+
+  it("says the grant is GONE for an armed archive whose connection was deleted", async () => {
+    const { db } = build({
+      house_mail_archive_settings: [armed({ connection_id: null })],
+    });
+    const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+
+    const owner = await service.ownerOf(await service.settingsFor(HOUSE));
+
+    expect(owner.keptIn).toMatch(/no longer exists/);
+    expect(owner.keptIn).toMatch(/chosen once more/);
+  });
+
+  it("never returns a blank sentence, in any state", async () => {
+    const cases: Array<Record<string, unknown>> = [
+      { house_mail_archive_settings: [] },
+      { house_mail_archive_settings: [armed({ connection_id: null })] },
+      {
+        house_mail_archive_settings: [armed()],
+        integration_oauth_connections: [],
+      },
+      {
+        house_mail_archive_settings: [armed()],
+        integration_oauth_connections: [{ id: GRANT, user_id: null, account_email: null }],
+      },
+    ];
+    for (const rows of cases) {
+      const { db } = build(rows as never);
+      const service = new HouseMailArchiveService(db, oauth(), writer({}).w);
+      const owner = await service.ownerOf(await service.settingsFor(HOUSE));
+      expect(owner.keptIn.trim().length).toBeGreaterThan(40);
+    }
+  });
+});
+
 describe("what the sweep reads", () => {
   it("REFUSES rather than returning an empty set when the record cannot be read", async () => {
     const { db } = build({

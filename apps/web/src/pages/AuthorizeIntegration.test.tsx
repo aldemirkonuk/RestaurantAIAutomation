@@ -145,3 +145,81 @@ describe('the consent screen offers what the server offers', () => {
     expect(await screen.findByText(/does not include "some_future_integration"/)).toBeTruthy()
   })
 })
+
+/**
+ * The Drive grant's consent screen says the house's vendor mail may be written
+ * to that Drive (ADR 0118 D16; the founder's answer to question 2, 2026-09-05:
+ * "Amend the copy; the sealed choice is the consent" — no re-authorisation loop).
+ *
+ * The gateway owns the sentence and `drive-says-it-may-hold-the-mail.spec.ts`
+ * guards its wording. What is proved HERE is the other half: that the page
+ * actually renders it to the person deciding. A disclosure that exists in a
+ * constants file and never reaches a screen is the same silence as no
+ * disclosure, and these two tests are on either side of that seam.
+ */
+describe('the Drive consent screen discloses the mail archive', () => {
+  const DRIVE_ENTRY = {
+    ...READ_ENTRY,
+    id: 'google_drive',
+    label: 'Google Drive',
+    description:
+      "Save exports, menu scans, and this restaurant's own archived copy of its vendor mail to a folder in your Drive.",
+    scopes: [
+      {
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        label: 'Create and manage files WineOps puts in your Drive',
+        reason:
+          'Lets us write inventory exports and scanned menus to Drive, and — if this restaurant turns it on — its own archived copy of the vendor mail it receives.',
+      },
+    ],
+    notRequested: ['Reading files you did not create with WineOps'],
+    dataHandling: {
+      reads: 'Only files this app itself created in your Drive.',
+      doesNotRead:
+        'Anything else in your Drive. `drive.file` cannot see a document this app did not create.',
+      landsIn:
+        "Nothing from Drive is copied into Mudavym. If this restaurant chooses to keep its own copy of its vendor mail, THAT is written out through this same grant: every vendor reply mirrored into the restaurant's conversation book is written into a `Mudavym mail archive` folder in this Drive. It is off unless a manager or owner turns it on for the restaurant, and the restaurant's own /connections page names whose Drive it goes to.",
+      visibleTo: 'You, on /profile.',
+      keptFor:
+        'The exported copies outlive the grant, and Mudavym can never read, change or delete them.',
+    },
+    mirrorsMail: false,
+    available: true,
+    unavailableReason: null,
+  }
+
+  beforeEach(() => {
+    vi.mocked(integrationsApi.getCatalog).mockResolvedValue([DRIVE_ENTRY] as never)
+    vi.mocked(integrationsApi.getRetentionDisclosure).mockRejectedValue(
+      new Error('not asked for a grant that mirrors no mail'),
+    )
+  })
+
+  it('prints that the house’s vendor mail may be written to this Drive', async () => {
+    renderAt('google_drive')
+    expect(await screen.findByText(/Connect Google Drive to Mudavym/)).toBeTruthy()
+    expect(screen.getByText(/Mudavym mail archive/)).toBeTruthy()
+    expect(screen.getByText(/every vendor reply mirrored/)).toBeTruthy()
+  })
+
+  it('says the archive is OFF until the restaurant turns it on, and who to ask', async () => {
+    renderAt('google_drive')
+    await screen.findByText(/Connect Google Drive to Mudavym/)
+    expect(
+      screen.getByText(/off unless a manager or owner turns it on/),
+    ).toBeTruthy()
+    expect(screen.getByText(/names whose Drive it goes to/)).toBeTruthy()
+  })
+
+  it('does NOT gate the Drive grant on a retention figure it never needs', async () => {
+    // `mirrorsMail: false` — Drive reads no mailbox, so there is no window to
+    // print and the failed retention read must not disable Continue. The
+    // founder's answer was "no re-authorisation loop"; a blocked button here
+    // would be a loop by another name.
+    renderAt('google_drive')
+    await screen.findByText(/Connect Google Drive to Mudavym/)
+    expect(screen.queryByTestId('retention-disclosure')).toBeNull()
+    const button = screen.getByRole('button', { name: /Continue to Google/ })
+    expect((button as HTMLButtonElement).disabled).toBe(false)
+  })
+})

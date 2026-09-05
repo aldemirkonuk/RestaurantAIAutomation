@@ -90,13 +90,14 @@ export const INTEGRATION_DEFINITIONS: Record<
     provider: "google",
     label: "Google Drive",
     providerLabel: "Google",
-    description: "Save exports and menu scans to a folder in your Drive.",
+    description:
+      "Save exports, menu scans, and this restaurant's own archived copy of its vendor mail to a folder in your Drive.",
     scopes: [
       {
         scope: "https://www.googleapis.com/auth/drive.file",
         label: "Create and manage files WineOps puts in your Drive",
         reason:
-          "Lets us write inventory exports and scanned menus to Drive. Limited to files WineOps creates — your existing documents stay invisible to us.",
+          "Lets us write inventory exports and scanned menus to Drive, and — if this restaurant turns it on — its own archived copy of the vendor mail it receives. Limited to files WineOps creates: your existing documents stay invisible to us, and so does everything this app did not write.",
       },
       {
         scope: "openid",
@@ -121,11 +122,11 @@ export const INTEGRATION_DEFINITIONS: Record<
       doesNotRead:
         "Anything else in your Drive. `drive.file` cannot see a document this app did not create, so there is no list, no search and no read of your own files.",
       landsIn:
-        "Nothing from Drive is copied into Mudavym. The grant is used to WRITE exports out; the connected address is stored on `integration_oauth_connections.account_email`, and the tokens beside it are AES-256-GCM encrypted.",
+        "Nothing from Drive is copied into Mudavym. The grant is used to WRITE exports out; the connected address is stored on `integration_oauth_connections.account_email`, and the tokens beside it are AES-256-GCM encrypted. If this restaurant chooses to keep its own copy of its vendor mail, THAT is written out through this same grant: every vendor reply mirrored into the restaurant's conversation book - the message body, its headers and any attachment - is written into a `Mudavym mail archive` folder in this Drive as one file per reply. It is off unless a manager or owner turns it on for the restaurant, and the restaurant's own /connections page names whose Drive it goes to.",
       visibleTo:
         "You, on /profile. A manager or owner of a restaurant this grant is recorded against sees that it exists and whose it is, and may stop the house using it — they can never read your Drive through it and can never revoke it for you.",
       keptFor:
-        "Nothing from your Drive is kept, because nothing from it is copied here. What is kept is the grant row itself — the connected address and the encrypted tokens — and disconnecting drops the tokens on the spot and marks the row revoked. The files this app wrote into your Drive are yours and stay in your Drive; disconnecting does not delete them, and neither does anything else here.",
+        "Nothing from your Drive is kept, because nothing from it is copied here. What is kept is the grant row itself — the connected address and the encrypted tokens — and disconnecting drops the tokens on the spot and marks the row revoked. The files this app wrote into your Drive are yours and stay in your Drive; disconnecting does not delete them, and neither does anything else here. That is the point of the mail archive: the exported copies outlive the grant, outlive Mudavym's own retention window, and outlive this restaurant's account — Mudavym can write them and can never read, change or delete them afterwards.",
     },
   },
   /**

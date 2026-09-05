@@ -109,6 +109,8 @@ interface Fixture {
   mcp: Reg;
   mcpRuntime: Reg;
   houseGrants: Reg;
+  /** The house's own copy of its vendor mail (ADR 0118 D16). */
+  mailArchive: Reg;
   catalog: Reg;
   tally: Tally;
   regenerateFeed: unknown;
@@ -238,6 +240,7 @@ function base(): Fixture {
       probeTimeoutMs: 8000,
     }),
     houseGrants: reg({ grants: [], unattributed: 0 }),
+    mailArchive: reg(archive()),
     catalog: reg([]),
     tally: {
       house: 3,
@@ -373,6 +376,46 @@ const granted = (toolName: string, over: Record<string, unknown> = {}) => ({
   grantedAt: '2026-09-03T00:00:00.000Z',
   ...over,
 });
+
+/**
+ * The house's mail archive as the GATEWAY sends it (ADR 0118 D16). `owner.keptIn`
+ * arrives composed: the page prints it and never builds it, because only the
+ * server can tell a name that was read from one that could not be.
+ */
+const archive = (over: Record<string, unknown> = {}) => ({
+  mode: 'none',
+  chosen: false,
+  armed: false,
+  says: 'Nobody has chosen for this restaurant yet, so the third answer applies.',
+  refusedBecause: null,
+  connectionId: null,
+  driveFolderPath: null,
+  owner: {
+    userId: null,
+    name: null,
+    unreadableBecause: null,
+    keptIn: 'Nothing is kept outside Mudavym, so there is no Drive and no owner to name.',
+  },
+  ...over,
+});
+
+const armedArchive = (over: Record<string, unknown> = {}) =>
+  archive({
+    mode: 'own_cloud',
+    chosen: true,
+    armed: true,
+    says: "Every mirrored reply is exported to this restaurant's own Google Drive.",
+    connectionId: 'c1',
+    driveFolderPath: 'Mudavym mail archive/Sim Meyhouse (r1)',
+    owner: {
+      userId: 'u-selin',
+      name: 'Selin Kara',
+      unreadableBecause: null,
+      keptIn:
+        "Kept in Selin Kara's Google Drive. It is their personal account, not a folder this restaurant owns: if they leave, the archive leaves with them.",
+    },
+    ...over,
+  });
 
 const grant = (over: Record<string, unknown> = {}) => ({
   connectionId: 'c1',
@@ -1467,5 +1510,120 @@ describe('ConnectionsNext — the house sends in its own name', () => {
     // And it must NOT have fallen through to the "none" row, which would tell a
     // manager an outage is a fact about their restaurant.
     expect(screen.queryByText('WhatsApp Business')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The house's own copy of its vendor mail, and WHOSE Drive it is in
+ * (ADR 0118 D16; the founder's answer to question 1, 2026-09-05: "As built,
+ * owner's name printed; Shared Drive later").
+ *
+ * The row exists for one reason: a `google_drive` grant belongs to a PERSON, so
+ * an armed archive puts the house's ten-year record in one colleague's personal
+ * account, and it leaves when they do. The founder chose to keep that shape and
+ * TELL the house. These tests are what stops the telling going quiet.
+ *
+ *   1. AN ARMED ARCHIVE NAMES THE PERSON, and says the account is theirs.
+ *   2. A NAME THAT COULD NOT BE READ SAYS SO — never a blank, and never a claim
+ *      about the account. A read failure and a nameless account are different
+ *      facts and must not print alike.
+ *   3. A HOUSE NOBODY ASKED READS AS A DEFAULT, not as a decision.
+ *   4. THE PAGE DOES NOT COMPOSE THE SENTENCE. It prints the gateway's
+ *      `keptIn`, so a change to that sentence cannot be contradicted here.
+ *   5. AN UNREAD ARCHIVE IS NOT AN EMPTY ONE.
+ */
+describe("the house's own copy of its vendor mail", () => {
+  it('names whose Drive holds it, and says the account is theirs', () => {
+    const d = base();
+    d.mailArchive = reg(armedArchive());
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(/Kept in Selin Kara's Google Drive/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/if they leave, the archive leaves with them/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Exporting')).toBeInTheDocument();
+    // The folder it writes into is named, so a person can go and look.
+    expect(
+      screen.getByText(/Mudavym mail archive\/Sim Meyhouse \(r1\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('says a name that could NOT be read, rather than printing a blank', () => {
+    const d = base();
+    d.mailArchive = reg(
+      armedArchive({
+        owner: {
+          userId: 'u-selin',
+          name: null,
+          unreadableBecause:
+            "The grant-holder's name could not be read: statement timeout",
+          keptIn:
+            "This house's mail is exported to one person's Google Drive and their name could NOT be read (statement timeout). Somebody owns this archive; this page cannot say who until that read works.",
+        },
+      }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/could NOT be read/)).toBeInTheDocument();
+    expect(screen.getByText(/Somebody owns this archive/)).toBeInTheDocument();
+    // The owner slot must not read as an empty possessive.
+    expect(screen.getByText(/nobody this page can name/)).toBeInTheDocument();
+    // And it must NOT claim the account is nameless, which is a different fact.
+    expect(screen.queryByText(/no name recorded/)).not.toBeInTheDocument();
+  });
+
+  it('reads as a default, not a decision, when nobody has been asked', () => {
+    const d = base();
+    d.mailArchive = reg(archive());
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('Never asked')).toBeInTheDocument();
+    expect(
+      screen.getByText(/no Drive and no owner to name/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/no folder is armed, so nothing is written out/),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the GATEWAY’s sentence rather than composing its own', () => {
+    const d = base();
+    d.mailArchive = reg(
+      armedArchive({
+        owner: {
+          userId: 'u-x',
+          name: 'Aylin Demir',
+          unreadableBecause: null,
+          keptIn: 'A SENTENCE ONLY THE SERVER COULD HAVE WRITTEN.',
+        },
+      }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText('A SENTENCE ONLY THE SERVER COULD HAVE WRITTEN.'),
+    ).toBeInTheDocument();
+  });
+
+  it('an unread archive is not an empty one', () => {
+    const d = base();
+    d.mailArchive = reg(null, { error: 'connection reset', data: null });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(/This house's own copy of its vendor mail/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/connection reset/).length).toBeGreaterThan(0);
+    // It must NOT have fallen through to "Never asked", which would tell a
+    // manager an outage is a fact about their restaurant.
+    expect(screen.queryByText('Never asked')).not.toBeInTheDocument();
   });
 });

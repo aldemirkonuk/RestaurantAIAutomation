@@ -1234,3 +1234,71 @@ archive so the house knows whose it is; a Google Workspace Shared Drive is the u
 path when a house has one. Rejected: require a Shared Drive (most small houses have no
 Workspace); Mudavym-held only (the opposite of batch 45). The name on /connections is
 owed by the archive builder if not already rendered.
+
+## Founder answers, 2026-09-05 (batch 54) — D16 questions 2, 3 and 4, and what was built for 1 and 2
+
+### Q2 — "Amend the copy; the sealed choice is the consent."
+
+The `google_drive` grant's consent screen gains the sentence that the house's
+vendor mail may be written to that Drive when the house chooses it. **No
+re-authorisation loop**: `drive.file` already permitted the write, no scope is
+added, and nobody who already connected Drive is sent back through Google.
+
+Rejected with it: a forced re-consent on a scope that did not change, which
+teaches people that re-consent means nothing and would have logged out every
+Drive-connected house for a copy edit.
+
+**Built.** `integrations-oauth.constants.ts` — four fields moved, all on
+`google_drive` and none of them a scope: the `description`, the `drive.file`
+scope's own `reason`, `dataHandling.landsIn` (which now names the message body,
+its headers, any attachment, the `Mudavym mail archive` folder, that it is off
+until a manager or owner turns it on, and that /connections names whose Drive it
+goes to) and `dataHandling.keptFor` (that the exported copies outlive the grant
+and Mudavym can never read, change or delete them). The consent screen already
+renders whatever the gateway sends, so no page change was needed —
+`drive-says-it-may-hold-the-mail.spec.ts` guards the wording and three vitest
+cases in `AuthorizeIntegration.test.tsx` prove it reaches the screen. That seam
+is deliberate: a disclosure that exists in a constants file and never renders is
+the same silence as no disclosure.
+
+### Q1 — the name, as built
+
+`GET /communications/archive` now returns `owner`, and /connections prints
+`owner.keptIn` verbatim beside the archive row. The sentence is composed on the
+SERVER because it has to separate three states the page cannot tell apart:
+
+| State | What it prints |
+|---|---|
+| The name was read | `Kept in <name>'s Google Drive. It is their personal account, not a folder this restaurant owns: if they leave, the archive leaves with them.` |
+| The account exists and records no name | names the address instead, and says the name is **genuinely absent** |
+| The read FAILED | says the name **could NOT be read**, and that somebody owns this archive — never that nobody does |
+
+The third row is the reason this is not a `?? ''`. `peopleFor` on the sibling
+house-grants route already logs and returns an EMPTY MAP on error, so a
+name-shaped hole here would have told a house its ten-year record sits in
+nobody's Drive. `ownerOf` is a separate method rather than part of
+`settingsFor` because that one is the retention sweep's nightly hot path and the
+sweep has no use for a person's name. A blank is the one output no state
+produces, and a spec asserts that across all of them.
+
+### Q3 — stays as built
+
+A revocation deletes raw mail that never reached the house's copy. D15 outranks:
+it is about a person withdrawing consent to a copy of their own mailbox, and
+holding that deletion would leave their mail inside Mudavym after they revoked
+and put the length of the delay in Google's hands. The run still exports what it
+can first and says, per conversation, what did and did not arrive.
+
+### Q4 — superseded, and arm B stays gated
+
+The parent's reading — that the archive bills through the messaging credits path
+at storage cost plus a fee — is **withdrawn**. OD-23 was answered for MESSAGING
+(plan allowance, then Mudavym credits or the house's own provider keys); it was
+not answered for the archive. `mudavym_archive` therefore remains recorded and
+never armed, and
+`house_mail_archive_settings_paid_tier_arms_only_with_a_price` keeps refusing it
+in the schema until the founder speaks to the archive's billing specifically.
+Nothing in this pass moves that.
+
+**Still open after batch 54:** what the Mudavym archive costs, and who pays.
+That is the only thing standing between B's shipped shape and B running.

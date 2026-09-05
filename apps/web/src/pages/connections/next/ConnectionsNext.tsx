@@ -1104,6 +1104,88 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 />
               ))}
 
+              {/*
+                THE HOUSE'S OWN MAIL ARCHIVE (ADR 0118 D16; the founder's answer
+                to question 1, 2026-09-05: "As built, owner's name printed").
+                It sits inside this section rather than beside it because the
+                archive IS one of these personal grants doing a house job — and
+                the whole point of printing it here is that the house can see
+                WHOSE Drive its ten-year record is in.
+
+                Every sentence comes from the gateway. The page does not compose
+                `keptIn`, because that sentence has to separate a name that was
+                read, an account that records none, and a read that FAILED, and
+                only the server can tell those apart. A blank is the one output
+                that is never produced.
+              */}
+              {d.mailArchive.loading ? (
+                <LoadingRegister name="the house's mail archive" />
+              ) : d.mailArchive.error ? (
+                <UnreadRegister
+                  name="This house's own copy of its vendor mail"
+                  detail={d.mailArchive.error}
+                  refused={d.mailArchive.refused}
+                />
+              ) : d.mailArchive.data ? (
+                <AttachmentRow
+                  icon={<Link2 {...ICON} />}
+                  title="The house's own copy of its vendor mail"
+                  owner={
+                    d.mailArchive.data.owner.name
+                      ? `${d.mailArchive.data.owner.name}'s`
+                      : "nobody this page can name"
+                  }
+                  chips={[
+                    d.mailArchive.data.armed
+                      ? { label: 'Exporting', tone: 'on' }
+                      : d.mailArchive.data.chosen
+                        ? { label: 'Chosen, not running', tone: 'off' }
+                        : { label: 'Never asked', tone: 'off' },
+                  ]}
+                  subtitle={d.mailArchive.data.owner.keptIn}
+                  why={
+                    <>
+                      {d.mailArchive.data.says}
+                      {d.mailArchive.data.owner.unreadableBecause ? (
+                        <> {d.mailArchive.data.owner.unreadableBecause}</>
+                      ) : null}
+                    </>
+                  }
+                  permissionsLabel="Writes"
+                  permissions={
+                    d.mailArchive.data.driveFolderPath
+                      ? [
+                          {
+                            text: `One file per vendor reply into ${d.mailArchive.data.driveFolderPath}`,
+                            can: true,
+                          },
+                          {
+                            text: 'Reads back what it wrote, to check the copy arrived whole',
+                            can: true,
+                          },
+                          {
+                            text: 'Reads, changes or deletes anything else in that Drive',
+                            can: false,
+                          },
+                        ]
+                      : [
+                          {
+                            text: 'Nothing — no folder is armed, so nothing is written out',
+                            can: false,
+                          },
+                        ]
+                  }
+                  lastLabel="Chosen"
+                  last={null}
+                  lastDetail="Choosing an archive and running an export are both sealed acts. The nightly export carries no seal of its own and records none."
+                  stopNote={
+                    d.mailArchive.data.armed
+                      ? "Files already written are the restaurant's own. Disconnecting the grant does not delete them, and neither does anything else here — Mudavym can write them and can never read, change or delete them afterwards."
+                      : 'Nothing is being written out, so there is nothing to stop.'
+                  }
+                />
+              ) : null}
+
               {(d.houseGrants.data?.unattributed ?? 0) > 0 ? (
                 <div className="cx-callout">
                   <b>

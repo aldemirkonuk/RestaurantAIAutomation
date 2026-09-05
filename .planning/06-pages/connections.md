@@ -218,6 +218,25 @@ the two registers that would actually leak are refused at the gateway as well.
   frees the code for a corrected one, and **marks** the rows it admitted by join
   without deleting or rewriting one.
 
+- **The house's own copy of its vendor mail names WHOSE Drive it is in** (ADR
+  0118 D16; the founder's answer to question 1, 2026-09-05: "As built, owner's
+  name printed; Shared Drive later"). A `google_drive` grant is
+  `UNIQUE (user_id, integration_id)` — it belongs to a PERSON — so an armed
+  archive puts the house's ten-year record in one colleague's personal account,
+  and it leaves when they do. The row sits inside the personal-grants register
+  because the archive IS one of those grants doing a house job, and it prints
+  the folder it writes into, whether it is exporting, and the sentence naming
+  the owner
+- **Three owner states, and never a blank.** A name that was READ prints
+  `Kept in <name>'s Google Drive`; an account that records no name names the
+  address instead and says the name is genuinely absent; a read that FAILED says
+  the name could not be read and that somebody owns the archive. The sentence is
+  composed by the gateway (`GET /communications/archive`, `owner.keptIn`) and
+  printed verbatim, because only the server can tell a failed read from a
+  nameless account — `peopleFor` on the sibling house-grants route already
+  returns an empty map on error, so a name-shaped hole would have told a house
+  its record sits in nobody's Drive
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -650,6 +669,21 @@ make it true, and no amount of storage would. A server that lies about
 `readOnlyHint` is refused by nothing but the manager reading the tool's name —
 which is why the override direction is one-way and why the seal stayed.
 
+### The house's mail archive (ADR 0118 D16, 2026-09-05)
+
+- **The archive is one person's Drive, by decision and not by omission.** The
+  founder chose to keep that shape and print the owner's name (batch 53); a
+  Google Workspace Shared Drive is the upgrade when a house has one, and most
+  small houses do not. Until then, a departing manager takes the house's
+  exported record with them and the page says so in as many words.
+- **The row shows state, and does not yet CHOOSE.** `POST /communications/archive`
+  is built and sealed, and this page has no control wired to it — a house
+  currently arms the archive through the API, not through /connections. Named
+  here rather than left to be discovered.
+- **`mudavym_archive` cannot be armed at all** while OD-23 is unanswered for the
+  archive (batch 54 superseded the parent's reading of it). A house that chooses
+  it sees "Chosen, not running" and the sentence naming the open decision.
+
 ## 10. Maturity
 
 **partial.** Every register renders from a real endpoint and every claim on the
@@ -901,3 +935,16 @@ that reach this register:
     because no distributor was found to send one (item 11). The register becomes
     reachable the day a house has a file — and the parser it feeds is proved
     against fixtures rather than against any distributor's real bytes.
+
+13. **Wire the archive's CHOICE onto this page** (ADR 0118 D16). The row now
+    states which archive the house keeps and whose Drive holds it, and the
+    control that SETS it is not here — `POST /communications/archive` is built,
+    sealed (`house_mail_export`, subject = the restaurant) and reachable only by
+    API today. It needs the hold-to-approve shape the other sealed controls on
+    this page already use, plus a picker for which connected Drive grant carries
+    it. Nothing is blocked on a decision: this is a control that was not drawn.
+14. **Offer a Shared Drive as the archive's destination** — the founder's
+    batch-53 answer named it as the upgrade path once a house has Google
+    Workspace. `drive.file` can already write into a Shared Drive, so this is a
+    destination picker and a sentence, not a new scope; what it removes is the
+    "it leaves when they leave" line this page currently has to print.

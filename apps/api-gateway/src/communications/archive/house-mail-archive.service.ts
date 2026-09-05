@@ -80,6 +80,37 @@ const EXPORT_BATCH_CEILING = 200;
 const OWN_CLOUD_DESTINATION: HouseMailExportDestination =
   "own_cloud_google_drive";
 
+/**
+ * WHOSE Drive the house's archive lives in (ADR 0118 D16, founder answer to
+ * question 1, 2026-09-05: "As built, owner's name printed; Shared Drive later").
+ *
+ * A `google_drive` grant is `UNIQUE (user_id, integration_id)` — it belongs to a
+ * PERSON. An armed `own_cloud` archive therefore writes every vendor reply the
+ * HOUSE holds into one colleague's personal Drive, and when they leave it leaves
+ * with them. The founder's answer is that this stays as built and the house is
+ * TOLD whose it is, so /connections prints `keptIn` beside the archive.
+ *
+ * THREE STATES, AND NONE OF THEM IS A BLANK. A name that was read; an account
+ * that exists and carries no name; and a read that failed. The third is the one
+ * that matters: `peopleFor` on the sibling route already logs and returns an
+ * empty map on error, so a name-shaped hole here would print as an unnamed
+ * person rather than as an unread one, and the house would be told its mail
+ * sits in nobody's Drive.
+ */
+export interface ArchiveOwner {
+  /** The grant-holder. NULL when the archive names no connection. */
+  userId: string | null;
+  /** Their name as `public.users` records it, or NULL. Never invented. */
+  name: string | null;
+  /** Why the name is not here, when it is not. NULL when it was read. */
+  unreadableBecause: string | null;
+  /**
+   * The sentence /connections prints. Composed HERE, never on the page — the
+   * same rule the consent screen follows for the retention figure.
+   */
+  keptIn: string;
+}
+
 export interface ArchiveSettings {
   restaurantId: string;
   mode: HouseMailArchiveMode;
@@ -238,6 +269,107 @@ export class HouseMailArchiveService implements HouseMailArchivePort {
         connectionId: (row.connection_id as string | null) ?? null,
         driveFolderPath: (row.drive_folder_path as string | null) ?? null,
       }),
+    };
+  }
+
+  /**
+   * Whose Drive this house's archive is in.
+   *
+   * NOT folded into `settingsFor`, deliberately: that method is the retention
+   * sweep's hot path and runs for every house every night, and the sweep has no
+   * use for a person's name. This is the page's read.
+   *
+   * A FAILED READ IS SAID, NOT BLANKED. supabase-js resolves `{ data, error }`,
+   * so an unbound error would leave `name` null and the page would print "kept
+   * in a Drive whose owner is not recorded" — a claim about the ACCOUNT — when
+   * the true fact is that we could not look. The two are separated.
+   */
+  async ownerOf(settings: ArchiveSettings): Promise<ArchiveOwner> {
+    if (settings.mode !== "own_cloud" || !settings.connectionId) {
+      return {
+        userId: null,
+        name: null,
+        unreadableBecause: null,
+        keptIn:
+          settings.mode === "own_cloud"
+            ? "The Google Drive this archive was armed with no longer exists, so there is no account to name. Nothing can be written until Drive is connected again and the archive is chosen once more."
+            : "Nothing is kept outside Mudavym, so there is no Drive and no owner to name.",
+      };
+    }
+
+    const { data, error } = await this.db.supabase
+      .from("integration_oauth_connections")
+      .select("id, user_id, account_email")
+      .eq("id", settings.connectionId)
+      .limit(1);
+    if (error) {
+      return {
+        userId: null,
+        name: null,
+        unreadableBecause: `The grant that carries this archive could not be read: ${error.message}`,
+        keptIn: `This house's mail is exported to a Google Drive, and WHOSE could not be read (${error.message}). That is a failed read, not an unowned archive - the files are in somebody's account and this page cannot currently say whose.`,
+      };
+    }
+
+    const row = data?.[0] ?? null;
+    if (!row) {
+      return {
+        userId: null,
+        name: null,
+        unreadableBecause:
+          "The grant row this archive names is gone from integration_oauth_connections.",
+        keptIn:
+          "This house's mail is exported to a Google Drive whose grant record no longer exists, so the account cannot be named from here. The files already written are still in that Drive and Mudavym cannot reach them.",
+      };
+    }
+
+    const userId = (row.user_id as string | null) ?? null;
+    const accountEmail = (row.account_email as string | null) ?? null;
+    if (!userId) {
+      return {
+        userId: null,
+        name: null,
+        unreadableBecause:
+          "The grant records no user, so there is nobody to name.",
+        keptIn: `This house's mail is exported to the Google Drive of ${accountEmail ?? "an account this page cannot name"}, and the grant records no person against it.`,
+      };
+    }
+
+    const { data: people, error: peopleError } = await this.db.supabase
+      .from("users")
+      .select("user_id, name, email")
+      .eq("user_id", userId)
+      .limit(1);
+    if (peopleError) {
+      return {
+        userId,
+        name: null,
+        unreadableBecause: `The grant-holder's name could not be read: ${peopleError.message}`,
+        keptIn: `This house's mail is exported to one person's Google Drive and their name could NOT be read (${peopleError.message}). Somebody owns this archive; this page cannot say who until that read works.`,
+      };
+    }
+
+    const person = people?.[0] ?? null;
+    const name = ((person?.name as string | null) ?? "").trim() || null;
+    if (!name) {
+      const fallback =
+        ((person?.email as string | null) ?? accountEmail ?? "").trim() || null;
+      return {
+        userId,
+        name: null,
+        unreadableBecause:
+          "This person's account records no name. The account was read; the name is genuinely absent.",
+        keptIn: fallback
+          ? `Kept in the Google Drive of ${fallback}, who has no name recorded on their account.`
+          : "Kept in one person's Google Drive. Their account records neither a name nor an address, so this page cannot name them - the account was read and the name is genuinely absent.",
+      };
+    }
+
+    return {
+      userId,
+      name,
+      unreadableBecause: null,
+      keptIn: `Kept in ${name}'s Google Drive. It is their personal account, not a folder this restaurant owns: if they leave, the archive leaves with them.`,
     };
   }
 

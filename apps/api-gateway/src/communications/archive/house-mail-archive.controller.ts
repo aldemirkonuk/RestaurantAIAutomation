@@ -110,13 +110,16 @@ export class HouseMailArchiveController {
   @ApiResponse({
     status: 200,
     description:
-      "`chosen: false` means NO row exists: nobody has been asked, which is a different fact from a recorded `none`. `armed` is whether the mode is actually operating; an unarmed mode changes nothing and `refusedBecause` says why. A `mudavym_archive` row is unarmed on every deployment until OD-23 fixes a price.",
+      "`chosen: false` means NO row exists: nobody has been asked, which is a different fact from a recorded `none`. `armed` is whether the mode is actually operating; an unarmed mode changes nothing and `refusedBecause` says why. A `mudavym_archive` row is unarmed on every deployment until OD-23 fixes a price. `owner.keptIn` is the sentence /connections prints about WHOSE Drive holds the archive; it distinguishes a name that was read, an account that records none, and a read that failed, and is never blank.",
   })
   async settings(@CurrentUser() user: Actor) {
-    return {
-      success: true,
-      archive: await this.archive.settingsFor(user.restaurantId),
-    };
+    const archive = await this.archive.settingsFor(user.restaurantId);
+    // WHOSE Drive, composed here and printed verbatim by /connections (ADR 0118
+    // D16, founder answer to question 1). A second read rather than part of
+    // `settingsFor`, because that method is the retention sweep's nightly hot
+    // path and the sweep has no use for a person's name.
+    const owner = await this.archive.ownerOf(archive);
+    return { success: true, archive: { ...archive, owner } };
   }
 
   @Post("seal-challenge")

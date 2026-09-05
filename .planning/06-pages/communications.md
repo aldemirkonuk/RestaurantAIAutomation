@@ -893,7 +893,10 @@ lands, this route is open.
     `no_dispute_recorded`. The scenario harness (ADR 0093) is where a real
     dispute span can be produced without touching production.
 
-18. **Answer OD-23 for the archive, then arm B** — `mudavym_archive` is built
+18. **Answer OD-23 for the archive, then arm B** — **still open after batch
+   54**, and the parent's reading of OD-23 (bill through the messaging credits
+   path) was WITHDRAWN there: OD-23 was answered for messaging, not for the
+   archive. Original note: — `mudavym_archive` is built
    as far as it can be: the settings row, the refusal, the consent copy and the
    run counts all exist, and
    `house_mail_archive_settings_paid_tier_arms_only_with_a_price` refuses to arm
@@ -907,7 +910,19 @@ lands, this route is open.
    back); a OneDrive sibling is that interface again against Graph, and
    `house_mail_exports.destination` is where a second value goes. Not started,
    and nobody has asked.
-20. **Print the archive's owner on /connections** — the consent screen states
-   the archive's state, but the page that CHOOSES it must name whose Drive the
-   house's mail goes into (ADR 0118 founder question 1). The gateway already
-   returns `connectionId` on `GET /communications/archive`.
+20. ~~**Print the archive's owner on /connections**~~ — **DONE 2026-09-05**
+   (founder batch 53, "As built, owner's name printed"). `GET
+   /communications/archive` returns `owner`, and /connections prints
+   `owner.keptIn` verbatim in the personal-grants register. Three states, never a
+   blank: a name that was read, an account that records none, and a read that
+   FAILED. What remains is the CONTROL that sets the archive, which is
+   `connections.md` §13 item 13 rather than this page's.
+21. **Amend the Drive consent copy — DONE 2026-09-05** (founder batch 54,
+   "Amend the copy; the sealed choice is the consent"). `google_drive`'s
+   `description`, its `drive.file` scope reason, `landsIn` and `keptFor` now say
+   the house's vendor mail may be written to that Drive, that it is off until a
+   manager or owner turns it on, and that /connections names whose Drive.
+   **No scope was added and nobody was sent back through Google** —
+   `drive-says-it-may-hold-the-mail.spec.ts` fails if a future pass widens the
+   scope list, which is what makes "no re-authorisation loop" checkable rather
+   than remembered.

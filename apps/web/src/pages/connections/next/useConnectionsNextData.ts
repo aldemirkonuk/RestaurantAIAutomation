@@ -250,6 +250,31 @@ export interface McpRuntimeVM {
   probeTimeoutMs: number;
 }
 
+/**
+ * The house's own archive of its mail (ADR 0118 D16).
+ *
+ * `owner.keptIn` is composed by the GATEWAY and printed verbatim. The page must
+ * not build that sentence: it has to separate a name that was read, an account
+ * that records none, and a read that FAILED, and only the server can tell those
+ * apart. `owner.name` is here to be shown beside it, never to be substituted for
+ * a missing `keptIn`.
+ */
+export interface ArchiveVM {
+  mode: 'own_cloud' | 'mudavym_archive' | 'none'
+  chosen: boolean
+  armed: boolean
+  says: string
+  refusedBecause: string | null
+  connectionId: string | null
+  driveFolderPath: string | null
+  owner: {
+    userId: string | null
+    name: string | null
+    unreadableBecause: string | null
+    keptIn: string
+  }
+}
+
 export interface HouseGrantVM {
   connectionId: string;
   integrationId: string;
@@ -468,6 +493,22 @@ export function useConnectionsNextData() {
     enabled: on,
     staleTime: 600_000,
   });
+
+  /* read 8 — the house's own mail archive (ADR 0118 D16). Read on its own
+     rather than folded into the grants read: the archive is a fact about the
+     HOUSE, and the grant it writes through may be revoked, deleted or belong to
+     somebody who has left. `owner.keptIn` arrives composed. */
+  const archiveQ = useQuery({
+    queryKey: ['connections-next-mail-archive', rid],
+    queryFn: async (): Promise<ArchiveVM> => {
+      const { data } = await apiClient.get<{ archive: ArchiveVM }>(
+        '/communications/archive',
+      )
+      return data.archive
+    },
+    enabled: on,
+    staleTime: 60_000,
+  })
 
   /* ── writes ─────────────────────────────────────────────────────────── */
 
@@ -853,6 +894,7 @@ export function useConnectionsNextData() {
     mcpRuntime: toRegister(mcpRuntimeQ),
     houseGrants: toRegister(houseGrantsQ),
     catalog: toRegister(catalogQ),
+    mailArchive: toRegister(archiveQ),
     tally,
     regenerateFeed,
     setHouseGrantAccess,
