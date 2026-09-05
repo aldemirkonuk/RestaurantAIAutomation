@@ -225,12 +225,12 @@ export class GoalScenarioRequestsService {
       table === "restaurants"
         ? await this.databaseService.supabase
             .from("restaurants")
-            .select(`${idColumn}, name`)
-            .in(idColumn, unique)
+            .select("id, name")
+            .in("id", unique)
         : await this.databaseService.supabase
             .from("users")
-            .select(`${idColumn}, name`)
-            .in(idColumn, unique);
+            .select("user_id, name")
+            .in("user_id", unique);
 
     if (error) {
       this.logger.warn(
