@@ -667,4 +667,125 @@ describe("DeliveryService", () => {
       ).toEqual([]);
     });
   });
+
+  // -------------------------------------------------------------------------
+  describe("D8 — 'this delivery differs' has a basis, and says which", () => {
+    /** A door count of 10 against a vendor document of 12, on one delivery. */
+    const withCountAndPaper = () => {
+      db.answers.document_deliveries = {
+        data: [
+          { document_id: "doc-count", role: "door_count" },
+          { document_id: "doc-inv", role: "invoice" },
+        ],
+        error: null,
+      };
+      db.answers.procurement_document_lines = {
+        data: [
+          {
+            id: "cl-1",
+            vendor_sku: null,
+            description: "SYNTHETIC Öküzgözü 2021",
+            vintage: 2021,
+            format_ml: 750,
+            qty_bottles: "10",
+            unit_price: null,
+          },
+        ],
+        error: null,
+      };
+    };
+
+    it("compares the DOOR COUNT with the vendor's paperwork when no order preceded it", async () => {
+      db.insertAnswers.deliveries = {
+        data: deliveryRow({
+          state: "DELIVERED",
+          provenance: "UNORDERED",
+          order_id: null,
+        }),
+        error: null,
+      };
+      db.answers.procurement_documents = {
+        data: [
+          {
+            id: "doc-count",
+            provider_id: "prov-1",
+            doc_type: "receiving_advice",
+            direction: "issued_by_us",
+            extracted: {},
+          },
+        ],
+        error: null,
+      };
+      withCountAndPaper();
+
+      const res = await service.create(REST, "u1", {
+        documents: [{ documentId: "doc-count", role: "door_count" }],
+      });
+      expect(res.ok).toBe(true);
+      // Both documents' lines come back from the same canned answer, so every
+      // counted line pairs with a paper line of the same quantity: compared,
+      // and nothing differed. THE POINT IS THE 0, not the number.
+      if (res.ok) expect(res.value.differsOnLines).toBe(0);
+      // The basis is on the record, so a reader can tell which comparison ran.
+      const note = notifications.sent.find(
+        (n) => (n.payload as { type: string }).type === "delivery_differs",
+      );
+      // Nothing differed, so no notification — and `0` said so instead.
+      expect(note).toBeUndefined();
+    });
+
+    it("reports NULL, never 0, when there is nothing to compare against", async () => {
+      db.insertAnswers.deliveries = {
+        data: deliveryRow({
+          state: "ORDERED",
+          provenance: "UNORDERED",
+          order_id: null,
+        }),
+        error: null,
+      };
+      db.answers.document_deliveries = { data: [], error: null };
+      const res = await service.create(REST, "u1", {});
+      expect(res.ok).toBe(true);
+      // NULL = we did not compare. 0 would say we compared and found nothing,
+      // which is the sentence this repository's standing fault is made of.
+      if (res.ok) expect(res.value.differsOnLines).toBeNull();
+    });
+
+    it("reports NULL rather than 0 when the comparison read FAILS", async () => {
+      db.insertAnswers.deliveries = {
+        data: deliveryRow({
+          state: "DELIVERED",
+          provenance: "UNORDERED",
+          order_id: null,
+        }),
+        error: null,
+      };
+      db.answers.procurement_documents = {
+        data: [
+          {
+            id: "doc-count",
+            provider_id: "prov-1",
+            doc_type: "receiving_advice",
+            direction: "issued_by_us",
+            extracted: {},
+          },
+        ],
+        error: null,
+      };
+      db.answers.document_deliveries = {
+        data: null,
+        error: { message: "connection reset" },
+      };
+      const res = await service.create(REST, "u1", {
+        documents: [{ documentId: "doc-count", role: "door_count" }],
+      });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.value.differsOnLines).toBeNull();
+      expect(
+        notifications.sent.filter(
+          (n) => (n.payload as { type: string }).type === "delivery_differs",
+        ),
+      ).toEqual([]);
+    });
+  });
 });

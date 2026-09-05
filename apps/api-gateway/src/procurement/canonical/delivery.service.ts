@@ -1121,11 +1121,30 @@ export class DeliveryService {
     delivery: DeliveryRow,
     docs: { documentId: string; role: DeliveryRole }[],
   ): Promise<number | null> {
-    if (!delivery.order_id) return null;
     const comparable = docs.filter(
       (d) => d.role === "door_count" || d.role === "invoice",
     );
     if (!comparable.length) return null;
+
+    /**
+     * WITH NO ORDER THERE IS STILL SOMETHING TO DIFFER FROM.
+     *
+     * D8's sentence is "this delivery differs from your order on N lines", and
+     * the first draft of this method simply returned `null` when there was no
+     * order. That silences the notification on exactly the case ADR 0103 D5
+     * exists for — an UNORDERED delivery, where nobody has any prior number at
+     * all and the door count against the vendor's own paperwork is the ONLY
+     * comparison available. Measured on the sim tenant on 2026-09-05: zero
+     * purchase orders, so the founder's asked-for notification could not fire
+     * on any delivery there.
+     *
+     * So the basis is chosen, and the sentence says which one it used: the
+     * ORDER when one preceded the goods, otherwise the VENDOR'S DOCUMENT
+     * against our own count. Both are `matchLines` over the same shapes; what
+     * changes is what the reader is being told they disagree with.
+     */
+    if (!delivery.order_id)
+      return this.notifyIfTheCountDiffersFromThePaperwork(delivery);
 
     const [orderRead, docLines] = await Promise.all([
       this.db
@@ -1265,5 +1284,142 @@ export class DeliveryService {
       { dedupeWithinMinutes: 60 * 6 },
     );
     return differing;
+  }
+
+  /**
+   * The UNORDERED basis: our door count against the vendor's own document.
+   *
+   * Returns `null` when there is nothing to compare — no door count, no vendor
+   * document, or a read that failed — and a NUMBER when a comparison actually
+   * ran. `0` therefore means "compared, and nothing differed", which is a
+   * different sentence from "we could not compare" and must never wear its
+   * clothes.
+   */
+  private async notifyIfTheCountDiffersFromThePaperwork(
+    delivery: DeliveryRow,
+  ): Promise<number | null> {
+    const joins = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("document_id, role")
+      .eq("delivery_id", delivery.id);
+    if (joins.error) {
+      this.logger.warn(
+        `delivery ${delivery.id}: the paperwork comparison could not run — ${joins.error.message}`,
+      );
+      return null;
+    }
+    const links = (joins.data ?? []) as unknown as {
+      document_id: string;
+      role: string;
+    }[];
+    const countIds = links
+      .filter((l) => l.role === "door_count")
+      .map((l) => l.document_id);
+    const paperIds = links
+      .filter((l) => l.role === "invoice" || l.role === "despatch_advice")
+      .map((l) => l.document_id);
+    if (!countIds.length || !paperIds.length) return null;
+
+    const [countLines, paperLines] = await Promise.all([
+      this.linesFor(countIds),
+      this.linesFor(paperIds),
+    ]);
+    if (!countLines.ok || !paperLines.ok) {
+      this.logger.warn(
+        `delivery ${delivery.id}: the paperwork comparison could not run — ${(!countLines.ok && countLines.error) || (!paperLines.ok && paperLines.error)}`,
+      );
+      return null;
+    }
+    if (!countLines.value.length || !paperLines.value.length) return null;
+
+    const matched = matchLines(countLines.value, paperLines.value);
+    const paperById = new Map(paperLines.value.map((l) => [l.id, l]));
+    const countById = new Map(countLines.value.map((l) => [l.id, l]));
+
+    let differing = 0;
+    for (const m of [...matched.applied, ...matched.suggested]) {
+      const paper = paperById.get(m.orderLineId);
+      const count = countById.get(m.documentLineId);
+      if (!paper || !count) continue;
+      if (
+        m.substitution ||
+        Math.abs(paper.qtyBottles - count.qtyBottles) > 0.001
+      )
+        differing += 1;
+    }
+    const unmatched = matched.unmatchedDocumentLineIds.length;
+    if (!differing && !unmatched) return 0;
+
+    await this.notifications.persistForRestaurant(
+      delivery.restaurant_id,
+      {
+        type: "delivery_differs",
+        title:
+          differing > 0
+            ? `This delivery differs from the vendor's paperwork on ${differing} line(s)`
+            : `${unmatched} counted line(s) are on no vendor document`,
+        message:
+          `Nobody ordered this delivery, so there is no order to check it against — ` +
+          `what we counted at the door is compared with what the vendor's own document says. ` +
+          `${differing} line(s) disagree` +
+          (unmatched
+            ? `, and ${unmatched} counted line(s) appear on no vendor document at all — which is a question, not a difference.`
+            : ".") +
+          " The door is the cheapest moment to say so.",
+        priority: "high",
+        actionUrl: `/deliveries/${delivery.id}`,
+        actionLabel: "Open the delivery",
+        groupKey: `delivery-differs:${delivery.id}`,
+        metadata: {
+          deliveryId: delivery.id,
+          basis: "door_count_vs_vendor_document",
+          differingLines: differing,
+          unmatchedLines: unmatched,
+        },
+      },
+      { dedupeWithinMinutes: 60 * 6 },
+    );
+    return differing;
+  }
+
+  /** Document lines as the matcher wants them, for a set of documents. */
+  private async linesFor(
+    documentIds: string[],
+  ): Promise<ReadResult<MatchableLine[]>> {
+    const read = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select(
+        "id, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price",
+      )
+      .in("document_id", documentIds);
+    if (read.error)
+      return {
+        ok: false,
+        error: `procurement_document_lines read failed: ${read.error.message}`,
+      };
+    return {
+      ok: true,
+      value: (
+        (read.data ?? []) as unknown as {
+          id: string;
+          vendor_sku: string | null;
+          description: string | null;
+          vintage: number | null;
+          format_ml: number | null;
+          qty_bottles: number | null;
+          unit_price: number | null;
+        }[]
+      ).map((l) => ({
+        id: l.id,
+        vendorSku: l.vendor_sku,
+        description: l.description,
+        vintage: l.vintage,
+        formatMl: l.format_ml,
+        qtyBottles: Number(l.qty_bottles ?? 0),
+        unitPrice: l.unit_price == null ? null : Number(l.unit_price),
+      })),
+    };
   }
 }
