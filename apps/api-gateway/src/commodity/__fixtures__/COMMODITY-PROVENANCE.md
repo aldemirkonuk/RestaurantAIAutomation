@@ -78,3 +78,54 @@ be fetched. **This task did not contact that host at all.** Building a parser wo
 required bytes it may not go and get, so the series carries the 403 as its
 `withheld_reason` and waits for a person to bring the file, exactly as the Michigan
 price book does.
+
+---
+
+## `tuik-tt01-cpi-food-2026-09-05.sample.csv`
+
+| | |
+|---|---|
+| Source URL | `https://nsiws.tuik.gov.tr/rest/data/TR,DF_TUFE_SDMX_TT01,1.0/TR.M.2.1._Z.2025.2026_01._Z.01.F_TFE?format=SDMX-CSV&startPeriod=2026-01` |
+| Fetched | 2026-09-05T22:20:00Z, **by the parent, once, with the founder's own API key**, HTTP **200** |
+| Bytes | **891**, sha256 `5760a5fa969a27ea8d88000f593abf3d75d70491bad7308e6692dd139072a2d9` |
+| Shape | 1 header line + **8 monthly rows**, `2026-01` … `2026-08`, `OBS_VALUE` 117.26 … **134.31** |
+| Reduction | **NONE. This is the whole response, verbatim.** `startPeriod=2026-01` is what made it small; the unbounded call for the same key is 455,666 bytes |
+| `robots.txt` | `https://nsiws.tuik.gov.tr/robots.txt` returns **HTTP 401**, 48 bytes, `{"status":401,"message":"Unauthorized"}` — **the host will not tell an unauthenticated client its crawl rules at all.** That is a fourth distinct answer, beside FAO's 200, ONS's 404 and USDA AMS's 403, and it is recorded as itself |
+| Licence | TÜİK states none on the service or in the manual. The only statement is the site-wide legal notice at `https://www.tuik.gov.tr/Kurumsal/Yasal_Uyari` (200, 127,628 B): re-use is possible **provided the source is cited**, and all rights remain TÜİK's. Recorded as `attribution_required`, and the attribution string is OURS because TÜİK prescribes none |
+| Credential | Required. A Keycloak token from `https://giris.tuik.gov.tr/realms/web/protocol/openid-connect/token`, client `nsi-ws-consumer`, `grant_type=password` + `api_key`. **The key is never in this repository**: it lives in `TUIK_SDMX_API_KEY` and the register stores only that name |
+
+**The ten dimensions, in the order the payload uses them** — read off these real
+bytes, not off the service's `/structure` call, which advertises **six**:
+
+```
+REF_AREA . FREQ . SINIFLAMA_DUZEYI . DEGISIM . OZEL_KAPSAM_TUFE
+         . BASE_PER . YAYIM_DONEMI . COICOP_1999 . COICOP_2018 . INDICATOR
+```
+
+Building a key from `/structure` produces a wrong key that still looks right.
+`parse-tuik-sdmx.spec.ts` pins this order against this file.
+
+**Two things this file proves that no amount of documentation would.**
+
+1. **`UNIT_MEASURE` is EMPTY on every row.** The payload does not say that
+   `DEGISIM=1` is an index level and `DEGISIM=2` a monthly percentage change. A
+   parser that trusted the file would put a 0.22 beside a 134.31 and both would
+   look like data. So `DEGISIM` is hard-coded in the registry and anything else
+   is refused by name.
+2. **`BASE_PER` reads `2025`**, and TÜİK moved this series off `2003=100` within
+   the last year with **both bases still published**. The base is read back out
+   of the file and compared against the register's — the same gate that catches
+   FAO's second, older, still-live CSV path.
+
+## `tuik-tt09-beverage-subclasses-2026-09-05.sample.csv`
+
+Reduced from the researcher's `p4bg-fixtures/tt09-expenditure-groups.csv`
+(HTTP 200, **7,532,768 bytes**, 84,500 rows, sha256 `d3882cb3…50875f8b`, fetched
+2026-09-05 through TÜİK's keyless Data Explorer). The header verbatim plus the
+rows for the three beverage subclasses at `2026-08`.
+
+**Their labels are NOT in this file and were never read.** The Data Explorer's
+view for TT09 went blank on five attempts and the codelist endpoint answers 401.
+So the register holds `02110`, `02121` and `02130` as **codes**, with a sentence
+saying the labels are unread, and nothing anywhere names them. Guessing that
+`02130` is wine would be inventing a fact about a tax-adjacent series.

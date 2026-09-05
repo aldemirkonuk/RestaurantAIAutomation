@@ -86,6 +86,41 @@ export interface SeriesEntry {
   statute?: string;
   /** The date the issuer says these figures are in force from. */
   effectiveFrom?: string;
+  /**
+   * Reading this source needs a credential. Says NOTHING about whether the
+   * numbers may be shown: that is `redistribution`, and the two are
+   * independent. A key means a publisher let us read, never that it let us
+   * publish.
+   */
+  accessKeyRequired?: boolean;
+  /** The NAME of the environment variable holding it. Never the credential. */
+  keyEnvVar?: string;
+  /** What the host said when asked for its crawl rules, in words. */
+  robotsReading?: string;
+  /** How we identify ourselves to this publisher. */
+  userAgent?: string;
+  /** OUR self-imposed ceiling. Not the publisher's limit, which may not exist. */
+  requestBudgetPerDay?: number;
+  /** Where the licence text was read. The `licence` field holds the words. */
+  licenceUrl?: string;
+  /**
+   * How often a scheduled reader may go back, in days. Absent means "the
+   * cadence bound decides". Present when the PAYLOAD's size, rather than the
+   * publication cadence, is what should govern the frequency.
+   */
+  fetchIntervalDays?: number;
+  /** The SDMX key parts this series is, when the source speaks SDMX. */
+  sdmx?: {
+    dataflow: string;
+    /** The dimension map, in the payload's own order. */
+    key: Record<string, string>;
+    /** The ONLY DEGISIM this series admits. */
+    degisim: string;
+    /** The COICOP-2018 code(s) this series is. */
+    coicop: string[];
+    /** The first period a scheduled read asks for. */
+    startPeriod: string;
+  };
 }
 
 /**
@@ -444,6 +479,209 @@ const GIB_OTV: SeriesEntry = {
   awaitingHumanDownload: true,
 };
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * TÜİK, and it is the first source in this register we read WITH A CREDENTIAL.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The founder, 2026-09-05 (batch 58): he minted a personal API key in TÜİK's
+ * Veri Portalı — institutional client credentials later — put it in the repo
+ * root `.env` as `TUIK_SDMX_API_KEY`, and said *"act safely and healthy, and
+ * check if it works"*. It works: the parent exchanged it for a bearer token
+ * (`expires_in` 300) and read the CPI food key, HTTP 200, 891 bytes, on
+ * 2026-09-05. The whole response is the fixture.
+ *
+ * THIS CLOSES ADR 0117's Q22. Türkiye was `silent: no_machine_endpoint` in the
+ * price register and had no index line at all; it now has a documented, dated,
+ * unit-stamped monthly series read over the publisher's own supported route.
+ *
+ * FOUR THINGS ABOUT THIS SOURCE THAT ARE UNLIKE EVERY OTHER ONE HERE.
+ *
+ *   1. `nsiws.tuik.gov.tr/robots.txt` answers **HTTP 401**. Not 200 with rules
+ *      (FAO), not 404 absent (ONS), not 403 refused (USDA AMS) — the host will
+ *      not tell an UNAUTHENTICATED client its crawl rules at all. Recorded as
+ *      itself rather than flattened into one of the others. The politeness
+ *      question is answered differently here too: this is not a crawl. It is an
+ *      authenticated read of a documented API, on a key the publisher issued to
+ *      this user, at a rate we cap ourselves.
+ *
+ *   2. **TÜİK states no rate limit anywhere** — measured, the manual has none.
+ *      So the budget is OURS. 24 a day for a MONTHLY series is roughly an
+ *      hourly retry ceiling and about 24x what the data can possibly justify;
+ *      it exists to bound a runaway loop, not to schedule anything.
+ *
+ *   3. **The licence is a site-wide legal notice, in Turkish, that the English
+ *      site does not link to.** It permits re-use *provided the source is
+ *      cited*, and TÜİK prescribes no attribution string — so ours is written
+ *      out below and travels with every number.
+ *
+ *   4. **`UNIT_MEASURE` is empty on all 84,500 rows** of the wider payload, and
+ *      `DEGISIM` is what makes 134.31 an index and 0.22 a percentage. The axis
+ *      is declared here and `parse-tuik-sdmx.ts` refuses any other by name.
+ */
+
+/** Ours, because TÜİK prescribes none and its notice requires one. */
+const TUIK_ATTRIBUTION =
+  "Source: Turkish Statistical Institute (TÜİK), Consumer Price Index. Re-used under TÜİK's legal notice, which permits re-use provided the source is cited.";
+
+/** Verbatim, in the issuer's own language. Our translation is NOT the licence. */
+const TUIK_LICENCE =
+  "İnternet sitemizden, yayınlarımızdan veya veri tabanlarımızdan elde edilen verilerin, kaynak gösterilmek suretiyle herhangi bir izine gerek duymaksızın yeniden kullanımı mümkündür.";
+
+const TUIK_ROBOTS =
+  "nsiws.tuik.gov.tr/robots.txt returned HTTP 401 (48 bytes) on 2026-09-05: the host will not tell an unauthenticated client its crawl rules. This is not a crawl - it is an authenticated read of a documented API on a key the publisher issued, at a rate we cap ourselves.";
+
+const TUIK_UA =
+  "MudavymBot/1.0 (+https://mudavym.com/bot; commodity index register; contact hello@mudavym.com)";
+
+/**
+ * TT01 — the food headline, and the line a Türkiye house sees.
+ *
+ * `DF_TUFE_SDMX_TT01`, COICOP-2018 group `01` (food and non-alcoholic
+ * beverages), classification level 2, `DEGISIM=1` (index level), base
+ * **2025=100**. 260 monthly observations from 2005-01; 2026-08 = **134.31**.
+ *
+ * `maxAgeDays: 70` for the same monthly arithmetic FAO and ONS use: TÜİK
+ * publishes CPI in the first days of the following month, so a current file is
+ * at most about 66 days past its period start on the eve of the next release.
+ */
+const TUIK_TT01_FOOD: SeriesEntry = {
+  seriesKey: "tuik.tufe_tt01.food_and_non_alcoholic_beverages",
+  issuer: "Türkiye İstatistik Kurumu (Turkish Statistical Institute)",
+  issuerJurisdiction: "TR",
+  seriesTitle:
+    "Tüketici fiyat endeksi (TÜFE), 01 Gıda ve alkolsüz içecekler — Consumer price index, 01 Food and non-alcoholic beverages",
+  sourceUrl:
+    "https://nsiws.tuik.gov.tr/rest/data/TR,DF_TUFE_SDMX_TT01,1.0/TR.M.2.1._Z.2025.2026_01._Z.01.F_TFE?format=SDMX-CSV",
+  valueKind: "index_number",
+  unit: "Index, base year = 100",
+  basePeriod: "2025=100",
+  currency: null,
+  priceBasis: null,
+  cadence: "monthly (published in the first days of the following month)",
+  periodGrain: "month",
+  maxAgeDays: 70,
+  licence: TUIK_LICENCE,
+  attribution: TUIK_ATTRIBUTION,
+  redistribution: "attribution_required",
+  admission: "fetch",
+  accessKeyRequired: true,
+  keyEnvVar: "TUIK_SDMX_API_KEY",
+  robotsReading: TUIK_ROBOTS,
+  userAgent: TUIK_UA,
+  requestBudgetPerDay: 24,
+  licenceUrl: "https://www.tuik.gov.tr/Kurumsal/Yasal_Uyari",
+  sdmx: {
+    dataflow: "TR,DF_TUFE_SDMX_TT01,1.0",
+    key: {
+      REF_AREA: "TR",
+      FREQ: "M",
+      SINIFLAMA_DUZEYI: "2",
+      DEGISIM: "1",
+      OZEL_KAPSAM_TUFE: "_Z",
+      BASE_PER: "2025",
+      YAYIM_DONEMI: "2026_01",
+      COICOP_1999: "_Z",
+      COICOP_2018: "01",
+      INDICATOR: "F_TFE",
+    },
+    degisim: "1",
+    coicop: ["01"],
+    // Not the series' whole history on every sweep: 891 bytes against 455,666.
+    startPeriod: "2026-01",
+  },
+  display: {
+    category: "Consumer price index, food and non-alcoholic drink",
+    shortIssuer: "TÜİK",
+    extent: "Türkiye",
+  },
+  withheld: null,
+  silent: null,
+};
+
+/**
+ * TT09 — the founder's *"TT09 as well, codes unnamed for now"*.
+ *
+ * `DF_TUFE_SDMX_TT09`, 325 COICOP-2018 levels down to five digits, `DEGISIM=1`
+ * only, same base and same latest period. It carries the three beverage
+ * subclasses a house would actually want — `02110`, `02121`, `02130` — reading
+ * 128.89, 126.50 and 140.20 at 2026-08.
+ *
+ * **THEIR LABELS ARE UNREAD, AND THEY STAY CODES.** The Data Explorer's view
+ * for TT09 went blank on five attempts and the codelist endpoint answers 401.
+ * So this register holds the codes, the panel says the labels are unread, and
+ * NOTHING anywhere names them. Guessing that `02130` is wine would be inventing
+ * a fact about a series a house might act on — and the founder's own words for
+ * this entry were *"codes unnamed for now"*.
+ *
+ * **A LOWER FETCH CADENCE, AND THE NUMBER IS STATED RATHER THAN IMPLIED.** The
+ * unbounded TT09 pull measured **7,532,768 bytes / 84,500 rows**. The data is
+ * monthly, so `fetchIntervalDays: 28` — at most once per publication cycle,
+ * against TT01's every-sweep 891 bytes. A budget of 2 a day is the second
+ * bound: even a loop that ignored the interval could not pull 7.5 MB more than
+ * twice in a day.
+ */
+const TUIK_TT09_BEVERAGES: SeriesEntry = {
+  seriesKey: "tuik.tufe_tt09.beverage_subclasses",
+  issuer: "Türkiye İstatistik Kurumu (Turkish Statistical Institute)",
+  issuerJurisdiction: "TR",
+  seriesTitle:
+    "Tüketici fiyat endeksi (TÜFE), harcama gruplarına göre — Consumer price index by expenditure groups, COICOP-2018 subclasses 02110 / 02121 / 02130",
+  sourceUrl:
+    "https://nsiws.tuik.gov.tr/rest/data/TR,DF_TUFE_SDMX_TT09,1.0/TR.M.5.1._Z.2025.2026_01._Z.02110+02121+02130.F_TFE?format=SDMX-CSV",
+  valueKind: "index_number",
+  unit: "Index, base year = 100",
+  basePeriod: "2025=100",
+  currency: null,
+  priceBasis: null,
+  cadence:
+    "monthly (published with TT01), and fetched at most once every 28 days: the unbounded payload measured 7,532,768 bytes",
+  periodGrain: "month",
+  maxAgeDays: 70,
+  licence: TUIK_LICENCE,
+  attribution: TUIK_ATTRIBUTION,
+  redistribution: "attribution_required",
+  admission: "fetch",
+  accessKeyRequired: true,
+  keyEnvVar: "TUIK_SDMX_API_KEY",
+  robotsReading: TUIK_ROBOTS,
+  userAgent: TUIK_UA,
+  requestBudgetPerDay: 2,
+  licenceUrl: "https://www.tuik.gov.tr/Kurumsal/Yasal_Uyari",
+  fetchIntervalDays: 28,
+  sdmx: {
+    dataflow: "TR,DF_TUFE_SDMX_TT09,1.0",
+    key: {
+      REF_AREA: "TR",
+      FREQ: "M",
+      SINIFLAMA_DUZEYI: "5",
+      DEGISIM: "1",
+      OZEL_KAPSAM_TUFE: "_Z",
+      BASE_PER: "2025",
+      YAYIM_DONEMI: "2026_01",
+      COICOP_1999: "_Z",
+      COICOP_2018: "02110+02121+02130",
+      INDICATOR: "F_TFE",
+    },
+    degisim: "1",
+    coicop: ["02110", "02121", "02130"],
+    startPeriod: "2026-01",
+  },
+  display: {
+    category: "Consumer price index, beverage subclasses (codes unnamed)",
+    shortIssuer: "TÜİK",
+    extent: "Türkiye",
+  },
+  withheld: null,
+  // READ, and only partly usable. The numbers are real and dated; what the
+  // codes are called is not published on any route we can reach.
+  silent: {
+    kind: "codelist_unread",
+    reason:
+      "TÜİK's codelist endpoint answers 401 and its Data Explorer view for this dataflow went blank on five attempts, so the labels for COICOP-2018 02110, 02121 and 02130 have never been read. The index values are shown against their CODES and nothing here names them: guessing which subclass is wine would be inventing a fact about a series a house might act on.",
+    measuredOn: "2026-09-05",
+  },
+};
+
 /** The register, keyed by our stable series key. */
 export const SERIES: Record<string, SeriesEntry> = {
   [FAO_FOOD_PRICE_INDEX.seriesKey]: FAO_FOOD_PRICE_INDEX,
@@ -452,6 +690,8 @@ export const SERIES: Record<string, SeriesEntry> = {
   [HMRC_ALCOHOL_DUTY.seriesKey]: HMRC_ALCOHOL_DUTY,
   [ILLINOIS_GALLONAGE.seriesKey]: ILLINOIS_GALLONAGE,
   [GIB_OTV.seriesKey]: GIB_OTV,
+  [TUIK_TT01_FOOD.seriesKey]: TUIK_TT01_FOOD,
+  [TUIK_TT09_BEVERAGES.seriesKey]: TUIK_TT09_BEVERAGES,
 };
 
 /** The series a scheduled reader may be pointed at. Never the whole register. */

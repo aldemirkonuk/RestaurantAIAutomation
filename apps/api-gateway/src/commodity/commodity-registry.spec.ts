@@ -25,6 +25,8 @@ describe("no fetcher may be pointed at a host whose robots.txt cannot be read", 
     expect(keys.sort()).toEqual([
       "fao.food_price_index.all",
       "ons.d7bu.cpi_food_and_non_alcoholic_beverages",
+      "tuik.tufe_tt01.food_and_non_alcoholic_beverages",
+      "tuik.tufe_tt09.beverage_subclasses",
     ]);
   });
 
@@ -138,12 +140,75 @@ describe("which series speak for a house", () => {
     expect(keys).toContain("fao.food_price_index.all");
   });
 
-  it("gives a Turkish house the world index and its own excise rate, and nothing British or American", () => {
+  it("gives a Turkish house the world index, its own excise rate AND its own CPI, and nothing British or American", () => {
+    // The line Türkiye did not have before 2026-09-05: TÜİK was
+    // `silent: no_machine_endpoint` in the price register and had no index at
+    // all. ADR 0117 Q22 closes here.
     const keys = seriesForJurisdiction("TR-07").map((s) => s.seriesKey).sort();
     expect(keys).toEqual([
       "fao.food_price_index.all",
       "gib.otv_iii_a.asgari_maktu",
+      "tuik.tufe_tt01.food_and_non_alcoholic_beverages",
+      "tuik.tufe_tt09.beverage_subclasses",
     ]);
+  });
+});
+
+describe("a credential is recorded as a credential, and never stored", () => {
+  const keyed = Object.values(SERIES).filter((s) => s.accessKeyRequired);
+
+  it("is required only by the two TÜİK series", () => {
+    expect(keyed.map((s) => s.seriesKey).sort()).toEqual([
+      "tuik.tufe_tt01.food_and_non_alcoholic_beverages",
+      "tuik.tufe_tt09.beverage_subclasses",
+    ]);
+  });
+
+  it("names the VARIABLE, never anything that could be a key", () => {
+    // A register that stored a credential would be a register that leaks one.
+    for (const s of keyed) {
+      expect(s.keyEnvVar).toBe("TUIK_SDMX_API_KEY");
+      expect(s.keyEnvVar).toMatch(/^[A-Z][A-Z0-9_]*$/);
+    }
+    // And nothing anywhere in the registry looks like a secret.
+    const text = JSON.stringify(SERIES);
+    expect(text).not.toMatch(/\beyJ[A-Za-z0-9_-]{5,}\./);
+    expect(text).not.toMatch(/api_key=[^"&\s]/);
+  });
+
+  it("holding a key does NOT make a series permitted to publish", () => {
+    // The two questions are independent: a key means a publisher let us read.
+    // TÜİK's own notice answers the second one, and the answer is attribution.
+    for (const s of keyed) {
+      expect(s.redistribution).toBe("attribution_required");
+      expect(s.attribution).toMatch(/provided the source is cited/);
+      expect(s.licenceUrl).toBe("https://www.tuik.gov.tr/Kurumsal/Yasal_Uyari");
+    }
+  });
+
+  it("records the 401 robots answer as ITSELF, not as one of the other three", () => {
+    // Four distinct answers now exist in this register: 200 with rules (FAO),
+    // 404 absent (ONS), 403 refused (USDA AMS), 401 unauthenticated (TÜİK).
+    for (const s of keyed) {
+      expect(s.robotsReading).toMatch(/HTTP 401/);
+      expect(s.robotsReading).toMatch(/will not tell an unauthenticated client/);
+      expect(s.robotsReading).toMatch(/not a crawl/);
+    }
+  });
+
+  it("states a request budget as OURS, because the publisher states none", () => {
+    for (const s of keyed) expect(s.requestBudgetPerDay).toBeGreaterThan(0);
+    // The 7.5 MB one is bounded harder than the 891-byte one.
+    expect(SERIES["tuik.tufe_tt09.beverage_subclasses"].requestBudgetPerDay).toBeLessThan(
+      SERIES["tuik.tufe_tt01.food_and_non_alcoholic_beverages"].requestBudgetPerDay!,
+    );
+  });
+
+  it("identifies itself honestly, with a contact", () => {
+    for (const s of keyed) {
+      expect(s.userAgent).toMatch(/Mudavym/);
+      expect(s.userAgent).toMatch(/contact /);
+    }
   });
 });
 
