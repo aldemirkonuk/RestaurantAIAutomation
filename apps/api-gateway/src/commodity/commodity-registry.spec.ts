@@ -62,19 +62,59 @@ describe("an unstated licence is recorded as unstated, never upgraded", () => {
   });
 });
 
-describe("an index number carries no currency and a price carries one", () => {
-  it("holds on every registered series", () => {
+describe("money and bases follow the value kind, on every registered series", () => {
+  it("an index number carries no currency; a price and a rate both name one", () => {
     for (const s of Object.values(SERIES)) {
-      if (s.valueKind === "price") expect(s.currency).not.toBeNull();
-      else expect(s.currency).toBeNull();
+      if (s.valueKind === "index_number") expect(s.currency).toBeNull();
+      else expect(s.currency).not.toBeNull();
     }
   });
 
-  it("states a base for every index number and none for a price", () => {
+  it("states a base for every index number and none for anything else", () => {
     for (const s of Object.values(SERIES)) {
       if (s.valueKind === "index_number") expect(s.basePeriod).toBeTruthy();
       else expect(s.basePeriod).toBeNull();
     }
+  });
+});
+
+describe("a rate is a series, and it names its statute and its effective date", () => {
+  const rates = Object.values(SERIES).filter((s) => s.valueKind === "rate");
+
+  it("registers the three the founder named", () => {
+    expect(rates.map((s) => s.seriesKey).sort()).toEqual([
+      "gib.otv_iii_a.asgari_maktu",
+      "hmrc.alcohol_duty.spirits_and_wine_8_5_to_22",
+      "il_dor.liquor_gallonage_tax.above_20_abv",
+    ]);
+  });
+
+  it("every rate carries a statute, an effective date and a declared denominator", () => {
+    // A rate without its instrument is a rumour, and a rate without a stated
+    // denominator cannot be multiplied by anything.
+    for (const r of rates) {
+      expect(r.statute).toBeTruthy();
+      expect(r.effectiveFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(r.dutyDenominator).toBeTruthy();
+    }
+  });
+
+  it("GİB is registered SILENT because its issuer does not state what the figure is per", () => {
+    // Measured and recorded verbatim in price-sources.md:269. Press reporting
+    // of the same decision divides by 100, which IMPLIES per litre of pure
+    // alcohol; that was never confirmed against Law 4760 and is not asserted.
+    const gib = SERIES["gib.otv_iii_a.asgari_maktu"];
+    expect(gib.dutyDenominator).toBe("unstated");
+    expect(gib.silent?.kind).toBe("unit_denominator_not_stated");
+    expect(gib.withheld).toBeNull();
+  });
+
+  it("no rate is fetchable: every one waits for a person to bring the numbers", () => {
+    for (const r of rates) {
+      expect(r.admission).toBe("upload_only");
+      expect(r.awaitingHumanDownload).toBe(true);
+    }
+    expect(fetchableSeries().map((s) => s.valueKind)).not.toContain("rate");
   });
 });
 
@@ -85,15 +125,24 @@ describe("which series speak for a house", () => {
     ]);
   });
 
+  it("gives an Illinois house the state excise rate and not the UK duty", () => {
+    const keys = seriesForJurisdiction("US-IL").map((s) => s.seriesKey).sort();
+    expect(keys).toContain("il_dor.liquor_gallonage_tax.above_20_abv");
+    expect(keys).toContain("usda_ams.shell_egg_index.national");
+    expect(keys).not.toContain("hmrc.alcohol_duty.spirits_and_wine_8_5_to_22");
+  });
+
   it("gives an England house the UK series by CONTAINMENT, not equality", () => {
     const keys = seriesForJurisdiction("GB-ENG").map((s) => s.seriesKey);
     expect(keys).toContain("ons.d7bu.cpi_food_and_non_alcoholic_beverages");
     expect(keys).toContain("fao.food_price_index.all");
   });
 
-  it("does not give a Turkish house the UK or US series", () => {
-    expect(seriesForJurisdiction("TR-07").map((s) => s.seriesKey)).toEqual([
+  it("gives a Turkish house the world index and its own excise rate, and nothing British or American", () => {
+    const keys = seriesForJurisdiction("TR-07").map((s) => s.seriesKey).sort();
+    expect(keys).toEqual([
       "fao.food_price_index.all",
+      "gib.otv_iii_a.asgari_maktu",
     ]);
   });
 });

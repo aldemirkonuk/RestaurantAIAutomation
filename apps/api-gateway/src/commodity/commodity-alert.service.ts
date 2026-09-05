@@ -52,6 +52,7 @@ import {
   UNEVALUATED_CONDITIONS,
   decideCommoditySignal,
   type CommoditySignalDecision,
+  type ExposureFact,
 } from "./commodity-alert";
 
 /** Only `"true"` and `"1"` arm the dark run. Off is the safe typo. */
@@ -213,22 +214,53 @@ export class CommodityAlertService {
       return null;
     }
 
-    let liveExposures = 0;
+    // The exposures themselves, not a count: condition 8 is a fact about the
+    // ITEMS (does this house's item keep long enough to be worth stocking up
+    // on?) and a count cannot carry one. The shelf life is joined from
+    // `restaurant_inventory`, where a PERSON typed it or it is null.
+    let exposures: ExposureFact[];
     try {
-      const { count, error } = await this.db.client
+      const { data, error } = await this.db.client
         .from("house_item_commodity_exposure")
-        .select("id", { count: "exact", head: true })
+        .select("id, house_item_id, lag_days")
         .eq("restaurant_id", restaurantId)
         .eq("series_id", seriesId)
         .is("retired_at", null);
       if (error) throw error;
-      liveExposures = typeof count === "number" ? count : 0;
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      const itemIds = rows.map((r) => String(r.house_item_id));
+      let shelfLives = new Map<string, number | null>();
+      if (itemIds.length > 0) {
+        const { data: items, error: itemError } = await this.db.client
+          .from("restaurant_inventory")
+          .select("id, shelf_life_days")
+          .in("id", itemIds);
+        if (itemError) throw itemError;
+        shelfLives = new Map(
+          ((items ?? []) as Array<Record<string, unknown>>).map((i) => [
+            String(i.id),
+            i.shelf_life_days === null || i.shelf_life_days === undefined
+              ? null
+              : Number(i.shelf_life_days),
+          ]),
+        );
+      }
+      exposures = rows.map((r) => ({
+        // An item this read could not find is NOT an item with no shelf life
+        // typed -- but both land on `null` here, and the verdict that follows
+        // says "nobody has typed one", which would be the wrong sentence. So a
+        // missing item is treated as unreadable rather than as untyped.
+        shelfLifeDays: shelfLives.has(String(r.house_item_id))
+          ? (shelfLives.get(String(r.house_item_id)) ?? null)
+          : null,
+        lagDays: r.lag_days === null || r.lag_days === undefined ? null : Number(r.lag_days),
+      }));
     } catch (err) {
-      // A count that could not be read is NOT zero, and zero here would produce
-      // the refusal `no_exposure_mapped`, which reads as a fact about the house.
+      // Unreadable is NOT zero, and zero here would produce `no_exposure_mapped`,
+      // which reads as a fact about the house.
       tally.failed += 1;
       this.logger.warn(
-        `exposure count unreadable for ${entry.seriesKey}; no verdict recorded: ${(err as Error).message}`,
+        `exposures unreadable for ${entry.seriesKey}; no verdict recorded: ${(err as Error).message}`,
       );
       return null;
     }
@@ -252,7 +284,7 @@ export class CommodityAlertService {
       redistribution: String(row.redistribution ?? entry.redistribution),
       fresh: !stale.stale,
       staleReason: stale.reason,
-      liveExposures,
+      exposures,
       // Never said, because nothing in this file ever says anything. The quiet
       // window is a phase-1 column and pretending to consult one here would
       // record a condition that was not evaluated as one that passed.
@@ -345,7 +377,7 @@ export class CommodityAlertService {
     return (
       `Dark run: ${tally.evaluated} series evaluated, ${tally.wouldHaveNotified} would have interrupted this house, ${tally.recorded} recorded in the footprint ledger and none sent to anybody. ` +
       `Verdicts: ${verdicts || "none"}. ` +
-      `${UNEVALUATED_CONDITIONS.length} of the rule's nine conditions were NOT evaluated: ${UNEVALUATED_CONDITIONS.join("; ")}. ` +
+      `${UNEVALUATED_CONDITIONS.length} of the rule's nine conditions ${UNEVALUATED_CONDITIONS.length === 1 ? "was" : "were"} NOT evaluated: ${UNEVALUATED_CONDITIONS.join("; ")}. ` +
       `Whether any of these would have been right is not knowable yet and is not claimed.`
     );
   }

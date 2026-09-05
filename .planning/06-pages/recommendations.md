@@ -1378,3 +1378,43 @@ execution, no first-fired timestamp — in the same way.
     **Founder decision, not a ticket.**
 
 - **Correction to a commit message (recorded 2026-09-05).** Commit `f45ada70` ("the small defects the audits of 2026-09-04 named") claimed the six citation corrections in this note and said providers/next "no longer imports settings/next"; the six citation fixes landed in `71916602`, and only the formatters were hoisted — `pages/providers/next/{TermsSection.tsx,TermSection.test.tsx,useProviderTerms.ts}` still import `../../settings/next/useSettingsNextData` (a coupling still to hoist). The message also said "eight" fixes and enumerated six.
+
+- **`commodity_exposure_rising` is BUILT and is DARK (2026-09-05).** The founder answered the
+  plan's Q2 with *"both: the line now, the alert behind a flag"*, so this rule exists in
+  `apps/api-gateway/src/commodity/` and **is not a rule in this engine's twelve**. It has no
+  entry in `analytics/recommendations.service.ts` and no producer in
+  `notifications/producers/`, and that is the shape of "dark": `CommodityModule` imports no
+  `NotificationsModule`, so there is no service it could notify with, and a test asserts that
+  rather than a comment claiming it. Behind `COMMODITY_ALERT_DARK` (off) it writes one
+  `neural_footprint_event` row per evaluation with `outcome` NULL. **Where it will land when
+  it is judged** — after a quarter, by a person — **is here or beside `market-signal.ts`, and
+  that placement is still the open half.** Two of its nine conditions cannot be evaluated at
+  all today (coverage, and storability: measured, **zero shelf-life columns across every
+  migration**), they are named on every decision and every ledger row, and the plan's Q3 is
+  what unblocks them. Its thresholds are per-series and derived from each series' own history
+  rather than global — measured, the "twice a year" rise ranges from **8.5 % to 67.8 %** across
+  three real series, so a single constant would mean eight different things. Full record:
+  `06-pages/notifications.md` §13.34 and `07-reference/commodity-signals-plan.md` phase 0.
+
+- **Q4 ANSWERED (2026-09-05, the founder: *"a producer, as you recommended"*).**
+  When `commodity_exposure_rising` is judged after its quarter dark, it lands as
+  a **producer beside `market-signal.ts`** and NOT as a thirteenth rule in
+  `analytics/recommendations.service.ts`. The reason is what the two engines are
+  for: a recommendation is a standing thing a manager reads when they choose to,
+  and this is an interruption about a moment — a series moved, this week, and
+  the house has an item mapped to it. It also already shares that producer's
+  shape: pure decision function, thresholds that state their own provenance,
+  and every "no" carrying a reason. **Nothing has moved yet** — the rule still
+  imports no notifications service and still writes only to the footprint
+  ledger, and the move is what "judged" means. Recorded here so the placement is
+  a decision on the record rather than a choice somebody makes later by
+  reaching for whichever file is open.
+- **Its unevaluated list is now ONE, not two (2026-09-05).** The founder's
+  batch-51 answer put `shelf_life_days` on the house item — person-typed,
+  nullable, **no category defaults** — so the rule's condition 8 is evaluated
+  and storability left `UNEVALUATED_CONDITIONS`. The direction matters: a typed
+  shelf life can only ever REMOVE an item from the firing set, so this shrank
+  the rule rather than loosening it. **Coverage — the house's days of inventory
+  for the item — is still not evaluated**, is still named on every decision and
+  every footprint row, and is what a producer here would have to solve before it
+  could speak to anybody.

@@ -16,6 +16,7 @@ import {
   UNEVALUATED_CONDITIONS,
   decideCommoditySignal,
   deriveThreshold,
+  exposureKeepsLongEnough,
   median,
   moveAgainstBaseline,
   movesOverHistory,
@@ -41,7 +42,8 @@ const FAO_VALUES = parseFao(FIXTURE, {
 const OK = {
   redistribution: "unstated",
   fresh: true,
-  liveExposures: 1,
+  // One mapped item, with a shelf life a person typed: condition 8 satisfied.
+  exposures: [{ shelfLifeDays: 30, lagDays: null }],
   daysSinceLastSaid: null,
 };
 
@@ -202,7 +204,7 @@ describe("every 'no' carries a reason, and the order of the conditions is the pl
   });
 
   it("refuses when nobody has mapped an item to the series, and infers nothing", () => {
-    const d = decideCommoditySignal({ ...OK, ...armed, values, liveExposures: 0 });
+    const d = decideCommoditySignal({ ...OK, ...armed, values, exposures: [] });
     expect(d.verdict).toBe("no_exposure_mapped");
     expect(d.reason).toMatch(/publishes no accuracy figure/);
   });
@@ -228,11 +230,64 @@ describe("every 'no' carries a reason, and the order of the conditions is the pl
   });
 });
 
-describe("the two conditions this tree cannot evaluate are NAMED on every decision", () => {
-  it("carries them on a fire and on a refusal alike", () => {
+describe("condition 8: a shelf life comes from a person or the item is skipped", () => {
+  const armed = { riseThreshold: 0.02, stepGuard: 0.5 };
+
+  it("refuses when nobody has typed a shelf life, and says so rather than assuming", () => {
+    // The founder, 2026-09-05: no category defaults. A missing shelf life must
+    // never quietly satisfy the condition -- "stock up" on something that keeps
+    // a fortnight is bad advice, and a guessed shelf life is how it gets given.
+    const d = decideCommoditySignal({
+      ...OK,
+      ...armed,
+      values: FAO_VALUES,
+      exposures: [{ shelfLifeDays: null, lagDays: null }],
+    });
+    expect(d.verdict).toBe("no_shelf_life_typed");
+    expect(d.reason).toMatch(/no shelf life anybody has typed/);
+    expect(d.reason).toMatch(/Nothing is inferred from a category/);
+  });
+
+  it("refuses when the item does not keep as long as the lag, in DIFFERENT words", () => {
+    // Two refusals, two sentences: "nobody typed one" is fixable by a person in
+    // a minute; "it does not keep that long" is a fact about the item.
+    const d = decideCommoditySignal({
+      ...OK,
+      ...armed,
+      values: FAO_VALUES,
+      exposures: [{ shelfLifeDays: 14, lagDays: 60 }],
+    });
+    expect(d.verdict).toBe("does_not_keep_long_enough");
+    expect(d.reason).toMatch(/keeps 14 days against a lag of up to 60/);
+  });
+
+  it("qualifies on a typed shelf life with no lag stated, which is the common case", () => {
+    expect(exposureKeepsLongEnough({ shelfLifeDays: 21, lagDays: null })).toBe(true);
+    expect(exposureKeepsLongEnough({ shelfLifeDays: 21, lagDays: 21 })).toBe(true);
+    expect(exposureKeepsLongEnough({ shelfLifeDays: 21, lagDays: 22 })).toBe(false);
+    expect(exposureKeepsLongEnough({ shelfLifeDays: null, lagDays: 1 })).toBe(false);
+  });
+
+  it("fires when ONE of several mapped items keeps long enough", () => {
+    const d = decideCommoditySignal({
+      ...OK,
+      ...armed,
+      values: FAO_VALUES,
+      exposures: [
+        { shelfLifeDays: null, lagDays: null },
+        { shelfLifeDays: 5, lagDays: 60 },
+        { shelfLifeDays: 90, lagDays: 30 },
+      ],
+    });
+    expect(d.verdict).toBe("would_notify");
+  });
+});
+
+describe("the condition this tree still cannot evaluate is NAMED on every decision", () => {
+  it("carries it on a fire and on a refusal alike, and storability has LEFT the list", () => {
     // A rule that silently skipped an unevaluable condition would be reporting
-    // ABSENCE as HEALTH: a condition nobody could check, rendered as one that
-    // passed. Measured: zero shelf-life columns across every migration.
+    // ABSENCE as HEALTH. The list shrank from two to one by measurement -- the
+    // shelf-life column now exists -- which is the only honest way it may shrink.
     const fired = decideCommoditySignal({
       ...OK,
       values: FAO_VALUES,
@@ -248,6 +303,8 @@ describe("the two conditions this tree cannot evaluate are NAMED on every decisi
     expect(fired.verdict).toBe("would_notify");
     expect(fired.unevaluated).toEqual(UNEVALUATED_CONDITIONS);
     expect(refused.unevaluated).toEqual(UNEVALUATED_CONDITIONS);
-    expect(UNEVALUATED_CONDITIONS.join(" ")).toMatch(/shelf life/);
+    expect(UNEVALUATED_CONDITIONS).toHaveLength(1);
+    expect(UNEVALUATED_CONDITIONS.join(" ")).toMatch(/days of inventory/);
+    expect(UNEVALUATED_CONDITIONS.join(" ")).not.toMatch(/shelf life/);
   });
 });

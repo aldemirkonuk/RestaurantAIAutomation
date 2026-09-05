@@ -289,8 +289,8 @@ describe("armed, and every legitimate no-op carries its reason", () => {
       failed: 0,
     });
     expect(line).toMatch(/none sent to anybody/);
-    expect(line).toMatch(/2 of the rule's nine conditions were NOT evaluated/);
-    expect(line).toMatch(/shelf life/);
+    expect(line).toMatch(/1 of the rule's nine conditions was NOT evaluated/);
+    expect(line).toMatch(/days of inventory/);
     expect(line).toMatch(/not knowable yet and is not claimed/);
   });
 });

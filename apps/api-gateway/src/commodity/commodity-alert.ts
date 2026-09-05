@@ -52,22 +52,28 @@
  * (`maxAgeDays` 62 on a 91-day cycle).
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * WHAT THIS FILE REFUSES TO DECIDE, AND SAYS SO
+ * CONDITION 8 IS NOW EVALUABLE, AND IT ONLY EVER SHRINKS THE FIRING
  * ─────────────────────────────────────────────────────────────────────────────
- * The plan's conditions 7 and 8 — "the house carries fewer than N days of this
- * item" and "the item keeps for at least the exposure's lag" — are NOT
- * evaluated here and are NOT quietly treated as satisfied. Measured on this
- * tree, `grep -rn -i "shelf_life\|shelf life\|expiry_date\|best_before"
- * supabase/migrations/` returns **zero shelf-life columns** across every
- * migration. Without one, "stock up" on the founder's own example is advice to
- * buy three months of a perishable.
+ * The plan's §9c recorded a blocker in measured form: zero shelf-life columns
+ * across every migration, so "the item keeps for at least the exposure's lag"
+ * could not be evaluated and was carried in `UNEVALUATED_CONDITIONS` rather
+ * than pretended to pass.
  *
- * A rule that silently skipped them would be the absence-reported-as-health
- * shape exactly: a condition nobody could evaluate, reported as a condition
- * that passed. So the decision carries `unevaluated`, every caller must render
- * it, and a decision with a non-empty `unevaluated` can never be more than a
- * DARK one. Where shelf life comes from is the plan's Q3 and it is the
- * founder's.
+ * The founder answered it on 2026-09-05 (batch 51): shelf life comes ONLY from
+ * a person-typed `shelf_life_days` on the house item, nullable, **no category
+ * defaults**, and *"the alert fires only for items that carry one and says
+ * so"*. `20260906071000_a_shelf_life_is_typed_by_a_person.sql` is that column.
+ *
+ * So condition 8 is evaluated here — and note the direction. A typed shelf life
+ * can only ever REMOVE an item from the firing set, never add one: an exposure
+ * with no shelf life typed does not qualify, and the refusal says how many
+ * items are mapped and that nobody has typed one. That is the opposite of the
+ * usual default risk, where a missing input quietly satisfies a condition.
+ *
+ * WHAT IS STILL NOT EVALUATED. Condition 7 — the house's days of inventory for
+ * the item — is not read here, and it stays named in `UNEVALUATED_CONDITIONS`.
+ * A rule that silently skipped it would be the absence-reported-as-health shape
+ * exactly: a condition nobody could evaluate, reported as one that passed.
  */
 
 /** The baseline length, in OBSERVATIONS. */
@@ -275,7 +281,41 @@ export type CommodityVerdict =
   | "may_not_be_published"
   | "stale"
   | "no_exposure_mapped"
+  | "no_shelf_life_typed"
+  | "does_not_keep_long_enough"
   | "already_said";
+
+/**
+ * One live exposure, as condition 8 needs it.
+ *
+ * `shelfLifeDays` is NULL for almost every item and that is the normal state.
+ * It is a person-typed number or it is absent; nothing infers one from a
+ * category, a kind or a supplier (the founder, 2026-09-05: "no category
+ * defaults").
+ */
+export interface ExposureFact {
+  shelfLifeDays: number | null;
+  lagDays: number | null;
+}
+
+/**
+ * Does this exposure's item keep long enough to be worth stocking up on?
+ *
+ *   no shelf life typed        -> does not qualify. Never "assume it keeps".
+ *   a lag, and it keeps longer -> qualifies.
+ *   a lag, and it does not     -> does not qualify: buying ahead of a move that
+ *                                 lands in 60 days is not advice for something
+ *                                 that keeps 21.
+ *   no lag stated              -> qualifies on the shelf life alone. `unset` is
+ *                                 the honest common case for a lag and refusing
+ *                                 on it would make the rule unable to fire for
+ *                                 any house that has not measured one.
+ */
+export function exposureKeepsLongEnough(e: ExposureFact): boolean {
+  if (e.shelfLifeDays === null || e.shelfLifeDays <= 0) return false;
+  if (e.lagDays === null) return true;
+  return e.shelfLifeDays >= e.lagDays;
+}
 
 export interface CommoditySignalInput {
   /** Ascending by period. The series' admitted observations. */
@@ -289,8 +329,12 @@ export interface CommoditySignalInput {
   fresh: boolean;
   /** The reason it did not, when it did not. Never invented here. */
   staleReason?: string | null;
-  /** How many LIVE exposures join this house's items to this series. */
-  liveExposures: number;
+  /**
+   * The LIVE exposures joining this house's items to this series, each with the
+   * person-typed shelf life of its item. An array rather than a count, because
+   * condition 8 is a fact about the ITEMS and a count cannot carry one.
+   */
+  exposures: ExposureFact[];
   /** Days since this (series, item) was last said, or null if never. */
   daysSinceLastSaid: number | null;
   quietWindowDays?: number;
@@ -319,15 +363,18 @@ export interface CommoditySignalDecision {
  * The conditions that CANNOT be evaluated on this tree today, named once so
  * every caller reports the same list.
  *
- *   coverage      the house's days of inventory for the mapped item. The
- *                 ledger holds stock, but "days of it" needs a consumption
- *                 rate per item that this rule has no read for yet.
- *   storability   how long the item keeps. Measured: zero shelf-life columns
- *                 across every migration in this repository.
+ *   coverage   the house's days of inventory for the mapped item. The ledger
+ *              holds stock, but "days of it" needs a consumption rate per item
+ *              that this rule has no read for yet.
+ *
+ * STORABILITY LEFT THIS LIST ON 2026-09-05. It was here because this repository
+ * had no shelf-life column at all; `restaurant_inventory.shelf_life_days` is
+ * now that column, person-typed and never defaulted, and condition 8 is
+ * evaluated below. The list shrank by measurement rather than by decision, and
+ * shrinking it is the only honest way it may ever shrink.
  */
 export const UNEVALUATED_CONDITIONS = [
   "coverage: the house's days of inventory for this item is not read here",
-  "storability: this repository records no shelf life for any item, so whether the house could hold what it bought is unknown",
 ];
 
 /**
@@ -397,12 +444,37 @@ export function decideCommoditySignal(
         "The newest observation is past this series' cadence bound, so the move is history rather than news.",
     };
   }
-  if (input.liveExposures < 1) {
+  if (input.exposures.length < 1) {
     return {
       ...shape,
       verdict: "no_exposure_mapped",
       reason:
         "No live exposure joins this house's items to this series. Nothing infers one: a mapping is a person's assertion, and the category leader's own product infers item-level exposures and publishes no accuracy figure of any kind.",
+    };
+  }
+
+  // CONDITION 8. A typed shelf life can only ever REMOVE an item from the
+  // firing set. The two refusals below are deliberately different sentences:
+  // "nobody has typed one" is fixable by a person in a minute, and "it does not
+  // keep that long" is a fact about the item that no amount of typing changes.
+  const typed = input.exposures.filter((e) => e.shelfLifeDays !== null);
+  if (typed.length === 0) {
+    return {
+      ...shape,
+      verdict: "no_shelf_life_typed",
+      reason: `${input.exposures.length === 1 ? "The item" : `All ${input.exposures.length} items`} mapped to this series ${input.exposures.length === 1 ? "carries" : "carry"} no shelf life anybody has typed, so whether this house could hold what it bought is unknown. Nothing is inferred from a category: "stock up" on something that keeps a fortnight is bad advice, and a guessed shelf life is how it gets given.`,
+    };
+  }
+  const keeps = typed.filter(exposureKeepsLongEnough);
+  if (keeps.length === 0) {
+    const shortest = Math.min(...typed.map((e) => e.shelfLifeDays as number));
+    const longestLag = Math.max(
+      ...typed.map((e) => (e.lagDays === null ? 0 : e.lagDays)),
+    );
+    return {
+      ...shape,
+      verdict: "does_not_keep_long_enough",
+      reason: `Every mapped item that carries a typed shelf life keeps for less than the lag this exposure states — the shortest keeps ${shortest} days against a lag of up to ${longestLag}. Buying ahead of a move that lands later than the item survives is not advice worth interrupting anybody for.`,
     };
   }
   if (input.daysSinceLastSaid !== null && input.daysSinceLastSaid < quiet) {

@@ -72,6 +72,25 @@
  * control, and un-choosing an armed archive puts the deletion back on a window
  * with nothing kept.
  */
+/**
+ * `commodity_exposure` (added 2026-09-05, the founder's answer to the commodity
+ * plan's Q5) is the seal on a person asserting that one of this house's items
+ * is exposed to a published index series. Its subject is the ITEM — one item
+ * may be exposed to several series — and its args carry the series, the
+ * pass-through and the lag, so an exposure held open at "we do not know how
+ * much of a move reaches us" cannot be spent at ninety percent. It is sealed
+ * because the mapping is what turns a world index into a claim about this
+ * kitchen, and because it is retired rather than deleted: a mistake stays in
+ * the record.
+ *
+ * The ARMING of a series is deliberately NOT a kind here. That act is a Mudavym
+ * admin's, authenticated by ADR 0099's service key, and this table's
+ * `actor_user_id` is `UUID NOT NULL REFERENCES public.users(user_id)` — a
+ * machine caller has no such row, and minting a fake one would put a person's
+ * name on a decision they did not make. It carries a recomputed proposal hash
+ * instead, and `commodity-calibration.ts` says so where somebody looking for
+ * the seal would go.
+ */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
   "mcp_tool_grant",
@@ -80,6 +99,7 @@ export const SEAL_SUBJECT_KINDS = [
   "price_index_upload",
   "house_mail_export",
   "text_credit_purchase",
+  "commodity_exposure",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -117,6 +137,12 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // RESTAURANT — there is no purchase row until the seal is redeemed, the
       // same shape `payment_method`'s `create` seal has for the same reason.
       return "credit purchase";
+    case "commodity_exposure":
+      // "exposure", not "series" and not "item": the act being sealed is the
+      // JOIN between them. A refusal that said "a different series" would name
+      // the publisher's number, and one that said "a different item" would name
+      // the shelf; neither is the thing that was approved.
+      return "exposure";
   }
 }
 

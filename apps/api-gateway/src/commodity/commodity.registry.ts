@@ -30,6 +30,7 @@
  */
 
 import type { Admission, CommodityValueKind, PeriodGrain, Redistribution } from "./commodity.types";
+import type { DutyDenominator } from "./duty";
 
 /** Everything true of a whole series, exactly as the table stores it. */
 export interface SeriesEntry {
@@ -65,6 +66,26 @@ export interface SeriesEntry {
   withheld: { reason: string; measuredOn: string } | null;
   /** Read but unusable: read fine, and what came back cannot be admitted. */
   silent: { kind: string; reason: string; measuredOn: string } | null;
+  /**
+   * A series whose only route in is a person's own download, and whose file has
+   * not arrived yet. The founder's Q1 answer, 2026-09-05: a one-off human read,
+   * logged. TRUE means the parser exists, is tested against the recorded format
+   * and its fixture contract, and has never seen real bytes -- so nothing
+   * anywhere may report this series as working.
+   */
+  awaitingHumanDownload?: boolean;
+  /**
+   * For `value_kind: 'rate'` only. WHAT THE PUBLISHED FIGURE IS PER.
+   *
+   * Declared rather than inferred, because the three rates registered here have
+   * three different denominators and one of them is not published at all. See
+   * `duty.ts`: a single rate x volume helper across them would be wrong twice.
+   */
+  dutyDenominator?: DutyDenominator;
+  /** The instrument, in the issuer's own citation. A rate without one is a rumour. */
+  statute?: string;
+  /** The date the issuer says these figures are in force from. */
+  effectiveFrom?: string;
 }
 
 /**
@@ -233,6 +254,194 @@ const USDA_SHELL_EGG: SeriesEntry = {
     measuredOn: "2026-09-05",
   },
   silent: null,
+  // The founder's answer to Q1, 2026-09-05: a one-off human read, logged. The
+  // parser is written (`parse-usda-shell-egg.ts`) against the format the plan
+  // recorded and against `__fixtures__/USDA-SHELL-EGG-CONTRACT.md`, and it has
+  // never seen real bytes. This flag is what stops any surface reporting this
+  // series as working before the file lands.
+  awaitingHumanDownload: true,
+};
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE RATES. A rate IS a series (the founder, 2026-09-05, batch 51).
+ * ─────────────────────────────────────────────────────────────────────────────
+ * `value_kind: 'rate'` was in this table from the first migration and had no
+ * occupant. The founder's answer to the plan's Q6 fills it, and the case for it
+ * is that these three carry BETTER provenance than most of the prices in the
+ * drink register: each states its issuer, its statute, its effective date and
+ * its figures exactly, and two of the three are openly licensed.
+ *
+ * **NOTHING WAS FETCHED FOR THESE THREE.** All three were measured on
+ * 2026-09-05 by the market-research builder, with `robots.txt` read first in
+ * each case, and are recorded in `.planning/07-reference/price-sources.md` at
+ * lines 269 (GİB), 295 and 471 (HMRC) and 565 (Illinois). They are CITED here,
+ * not re-crawled: the founder's instruction was to fetch nothing whose robots
+ * had not been logged, and re-reading a host that another builder already read
+ * politely today adds a request and no fact.
+ *
+ * A rate is never rendered as a price and never compared with one. What it can
+ * do is carry a DERIVED per-bottle duty line — and `duty.ts` is where the three
+ * different denominators are handled, including the one that is not published.
+ */
+
+/**
+ * HMRC alcohol duty. The best-provenanced source in either register: Open
+ * Government Licence v3.0, a machine-readable issuer and date on the GOV.UK
+ * Content API (`public_updated_at` 2026-02-01T00:15:01Z, organisation "HM
+ * Revenue & Customs"), and rates stated per litre of pure alcohol.
+ *
+ * `admission: 'upload_only'` and NOT because of robots — `www.gov.uk` is
+ * readable. The measured reason is that **the rates are HTML prose**: there is
+ * no CSV and no API for the figures themselves on that page, so a scheduled
+ * fetcher would be a scraper of a prose table, and a scraper that silently
+ * mis-reads one band writes a tax figure. A person brings the numbers.
+ */
+const HMRC_ALCOHOL_DUTY: SeriesEntry = {
+  seriesKey: "hmrc.alcohol_duty.spirits_and_wine_8_5_to_22",
+  issuer: "HM Revenue & Customs",
+  issuerJurisdiction: "GB",
+  seriesTitle: "Alcohol Duty rates, wine and spirits 8.5% to 22% ABV",
+  sourceUrl: "https://www.gov.uk/guidance/alcohol-duty-rates",
+  valueKind: "rate",
+  unit: "GBP per litre of pure alcohol",
+  basePeriod: null,
+  currency: "GBP",
+  priceBasis: null,
+  cadence: "on change (last changed 1 February 2026)",
+  periodGrain: "day",
+  // A duty rate does not go stale on a clock: it is in force until it is
+  // changed. 400 days is a bound against a register quietly holding a schedule
+  // through a Budget, not a cadence.
+  maxAgeDays: 400,
+  licence: "Open Government Licence v3.0",
+  attribution:
+    "Contains public sector information licensed under the Open Government Licence v3.0.",
+  redistribution: "attribution_required",
+  admission: "upload_only",
+  dutyDenominator: "litre_of_pure_alcohol",
+  statute: "Finance (No. 2) Act 2023, Part 2; rates as amended in force 1 February 2026",
+  effectiveFrom: "2026-02-01",
+  display: {
+    category: "Alcohol duty",
+    shortIssuer: "HMRC",
+    extent: "United Kingdom",
+  },
+  withheld: {
+    reason:
+      "The rates are HTML prose on the guidance page: no CSV and no API publishes the figures themselves (measured 2026-09-05, price-sources.md:471). A scheduled scraper of a prose tax table that mis-reads one band writes a wrong tax, so a person brings the numbers.",
+    measuredOn: "2026-09-05",
+  },
+  silent: null,
+  awaitingHumanDownload: true,
+};
+
+/**
+ * The Illinois liquor gallonage tax. A state excise rate, robots-clean, with
+ * its own effective period stated on the page.
+ *
+ * The only one of the three whose per-bottle line needs nothing but a size —
+ * it is per gallon of LIQUID, not of pure alcohol — which makes it the honest
+ * first test of `duty.ts` the day a bottle size somebody actually stated exists.
+ */
+const ILLINOIS_GALLONAGE: SeriesEntry = {
+  seriesKey: "il_dor.liquor_gallonage_tax.above_20_abv",
+  issuer: "Illinois Department of Revenue",
+  issuerJurisdiction: "US-IL",
+  seriesTitle: "Liquor Gallonage Tax, alcoholic liquor above 20% ABV",
+  sourceUrl: "https://tax.illinois.gov/research/taxrates/excise.html",
+  valueKind: "rate",
+  unit: "USD per gallon",
+  basePeriod: null,
+  currency: "USD",
+  priceBasis: null,
+  cadence: "on change (this schedule applies to reporting periods July 2026 or after)",
+  periodGrain: "day",
+  maxAgeDays: 400,
+  // A US state work. The page states no licence of its own, and an unstated
+  // licence is recorded as unstated rather than assumed from the publisher.
+  licence: "unstated",
+  attribution: null,
+  redistribution: "unstated",
+  admission: "upload_only",
+  dutyDenominator: "gallon_of_liquid",
+  statute: "235 ILCS 5/8-1 (Liquor Control Act of 1934, Article VIII)",
+  effectiveFrom: "2026-07-01",
+  display: {
+    category: "State excise rate",
+    shortIssuer: "Illinois DOR",
+    extent: "Illinois",
+  },
+  withheld: {
+    reason:
+      "The rates are an HTML table on the excise page and no machine endpoint publishes them (measured 2026-09-05, price-sources.md:565). robots.txt is 200 and disallows only draft forms, so the block is the FORMAT rather than the host: a person brings the numbers.",
+    measuredOn: "2026-09-05",
+  },
+  silent: null,
+  awaitingHumanDownload: true,
+};
+
+/**
+ * The GİB ÖTV (III) sayılı liste, (A) cetveli — and the one that must be
+ * registered SILENT.
+ *
+ * Everything about its provenance is good: `gib.gov.tr/robots.txt` is 200 with
+ * `Allow: /` and no crawl-delay, the schedule states its own instrument
+ * (*"[10799 sayılı Cumhurbaşkanı Kararı ile değişen liste] (Yürürlük:
+ * 31/12/2025)"*) and its own effective date, and the figures are exact.
+ *
+ * **And the issuer does not state what the figure is PER.** Measured and
+ * recorded verbatim in `price-sources.md:269`: *"The unit is not stated on the
+ * face of the table and is NOT asserted here"* — press reporting of the same
+ * decision divides by 100, which IMPLIES per litre of pure alcohol, and that
+ * inference was never confirmed against Law 4760.
+ *
+ * So this series is registered, dated, cited — and `silent`, with
+ * `dutyDenominator: 'unstated'`. It may be shown as published and no per-bottle
+ * line may ever be derived from it until somebody reads the law. Registering it
+ * with a guessed denominator would put a tax figure on a Turkish house's screen
+ * that is either right or wrong by a factor of a hundred, which is exactly the
+ * ambiguity ADR 0117's unit rule exists to refuse.
+ */
+const GIB_OTV: SeriesEntry = {
+  seriesKey: "gib.otv_iii_a.asgari_maktu",
+  issuer: "Gelir İdaresi Başkanlığı",
+  issuerJurisdiction: "TR",
+  seriesTitle:
+    "ÖTV (III) sayılı liste, (A) cetveli — asgari maktu vergi tutarı",
+  sourceUrl:
+    "https://www.gib.gov.tr/yardim-ve-kaynaklar/yararli-bilgiler/otv-oranlari",
+  valueKind: "rate",
+  // The issuer's own column heading, verbatim. What it is TL per is the part
+  // that is missing, and `dutyDenominator: 'unstated'` is where that is said.
+  unit: "TL, asgari maktu vergi tutarı",
+  basePeriod: null,
+  currency: "TRY",
+  priceBasis: null,
+  cadence: "six-monthly, January and July (Law 4760 md. 12/3, Yİ-ÜFE)",
+  periodGrain: "day",
+  maxAgeDays: 400,
+  licence: "unstated",
+  attribution: null,
+  redistribution: "unstated",
+  admission: "upload_only",
+  dutyDenominator: "unstated",
+  statute:
+    "4760 sayılı Özel Tüketim Vergisi Kanunu; 10799 sayılı Cumhurbaşkanı Kararı (Yürürlük 31/12/2025)",
+  effectiveFrom: "2025-12-31",
+  display: {
+    category: "Excise rate",
+    shortIssuer: "GİB",
+    extent: "Türkiye",
+  },
+  withheld: null,
+  silent: {
+    kind: "unit_denominator_not_stated",
+    reason:
+      "The schedule states an exact TL figure, its instrument and its effective date, and it does NOT state what the figure is per. Press reporting of the same decision divides by 100, which implies per litre of pure alcohol; that was never confirmed against Law 4760 and is not asserted. The rate is held and shown as published; no per-bottle duty is derived from it.",
+    measuredOn: "2026-09-05",
+  },
+  awaitingHumanDownload: true,
 };
 
 /** The register, keyed by our stable series key. */
@@ -240,6 +449,9 @@ export const SERIES: Record<string, SeriesEntry> = {
   [FAO_FOOD_PRICE_INDEX.seriesKey]: FAO_FOOD_PRICE_INDEX,
   [ONS_D7BU.seriesKey]: ONS_D7BU,
   [USDA_SHELL_EGG.seriesKey]: USDA_SHELL_EGG,
+  [HMRC_ALCOHOL_DUTY.seriesKey]: HMRC_ALCOHOL_DUTY,
+  [ILLINOIS_GALLONAGE.seriesKey]: ILLINOIS_GALLONAGE,
+  [GIB_OTV.seriesKey]: GIB_OTV,
 };
 
 /** The series a scheduled reader may be pointed at. Never the whole register. */

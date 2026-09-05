@@ -93,6 +93,11 @@ function fao(over: Record<string, unknown> = {}) {
     observationCount: 440,
     exposures: [],
     note: null,
+    awaitingHumanDownload: false,
+    statute: null,
+    effectiveFrom: null,
+    duty: null,
+    armedBy: null,
     ...over,
   };
 }
@@ -340,5 +345,122 @@ describe('the commodity section is independent of the posted-price register', ()
     render(<MarketIndexPanel />);
     expect(screen.getByText(/The price index could not be read/)).toBeTruthy();
     expect(screen.getByText('FAO Food Price Index')).toBeTruthy();
+  });
+});
+
+
+describe('a rate is a series, and it is drawn as neither an index nor a price', () => {
+  function hmrc(over: Record<string, unknown> = {}) {
+    return fao({
+      seriesKey: 'hmrc.alcohol_duty.spirits_and_wine_8_5_to_22',
+      issuer: 'HM Revenue & Customs',
+      issuerJurisdiction: 'GB',
+      seriesTitle: 'Alcohol Duty rates, wine and spirits 8.5% to 22% ABV',
+      valueKind: 'rate',
+      unit: 'GBP per litre of pure alcohol',
+      basePeriod: null,
+      currency: 'GBP',
+      licence: 'Open Government Licence v3.0',
+      attribution:
+        'Contains public sector information licensed under the Open Government Licence v3.0.',
+      redistribution: 'attribution_required',
+      admission: 'upload_only',
+      awaitingHumanDownload: true,
+      statute:
+        'Finance (No. 2) Act 2023, Part 2; rates as amended in force 1 February 2026',
+      effectiveFrom: '2026-02-01',
+      duty: {
+        supported: true,
+        sentence:
+          'A per-bottle duty is size x strength x rate. This product records no alcohol-by-volume for any bottle today, so the figure is derivable in principle and not yet computable in fact — somebody has to type the strength.',
+      },
+      latest: null,
+      stale: null,
+      observationCount: null,
+      note: 'This series is registered and waits for a person’s own download.',
+      ...over,
+    });
+  }
+
+  it('labels it a published rate, not an index and not a price', () => {
+    mockCommodity.current = { ...COMMODITY_READY, series: [hmrc()] };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/Published rate · HM Revenue & Customs/)).toBeTruthy();
+  });
+
+  it('names its statute and the day it took effect', () => {
+    // A rate without its instrument is a rumour.
+    mockCommodity.current = { ...COMMODITY_READY, series: [hmrc()] };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/Finance \(No\. 2\) Act 2023, Part 2.*in force from 2026-02-01/),
+    ).toBeTruthy();
+  });
+
+  it('prints whether a per-bottle duty can be derived, with its basis', () => {
+    mockCommodity.current = { ...COMMODITY_READY, series: [hmrc()] };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/Per bottle: A per-bottle duty is size x strength x rate/)).toBeTruthy();
+    expect(screen.getByText(/somebody has to type the strength/)).toBeTruthy();
+  });
+
+  it('says a source waiting on a human download is not a working feed', () => {
+    mockCommodity.current = { ...COMMODITY_READY, series: [hmrc()] };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/Waiting on a person’s own download/)).toBeTruthy();
+    expect(screen.getByText(/nothing is claimed about where it stands/)).toBeTruthy();
+  });
+
+  it('distinguishes read-but-unusable from unreadable, for the ÖTV case', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        hmrc({
+          seriesKey: 'gib.otv_iii_a.asgari_maktu',
+          issuer: 'Gelir İdaresi Başkanlığı',
+          silent: {
+            reason:
+              'The schedule states an exact TL figure and does NOT state what the figure is per.',
+            measuredOn: '2026-09-05',
+          },
+          duty: {
+            supported: false,
+            sentence:
+              'Gelir İdaresi Başkanlığı does not state what this figure is per, so no per-bottle duty can be derived from it at all.',
+          },
+        }),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/Held as published, and not derived from:/)).toBeTruthy();
+    expect(screen.getByText(/no per-bottle duty can be derived from it at all/)).toBeTruthy();
+  });
+});
+
+describe('an armed series says who armed it and on which numbers', () => {
+  it('draws the arming line only when the series is armed', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        fao({
+          armed: true,
+          armedBy: {
+            label: 'founder',
+            at: '2026-09-05T18:00:00.000Z',
+            proposalHash: 'abcdef0123456789abcdef',
+          },
+        }),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/Armed for alerting by founder on Sep 5, 2026, on the calibration abcdef012345/),
+    ).toBeTruthy();
+  });
+
+  it('draws nothing about arming on an unarmed series', () => {
+    mockCommodity.current = { ...COMMODITY_READY, series: [fao()] };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/Armed for alerting/)).toBeNull();
   });
 });

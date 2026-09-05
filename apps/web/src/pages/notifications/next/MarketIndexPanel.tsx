@@ -265,7 +265,15 @@ function LabelledSection({
  *   the UNIT      verbatim, the issuer's own string
  */
 function CommodityLine({ s }: { s: CommoditySeriesVM }) {
-  const label = s.valueKind === 'price' ? 'Public price series' : 'Public index';
+  // A rate is not an index and is not a price. Naming it separately is the
+  // whole reason `value_kind` exists: a duty rendered as a price would be a
+  // number the house has to pay ON TOP of the one it is reading.
+  const label =
+    s.valueKind === 'rate'
+      ? 'Published rate'
+      : s.valueKind === 'price'
+        ? 'Public price series'
+        : 'Public index';
   return (
     <li className="py-2" style={{ borderTop: '1px solid var(--paper-2)' }}>
       <div className="flex items-baseline justify-between gap-2">
@@ -331,10 +339,60 @@ function CommodityLine({ s }: { s: CommoditySeriesVM }) {
         </p>
       ) : null}
 
+      {/* A rate names the instrument it comes from and the day it took effect.
+          Without those it is a number somebody typed. */}
+      {s.valueKind === 'rate' && (s.statute || s.effectiveFrom) ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          {s.statute ?? 'No instrument recorded'}
+          {s.effectiveFrom ? ` · in force from ${s.effectiveFrom}` : ''}
+        </p>
+      ) : null}
+
+      {/* Whether a per-bottle duty can be derived from this rate at all, and
+          why not when it cannot. "This publisher does not say what its number
+          is per" and "somebody has to type this bottle's strength" are
+          different facts, and only the second one a person can fix. */}
+      {s.duty ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          Per bottle: {s.duty.sentence}
+        </p>
+      ) : null}
+
+      {/* A parser that has never seen real bytes must never look like a working
+          feed. The founder's call, 2026-09-05: a one-off human read, logged. */}
+      {s.awaitingHumanDownload ? (
+        <p
+          role="status"
+          className="mt-0.5 text-[11px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
+        >
+          Waiting on a person&rsquo;s own download. Nothing here fetches this source, and
+          nothing is claimed about where it stands until the file arrives.
+        </p>
+      ) : null}
+
       {s.withheld ? (
         <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
           Not fetched: {s.withheld.reason}
           {s.withheld.measuredOn ? ` (measured ${s.withheld.measuredOn})` : ''}
+        </p>
+      ) : null}
+
+      {/* Read-but-unusable is a different silence from unreadable, and the
+          registry keeps them apart. Today this is the ÖTV schedule, whose
+          figure is exact and whose denominator the issuer never published. */}
+      {s.silent ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          Held as published, and not derived from: {s.silent.reason}
+        </p>
+      ) : null}
+
+      {/* An armed series can interrupt somebody. Who turned it on, and on which
+          numbers, belongs on the same line as the number itself. */}
+      {s.armed && s.armedBy ? (
+        <p className="mt-0.5 text-[11px]" style={{ fontFamily: SANS, color: 'var(--ink-4)' }}>
+          Armed for alerting by {s.armedBy.label} on {dayOfUtc(s.armedBy.at)}, on the
+          calibration {s.armedBy.proposalHash.slice(0, 12)}.
         </p>
       ) : null}
 

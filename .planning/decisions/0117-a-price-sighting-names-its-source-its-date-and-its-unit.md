@@ -295,7 +295,21 @@ fetched**: FAO Food Price Index and ONS `d7bu` (both robots-read first, logged),
 AMS shell-egg index carrying `www.ams.usda.gov`'s HTTP 403 as its withheld reason. **Q27's
 `issued_at_basis` earned its keep immediately and on measurement rather than on principle:**
 the FAO CSV states no date of any kind, so it is `fetch_date` and prints "read on", while ONS
-stamps one on every observation and prints "issued". The rule
+stamps one on every observation and prints "issued". **Class E now holds RATES as well (2026-09-05, the founder's batch-51 answer to
+the plan's Q6).** `value_kind: 'rate'` has three occupants — HMRC alcohol duty
+(OGL v3.0, per litre of pure alcohol, in force 2026-02-01), the Illinois liquor
+gallonage tax (per gallon, 235 ILCS 5/8-1, 2026-07-01) and the GİB ÖTV (III)(A)
+schedule (4760 sayılı Kanun, 2025-12-31) — each carrying its statute and its
+effective date, and **none of them fetched here**: all three were measured on
+2026-09-05 with `robots.txt` read first and are cited from `price-sources.md`
+lines 269, 295, 471 and 565. **The GİB row is the one this ADR's unit rule was
+written for**: the schedule states an exact TL figure and does NOT state what it
+is per, so it is registered `silent: unit_denominator_not_stated`, shown as
+published, and no per-bottle duty is ever derived from it. The other two are
+derivable and are still not printable for any bottle in this product, for two
+measured reasons: there is **no alcohol-by-volume column anywhere in
+`master_wine_library`**, and `bottle_size_ml` carries `DEFAULT 750`, so a figure
+computed from either would be a tax nobody chose. The rule
 `commodity_exposure_rising` is built DARK — its module imports no `NotificationsModule`, so
 there is no code path to a person — and it writes verdicts to `neural_footprint_event` with
 `outcome` NULL. Nothing about class E in `price_index_postings` changed. The three findings

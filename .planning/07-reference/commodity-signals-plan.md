@@ -751,6 +751,143 @@ with the same `Cannot access 'IntegrationsOauthService' before initialization` f
 untracked `communications/archive/` require cycle. So **this module's Nest DI is UNPROVEN**,
 and that is stated rather than assumed.
 
+#### Phase 0, continued — the founder's answers to Q1-Q5 and batch 51, BUILT 2026-09-05
+
+Five questions were answered and every answer is now code. Where an answer
+changed something this document asserted, it is marked **CORRECTION**.
+
+**Q1 — a one-off HUMAN read, logged.** The USDA AMS shell-egg parser is written
+(`parse-usda-shell-egg.ts`) against the format §1 and §2a recorded, plus a
+fixture contract (`__fixtures__/USDA-SHELL-EGG-CONTRACT.md`) stating exactly
+what the download must contain and what must be recorded beside it — who, when,
+the sha256, the byte count. **This task made zero outbound requests and did not
+contact `ams.usda.gov`.** The registry carries `awaitingHumanDownload: true`, the
+panel says *"waiting on a person's own download"*, and `parserFor()` already
+routes the series, so the day the file lands nothing else changes. A defect the
+tests caught while writing it, worth recording because the same shape will
+recur: a first attempt stripped price ranges with a whitespace-tolerant pattern
+and read `35.28     -0.86` (weighted average, then the SIGNED change) as a
+range, returning the last-reported figure instead. The parser now reads **by
+column order** — the token after the range token — and two regression tests pin
+it.
+
+**Q2 — display FAO with the unstated-licence sentence.** Kept. The line reads
+*"This publisher states no licence for this series. Recorded as unstated, never
+as permitted."* **This settles Q4 of §12 for display and leaves the registry's
+standing rule untouched**: unstated is still never upgraded to permissive, and
+the sentence is what makes showing it honest rather than silent.
+
+**Q3 — a manual admin act, sealed, with the numbers shown first.**
+`GET /commodity-index/admin/series/:key/proposal` shows every budget's derived
+threshold and the sentence it would produce; `POST .../arm` must carry back the
+proposal's sha256, and the service **recomputes the proposal from the series'
+own observations before comparing**. A threshold that moved since it was read
+cannot be armed. Disarming is deliberately not hash-gated. Both are logged to
+`commodity_series_arming_log`, which records the OFF direction too.
+
+**CORRECTION — the arming act CANNOT use the tenant seal store, and this is
+measured rather than a design preference.** `mcp_seal_challenges.actor_user_id`
+is `UUID NOT NULL REFERENCES public.users(user_id)`
+(`20260904170000_a_seal_is_redeemed_not_asserted.sql`), and ADR 0099's
+`ServiceKeyGuard` says in its own words that it *"authenticates a machine; it
+carries no tenant and no user"*. A Mudavym admin has neither, so the seal table
+structurally cannot hold this act and minting a synthetic user row would put a
+person's name on a decision they did not make. What is preserved is the seal's
+load-bearing property — `args_hash`, *what was on the screen when the hold
+began* — as the recomputed proposal hash. The EXPOSURE act does have a real user
+and a real house, and it uses `SealChallengeService` properly, with a new
+`commodity_exposure` subject kind.
+
+**Q4 — where the judged rule lands: a producer**, beside `market-signal.ts`, not
+a thirteenth rule in the recommendations engine. Recorded in
+`06-pages/recommendations.md` §13. It is an interruption about a moment, not a
+standing recommendation.
+
+**Q5 — the exposure-assertion route, sealed and named.**
+`POST /commodity-index/exposures/challenge` then `POST /commodity-index/exposures`,
+owner/manager, the house taken from the session and never from the body. The
+seal's args carry the series, the pass-through AND the lag, so an exposure held
+open at *"we do not know"* cannot be spent at ninety percent. Seven distinct
+refusals, each with its own sentence — including `already_asserted`, which names
+the partial UNIQUE rather than reporting a broken write. Retirement names a
+person and a reason and is **not** sealed: the same friction on the off
+direction is how a wrong mapping stays live for another ten minutes.
+
+**Batch 51a — shelf life comes ONLY from a person.**
+`20260906071000_a_shelf_life_is_typed_by_a_person.sql` adds
+`restaurant_inventory.shelf_life_days`, nullable, **no default**, with the
+author and the moment enforced as one fact by a CHECK, plus an optional
+`shelf_life_basis` in the person's own words. Nothing infers one from a
+category. The migration asserts that it backfilled **zero** rows, and asserts
+that no shelf-life column carries a DEFAULT.
+
+**This closes §9c's blocker and shrinks the rule's unevaluated list from two to
+one.** Condition 8 is now evaluated, and note the direction: a typed shelf life
+can only ever REMOVE an item from the firing set. Two new refusals, deliberately
+worded differently — `no_shelf_life_typed` (fixable by a person in a minute) and
+`does_not_keep_long_enough` (a fact about the item). **Condition 7, coverage,
+is still not evaluated and is still named on every decision and every ledger
+row.**
+
+**Batch 51b — rates ARE series, and this answers §12's Q6.** Three registered,
+`value_kind: 'rate'`, each with its statute and effective date:
+
+| Series | Unit | Instrument | In force | Denominator |
+|---|---|---|---|---|
+| HMRC alcohol duty (wine and spirits 8.5-22%) | GBP per litre of pure alcohol | Finance (No. 2) Act 2023, Part 2 | 2026-02-01 | `litre_of_pure_alcohol` |
+| Illinois liquor gallonage tax (above 20% ABV) | USD per gallon | 235 ILCS 5/8-1 | 2026-07-01 | `gallon_of_liquid` |
+| GİB ÖTV (III)(A) asgari maktu | TL, asgari maktu vergi tutarı | 4760 sayılı ÖTV Kanunu; 10799 sayılı Karar | 2025-12-31 | **`unstated`** |
+
+**Nothing was fetched for any of them.** All three were measured on 2026-09-05
+by the market-research builder with `robots.txt` read first, and are cited from
+`price-sources.md` lines 269, 295, 471 and 565 rather than re-crawled.
+
+**The per-bottle duty line is derivable, and it is not printable for anybody
+today — for two measured reasons that are worth stating plainly.** `duty.ts`
+implements all three denominators and is tested to the penny (HMRC 30.62/l at
+750 ml and 40% = **GBP 9.19**; Illinois 8.55/gal at 750 ml = **USD 1.69**, on the
+exact 3.785411784). It then refuses every real bottle, because:
+
+1. **There is no alcohol-by-volume column anywhere in `master_wine_library`.**
+   Grepped 2026-09-05 against the baseline: `ml_derived_features` and
+   `bottle_size_ml`, and nothing else. HMRC's rate is per litre of PURE alcohol,
+   so no UK figure can be computed for any bottle in this product.
+2. **`bottle_size_ml integer DEFAULT 750 NOT NULL`.** A duty computed off that
+   column would be a number nobody chose, printed as this bottle's tax — the
+   `restaurants.currency DEFAULT 'USD'` defect with a figure attached. So
+   `perBottleDuty` takes the size and the strength with an explicit SOURCE for
+   each and refuses `column_default`.
+
+And GİB is refused for a third reason that no amount of typing fixes: **the
+issuer does not state what the figure is per.** `price-sources.md:269` records it
+verbatim — press reporting of the same decision divides by 100, which implies
+per litre of pure alcohol, and that was never confirmed against Law 4760. It is
+registered `silent: unit_denominator_not_stated`, shown as published, and no
+per-bottle line is ever derived from it. Guessing there is a tax figure wrong by
+a factor of a hundred.
+
+**A DEFECT FOUND WHILE PROVING THIS, IN ANOTHER BUILDER'S FILE.** Replaying the
+seal-vocabulary chain on PGlite in prefix order — which is what a fresh
+`db reset` does — measured: `20260905225000` READS the existing kinds and appends
+`text_credit_purchase` (6 kinds), and then `20260905233000` rewrites the CHECK
+**from a hard-coded six-kind literal** and drops it again (6 kinds, without it).
+`SEAL_SUBJECT_KINDS` in the code declares `text_credit_purchase`, so **the
+database refuses a kind the code uses** — the guaranteed production failure
+`20260904210000`'s own comment warns about. Not fixed here: it is another
+builder's file and outside these paths. This migration uses the read-and-append
+shape, so `commodity_exposure` cannot be dropped by ordering and cannot drop a
+peer's kind.
+
+**Verified.** `npx jest src/commodity` — **160 passed, 11 suites**. `npx vitest
+run src/pages/notifications/next` — **135 passed, 7 suites, 0 failed**. Gateway
+`tsc --noEmit -p tsconfig.json`: **0 errors**; `-p tsconfig.spec.json`: 0 in
+`src/commodity`. Web `tsc --noEmit`: 0 errors. Ten guards exit 0. Both migrations
+applied twice on PGlite (idempotent), RLS on, anon/authenticated 0, every FK
+inside `public`, and the CHECK probes refused: arming with no actor, arming on a
+proposal hash that is not a hash, logging an arming with no numbers, an invented
+act, a shelf life with nobody's name on it, an author with no value, zero days,
+and clearing only half the fact.
+
 ### Phase 1 — the rule and the sentence
 
 `commodity_exposure_rising` as §9, behind a flag defaulting off, with the storability question

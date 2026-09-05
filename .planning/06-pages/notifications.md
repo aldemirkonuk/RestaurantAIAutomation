@@ -61,6 +61,14 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 - A house with **no exposure mapped** sees the series and a sentence saying none
   of these numbers is about anything it buys yet. Nothing proposes a mapping:
   a mapping is a person's assertion and is never inferred
+- **Published RATES** draw as their own kind — neither an index nor a price —
+  each naming its statute and the day it took effect, and each carrying a
+  sentence saying whether a per-bottle duty can be derived from it and why not
+  when it cannot (2026-09-05)
+- A source **waiting on a person's own download** says so, so a parser that has
+  never seen real bytes can never look like a working feed
+- An **armed** series names who armed it, when, and the calibration it was armed
+  on, on the same line as the number it produces
 
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
@@ -2149,3 +2157,61 @@ from the product.
 ### 13.z Two corrections to fb7248ec's message (audit a3fd525b, 2026-09-05)
 
 The commit message of fb7248ec said `check_new_tables_are_locked_down: OK (268 CREATE TABLE / 268 live)`. Measured on an isolated archive of that commit: **258 / 258**. The 268 was the number the guard printed on the SHARED worktree, which carried other builders' uncommitted migrations — the parent pasted the tree's number rather than the archive's, the exact habit p4-rules.md forbids. The verdict (every table locked down) was right; the count was not. Also: the two `nt-book.test.ts` failures that message called "not this commit's" were confirmed pre-existing on the parent 59e25f92 and fixed in d35d27e2.
+
+### 13.35 What the founder's answers changed on this box (2026-09-05, batches 50-51)
+
+Five answers, and three of them are visible here.
+
+**Rates draw as a third kind.** `value_kind` had `rate` from the first migration
+and no occupant; the founder's batch-51 answer filled it with HMRC alcohol duty,
+the Illinois gallonage tax and the GİB ÖTV schedule. They are labelled
+**"Published rate"** — not "Public index" and not "Public price series" —
+because a duty rendered as a price is a number the house pays *on top of* the
+one it is reading. Each line names its instrument and its effective date: a rate
+without its statute is a rumour.
+
+**Nothing was fetched for any of the three.** All were measured on 2026-09-05 by
+the market-research builder with `robots.txt` read first, and are cited from
+`price-sources.md` lines 269, 295, 471 and 565. This pass made **zero outbound
+requests**.
+
+**A per-bottle duty line, and why the box prints a sentence rather than a
+number.** `duty.ts` implements all three denominators and is tested to the
+penny. It then refuses every real bottle in this product, for two measured
+reasons:
+
+* **There is no alcohol-by-volume column anywhere in `master_wine_library`** —
+  grepped against the baseline, it has `ml_derived_features` and
+  `bottle_size_ml` and nothing else. HMRC's rate is per litre of PURE alcohol,
+  so no UK figure is computable for any bottle here.
+* **`bottle_size_ml integer DEFAULT 750 NOT NULL`.** A duty computed off that
+  column is a number nobody chose printed as this bottle's tax — the
+  `restaurants.currency DEFAULT 'USD'` defect with a figure attached. So the
+  derivation takes an explicit SOURCE for the size and the strength and refuses
+  `column_default`.
+
+And GİB is refused for a third reason nobody can type their way out of: **the
+issuer does not state what the figure is per** (`price-sources.md:269`). It
+draws with *"Held as published, and not derived from: …"*, which is the
+read-but-unusable silence rather than the unreadable one.
+
+**A source waiting on a human download says so.** `www.ams.usda.gov/robots.txt`
+is 403, so nothing here fetches it; the founder's answer was a one-off human
+read, logged. The parser exists, has never seen real bytes, and the line reads
+*"Waiting on a person's own download. Nothing here fetches this source, and
+nothing is claimed about where it stands until the file arrives."*
+
+**An armed series names who armed it and on which numbers**, on the same line as
+the number it produces. Arming is a Mudavym admin's act behind `X-Admin-Key`
+(ADR 0099), it carries back a hash of the calibration proposal that was shown,
+and the gateway recomputes that proposal before comparing — so a threshold that
+moved since it was read cannot be armed.
+
+**And the dark rule's unevaluated list shrank from two to one, by measurement.**
+`restaurant_inventory.shelf_life_days` now exists — person-typed, nullable, no
+default, no category inference — so condition 8 is evaluated. A typed shelf life
+can only ever REMOVE an item from the firing set: an item nobody has typed one
+for is skipped with `no_shelf_life_typed`, and an item that does not keep as
+long as the lag is skipped with a different sentence again. **Condition 7,
+coverage, is still unevaluated and still named on every decision and every
+ledger row.**

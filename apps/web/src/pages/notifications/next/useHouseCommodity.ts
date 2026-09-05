@@ -83,7 +83,27 @@ export interface CommoditySeriesVM {
   attribution: string | null;
   redistribution: string;
   admission: string;
+  /**
+   * TRUE when this series' only route in is a person's own download and that
+   * download has not happened. The parser exists and has never seen real bytes,
+   * so the panel must never draw it as working (the founder's Q1 answer,
+   * 2026-09-05: a one-off human read, logged).
+   */
+  awaitingHumanDownload: boolean;
+  /** A rate's instrument, in the issuer's own citation. Null for anything else. */
+  statute: string | null;
+  /** The date the issuer says a rate is in force from. */
+  effectiveFrom: string | null;
+  /**
+   * For a rate: whether a per-bottle duty line can EVER be derived from it, and
+   * the sentence saying why or why not. "This product cannot yet show you a
+   * duty for your bottle" and "this publisher does not say what its number is
+   * per" are different facts, and only the first is fixable by typing anything.
+   */
+  duty: { supported: boolean; sentence: string } | null;
   armed: boolean;
+  /** Who armed it, when, and on which numbers. Null on an unarmed series. */
+  armedBy: { label: string; at: string; proposalHash: string } | null;
   withheld: { reason: string; measuredOn: string } | null;
   silent: { reason: string; measuredOn: string } | null;
   latest: CommodityObservation | null;
@@ -168,7 +188,26 @@ function seriesOf(raw: Record<string, unknown>): CommoditySeriesVM {
     attribution: str(raw.attribution),
     redistribution: str(raw.redistribution) ?? 'unstated',
     admission: str(raw.admission) ?? 'fetch',
+    awaitingHumanDownload: raw.awaitingHumanDownload === true,
+    statute: str(raw.statute),
+    effectiveFrom: str(raw.effectiveFrom),
+    duty:
+      raw.duty && typeof raw.duty === 'object'
+        ? {
+            supported: (raw.duty as Record<string, unknown>).supported === true,
+            sentence: str((raw.duty as Record<string, unknown>).sentence) ?? '',
+          }
+        : null,
     armed: raw.armed === true,
+    armedBy:
+      raw.armedBy && typeof raw.armedBy === 'object'
+        ? {
+            label: str((raw.armedBy as Record<string, unknown>).label) ?? 'not named',
+            at: str((raw.armedBy as Record<string, unknown>).at) ?? '',
+            proposalHash:
+              str((raw.armedBy as Record<string, unknown>).proposalHash) ?? '',
+          }
+        : null,
     withheld: pairOf(raw.withheld),
     silent: pairOf(raw.silent),
     latest: observationOf(raw.latest),

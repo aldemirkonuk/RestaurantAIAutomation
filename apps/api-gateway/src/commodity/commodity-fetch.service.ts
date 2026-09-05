@@ -41,6 +41,7 @@ import {
 import { fetchableSeries, SERIES, type SeriesEntry } from "./commodity.registry";
 import { parseFao } from "./parse-fao";
 import { parseOns } from "./parse-ons";
+import { parseUsdaShellEgg } from "./parse-usda-shell-egg";
 import type { SeriesParseRun } from "./commodity.types";
 
 /** Reads one series' payload. Injected in tests so no test ever goes outbound. */
@@ -58,7 +59,17 @@ export interface SeriesRunOutcome {
   note: string | null;
 }
 
-/** Which parser reads which series. Declared, never inferred from a URL. */
+/**
+ * Which parser reads which series. Declared, never inferred from a URL.
+ *
+ * The USDA shell-egg entry HAS a parser here and is still not fetchable: the
+ * two are separate facts and conflating them is what a `upload_only` series
+ * exists to prevent. `runOne` refuses it on `admission` before this map is
+ * consulted, and `fetchableSeries()` excludes it before that. The parser is
+ * here so that the day a person's own download lands, the upload path has
+ * something to call and NOTHING ELSE CHANGES (the founder's Q1 answer,
+ * 2026-09-05).
+ */
 export function parserFor(
   entry: SeriesEntry,
 ): ((payload: string, opts: { seriesKey: string; fetchedAt: string }) => SeriesParseRun) | null {
@@ -70,6 +81,9 @@ export function parserFor(
     SERIES["ons.d7bu.cpi_food_and_non_alcoholic_beverages"]?.seriesKey
   ) {
     return parseOns;
+  }
+  if (entry.seriesKey === SERIES["usda_ams.shell_egg_index.national"]?.seriesKey) {
+    return parseUsdaShellEgg;
   }
   return null;
 }

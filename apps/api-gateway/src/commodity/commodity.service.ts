@@ -39,6 +39,7 @@ import {
   type SeriesEntry,
 } from "./commodity.registry";
 import { COMMODITY_FETCH_FLAG, commodityFetchArmed } from "./commodity-admission";
+import { derivability } from "./duty";
 
 /**
  * The columns this service reads, named explicitly so
@@ -46,7 +47,7 @@ import { COMMODITY_FETCH_FLAG, commodityFetchArmed } from "./commodity-admission
  * `supabase/migrations/`.
  */
 const SERIES_COLUMNS =
-  "id, series_key, issuer, issuer_jurisdiction, series_title, source_url, value_kind, unit, base_period, currency, price_basis, cadence, max_age_days, licence, attribution, redistribution, admission, rise_threshold, step_guard, threshold_window_from, threshold_window_to, threshold_window_n_obs, threshold_computed_at, armed, withheld_reason, silent, measured_on";
+  "id, series_key, issuer, issuer_jurisdiction, series_title, source_url, value_kind, unit, base_period, currency, price_basis, cadence, max_age_days, licence, attribution, redistribution, admission, rise_threshold, step_guard, threshold_window_from, threshold_window_to, threshold_window_n_obs, threshold_computed_at, armed, armed_by_label, armed_at, armed_proposal_hash, armed_note, withheld_reason, silent, measured_on";
 
 const OBSERVATION_COLUMNS =
   "id, series_id, period_start, period_grain, value, issued_at, issued_at_basis, fetched_at, vintage, source_ref, content_hash";
@@ -95,8 +96,27 @@ export interface CommoditySeriesLine {
   attribution: string | null;
   redistribution: string;
   admission: string;
+  /**
+   * TRUE when this series' only route in is a person's own download and that
+   * download has not happened. The parser exists and has never seen real bytes,
+   * so no surface may report the series as working (the founder's Q1 answer).
+   */
+  awaitingHumanDownload: boolean;
+  /** A rate's instrument, in the issuer's own citation. Null for anything else. */
+  statute: string | null;
+  /** The date the issuer says a rate is in force from. */
+  effectiveFrom: string | null;
+  /**
+   * For a rate: whether a per-bottle duty line can EVER be derived from it, and
+   * the sentence saying why or why not. "This product cannot yet show you a
+   * duty for your bottle" and "this publisher does not say what its number is
+   * per" are different facts, and only the first is fixable by typing something.
+   */
+  duty: { supported: boolean; sentence: string } | null;
   /** Armed for ALERTING. Never for fetching, which only a flag can arm. */
   armed: boolean;
+  /** Who armed it, when, and on which numbers. Null on an unarmed series. */
+  armedBy: { label: string; at: string; proposalHash: string } | null;
   /** Unreadable versus read-but-unusable, kept apart as the registry keeps them. */
   withheld: { reason: string; measuredOn: string } | null;
   silent: { reason: string; measuredOn: string } | null;
@@ -223,7 +243,19 @@ export class CommodityService {
       attribution: entry.attribution,
       redistribution: entry.redistribution,
       admission: entry.admission,
+      awaitingHumanDownload: entry.awaitingHumanDownload === true,
+      statute: entry.statute ?? null,
+      effectiveFrom: entry.effectiveFrom ?? null,
+      duty:
+        entry.valueKind === "rate"
+          ? derivability({
+              valueKind: entry.valueKind,
+              denominator: entry.dutyDenominator ?? "unstated",
+              issuer: entry.issuer,
+            })
+          : null,
       armed: false,
+      armedBy: null,
       withheld: entry.withheld,
       silent: entry.silent,
       latest: null,
@@ -246,6 +278,20 @@ export class CommodityService {
       if (row) {
         seriesId = String(row.id);
         base.armed = row.armed === true;
+        // Read together or not at all: the CHECK on the table says an armed
+        // series names all three, so a partial read here would be a row that
+        // cannot exist.
+        base.armedBy =
+          row.armed === true &&
+          typeof row.armed_by_label === "string" &&
+          typeof row.armed_at === "string" &&
+          typeof row.armed_proposal_hash === "string"
+            ? {
+                label: row.armed_by_label,
+                at: row.armed_at,
+                proposalHash: row.armed_proposal_hash,
+              }
+            : null;
       }
     } catch (err) {
       // supabase-js resolves `{ data, error }` and never throws on a refused
@@ -260,9 +306,11 @@ export class CommodityService {
     }
 
     if (!seriesId) {
-      base.note = entry.withheld
-        ? `This series is registered and is not fetched: ${entry.withheld.reason}`
-        : "This series is registered and this register holds no observation of it yet. Nothing is claimed about where it stands.";
+      base.note = entry.awaitingHumanDownload
+        ? `This series is registered and waits for a person's own download. ${entry.withheld?.reason ?? ""} Nothing here fetches it, and nothing may report it as working until the file lands.`.trim()
+        : entry.withheld
+          ? `This series is registered and is not fetched: ${entry.withheld.reason}`
+          : "This series is registered and this register holds no observation of it yet. Nothing is claimed about where it stands.";
       return base;
     }
 

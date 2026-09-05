@@ -11,7 +11,7 @@
 import { CommodityService } from "./commodity.service";
 import { CommodityFetchService, parserFor } from "./commodity-fetch.service";
 import { DatabaseService } from "../database/database.service";
-import { SERIES } from "./commodity.registry";
+import { SERIES, fetchableSeries } from "./commodity.registry";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -268,7 +268,7 @@ describe("the status route", () => {
     const s = svc.status();
     expect(s.fetchArmed).toBe(false);
     expect(s.flag).toBe("COMMODITY_INDEX_FETCH_ENABLED");
-    expect(s.series).toHaveLength(3);
+    expect(s.series).toHaveLength(6);
   });
 });
 
@@ -287,10 +287,28 @@ describe("the fetch service, driven with the RECORDED fixtures and no network", 
       "utf8",
     );
 
-  it("declares a parser for each fetchable series and none for the withheld one", () => {
+  it("declares a parser for each fetchable series", () => {
     expect(parserFor(fao)).not.toBeNull();
     expect(parserFor(ons)).not.toBeNull();
-    expect(parserFor(SERIES["usda_ams.shell_egg_index.national"])).toBeNull();
+  });
+
+  it("gives the shell-egg series a parser AND still refuses to fetch it", () => {
+    // Two separate facts, and conflating them is what `upload_only` exists to
+    // prevent. The parser is there so that the day a person's own download
+    // lands the upload path has something to call and nothing else changes
+    // (the founder's Q1 answer, 2026-09-05); `admission` is what stops any
+    // reader being pointed at a host whose robots.txt returns 403.
+    const egg = SERIES["usda_ams.shell_egg_index.national"];
+    expect(parserFor(egg)).not.toBeNull();
+    expect(egg.admission).toBe("upload_only");
+    expect(egg.awaitingHumanDownload).toBe(true);
+    expect(fetchableSeries().map((s) => s.seriesKey)).not.toContain(egg.seriesKey);
+  });
+
+  it("declares no parser for a rate: a rate is brought, never scraped", () => {
+    for (const r of Object.values(SERIES).filter((s) => s.valueKind === "rate")) {
+      expect(parserFor(r)).toBeNull();
+    }
   });
 
   it("fetches nothing at all while the flag is off, and says why", async () => {
