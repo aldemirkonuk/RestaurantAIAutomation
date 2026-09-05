@@ -189,15 +189,21 @@ describe("PriceIndexService.forHouse — resolves the caller's own state", () =>
     expect(res.lines).toHaveLength(1);
   });
 
-  it("says WORDS when the house has no state recorded (2 of 14 tenants)", async () => {
+  // Updated 2026-09-05: `forHouse` now falls back to `restaurants.country`, so
+  // the sentence for a house with NEITHER names both columns. A house with a
+  // country but no state is a different case, covered in
+  // `price-index.nonus.spec.ts`.
+  it("says WORDS when the house records neither a state nor a country", async () => {
     const svc = new PriceIndexService(
       makeDb((ctx) =>
-        ctx.table === "restaurants" ? { data: [{ state_province: null }] } : { data: [] },
+        ctx.table === "restaurants"
+          ? { data: [{ state_province: null, country: null }] }
+          : { data: [] },
       ),
     );
     const res = await svc.forHouse("r-2");
     expect(res.state).toBeNull();
-    expect(res.silence).toContain("no state recorded");
+    expect(res.silence).toContain("neither a state nor a country");
   });
 
   it("says WORDS when there is no active restaurant", async () => {

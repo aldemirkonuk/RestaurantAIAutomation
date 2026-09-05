@@ -36,10 +36,12 @@ import { SOURCES } from "./price-index.registry";
 import { priceIndexFetchArmed, refuseStale, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 import {
   fetchCalifornia,
+  fetchDefra,
   fetchIowa,
   fetchOregon,
   loadFixture,
 } from "./fetchers";
+import { DEFRA_SOURCE_KEY } from "./parse-defra";
 
 const FETCH_CRON = "0 6 * * *"; // 06:00 daily; sources move at most monthly
 const FETCH_JOB_NAME = "price-index-fetch";
@@ -163,6 +165,8 @@ export class PriceIndexFetchService {
         return fetchIowa();
       case "oregon-olcc-monthly-pricing":
         return fetchOregon();
+      case DEFRA_SOURCE_KEY:
+        return fetchDefra();
       default:
         throw new Error(`No fetcher for '${sourceKey}'`);
     }

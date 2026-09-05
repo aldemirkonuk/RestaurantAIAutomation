@@ -22,6 +22,12 @@ import {
   SOURCES,
   normalizeJurisdiction,
 } from "./price-index.registry";
+import {
+  jurisdictionCovers,
+  marketSilenceFor,
+  priceScopeOf,
+} from "./jurisdiction";
+import { noSourceSentence } from "./silence-notes";
 import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 
 /** The columns the endpoint reads. Named explicitly so the read-column guard
@@ -67,7 +73,10 @@ export interface StateIndexResult {
     sourceClass: string;
     issuer: string;
     cadence: string;
+    /** We could not read the bytes. */
     withheld: { reason: string; measuredOn: string } | null;
+    /** We read them and there is no price in them. Never the same fact. */
+    silent: { kind: string; reason: string; measuredOn: string } | null;
     rows: number;
   }>;
   /** Words, never an empty list mistaken for "nothing costs anything". */
@@ -81,6 +90,7 @@ export interface SourceStatus {
   jurisdiction: string;
   cadence: string;
   withheld: { reason: string; measuredOn: string } | null;
+  silent: { kind: string; reason: string; measuredOn: string } | null;
   rows: number;
   lastFetchedAt: string | null;
   silentBecause: string | null;
@@ -112,31 +122,53 @@ export class PriceIndexService {
         silence: "No active restaurant on this session, so no state to scope the index to.",
       };
     }
+    // REGION FIRST, THEN COUNTRY (2026-09-05). `state_province` is free text
+    // ('CA' / 'California' / 'Muğla' / 'England'); `country` is free text too
+    // ('Türkiye' / 'USA' / 'united States'). Reading only the province was
+    // measured wrong on this estate: The Old House Pub in Antalya records NO
+    // province and country 'Türkiye', so it was told "this house has no state
+    // recorded" when its country is known and is the level Türkiye publishes
+    // at. The country is the FALLBACK, never the override — a province is the
+    // more specific fact and wins whenever it resolves.
     let rawState: string | null = null;
+    let rawCountry: string | null = null;
     try {
       const { data, error } = await this.db.client
         .from("restaurants")
-        .select("state_province")
+        .select("state_province, country")
         .eq("id", restaurantId)
         .single();
       if (error) throw error;
-      rawState = (data as { state_province: string | null } | null)?.state_province ?? null;
+      const row = data as {
+        state_province: string | null;
+        country: string | null;
+      } | null;
+      rawState = row?.state_province ?? null;
+      rawCountry = row?.country ?? null;
     } catch (err) {
       this.logger.warn(
-        `could not read this house's state for the price index: ${(err as Error).message}`,
+        `could not read this house's jurisdiction for the price index: ${(err as Error).message}`,
       );
     }
-    if (!rawState || !rawState.trim()) {
-      return {
-        requested: "me",
-        state: null,
-        lines: [],
-        sources: [],
-        silence:
-          "This house has no state recorded, so no jurisdiction can be scoped. Set the address in Settings to draw an index line.",
-      };
+    if (rawState && rawState.trim() && normalizeJurisdiction(rawState)) {
+      return this.forState(rawState);
     }
-    return this.forState(rawState);
+    if (rawCountry && rawCountry.trim() && normalizeJurisdiction(rawCountry)) {
+      return this.forState(rawCountry);
+    }
+    // A province WAS recorded and this register does not recognise it: say
+    // that, rather than "no state recorded", which would be false.
+    if (rawState && rawState.trim()) {
+      return this.forState(rawState);
+    }
+    return {
+      requested: "me",
+      state: null,
+      lines: [],
+      sources: [],
+      silence:
+        "This house records neither a state nor a country, so no jurisdiction can be scoped. Set the address in Settings to draw an index line.",
+    };
   }
 
   /** The index lines for one state, plus who publishes there and why it is quiet. */
@@ -147,9 +179,15 @@ export class PriceIndexService {
     limit = 25,
   ): Promise<StateIndexResult> {
     const state = normalizeJurisdiction(rawState);
-    const sourcesForState = Object.values(SOURCES).filter(
-      (s) => s.jurisdiction === state,
-    );
+    // Coverage is CONTAINMENT, not equality (2026-09-05): a national
+    // instrument speaks for a house in one of its provinces, and an
+    // England-and-Wales series speaks for a house in England. It does NOT
+    // speak for a house known only as 'GB', which may be in Scotland.
+    const sourcesForState = state
+      ? Object.values(SOURCES).filter((s) =>
+          jurisdictionCovers(s.jurisdiction, state),
+        )
+      : [];
 
     if (!state) {
       return {
@@ -205,13 +243,55 @@ export class PriceIndexService {
       return "The index register could not be read. This is unknown, not empty.";
     }
     if (lineCount > 0) return null;
-    if (sourcesForState.length === 0) {
-      return `No posted list or public index is known for ${state}. A house here has no index line until one is found.`;
+
+    // A house that records only a country, in a country whose prices are
+    // published state by state. That is a missing ADDRESS, not a missing
+    // market, and "nothing is posted for US" would be false. (2026-09-05)
+    if (!state.includes("-") && priceScopeOf(state) === "subnational") {
+      return `This house records the country (${state}) but no state, and ${state} publishes prices state by state. Set the state in Settings to scope an index line.`;
     }
+
+    if (sourcesForState.length === 0) {
+      // The market's own researched sentence where there is one: it names the
+      // cause, which an empty box never can. (2026-09-05, ADR 0117)
+      const market = marketSilenceFor(state);
+      if (market) return market;
+      // The researched sentence where the question has been settled, and an
+      // explicit "nobody has looked" where it has not. The line this replaced
+      // — "A house here has no index line until one is found" — was true of an
+      // unresearched state and false of Illinois, whose price-filing section
+      // was repealed in 1998: it reported a settled legal fact as a pending
+      // search. (2026-09-05, ADR 0117 "Michigan and Illinois")
+      return noSourceSentence(state);
+    }
+
     const withheld = sourcesForState.filter((s) => s.withheld);
     if (withheld.length === sourcesForState.length) {
-      return `${state} has a posted list (${withheld[0].issuer}) but it cannot be fetched: ${withheld[0].withheld!.reason}`;
+      const first = withheld[0];
+      const base = `${state} has a posted list (${first.issuer}) but it cannot be fetched: ${first.withheld!.reason}`;
+      // A source that cannot be fetched but CAN be carried in by hand must say
+      // so. Ending on "cannot be fetched" tells a Michigan house to give up on
+      // a book its own manager can download in a minute. (2026-09-05)
+      const uploadable = withheld.filter((s) => s.intake === "upload");
+      if (uploadable.length > 0) {
+        return `${base} A manager can download the ${uploadable[0].cadence.split(" (")[0]} book from the issuer and upload it, and these lines will fill.`;
+      }
+      return base;
     }
+
+    // Every source for this jurisdiction was READ and none holds a price — a
+    // tax schedule, an index number, a discontinued series, an HTML grid. That
+    // is a different fact from "we could not fetch it", and the market
+    // sentence is the one that explains it. (2026-09-05)
+    const silent = sourcesForState.filter((s) => s.silent);
+    if (silent.length > 0 && silent.length + withheld.length === sourcesForState.length) {
+      const market = marketSilenceFor(state);
+      const named = silent
+        .map((s) => `${s.issuer}: ${s.silent!.reason}`)
+        .join(" ");
+      return market ? `${market} ${named}` : named;
+    }
+
     if (!this.armed()) {
       return `${state} has a fetchable posted list, but the scheduled fetch is off (${PRICE_INDEX_FETCH_FLAG}). No index line has been recorded yet.`;
     }
@@ -227,6 +307,7 @@ export class PriceIndexService {
         issuer: s.issuer,
         cadence: s.cadence,
         withheld: s.withheld ?? null,
+        silent: s.silent ?? null,
         rows: await this.countFor(s.key, state),
       });
     }
@@ -264,15 +345,18 @@ export class PriceIndexService {
         jurisdiction: s.jurisdiction,
         cadence: s.cadence,
         withheld: s.withheld ?? null,
+        silent: s.silent ?? null,
         rows,
         lastFetchedAt,
         silentBecause: s.withheld
           ? `withheld: ${s.withheld.reason}`
-          : rows > 0
-            ? null
-            : armed
-              ? "armed, but no rows recorded yet"
-              : `fetch disabled (${PRICE_INDEX_FETCH_FLAG} is off)`,
+          : s.silent
+            ? `${s.silent.kind}: ${s.silent.reason}`
+            : rows > 0
+              ? null
+              : armed
+                ? "armed, but no rows recorded yet"
+                : `fetch disabled (${PRICE_INDEX_FETCH_FLAG} is off)`,
       });
     }
     return { armed, flag: PRICE_INDEX_FETCH_FLAG, sources };

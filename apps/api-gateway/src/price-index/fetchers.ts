@@ -14,6 +14,7 @@ import {
 } from "./parse-california";
 import { IOWA_URL, IowaRow } from "./parse-iowa";
 import { OREGON_URL, OregonRow } from "./parse-oregon";
+import { DEFRA_SERIES_URL, DefraRow, parseCsv } from "./parse-defra";
 
 export const USER_AGENT =
   "MudavymPriceSightings/0.1 (+https://mudavym.com/bot; public price-list reader; one request per source per day)";
@@ -138,10 +139,46 @@ export async function fetchOregon(): Promise<OregonRow[]> {
   return out;
 }
 
+/**
+ * Defra: read the series page, take the CSV edition it currently links, fetch
+ * that. Two requests, once a fortnight.
+ *
+ * The edition URL carries a content hash and changes every edition, so it can
+ * never be hard-coded — the series page is the only stable address. gov.uk's
+ * robots.txt, fetched 2026-09-05: the wildcard agent is disallowed only from
+ * print variants of a page and from site search, nothing else is restricted,
+ * and no Crawl-delay is declared. Neither disallowed path is touched here.
+ */
+export async function fetchDefra(): Promise<DefraRow[]> {
+  const page = await fetch(DEFRA_SERIES_URL, {
+    headers: { Accept: "text/html", "User-Agent": USER_AGENT },
+  });
+  if (!page.ok) {
+    throw new Error(`Defra series page returned HTTP ${page.status}`);
+  }
+  const html = await page.text();
+  const link =
+    /https:\/\/assets\.publishing\.service\.gov\.uk\/media\/[^"']+\.csv/.exec(html);
+  if (!link) {
+    throw new Error(
+      "Defra: no CSV edition is linked on the series page. Refusing rather than reusing a URL from a previous edition, which would file an old fortnight as this one.",
+    );
+  }
+  await new Promise((r) => setTimeout(r, 1000)); // polite between the two
+  const res = await fetch(link[0], {
+    headers: { Accept: "text/csv", "User-Agent": USER_AGENT },
+  });
+  if (!res.ok) throw new Error(`Defra CSV returned HTTP ${res.status}`);
+  return parseCsv(await res.text()) as DefraRow[];
+}
+
 /** Load the recorded fixture for a source (the offline / test path). */
 export async function loadFixture(fixture: string): Promise<unknown[]> {
   const path = join(FIXTURES_DIR, fixture);
   const text = await readFile(path, "utf-8");
+  if (fixture.endsWith(".csv")) {
+    return parseCsv(text);
+  }
   if (fixture.endsWith(".ndjson")) {
     return text
       .split("\n")
