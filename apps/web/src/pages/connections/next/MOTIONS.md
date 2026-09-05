@@ -33,3 +33,17 @@ Three motions were considered and not built:
 `prefers-reduced-motion: reduce` drops the single transition entirely
 (`connections-next.css`). Nothing on this page carries meaning in movement, so
 there is no reduced-motion fallback to design — the page simply stops moving.
+
+## The collapse, 2026-09-04
+
+Still one motion in the table above. Two things arrived and neither adds one:
+
+- **`HouseServerControls`** uses `cx-btn-hover` on its own controls and the shared
+  `HoldToApprove` ceremony on revoke — the house's existing die, not a new gesture.
+  Revoke earns it because it destroys a stored credential and re-declaring the same
+  server does not undo it.
+- **The register anchors** scroll with the browser's own `scrollIntoView`, `smooth`
+  unless `prefers-reduced-motion: reduce` is set, in which case `auto`. It is not a
+  house token because it is not a house gesture — it is the browser doing what a
+  fragment link has always done, and inventing a token for it would imply the page
+  had opinions about a scroll it does not drive.

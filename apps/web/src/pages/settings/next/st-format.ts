@@ -220,6 +220,68 @@ export function readingIndex(id: SectionId): number {
   return READING_ORDER.indexOf(id) + 1;
 }
 
+/* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────
+ *
+ * "Move the registers and collapse the four tabs."
+ *
+ * `services`, `pos`, `email` and `calendar` are all connections, and ADR 0114
+ * justified `/connections` on a surface count that FELL. Until this landed the
+ * count had RISEN — a new route plus fourteen tabs. So when
+ * `mudavym_design_connections` is on, those four leave this page and one line
+ * points at the surface that carries them.
+ *
+ * The ids do NOT leave `SECTION_IDS`. `isSectionId` must keep recognising them
+ * so `?tab=pos` can be RECOGNISED and redirected; dropping them from the id set
+ * would turn every existing bookmark into an unrecognised parameter that
+ * silently opened Team, which is the failure mode this table exists to avoid.
+ */
+export const COLLAPSED_SECTIONS = ['services', 'pos', 'email', 'calendar'] as const;
+
+export type CollapsedSectionId = (typeof COLLAPSED_SECTIONS)[number];
+
+/**
+ * Where each collapsed tab's `?tab=` deep link lands on `/connections`.
+ *
+ * The anchors are declared in `connections/next/ConnectionsNext.tsx`
+ * (`REGISTER_ANCHORS`) and each is an id on the element that draws that
+ * register. `services` goes to the personal-grants register, not to Register I:
+ * the Services tab was the OAuth catalogue — "which apps YOU have connected" —
+ * and Register III is where those are listed.
+ */
+export const CONNECTIONS_ANCHOR: Record<CollapsedSectionId, string> = {
+  services: 'grants',
+  pos: 'till',
+  email: 'sender',
+  calendar: 'feed',
+};
+
+export function isCollapsedSection(id: string | null): id is CollapsedSectionId {
+  return id !== null && (COLLAPSED_SECTIONS as readonly string[]).includes(id);
+}
+
+/** The four are dropped only when `/connections` is actually routed. */
+export function sectionsFor(connectionsOn: boolean): SectionSpec[] {
+  return connectionsOn
+    ? SECTIONS.filter((s) => !isCollapsedSection(s.id))
+    : SECTIONS;
+}
+
+export function groupsFor(connectionsOn: boolean): SectionGroup[] {
+  if (!connectionsOn) return GROUPS;
+  return GROUPS.map((g) => ({
+    ...g,
+    members: g.members.filter((id) => !isCollapsedSection(id)),
+  })).filter((g) => g.members.length > 0);
+}
+
+export function readingOrderFor(connectionsOn: boolean): SectionId[] {
+  return groupsFor(connectionsOn).flatMap((g) => g.members);
+}
+
+export function readingIndexFor(connectionsOn: boolean, id: SectionId): number {
+  return readingOrderFor(connectionsOn).indexOf(id) + 1;
+}
+
 export function isSectionId(v: string | null): v is SectionId {
   return v !== null && (SECTION_IDS as readonly string[]).includes(v);
 }
@@ -239,10 +301,22 @@ export function word(v: number): string {
   return NUMBER_WORDS[v] ?? String(v);
 }
 
-/** "Ten kept for this restaurant, three on your account, one in this browser." */
-export function keptTally(): string {
-  const n = (k: Kept) => SECTIONS.filter((s) => s.kind === k).length;
-  return `${word(n('restaurant'))} kept for this restaurant, ${word(n('account'))} on your account, ${word(n('browser'))} in this browser only`;
+/**
+ * "Ten kept for this restaurant, three on your account, one in this browser."
+ *
+ * Counts the registers actually on the page, so the collapse changes the
+ * sentence rather than leaving a tally that describes four tabs the reader
+ * cannot see. A clause is dropped entirely when its count reaches zero — "none
+ * on your account" reads as a finding, and the true statement is silence.
+ */
+export function keptTally(connectionsOn = false): string {
+  const live = sectionsFor(connectionsOn);
+  const n = (k: Kept) => live.filter((s) => s.kind === k).length;
+  const parts: string[] = [];
+  if (n('restaurant') > 0) parts.push(`${word(n('restaurant'))} kept for this restaurant`);
+  if (n('account') > 0) parts.push(`${word(n('account'))} on your account`);
+  if (n('browser') > 0) parts.push(`${word(n('browser'))} in this browser only`);
+  return parts.join(', ');
 }
 
 /* ── The vendor-terms vocabulary ─────────────────────────────────────────── */

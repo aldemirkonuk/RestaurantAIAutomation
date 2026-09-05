@@ -294,6 +294,21 @@ because it is true, and it changes when the deployment's mailbox does.
 
 Each is rendered honestly on the page rather than hidden.
 
+- **G-PAY-SEAL — the payment register's controls are buttons, not the seal
+  ceremony (added 2026-09-04, ADR 0110 addendum).** The gateway now REDEEMS a
+  seal on every payment-method write: `POST /payment-methods/seal-challenge`
+  mints a one-time, 120-second token bound to (this manager, this instrument,
+  this act, this card's own brand and last four), and `POST /payment-methods`,
+  `PATCH :id/default` and `DELETE :id` each spend it exactly once. What is
+  missing is the browser half: `PaymentRegister.tsx` renders plain `Btn`s and has
+  never rendered `HoldToApprove`, so those controls now receive a 403 whose
+  message is the whole sentence ("This payment method is sealed, and a seal must
+  be proven rather than asserted… Nothing was changed."), verified live on
+  `:4000`. *Why not yet:* `pages/profile/next` was being edited by another
+  builder in the same worktree while the seal was built, so the page was left
+  untouched rather than raced. The fix is one `HoldToApprove` per control with
+  `onChallenge` minting the act, and the exact patch is in the build report.
+
 - **G-C1 — the POS bridge cannot be disconnected.** `pos-hub.controller.ts`
   carries no delete route of any shape, so "Disconnect" is disabled and the row
   says what actually stops the feed (removing the webhook secret). *Why not yet:*

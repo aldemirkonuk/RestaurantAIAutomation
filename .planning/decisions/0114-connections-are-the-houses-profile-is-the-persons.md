@@ -1,6 +1,7 @@
 # 0114 — Connections are the house's, profile is the person's
 
 - **Status:** Locked on the route and on the four founder calls below; built behind a flag, founder review open on the surface
+- **2026-09-04 — the collapse landed; the surface count fell by four tabs and three registers.** The founder, asked the two questions this ADR left open at the bottom, answered *"Move the registers and collapse the four tabs."* Measured: `/settings` goes from **14 registers to 10 plus one line out**, and `/profile` from **7 registers to 5**. Net, with the flag on, one new route in exchange for seven surfaces — which is the arithmetic the rejected alternative below said had to hold, and until this it did not. Two consequences of this ADR are now stale and are corrected here rather than in place: *"`/profile` is unchanged except for one pointer line"* is no longer true, and *"nothing is moved out yet"* is no longer true. One thing did **not** move whole: Register IV **split** along this gateway's own role gates — declare / probe / secret / revoke are `assertCanManageRestaurant` and moved; `PUT /mcp-connections/:id/consent` has no role check (`mcp-connections.controller.ts:218-235`), and since `/connections` is manager-only, moving it would have left a staff member with no way at all to stop a server acting in their name. That is decision 2 of this ADR ("house declares, each person consents") applied to placement. The collapse also **subtracted one capability** and says so: adding or removing a card has no home while the flag is on, because `StripeCardPanel.tsx` is bound to `/profile`'s data hook and UI kit — `connections.md` §9 G-C9, `profile.md` §9 G12a.
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** connections, integrations, MCP, model context, OAuth, payments, POS, sender identity, calendar feed, tenancy, role gate, consent, per-tool grant, absence-reported-as-health, G19, G20, G21
@@ -185,5 +186,9 @@ ceremony costs and is not this ADR's to take.
   none. §6b called it "the house's" and that was wrong. Corrected on the row and
   here.
 - **Pricing** (OD-23). Register II stops at a card on file, as ADR 0110 did.
-- **Whether the four `/settings` tabs collapse into this page**, which is what
-  makes the surface count fall rather than rise.
+- ~~**Whether the four `/settings` tabs collapse into this page**, which is what
+  makes the surface count fall rather than rise.~~ **Settled 2026-09-04: they
+  do.** See the dated status line at the top.
+- **Still open: whose a model-context server is.** The 2026-09-04 pass split the
+  register along the role gates the CODE already enforces, which is a placement
+  answer, not an ownership one. The fork remains as this ADR left it.

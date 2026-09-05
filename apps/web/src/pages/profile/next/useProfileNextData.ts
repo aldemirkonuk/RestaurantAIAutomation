@@ -112,6 +112,7 @@ import {
 } from '../../../services/api/integrations';
 import { apiMessage, describeDevice } from './pf-format';
 import { stripePublishableKey } from './stripe-js';
+import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 
 /** What a read is: not asked, in flight, answered, or refused. */
 export type ReadState = 'idle' | 'loading' | 'ok' | 'error';
@@ -158,6 +159,20 @@ export interface McpServerVM {
   secretSetAt: string | null;
   /** Null when never probed. Never a benign default. */
   probe: McpProbeVM | null;
+  /**
+   * The READER's own consent, and how many people have given theirs.
+   *
+   * Modelled here because it is the one part of this register that is the
+   * PERSON's (ADR 0114 §2: the house declares, each person consents). Every
+   * other field above describes an attachment the house owns and only a
+   * manager may change.
+   *
+   * Optional, because a gateway that has not been redeployed does not send it
+   * and a defaulted `{given: false}` would print "you have not consented"
+   * about a question nobody asked. `ConsentRegister` renders the absence as
+   * words, not as a false.
+   */
+  consent?: { given: boolean; at: string | null; liveCount: number };
 }
 
 /**
@@ -370,7 +385,25 @@ export function useProfileNextData() {
    * register can name the plan.
    */
 
-  const locationEnabled = isManagerOrOwner && !!rid;
+  /**
+   * THE COLLAPSE (2026-09-04). The two HOUSE reads stop when `/connections` is
+   * routed, because the two registers that consumed them have moved there.
+   *
+   * `locationQ` fed Register VI (the restaurant record) and Register V's plan
+   * line; `paymentsQ` fed Register V. Nothing else on this page reads either —
+   * measured by grepping `locationState|data.location|refetchLocation` and
+   * `paymentMethods|paymentProvider` across `profile/next/*.tsx`, which hit
+   * only `HouseRegister.tsx` and `PaymentRegister.tsx`.
+   *
+   * The honest limitation: `useMudavymDesign` has no settled state, so with the
+   * per-restaurant FLAG (rather than the localStorage override, which resolves
+   * synchronously) both reads still fire once on first paint before the verdict
+   * arrives. This removes the steady-state reads, not the first pair. Giving the
+   * hook a tri-state is a change to a file every gated page shares and is not
+   * this pass's to make — filed in `profile.md` §13.
+   */
+  const connectionsRouted = useMudavymDesign('connections');
+  const locationEnabled = isManagerOrOwner && !!rid && !connectionsRouted;
   const locationQ = useQuery({
     queryKey: ['profile-next-location', rid, uid],
     queryFn: async (): Promise<LocationRecord> => {
@@ -539,7 +572,8 @@ export function useProfileNextData() {
         methods: Array.isArray(data?.methods) ? data.methods : [],
       };
     },
-    enabled: !!uid && !!rid,
+    // Stops when Register V moves to `/connections` — see `connectionsRouted`.
+    enabled: !!uid && !!rid && !connectionsRouted,
     staleTime: 30_000,
   });
 
@@ -697,6 +731,26 @@ export function useProfileNextData() {
     [mcpQ],
   );
 
+  /**
+   * The reader's OWN consent — the only model-context write on this page that
+   * a staff member may make.
+   *
+   * `PUT /mcp-connections/:id/consent` takes no user id in any shape
+   * (`mcp-connections.controller.ts:218-235`), so "record someone else's
+   * consent" is not a request this API can express. It is deliberately NOT
+   * gated on `assertCanManageRestaurant`, unlike declare / probe / secret /
+   * revoke, which is why this one control stays on `/profile` when the three
+   * house registers move to the manager-only `/connections` (ADR 0114 §2 and
+   * §5).
+   */
+  const setMcpConsent = useCallback(
+    async (id: string, given: boolean) => {
+      await apiClient.put(`/mcp-connections/${id}/consent`, { given });
+      await mcpQ.refetch();
+    },
+    [mcpQ],
+  );
+
   /* ── writes: the payment register ────────────────────────────────────
    *
    * Present, and never reachable from the page while no provider is connected:
@@ -832,7 +886,7 @@ export function useProfileNextData() {
     },
 
     /* read 6 — payment */
-    paymentsState: readState(paymentsQ, !!uid && !!rid),
+    paymentsState: readState(paymentsQ, !!uid && !!rid && !connectionsRouted),
     paymentsError: paymentsQ.isError ? apiMessage(paymentsQ.error) : null,
     paymentMethods: paymentsQ.data?.methods ?? [],
     /**
@@ -878,6 +932,7 @@ export function useProfileNextData() {
     revokeMcpServer,
     probeMcpServer,
     setMcpSecret,
+    setMcpConsent,
     removePaymentMethod,
     createSetupIntent,
     syncPayments,

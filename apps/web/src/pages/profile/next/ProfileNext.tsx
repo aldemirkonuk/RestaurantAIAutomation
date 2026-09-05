@@ -69,6 +69,40 @@
  *
  * Ceremony is rationed. The hold-to-approve seal appears exactly once, on the
  * one irreversible act on the page: deleting the account.
+ *
+ * FIFTH PASS, 2026-09-04 — THE COLLAPSE. THIS PAGE BECOMES PERSONAL.
+ * ------------------------------------------------------------------
+ * The founder, asked whether the house registers leave and whether the four
+ * `/settings` connection tabs collapse, chose **"Move the registers and
+ * collapse the four tabs."** ADR 0114 justified `/connections` on a surface
+ * count that FELL; until this pass it had risen. So, when
+ * `mudavym_design_connections` is on:
+ *
+ *   Register IV  Model context  → `/connections#servers`, and in its place a
+ *                NEW personal register, `ConsentRegister` — see its header for
+ *                why the consent control could not travel with the rest.
+ *   Register V   How the house pays → `/connections#payment`
+ *   Register VI  The house → `/connections`, `/settings?tab=locations` and
+ *                `/settings?tab=team`
+ *
+ * Seven registers become five. With the flag OFF this file renders exactly
+ * what it rendered before — the route redirects here and the flag is off in
+ * production — so every branch below is conditional, and the test file proves
+ * both sides.
+ *
+ * WHAT THE MOVE COST, STATED RATHER THAN HIDDEN
+ * ---------------------------------------------
+ * Three controls had their only mount on this page. Two of them are
+ * manager-only at the gateway and are being rebuilt on the manager-only
+ * surface (declare / revoke a server — `connections/next/HouseServerControls`).
+ * The third is not: adding a card mounts Stripe's own iframes through
+ * `StripeCardPanel`, which is bound to this page's data hook and UI kit. It
+ * did not move, so with the flag on there is nowhere to add a card. That is a
+ * real subtraction and it is filed, not glossed: `connections.md` §9 G-C9 and
+ * `profile.md` §9 G12a. It costs nothing today — `STRIPE_SECRET_KEY` is unset
+ * on this deployment, so the create path 503s and the control was already
+ * disabled with that sentence — but it is a debt, and the day a key is set it
+ * becomes urgent.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -85,6 +119,7 @@ import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { McpRegister } from './McpRegister';
 import { PaymentRegister } from './PaymentRegister';
 import { HouseRegister } from './HouseRegister';
+import { ConsentRegister } from './ConsentRegister';
 import { useProfileNextData, type ProfileNextData } from './useProfileNextData';
 
 export interface ProfileNextProps {
@@ -105,7 +140,7 @@ export interface ProfileNextProps {
  * There is a register now, so the clause is a reading of it, and it appears only
  * when that read succeeded.
  */
-function standingLine(data: ProfileNextData): string {
+function standingLine(data: ProfileNextData, connectionsOn: boolean): string {
   const parts: string[] = [];
   if (data.credentialCount !== null) {
     const n = data.credentialCount;
@@ -118,14 +153,34 @@ function standingLine(data: ProfileNextData): string {
     );
   }
   if (data.mcpState === 'ok') {
-    const n = data.mcpServers.filter((s) => s.status === 'active').length;
-    parts.push(
-      n === 0
-        ? 'no model-context server declared'
-        : n === 1
-          ? 'one model-context server declared'
-          : `${countWord(n)} model-context servers declared`,
-    );
+    // With the collapse on, this page's model-context clause is about the
+    // READER, not the house: how many of the house's servers may act as them.
+    // "Three declared" is a fact about the restaurant and belongs in the
+    // ledger sentence on `/connections`, which counts it there.
+    if (connectionsOn) {
+      const agreed = data.mcpServers.filter(
+        (s) => s.status === 'active' && s.consent?.given === true,
+      ).length;
+      const unknown = data.mcpServers.some((s) => s.consent === undefined);
+      if (!unknown) {
+        parts.push(
+          agreed === 0
+            ? 'nothing agreed to act as you'
+            : agreed === 1
+              ? 'one server may act as you'
+              : `${countWord(agreed)} servers may act as you`,
+        );
+      }
+    } else {
+      const n = data.mcpServers.filter((s) => s.status === 'active').length;
+      parts.push(
+        n === 0
+          ? 'no model-context server declared'
+          : n === 1
+            ? 'one model-context server declared'
+            : `${countWord(n)} model-context servers declared`,
+      );
+    }
   }
   if (data.paymentsState === 'ok') {
     const n = data.paymentMethods.length;
@@ -262,32 +317,48 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
               color: 'var(--ink-2)',
             }}
           >
-            {standingLine(data)}
+            {standingLine(data, connectionsOn)}
           </p>
         </header>
 
         <IdentityRegister data={data} />
         <SecurityRegister data={data} />
         <ConnectionsRegister data={data} onGoToSecurity={goToSecurity} />
-        {/* Registers IV, V and VI are about the HOUSE, not this person, and
-            that is the whole finding of DESIGN-FOUNDATION §6b. With
-            `mudavym_design_connections` on they gain a one-line pointer to
-            where they now belong; with it off they stay exactly as they were,
-            because the route redirects here and a pointer to a redirect is a
-            loop (ADR 0114). Nothing is moved out of this page in this pass:
-            moving a register before the founder has seen the surface it moves
-            to would be building it twice. */}
-        <ConnectionsPointer
-            on={connectionsOn}
-            what="What the house pays with, and the servers it has declared,"
-        />
-        <McpRegister data={data} />
-        <PaymentRegister data={data} />
-        <HouseRegister data={data} />
+        {/* THE COLLAPSE (founder, 2026-09-04): "Move the registers and collapse
+            the four tabs."
 
-        {/* ── Register VII — the account, ruled off ───────────────────── */}
+            Registers IV, V and VI are about the HOUSE, not this person — the
+            whole finding of DESIGN-FOUNDATION §6b. With
+            `mudavym_design_connections` ON they are GONE from this page and one
+            line says where each went; with it OFF they render exactly as they
+            did, because the route redirects here and a page that pointed at a
+            redirect would be a loop (ADR 0114).
+
+            What replaces Register IV is not a pointer but a real register: the
+            reader's own consents. `PUT /mcp-connections/:id/consent` is the one
+            model-context write with no manager gate, and `/connections` is
+            manager-only — so had it travelled with the rest, staff would have
+            lost every way to stop a server acting in their name. See
+            `ConsentRegister`'s header. */}
+        {connectionsOn ? (
+          <>
+            <ConsentRegister data={data} />
+            <ConnectionsMoved isManagerOrOwner={data.isManagerOrOwner} />
+          </>
+        ) : (
+          <>
+            <McpRegister data={data} />
+            <PaymentRegister data={data} />
+            <HouseRegister data={data} />
+          </>
+        )}
+
+        {/* ── The exit, ruled off — Register VII, or V once three have left ─
+            The number is the reader's place in a ledger, so it counts the
+            registers actually on the page. A gap where three used to be would
+            read as three that failed to render. */}
         <Register
-          eyebrow="Register VII"
+          eyebrow={connectionsOn ? 'Register V' : 'Register VII'}
           icon={<DoorOpen size={13} aria-hidden />}
           title="Ruled off"
           ruledOff
@@ -382,14 +453,18 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
 }
 
 /**
- * Where the house's registers now live.
+ * The trace the three moved registers leave behind.
  *
- * One line, and only when `/connections` is actually routed. A pointer that
- * rendered while the flag was off would send the reader to a URL that
- * redirects straight back here.
+ * Rendered only when `/connections` is actually routed — a line pointing at a
+ * URL that redirects straight back here would be a loop.
+ *
+ * It names each register and where it went, because "see Connections" tells a
+ * reader who came looking for their cards on file nothing about whether the
+ * thing still exists. A manager gets the link; a staff member is told, in
+ * words, that the surface is manager-and-owner only — a link that refuses on
+ * arrival is worse than a sentence that says so first.
  */
-function ConnectionsPointer({ on, what }: { on: boolean; what: string }) {
-  if (!on) return null;
+function ConnectionsMoved({ isManagerOrOwner }: { isManagerOrOwner: boolean }) {
   return (
     <p
       style={{
@@ -402,11 +477,33 @@ function ConnectionsPointer({ on, what }: { on: boolean; what: string }) {
         maxWidth: 760,
       }}
     >
-      {what} are the <strong>house's</strong>, not yours — they are kept for
-      this restaurant and outlive whoever attached them. They are listed, in
-      full, on <a href="/connections">Connections</a>, alongside the till, the
-      address this house's letters leave from, and every personal grant that
-      acts here. They remain below until that surface has been reviewed.
+      <strong>Three registers left this page.</strong> What the house pays with,
+      the servers it has declared, and the house record itself are the{' '}
+      <strong>house&rsquo;s</strong> — kept for this restaurant, and they outlive
+      whoever attached them.{' '}
+      {isManagerOrOwner ? (
+        <>
+          They are on{' '}
+          <a href="/connections#payment" style={{ color: 'var(--seal-deep)' }}>
+            Connections
+          </a>
+          , with the till, the address this house&rsquo;s letters leave from, the
+          calendar feed and every personal grant that acts here; the restaurant
+          record and its people are in{' '}
+          <a href="/settings?tab=locations" style={{ color: 'var(--seal-deep)' }}>
+            Settings
+          </a>
+          .
+        </>
+      ) : (
+        <>
+          They are on Connections, which is open to managers and owners only —
+          the gateway refuses those reads for every other role, so this is a
+          statement of what exists, not a door being held shut by a hidden link.
+        </>
+      )}{' '}
+      What stays here is yours: who you are, what protects this account, what is
+      attached to you, and what may act as you.
     </p>
   );
 }

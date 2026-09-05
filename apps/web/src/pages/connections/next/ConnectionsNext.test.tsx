@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -82,6 +82,8 @@ interface Fixture {
   regenerateFeed: unknown;
   setHouseGrantAccess: unknown;
   setConsent: unknown;
+  /** Mints the one-time seal when a re-consent hold begins. */
+  grantSeal: unknown;
   grantTool: unknown;
   revokeTool: unknown;
   probeServer: unknown;
@@ -136,6 +138,9 @@ function base(): Fixture {
     regenerateFeed,
     setHouseGrantAccess,
     setConsent,
+    // Resolves a token by default, so a test that completes the gesture without
+    // caring about the seal does not silently exercise the failure path.
+    grantSeal: vi.fn(async () => 'tok-default'),
     grantTool: { mutate: vi.fn(), isPending: false },
     revokeTool: { mutate: vi.fn(), isPending: false },
     probeServer,
@@ -475,10 +480,12 @@ describe('house declares, each person consents', () => {
     ).toBeInTheDocument();
   });
 
-  it('states what changed on a suspended grant, and offers re-consent behind the seal', () => {
+  it('states what changed on a suspended grant, and offers re-consent behind the seal', async () => {
     const d = base();
     const grantTool = { mutate: vi.fn(), isPending: false };
+    const grantSeal = vi.fn(async () => 'tok-reconsent');
     d.grantTool = grantTool;
+    d.grantSeal = grantSeal;
     d.mcp = reg([
       server({
         consent: { given: true, at: '2026-09-02T00:00:00.000Z', liveCount: 1 },
@@ -508,19 +515,83 @@ describe('house declares, each person consents', () => {
       screen.getByText(/list_checks — .* · granted, SUSPENDED until re-consent/),
     ).toBeInTheDocument();
 
-    // Behind the seal, and re-granting against what the server says NOW — a
-    // write — rather than carrying the old read classification forward.
+    // A HOLD, not a click (audit, 2026-09-04). One press ARMS the gesture and
+    // mints the seal; nothing is sent. That is the assertion this control used
+    // to make on its own behalf, and the point of the fix is that a single
+    // click can no longer make it.
     const button = screen.getByRole('button', {
       name: 'Re-consent list_checks as a write',
     });
-    expect(button.className).toContain('is-seal');
-    fireEvent.click(button);
-    expect(grantTool.mutate).toHaveBeenCalledWith({
+    fireEvent.keyDown(button, { key: 'Enter' });
+    await waitFor(() => expect(grantSeal).toHaveBeenCalledTimes(1));
+    expect(grantSeal).toHaveBeenCalledWith({
       id: 's1',
       tool: 'list_checks',
       writes: true,
-      sealed: true,
     });
+    expect(grantTool.mutate).not.toHaveBeenCalled();
+
+    // Completing the gesture sends the grant, carrying the REDEEMED-ONCE token
+    // and no `sealed` flag — whether it was sealed is the gateway's finding,
+    // not this page's claim. And it re-grants against what the server says NOW.
+    fireEvent.keyDown(button, { key: 'Enter' });
+    await waitFor(() =>
+      expect(grantTool.mutate).toHaveBeenCalledWith({
+        id: 's1',
+        tool: 'list_checks',
+        writes: true,
+        challenge: 'tok-reconsent',
+      }),
+    );
+  });
+
+  it('sends nothing when the seal cannot be issued', async () => {
+    const d = base();
+    const grantTool = { mutate: vi.fn(), isPending: false };
+    d.grantTool = grantTool;
+    // The gateway refused to mint one — the tool is no longer grantable, the
+    // role changed, the register is down. Whatever the cause, the honest
+    // outcome is that nothing is granted and the row says so.
+    d.grantSeal = vi.fn(async () => null);
+    d.mcp = reg([
+      server({
+        probe: probeWith([listed('list_checks', { readOnlyHint: false })]),
+        toolGrants: [
+          granted('list_checks', {
+            writes: false,
+            declaredRead: true,
+            needsReconsentAt: '2026-09-04T09:00:00.000Z',
+            needsReconsentReason: 'the server changed readOnlyHint true to false',
+          }),
+        ],
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const button = screen.getByRole('button', {
+      name: 'Re-consent list_checks as a write',
+    });
+    fireEvent.keyDown(button, { key: 'Enter' });
+    fireEvent.keyDown(button, { key: 'Enter' });
+
+    expect(
+      await screen.findByText(/the seal could not be issued — nothing sent/i),
+    ).toBeInTheDocument();
+    expect(grantTool.mutate).not.toHaveBeenCalled();
+  });
+
+  it('does not dress an unsealed action in the seal', () => {
+    // The calendar feed's "Regenerate" wore the seal's ring while being an
+    // ordinary click, so the seal meant "this matters" on one row and "this was
+    // proven" on another. Only a hold-to-approve renders the seal now.
+    const d = base();
+    d.ical = reg({ token: 'tok-abc' });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const regenerate = screen.getByRole('button', { name: /^Regenerate/ });
+    expect(regenerate.className).not.toContain('is-seal');
   });
 
   it('reports a never-probed server as never called, not as healthy', () => {
@@ -607,5 +678,114 @@ describe('the sender identity', () => {
     expect(screen.getByText(/shared, not yours/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /use our own address/i })).toBeDisabled();
     expect(screen.getByText(/no per-restaurant sender exists/i)).toBeInTheDocument();
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE COLLAPSE, 2026-09-04 — what arrived here when `/profile` and `/settings`
+   gave things up. Anchors for four retired `?tab=` links, and the two manager
+   acts that would otherwise have been deleted rather than moved.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+describe('the collapse — anchors and the acts that moved', () => {
+  it('answers every fragment a retired `?tab=` link now redirects to', () => {
+    const d = base();
+    d.mcp = reg([server()]);
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+
+    // A fragment nothing answers to is a link that silently does nothing, so
+    // each anchor must exist on the rendered page, not merely in the mapping.
+    for (const anchor of ['attached', 'till', 'sender', 'feed', 'servers', 'payment', 'grants', 'deployment']) {
+      expect(container.querySelector(`#${anchor}`)).not.toBeNull();
+    }
+  });
+
+  it('offers declaring a server here, and no longer points at /profile for it', () => {
+    const d = base();
+    d.mcp = reg([server()]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByRole('button', { name: /declare a server/i })).toBeEnabled();
+    expect(screen.queryByText(/it is on \/profile until this register moves fully/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Revoking the attachment itself is a manager action on \/profile/i)).not.toBeInTheDocument();
+  });
+
+  it('refuses to submit a declaration that could not be stored, and says what is missing', () => {
+    const d = base();
+    d.mcp = reg([server()]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
+    expect(screen.getByRole('button', { name: 'Declare server' })).toBeDisabled();
+    expect(
+      screen.getByText(/A name of at least two characters and an http\(s\) endpoint are needed\./),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'House bridge' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://mcp.example.test' } });
+    expect(screen.getByRole('button', { name: 'Declare server' })).toBeEnabled();
+  });
+
+  it('disables the credential field with the deployment’s own reason, never a blank one', () => {
+    const d = base();
+    d.mcp = reg([server()]);
+    d.mcpRuntime = reg({
+      secretStorage: {
+        configured: false,
+        reason: 'MCP_CONNECTION_SECRET_KEY is not set, so a secret cannot be stored or read.',
+      },
+      invocation: { enabled: true, reason: 'A tool runs only if a manager granted it by name.' },
+      probeTimeoutMs: 8000,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
+    // Disabled AND carrying the server's own sentence — a field that accepted a
+    // secret the deployment would drop is worse than no field.
+    expect(screen.getByLabelText('Credential')).toBeDisabled();
+    expect(screen.getAllByText(/MCP_CONNECTION_SECRET_KEY is not set/).length).toBeGreaterThan(0);
+  });
+
+  it('says nothing about storing a credential when the deployment did not report', () => {
+    const d = base();
+    d.mcp = reg([server()]);
+    d.mcpRuntime = reg(null, { error: 'the runtime register did not answer' });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
+    expect(screen.getByLabelText('Credential')).toBeDisabled();
+    expect(
+      screen.getByText(/did not report whether it can store a credential/),
+    ).toBeInTheDocument();
+  });
+
+  it('puts revoking behind the seal, once per live server', () => {
+    const d = base();
+    d.mcp = reg([server(), server({ id: 's2', name: 'Square bridge', status: 'revoked' })]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByRole('button', { name: 'Hold to revoke Toast bridge' })).toBeInTheDocument();
+    // A revoked row keeps its place in the register and gains no second revoke.
+    expect(screen.queryByRole('button', { name: 'Hold to revoke Square bridge' })).not.toBeInTheDocument();
+  });
+
+  it('says a card cannot be added here rather than pointing at a page that no longer holds it', () => {
+    const d = base();
+    d.payments = reg({
+      provider: { connected: true, reason: null },
+      methods: [],
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
+    expect(screen.getByText(/Nothing on this page can add one today\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Adding a card happens on \/profile/)).not.toBeInTheDocument();
   });
 });

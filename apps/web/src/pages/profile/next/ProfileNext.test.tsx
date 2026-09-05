@@ -33,6 +33,18 @@ vi.mock('./useProfileNextData', () => ({
   useProfileNextData: () => mockData.current,
 }));
 
+/**
+ * The collapse gate (2026-09-04). Defaults to OFF so every test written before
+ * this pass still measures the shipping page byte for byte; the collapse tests
+ * flip it and are the only ones that do.
+ */
+const design = vi.hoisted(() => ({ connections: false }));
+
+vi.mock('../../../lib/mudavym/useMudavymDesign', () => ({
+  useMudavymDesign: (page: string) => (page === 'connections' ? design.connections : false),
+  MUDAVYM_PAGES: [] as const,
+}));
+
 import ProfileNext from './ProfileNext';
 
 const deleteAccount = vi.fn(() => Promise.resolve());
@@ -256,6 +268,7 @@ function rowFor(title: string | RegExp): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  design.connections = false;
   mockData.current = base();
 });
 
@@ -940,5 +953,140 @@ describe('ProfileNext — the one irreversible act', () => {
     expect(screen.getByText('Enter again to approve')).toBeInTheDocument();
     fireEvent.keyDown(hold, { key: 'Enter' });
     expect(deleteAccount).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE COLLAPSE, 2026-09-04 — "Move the registers and collapse the four tabs."
+
+   Every test above runs with the flag OFF and is therefore also the proof that
+   nothing in production changes: they are unmodified and green. These flip it.
+
+   The one that would be easiest to write vacuously — "three registers are
+   gone" — is written the hard way: it asserts the two registers that STAY next
+   to them, so a page that failed to render at all could not pass it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const setMcpConsent = vi.fn(() => Promise.resolve());
+
+/** A server row carrying the reader's own consent, as the wire sends it. */
+function withConsent(given: boolean, liveCount = 1) {
+  return { ...MCP_ROW, consent: { given, at: given ? '2026-09-02T10:00:00.000Z' : null, liveCount } };
+}
+
+function collapsed(over: Record<string, unknown> = {}) {
+  design.connections = true;
+  mockData.current = base({ setMcpConsent, mcpServers: [withConsent(true)], ...over });
+}
+
+describe('the collapse — /profile becomes personal', () => {
+  it('drops the three house registers and keeps the four personal ones', () => {
+    collapsed();
+    draw();
+    for (const gone of ['Model context', 'How the house pays', 'The house']) {
+      expect(screen.queryByRole('heading', { name: gone })).not.toBeInTheDocument();
+    }
+    for (const kept of [
+      'Who you are',
+      'What protects this account',
+      'What is connected to you',
+      'What may act as you',
+      'Ruled off',
+    ]) {
+      expect(screen.getByRole('heading', { name: kept })).toBeInTheDocument();
+    }
+  });
+
+  it('renumbers the exit so the ledger has no gap where three registers were', () => {
+    collapsed();
+    draw();
+    expect(screen.getByText('Register V')).toBeInTheDocument();
+    expect(screen.queryByText('Register VI')).not.toBeInTheDocument();
+    expect(screen.queryByText('Register VII')).not.toBeInTheDocument();
+  });
+
+  it('names each register that left and where it went, for a manager', () => {
+    collapsed();
+    draw();
+    expect(screen.getByText(/Three registers left this page\./)).toBeInTheDocument();
+    // Two links carry the word, and they must NOT point at the same place: the
+    // consent register sends a reader to the servers, the moved-registers line
+    // sends them to the cards. A single anchor for both would land whoever came
+    // looking for the house's payment method on a list of model-context servers.
+    const hrefs = screen
+      .getAllByRole('link', { name: 'Connections' })
+      .map((el) => el.getAttribute('href'));
+    expect(hrefs).toEqual(
+      expect.arrayContaining(['/connections#payment', '/connections#servers']),
+    );
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+      'href',
+      '/settings?tab=locations',
+    );
+  });
+
+  it('does not render the payment register even when payment data is present', () => {
+    // The hook stops the read (`enabled: … && !connectionsRouted`), but the page
+    // must not depend on that: a stale cache entry would still be `ok`, and the
+    // register must be gone because the flag says so, not because the data is.
+    collapsed({ paymentsState: 'ok', paymentMethods: [], paymentProvider: { id: 'stripe', connected: true, reason: null, mode: 'test', secretKeyPresent: true, webhookSecretPresent: true, apiVersion: '2024-06-20', webhookLastReceivedAt: null, webhookLastEventType: null, webhookReason: null } });
+    draw();
+    expect(screen.queryByRole('heading', { name: 'How the house pays' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add a card' })).not.toBeInTheDocument();
+  });
+
+  it('tells a staff member the surface is manager-only instead of offering a link that refuses', () => {
+    collapsed({ role: 'staff', isManagerOrOwner: false });
+    draw();
+    expect(
+      screen.getByText(/open to managers and owners only/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Connections' })).not.toBeInTheDocument();
+  });
+
+  it('counts what may act as YOU in the opening line, not what the house declared', () => {
+    // `paymentsState: 'idle'` and `locationState: 'idle'` are what
+    // `useProfileNextData` itself produces once the flag is on — both reads are
+    // disabled, so `readState` returns `idle` — and the standing line drops a
+    // clause whose register did not answer rather than counting it as zero.
+    collapsed({ paymentsState: 'idle', locationState: 'idle' });
+    draw();
+    expect(screen.getByText(/one server may act as you/)).toBeInTheDocument();
+    expect(screen.queryByText(/model-context server declared/)).not.toBeInTheDocument();
+    // The payment read is disabled with the flag on, so its clause is absent
+    // rather than a confident "nothing on file".
+    expect(screen.queryByText(/nothing on file that can bill you/)).not.toBeInTheDocument();
+  });
+
+  it('offers the reader their own consent, and sends only their own withdrawal', () => {
+    collapsed();
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw my agreement' }));
+    expect(setMcpConsent).toHaveBeenCalledWith('m1', false);
+  });
+
+  it('says a consent the register did not report is unknown, and offers no control', () => {
+    collapsed({ mcpServers: [MCP_ROW] }); // no `consent` on the wire
+    draw();
+    expect(
+      screen.getByText(/did not report whether you have agreed.*It is not a "no"/s),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Agree|Withdraw my agreement/ })).not.toBeInTheDocument();
+  });
+
+  it('says an unread register is unread, not empty, and still offers a retry', () => {
+    collapsed({ mcpState: 'error', mcpError: 'the gateway refused', mcpServers: [] });
+    draw();
+    expect(screen.getByText(/an unread\s+register, not an empty one/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetchMcp).toHaveBeenCalled();
+  });
+
+  it('distinguishes "the house declared none" from "the register did not answer"', () => {
+    collapsed({ mcpServers: [] });
+    draw();
+    expect(
+      screen.getByText(/has declared no model-context server.*reporting nothing, not the/s),
+    ).toBeInTheDocument();
   });
 });

@@ -29,6 +29,14 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]", "[[connections]]"]
 - **Settings → Team** → [[settings]] `/settings?tab=team`
 - **Settings** → [[settings]] `/settings`
 
+**With `mudavym_design_connections` ON (the collapse, 2026-09-04).** Three registers
+leave this page and one line names where each went:
+
+- **Connections** (from the moved-registers line) → [[connections]] `/connections#payment`
+- **Connections** (from Register IV, the consents) → [[connections]] `/connections#servers`
+- **Settings** (from the moved-registers line) → [[settings]] `/settings?tab=locations`
+- **Agree / Withdraw my agreement** → API `PUT /api/v1/mcp-connections/:id/consent`
+
 ## 1. Purpose
 Personal account page for every role: Account (name/phone; email read-only), Security (change password), Linked accounts (Google link/unlink), Preferences (theme). Managers/owners additionally get Restaurant (name/city/billing contact), Payment, Memberships sections (`Profile.tsx:36-48`). Danger zone: leave the active restaurant, or delete the account behind a type-DELETE confirmation (`Profile.tsx:877-891`).
 
@@ -46,7 +54,8 @@ behind it exists:
 
 - **A ledger in seven numbered registers** — *Who you are* · *What protects this
   account* · *What is connected to you* · *Model context* · *How the house pays* ·
-  *The house* · *Ruled off*. **One row shape draws every ATTACHMENT**
+  *The house* · *Ruled off*. **Five, once `mudavym_design_connections` is on** — see
+  *The collapse* below. **One row shape draws every ATTACHMENT**
   (`ConnectionRow`, `pf-ui.tsx`; fifteen call sites across Registers II-VI, 5 · 4 · 1 ·
   4 · 1, with no second row component on the page), so a row's state chip
   (`Connected` / `Not connected` / `Unavailable` / `Provider not connected` /
@@ -872,6 +881,87 @@ undecided fork undecided**: invocation.
   rather than quietly. Three of A's tests were failing while this was being written and are
   green now.
 
+### Fifth pass, 2026-09-04 — the collapse. This page becomes personal.
+
+**What the founder asked.** Put the fork of ADR 0114 — do the house registers leave
+`/profile`, and do the four `/settings` connection tabs collapse into `/connections` —
+the founder chose **"Move the registers and collapse the four tabs."** The route's own
+justification (ADR 0114's rejected-alternatives section, and this note's §13a) was a
+surface count that *fell*; until this pass it had *risen*.
+
+**Which three, measured.** The brief guessed "the till / payment provider / sender
+identity". Those are `/connections`'s own registers. **§13a of this file names a
+different three**, and they are the ones that moved: **Register IV — Model context**,
+**Register V — How the house pays**, **Register VI — The house**. The till, the sender
+identity and the calendar feed were never on `/profile` at all.
+
+**What is on the page now, with the flag on.** Five registers: *Who you are* ·
+*What protects this account* · *What is connected to you* · **What may act as you** ·
+*Ruled off*. The exit renumbers from VII to V (`ProfileNext.tsx`), because a gap where
+three registers were reads as three that failed to render.
+
+**Register IV did not simply leave — it SPLIT, and that is the one thing in this pass
+that was not in the brief.** Measured, on the gateway:
+
+| Route | Gate | Therefore |
+|---|---|---|
+| `POST /mcp-connections` (declare) | `assertCanManageRestaurant` (`mcp-connections.controller.ts:150`) | the house's |
+| `POST /:id/probe` | `:174` | the house's |
+| `PUT /:id/secret` | `:188` | the house's |
+| `DELETE /:id` (revoke) | `:203` | the house's |
+| `PUT /:id/consent` | **no role check** (`:218-235`), takes the caller's id from the token and accepts no user id in any shape | the **person's** |
+
+`/connections` is manager-and-owner only. Had the consent control travelled with the
+rest, a **staff member would have lost the only place they could stop a server acting
+in their name**, and gained nowhere to do it — an absent control reads as consent. So
+the declaration half moved and the consent half stayed, as
+`ConsentRegister.tsx`. This is exactly the "reciprocal obligation" §13a named.
+
+**A second measurement, and it is a defect this pass closes rather than a design
+choice.** `/profile`'s model-context register **never had a consent control at all**:
+`grep -n consent McpRegister.tsx useProfileNextData.ts` returned **nothing** before this
+pass, while the wire has carried `consent: { given, at, liveCount }` since ADR 0114
+(`mcp-connections/dto/mcp-connection.dto.ts:124`). Nobody but a manager could give or
+withdraw consent anywhere in the product. `ConsentRegister` is the first place it can
+be done by the person it belongs to.
+
+**Two reads stop.** `locationQ` and `paymentsQ` are disabled when the flag is on
+(`useProfileNextData.ts`, `enabled: … && !connectionsRouted`), and `paymentsState`
+becomes `idle`, so the opening line drops its payment clause rather than printing a
+confident "nothing on file that can bill you" about a register nobody asked. Nothing
+else on the page read either: measured by grepping
+`locationState|data.location|refetchLocation` and `paymentMethods|paymentProvider`
+across `profile/next/*.tsx`, which hit only `HouseRegister.tsx` and
+`PaymentRegister.tsx`. **The limitation, stated:** `useMudavymDesign` has no settled
+state, so under the per-restaurant FLAG (not the localStorage override, which resolves
+synchronously) both reads still fire **once** on first paint before the verdict lands.
+This removes the steady-state reads, not the first pair. Filed in §13.
+
+**What the move cost, stated rather than hidden — G12a.** Three controls had their only
+mount on this page. Declare and revoke moved to
+`connections/next/HouseServerControls.tsx`. **Adding or removing a card did not.**
+`StripeCardPanel.tsx` mounts Stripe's own iframes and is bound to this page's data hook
+(`ProfileNextData`) and UI kit (`pf-ui`); porting it needs both. So with the flag on
+there is nowhere in the product to add a card, and `/connections`' row says exactly
+that instead of pointing at a page that no longer carries it. It costs nothing **today**
+— `STRIPE_SECRET_KEY` is unset on this deployment, the create path 503s and the control
+was already disabled carrying that sentence — and it becomes urgent the day a key is
+set. See §9 G12a and `connections.md` §9 G-C9.
+
+**Retire-to-write.** This pass retires the duplicate: Registers IV, V and VI are
+described by [[connections]] from now on, and §13a's status block above is superseded
+by this subsection on the one point where they disagree — §13a said "nothing was moved
+out"; three registers have now moved out.
+
+**Motions: none added.** The table in §1b is unchanged, and `MOTIONS.md` says why —
+animating the register that replaces three others would say the replacement is an event,
+and this is a smaller page rather than a reveal.
+
+**Proof.** `vitest run src/pages/profile/next` — **57 passed** (47 pre-existing,
+unmodified and green with the flag OFF, which is this pass's proof that production is
+untouched; 10 new with it ON). `tsc --noEmit` clean for this directory. Emoji grep over
+`pages/profile/next`: empty.
+
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).
 
@@ -992,6 +1082,12 @@ Core, every role. No `S..` touches it directly (OD-48).
   the register still shows what the surface was.
 
 ## 8. State & config
+- **`mudavym_design_connections` changes what this page IS**, not how it looks. On:
+  five registers, the three house ones gone, two reads (`locationQ`, `paymentsQ`)
+  disabled. Off: the seven-register page above, byte for byte. Per-browser override
+  `localStorage["mudavym.design.connections"] = "1" | "0"` (`useMudavymDesign.ts`),
+  which resolves synchronously; the per-restaurant flag does not, so under the flag the
+  two disabled reads still fire once on first paint (§13).
 - `VITE_SUPPORT_EMAIL` (`Profile.tsx:445`). The rebuild reads the same variable and, when
   it is unset, renders a sentence instead of a `mailto:` to the dead fallback domain.
 - `VITE_GOOGLE_CLIENT_ID` (`lib/googleIdentity.ts:73`) — without it the Sign-in rail's
@@ -1019,6 +1115,34 @@ Core, every role. No `S..` touches it directly (OD-48).
   the flag (`lib/mudavym/useMudavymDesign.ts:60-79`).
 
 ## 9. Gaps
+
+- **G-PAY-SEAL — the payment register's controls are buttons, not the seal
+  ceremony (added 2026-09-04, ADR 0110 addendum).** The gateway now REDEEMS a
+  seal on every payment-method write: `POST /payment-methods/seal-challenge`
+  mints a one-time, 120-second token bound to (this manager, this instrument,
+  this act, this card's own brand and last four), and `POST /payment-methods`,
+  `PATCH :id/default` and `DELETE :id` each spend it exactly once. What is
+  missing is the browser half: `PaymentRegister.tsx` renders plain `Btn`s and has
+  never rendered `HoldToApprove`, so those controls now receive a 403 whose
+  message is the whole sentence ("This payment method is sealed, and a seal must
+  be proven rather than asserted… Nothing was changed."), verified live on
+  `:4000`. *Why not yet:* `pages/profile/next` was being edited by another
+  builder in the same worktree while the seal was built, so the page was left
+  untouched rather than raced. The fix is one `HoldToApprove` per control with
+  `onChallenge` minting the act, and the exact patch is in the build report.
+
+**G12a — nowhere to add a card while `mudavym_design_connections` is on (opened
+2026-09-04 by the collapse; the one thing this pass subtracted).** Register V moved to
+`/connections`, but `StripeCardPanel.tsx` did not: it mounts Stripe's iframes and is
+bound to `ProfileNextData` and `pf-ui`, so porting it means porting both. The
+`/connections` row therefore renders **Add a card** disabled with "the panel that mounts
+the provider's own card fields has not been rebuilt here yet, and it is no longer on
+/profile" — the truth, rather than a link to a page that no longer carries it. **Why it
+is not closed now:** it is a port of ~400 lines into a directory another builder is
+live in, and it buys nothing today — `STRIPE_SECRET_KEY` is unset on this deployment, so
+the create path 503s and the control was already disabled with that sentence. It becomes
+urgent the day a key is set. Mirror: `connections.md` §9 G-C9.
+
 - Restaurant section edits (`PATCH /organizations/locations/:id`) rely on server-side role enforcement; the page gate is client-side only.
 - The v3.0 UX catalog's "dashboard profile card with no handler" item (L102) was never located (`v3.0-TECH-DEBT.md:502`) — unverified, tracked there, not here.
 
@@ -1171,6 +1295,20 @@ credentials, which restaurants you belong to, and the exit.
    — the line now says "Mudavym account" (§7). The rebuild says the same.
 
 ## 13. Roadmap
+
+> **Added 2026-09-04 by the collapse.**
+> 1. **Give `useMudavymDesign` a settled state.** It returns `false` while the
+>    per-restaurant flag is in flight, so a read gated on `!useMudavymDesign(...)`
+>    fires once before the verdict arrives. This page now has two such reads
+>    (`locationQ`, `paymentsQ`). The fix is a tri-state (`true | false | 'unknown'`)
+>    in `apps/web/src/lib/mudavym/useMudavymDesign.ts` — a file every gated page
+>    shares, so it is a wave-level change, not a page's.
+> 2. **Port the card panel to `/connections`** (§9 G12a) — `StripeCardPanel.tsx` plus
+>    `stripe-js.ts`, and the four `pf-ui` primitives they use.
+> 3. **The model-context ownership fork is still open** (ADR 0114, "what this decision
+>    does NOT settle"). This pass split the register along the gateway's own role
+>    gates, which is the cut the CODE already makes; it does not answer whose a
+>    model-context server is.
 
 > **Status 2026-09-02.** Item 1 is **done in the Mudavym rebuild only**
 > (`apps/web/src/pages/profile/next/`, flag `mudavym_design_profile`, OFF by default).

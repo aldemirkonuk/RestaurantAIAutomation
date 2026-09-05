@@ -30,6 +30,15 @@ links: ["[[PAGE-CONTRACT]]", "[[profile]]", "[[help]]", "[[privacy]]", "[[author
 - **Docs** per POS provider (pos tab) → external provider docs URL
 - **iCal subscribe URL** (calendar tab) → external `GET /api/v1/calendar/feed/:token.ics`
 
+**With `mudavym_design_connections` ON (the collapse, 2026-09-04)** — four registers
+leave, one line replaces them, and the four `?tab=` links keep working by redirect:
+
+- **Connections — what acts for this house** (contents column) → [[connections]] `/connections`
+- `?tab=services` → [[connections]] `/connections#grants`
+- `?tab=pos` → [[connections]] `/connections#till`
+- `?tab=email` → [[connections]] `/connections#sender`
+- `?tab=calendar` → [[connections]] `/connections#feed`
+
 ## 1. Purpose
 
 "Restaurant setup, features, permissions, and integrations"
@@ -44,7 +53,17 @@ iCal subscribe URL.
 Ten sections on the legacy page, each deep-linkable via `?tab=`; the rebuilt page
 keeps all ten under their legacy names and appends four more (`cellar`
 2026-09-03, then `vendor-terms`, `thresholds` and `ledger` on the fourth pass of
-the same day):
+the same day).
+
+> **Fourteen, or ten plus one line out (the collapse, 2026-09-04).** With
+> `mudavym_design_connections` on, **Services, Email, POS and Calendar leave this page**
+> — all four are connections, and ADR 0114 justified `/connections` on a surface count
+> that had to fall. Ten registers remain and one line points out
+> (`st-format.ts`: `COLLAPSED_SECTIONS`, `sectionsFor`, `groupsFor`). Their ids stay in
+> `SECTION_IDS` on purpose, so `?tab=pos` is RECOGNISED and redirected rather than
+> falling through `isSectionId` and quietly opening Team. With the flag off, all
+> fourteen render exactly as below.
+
 - **Team**: members and invites — change roles, remove members, revoke invites, invite dialog; labor & goals settings
 - **Services**: service permissions / access grants (email, web, privacy)
 - **Email**: sender identity settings
@@ -327,6 +346,59 @@ so a granted date and an issued date stop being printed as "changed". Citation
   and no Docker on this machine. So the SQL claims here are read off the
   baseline migration and the code, not measured against a running database, and
   §9.9 is filed as a **suspected** defect for exactly that reason.
+
+### Sixth pass, 2026-09-04 — the collapse: four connection tabs become one line
+
+**The founder's call, verbatim:** *"Move the registers and collapse the four tabs."*
+ADR 0114 rejected "a settings section rather than a route" but recorded that the
+alternative *"genuinely wins on surface count if the four tabs collapse into it"*, and
+left the obligation standing. Until this pass the product had a new route **and**
+fourteen tabs — the count had gone up.
+
+**Measured, before and after.**
+
+| | flag off | flag on |
+|---|---|---|
+| Registers in the contents column | **14** | **10**, plus one line out |
+| Opening line | "Fourteen registers — ten kept for this restaurant, three on your account, one in this browser." | "Ten registers — seven kept for this restaurant, two on your account, one in this browser." |
+| `?tab=services\|pos\|email\|calendar` | opens that register here | `307` to `/connections#grants\|#till\|#sender\|#feed` |
+| Buttons in `nav[aria-label="Settings registers"]` | 14 | 10 |
+
+**Where each of the four went, and why that anchor.** `pos` → `#till`, `email` →
+`#sender`, `calendar` → `#feed`, and `services` → **`#grants`** rather than Register I:
+the Services tab was the OAuth catalogue — *"which apps YOU have connected"* — and
+`/connections` Register III is "Personal grants that act inside this house", which is
+where those live. The anchors are declared on the page that owns the elements
+(`connections/next/ConnectionsNext.tsx`, `REGISTER_ANCHORS`) and mapped here
+(`st-format.ts`, `CONNECTIONS_ANCHOR`); a fragment nothing answers to is a link that
+silently does nothing, and one test asserts every anchor exists in the rendered DOM.
+
+**The ids do not leave `SECTION_IDS`.** Dropping them would make `?tab=pos` an
+*unrecognised* parameter, and an unrecognised parameter opens Team — a bookmark quietly
+changing what it opens, which is worse than one that breaks loudly. They stay in the id
+set so `isSectionId` still recognises them and `isCollapsedSection` can redirect them.
+
+**One line, not a fifteenth register.** It is drawn under an "Elsewhere" heading with no
+number, because the numbers count what this page opens *in place* and this leaves the
+page. Drawing it as a register would say the till is configured here; it is not — it is
+configured on a surface that is **manager-and-owner only**, while this page admits staff
+to nothing at all, and the line says so before the click rather than letting the
+destination refuse.
+
+**The tally sentence now drops a clause that reaches zero** rather than printing "none
+on your account" (`keptTally(connectionsOn)`), because a zero clause reads as a finding
+and the true statement is silence.
+
+**Proof.** `vitest run src/pages/settings/next` — **49 passed** (43 pre-existing,
+unmodified and green with the flag OFF, which is the proof that nothing in production
+changes; 6 new with it ON, including one that asserts all fourteen tabs and no line out
+when the route does not exist). `tsc --noEmit` clean for this directory; eslint
+`--quiet` clean; emoji grep over `pages/settings/next`: empty.
+
+**What is NOT done here.** The four registers' *code* (`ServicesSection`, `PosSection`,
+`EmailSection`, `CalendarSection`) stays in this directory and still renders when the
+flag is off — it is a flag-conditional collapse, not a deletion. Deleting them is
+gated on the flag reaching production, and is filed in §13.
 
 ### Fifth pass, 2026-09-04 — the decisions take effect (ADR 0116)
 
@@ -810,6 +882,13 @@ Layout chrome per dashboard.md §7.
   forces the redesign, `0|false|off` forces legacy — beats the flag on that
   machine only (`lib/mudavym/useMudavymDesign.ts`). With the flag off,
   `pages/Settings.tsx` renders byte-for-byte.
+- **`mudavym_design_connections` changes THIS page too** (the collapse, 2026-09-04),
+  which is the only cross-page flag dependency in the wave: it removes four registers
+  here and redirects their four `?tab=` links. Off → fourteen registers, no line out,
+  every `?tab=` unchanged. The verdict is asynchronous under the per-restaurant flag,
+  so `SettingsNext` derives what it SHOWS (`shown`) rather than trusting `active`,
+  and a collapsed register is never painted for a frame on a page whose contents
+  column says it is not there.
 - Note the recursion: this page is where all 17 `mudavym_design_*` flags are
   flipped, **including its own** — turning `mudavym_design_settings` off from the
   rebuilt Features register returns you to the legacy page.
@@ -1161,6 +1240,18 @@ that flipping something changed something.
    empty list with no comment; the rebuilt page says both possibilities.
 
 ## 13. Roadmap
+
+> **Added 2026-09-04 by the collapse.**
+> - **Retire the four collapsed registers' code** — `ServicesSection.tsx`,
+>   `PosSection.tsx`, `EmailSection.tsx`, `CalendarSection.tsx` and their four
+>   `SECTION_IDS` entries. Gated on `mudavym_design_connections` reaching production:
+>   until then the flag-off branch renders them and deleting them would break it. The
+>   ids themselves must survive the deletion, as a redirect table — a `?tab=pos`
+>   bookmark that stops being recognised opens Team instead, silently.
+> - **`useMudavymDesign` has no settled state**, so this page derives `shown` from
+>   `active` rather than trusting it for one render. A tri-state in
+>   `apps/web/src/lib/mudavym/useMudavymDesign.ts` would remove the workaround here and
+>   the first-paint reads on `/profile`; it is a wave-level change to a shared file.
 
 1. ~~**Cut the Features section to the flags that exist as gates.**~~ **Done
    2026-08-26 (OD-86).** The gate-less flags are rendered without controls and listed

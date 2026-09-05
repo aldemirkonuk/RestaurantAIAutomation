@@ -53,7 +53,7 @@ import type { McpRuntimeVM, McpServerVM } from './useConnectionsNextData';
 const ICON = { width: 14, height: 14, strokeWidth: 1.8 } as const;
 
 /** Space- or comma-separated lowercase slugs; anything else is named and dropped. */
-export function parseScopes(raw: string): { scopes: string[]; rejected: string[] } {
+function parseScopes(raw: string): { scopes: string[]; rejected: string[] } {
   const scopes: string[] = [];
   const rejected: string[] = [];
   for (const part of raw.split(/[\s,]+/).filter(Boolean)) {

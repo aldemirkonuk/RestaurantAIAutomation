@@ -71,3 +71,14 @@ whether it is irreversible or merely important; these two are the first.
   zero duration; `PF_CSS` disables the `pf-expand` and `pf-ink` transitions
   under `@media (prefers-reduced-motion: reduce)`; `HoldToApprove` swaps its
   timed hold for the same two-step confirm the keyboard path uses.
+
+## The collapse, 2026-09-04 — no new motion
+
+Three registers left this page and one arrived (`ConsentRegister`). **No motion was
+added**, and that is the decision, not an omission: `settle` on the header is the page's
+one opening gesture, and animating the register that replaces three others would say the
+replacement is an event. It is a smaller page, not a reveal.
+
+The moved-registers line does not animate in either. A line explaining where something
+went is read once and then ignored; drawing attention to it every visit would make the
+page feel like it is apologising.

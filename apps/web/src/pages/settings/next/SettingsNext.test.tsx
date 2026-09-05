@@ -70,6 +70,16 @@ const cellar = vi.hoisted(() => ({
 vi.mock('@/pages/cellar/next/useCellarNextData', () => ({ useCellarRegisters: () => cellar.current }));
 vi.mock('@/pages/cellar/next/cellar-next.css', () => ({}));
 
+/**
+ * The collapse gate (2026-09-04). OFF by default, so every test written before
+ * this pass keeps measuring the shipping page unchanged.
+ */
+const design = vi.hoisted(() => ({ connections: false }));
+vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
+  useMudavymDesign: (page: string) => (page === 'connections' ? design.connections : false),
+  MUDAVYM_PAGES: [] as const,
+}));
+
 import SettingsNext from './SettingsNext';
 
 function remote(data: unknown, status = 'ok') {
@@ -251,10 +261,17 @@ function ledgerRegister(over: Record<string, unknown> = {}) {
   };
 }
 
-/** Renders the live URL so the `?tab=` write-back is assertable, not assumed. */
+/**
+ * Renders the live URL so the `?tab=` write-back is assertable, not assumed.
+ *
+ * The fragment is part of it since the collapse: a redirect that reached
+ * `/connections` but dropped `#till` would look identical here otherwise, and
+ * landing at the top of a long list is exactly the failure the anchors exist to
+ * prevent.
+ */
 function Where() {
   const loc = useLocation();
-  return <output data-testid="where">{`${loc.pathname}${loc.search}`}</output>;
+  return <output data-testid="where">{`${loc.pathname}${loc.search}${loc.hash}`}</output>;
 }
 
 function mount(url = '/settings') {
@@ -268,6 +285,7 @@ function mount(url = '/settings') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  design.connections = false;
   mock.current = base();
   cellar.current = {
     data: null,
@@ -830,5 +848,87 @@ describe('SettingsNext — the settings record', () => {
     for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE COLLAPSE, 2026-09-04 — "Move the registers and collapse the four tabs."
+
+   ADR 0114 justified `/connections` on a surface count that FELL; until this
+   landed it had risen — a new route PLUS fourteen tabs. Fourteen become eleven
+   registers and one line out.
+
+   Every test above runs with the flag OFF and is unchanged, which is this
+   pass's proof that production is untouched. These flip it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+describe('the collapse — four connection tabs become one line', () => {
+  beforeEach(() => {
+    design.connections = true;
+  });
+
+  it('drops exactly the four connection registers and keeps the other ten', () => {
+    mount();
+    const nav = screen.getByRole('navigation', { name: /settings registers/i });
+    expect(within(nav).getAllByRole('button')).toHaveLength(10);
+    for (const gone of ['Services', 'Email', 'POS', 'Calendar']) {
+      expect(within(nav).queryByText(gone)).not.toBeInTheDocument();
+    }
+    for (const kept of [
+      'Team', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features',
+      'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here',
+    ]) {
+      expect(within(nav).getByText(kept)).toBeInTheDocument();
+    }
+  });
+
+  it('counts eleven registers in the opening line, not fourteen', () => {
+    mount();
+    // Ten tabs plus the one line out. The tally beside it counts the same ten,
+    // and drops a clause whose count reached zero rather than printing "none".
+    expect(screen.getByText(/^Ten registers — /)).toBeInTheDocument();
+    expect(screen.queryByText(/Fourteen registers/)).not.toBeInTheDocument();
+  });
+
+  it('offers one line out, naming the four registers it replaces', () => {
+    mount();
+    const nav = screen.getByRole('navigation', { name: /settings registers/i });
+    const link = within(nav).getByRole('link', { name: /Connections — what acts for this house/ });
+    expect(link).toHaveAttribute('href', '/connections');
+    expect(
+      within(nav).getByText(/Services, POS, Email and Calendar were four registers here/),
+    ).toBeInTheDocument();
+    expect(within(nav).getByText(/Managers and owners only\./)).toBeInTheDocument();
+  });
+
+  it('sends every one of the four `?tab=` deep links to its own register, not to the top', () => {
+    for (const [tab, anchor] of [
+      ['services', 'grants'],
+      ['pos', 'till'],
+      ['email', 'sender'],
+      ['calendar', 'feed'],
+    ] as const) {
+      const view = mount(`/settings?tab=${tab}`);
+      expect(screen.getByTestId('where')).toHaveTextContent(`/connections#${anchor}`);
+      view.unmount();
+    }
+  });
+
+  it('recognises a collapsed id rather than silently opening the default register', () => {
+    // The ids stay in `SECTION_IDS` for exactly this reason. Dropping them
+    // would make `?tab=pos` an unrecognised parameter, and an unrecognised
+    // parameter opens Team — a bookmark quietly changing what it opens.
+    const view = mount('/settings?tab=pos');
+    expect(screen.getByTestId('where')).toHaveTextContent('/connections#till');
+    view.unmount();
+  });
+
+  it('keeps the four tabs when the route does not exist', () => {
+    design.connections = false;
+    mount('/settings?tab=pos');
+    const nav = screen.getByRole('navigation', { name: /settings registers/i });
+    expect(within(nav).getAllByRole('button')).toHaveLength(14);
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=pos');
+    expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
   });
 });

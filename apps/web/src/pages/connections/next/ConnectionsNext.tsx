@@ -515,8 +515,12 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   },
                 },
                 {
+                  // No seal ring on this any more (audit, 2026-09-04). It is a
+                  // consequential click and it was wearing the seal's colour
+                  // for emphasis, which made the seal mean "this matters" on
+                  // one row and "this was proven" on another. Its weight is
+                  // carried by `stopNote` below, in words.
                   label: 'Regenerate',
-                  seal: true,
                   busy: d.regenerateFeed.isPending,
                   onClick: () => d.regenerateFeed.mutate(),
                 },
@@ -684,27 +688,41 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       busy: d.probeServer.isPending,
                       onClick: () => d.probeServer.mutate(s.id),
                     },
-                    // Behind the seal, because it turns a call the gate is
-                    // currently refusing back on. It re-grants against the
-                    // declaration the server offers NOW — which is why the
-                    // label carries the classification the manager would be
-                    // agreeing to, not the one they agreed to before.
+                    // A HOLD, not a click (audit, 2026-09-04). The first build
+                    // was a plain button whose handler sent `sealed: true` —
+                    // the client asserting the ceremony it was supposed to be
+                    // performing, in the same request that asked for the
+                    // change. Now the gesture requests a one-time seal from the
+                    // gateway when it BEGINS, and the grant carries that token
+                    // back to be redeemed exactly once. Releasing early sends
+                    // nothing; a seal that cannot be issued approves nothing.
+                    //
+                    // It re-grants against the declaration the server offers
+                    // NOW, which is why the label carries the classification
+                    // the manager is agreeing to rather than the old one.
                     ...s.toolGrants
                       .filter((g) => g.needsReconsentAt)
                       .map((g) => {
                         const nowWrites = declaredWrites(s, g.toolName);
                         return {
                           label: `Re-consent ${g.toolName} as a ${nowWrites ? 'write' : 'read'}`,
-                          seal: true,
                           wrap: true,
                           busy: d.grantTool.isPending,
-                          onClick: () =>
-                            d.grantTool.mutate({
-                              id: s.id,
-                              tool: g.toolName,
-                              writes: nowWrites,
-                              sealed: true,
-                            }),
+                          hold: {
+                            onChallenge: () =>
+                              d.grantSeal({
+                                id: s.id,
+                                tool: g.toolName,
+                                writes: nowWrites,
+                              }),
+                            onApprove: (challenge?: string | null) =>
+                              d.grantTool.mutate({
+                                id: s.id,
+                                tool: g.toolName,
+                                writes: nowWrites,
+                                challenge: challenge ?? undefined,
+                              }),
+                          },
                         };
                       }),
                   ]}

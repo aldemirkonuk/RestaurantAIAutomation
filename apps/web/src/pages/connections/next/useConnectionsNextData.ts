@@ -446,16 +446,47 @@ export function useConnectionsNextData() {
    * differently. The gateway decides whether the seal was required; the page
    * sends it when it is re-consenting, which is the only case where it is.
    */
+  /**
+   * Ask the gateway for the one-time seal, at the moment the hold BEGINS.
+   *
+   * Not a mutation: it changes nothing the page renders, and a `useMutation`
+   * here would put a pending flag on a request whose only visible effect is
+   * that the gesture completes. It returns null on failure rather than
+   * throwing, because `HoldToApprove` reads null as "do not approve" and says
+   * so — a rejected promise there would surface as an unhandled error while
+   * the operator was still holding the button.
+   */
+  const grantSeal = useCallback(
+    async (v: { id: string; tool: string; writes: boolean }): Promise<string | null> => {
+      try {
+        const { data } = await apiClient.post<{ challenge: string }>(
+          `/mcp-connections/${v.id}/tools/${encodeURIComponent(v.tool)}/grant-seal`,
+          { writes: v.writes },
+        );
+        return data?.challenge ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
   const grantTool = useMutation({
     mutationFn: async (v: {
       id: string;
       tool: string;
       writes: boolean;
-      sealed?: boolean;
+      /**
+       * The redeemed-once seal from `grantSeal`. There is no `sealed` boolean
+       * to send any more: the gateway derives whether a grant was sealed by
+       * redeeming this token, and a client that could assert it was the flaw
+       * the seal exists to close (audit, 2026-09-04).
+       */
+      challenge?: string;
     }) => {
       await apiClient.put(
         `/mcp-connections/${v.id}/tools/${encodeURIComponent(v.tool)}`,
-        { writes: v.writes, sealed: v.sealed === true },
+        { writes: v.writes, challenge: v.challenge },
       );
     },
     onSuccess: () => invalidate('connections-next-mcp'),
@@ -555,6 +586,7 @@ export function useConnectionsNextData() {
     regenerateFeed,
     setHouseGrantAccess,
     setConsent,
+    grantSeal,
     grantTool,
     revokeTool,
     probeServer,

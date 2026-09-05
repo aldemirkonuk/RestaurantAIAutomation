@@ -50,13 +50,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { animate, ink, turn } from '@/lib/mudavym';
+import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
 import { ensureFraunces } from './fonts';
 import {
-  GROUPS, KEPT_NOTE, MONO, SANS, SECTIONS, SERIF,
-  isSectionId, keptTally, readingIndex, sectionSpec, word, type SectionId,
+  CONNECTIONS_ANCHOR, KEPT_NOTE, MONO, SANS, SERIF,
+  groupsFor, isCollapsedSection, isSectionId, keptTally, readingIndexFor,
+  sectionSpec, sectionsFor, word, type SectionId,
 } from './st-format';
 import { useSettingsNextData } from './useSettingsNextData';
 import { TeamSection } from './TeamSection';
@@ -99,6 +102,15 @@ export interface SettingsNextProps {
 export default function SettingsNext({ ground }: SettingsNextProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
+  /**
+   * THE COLLAPSE (founder, 2026-09-04): "Move the registers and collapse the
+   * four tabs." Four tabs — Services, POS, Email, Calendar — become one line
+   * pointing at `/connections`, but ONLY while that route exists. With the flag
+   * off the route redirects to `/profile`, so collapsing into it would send a
+   * reader who wanted the till to their own account.
+   */
+  const connectionsOn = useMudavymDesign('connections');
+  const collapsed = connectionsOn && isCollapsedSection(tabParam);
   const [active, setActive] = useState<SectionId>(isSectionId(tabParam) ? tabParam : 'team');
   const panelRef = useRef<HTMLElement | null>(null);
   const firstPaint = useRef(true);
@@ -109,8 +121,22 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
   // back button) moves the page. A scrollspy used to overwrite `?tab=` as the
   // reader scrolled, which silently broke the link they had just followed.
   useEffect(() => {
+    if (connectionsOn && isCollapsedSection(tabParam)) return; // redirected below
     if (isSectionId(tabParam) && tabParam !== active) setActive(tabParam);
-  }, [tabParam]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tabParam, connectionsOn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * A collapsed tab that was already open when the flag verdict arrived.
+   *
+   * The verdict is asynchronous, so a reader can be standing on `?tab=pos` with
+   * the section rendered before the collapse is known. Falling back to `team`
+   * is the only honest landing: the register they were reading is no longer on
+   * this page, and leaving it rendered would be this page claiming a tab the
+   * contents column says does not exist.
+   */
+  useEffect(() => {
+    if (connectionsOn && isCollapsedSection(active)) setActive('team');
+  }, [connectionsOn, active]);
 
   const open = useCallback(
     (id: SectionId) => {
@@ -133,9 +159,33 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
     );
   }, [active]);
 
-  const data = useSettingsNextData(active);
-  const spec = useMemo(() => sectionSpec(active), [active]);
-  const index = useMemo(() => readingIndex(active), [active]);
+  /**
+   * What is actually drawn.
+   *
+   * The flag verdict is asynchronous, so `active` can legitimately still be a
+   * collapsed id for one render after it arrives. Deriving what is SHOWN,
+   * rather than relying on the reset effect alone, means the POS register is
+   * never painted for a frame on a page whose own contents column says it is
+   * not here.
+   */
+  const shown: SectionId =
+    connectionsOn && isCollapsedSection(active) ? 'team' : active;
+
+  const data = useSettingsNextData(shown);
+  const spec = useMemo(() => sectionSpec(shown), [shown]);
+  const groups = useMemo(() => groupsFor(connectionsOn), [connectionsOn]);
+  const live = useMemo(() => sectionsFor(connectionsOn), [connectionsOn]);
+  const index = useMemo(
+    () => readingIndexFor(connectionsOn, shown),
+    [connectionsOn, shown],
+  );
+
+  // `?tab=services|pos|email|calendar` still has to land somewhere true. The
+  // fragment is the register, not the page, so a bookmark to the till opens on
+  // the till rather than at the top of a list it has to be found in again.
+  if (collapsed && isCollapsedSection(tabParam)) {
+    return <Navigate to={`/connections#${CONNECTIONS_ANCHOR[tabParam]}`} replace />;
+  }
 
   // Staff never reach restaurant settings — client-side, exactly as before, and
   // the gateway refuses independently (each register's 403 branch says so).
@@ -174,7 +224,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             Settings<span style={{ color: 'var(--seal)' }}>.</span>
           </h1>
           <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 15, color: 'var(--ink-2)', margin: '6px 0 0' }}>
-            {capitalise(word(SECTIONS.length))} registers — {keptTally()}.
+            {capitalise(word(live.length))} registers — {keptTally(connectionsOn)}.
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-3)', margin: '8px 0 0', maxWidth: 660 }}>
             Three of these registers now record <em>who</em> changed a setting and what it was before — Features,
@@ -182,7 +232,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             <button type="button" className="st-focus" onClick={() => open('ledger')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
-            </button>. The other eight write through services this pass did not touch, so their changes are still
+            </button>. The other {connectionsOn ? 'four' : 'eight'} write through services this pass did not touch, so their changes are still
             anonymous; where one is dated the date is shown with the word for what it is a date of, and where nothing
             dates it the line is an em dash naming the file it was checked against.
           </p>
@@ -214,7 +264,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             are collapsed is a settings page whose sections go unread.
           */}
           <nav aria-label="Settings registers" className="st-nav" style={{ alignSelf: 'start' }}>
-            {GROUPS.map((group) => (
+            {groups.map((group) => (
               <div key={group.id} style={{ marginBottom: 14 }}>
                 <p
                   id={`st-group-${group.id}`}
@@ -239,7 +289,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
                 >
                   {group.members.map((id) => {
                     const spec = sectionSpec(id);
-                    const on = id === active;
+                    const on = id === shown;
                     return (
                       <li key={id} style={{ flex: '1 1 auto', minWidth: 150 }}>
                         <button
@@ -256,7 +306,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
                           }}
                         >
                           <span style={{ fontFamily: MONO, fontSize: 10, color: on ? 'var(--seal-deep)' : 'var(--ink-3)' }}>
-                            {String(readingIndex(id)).padStart(2, '0')}
+                            {String(readingIndexFor(connectionsOn, id)).padStart(2, '0')}
                           </span>
                           <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: on ? 600 : 500, flex: 1, minWidth: 0 }}>
                             {spec.label}
@@ -268,12 +318,63 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
                 </ul>
               </div>
             ))}
+
+            {/*
+              THE COLLAPSE, 2026-09-04 — four tabs become this one line.
+
+              It is deliberately NOT drawn as a fifteenth numbered register. The
+              numbers count what this page opens in place; this leaves the page.
+              Drawing it as a register would say the till is configured here,
+              and it is not — it is configured on `/connections`, which is
+              manager-and-owner only, while this page admits staff to nothing at
+              all. One line, one arrow out, and the four registers it replaces
+              named so a reader looking for "POS" can see where it went.
+            */}
+            {connectionsOn ? (
+              <div style={{ marginBottom: 14 }}>
+                <p
+                  id="st-group-connections"
+                  style={{
+                    fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: '0.14em',
+                    textTransform: 'uppercase', color: 'var(--ink-3)', margin: '0 0 1px', padding: '0 9px',
+                  }}
+                >
+                  Elsewhere
+                </p>
+                <Link
+                  to="/connections"
+                  className="st-tab st-ink st-focus"
+                  aria-describedby="st-connections-note"
+                  style={{
+                    display: 'flex', gap: 9, alignItems: 'baseline', padding: '5px 9px',
+                    borderRadius: 8, textDecoration: 'none',
+                    borderLeft: '2px solid var(--seal-ring)', color: 'var(--ink-2)',
+                  }}
+                >
+                  <Plug size={12} strokeWidth={1.8} aria-hidden style={{ color: 'var(--ink-3)' }} />
+                  <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 500, flex: 1, minWidth: 0 }}>
+                    Connections — what acts for this house
+                  </span>
+                </Link>
+                <p
+                  id="st-connections-note"
+                  style={{
+                    fontFamily: SANS, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3)',
+                    margin: '3px 0 0', padding: '0 9px', maxWidth: 210,
+                  }}
+                >
+                  Services, POS, Email and Calendar were four registers here and
+                  are one list there, with the payment provider and the servers
+                  the house has declared. Managers and owners only.
+                </p>
+              </div>
+            ) : null}
           </nav>
 
           {/* ── The open register ────────────────────────────────────── */}
-          <main ref={panelRef} key={active} aria-labelledby="st-heading" style={{ minWidth: 0 }}>
+          <main ref={panelRef} key={shown} aria-labelledby="st-heading" style={{ minWidth: 0 }}>
             <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--seal-deep)', margin: 0 }}>
-              Register {String(index).padStart(2, '0')} of {SECTIONS.length}
+              Register {String(index).padStart(2, '0')} of {live.length}
             </p>
             <h2 id="st-heading" style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em', margin: '2px 0 0' }}>
               {spec.title}
@@ -285,20 +386,20 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
               {KEPT_NOTE[spec.kind]}
             </p>
 
-            {active === 'team' && <TeamSection data={data} />}
-            {active === 'services' && <ServicesSection data={data} />}
-            {active === 'email' && <EmailSection data={data} />}
-            {active === 'notifications' && <NotifySection data={data} />}
-            {active === 'locations' && <LocationsSection data={data} />}
-            {active === 'measurement' && <MeasurementSection />}
-            {active === 'map' && <MapSection data={data} />}
-            {active === 'features' && <FeaturesSection data={data} />}
-            {active === 'pos' && <PosSection data={data} />}
-            {active === 'calendar' && <CalendarSection data={data} />}
-            {active === 'cellar' && <CellarSection />}
-            {active === 'vendor-terms' && <VendorTermsSection data={data} />}
-            {active === 'thresholds' && <ThresholdsSection data={data} />}
-            {active === 'ledger' && <LedgerSection data={data} />}
+            {shown === 'team' && <TeamSection data={data} />}
+            {shown === 'services' && <ServicesSection data={data} />}
+            {shown === 'email' && <EmailSection data={data} />}
+            {shown === 'notifications' && <NotifySection data={data} />}
+            {shown === 'locations' && <LocationsSection data={data} />}
+            {shown === 'measurement' && <MeasurementSection />}
+            {shown === 'map' && <MapSection data={data} />}
+            {shown === 'features' && <FeaturesSection data={data} />}
+            {shown === 'pos' && <PosSection data={data} />}
+            {shown === 'calendar' && <CalendarSection data={data} />}
+            {shown === 'cellar' && <CellarSection />}
+            {shown === 'vendor-terms' && <VendorTermsSection data={data} />}
+            {shown === 'thresholds' && <ThresholdsSection data={data} />}
+            {shown === 'ledger' && <LedgerSection data={data} />}
           </main>
         </div>
 
