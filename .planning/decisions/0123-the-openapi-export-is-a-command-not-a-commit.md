@@ -122,8 +122,8 @@ this repo forbids pointing a test there. So the boot behaviour is proven in two
 halves — the decision function with a spy writer (the exact function both call
 sites now use), and a source-shape predicate over `main.ts` — and the second
 half is run over `git show 3ab6302a...:apps/api-gateway/src/main.ts` to prove it
-fails on pre-fix code. That comparison `skip`s loudly, rather than passing, if
-the sha is ever unreachable. Measured independently with the same predicate:
+fails on pre-fix code. That comparison FAILS, rather than passing or skipping, if
+the sha is ever unreachable (72a815b7: a skip would certify the guard against nothing). Measured independently with the same predicate:
 
 ```
 pre-fix (git show HEAD:): FAIL -- BOOT WRITES THE SPEC
