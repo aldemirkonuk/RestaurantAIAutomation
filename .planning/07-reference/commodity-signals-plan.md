@@ -881,7 +881,7 @@ peer's kind.
 **Verified.** `npx jest src/commodity` — **160 passed, 11 suites**. `npx vitest
 run src/pages/notifications/next` — **135 passed, 7 suites, 0 failed**. Gateway
 `tsc --noEmit -p tsconfig.json`: **0 errors**; `-p tsconfig.spec.json`: 0 in
-`src/commodity`. Web `tsc --noEmit`: 0 errors. Ten guards exit 0. Both migrations
+`src/commodity`. Web `tsc --noEmit`: 0 errors. Twelve guards exit 0 (the builder wrote "ten"; the parent counted twelve on the archive of 077636a2 and the audit abeee63f978b547f0 confirmed twelve). Both migrations
 applied twice on PGlite (idempotent), RLS on, anon/authenticated 0, every FK
 inside `public`, and the CHECK probes refused: arming with no actor, arming on a
 proposal hash that is not a hash, logging an arming with no numbers, an invented

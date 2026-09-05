@@ -1007,3 +1007,7 @@ that reach this register:
     Workspace. `drive.file` can already write into a Shared Drive, so this is a
     destination picker and a sentence, not a new scope; what it removes is the
     "it leaves when they leave" line this page currently has to print.
+
+### Correction to 2dc891bd's message (audit a0b6c185ab03442e2, 2026-09-05)
+
+The commit message said `npx vitest run src/pages/connections src/pages/AuthorizeIntegration: 79 passed / 3 files`. The archive run printed 87 passed / 4 files (`cx-permissions.test.ts` 8, `AuthorizeIntegration.test.tsx` 8, `AuthorizeIntegration.retention.test.tsx` 12, `ConnectionsNext.test.tsx` 59); the parent pasted the builder's number over its own run — the third such slip today, each now recorded.
