@@ -405,23 +405,65 @@ COMMENT ON COLUMN public.house_mail_retention_sweeps.held_for_export IS
 -- 5. The seal learns one more kind.
 -- ---------------------------------------------------------------------------
 
-ALTER TABLE public.mcp_seal_challenges
-  DROP CONSTRAINT IF EXISTS chk_mcp_seal_challenges_subject_kind;
+-- 'house_mail_export' is the seal on choosing a mail archive and on running an
+-- export. Like the order, payment, grant and price-book kinds it carries no
+-- connection_id and names the RESTAURANT in subject_id: the act copies every
+-- vendor reply the house holds out to storage the house controls and Mudavym
+-- does not, and no request can pull it back.
+--
+-- READ-AND-APPEND, NOT A LITERAL (corrected 2026-09-05). The first cut of
+-- this file rewrote the CHECK from a hand-typed list of six kinds. Replayed in
+-- prefix order after 20260905225000 (which appends 'text_credit_purchase')
+-- that literal DROPPED the peer's kind, so the database would have refused a
+-- kind the code declares. Three sessions wrote migrations into this tree on
+-- one day; whichever sorted last silently deleted the others' vocabulary. The
+-- shape 20260905225000 and 20260906070000 use is the only safe one: read the
+-- kinds the constraint admits today, append this one, rebuild.
+DO $$
+DECLARE
+  existing_def TEXT;
+  kinds TEXT[];
+  wanted TEXT := 'house_mail_export';
+  rebuilt TEXT;
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO existing_def
+  FROM pg_constraint
+  WHERE conrelid = 'public.mcp_seal_challenges'::regclass
+    AND conname = 'chk_mcp_seal_challenges_subject_kind';
 
-ALTER TABLE public.mcp_seal_challenges
-  ADD CONSTRAINT chk_mcp_seal_challenges_subject_kind
-  -- Kept in step with `common/seal/seal-subject.ts`'s SEAL_SUBJECT_KINDS by
-  -- hand, for the reason 20260904210000 gives: a CHECK generated from the code
-  -- would accept a typo, and a CHECK behind the code is a production failure.
-  -- 'house_mail_export' is the seal on choosing a mail archive and on running an
-  -- export. Like the order, payment, grant and price-book kinds it carries no
-  -- connection_id and names the RESTAURANT in subject_id: the act copies every
-  -- vendor reply the house holds out to storage the house controls and Mudavym
-  -- does not, and no request can pull it back.
-  CHECK (subject_kind IN (
-    'mcp_tool', 'mcp_tool_grant', 'procurement_order',
-    'payment_method', 'price_index_upload', 'house_mail_export'
-  ));
+  IF existing_def IS NULL THEN
+    RAISE EXCEPTION
+      'chk_mcp_seal_challenges_subject_kind is absent: this migration extends a constraint that must already exist (20260904210000)';
+  END IF;
+
+  SELECT array_agg(DISTINCT m[1]) INTO kinds
+  FROM regexp_matches(existing_def, '''([a-z_]+)''', 'g') AS m;
+
+  -- Four kinds existed on 2026-09-04 before any of today's work; reading fewer
+  -- than four means the parse failed, and rewriting a constraint from a failed
+  -- parse would delete the seal's entire vocabulary.
+  IF kinds IS NULL OR array_length(kinds, 1) < 4 THEN
+    RAISE EXCEPTION
+      'could not read the admitted seal kinds out of "%" - refusing to rewrite a constraint this migration cannot read',
+      existing_def;
+  END IF;
+
+  IF wanted = ANY(kinds) THEN
+    RETURN;  -- already extended; re-running this file changes nothing
+  END IF;
+
+  kinds := kinds || wanted;
+
+  SELECT string_agg(quote_literal(k), ', ' ORDER BY k)
+  INTO rebuilt
+  FROM unnest(kinds) AS k;
+
+  EXECUTE 'ALTER TABLE public.mcp_seal_challenges '
+       || 'DROP CONSTRAINT chk_mcp_seal_challenges_subject_kind';
+  EXECUTE 'ALTER TABLE public.mcp_seal_challenges '
+       || 'ADD CONSTRAINT chk_mcp_seal_challenges_subject_kind '
+       || format('CHECK (subject_kind IN (%s))', rebuilt);
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- 6. Assertions. A partial apply must fail here, not pass quietly.

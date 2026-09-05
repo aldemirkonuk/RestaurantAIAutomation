@@ -976,3 +976,7 @@ back; the address written into the row; an unreadable claim ledger read as
 **Nothing was sent** — every send in every case went to a double. If the founder wants mail, it is one call to the
 existing `GmailService` behind the same producer.
 
+
+## Founder answer, 2026-09-05 (batch 57) — the claim-cascade residual
+
+**"Accept one possible duplicate."** The emailed end notice is exactly-once per ending under the claim index; the one case it cannot cover — a claim row deleted by a user cascade before a later sweep — would let one duplicate go to the founder's own address, with no wrong figure and no leak. Not worth a table today; rejected: an announcements table that survives user deletion. Revisit if producers ever mail a house.

@@ -1302,3 +1302,7 @@ Nothing in this pass moves that.
 
 **Still open after batch 54:** what the Mudavym archive costs, and who pays.
 That is the only thing standing between B's shipped shape and B running.
+
+## Correction to migration 20260905233000 (parent, 2026-09-05)
+
+The first cut of the archive migration rewrote the seal `subject_kind` CHECK from a hand-typed list of six kinds. Replayed in prefix order after `20260905225000` (which appends `text_credit_purchase`), that literal dropped the peer's kind, so the database would have refused a kind the code declares — found by the commodity builder while replaying the seal chain. The block is now the read-and-append shape `20260905225000` and `20260906070000` use. Proven on PGlite (`p4-scratch/pglite-probe/seal-kinds-233000.mjs`, the archive probe's own stubs plus `20260905190000`): with the CHECK pre-widened by three peers, the migration applies, every peer kind survives, `house_mail_export` is appended, a second apply changes nothing — 7 passed / 0 failed. The migration is unapplied everywhere, so the edit is a correction, not drift.
