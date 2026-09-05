@@ -100,6 +100,22 @@ export interface FieldEnvelope<T> {
  * allowances use UNCL5189, charges use UNCL7161 (freight is `FC`, a returnable
  * container deposit is coded in the same list).
  */
+/**
+ * The BT-105 reason code a returnable-container deposit or a CRV carries.
+ *
+ * `7161` is the UNCL7161 list identifier, used here as the code itself. That is
+ * a deliberate, stated choice rather than a lookup: the list's own entries for
+ * a returnable container vary between vendors and between the TR and US
+ * documents this product must hold on one screen, and inventing a specific
+ * member ("ABK", "FC") for a deposit would be a fabricated regulated field.
+ * What downstream needs is a STABLE, MACHINE-READABLE marker that this money is
+ * refundable and out of cost of goods — this is that marker, and the invariant
+ * asserts only that a code is present.
+ */
+export const DEPOSIT_REASON_CODE = "7161";
+/** The human sentence that travels with `DEPOSIT_REASON_CODE`. */
+export const DEPOSIT_REASON = "Returnable container / deposit";
+
 export interface AllowanceCharge {
   /** true = charge (adds), false = allowance (deducts). */
   isCharge: FieldEnvelope<boolean>;
@@ -143,6 +159,22 @@ export interface ExtractedLine {
   priceBaseUnit: FieldEnvelope<string>;
   /** BT-131 — invoice line net amount. */
   netAmount: FieldEnvelope<number>;
+  /**
+   * What the line IS: `goods`, `deposit` or `fee` (ParsedDocument.LINE_KINDS).
+   *
+   * EN 16931 has no field for this and does not need one — a compliant invoice
+   * puts a returnable-container deposit in BG-21 with a UNCL7161 code, not on a
+   * line. Real paper does not: the Turkish invoice read on 2026-09-04 prints
+   * its ₺180 depozito as line 4. This field is how that line stays visible AS A
+   * LINE (it is on the page) while leaving BT-106 goods, so refundable money
+   * never lands in cost of goods (ADR 0103 D7 `DEPOSIT_OR_FEE`).
+   *
+   * OPTIONAL, like its mirror in the web client: a `document_revisions` row
+   * written before this field existed carries no `lineKind`, and typing it as
+   * required would make every such line claim to be goods. Absent is read as
+   * "nobody classified this line", which is what it means.
+   */
+  lineKind?: FieldEnvelope<string>;
   /** BG-27 / BG-28 — line-level allowances and charges with reason codes. */
   allowancesCharges: AllowanceCharge[];
   /** BG-30 / BT-151 — invoiced item VAT category code (S, Z, E, AE, K, G, O). */

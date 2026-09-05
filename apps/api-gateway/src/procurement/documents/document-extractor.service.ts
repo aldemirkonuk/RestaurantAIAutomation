@@ -6,7 +6,14 @@ import {
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
-import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
+import {
+  applyTieOut,
+  LINE_KINDS,
+  LineKind,
+  ParsedDocument,
+  ParsedLine,
+  ParsedTaxBreakdownRow,
+} from "./parsed-document";
 import {
   reconciliationVerdict,
   RECONCILIATION_BASIS,
@@ -86,9 +93,11 @@ A document with no prices is almost certainly a packing_slip or a delivery_note,
 
 EXTRACT, transcribing only what is printed:
 - docNumber (invoice/slip number), docDate (ISO), poNumber, referencesDocNumber (an invoice a credit memo adjusts, or the packing slip an invoice bills)
+- deliveredDate (ISO) — the date the GOODS WERE DELIVERED, transcribe only if printed
 - vendorName
 - header money: subtotal, freight, fuelSurcharge, splitCaseFee, deliveryFee, depositTotal, tax, otherCharges, discountTotal, total
-- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit
+- taxBreakdown: one row per printed tax rate — {rate, taxableBase, amount, category}
+- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit, lineKind
 
 RULES
 - Transcribe, never compute. If a line total is not printed, leave it null; do not multiply.
@@ -96,13 +105,16 @@ RULES
 - uom is one of: bottle, case, keg, pack, split_case, each, liter. Use what the document says.
 - packSize is bottles per case when stated (a "12/750ml" case is packSize 12). Null if not stated — do not assume 12.
 - priceBaseQty / priceBaseUom are the quantity the UNIT PRICE is stated for, and its unit — ONLY when the document prints it. "142,00 / KS(12)" is priceBaseQty 12, priceBaseUom "bottle"; "22.00 / BT" is priceBaseQty 1, priceBaseUom "bottle". Null if not stated — do not assume 12, exactly as for packSize. Getting this wrong is a factor-of-twelve error on the line.
+- deliveredDate: transcribe only if printed AS A DELIVERY DATE — "DELIVERED Aug 12, 2026", "TESLİM TARİHİ", "Teslim tarihi", or the date printed against a referenced irsaliye when that date is presented as the delivery date. It is NOT docDate: a Turkish invoice is commonly issued days after the despatch it bills. Null when the page prints no delivery date; never copy docDate into it.
+- taxBreakdown: one row per rate the document actually prints, {"rate": 20, "taxableBase": 9172.00, "amount": 1834.40, "category": "S"}. "KDV %20 (matrah 9.172,00) 1.834,40" is ONE row; "Sales tax 8.625% on 2,940.00 = 253.58" is ONE row. rate is the percentage as a number (20, 8.625), taxableBase is the amount the rate was applied to (the matrah), amount is the tax it produced. category is the EN 16931 code (S standard, Z zero-rated, E exempt) only if the document states one — null otherwise. Empty array when no rate is printed; do not derive a rate by dividing the tax by a subtotal.
+- lineKind: "goods" (default), "deposit" (the line IS a returnable-container deposit or CRV — a "Depozito", "CRV", "bottle deposit" row), or "fee" (the line IS a freight, fuel or delivery charge). A line that IS the deposit gets lineKind "deposit" and NO deposit amount — its own lineTotal is the deposit. The line-level "deposit" field is a DIFFERENT thing: a deposit charged on that line IN ADDITION to its net, e.g. twelve bottles of wine plus a per-bottle crate charge. Never set both on one line.
 - Free goods: only set a line's allowance/zero price if the document itself says so.
 - Money as plain numbers, no currency symbols or thousands separators.
 - "printed": alongside each line and alongside the document totals, return the LITERAL text the page shows for money and quantity fields, exactly as printed — keep the vendor's own grouping and decimal marks ("1.704,00" stays "1.704,00", "142,00 / KS(12)" stays whole). Line keys: qty, unitPrice, lineTotal, allowance, deposit. Document keys: subtotal, tax, freight, total. Omit a key you did not read; never write "" and never rewrite the number into our format.
 - Anything illegible: null, and say so in "unreadable".
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"printed":{}}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
 
 /**
  * The fence-stripping `normalize` applies before `JSON.parse`.
@@ -332,6 +344,16 @@ export class DocumentExtractorService {
               `Line ${i + 1}: unrecognised price base unit "${rawBaseUom}" — the printed price basis was not applied.`,
             );
 
+          // What the line IS. An unrecognised label falls back to the
+          // description sniff rather than to a confident `goods`: a CRV row
+          // filed as wine is refundable money inside cost of goods.
+          const lineKind = coerceLineKind(
+            l?.lineKind,
+            str(l?.description),
+            i,
+            warnings,
+          );
+
           return {
             lineNo: i + 1,
             vendorSku: str(l?.vendorSku),
@@ -350,7 +372,11 @@ export class DocumentExtractorService {
             priceBaseUom,
             lineTotal: num(l?.lineTotal),
             allowance: num(l?.allowance),
-            deposit: num(l?.deposit),
+            // A line that IS the deposit carries no `deposit` amount: its own
+            // total is the deposit, and keeping both would add it twice —
+            // the `line_net_amount` 360-against-180 failure of 2026-09-04.
+            deposit: lineKind === "deposit" ? null : num(l?.deposit),
+            lineKind,
             ...spreadPrinted(l?.printed, droppedPrintedKeys),
             poNumber: str(parsed.poNumber),
           };
@@ -378,6 +404,9 @@ export class DocumentExtractorService {
       docType,
       docNumber: str(parsed.docNumber),
       docDate: str(parsed.docDate),
+      // BG-13 / BT-72. NULL when the paper printed no delivery date — never
+      // `docDate`, which is the issuance date and can be a week later.
+      deliveredDate: str(parsed.deliveredDate),
       referencesDocNumber: str(parsed.referencesDocNumber),
       poNumber: str(parsed.poNumber),
       vendorName: str(parsed.vendorName),
@@ -393,6 +422,7 @@ export class DocumentExtractorService {
       otherCharges: num(parsed.otherCharges),
       discountTotal: num(parsed.discountTotal),
       total: num(parsed.total),
+      taxBreakdown: normalizeTaxBreakdown(parsed.taxBreakdown, warnings),
       lines,
       ...docPrinted,
       computedLinesTotal: null,
@@ -563,4 +593,93 @@ function str(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length && s.toLowerCase() !== "null" ? s : null;
+}
+
+/**
+ * A returnable deposit or CRV, by the words vendors actually print.
+ *
+ * The SAME expression as `canonical-invariants.DEPOSIT_WORDS` on purpose, and
+ * the reason it is duplicated rather than imported is that the two do opposite
+ * jobs: this one CLASSIFIES a line the extractor left unlabelled, the invariant
+ * one DETECTS a line nobody classified. Importing the detector into the
+ * classifier would make the invariant unable to fail — it would be grading its
+ * own input — which is the shape a guard must never have.
+ */
+const DEPOSIT_DESCRIPTION =
+  /\b(crv|deposit|depozito|bottle\s*deposit|container\s*redemption)\b/i;
+const FEE_DESCRIPTION =
+  /\b(freight|nakliye|kargo|fuel\s*surcharge|delivery\s*fee|split[-\s]*case\s*fee)\b/i;
+
+/**
+ * What the line IS, from the model's own label when it gave one.
+ *
+ * An unlabelled line falls back to the DESCRIPTION rather than to `goods`,
+ * because `goods` is the expensive wrong answer: a CRV row filed as wine sits
+ * inside BT-106 and inflates beverage cost every month it recurs (ADR 0103 D7).
+ * A label outside the vocabulary is a warning, never a silent `goods`.
+ */
+function coerceLineKind(
+  value: unknown,
+  description: string | null,
+  index: number,
+  warnings: string[],
+): LineKind {
+  const raw = str(value)?.toLowerCase() ?? null;
+  if (raw) {
+    if ((LINE_KINDS as readonly string[]).includes(raw)) return raw as LineKind;
+    warnings.push(
+      `Line ${index + 1}: unrecognised lineKind "${raw}" — classified from the description instead.`,
+    );
+  }
+  const d = description ?? "";
+  if (DEPOSIT_DESCRIPTION.test(d)) return "deposit";
+  if (FEE_DESCRIPTION.test(d)) return "fee";
+  return "goods";
+}
+
+/**
+ * BG-23, from what the page printed.
+ *
+ * A row is kept only when it carries a RATE and at least one of the two
+ * amounts: a row with neither cannot be checked against anything, and keeping
+ * it would make `vat_breakdown_present` pass on a breakdown that says nothing.
+ * Dropped rows are counted into a warning rather than swallowed.
+ *
+ * NOTHING HERE TOUCHES `printed`. `PRINTED_KEYS` is a closed allow-list of
+ * SCALAR money and quantity fields, and these rows are objects; a breakdown row
+ * has no single literal to keep, and widening the allow-list to nested shapes
+ * would reopen exactly the key-from-the-input path CodeQL #1328 closed.
+ */
+function normalizeTaxBreakdown(
+  v: unknown,
+  warnings: string[],
+): ParsedTaxBreakdownRow[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const rows: ParsedTaxBreakdownRow[] = [];
+  let dropped = 0;
+  for (const raw of v) {
+    const row =
+      raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    const rate = num(row?.rate);
+    const taxableBase = num(row?.taxableBase);
+    const amount = num(row?.amount);
+    const category = str(row?.category);
+    if (rate === null || (taxableBase === null && amount === null)) {
+      dropped += 1;
+      continue;
+    }
+    rows.push({
+      rate,
+      taxableBase,
+      amount,
+      ...(category ? { category } : {}),
+    });
+  }
+  if (dropped)
+    warnings.push(
+      `Dropped ${dropped} VAT breakdown row(s) that carried no rate, or a rate with neither a base nor a tax amount.`,
+    );
+  // An EMPTY array is a real answer ("the model looked and the page printed no
+  // rate"); `undefined` means the model returned no breakdown field at all.
+  return rows;
 }

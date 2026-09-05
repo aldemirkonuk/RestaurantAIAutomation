@@ -340,6 +340,11 @@ describe("price base and printed literals — read back", () => {
       procurement_documents: () => ({ data: DOC_ROW, error: null }),
       procurement_document_lines: () => ({ data: [LINE_ROW], error: null }),
       procurement_order_items: () => ({ data: [], error: null }),
+      // BG-7 — the buyer is the restaurant row, which this service now reads.
+      restaurants: () => ({
+        data: { id: "rest-syn", name: "SYNTHETIC Meyhane" },
+        error: null,
+      }),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -308,8 +308,23 @@ export function priceBaseQuantity(doc: CanonicalDocument): InvariantResult[] {
 // ---------------------------------------------------------------------------
 export function documentLinesTotal(doc: CanonicalDocument): InvariantResult[] {
   const stated = num(doc.layer1.totals.linesNetTotal);
-  const lineAmounts = doc.layer1.lines.map((l) => num(l.netAmount));
+  /**
+   * BT-106 IS THE GOODS TOTAL. A line the mapper classified as a deposit or a
+   * fee has been lifted out and carried as a BG-21 charge, so counting it here
+   * too would double it — the ₺180 the Turkish invoice of 2026-09-04 was "off
+   * by". A line NOBODY classified stays in, and `deposits_coded_and_excluded`
+   * is what names it: the two rules must not both grade the same fact, or a
+   * mis-classified deposit goes quiet in both.
+   */
+  const goodsLines = doc.layer1.lines.filter(
+    (l) => str(l.lineKind) !== "deposit" && str(l.lineKind) !== "fee",
+  );
+  const carried = doc.layer1.lines.length - goodsLines.length;
+  const lineAmounts = goodsLines.map((l) => num(l.netAmount));
   const missing = lineAmounts.filter((a) => a === null).length;
+  const carriedNote = carried
+    ? ` (${carried} deposit/fee line(s) are carried as document-level charges and are not goods)`
+    : "";
 
   if (stated === null) {
     return [
@@ -352,8 +367,8 @@ export function documentLinesTotal(doc: CanonicalDocument): InvariantResult[] {
       sum,
       stated,
       holds
-        ? `The ${lineAmounts.length} lines sum to ${sum.toFixed(2)}, as stated.`
-        : `The ${lineAmounts.length} lines sum to ${sum.toFixed(2)} but the document states ${stated.toFixed(2)} (off by ${(stated - sum).toFixed(2)}).`,
+        ? `The ${lineAmounts.length} lines sum to ${sum.toFixed(2)}, as stated${carriedNote}.`
+        : `The ${lineAmounts.length} lines sum to ${sum.toFixed(2)} but the document states ${stated.toFixed(2)} (off by ${(stated - sum).toFixed(2)})${carriedNote}.`,
     ),
   ];
 }
@@ -380,6 +395,31 @@ export function totalWithoutVat(doc: CanonicalDocument): InvariantResult[] {
       ),
     ];
   }
+  /**
+   * A RULE MUST NOT GRADE ITS OWN ARITHMETIC.
+   *
+   * `from-parsed-document` now fills BT-109 by exactly this formula when the
+   * document did not print one, so that the sheet cannot show "Before tax —"
+   * beneath a listed charge. Comparing that figure with the formula that made
+   * it would return `true` on every document forever — a green rule that
+   * proves nothing, which is this repository's absence-as-health fault with
+   * arithmetic on top. The envelope says where the number came from, so the
+   * rule can decline instead.
+   */
+  if (t.taxExclusiveAmount.source === "computed") {
+    return [
+      result(
+        "total_without_vat",
+        "BR-CO-13",
+        null,
+        null,
+        "a BT-109 the DOCUMENT stated",
+        { BT_109: stated, source: t.taxExclusiveAmount.source },
+        "Not testable: the document states no total without VAT. The figure shown is our own sum of the lines and charges, and checking it against that same sum would prove nothing.",
+      ),
+    ];
+  }
+
   const grouped = sumAllowancesCharges(doc.layer1.allowancesCharges);
   const allowances = num(t.allowancesTotal) ?? grouped.allowances;
   const charges = num(t.chargesTotal) ?? grouped.charges;
@@ -796,19 +836,73 @@ export function depositsAreCodedAndExcluded(
   }
 
   // And it must be a document-level charge, not folded into BT-106.
-  const linesLookLikeDeposits = doc.layer1.lines
+  //
+  // A line the mapper CLASSIFIED as a deposit has already left the goods total
+  // and is carried in BG-21, so it holds. A line that merely READS as one and
+  // was never classified is the failure: it is inside BT-106, and the goods
+  // total is wrong by the deposit every month it recurs.
+  const depositLines = doc.layer1.lines
     .map((l, i) => ({ l, i }))
-    .filter(({ l }) => DEPOSIT_WORDS.test(str(l.description) ?? ""));
-  for (const { i } of linesLookLikeDeposits) {
+    .filter(
+      ({ l }) =>
+        DEPOSIT_WORDS.test(str(l.description) ?? "") ||
+        str(l.lineKind) === "deposit",
+    );
+  for (const { l, i } of depositLines) {
+    const classified = str(l.lineKind) === "deposit";
+    const carried = candidates.length > 0;
+    const holds = classified && carried;
     results.push(
       result(
         "deposits_coded_and_excluded",
         null,
         `lines[${i}]`,
-        false,
+        holds,
         "a document-level charge (BG-21) with a UNCL7161 reason code",
-        "an invoice line inside BT-106",
-        `Line ${i + 1} reads as a deposit but is billed as a goods line, so it is inside the goods total and will inflate beverage cost every month it recurs.`,
+        classified
+          ? carried
+            ? "a deposit line carried as a BG-21 charge"
+            : "a deposit line with no BG-21 charge carrying it"
+          : "an invoice line inside BT-106",
+        holds
+          ? `Line ${i + 1} is a deposit and is carried as a document-level charge, so the goods total excludes it.`
+          : classified
+            ? `Line ${i + 1} is marked a deposit but no document-level charge carries it, so the amount has left the goods total without landing anywhere.`
+            : `Line ${i + 1} reads as a deposit but is billed as a goods line, so it is inside the goods total and will inflate beverage cost every month it recurs.`,
+      ),
+    );
+  }
+
+  /**
+   * A DEPOSIT STATED TWICE MUST STATE THE SAME NUMBER.
+   *
+   * The paper commonly prints the deposit as a line AND as a subtotal row. The
+   * mapper carries one charge and takes the subtotal when both exist — so if
+   * they disagree, one of them has been silently discarded. That is a
+   * transcription error worth a bookkeeper's attention, and this is the only
+   * place that can see both halves.
+   */
+  const classifiedTotal = money(
+    depositLines
+      .filter(({ l }) => str(l.lineKind) === "deposit")
+      .reduce((a, { l }) => a + (num(l.netAmount) ?? 0), 0),
+  );
+  const carriedTotal = money(
+    candidates.reduce((a, { ac }) => a + (num(ac.amount) ?? 0), 0),
+  );
+  if (classifiedTotal !== 0 && carriedTotal !== 0) {
+    const agrees = moneyEquals(classifiedTotal, carriedTotal, 1);
+    results.push(
+      result(
+        "deposits_coded_and_excluded",
+        null,
+        "allowancesCharges",
+        agrees,
+        classifiedTotal,
+        carriedTotal,
+        agrees
+          ? `The deposit lines and the document-level deposit charge both come to ${carriedTotal.toFixed(2)}.`
+          : `The deposit lines come to ${classifiedTotal.toFixed(2)} but the document-level deposit charge is ${carriedTotal.toFixed(2)}; one of the two was misread and only one of them is being carried.`,
       ),
     );
   }
