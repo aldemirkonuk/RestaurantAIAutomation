@@ -377,10 +377,14 @@ export function SimposTerminalPage() {
                     SimPOS had nowhere to put either, so pos_checks.covers,
                     .table_id and .server_name were NULL on 44 of 44 rows. */}
                 <div className="flex items-center gap-1.5 mt-2">
-                  <label className="text-[10px] uppercase text-gray-600">
+                  <label
+                    htmlFor="simpos-check-covers"
+                    className="text-[10px] uppercase text-gray-600"
+                  >
                     Covers
                   </label>
                   <input
+                    id="simpos-check-covers"
                     type="number"
                     min={0}
                     max={200}
@@ -391,10 +395,14 @@ export function SimposTerminalPage() {
                     title="Blank means nobody said how many guests. It is sent as null, never as 0 — a check with no cover count is not a table that seated nobody."
                     className="w-14 h-7 px-1.5 rounded-md bg-gray-950 border border-gray-700 text-xs text-gray-100 tabular-nums"
                   />
-                  <label className="text-[10px] uppercase text-gray-600 ml-1">
+                  <label
+                    htmlFor="simpos-check-server"
+                    className="text-[10px] uppercase text-gray-600 ml-1"
+                  >
                     Server
                   </label>
                   <input
+                    id="simpos-check-server"
                     value={serverDraft}
                     onChange={(e) => setServerDraft(e.target.value)}
                     onBlur={() => void saveCheckContext()}
