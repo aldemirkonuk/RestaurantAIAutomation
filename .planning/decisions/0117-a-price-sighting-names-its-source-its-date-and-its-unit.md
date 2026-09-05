@@ -284,7 +284,22 @@ off-premise licensee pays a state store, with that state's statutory markup bake
 (Iowa's median `state_bottle_retail / state_bottle_cost` is **exactly 1.50** across
 13,762 rows).
 
-**Class E is planned but not built, and its plan is elsewhere (2026-09-05).** Class E as
+**Class E's register is BUILT, and its plan is elsewhere (2026-09-05).** Phase 0 of
+[`commodity-signals-plan.md`](../07-reference/commodity-signals-plan.md) shipped on the
+founder's *"both: the line now, the alert behind a flag"*: migration
+`20260905235000_an_index_series_is_not_a_price.sql` (three tables, RLS on, anon/authenticated
+revoked, five CHECKs probed in-file, PGlite-proven), `apps/api-gateway/src/commodity/`,
+`GET /commodity-index/me`, and a context line inside the same labelled box on
+`/notifications`. **Two series are armed for fetching and one is registered and never
+fetched**: FAO Food Price Index and ONS `d7bu` (both robots-read first, logged), and the USDA
+AMS shell-egg index carrying `www.ams.usda.gov`'s HTTP 403 as its withheld reason. **Q27's
+`issued_at_basis` earned its keep immediately and on measurement rather than on principle:**
+the FAO CSV states no date of any kind, so it is `fetch_date` and prints "read on", while ONS
+stamps one on every observation and prints "issued". The rule
+`commodity_exposure_rising` is built DARK — its module imports no `NotificationsModule`, so
+there is no code path to a person — and it writes verdicts to `neural_footprint_event` with
+`outcome` NULL. Nothing about class E in `price_index_postings` changed. The three findings
+below stand as written and are what the build followed. Class E as
 written here names three sources and one rule (*never called a price for a named
 product*). What a class-E series may actually be *used for* — held in a register,
 compared, alerted on, or shown — is planned in
@@ -2130,6 +2145,27 @@ This is unknown, not empty."*
     Should `verified_at` be cleared for every row it touched, and should the
     thing that set it be found before it runs again?
 
+    **Answered 2026-09-05 (batch 51) — the founder: "Clear it and find the stamper."**
+    Found, measured and done the same day. The stamper was not a job: every
+    `vendor_catalogue.verified_at` in production (**seventeen** rows, not the three this
+    question named — read on 2026-09-05 through `/rest/v1/vendor_catalogue`) carried one
+    of two values, `2026-08-10T17:21:22.275152Z` and `…:23.426939Z`, the seconds in which
+    two migrations applied to production: `20260807001352_distributor_vendor_backfill.sql:32`
+    (`verified_at = now()` for fifteen rows while setting Census-geocoded coordinates) and
+    `20260807001552_distributor_data_quality.sql:36,52` (the same for two address fixes).
+    "Verified" meant "an address got coordinates"; nothing ever checked the website, the
+    name or the business, and `source_ref` was NULL on all seventeen. Cleared on the
+    founder's word at 2026-09-05T20:35:56Z by `scripts/clear_vendor_catalogue_verified_at.py
+    --apply --i-have-the-founders-word` (fingerprint: the two-second window, `source =
+    'curated'`, `source_ref IS NULL`; **17 of 17 cleared, 0 left**, a dated sentence appended
+    to `notes`; re-read: no rows match). Migration `20260906040000_a_verification_names_its_source.sql`
+    adds `CHECK (verified_at IS NULL OR source_ref IS NOT NULL)` so no later migration can
+    stamp a verification nobody made (PGlite `q26-verified-names-source.mjs`: 7 passed / 0
+    failed — a sourceless stamp is cleared with its note, an honest one is kept, a new
+    sourceless stamp is refused with 23514). Correction to this question's own text: it said
+    three rows; it was every row the two migrations touched. Also found: `providers` has no
+    `verified_at` column at all — a filter on it answers 400 — so the comment at
+    `vendor-intel/identity.service.ts:12` naming `providers.verified_at` is wrong (queued).
 27. **May a shop's price be filed with our READ date, labelled as such?** Three
     of six pages state no date at all, and the first build refused them, so the
     class delivered one row out of six.

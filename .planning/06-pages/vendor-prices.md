@@ -167,3 +167,4 @@ of them.
    producer lands.
 5. Add a client-side permission state so a non-owner is told why, rather than shown a
    failed request.
+6. **Seventeen vendors said "verified" because a geocoder ran.** ADR 0117 Q26, answered 2026-09-05: every `vendor_catalogue.verified_at` came from the two 2026-08-07 geocoding migrations applying on 2026-08-10 (`20260807001352` :32, `20260807001552` :36,52), never from a check of the website or the business; three of those websites were a casino, a wine school and a clothes shop. Cleared on the founder's word at 2026-09-05T20:35:56Z (`scripts/clear_vendor_catalogue_verified_at.py`, 17 of 17, re-read 0 left), and `20260906040000` now refuses a `verified_at` with no `source_ref`. The page prints "verified" for no vendor until something with a name verifies one.
