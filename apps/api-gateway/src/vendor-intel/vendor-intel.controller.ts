@@ -17,6 +17,7 @@ import { VendorPageExtractorService } from "./vendor-page-extractor.service";
 import { VendorSiteSweepService } from "./vendor-site-sweep.service";
 import { OutlierRejudgeService } from "./outlier-rejudge.service";
 import { ShopReferenceSweepService } from "./shop-reference-sweep.service";
+import { IdentityService } from "./identity.service";
 import { ManualObservationDto } from "./dto/manual-observation.dto";
 
 const UUID_RE =
@@ -42,6 +43,7 @@ export class VendorIntelController {
     private readonly siteSweep: VendorSiteSweepService,
     private readonly rejudge: OutlierRejudgeService,
     private readonly shopSweep: ShopReferenceSweepService,
+    private readonly identity: IdentityService,
   ) {}
 
   @Get("compare")
@@ -353,5 +355,130 @@ export class VendorIntelController {
       dryRun: body?.dryRun ?? false,
     });
     return { success: true, ran: true, ...summary };
+  }
+
+  // -------------------------------------------------------------------------
+  // The identity register (ADR 0124). Owner/manager, like everything here.
+  // -------------------------------------------------------------------------
+
+  @Get("identity/status")
+  @ApiOperation({
+    summary:
+      "What the bottle-identity register holds, and why it is quiet when it is",
+  })
+  async identityStatus() {
+    return { success: true, ...(await this.identity.status()) };
+  }
+
+  /**
+   * "Which bottle does this code name?"
+   *
+   * Answers with one identity, with several (which is a refusal to choose), or
+   * with "not recorded" — never with a guess. A GTIN's check digit is verified
+   * before the lookup so a mis-typed code is told apart from an unknown one.
+   */
+  @Get("identity/lookup")
+  @ApiOperation({ summary: "Look one bottle identity up by GTIN, LWIN or source code" })
+  async identityLookup(
+    @Query("namespace") namespace?: string,
+    @Query("value") value?: string,
+  ) {
+    if (!namespace || !value) {
+      throw new BadRequestException(
+        "Give both a namespace (gtin, lwin, or source:<key>) and a value.",
+      );
+    }
+    return { success: true, ...(await this.identity.lookupByKey(namespace, value)) };
+  }
+
+  /**
+   * Suggestions for a described bottle. Writes nothing and links nothing.
+   */
+  @Post("identity/suggest")
+  @ApiOperation({ summary: "Suggest register identities for a described bottle" })
+  async identitySuggest(
+    @Body()
+    body: {
+      producer?: string;
+      name?: string;
+      vintage?: string | number | null;
+      sizeMl?: number | null;
+      pack?: number | null;
+    },
+  ) {
+    return { success: true, ...(await this.identity.suggest(body ?? {})) };
+  }
+
+  /** Record a bottle as an identity, asserted by the person doing it. */
+  @Post("identity/assert")
+  @ApiOperation({ summary: "Record a bottle identity, attributed to this person" })
+  async identityAssert(
+    @CurrentUser() user: { userId?: string; id?: string },
+    @Body()
+    body: {
+      producer?: string;
+      name?: string;
+      vintage?: string | number | null;
+      sizeMl?: number | null;
+      pack?: number | null;
+      note?: string;
+    },
+  ) {
+    const userId = user?.userId ?? user?.id ?? "";
+    return {
+      success: true,
+      ...(await this.identity.assertIdentity({
+        subject: body ?? {},
+        userId,
+        note: body?.note ?? null,
+      })),
+    };
+  }
+
+  @Get("identity/candidates")
+  @ApiOperation({ summary: "Identity links proposed and waiting for a person" })
+  async identityCandidates(
+    @CurrentUser() user: { restaurantId: string },
+    @Query("limit") limit?: string,
+  ) {
+    const n = limit ? Number(limit) : undefined;
+    const items = await this.identity.pending(
+      user?.restaurantId ?? null,
+      Number.isFinite(n) && (n as number) > 0 ? Math.min(n as number, 200) : 50,
+    );
+    return { success: true, items, count: items.length };
+  }
+
+  /**
+   * A person confirms or rejects one proposed link.
+   *
+   * There is deliberately no bulk route and no "confirm everything above X".
+   * The whole point of the queue is that a confidence is not a decision.
+   */
+  @Post("identity/candidates/decide")
+  @ApiOperation({ summary: "Confirm or reject one proposed identity link" })
+  async identityDecide(
+    @CurrentUser() user: { userId?: string; id?: string; restaurantId: string },
+    @Body() body: { candidateId?: string; decision?: string; note?: string },
+  ) {
+    if (!body?.candidateId || !UUID_RE.test(body.candidateId)) {
+      throw new BadRequestException("candidateId must be a candidate id.");
+    }
+    if (body?.decision !== "confirmed" && body?.decision !== "rejected") {
+      throw new BadRequestException(
+        'decision must be "confirmed" or "rejected". There is no third answer and no default.',
+      );
+    }
+    const userId = user?.userId ?? user?.id ?? "";
+    return {
+      success: true,
+      ...(await this.identity.decide({
+        candidateId: body.candidateId,
+        decision: body.decision,
+        userId,
+        restaurantId: user?.restaurantId ?? null,
+        note: body?.note ?? null,
+      })),
+    };
   }
 }

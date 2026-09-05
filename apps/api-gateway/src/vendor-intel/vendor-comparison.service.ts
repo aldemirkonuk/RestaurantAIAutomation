@@ -469,7 +469,7 @@ export class VendorComparisonService {
     const { data, error } = await this.databaseService.supabase
       .from("vendor_price_observations")
       .select(
-        "master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
+        "identity_id, master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
       )
       .gte("observed_at", from)
       .eq("is_outlier", false)

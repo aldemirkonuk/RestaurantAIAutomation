@@ -2,6 +2,7 @@ import {
   PriceSourceType,
   normalizeUnitPrice,
 } from "../analytics/engine/vendor-price-consensus";
+import { describeGroupingKey } from "./identity-join";
 
 /**
  * "X is now selling lower than its 30-day average" — the pure half.
@@ -46,6 +47,21 @@ import {
 
 /** One vendor price sighting, as the table stores it. */
 export interface ObservationRow {
+  /**
+   * The confirmed bottle identity (ADR 0124), or null.
+   *
+   * Preferred over `master_wine_id` and `signature_hash` when present because
+   * it is the only one of the three that carries SIZE and PACK. The other two
+   * key on producer/name/vintage alone, so a 375ml and a 750ml of one wine —
+   * two trade items under GS1's own rules — land in one group and are averaged
+   * against each other through `normalizeUnitPrice`'s per-750 scaling. That is
+   * ADR 0119 Q7, and grouping by identity is the answer to it.
+   *
+   * Optional on the interface rather than required: `identity_id` is a column
+   * this branch adds, and a caller that has not been taught to select it must
+   * fall back rather than crash. `keyedBy` in the result says which happened.
+   */
+  identity_id?: string | null;
   master_wine_id: string | null;
   signature_hash: string | null;
   product_name_raw: string | null;
@@ -90,6 +106,18 @@ export interface ObservationRow {
  */
 export type ComparisonClass = "quoted" | "public_site" | `other:${string}`;
 
+/**
+ * Which key a comparison was grouped on.
+ *
+ * `identity` holds producer, name, vintage, SIZE and PACK constant. `wine` and
+ * `signature` hold only the first three, so a group keyed either of those ways
+ * may contain two formats of one wine — and `normalizeUnitPrice` will happily
+ * average them to a per-750 number. The distinction is reported rather than
+ * smoothed over: a box that groups two ways and says one thing is a box that
+ * answers two questions under one heading.
+ */
+export type GroupingKey = "identity" | "wine" | "signature";
+
 const QUOTED_SOURCE_TYPES: ReadonlySet<string> = new Set([
   "invoice",
   "quote",
@@ -114,8 +142,14 @@ export const COMPARISON_CLASS_LABEL: Readonly<Record<string, string>> =
   });
 
 export interface BelowAverageItem {
-  /** `wine:<uuid>` or `sig:<hash>` — how the sightings were grouped. */
+  /**
+   * `identity:<uuid>`, `wine:<uuid>` or `sig:<hash>` — how the sightings were
+   * grouped. The prefix is the answer to "what does this comparison actually
+   * hold constant", and it differs per item, so it is on the item.
+   */
   productKey: string;
+  /** Which of the three keys produced `productKey`. Printed, never inferred. */
+  keyedBy: GroupingKey;
   /**
    * The class every sighting in this comparison shares. A product with both
    * quotes and scraped prices yields up to one item per class, never one item
@@ -187,6 +221,13 @@ export interface BelowAverageResult {
   scanned: { observations: number; products: number; comparisons: number };
   /** How many sightings arrived in each class. Printed by the box. */
   byClass: Record<string, number>;
+  /**
+   * How many (product, class) comparisons were grouped on each key, and the
+   * sentence that says what that means. A page must be able to tell the reader
+   * that half its comparisons cannot see a magnum.
+   */
+  keyedBy: Record<GroupingKey, number>;
+  groupingNote: string;
   skipped: BelowAverageSkips;
   averageExcludesLatest: true;
   minObservations: number;
@@ -246,6 +287,7 @@ export function priceBelowAverage(
    */
   interface Group {
     productKey: string;
+    keyedBy: GroupingKey;
     sourceClass: ComparisonClass;
     points: Point[];
   }
@@ -254,11 +296,20 @@ export function priceBelowAverage(
   const byClass: Record<string, number> = {};
 
   for (const row of rows) {
-    const productKey = row.master_wine_id
-      ? `wine:${row.master_wine_id}`
-      : row.signature_hash
-        ? `sig:${row.signature_hash}`
-        : null;
+    // ADR 0124: the confirmed identity wins when there is one, because it is
+    // the only key of the three that holds size and pack constant. The order
+    // is preference, not fallback-on-error: a row with an identity_id AND a
+    // master_wine_id is grouped by identity, and the two groups do not merge —
+    // which is correct, since the wine-keyed group may contain other formats.
+    const identityKey: [string, GroupingKey] | null = row.identity_id
+      ? [`identity:${row.identity_id}`, "identity"]
+      : row.master_wine_id
+        ? [`wine:${row.master_wine_id}`, "wine"]
+        : row.signature_hash
+          ? [`sig:${row.signature_hash}`, "signature"]
+          : null;
+    const productKey = identityKey?.[0] ?? null;
+    const keyedBy = identityKey?.[1] ?? null;
     const cls = comparisonClassOf(row.source_type);
     const key = productKey === null ? null : `${productKey} ${cls}`;
     if (!key) {
@@ -292,6 +343,7 @@ export function priceBelowAverage(
 
     const bucket = groups.get(key) ?? {
       productKey: productKey as string,
+      keyedBy: keyedBy as GroupingKey,
       sourceClass: cls,
       points: [],
     };
@@ -309,7 +361,14 @@ export function priceBelowAverage(
   const items: BelowAverageItem[] = [];
   const publicSiteItems: BelowAverageItem[] = [];
 
-  for (const { productKey, sourceClass, points } of groups.values()) {
+  const keyedBy: Record<GroupingKey, number> = {
+    identity: 0,
+    wine: 0,
+    signature: 0,
+  };
+  for (const g of groups.values()) keyedBy[g.keyedBy] += 1;
+
+  for (const { productKey, keyedBy: groupKeyedBy, sourceClass, points } of groups.values()) {
     const currencies = new Set(points.map((p) => p.currency));
     if (currencies.size > 1) {
       // Converting would require an FX rate nobody recorded; a saving stated
@@ -342,6 +401,7 @@ export function priceBelowAverage(
 
     const item: BelowAverageItem = {
       productKey,
+      keyedBy: groupKeyedBy,
       sourceClass,
       productName:
         latest.label ?? earlier.map((p) => p.label).find((l) => l) ?? null,
@@ -385,6 +445,8 @@ export function priceBelowAverage(
       comparisons: groups.size,
     },
     byClass,
+    keyedBy,
+    groupingNote: describeGroupingKey(keyedBy),
     skipped,
     averageExcludesLatest: true,
     minObservations,
