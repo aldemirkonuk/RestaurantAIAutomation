@@ -24,6 +24,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { PriceIndexService } from "./price-index.service";
 import { PriceIndexFetchService } from "./price-index-fetch.service";
 import { PriceIndexUploadService } from "./price-index-upload.service";
+import { PriceIndexReviewService } from "./price-index-review.service";
 
 @ApiTags("Price Index")
 @ApiBearerAuth()
@@ -35,6 +36,7 @@ export class PriceIndexController {
     private readonly service: PriceIndexService,
     private readonly fetchService: PriceIndexFetchService,
     private readonly uploadService: PriceIndexUploadService,
+    private readonly reviewService: PriceIndexReviewService,
   ) {}
 
   @Get("status")
@@ -88,8 +90,145 @@ export class PriceIndexController {
       fileBase64: body?.fileBase64 ?? "",
       commit: body?.commit === true,
       uploadedByUserId: user?.userId ?? null,
+      uploadedByRestaurantId: user?.restaurantId ?? null,
     });
     return { success: true, armed: this.uploadService.armed(), ...outcome };
+  }
+
+  /**
+   * The books this house's jurisdiction is holding (ADR 0128).
+   *
+   * Declared BEFORE `GET :state`, like `status`, or the word "uploads" would be
+   * captured as a jurisdiction and this route would be unreachable.
+   *
+   * Scoped to the caller's own jurisdiction rather than taking one as a
+   * parameter: `price_index_postings` has no restaurant_id, so a book's reach
+   * is its STATE, and the people who may act on it are the people that state's
+   * lines are drawn for. Letting a manager list another state's held books
+   * would be a cross-tenant read with no reason behind it.
+   */
+  @Get("uploads")
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Price books brought in for this house's jurisdiction: the ones waiting for a second pair of eyes, and the recent decisions",
+  })
+  async uploads(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    const state = await this.reviewService.jurisdictionOfHouse(
+      user?.restaurantId ?? null,
+    );
+    if (!state) {
+      return {
+        success: true,
+        state: null,
+        pending: [],
+        recent: [],
+        othersWhoCouldAdmit: null,
+        note: "This house records no jurisdiction this register recognises, so there is no set of books to hold for it. Set the address in Settings.",
+      };
+    }
+    const { pending, recent, readFailed } =
+      await this.reviewService.forJurisdiction(state);
+    const pool = await this.reviewService.admittersFor(state, user?.userId);
+    return {
+      success: true,
+      state,
+      pending,
+      recent,
+      // Not a number the page has to derive: how many OTHER people could act is
+      // what decides whether the person reading this may ever admit their own
+      // book, and it is a fact about the estate rather than about them.
+      othersWhoCouldAdmit: pool.readFailed ? null : pool.people.length,
+      note: readFailed
+        ? "The register of carried books could not be read. This is unknown, not empty."
+        : null,
+    };
+  }
+
+  /**
+   * Begin the hold on a held book. The seal is issued here and spent by
+   * `confirm`, so `sealed: true` can never be an assertion in the same request
+   * as the thing it claims about (ADR 0107/0116 addenda).
+   */
+  @Post("uploads/:reviewId/challenge")
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Issue the one-time seal that admitting a held price book must carry back",
+  })
+  async challenge(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("reviewId") reviewId: string,
+  ) {
+    const review = await this.reviewService.byId(reviewId);
+    const challenge = await this.reviewService.challenge(review, {
+      userId: user.userId,
+      restaurantId: user.restaurantId,
+    });
+    return { success: true, ...challenge };
+  }
+
+  /**
+   * Let a held book into the market.
+   *
+   * `fileBase64` is OPTIONAL and is the strong form: the confirmer fetches the
+   * book from the issuer themselves and the sha256 must agree. That is the only
+   * evidence a book whose issuer publishes no signature can carry, and it is
+   * recorded as `byte_match` rather than as the same word a click earns.
+   */
+  @Post("uploads/:reviewId/confirm")
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Admit a held price book. Sealed. Send the file too and the bytes are compared, which is the only evidence this book can carry",
+  })
+  async confirmUpload(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("reviewId") reviewId: string,
+    @Body()
+    body: { challenge?: string; reason?: string; fileBase64?: string },
+  ) {
+    const review = await this.reviewService.byId(reviewId);
+    const result = await this.reviewService.confirm(
+      review,
+      { userId: user.userId, restaurantId: user.restaurantId },
+      {
+        challenge: body?.challenge ?? null,
+        reason: body?.reason ?? null,
+        fileBase64: body?.fileBase64 ?? null,
+      },
+    );
+    return {
+      success: true,
+      review: result.review,
+      postingsAdmitted: result.postingsAdmitted,
+      note: result.sentence,
+    };
+  }
+
+  /**
+   * Never let this book in. Not sealed, deliberately: the seal guards the act
+   * that puts numbers on other people's screens, and refusing is the direction
+   * that takes them off. A refusal still names a person and a reason.
+   */
+  @Post("uploads/:reviewId/refuse")
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Refuse a held price book. The rows stay written and stay out of the market",
+  })
+  async refuseUpload(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("reviewId") reviewId: string,
+    @Body() body: { reason?: string },
+  ) {
+    const review = await this.reviewService.byId(reviewId);
+    const updated = await this.reviewService.refuse(
+      review,
+      { userId: user.userId, restaurantId: user.restaurantId },
+      body?.reason ?? "",
+    );
+    return { success: true, review: updated };
   }
 
   @Get(":state")

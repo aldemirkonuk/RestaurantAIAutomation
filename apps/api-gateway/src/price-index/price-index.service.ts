@@ -34,7 +34,26 @@ import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 /** The columns the endpoint reads. Named explicitly so the read-column guard
  *  can verify every one exists in supabase/migrations/. */
 const SELECT_COLUMNS =
-  "id, source_key, source_class, state, region, issuer, issued_at, issued_at_basis, fetched_at, price_basis, product_name, brand, producer, package_desc, container_type, size_value, size_unit, price, currency, price_unit, pack, container_charge, is_promotion, source_status, attribution, source_url, source_ref, uploaded_by, upload_file_name, upload_sha256, upload_edition_date";
+  "id, source_key, source_class, state, region, issuer, issued_at, issued_at_basis, fetched_at, price_basis, product_name, brand, producer, package_desc, container_type, size_value, size_unit, price, currency, price_unit, pack, container_charge, is_promotion, source_status, attribution, source_url, source_ref, uploaded_by, upload_file_name, upload_sha256, upload_edition_date, admitted_at";
+
+/**
+ * WHICH ROWS ARE THE MARKET (ADR 0128).
+ *
+ * A row is the market when nobody carried it (`uploaded_by IS NULL` — it was
+ * fetched, and was never held) or when somebody let it in (`admitted_at IS NOT
+ * NULL`). A hand-carried book that is still waiting for a second pair of eyes
+ * has rows in this table and is NOT an index line.
+ *
+ * One exported constant, applied by every read in this file, because the whole
+ * value of holding a book is lost the moment one query forgets the predicate —
+ * and a query that forgets it does not fail, it just shows unconfirmed numbers,
+ * which is the absence-reported-as-health shape at the door that puts prices on
+ * three houses' screens.
+ *
+ * PostgREST ANDs repeated top-level parameters, so this composes with the
+ * product search's own `.or()` rather than replacing it.
+ */
+export const MARKET_VISIBILITY = "uploaded_by.is.null,admitted_at.not.is.null";
 
 export interface IndexLine {
   id: string;
@@ -79,6 +98,13 @@ export interface IndexLine {
   uploadFileName: string | null;
   uploadSha256: string | null;
   uploadEditionDate: string | null;
+  /**
+   * When this carried row was let into the market (ADR 0128). Null on every
+   * fetched row, which was never held — so it is `uploadedBy` that says whether
+   * a null here means anything at all. A line that reaches a reader always has
+   * one or the other; `MARKET_VISIBILITY` is what guarantees it.
+   */
+  admittedAt: string | null;
 }
 
 export interface StateIndexResult {
@@ -104,6 +130,13 @@ export interface StateIndexResult {
     display: { category: string; shortIssuer: string; extent: string } | null;
     rows: number;
   }>;
+  /**
+   * How many hand-carried books this state is holding, waiting for a second
+   * pair of eyes (ADR 0128). `null` means the question could not be answered,
+   * which is not zero: a held book that reads as "nothing here" would tell a
+   * house to go and fetch a book its own manager already brought in.
+   */
+  heldBooks: number | null;
   /** Words, never an empty list mistaken for "nothing costs anything". */
   silence: string | null;
 }
@@ -145,6 +178,7 @@ export class PriceIndexService {
         state: null,
         lines: [],
         sources: [],
+        heldBooks: 0,
         silence: "No active restaurant on this session, so no state to scope the index to.",
       };
     }
@@ -192,6 +226,7 @@ export class PriceIndexService {
       state: null,
       lines: [],
       sources: [],
+      heldBooks: 0,
       silence:
         "This house records neither a state nor a country, so no jurisdiction can be scoped. Set the address in Settings to draw an index line.",
     };
@@ -221,6 +256,7 @@ export class PriceIndexService {
         state: null,
         lines: [],
         sources: [],
+        heldBooks: 0,
         silence: `"${rawState}" is not a jurisdiction this register recognises. No index line is drawn rather than guessing a state.`,
       };
     }
@@ -232,6 +268,12 @@ export class PriceIndexService {
         .from("price_index_postings")
         .select(SELECT_COLUMNS)
         .eq("state", state)
+        // A book somebody carried in is not an index line until somebody let
+        // it in (ADR 0128). Before this, an uploaded book was the market the
+        // instant it was written — and because the order below is by
+        // `issued_at`, a newer carried edition displaced every fetched line
+        // above it.
+        .or(MARKET_VISIBILITY)
         .order("issued_at", { ascending: false })
         .limit(Math.min(Math.max(limit, 1), 100));
       if (basis) query = query.eq("price_basis", basis);
@@ -250,12 +292,27 @@ export class PriceIndexService {
     }
 
     const sources = await this.sourcesWithCounts(sourcesForState, state);
+    // Asked on EVERY successful read, not only on an empty one. A jurisdiction
+    // can hold a new book while an older admitted edition is still drawn, and a
+    // pending label that appeared only when the panel was empty would hide the
+    // waiting book precisely when the panel looks healthy — the same inversion
+    // this whole change exists to close. Skipped only when the lines could not
+    // be read at all, because "a book is waiting" is not a thing to claim on
+    // top of "the register is unknown" (ADR 0128).
+    const heldBooks = readFailed ? 0 : await this.heldBookCount(state);
     return {
       requested: rawState,
       state,
       lines,
       sources,
-      silence: this.silenceFor(state, sourcesForState, lines.length, readFailed),
+      heldBooks,
+      silence: this.silenceFor(
+        state,
+        sourcesForState,
+        lines.length,
+        readFailed,
+        heldBooks,
+      ),
     };
   }
 
@@ -264,11 +321,20 @@ export class PriceIndexService {
     sourcesForState: SourceEntry[],
     lineCount: number,
     readFailed: boolean,
+    heldBooks: number | null,
   ): string | null {
     if (readFailed) {
       return "The index register could not be read. This is unknown, not empty.";
     }
     if (lineCount > 0) return null;
+
+    // A book IS here and is waiting for a person. Said before every other
+    // sentence below, all of which would tell the house to go and find a book
+    // that its own manager already carried in — the same fault ADR 0117
+    // corrected for Illinois, wearing the other hat (ADR 0128).
+    if (heldBooks !== null && heldBooks > 0) {
+      return `${heldBooks === 1 ? "A price book has" : `${heldBooks} price books have`} been brought in for ${state} and ${heldBooks === 1 ? "is" : "are"} waiting for a second pair of eyes. Nothing is drawn from ${heldBooks === 1 ? "it" : "them"} until an owner or manager admits ${heldBooks === 1 ? "it" : "them"}.`;
+    }
 
     // A house that records only a country, in a country whose prices are
     // published state by state. That is a missing ADDRESS, not a missing
@@ -299,10 +365,25 @@ export class PriceIndexService {
       // so. Ending on "cannot be fetched" tells a Michigan house to give up on
       // a book its own manager can download in a minute. (2026-09-05)
       const uploadable = withheld.filter((s) => s.intake === "upload");
+      // A second withheld list in the same state that is FILED rather than
+      // published gets its own clause, because "a manager can upload the book"
+      // is true of the spirits book and false of the beer and wine schedules —
+      // and a wine house reading only the upload sentence would wait for lines
+      // that will never fill from it. (2026-09-05, ADR 0126)
+      const byRequest = withheld.filter((s) => s.intake === "foia");
+      const embargo = byRequest[0]?.standingRequest?.statutoryEmbargoDays ?? null;
+      const requestClause =
+        byRequest.length === 0
+          ? ""
+          : ` A second list here is filed with the issuer rather than published and reaches this register only through a written public-records request${
+              embargo
+                ? `, and the statute holds each filing back for ${embargo} days — so even a granted request returns a schedule at least that old`
+                : ""
+            }.`;
       if (uploadable.length > 0) {
-        return `${base} A manager can download the ${uploadable[0].cadence.split(" (")[0]} book from the issuer and upload it, and these lines will fill.`;
+        return `${base} A manager can download the ${uploadable[0].cadence.split(" (")[0]} book from the issuer and upload it, and these lines will fill.${requestClause}`;
       }
-      return base;
+      return `${base}${requestClause}`;
     }
 
     // Every source for this jurisdiction was READ and none holds a price — a
@@ -364,13 +445,51 @@ export class PriceIndexService {
     return out;
   }
 
+  /**
+   * How many hand-carried books this state is holding (ADR 0128).
+   *
+   * Counted here rather than by asking `PriceIndexReviewService`, deliberately.
+   * That service decides who may admit a book and what a confirmation is worth,
+   * and none of that policy is duplicated by a count; taking it as a
+   * constructor dependency would instead have changed the shape of
+   * `new PriceIndexService(db)` in five spec files, two of which other builders
+   * had open the same day. A reader counting rows is not a second opinion about
+   * a rule.
+   *
+   * `null` on a failed read, never 0: "nothing is waiting" and "we could not
+   * look" produce different sentences, and the second one must not silently
+   * become the first at the exact place a house is told to go and find a book
+   * its own manager already carried in.
+   */
+  private async heldBookCount(state: string): Promise<number | null> {
+    try {
+      const { count, error } = await this.db.client
+        .from("price_index_upload_reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("state", state)
+        .eq("status", "pending");
+      if (error) throw error;
+      return count ?? 0;
+    } catch (err) {
+      this.logger.warn(
+        `could not count held price books for ${state}: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   private async countFor(sourceKey: string, state: string): Promise<number> {
     try {
       const { count, error } = await this.db.client
         .from("price_index_postings")
         .select("id", { count: "exact", head: true })
         .eq("source_key", sourceKey)
-        .eq("state", state);
+        .eq("state", state)
+        // The same predicate the lines are read through: a source whose only
+        // rows are a held book has no rows a reader can see, and reporting the
+        // held ones here would make the panel say "12,530 rows" beside an empty
+        // list (ADR 0128).
+        .or(MARKET_VISIBILITY);
       if (error) throw error;
       return count ?? 0;
     } catch {
@@ -469,5 +588,6 @@ function mapLine(row: Record<string, unknown>): IndexLine {
     uploadFileName: (row.upload_file_name as string) ?? null,
     uploadSha256: (row.upload_sha256 as string) ?? null,
     uploadEditionDate: (row.upload_edition_date as string) ?? null,
+    admittedAt: (row.admitted_at as string) ?? null,
   };
 }

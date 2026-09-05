@@ -50,12 +50,22 @@
  * asymmetry with `mcp_tool`: a grant seal carries NO `connection_id` column
  * (`chk_mcp_seal_challenges_non_tool_has_no_connection` forbids it) and names
  * the connection in `subject_id` instead.
+ *
+ * `price_index_upload` (added 2026-09-05, ADR 0128) is the seal on ADMITTING a
+ * hand-carried price book. Its subject is the review row, and its args are the
+ * book's sha256 and the tier it was held under, so a seal minted over a book
+ * that was held for one reason cannot be spent after the reason changed. It is
+ * here rather than in a settings-style logged assertion because
+ * `price_index_postings` has no restaurant_id: admitting a book puts numbers on
+ * every house in that jurisdiction's screens, and the person who reads them
+ * cannot undo it.
  */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
   "mcp_tool_grant",
   "procurement_order",
   "payment_method",
+  "price_index_upload",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -75,6 +85,11 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // seal and a refused CALL seal say the same sentence about two different
       // acts.
       return "grant";
+    case "price_index_upload":
+      // "price book", not "upload": the act being sealed is admitting a BOOK to
+      // the market of every house in its jurisdiction, and "a different upload"
+      // would name the file transfer rather than the thing that goes on screens.
+      return "price book";
   }
 }
 

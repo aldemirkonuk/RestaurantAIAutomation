@@ -37,6 +37,15 @@
  *     the sha256 of the exact bytes, the user id and the upload time, and
  *     `raw.upload.editionDateFrom` records that the date was read from the file
  *     name. A reader can always tell a hand-carried book from a fetched feed.
+ *  6. **The size of the decision decides how many people it takes** (ADR 0128,
+ *     answering ADR 0117 Q18). `upload-tier.ts` weighs the book against the
+ *     last one this register admitted. A ROUTINE book — a later edition inside
+ *     every band — stands on one person's upload and the others are told. Any
+ *     other book is written and HELD: its rows carry no `admitted_at`, so they
+ *     are not the market until an owner or manager admits them under a seal.
+ *     Measured on production the same day: ten of fifteen houses have one
+ *     owner-or-manager or none, so "always two people" would have meant "never"
+ *     for most of this estate. The jurisdiction, not the house, is the pool.
  *
  * WHAT IT DOES NOT DO, STATED RATHER THAN LEFT TO BE DISCOVERED
  * ------------------------------------------------------------
@@ -44,7 +53,14 @@
  *    of a signature the MLCC does not publish. The defence is provenance rather
  *    than detection: the row names the person, and the sha256 lets anyone
  *    re-download the same edition and compare byte for byte. Whether that is
- *    enough is the founder's call, recorded in ADR 0117.
+ *    enough is the founder's call, recorded in ADR 0117. Answered 2026-09-05
+ *    (ADR 0128): provenance stands, and a second person is asked for only where
+ *    the book itself says the decision is big. The tier is a SIZING control and
+ *    not a fraud detector — a forged single price is one row in 12,530 and no
+ *    band, and no second human being reading, will ever see it. What a second
+ *    person can do is fetch the book themselves and compare the sha256, which
+ *    is why the confirm route accepts the bytes and records `byte_match` only
+ *    when they actually agree.
  *  - It carries the uploader's identity inside `raw`, not in a column of its
  *    own, because this session was not authorised to add a migration.
  *  - It does not tell the house, in the panel, that these lines are theirs
@@ -70,6 +86,13 @@ import {
   base64Bytes,
   michiganRowsFromWorkbook,
 } from "./michigan-workbook";
+import { PriceIndexReviewService } from "./price-index-review.service";
+import {
+  chooseTier,
+  diffEditions,
+  diffSentence,
+  fingerprintOf,
+} from "./upload-tier";
 
 export const PRICE_INDEX_UPLOAD_FLAG = "PRICE_INDEX_UPLOAD_ENABLED";
 
@@ -110,6 +133,41 @@ export interface UploadRequest {
   /** Write the survivors. Default false: an upload reports before it writes. */
   commit?: boolean;
   uploadedByUserId?: string | null;
+  /**
+   * The house the uploader was acting for. Not a scope on the REGISTER — that
+   * is keyed by state and belongs to no house — but the record of who was
+   * standing where when the book came in, and the house whose inbox hears about
+   * it first. OPTIONAL, unlike `uploadedByUserId`: the PERSON is what a carried
+   * row must name, their house is derivable from `user_restaurant_access`, and
+   * a second required field would have been a gate refusing a book for a reason
+   * the uploader could not see (ADR 0128).
+   */
+  uploadedByRestaurantId?: string | null;
+}
+
+/**
+ * What happened to the book as a DECISION, beside what happened to it as a
+ * parse (ADR 0128).
+ *
+ * Present on every committed upload and null on every dry run, because a dry
+ * run makes no decision and a tier printed beside rows nobody wrote would read
+ * as one.
+ */
+export interface UploadReviewOutcome {
+  reviewId: string;
+  tier: string;
+  tierReasons: string[];
+  tierNote: string;
+  status: string;
+  /** The measured comparison with the last admitted edition, in one sentence. */
+  diffNote: string;
+  /** True only when these rows are the market NOW. */
+  inTheMarket: boolean;
+  /**
+   * How many other owners or managers in this jurisdiction could admit it.
+   * `null` means the question could not be answered, which is not zero.
+   */
+  otherPeopleWhoCouldAdmit: number | null;
 }
 
 export interface UploadOutcome {
@@ -126,6 +184,8 @@ export interface UploadOutcome {
   refused: number;
   refusalsByReason: Record<string, number>;
   written: number;
+  /** The decision this book got, or null on a dry run (ADR 0128). */
+  review: UploadReviewOutcome | null;
   /** Why nothing was written. Null only when rows actually were. */
   silentBecause: string | null;
   /** A handful of admitted rows, so a person can eyeball the parse. */
@@ -145,7 +205,10 @@ export class PriceIndexUploadService {
   private readonly logger = new Logger(PriceIndexUploadService.name);
   private readonly lastUploads = new Map<string, UploadOutcome>();
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly reviews: PriceIndexReviewService,
+  ) {}
 
   armed(): boolean {
     return priceIndexUploadArmed(process.env[PRICE_INDEX_UPLOAD_FLAG]);
@@ -181,6 +244,7 @@ export class PriceIndexUploadService {
       refused: 0,
       refusalsByReason: {},
       written: 0,
+      review: null,
       silentBecause: null,
       sample: [],
     };
@@ -309,7 +373,58 @@ export class PriceIndexUploadService {
       this.lastUploads.set(req.sourceKey, outcome);
       return outcome;
     }
+    // There is deliberately NO matching gate for the house (ADR 0128). The
+    // PERSON is what a carried row must name; the house they were standing in
+    // is derivable from `user_restaurant_access` and is recorded when the
+    // caller knows it. A second required field here would have refused books
+    // for a reason the uploader could not see or act on.
 
+    // The same bytes are ONE decision. A second upload of a book somebody
+    // already refused must be told so, not silently re-run into a
+    // unique-violation the uploader cannot read.
+    const already = await this.reviews.existingFor(req.sourceKey, fileSha256);
+    if (already.readFailed) {
+      outcome.silentBecause =
+        "whether this exact book has already been decided could not be read, so nothing was written. This is unknown, not new.";
+      this.lastUploads.set(req.sourceKey, outcome);
+      return outcome;
+    }
+    if (already.review) {
+      const prior = already.review;
+      outcome.silentBecause =
+        prior.status === "refused"
+          ? `these exact bytes were refused on ${prior.refusedAt?.slice(0, 10)}: ${prior.refusalReason} Nothing was written. A refused book does not become acceptable by being sent again.`
+          : `these exact bytes are already on record for ${prior.state} (${prior.status}), brought in on ${prior.uploadedAt.slice(0, 10)}. Nothing was written.`;
+      this.lastUploads.set(req.sourceKey, outcome);
+      return outcome;
+    }
+
+    // ---------------------------------------------------------------------
+    // How big a decision is this? (ADR 0128)
+    // ---------------------------------------------------------------------
+    // The state comes from the parsed rows rather than from the registry entry
+    // because it is the value that will actually sit in `price_index_postings
+    // .state`, and the people who may admit the book are resolved from the same
+    // string the readers are scoped by.
+    const state = run.sightings[0].state;
+    const print = fingerprintOf(run.sightings);
+    const { baseline, readFailed: baselineUnreadable } =
+      await this.reviews.baselineFor(req.sourceKey);
+    const diff = baselineUnreadable
+      ? {
+          ...diffEditions(null, null),
+          incomparableBecause:
+            "the last admitted edition of this book could not be read, so this one could not be weighed against it. This is unknown, not a first book.",
+        }
+      : diffEditions(baseline, print.fingerprint);
+    const tier = chooseTier(diff);
+    const routine = tier.tier === "routine";
+
+    // The rows land HELD, always. A routine book is stamped admitted a moment
+    // later through the same statement a confirmation uses, so there is exactly
+    // one way for a carried row to become the market — and so that a failure
+    // between the two leaves rows invisible rather than rows on screens that no
+    // decision record explains.
     const uploadedAt = new Date().toISOString();
     outcome.written = await this.write(run.sightings, uploadedAt, {
       fileName: req.fileName,
@@ -319,10 +434,66 @@ export class PriceIndexUploadService {
       uploadedByUserId: req.uploadedByUserId ?? null,
       uploadedAt,
     });
+
+    let review;
+    try {
+      review = await this.reviews.record({
+        sourceKey: req.sourceKey,
+        state,
+        fileName: req.fileName,
+        fileSha256,
+        editionDate: run.issuedAt as string,
+        rowsWritten: outcome.written,
+        uploadedBy: req.uploadedByUserId,
+        uploadedByRestaurantId: req.uploadedByRestaurantId ?? null,
+        uploadedAt,
+        verdict: tier,
+        diff,
+        fingerprint: print.fingerprint,
+        fingerprintRefusedBecause: print.refusedBecause,
+      });
+    } catch (err) {
+      // The rows are written and HELD. Nothing is on anybody's screen, and a
+      // re-upload is safe: the posting write dedups on (source_ref,
+      // content_hash) and no decision row exists to collide with.
+      this.logger.error(
+        `PRICE_BOOK_ROWS_WRITTEN_WITHOUT_A_DECISION ${req.sourceKey} sha256=${fileSha256.slice(0, 12)} — ` +
+          `${(err as Error).message}. ${outcome.written} rows are in the register and held out of the market. Upload the same file again.`,
+      );
+      outcome.silentBecause =
+        `${outcome.written} rows were written but the decision record could not be filed: ${(err as Error).message}. ` +
+        "They are held out of the market and nothing is on any screen. Upload the same file again.";
+      this.lastUploads.set(req.sourceKey, outcome);
+      return outcome;
+    }
+
+    const pool = await this.reviews.admittersFor(state, req.uploadedByUserId);
+    let inTheMarket = false;
+    if (routine) {
+      const stamped = await this.reviews.admitRoutine(review, uploadedAt);
+      inTheMarket = stamped > 0;
+      await this.reviews.announceStood(review, pool);
+    } else {
+      await this.reviews.announceHeld(review, pool);
+    }
+
+    outcome.review = {
+      reviewId: review.id,
+      tier: review.tier,
+      tierReasons: review.tierReasons,
+      tierNote: review.tierNote,
+      status: review.status,
+      diffNote: diffSentence(diff),
+      inTheMarket,
+      otherPeopleWhoCouldAdmit: pool.readFailed ? null : pool.people.length,
+    };
     outcome.committed = true;
-    outcome.silentBecause = null;
+    outcome.silentBecause = routine
+      ? null
+      : `These ${outcome.written} rows are written and HELD: they are not the index line for ${state} until somebody admits this book. ${review.tierNote}`;
     this.logger.log(
-      `price-index upload: ${req.sourceKey} ${run.issuedAt} — ${outcome.written} rows from ${req.fileName} (sha256 ${fileSha256.slice(0, 12)})`,
+      `price-index upload: ${req.sourceKey} ${run.issuedAt} — ${outcome.written} rows from ${req.fileName} ` +
+        `(sha256 ${fileSha256.slice(0, 12)}) tier=${review.tier} status=${review.status}`,
     );
     this.lastUploads.set(req.sourceKey, outcome);
     return outcome;

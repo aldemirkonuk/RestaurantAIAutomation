@@ -48,11 +48,39 @@ describe("silence notes", () => {
     expect(note?.settled).toBe(true);
     expect(note?.sentence).toMatch(/licensee price/i);
     expect(note?.sentence).toMatch(/upload/i);
-    // The beer and wine half: filed with the Commission, never published.
-    expect(note?.sentence).toMatch(/filed with the Commission rather than published/i);
+    // The beer and wine half: filed with the Commission, never published — and
+    // since 2026-09-05 (ADR 0126) the sentence carries the fact that changes
+    // what a request is worth. It used to end "so they cannot be read at all",
+    // which was true of a fetcher and wrong about a FOIA request; it now names
+    // MCL 436.1609a's one-year embargo, so a house is told both that the record
+    // is reachable and that it can never be fresh.
+    expect(note?.sentence).toMatch(/file them with the Commission rather than publish them/i);
+    expect(note?.sentence).toMatch(/436\.1609a/);
+    expect(note?.sentence).toMatch(/one year after it was filed/i);
+    expect(note?.sentence).toMatch(/never reach one less than twelve months old/i);
+    // And the upload half must no longer promise that "these lines will fill"
+    // without saying with WHAT: the book that can be uploaded holds spirits.
+    expect(note?.sentence).toMatch(/with spirits, which is what that book holds/i);
     expect(note?.evidence.join(" ")).toMatch(/R\. 436\.1625/);
     expect(note?.evidence.join(" ")).toMatch(/R\. 436\.1726/);
+    expect(note?.evidence.join(" ")).toMatch(/MCL 436\.1609a/);
     expect(note?.evidence.join(" ")).toMatch(/Disallow: \//);
+  });
+
+  it("keeps an Illinois note that points at the invoices, not at a locked door", () => {
+    const note = silenceNote("US-IL");
+    expect(note?.settled).toBe(true);
+    expect(note?.sentence).toMatch(/6-19/);
+    expect(note?.sentence).toMatch(/1 January 1998/);
+    // Amended 2026-09-05 (ADR 0126). The sentence used to say the per-account
+    // price was "a connection this house declares", which pointed at a door
+    // nobody had tried. Measured: there is no feed to declare, and two of the
+    // three distributors forbid the reading in their own words.
+    expect(note?.sentence).not.toMatch(/a connection this house declares/i);
+    expect(note?.sentence).toMatch(/forbids every automated reader/i);
+    expect(note?.sentence).toMatch(/they are the licensee price list/i);
+    expect(note?.evidence.join(" ")).toMatch(/now\.breakthrubev\.com\/robots\.txt/);
+    expect(note?.evidence.join(" ")).toMatch(/southernglazers\.com\/terms-of-use/);
   });
 
   it("every note states the day its evidence was measured", () => {

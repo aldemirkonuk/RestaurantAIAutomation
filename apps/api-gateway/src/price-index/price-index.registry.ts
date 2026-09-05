@@ -113,13 +113,42 @@ export interface SourceEntry {
    *               today: the MLCC publishes the licensee price a house pays,
    *               and publishes it behind a WAF that refuses every automated
    *               reader while serving a browser normally.
+   *   "foia"      the record exists, a public body holds it, and it is reached
+   *               only by a written request under a freedom-of-information
+   *               statute. Nothing automated can produce it; a PERSON files the
+   *               request and a PERSON brings the answer back. Added 2026-09-05
+   *               with the Michigan beer and wine schedules (ADR 0126).
    *
    * It is a separate field from `withheld` on purpose. "We cannot fetch this"
    * and "here is how it can still arrive" are different facts, and a panel that
    * only knows the first tells a Michigan house to give up on a book its own
    * manager could hand over in a minute.
    */
-  intake?: "upload";
+  intake?: "upload" | "foia";
+  /**
+   * Present only on an `intake: "foia"` source: the state of the standing
+   * request, and the drafted text a person sends.
+   *
+   * `status` starts at `not_yet_filed` and STAYS there until somebody actually
+   * files it. It is deliberately not `requested`: a register that reports a
+   * drafted letter as a filed request is reporting an intention as an action,
+   * which is this codebase's named cardinal fault wearing a different coat.
+   * There is no writer for this field and no table behind it — moving it is a
+   * commit, made by whoever filed the request, so the record of who filed it and
+   * when is in git rather than in a column nobody maintains.
+   */
+  standingRequest?: {
+    status: "not_yet_filed" | "filed" | "awaiting_response" | "answered";
+    /** ISO day the request was filed, or null while it has not been. */
+    filedOn: string | null;
+    /** Repo-relative path to the text a person sends. */
+    draft: string;
+    /**
+     * Why the answer will always be old, in days, when the statute embargoes
+     * the record. Null when there is no embargo.
+     */
+    statutoryEmbargoDays: number | null;
+  };
 }
 
 export const SOURCES: Record<string, SourceEntry> = {
@@ -204,6 +233,63 @@ export const SOURCES: Record<string, SourceEntry> = {
     },
     intake: "upload",
   },
+
+  // -------------------------------------------------------------------------
+  // Michigan's OTHER posted list — the one that is filed rather than published,
+  // and is embargoed by statute for a year (2026-09-05, ADR 0126).
+  //
+  // The founder's call this morning was "open a standing quarterly request,
+  // filed as a source". The research that followed found the thing that call
+  // could not have known, and it changes the shape rather than cancelling it:
+  // MCL 436.1609a makes the filed net cash prices EXEMPT from disclosure under
+  // MCL 15.243 "until 1 year after the net cash price or price change is
+  // filed". ADR 0117 Q19 called them public records reachable by a quarterly
+  // request; they are public records reachable by a request that can never
+  // return anything less than a year old.
+  //
+  // So this entry exists, carries the cadence and the draft, and states the
+  // embargo on its own face — because a Michigan house being shown a wine price
+  // without being told it is a year old would be worse than being shown
+  // nothing.
+  // -------------------------------------------------------------------------
+  "michigan-lcc-filed-beer-wine-schedules": {
+    key: "michigan-lcc-filed-beer-wine-schedules",
+    sourceClass: "posted_wholesale_list",
+    issuer: "Michigan Liquor Control Commission",
+    jurisdiction: "US-MI",
+    // Wine's cadence is the rule's own: R 436.1726(1) requires a schedule filed
+    // "before January 1, April 1, July 1, and October 1 of each year" and (2)
+    // forbids changing it within the quarter without a written commission
+    // order. Beer has NO recurring filing date — R 436.1625 requires a schedule
+    // and requires a reduction to be filed before its effective date and held
+    // "at least 180 days", and sets no calendar. Both rules read verbatim on
+    // 2026-09-05 (law.cornell.edu, HTTP 200).
+    cadence:
+      "quarterly for wine (filed before 1 Jan, 1 Apr, 1 Jul, 1 Oct — R 436.1726); on change for beer, a reduction held 180 days (R 436.1625). Both are FILED with the commission, not published",
+    // 365 (the statutory embargo) + 91 (a full quarter can elapse between the
+    // filing and the embargo lifting on the one before it) + ~21 calendar days
+    // for a 5-business-day answer plus its single 10-business-day extension.
+    // THIS BOUND IS NOT A FRESHNESS ALLOWANCE. It is the arithmetic of an
+    // embargo, and it is written here so that nobody later reads 480 as "this
+    // register tolerates sixteen-month-old prices" and applies it elsewhere.
+    maxAgeDays: 480,
+    fixture: "",
+    withheld: {
+      reason:
+        "The schedules are FILED with the commission rather than published: R 436.1726 and R 436.1625 both say 'file with the commission in Lansing' and neither requires publication. Nothing on any Michigan host serves them, and michigan.gov answers 403 to this fetcher on every path including robots.txt. They are reached only by a written FOIA request, and MCL 436.1609a exempts each filing from disclosure until one year after it was filed — so even a granted request returns a schedule at least twelve months old.",
+      measuredOn: "2026-09-05",
+    },
+    intake: "foia",
+    standingRequest: {
+      // NOT 'requested'. Nothing has been sent. The draft is written for the
+      // founder to send, and this session sent nothing.
+      status: "not_yet_filed",
+      filedOn: null,
+      draft: ".planning/07-reference/MICHIGAN-FOIA-BEER-WINE-SCHEDULES.md",
+      statutoryEmbargoDays: 365,
+    },
+  },
+
   // -------------------------------------------------------------------------
   // The non-US markets, researched per market on 2026-09-05 (ADR 0117,
   // "Non-US markets: Türkiye and the United Kingdom"). The founder's call that

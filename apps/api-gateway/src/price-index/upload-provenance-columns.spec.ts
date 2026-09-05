@@ -39,6 +39,58 @@ async function bookBase64(): Promise<string> {
   return Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer).toString("base64");
 }
 
+/**
+ * The decision side of an upload (ADR 0128), stubbed to the simplest honest
+ * answer: these bytes are not on record, no admitted edition exists to compare
+ * against, and the jurisdiction holds nobody else. Under it every book is a
+ * FIRST book and is therefore HELD - which the assertions in this file, all of
+ * which are about what reaches the WRITE, are indifferent to. The tier
+ * arithmetic itself is proved in `upload-tier.spec.ts` and the ceremony in
+ * `price-index-review.spec.ts`.
+ */
+function reviewsWithNoHistory() {
+  return {
+    existingFor: jest
+      .fn()
+      .mockResolvedValue({ review: null, readFailed: false }),
+    baselineFor: jest
+      .fn()
+      .mockResolvedValue({ baseline: null, readFailed: false }),
+    record: jest.fn(async (input: any) => ({
+      id: "review-1",
+      sourceKey: input.sourceKey,
+      state: input.state,
+      fileName: input.fileName,
+      fileSha256: input.fileSha256,
+      editionDate: input.editionDate,
+      rowsWritten: input.rowsWritten,
+      uploadedBy: input.uploadedBy,
+      uploadedByRestaurantId: input.uploadedByRestaurantId ?? null,
+      uploadedAt: input.uploadedAt,
+      tier: input.verdict.tier,
+      tierReasons: input.verdict.reasons,
+      tierNote: input.verdict.sentences.join(" "),
+      status: input.verdict.tier === "routine" ? "stood" : "pending",
+      confirmedBy: null,
+      confirmedAt: null,
+      confirmationEvidence: null,
+      confirmationReason: null,
+      refusedBy: null,
+      refusedAt: null,
+      refusalReason: null,
+      escalatedAt: null,
+    })),
+    admittersFor: jest.fn().mockResolvedValue({
+      people: [],
+      readFailed: false,
+      housesInJurisdiction: 1,
+    }),
+    admitRoutine: jest.fn().mockResolvedValue(0),
+    announceStood: jest.fn().mockResolvedValue(undefined),
+    announceHeld: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe("the four provenance columns", () => {
   const original = process.env[PRICE_INDEX_UPLOAD_FLAG];
   beforeEach(() => {
@@ -51,7 +103,7 @@ describe("the four provenance columns", () => {
 
   it("writes all four on every row, with explicit keys", async () => {
     const db = dbThatRecords();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     const out = await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,
@@ -76,7 +128,7 @@ describe("the four provenance columns", () => {
   it("the sha256 column is the sha256 of the bytes that were actually sent", async () => {
     const b64 = await bookBase64();
     const db = dbThatRecords();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,
@@ -95,7 +147,7 @@ describe("the four provenance columns", () => {
 
   it("upload_edition_date agrees with issued_at, and both come from the file name", async () => {
     const db = dbThatRecords();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,
@@ -114,7 +166,7 @@ describe("the four provenance columns", () => {
 
   it("keeps the JSONB copy, including the three facts NOT promoted", async () => {
     const db = dbThatRecords();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,
@@ -134,7 +186,7 @@ describe("the four provenance columns", () => {
 
   it("REFUSES an upload that names no person, rather than writing a half-provenanced row", async () => {
     const db = dbThatRecords();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     const out = await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,

@@ -45,7 +45,7 @@
  * every state posted list and control-state shelf price is.
  */
 
-import { Landmark, RotateCw, Sprout, TriangleAlert } from 'lucide-react';
+import { Hourglass, Landmark, RotateCw, Sprout, TriangleAlert } from 'lucide-react';
 import { EM, MONO, SANS, SERIF } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
 
@@ -309,6 +309,35 @@ export function MarketIndexPanel() {
         labelledSections.map((g) => (
           <LabelledSection key={g.source.key} source={g.source} lines={g.lines} />
         ))}
+
+      {/* A book somebody carried in that nobody has admitted yet (ADR 0128).
+          Drawn whether or not there are lines: a jurisdiction can hold a new
+          book while an older admitted edition is still on the screen, and a
+          label that appeared only on an empty panel would hide the waiting book
+          at exactly the moment the panel looked healthy. `heldBooks === null`
+          means the gateway could not answer, and nothing is drawn rather than
+          claiming nothing waits. */}
+      {m.state === 'ready' && (m.heldBooks ?? 0) > 0 && (
+        <p
+          role="status"
+          className="mt-1.5 flex items-start gap-1.5 rounded px-2 py-1.5 text-[11.5px]"
+          style={{
+            fontFamily: SANS,
+            color: 'var(--ink-2)',
+            background: 'var(--paper-1)',
+            border: '1px solid var(--paper-2)',
+          }}
+        >
+          <Hourglass size={12} className="mt-0.5 shrink-0" aria-hidden />
+          <span>
+            {m.heldBooks === 1
+              ? 'A price book brought in by hand is waiting for a second pair of eyes.'
+              : `${m.heldBooks} price books brought in by hand are waiting for a second pair of eyes.`}{' '}
+            Nothing from {m.heldBooks === 1 ? 'it' : 'them'} is drawn here until an owner or manager
+            admits {m.heldBooks === 1 ? 'it' : 'them'}.
+          </span>
+        </p>
+      )}
 
       {m.state === 'ready' && m.lines.length === 0 && (
         <p

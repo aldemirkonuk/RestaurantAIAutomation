@@ -64,6 +64,58 @@ async function xlsxFromFixtureRows(): Promise<string> {
   return Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer).toString("base64");
 }
 
+/**
+ * The decision side of an upload (ADR 0128), stubbed to the simplest honest
+ * answer: these bytes are not on record, no admitted edition exists to compare
+ * against, and the jurisdiction holds nobody else. Under it every book is a
+ * FIRST book and is therefore HELD - which the assertions in this file, all of
+ * which are about what reaches the WRITE, are indifferent to. The tier
+ * arithmetic itself is proved in `upload-tier.spec.ts` and the ceremony in
+ * `price-index-review.spec.ts`.
+ */
+function reviewsWithNoHistory() {
+  return {
+    existingFor: jest
+      .fn()
+      .mockResolvedValue({ review: null, readFailed: false }),
+    baselineFor: jest
+      .fn()
+      .mockResolvedValue({ baseline: null, readFailed: false }),
+    record: jest.fn(async (input: any) => ({
+      id: "review-1",
+      sourceKey: input.sourceKey,
+      state: input.state,
+      fileName: input.fileName,
+      fileSha256: input.fileSha256,
+      editionDate: input.editionDate,
+      rowsWritten: input.rowsWritten,
+      uploadedBy: input.uploadedBy,
+      uploadedByRestaurantId: input.uploadedByRestaurantId ?? null,
+      uploadedAt: input.uploadedAt,
+      tier: input.verdict.tier,
+      tierReasons: input.verdict.reasons,
+      tierNote: input.verdict.sentences.join(" "),
+      status: input.verdict.tier === "routine" ? "stood" : "pending",
+      confirmedBy: null,
+      confirmedAt: null,
+      confirmationEvidence: null,
+      confirmationReason: null,
+      refusedBy: null,
+      refusedAt: null,
+      refusalReason: null,
+      escalatedAt: null,
+    })),
+    admittersFor: jest.fn().mockResolvedValue({
+      people: [],
+      readFailed: false,
+      housesInJurisdiction: 1,
+    }),
+    admitRoutine: jest.fn().mockResolvedValue(0),
+    announceStood: jest.fn().mockResolvedValue(undefined),
+    announceHeld: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe("the Michigan fixture proves a parse and can never become a price", () => {
   it("is labelled in the file itself as a shape fixture, not a price", () => {
     const raw = JSON.parse(readFileSync(FIXTURE_PATH, "utf8")) as {
@@ -75,7 +127,7 @@ describe("the Michigan fixture proves a parse and can never become a price", () 
 
   it("BARRIER 1: the fixture as stored is not a workbook, so it cannot be uploaded", async () => {
     const db = dbThatMustNotBeWritten();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     const out = await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,
@@ -94,7 +146,7 @@ describe("the Michigan fixture proves a parse and can never become a price", () 
 
   it("BARRIER 2: rebuilt as a real workbook it is still refused, as STALE", async () => {
     const db = dbThatMustNotBeWritten();
-    const svc = new PriceIndexUploadService(db as never);
+    const svc = new PriceIndexUploadService(db as never, reviewsWithNoHistory() as never);
     const out = await svc.ingest(
       {
         sourceKey: MICHIGAN_SOURCE_KEY,

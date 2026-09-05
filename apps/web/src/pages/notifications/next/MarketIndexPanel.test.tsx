@@ -34,6 +34,7 @@ const READY = {
   lines: [] as Array<Record<string, unknown>>,
   sources: [] as Array<Record<string, unknown>>,
   silence: null as string | null,
+  heldBooks: 0 as number | null,
   refresh: vi.fn(),
 };
 
@@ -472,5 +473,52 @@ describe('MarketIndexPanel — the produce index draws in its own box (Q24)', ()
     expect(container.querySelectorAll('ul').length).toBe(1);
     expect(screen.queryByRole('heading', { name: /Wholesale produce/ })).toBeNull();
     expect(screen.getByText(/Templeton Rye 4yr/)).toBeTruthy();
+  });
+});
+
+/**
+ * A hand-carried book that nobody has admitted (ADR 0128).
+ *
+ * The case that matters is the LAST one: a jurisdiction that already draws an
+ * admitted edition while a new book waits. A label that appeared only on an
+ * empty panel would hide the waiting book at exactly the moment the panel
+ * looked healthy.
+ */
+describe('MarketIndexPanel — a book waiting for a second pair of eyes', () => {
+  it('says so, in the singular, and says nothing is drawn from it', () => {
+    mockIndex.current = { ...READY, jurisdiction: 'US-MI', heldBooks: 1 };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/A price book brought in by hand is waiting for a second pair of eyes/),
+    ).toBeTruthy();
+    expect(screen.getByText(/until an owner or manager\s+admits it/)).toBeTruthy();
+  });
+
+  it('counts them when there is more than one', () => {
+    mockIndex.current = { ...READY, jurisdiction: 'US-MI', heldBooks: 3 };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/3 price books brought in by hand are waiting/),
+    ).toBeTruthy();
+  });
+
+  it('draws nothing when the gateway could not answer — null is not zero', () => {
+    mockIndex.current = { ...READY, jurisdiction: 'US-MI', heldBooks: null };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/waiting for a second pair of eyes/)).toBeNull();
+  });
+
+  it('still says so while an ADMITTED edition is being drawn', () => {
+    mockIndex.current = {
+      ...READY,
+      jurisdiction: 'US-IA',
+      lines: [line()],
+      heldBooks: 1,
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/Templeton Rye 4yr/)).toBeTruthy();
+    expect(
+      screen.getByText(/waiting for a second pair of eyes/),
+    ).toBeTruthy();
   });
 });

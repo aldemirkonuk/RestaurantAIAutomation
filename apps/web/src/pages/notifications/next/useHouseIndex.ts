@@ -97,6 +97,12 @@ export interface HouseIndexVM {
   sources: HouseIndexSource[];
   /** The endpoint's own sentence for a silent register. Never paraphrased. */
   silence: string | null;
+  /**
+   * Hand-carried price books this jurisdiction is holding, waiting for a second
+   * pair of eyes (ADR 0128). `null` means the gateway could not answer, which
+   * is NOT zero — the panel draws nothing rather than claiming nothing waits.
+   */
+  heldBooks: number | null;
 }
 
 const LOADING: HouseIndexVM = {
@@ -107,6 +113,7 @@ const LOADING: HouseIndexVM = {
   lines: [],
   sources: [],
   silence: null,
+  heldBooks: null,
 };
 
 /** A posted list changes on a monthly-to-weekly cadence; five minutes is ample. */
@@ -194,6 +201,7 @@ export function useHouseIndex(): HouseIndexVM & { refresh: () => void } {
           ? (d.sources as Array<Record<string, unknown>>).map(sourceOf)
           : [],
         silence: str(d.silence),
+        heldBooks: typeof d.heldBooks === 'number' ? d.heldBooks : null,
       });
     } catch (err) {
       if (tenant.current !== forTenant) return;

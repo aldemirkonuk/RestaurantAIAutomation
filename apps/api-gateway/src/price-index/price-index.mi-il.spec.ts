@@ -73,14 +73,56 @@ describe("GET /price-index/:state — Michigan", () => {
   it("names the Commission, the block, and the way round it", async () => {
     const r = await svc.forState("MI");
     expect(r.state).toBe("US-MI");
-    expect(r.sources).toHaveLength(1);
-    expect(r.sources[0].issuer).toBe("Michigan Liquor Control Commission");
-    expect(r.sources[0].withheld).not.toBeNull();
+    // TWO since 2026-09-05 (ADR 0126): the published spirits book and the
+    // FILED beer and wine schedules. This assertion read `toHaveLength(1)` and
+    // was green while the register held only half of what Michigan posts —
+    // the second half being the one three Michigan houses actually buy.
+    expect(r.sources).toHaveLength(2);
+    expect(r.sources.map((s) => s.key).sort()).toEqual([
+      "michigan-lcc-filed-beer-wine-schedules",
+      "michigan-lcc-spirits-price-book",
+    ]);
+    for (const s of r.sources) {
+      expect(s.issuer).toBe("Michigan Liquor Control Commission");
+      expect(s.withheld).not.toBeNull();
+    }
     expect(r.silence).toMatch(/Michigan Liquor Control Commission/);
     expect(r.silence).toMatch(/403/);
     // The half the old sentence lacked: a Michigan house is not stuck.
     expect(r.silence).toMatch(/A manager can download the quarterly book/);
     expect(r.silence).toMatch(/upload it/);
+    // And the half THIS pass added: "upload the book" is true of spirits and
+    // false of wine, so the filed list gets its own clause with its embargo.
+    expect(r.silence).toMatch(/filed with the issuer rather than published/);
+    expect(r.silence).toMatch(/365 days/);
+  });
+
+  it("files the beer and wine schedules as a request, not as a fetch, and does not claim the request was sent", () => {
+    const foia = SOURCES["michigan-lcc-filed-beer-wine-schedules"];
+    expect(foia.intake).toBe("foia");
+    expect(foia.parse).toBeUndefined();
+    expect(foia.withheld).toBeDefined();
+    // Nothing has been filed. A drafted letter reported as a filed request
+    // would be an intention reported as an action.
+    expect(foia.standingRequest?.status).toBe("not_yet_filed");
+    expect(foia.standingRequest?.filedOn).toBeNull();
+    expect(foia.standingRequest?.draft).toContain(
+      "MICHIGAN-FOIA-BEER-WINE-SCHEDULES.md",
+    );
+  });
+
+  it("sets a bound that is the embargo's arithmetic, never a freshness allowance", () => {
+    const foia = SOURCES["michigan-lcc-filed-beer-wine-schedules"];
+    expect(foia.standingRequest?.statutoryEmbargoDays).toBe(365);
+    // A granted request cannot return anything younger than the embargo, so a
+    // bound at or below it would refuse every answer this source can ever give.
+    expect(foia.maxAgeDays).toBeGreaterThan(365);
+    expect(foia.maxAgeDays).toBe(480);
+    // And it must stay far above every OTHER source's bound, so nobody copies
+    // it across as though this register tolerated sixteen-month-old prices.
+    expect(foia.maxAgeDays).toBeGreaterThan(
+      SOURCES["michigan-lcc-spirits-price-book"].maxAgeDays,
+    );
   });
 
   it("carries the corrected quarterly cadence, not the old monthly one", () => {
