@@ -124,6 +124,43 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
 
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
 
+  /**
+   * THE LADDER NEVER CONTRADICTS THE LIST ABOVE IT.
+   *
+   * "Charges —" printed directly beneath a listed "Freight + $45.00" and a
+   * "Deposit + $3.60" (on screen, 2026-09-04) is the document disagreeing with
+   * itself in two adjacent rows. `from-parsed-document` now fills BT-107/BT-108
+   * so a mapped document cannot reach here with a hole; this fallback covers
+   * every OTHER source — a stored revision, a future EDI or signed-XML path —
+   * and marks what it added up so a summed figure is never mistaken for a
+   * printed one.
+   */
+  const fill = (
+    env: FieldEnvelope<number>,
+    isCharge: boolean,
+  ): { envelope: FieldEnvelope<number>; summed: boolean } => {
+    if (env.value != null) return { envelope: env, summed: false }
+    const rows = l1.allowancesCharges.filter((ac) => ac.isCharge.value === isCharge)
+    if (rows.length === 0) return { envelope: env, summed: false }
+    const sum = rows.reduce((a, ac) => a + (ac.amount.value ?? 0), 0)
+    return {
+      envelope: { ...env, value: Math.round(sum * 100) / 100, source: 'computed' },
+      summed: true,
+    }
+  }
+
+  const ladder: {
+    label: string
+    envelope: FieldEnvelope<number>
+    summed: boolean
+  }[] = [
+    { label: 'Lines', envelope: l1.totals.linesNetTotal, summed: false },
+    { label: 'Charges', ...fill(l1.totals.chargesTotal, true) },
+    { label: 'Allowances', ...fill(l1.totals.allowancesTotal, false) },
+    { label: 'Before tax', envelope: l1.totals.taxExclusiveAmount, summed: false },
+    { label: 'Tax', envelope: l1.totals.taxAmount, summed: false },
+  ]
+
   return (
     <article
       className="mudavym cd-sheet"
@@ -189,8 +226,18 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
       >
         <div>
           <span style={KICK}>Seller</span>
+          {/* WITH ITS PROVENANCE. The name can now come from a resolved
+              provider row rather than off the page, and those are different
+              facts: the hover says which, so a name the document never printed
+              never wears the paper's authority (ADR 0104 D1). */}
           <span style={{ fontSize: 11.5, fontWeight: 600 }}>
-            {l1.seller.name.value ?? EM}
+            {l1.seller.name.value ? (
+              <ProvenanceHover label="Seller" envelope={l1.seller.name}>
+                {l1.seller.name.value}
+              </ProvenanceHover>
+            ) : (
+              EM
+            )}
           </span>
           <span style={{ display: 'block', fontFamily: MONO, fontSize: 9.5 }}>
             {l1.seller.vatIdentifier.value ? (
@@ -211,13 +258,24 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
             {l1.buyer.vatIdentifier.value ?? EM}
           </span>
         </div>
-        <Field label="Issued" envelope={l1.issueDate} render={(v) => fmtDate(String(v), juris)} />
+        {/* Dates in the DOCUMENT's convention. `juris` is NULL on most rows,
+            so the currency is the second witness: a TRY invoice is a Turkish
+            document whatever the jurisdiction column says. */}
+        <Field
+          label="Issued"
+          envelope={l1.issueDate}
+          render={(v) => fmtDate(String(v), juris, currency)}
+        />
         <Field
           label="Delivered"
           envelope={l1.actualDeliveryDate}
-          render={(v) => fmtDate(String(v), juris)}
+          render={(v) => fmtDate(String(v), juris, currency)}
         />
-        <Field label="Due" envelope={l1.paymentDueDate} render={(v) => fmtDate(String(v), juris)} />
+        <Field
+          label="Due"
+          envelope={l1.paymentDueDate}
+          render={(v) => fmtDate(String(v), juris, currency)}
+        />
         <Field label="Order reference" envelope={l1.purchaseOrderReference} />
         <Field label="Despatch reference" envelope={l1.despatchAdviceReference} />
         {showsClaimBlock(doc.docType) && (
@@ -239,7 +297,26 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
       {/* ── the four-way line table ───────────────────────────────────── */}
       {!nothingRead && (
       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
-        <caption style={{ ...KICK, textAlign: 'left', paddingBottom: 2 }}>
+        {/*
+          `display: table-caption`, spelled out, because KICK sets
+          `display: block`.
+
+          A caption whose display is `block` stops being a caption: CSS wraps it
+          in an anonymous table cell, it lands in the first column — 22px wide,
+          the `#` column — and the sentence wraps one word per line. That is
+          exactly how it rendered on 2026-09-04. The override has to come AFTER
+          the spread, and it has to be the caption's own display rather than a
+          wrapper, so the row still spans every column at any width.
+        */}
+        <caption
+          data-testid="line-table-caption"
+          style={{
+            ...KICK,
+            display: 'table-caption',
+            textAlign: 'left',
+            paddingBottom: 2,
+          }}
+        >
           {l1.lines.length} {l1.lines.length === 1 ? 'line' : 'lines'} · each
           quantity column comes from a different document
         </caption>
@@ -453,15 +530,10 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
 
           <div>
             <span style={KICK}>Totals</span>
-            {[
-              ['Lines', l1.totals.linesNetTotal],
-              ['Charges', l1.totals.chargesTotal],
-              ['Allowances', l1.totals.allowancesTotal],
-              ['Before tax', l1.totals.taxExclusiveAmount],
-              ['Tax', l1.totals.taxAmount],
-            ].map(([label, env]) => (
+            {ladder.map(({ label, envelope, summed }) => (
               <div
-                key={label as string}
+                key={label}
+                data-testid={`total-${label.toLowerCase().replace(/\s+/g, '-')}`}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -470,14 +542,25 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
                   padding: '1px 0',
                 }}
               >
-                <span>{label as string}</span>
+                <span>
+                  {label}
+                  {/* A number WE added up says so. It is not the paper's, so it
+                      gets no provenance hover claiming the paper printed it. */}
+                  {summed && (
+                    <span style={{ color: 'var(--ink-3, #7C7365)' }}>
+                      {' '}
+                      · summed from the {l1.allowancesCharges.length} above
+                    </span>
+                  )}
+                </span>
                 <span style={{ fontFamily: MONO }}>
-                  <ProvenanceHover
-                    label={label as string}
-                    envelope={env as FieldEnvelope<number>}
-                  >
-                    {fmtMoney((env as FieldEnvelope<number>).value, currency)}
-                  </ProvenanceHover>
+                  {summed ? (
+                    fmtMoney(envelope.value, currency)
+                  ) : (
+                    <ProvenanceHover label={label} envelope={envelope}>
+                      {fmtMoney(envelope.value, currency)}
+                    </ProvenanceHover>
+                  )}
                 </span>
               </div>
             ))}

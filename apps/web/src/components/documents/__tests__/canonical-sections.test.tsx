@@ -47,6 +47,7 @@ const line = (over: Partial<ExtractedLine> = {}): ExtractedLine => ({
   priceBaseQuantity: env(12, { as_printed: 'KS(12)' }),
   priceBaseUnit: env('bottle'),
   netAmount: env(142),
+  lineKind: env('goods'),
   allowancesCharges: [],
   vatCategory: env<string>(null),
   vatRate: env<number>(null),
@@ -422,5 +423,182 @@ describe('DoorFrame (ADR 0104 D11, S10)', () => {
     const items = within(container).getAllByTestId('door-line')
     expect(items).toHaveLength(1)
     expect(container.textContent).not.toMatch(/₺/)
+  })
+})
+
+/**
+ * The first render against real documents (findings 1, 2, 5 and 9 of
+ * `v3.0-TECH-DEBT.md`, 2026-09-04). Every name and number below is SYNTHETIC.
+ */
+describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103 A6)', () => {
+  /** No order line, no despatch line, nobody at the door. */
+  const uncompared = () => {
+    const d = doc()
+    d.layer1.lines = [line(), line(), line(), line()]
+    d.layer3.lines = [0, 1, 2, 3].map((i) =>
+      adjudicated({
+        lineIndex: i,
+        ordered: null,
+        shipped: null,
+        received: 'not_counted',
+        billed: 12,
+        verdict: 'not_adjudicated',
+      }),
+    )
+    return d
+  }
+
+  it('says NOT COMPARED, never "4 lines differ"', () => {
+    const { container } = render(<VerdictBlock doc={uncompared()} />)
+    expect(container.textContent).toMatch(
+      /Not compared — no order or door count to compare against/,
+    )
+    expect(container.textContent).not.toMatch(/lines differ/)
+    expect(container.textContent).not.toMatch(/Nothing on this document differs/)
+  })
+
+  it('labels every line card `not compared`, never NOT ADJUDICATED', () => {
+    const { queryAllByTestId, container } = render(<VerdictBlock doc={uncompared()} />)
+    const cards = queryAllByTestId('not-compared-card')
+    expect(cards).toHaveLength(4)
+    expect(queryAllByTestId('exception-card')).toHaveLength(0)
+    // ADJUDICATED asserts something was judged. Nothing was.
+    expect(container.textContent?.toLowerCase()).not.toMatch(/adjudicated/)
+    expect(cards[0].textContent).toMatch(/not compared/)
+    expect(cards[0].textContent).toMatch(/nothing was compared/i)
+  })
+
+  it('claims no amount, and does not print a zero at risk', () => {
+    const { getByTestId, container } = render(<VerdictBlock doc={uncompared()} />)
+    expect(getByTestId('money-at-risk').textContent).toMatch(/nothing is being claimed/)
+    expect(container.textContent).not.toMatch(/at risk/)
+    expect(getByTestId('not-compared-note').textContent).toMatch(/missing counterpart/)
+  })
+
+  it('still says "1 line differs" the moment ONE line has a comparison source', () => {
+    const d = uncompared()
+    d.layer3.lines[2] = adjudicated({
+      lineIndex: 2,
+      ordered: 12,
+      shipped: 12,
+      received: 10,
+      billed: 12,
+      verdict: 'short_ship',
+      moneyAtRisk: 840,
+    })
+    const { container, queryAllByTestId } = render(<VerdictBlock doc={d} />)
+    expect(container.textContent).toMatch(/1 line differs from the delivery/)
+    expect(queryAllByTestId('exception-card')).toHaveLength(1)
+    // …and the three uncompared lines still say so rather than joining the count.
+    expect(queryAllByTestId('not-compared-card')).toHaveLength(3)
+  })
+
+  it('is still clean when every line WAS compared and none differs', () => {
+    const d = doc()
+    d.layer3.lines = [adjudicated({ received: 12, verdict: 'ok' })]
+    const { container } = render(<VerdictBlock doc={d} />)
+    expect(container.textContent).toMatch(/Nothing on this document differs/)
+  })
+})
+
+describe('CanonicalSheet — the totals ladder (finding 5)', () => {
+  it('never prints "Charges —" beneath a listed charge', () => {
+    const d = doc()
+    d.layer1.allowancesCharges = [
+      {
+        isCharge: env(true),
+        amount: env(45),
+        reasonCode: env('FC'),
+        reason: env('Freight'),
+      },
+      {
+        isCharge: env(true),
+        amount: env(3.6),
+        reasonCode: env('7161'),
+        reason: env('Returnable container / deposit'),
+      },
+    ]
+    // The hole the mapper used to leave behind.
+    d.layer1.totals.chargesTotal = env<number>(null)
+    const { getByTestId } = render(<CanonicalSheet doc={d} />)
+    const charges = getByTestId('total-charges')
+    expect(charges.textContent).not.toMatch(/Charges\s*—/)
+    expect(charges.textContent).toMatch(/48,60/)
+    // And a number WE added up says it is ours, not the paper's.
+    expect(charges.textContent).toMatch(/summed from the 2 above/)
+  })
+
+  it('leaves a genuinely absent charge total as the em dash when nothing is listed', () => {
+    const d = doc()
+    d.layer1.allowancesCharges = []
+    d.layer1.totals.chargesTotal = env<number>(null)
+    const { getByTestId } = render(<CanonicalSheet doc={d} />)
+    expect(getByTestId('total-charges').textContent).toMatch(/—/)
+    expect(getByTestId('total-charges').textContent).not.toMatch(/summed from/)
+  })
+})
+
+describe('CanonicalSheet — layout and locale (finding 9)', () => {
+  it('gives the line-table caption its own full-width row, not the first column', () => {
+    // KICK sets `display: block`, and a caption with display:block stops being
+    // a caption: it becomes an anonymous cell in the 22px `#` column and wraps
+    // one word per line. That is how it rendered on 2026-09-04.
+    const { getByTestId } = render(<CanonicalSheet doc={doc()} />)
+    const caption = getByTestId('line-table-caption')
+    expect(caption.tagName.toLowerCase()).toBe('caption')
+    expect(caption.style.display).toBe('table-caption')
+  })
+
+  it('renders a Turkish document dd.MM.yyyy and a Californian one MMM d, yyyy', () => {
+    const tr = render(<CanonicalSheet doc={doc({ jurisdiction: 'TR' })} />)
+    expect(tr.container.textContent).toMatch(/14\.08\.2026/)
+    expect(tr.container.textContent).not.toMatch(/Aug 14, 2026/)
+
+    const us = doc({ jurisdiction: 'US-CA' })
+    us.layer1.currency = env('USD')
+    const ca = render(<CanonicalSheet doc={us} />)
+    expect(ca.container.textContent).toMatch(/Aug 14, 2026/)
+  })
+
+  it('falls back to the CURRENCY when the jurisdiction column is null', () => {
+    // All three documents read on 2026-09-04 had a null jurisdiction and two
+    // of them were Turkish; every date printed in US format.
+    const d = doc({ jurisdiction: null })
+    const { container } = render(<CanonicalSheet doc={d} />)
+    expect(container.textContent).toMatch(/14\.08\.2026/)
+    expect(container.textContent).not.toMatch(/Aug 14, 2026/)
+  })
+})
+
+describe('CanonicalSheet — the seller (finding 2)', () => {
+  it('says "not named on this document" only when the name really is absent', () => {
+    const named = render(<CanonicalSheet doc={doc()} />)
+    expect(named.container.textContent).not.toMatch(
+      /The seller is not named on this document/,
+    )
+    expect(named.container.textContent).toMatch(/SYNTHETIC Vendor A\.Ş\./)
+
+    const d = doc()
+    d.layer1.seller = { ...party(), name: env<string>(null) }
+    const anonymous = render(<CanonicalSheet doc={d} />)
+    expect(anonymous.container.textContent).toMatch(
+      /The seller is not named on this document/,
+    )
+  })
+
+  it('does not let a name from our own records claim the paper printed it', async () => {
+    const d = doc()
+    d.layer1.seller = {
+      ...party(),
+      name: env('SYNTHETIC Glazers Wine & Spirits', {
+        source: 'human_entered',
+        as_printed: null,
+      }),
+    }
+    render(<CanonicalSheet doc={d} />)
+    await userEvent.click(screen.getByLabelText('Where Seller came from'))
+    expect(screen.getByRole('tooltip').textContent).toMatch(
+      /From your own records in Mudavym · not printed on this document/,
+    )
   })
 })
