@@ -1,11 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { DocType, normalizeUom, Uom } from "../documents/document-types";
-import {
-  applyTieOut,
-  ParsedDocument,
-  ParsedLine,
-} from "../documents/parsed-document";
+import { normalizeUom, Uom } from "../documents/document-types";
+import { ParsedDocument } from "../documents/parsed-document";
+import { parsedFromDocumentRows } from "./from-document-rows";
 import { canonicalFromParsedDocument } from "./from-parsed-document";
 import { CanonicalDocument, ResolvedLine, Source } from "./canonical-types";
 
@@ -95,6 +92,23 @@ interface DocumentRow {
   source_channel: string | null;
   notes: string | null;
   printed?: Record<string, string> | null;
+  /**
+   * The parser's own snapshot at intake.
+   *
+   * READ ONLY FOR FIELDS THAT HAVE NO COLUMN. `procurement_documents` has no
+   * vendor-name, delivered-date or VAT-breakdown column, so the snapshot is the
+   * ONLY place those three exist — and every one of the three documents read on
+   * 2026-09-04 rendered "The seller is not named on this document" while its
+   * own extraction had supplied `vendorName`.
+   *
+   * The class doc's warning still stands for everything else: `editLine`
+   * corrects the LINE rows and does not rewrite this snapshot, so reading a
+   * corrected field from here would silently show the pre-correction value.
+   * The fields below are not correctable through `editLine` — it touches
+   * quantities, prices and units on `procurement_document_lines` — so there is
+   * no correction for the snapshot to be stale about.
+   */
+  extracted?: Record<string, unknown> | null;
 }
 
 interface LineRow {
@@ -133,7 +147,7 @@ const DOCUMENT_COLUMNS_BASE =
   "references_doc_number, currency, subtotal, freight, fuel_surcharge, " +
   "split_case_fee, delivery_fee, deposit_total, tax, other_charges, " +
   "discount_total, total, extraction_confidence, extraction_model, direction, " +
-  "jurisdiction, source_channel, notes";
+  "jurisdiction, source_channel, notes, extracted";
 
 const LINE_COLUMNS_BASE =
   "line_no, vendor_sku, description, vintage, format_ml, qty, uom, pack_size, " +
@@ -158,7 +172,7 @@ const DOCUMENT_COLUMNS =
   "references_doc_number, currency, subtotal, freight, fuel_surcharge, " +
   "split_case_fee, delivery_fee, deposit_total, tax, other_charges, " +
   "discount_total, total, extraction_confidence, extraction_model, direction, " +
-  "jurisdiction, source_channel, notes, printed";
+  "jurisdiction, source_channel, notes, extracted, printed";
 
 const LINE_COLUMNS =
   "line_no, vendor_sku, description, vintage, format_ml, qty, uom, pack_size, " +
@@ -263,6 +277,9 @@ export class CanonicalDocumentService {
     const resolved = await this.resolveLines(restaurantId, lineRows);
     if (!resolved.ok) return resolved;
 
+    const parties = await this.resolveParties(restaurantId, row.provider_id);
+    if (!parties.ok) return parties;
+
     return {
       ok: true,
       ...(notes.length ? { notes } : {}),
@@ -281,8 +298,97 @@ export class CanonicalDocumentService {
             ? row.jurisdiction
             : null,
         providerId: row.provider_id,
+        // BG-4 / BG-7. The provider row wins over the transcription when one
+        // resolved; `parsed.vendorName` (from the `extracted` snapshot) is the
+        // fallback and is genuinely `extracted`, so the mapper keeps its glyphs.
+        ...(parties.value.sellerName
+          ? {
+              seller: {
+                name: parties.value.sellerName,
+                source: "human_entered" as const,
+              },
+            }
+          : {}),
+        ...(parties.value.buyerName
+          ? {
+              buyer: {
+                name: parties.value.buyerName,
+                source: "human_entered" as const,
+              },
+            }
+          : {}),
         resolvedLines: resolved.value,
       }),
+    };
+  }
+
+  /**
+   * BG-4 and BG-7 from OUR OWN RECORDS, not from the page.
+   *
+   * `source` is `human_entered` on both, and that is the honest label: a
+   * provider row and a restaurant row are things a person created in Mudavym.
+   * Calling either `extracted` would put a name the document never printed
+   * behind the paper's authority, which is the masquerade ADR 0104 D1 exists to
+   * prevent — and `learned_from_vendor` is reserved for values recalled from
+   * correction history, which these are not.
+   *
+   * BT-31 / BT-48 (the VAT identifier — a Turkish VKN) are NOT filled here:
+   * `providers` and `restaurants` were both read on 2026-09-05 and NEITHER
+   * carries a tax-id column. There is nothing to read, so the field stays null
+   * and the sheet shows the em dash rather than a blank that reads as zero.
+   *
+   * A FAILED READ IS NOT AN ABSENT NAME. Both reads return `{ok:false}` on
+   * error rather than a null name, because "we could not read the provider" and
+   * "this document names no seller" are different sentences and the second one
+   * sends a bookkeeper looking for a vendor that is on file.
+   */
+  private async resolveParties(
+    restaurantId: string,
+    providerId: string | null,
+  ): Promise<
+    ReadResult<{ sellerName: string | null; buyerName: string | null }>
+  > {
+    let sellerName: string | null = null;
+    if (providerId) {
+      const provider = await this.db
+        .getClient()
+        .from("providers")
+        .select("id, name, company_name")
+        .eq("id", providerId)
+        .maybeSingle();
+      if (provider.error)
+        return {
+          ok: false,
+          error: `providers read failed for ${providerId}: ${provider.error.message}`,
+        };
+      const p = provider.data as {
+        name: string | null;
+        company_name: string | null;
+      } | null;
+      // The trading name a document prints is the company name where one
+      // exists; `name` is our shorthand for the same vendor.
+      sellerName = p?.company_name || p?.name || null;
+    }
+
+    const restaurant = await this.db
+      .getClient()
+      .from("restaurants")
+      .select("id, name")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (restaurant.error)
+      return {
+        ok: false,
+        error: `restaurants read failed for ${restaurantId}: ${restaurant.error.message}`,
+      };
+
+    return {
+      ok: true,
+      value: {
+        sellerName,
+        buyerName:
+          (restaurant.data as { name: string | null } | null)?.name ?? null,
+      },
     };
   }
 
@@ -447,69 +553,23 @@ export class CanonicalDocumentService {
     return channel === "edi" || channel === "sftp" ? "edi" : "extracted";
   }
 
+  /**
+   * The stored rows, as the parser would have produced them.
+   *
+   * ONE MAPPING, SHARED WITH THE CORPUS RUNNER. `parsedFromDocumentRows` is the
+   * same function `canonical/cli.ts` calls, so a document cannot read one way
+   * on the page and another way in `scripts/canonical_corpus_run.py`. Before
+   * they were shared, the runner named `vat_breakdown_present` as failing on a
+   * document whose page rendered the VAT row, and read a `deposit` line as
+   * `goods` — measured 2026-09-05.
+   */
   private toParsedDocument(
     row: DocumentRow,
     lineRows: LineRow[],
   ): ParsedDocument {
-    const lines: ParsedLine[] = lineRows.map((l) => ({
-      lineNo: l.line_no,
-      vendorSku: l.vendor_sku,
-      description: l.description,
-      vintage: l.vintage,
-      formatMl: l.format_ml,
-      qty: n(l.qty) ?? 0,
-      uom: (normalizeUom(l.uom) ?? "bottle") as Uom,
-      packSize: l.pack_size ?? 1,
-      qtyBottles: n(l.qty_bottles) ?? 0,
-      freeGoodsQty: n(l.free_goods_qty) ?? 0,
-      unitPrice: n(l.unit_price),
-      // BT-149 / BT-150, persisted since migration 20260904120000. NULL is
-      // still the common answer and still means "the paper printed no basis" —
-      // `lineNetFromPrice` reads that as "the price is per invoiced unit",
-      // which is the only reading that does not invent a factor of twelve.
-      priceBaseQty: n(l.price_base_qty),
-      // Re-normalised rather than trusted: the column's CHECK allows the seven
-      // singulars, but a row written before that constraint existed could hold
-      // anything, and a unit we cannot read must be null, never guessed.
-      priceBaseUom: normalizeUom(l.price_base_uom),
-      lineTotal: n(l.line_total),
-      allowance: n(l.allowance),
-      deposit: n(l.deposit),
-      // ABSENT means we never kept the literals. It never means the paper was
-      // blank — which is why this is `?? undefined` and not `?? {}`.
-      ...(l.printed ? { printed: l.printed } : {}),
-    }));
-
-    // applyTieOut recomputes computedLinesTotal / tieOutDelta / tiesOut from the
-    // rows as they stand NOW, so a human's line edit is reflected rather than
-    // the stored tie-out columns being trusted blind.
-    return applyTieOut({
-      docType: row.doc_type as DocType,
-      docNumber: row.doc_number,
-      docDate: row.doc_date,
-      referencesDocNumber: row.references_doc_number,
-      poNumber: null,
-      vendorName: null,
-      vendorAccount: null,
-      currency: row.currency ?? "USD",
-      subtotal: n(row.subtotal),
-      freight: n(row.freight),
-      fuelSurcharge: n(row.fuel_surcharge),
-      splitCaseFee: n(row.split_case_fee),
-      deliveryFee: n(row.delivery_fee),
-      depositTotal: n(row.deposit_total),
-      tax: n(row.tax),
-      otherCharges: n(row.other_charges),
-      discountTotal: n(row.discount_total),
-      total: n(row.total),
-      lines,
-      computedLinesTotal: null,
-      tieOutDelta: null,
-      tiesOut: null,
-      confidence: n(row.extraction_confidence) ?? 0,
-      warnings: [],
-      extractionModel: row.extraction_model,
-      ...(row.printed ? { printed: row.printed } : {}),
-    });
+    return parsedFromDocumentRows(
+      row as unknown as Record<string, unknown>,
+      lineRows as unknown as Record<string, unknown>[],
+    );
   }
 }

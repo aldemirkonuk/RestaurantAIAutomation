@@ -1,6 +1,36 @@
 import { comparableUnits, DocType, toBottles, Uom } from "./document-types";
 
 /**
+ * What a line IS, as the paper presents it.
+ *
+ * `goods` is the default and the overwhelming case. The other two exist because
+ * a returnable-container deposit and a delivery fee are frequently printed AS
+ * LINES — the Turkish invoice read on 2026-09-04 prints its ₺180 depozito as
+ * line 4 and again as a subtotal row — and a line that IS the deposit must not
+ * be counted inside BT-106 goods, or every month's beverage-cost percentage is
+ * inflated by refundable money (ADR 0103 D7 `DEPOSIT_OR_FEE`).
+ *
+ * THIS IS NOT `ParsedLine.deposit`. That field is a deposit charged ON a goods
+ * line IN ADDITION to its net — twelve bottles of wine plus ₺5 per bottle of
+ * crate deposit. The two are added in opposite directions and the extractor
+ * prompt states the distinction.
+ */
+export const LINE_KINDS = ["goods", "deposit", "fee"] as const;
+export type LineKind = (typeof LINE_KINDS)[number];
+
+/** One row of BG-23, as the paper prints it, before any canonical mapping. */
+export interface ParsedTaxBreakdownRow {
+  /** BT-119 — the rate as a percentage: 20 for `KDV %20`, 8.625 for `8.625%`. */
+  rate: number | null;
+  /** BT-116 — the amount that rate was applied TO (`matrah`). */
+  taxableBase: number | null;
+  /** BT-117 — the tax that rate produced. */
+  amount: number | null;
+  /** BT-118 — the VAT category code (S, Z, E, AE, K, G, O), when printed. */
+  category?: string | null;
+}
+
+/**
  * ParsedDocument — what every intake channel produces, and the ONLY thing the
  * rest of procurement consumes.
  *
@@ -38,7 +68,23 @@ export interface ParsedLine {
   lineTotal?: number | null;
   /** Post-offs, depletion allowances, bill-backs. A discount, not an error. */
   allowance?: number | null;
+  /**
+   * A deposit charged on THIS line IN ADDITION to its net — the ₺5-per-bottle
+   * crate charge printed beside twelve bottles of wine. It ADDS to the line.
+   *
+   * A line that IS the deposit carries `lineKind: "deposit"` and no `deposit`
+   * amount: the line's own `lineTotal` is the deposit, and adding the figure
+   * twice is exactly the failure the 2026-09-04 corpus run named
+   * (`line_net_amount` expected 360 against a stated 180).
+   */
   deposit?: number | null;
+
+  /**
+   * What the line IS. Absent means the parser did not classify it, which the
+   * mapper reads as `goods` unless the description says otherwise — never as a
+   * confident claim that a CRV row is wine.
+   */
+  lineKind?: LineKind | null;
 
   /**
    * BT-149 — the quantity `unitPrice` is stated FOR, when the document prints
@@ -72,6 +118,17 @@ export interface ParsedDocument {
   /** Vendor's own number — what their AR desk quotes on the phone. */
   docNumber?: string | null;
   docDate?: string | null;
+  /**
+   * BG-13 / BT-72 — the date the goods were actually DELIVERED, when the paper
+   * prints one ("DELIVERED Aug 12, 2026"; `TESLİM TARİHİ`; the date printed
+   * against a referenced irsaliye when that date is presented as the delivery).
+   *
+   * NOT `docDate`. §A11 of the invoice research: a Turkish invoice is issued up
+   * to seven days after the despatch it bills, and every response-window clock
+   * in ADR 0103 A8 runs from delivery, not from issuance. NULL means the paper
+   * printed no delivery date — never "assume the invoice date".
+   */
+  deliveredDate?: string | null;
   /** An 810 cites the 856/850 it bills for; following that chain self-assembles a delivery. */
   referencesDocNumber?: string | null;
   poNumber?: string | null;
@@ -91,6 +148,20 @@ export interface ParsedDocument {
   otherCharges?: number | null;
   discountTotal?: number | null;
   total?: number | null;
+
+  /**
+   * BG-23 — the VAT breakdown, one row per (category, rate), as printed.
+   *
+   * `tax` alone is one number and cannot be checked against anything: BR-CO-14,
+   * BR-S-08 and BR-CO-17 all need a rate and the base it was applied to. A
+   * document that prints ONE tax line with a rate and a base
+   * (`KDV %20 (matrah 9.172,00) 1.834,40`, `Sales tax 8.625% on 2,940.00`)
+   * yields ONE row here — a single row is a breakdown, not an absence.
+   *
+   * ABSENT means the paper printed no rate/base pair. It never means zero VAT,
+   * and the mapper does not fabricate a row that would reproduce the total.
+   */
+  taxBreakdown?: ParsedTaxBreakdownRow[];
 
   lines: ParsedLine[];
 
@@ -242,30 +313,64 @@ export function lineNetFromPrice(l: ParsedLine): PriceBaseResolution {
   return { net: (qtyEquiv / baseEquiv) * l.unitPrice, problem: null };
 }
 
+/** True when this line IS a deposit rather than a line carrying one. */
+export function isDepositLine(l: ParsedLine): boolean {
+  return l.lineKind === "deposit";
+}
+
+/** What one line contributes, before allowances. */
+function lineContribution(
+  l: ParsedLine,
+  index: number,
+  problems: string[],
+): number {
+  if (l.lineTotal != null)
+    return Number.isFinite(l.lineTotal) ? l.lineTotal : 0;
+  const { net, problem } = lineNetFromPrice(l);
+  // Surfaced, never swallowed: a line that could not be resolved contributes
+  // 0, and without this the tie-out would blame the document TOTAL for a
+  // problem that lives in the line.
+  if (problem)
+    problems.push(
+      `Line ${index + 1}: the printed price base could not be applied — ${problem}.`,
+    );
+  const lt = (net ?? 0) - (l.allowance ?? 0);
+  return Number.isFinite(lt) ? lt : 0;
+}
+
 /** Fill in computedLinesTotal / tieOutDelta / tiesOut. */
 export function applyTieOut(doc: ParsedDocument): ParsedDocument {
   const priceBaseProblems: string[] = [];
-  const lineSum = doc.lines.reduce((acc, l, i) => {
-    if (l.lineTotal != null)
-      return acc + (Number.isFinite(l.lineTotal) ? l.lineTotal : 0);
-    const { net, problem } = lineNetFromPrice(l);
-    // Surfaced, never swallowed: a line that could not be resolved contributes
-    // 0, and without this the tie-out would blame the document TOTAL for a
-    // problem that lives in the line.
-    if (problem)
-      priceBaseProblems.push(
-        `Line ${i + 1}: the printed price base could not be applied — ${problem}.`,
-      );
-    const lt = (net ?? 0) - (l.allowance ?? 0);
-    return acc + (Number.isFinite(lt) ? lt : 0);
-  }, 0);
+
+  /**
+   * THE DEPOSIT IS COUNTED EXACTLY ONCE.
+   *
+   * A returnable-container deposit is routinely printed twice — as a line AND
+   * as a `depositTotal` subtotal row (measured on the Turkish invoice read
+   * 2026-09-04, which then reported "off by ₺180"). Counting the line in
+   * `computedLinesTotal` and the subtotal again in `charges` invents ₺180 of
+   * goods that nobody billed. So a `lineKind: "deposit"` line leaves the goods
+   * sum and is carried in the charge term instead, whether or not the document
+   * also printed the subtotal.
+   */
+  const depositLinesTotal = doc.lines.reduce(
+    (acc, l, i) =>
+      isDepositLine(l) ? acc + lineContribution(l, i, priceBaseProblems) : acc,
+    0,
+  );
+
+  const lineSum = doc.lines.reduce(
+    (acc, l, i) =>
+      isDepositLine(l) ? acc : acc + lineContribution(l, i, priceBaseProblems),
+    0,
+  );
 
   const charges =
     (doc.freight ?? 0) +
     (doc.fuelSurcharge ?? 0) +
     (doc.splitCaseFee ?? 0) +
     (doc.deliveryFee ?? 0) +
-    (doc.depositTotal ?? 0) +
+    (doc.depositTotal ?? depositLinesTotal) +
     (doc.tax ?? 0) +
     (doc.otherCharges ?? 0) -
     (doc.discountTotal ?? 0);

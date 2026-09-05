@@ -80,6 +80,13 @@ export function line(opts: {
   /** The literal price basis as the paper prints it, e.g. `142,00 / KS(12)`. */
   printedNetPrice?: string;
   printedNetAmount?: string;
+  /**
+   * What the line IS. `goods` by default AND ON PURPOSE: the fixture that
+   * proves the invariant catches a CRV billed as wine depends on the line NOT
+   * being classified, so a helper that classified from the description would
+   * make that fixture unable to fail.
+   */
+  lineKind?: string;
 }): ExtractedLine {
   return {
     lineId: e(opts.lineId, opts.lineId),
@@ -91,6 +98,7 @@ export function line(opts: {
     priceBaseQuantity: e(opts.priceBaseQuantity ?? null),
     priceBaseUnit: e(opts.priceBaseUnit ?? null),
     netAmount: e(opts.netAmount, opts.printedNetAmount),
+    lineKind: e(opts.lineKind ?? "goods"),
     allowancesCharges: opts.allowancesCharges ?? [],
     vatCategory: e(opts.vatCategory ?? null),
     vatRate: e(opts.vatRate ?? null),
@@ -548,6 +556,66 @@ export const DEPOSIT_AS_GOODS_LINE: CanonicalDocument = doc(
 );
 
 /**
+ * SYNTHETIC 9b — THE SAME PAPER, READ CORRECTLY.
+ *
+ * The pair matters more than either fixture alone. SYNTHETIC 9 is a CRV row
+ * nobody classified, sitting inside BT-106; this is the identical document with
+ * the row classified `deposit`, lifted out of the goods total, and carried as a
+ * BG-21 charge coded 7161. BT-106 is therefore 264.00 (the wine) and not
+ * 265.20, and the ladder still reaches the same 265.20 the paper prints.
+ *
+ * Without the second fixture, "the deposit rule holds" would only ever have
+ * been proven by a document that has no deposit on it.
+ */
+export const DEPOSIT_LINE_CODED_AND_EXCLUDED: CanonicalDocument = doc(
+  "synthetic-deposit-coded",
+  "invoice",
+  header({
+    documentNumber: e("SYN-DEP-13"),
+    currency: e("USD", "USD"),
+    lines: [
+      line({
+        lineId: "1",
+        description: "SYNTHETIC Barolo 2019",
+        quantity: 12,
+        unit: "bottle",
+        netPrice: 22,
+        netAmount: 264,
+        priceBaseQuantity: 1,
+        priceBaseUnit: "bottle",
+      }),
+      line({
+        lineId: "2",
+        description: "CRV deposit 12 × 750ml",
+        quantity: 12,
+        unit: "each",
+        netPrice: 0.1,
+        netAmount: 1.2,
+        priceBaseQuantity: 1,
+        priceBaseUnit: "each",
+        lineKind: "deposit",
+      }),
+    ],
+    allowancesCharges: [
+      charge({
+        amount: 1.2,
+        reason: "Returnable container / deposit",
+        reasonCode: "7161",
+      }),
+    ],
+    totals: {
+      ...blankTotals(),
+      linesNetTotal: e(264, "264.00"),
+      allowancesTotal: e(0),
+      chargesTotal: e(1.2),
+      taxExclusiveAmount: e(265.2, "265.20"),
+      taxInclusiveAmount: e(265.2, "265.20"),
+      amountDue: e(265.2, "265.20"),
+    },
+  }),
+);
+
+/**
  * SYNTHETIC 10 — the `1 ks × 12 şişe` invoice: quantity in CASES, price printed
  * per case-of-twelve as `142,00 / KS(12)`.
  *
@@ -642,5 +710,6 @@ export const ALL_SYNTHETIC_DOCUMENTS: CanonicalDocument[] = [
   FREE_GOODS_BILLED_ANYWAY,
   LINES_DO_NOT_TIE,
   DEPOSIT_AS_GOODS_LINE,
+  DEPOSIT_LINE_CODED_AND_EXCLUDED,
   TR_CASE_PRICED_INVOICE,
 ];

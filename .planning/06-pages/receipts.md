@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-02
+updated: 2026-09-04
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -193,6 +193,8 @@ applies (see dashboard.md §7).
   its money suppression, but with no `receiving_advice` on any delivery every line
   reads "not counted" — which is honest and is also the only door state seen so far.
 
+- **Canonical view, first render against extracted documents (2026-09-04, `v3.0-TECH-DEBT.md` "nine findings"):** the verdict block says "4 lines differ from the delivery" when nothing exists to compare; the seller is blank though the extraction named it; delivered date and VAT breakdown are not in the extraction contract; the totals ladder shows "Charges —" under listed charges; deposits carry no UNCL7161 code; the original pane has nothing to bring (`imageUrl` null on 3 of 3).
+
 ## 10. Maturity
 
 **partial.** The most honestly-built page in this cluster, and the only one whose
@@ -242,6 +244,8 @@ recovered without both an amount and a memo (`documents/credits.controller.ts:16
 | Recovery metrics not built | `v3.0-TECH-DEBT.md:446` |
 | No error state | `listQuery.isError` / `creditsQuery.isError` are never branched (`ReceiptsPage.tsx:210-214`, `:427-429`) — a 500 renders "No documents in this lane" |
 | No way out | The brief's observation confirmed: `useSearchParams` is used for the tab only (`:59-63`); the page has no `navigate`, no `Link`, no route to the order a document bills |
+
+- **2026-09-04:** three synthetic documents rendered in the canonical view behind the gate, with extraction supplied from Claude Code through `POST /procurement/documents/:id/extraction` (the gateway's model key has no credit): price base, as-printed strings, "not counted" and the honest tie-out line held; nine findings filed.
 
 ## 11. Data flow
 

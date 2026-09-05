@@ -320,6 +320,47 @@ jobs:
           echo "::notice::Only the numbers THIS branch introduces are checked. A duplicate between two other branches is deliberately not your problem -- run --audit for the full picture."
           echo "::notice::Exit 2 means CANNOT CHECK: the guard could not see every branch, so any verdict would be a guess. That is a failure, not a skip -- fix the fetch, do not disable the step."
 
+  # A migration version is claimed the same way an ADR number is, and races the
+  # same way. On 2026-09-05 PR #309 and PR #310 each added
+  # supabase/migrations/20260905120000_*.sql, hours apart, both green: every
+  # check here runs against one branch, and each branch's migration set is
+  # internally consistent on its own. Supabase keys migration history on the
+  # VERSION, not the filename or the contents, so the second merge either fails
+  # on auto-apply or is recorded as already applied and silently skipped --
+  # leaving main's schema missing SQL the history says ran.
+  #
+  # The half that no single-branch guard can see is the other OPEN PRs, so this
+  # job needs GH_TOKEN. Without it the guard exits 2 rather than certifying an
+  # unenumerated set as clean: zero open PRs and no collision look identical.
+  migration-versions-unique:
+    name: A migration version names one migration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # origin/main is the other half of "taken elsewhere", and the fallback
+      # path for a PR too large for the files API reads a branch's tree.
+      - name: Fetch every branch the guard compares against
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --quiet
+
+      - name: The guard still fires on the shape it exists to catch
+        run: ./scripts/check_migration_versions_unique.py --self-test
+
+      - name: This branch's migration versions are not claimed elsewhere
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/check_migration_versions_unique.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::COLLISION means two migrations wear one version. Supabase keys history on the version, so the second merge fails or is silently skipped. Rename the file on THIS branch to an unused timestamp (date -u +%Y%m%d%H%M%S) and update anything citing it."
+          echo "::notice::Only the versions THIS branch introduces are checked, against origin/main plus every OTHER open PR."
+          echo "::notice::Exit 2 means CANNOT CHECK: gh could not enumerate the open PRs, so a clean verdict would be a guess. That is a failure, not a skip -- fix GH_TOKEN or the fetch, do not disable the step."
+
   # ADR 0051: a surface shows live data or says it does not know. Analytics did
   # neither. Both cost loaders resolved a unit cost as
   #
@@ -1354,6 +1395,9 @@ jobs:
         # Added 2026-09-02 with the job itself (ADR 0093), per the rule this
         # list exists to enforce.
         scripts-tests,
+        # Added 2026-09-05 with the job itself, per the rule this list exists to
+        # enforce.
+        migration-versions-unique,
       ]
     steps:
       - name: Checkout code
