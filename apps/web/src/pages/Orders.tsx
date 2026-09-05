@@ -186,13 +186,11 @@ export function Orders() {
     setOrderSearch,
     toggleStatusFilter,
     viewMode,
-    selectedOrder,
     groupBy,
     expandedGroups,
     showRecurringSection,
     recurringGroupBy,
     setViewMode,
-    setSelectedOrder,
     setGroupBy,
     setExpandedGroups,
     setShowRecurringSection,
@@ -239,7 +237,6 @@ export function Orders() {
 
   // Use API orders hook for real-time updates (hook handles loading via loadOrders)
   const { refetch: refetchOrders } = useOrders()
-  const [showApprovalModal, setShowApprovalModal] = useState(false)
   const [showOrderApprovalModal, setShowOrderApprovalModal] = useState(false)
   /**
    * The order a confirm handed to the seal.
@@ -1260,8 +1257,8 @@ Shadow stock has been moved to Live Stock.`)
    * WHAT THIS REPLACED, AND WHY IT MATTERED
    * ==========================================================================
    * `handleBulkApprove` used to be the ONLY reachable approve control on this
-   * page (measured 2026-09-04: nothing in the repo sets `showApprovalModal` or
-   * `showOrderApprovalModal` to true, and the two "Approve" buttons on the
+   * page (measured 2026-09-04: neither of the two approval modals could be
+   * opened from anywhere in the repo, and the two "Approve" buttons on the
    * rows open the comms drawer). It called no endpoint at all: it rewrote
    * local state to `approved`, cleared the selection and alerted "N order(s)
    * approved!". Nothing was sent, nothing was written, and the page reported
@@ -3615,94 +3612,6 @@ Shadow stock has been moved to Live Stock.`)
         isApproving={approveDraftMutation.isPending}
         isDiscarding={discardDraftMutation.isPending}
       />
-
-      {/* Legacy Approval Modal - For orders from list */}
-      <AnimatePresence>
-        {showApprovalModal && selectedOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowApprovalModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
-            >
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Approve Order</h3>
-              <p className="text-gray-600 mb-6">
-                Confirm order for {selectedOrder.quantity} bottles of {selectedOrder.wine_name}
-              </p>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="final-price">
-                  Final Price per Bottle
-                </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="number"
-                    step="0.01"
-                    disabled
-                    defaultValue={selectedOrder.suggested_price}
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-                    id="final-price"
-                  />
-                </div>
-                {/*
-                  Disabled rather than removed. The approve route takes no body
-                  at all — `procurement.controller.ts` `approveOrder` reads the
-                  id and the `X-Seal-Challenge` header and nothing else — so
-                  every figure typed here since this modal was written went
-                  nowhere. A field that looks live and is read by nothing is
-                  the same lie as a number with no source behind it.
-                */}
-                <p className="mt-2 text-xs text-gray-600">
-                  This figure is not sent: approval writes no price. The seal is taken over
-                  the order&rsquo;s own total, so change the price on the order first if it is
-                  wrong.
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                {/*
-                  The house ceremony, on the legacy ground: the hold mints the
-                  seal, the write carries it, and a mint that fails approves
-                  nothing and says so on the control itself.
-                */}
-                <div className="flex-1">
-                  <SealedApproveDie
-                    orderIds={isUuid(selectedOrder.order_id) ? [selectedOrder.order_id] : []}
-                    label="Hold to approve this order"
-                    onApproved={(ids) => {
-                      afterOrdersSealed(ids)
-                      setShowApprovalModal(false)
-                      setSelectedOrder(null)
-                    }}
-                  />
-                  {!isUuid(selectedOrder.order_id) && (
-                    <p className="mt-1 text-xs text-gray-600" role="status">
-                      This order has no server id yet, so there is nothing to seal and nothing
-                      was sent.
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowApprovalModal(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/*
         THE SEAL, HANDED OVER FROM A CLICK.

@@ -98,9 +98,19 @@ describe('the keyboard shortcut', () => {
   });
 });
 
-describe('the price field that was read by nothing', () => {
-  it('is disabled and says the approval writes no price', () => {
-    expect(orders).toMatch(/This figure is not sent: approval writes no price\./);
+describe('the unreachable legacy approval modal is gone', () => {
+  /**
+   * Deleted 2026-09-05 (p4af). It had been unreachable since `7012cc7a`
+   * (2026-05-15) removed its last `setShowApprovalModal(true)`, and every act
+   * it offered exists on the rebuilt page: the approval is
+   * `pages/orders/next/LedgerRow.tsx` (HoldToApprove), and its "Final Price
+   * per Bottle" field was read by nothing at all — the gateway's approve route
+   * takes no body.
+   */
+  it('holds no open flag, no render and no dead price field', () => {
+    expect(orders).not.toMatch(/showApprovalModal/);
+    expect(orders).not.toMatch(/Final Price per Bottle/);
+    expect(orders).not.toMatch(/This figure is not sent: approval writes no price\./);
   });
 });
 

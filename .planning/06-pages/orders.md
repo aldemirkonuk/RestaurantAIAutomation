@@ -476,6 +476,32 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
     unit. *Blocker: none technically; it is out of the Mudavym wave's scope by
     instruction.*
 
+13. **The two legacy approval modals: purpose, what recreated them, what was deleted
+    / what remains.** Both were unreachable — nothing in the repo set their open flag.
+    *The inline "Approve Order" modal* (`showApprovalModal`) let a person confirm one
+    order from the list and type a "Final Price per Bottle"; its last setter was removed
+    in `7012cc7a` (2026-05-15), which re-pointed that click at the draft panel. Every act
+    it offered exists on the rebuilt page — the approval is
+    `pages/orders/next/LedgerRow.tsx:282` (`HoldToApprove`), and the price field wrote
+    nothing at all (`approveOrder` reads the id and `X-Seal-Challenge` only). **Deleted
+    2026-09-05** (render, `showApprovalModal` state, the `selectedOrder`/`setSelectedOrder`
+    destructure it alone used, and its test case, replaced by an absence assertion in
+    `pages/__tests__/OrdersLegacySeal.test.ts`).
+    *`OrderApprovalModal`* (`showOrderApprovalModal`,
+    `components/orders/OrderApprovalModal.tsx`) showed one vendor response — wine, vendor,
+    quantity, agreed price, delivery estimate, the AI negotiation summary — and offered
+    Confirm / Cancel / Edit order / Ask for more, plus Next-Previous across several
+    vendors' responses to the same order. Its last setter went in `6778690b` (2026-07-05),
+    which re-pointed the row "Approve" button at the comms drawer. **It REMAINS**, sealed
+    and unreachable, because three of its acts are not on the rebuilt page: cancelling or
+    rejecting an order (a real `DELETE /procurement/orders/:id`; on the legacy page it
+    survives as "Reject", `Orders.tsx:567`), stepping through several vendors' responses
+    to one order, and reading the AI negotiation summary (the rebuilt `DraftRail` shows
+    the raw thread, not the rolling summary). Its Edit-order and Ask-for-more buttons
+    wrote nothing (an `alert` and a `setTimeout` that fabricated a follow-up), so they are
+    not acts to recreate. *Rework candidates for the founder: reject-an-order on the
+    rebuilt page; the several-responses-per-order comparison; the negotiation summary.*
+
 ### An agreed price has no unit — research 2026-09-04, phase 1 BUILT 2026-09-04 (ADR 0119)
 
 The founder asked for the full graph behind ADR 0117's Q6 (*"a case-priced agreement has

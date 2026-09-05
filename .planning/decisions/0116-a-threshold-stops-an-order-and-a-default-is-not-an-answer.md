@@ -447,6 +447,17 @@ believed when written and is corrected here rather than quietly fixed:
    saying the approval writes no price and that the seal is taken over the
    order's own total.
 
+**Status of the two sealed modals, 2026-09-05.** The founder's rule was: if the rebuilt
+page recreated everything a dead modal offered, delete it. The inline "Approve Order"
+modal is **deleted** — its only real act, approving one order, is
+`pages/orders/next/LedgerRow.tsx:282`. `OrderApprovalModal` **remains sealed and
+unreachable**: rejecting an order, comparing several vendors' responses to one order, and
+reading the AI negotiation summary are not on the rebuilt page, so deleting it would
+delete acts, not dead code. Point 3's "the field is now disabled" no longer describes
+anything in the tree: that input lived only in the deleted modal (`OrderApprovalModal`
+displays the agreed price and never had an input), so the `finalPrice` it named now has
+nowhere left to be typed at all. See [[orders]] §13.13.
+
 **The ground.** The legacy page renders outside the Mudavym shell, and a grep
 ("zero `dark:` classes in `Orders.tsx`") suggested it was permanently light, so
 the control's own light fallbacks would always be right. Measured in the
