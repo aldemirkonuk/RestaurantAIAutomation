@@ -180,7 +180,7 @@ Check counts per hour follow Google's **measured** Saturday busyness curve for t
 | bottles on hand | 245 → 234; 27 of 27 lots `unit_cost NULL / 'estimated'` |
 
 **The inventory answer, measured:** `restaurant_inventory.master_wine_id` is **`NOT NULL`**
-(`20260805000000_baseline_from_production.sql:3175`), so everything stocked must be a wine.
+(`20260805000000_baseline_from_production.sql:3262`), so everything stocked must be a wine.
 Of this venue's 284 published rows, **247 have no home at all** — 46 cocktails, 78 spirit rows,
 6 beers, 48 non-alcoholic and 69 food. A further 10 of the 37 wine *menu rows* have no
 independent representation, because glass, 500 ml carafe and bottle collapse into one identity.
