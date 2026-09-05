@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { RecipientResolverService } from "../../communications/recipient-resolver.service";
+import { GmailService } from "../../communications/gmail.service";
 import { UxOptimizerService } from "../../ux-optimizer/ux-optimizer.service";
 import type { AdminExperimentReport } from "../../ux-optimizer/ux-optimizer.service";
 import { EXPERIMENTS } from "../../ux-optimizer/experiments";
@@ -65,6 +66,37 @@ import { dayIn } from "./producer-copy";
  * mode — the window becomes real on a clock rather than on a page view.
  * Deriving is not deciding: nothing here or there picks an arm.
  *
+ * AND SINCE 2026-09-05 (batch 55) IT ALSO EMAILS THE NOTICE
+ * ----------------------------------------------------------
+ * The first build wrote an inbox row and no more, and this file recommended
+ * keeping it that way. The founder decided otherwise: **"Inbox row and an
+ * email."** So the notice now goes out through the existing `GmailService` as
+ * well, under four rules that are the whole of the design:
+ *
+ *   1. **The row is the record; the mail is a copy of it.** The send happens
+ *      AFTER `emit` and only when `emit` actually wrote — never before, never
+ *      instead. If the row does not land there is nothing to copy, and a mail
+ *      that went out about a notice nobody can find would be the worst of both.
+ *   2. **One copy per ending, ever.** `emit` alone cannot carry that: quiet
+ *      hours defer a member, so a later sweep legitimately writes a second row
+ *      and `emit` says "written" again. The mail is therefore gated on
+ *      `ledger.hasClaimFor` — has this ending EVER been claimed here — read
+ *      before `emit`. Together with the claim index that is atomic: two
+ *      instances on one tick both read false, only one wins the claims, only
+ *      that one sees "written", only that one sends.
+ *   3. **The outcome is written back onto the row, in words.** Sent, refused
+ *      with the sender's own reason, or not attempted with the reason. Never a
+ *      silent skip — a row that says nothing about its copy is exactly the
+ *      absence-reported-as-health shape this directory is full of guards
+ *      against.
+ *   4. **The address still never touches the row.** It goes to the log. The
+ *      metadata carries a count, a state and a sentence.
+ *
+ * It is all still behind `NOTIFICATION_PRODUCERS_ENABLED`, because the only way
+ * into this method is `sweepFast`, which returns before anything when the flag
+ * is unset. An email is the loudest thing this repository can do to a person
+ * and it does not get a second, quieter switch.
+ *
  * IT NEVER NAMES A WINNER, AND IT NEVER IMPLIES ONE
  * -------------------------------------------------
  * The message prints both arms' integers, in the order the spec declares them,
@@ -96,6 +128,9 @@ export class ExperimentEndedProducer {
     private readonly ledger: ProducerLedgerService,
     private readonly configService: ConfigService,
     private readonly recipients: RecipientResolverService,
+    // The house's existing sender. Not a new channel and not a new credential —
+    // the same service every other outbound mail in this gateway goes through.
+    private readonly gmail: GmailService,
   ) {}
 
   /** The house this producer reports into, or null when nobody named one. */
@@ -180,8 +215,37 @@ export class ExperimentEndedProducer {
       ended += 1;
       const address = await this.founderAddress(founderHouseId);
       const endsAt = report.endsAt ? new Date(report.endsAt) : now;
+      const dedupeKey = `experiment:${key}:ended_unnamed`;
+      const groupKey = `${PRODUCER}:${dedupeKey}`;
 
-      await this.ledger.emit(
+      // READ BEFORE THE WRITE, on purpose. `emit` answers "did I win a claim on
+      // THIS sweep", which says "written" a second time when a member deferred
+      // by quiet hours is finally served. That is right for the row and wrong
+      // for the mail, which is one copy of one ending.
+      //
+      // A FAILED READ COUNTS AS ANNOUNCED. The row still goes out; only the
+      // copy waits. The other way round — treating an unreadable ledger as
+      // "never announced" — would send a fresh email on every sweep for as long
+      // as the failure lasted, which is the one failure mode a person cannot
+      // undo by ignoring it.
+      let announcedBefore: boolean;
+      let readFailure: string | null = null;
+      try {
+        announcedBefore = await this.ledger.hasClaimFor(
+          founderHouseId,
+          PRODUCER,
+          dedupeKey,
+        );
+      } catch (e: any) {
+        announcedBefore = true;
+        readFailure = e?.message ?? "unknown error";
+        this.logger.warn(
+          `EXPERIMENT_MAIL_GUARD_UNREADABLE experiment=${key} — ${readFailure}. ` +
+            "The notice is still written; the emailed copy is held rather than risked twice.",
+        );
+      }
+
+      const outcome = await this.ledger.emit(
         { restaurantId: founderHouseId, producer: PRODUCER, audience, tally, now },
         {
           // DEDUPED ON THE EXPERIMENT KEY, so it fires once and not once per
@@ -196,7 +260,7 @@ export class ExperimentEndedProducer {
           // point of the frozen row is that it cannot be. A key with the counts
           // in it would fire again on every new figure, which is a running
           // tally and not an ending.
-          dedupeKey: `experiment:${key}:ended_unnamed`,
+          dedupeKey,
           // The moment the window CLOSED, not the moment this sweep noticed.
           // The inbox row's own created_at is the delivery time; every producer
           // here carries the real instant so the two are never confused.
@@ -234,6 +298,15 @@ export class ExperimentEndedProducer {
               // whether the founder is reachable at all.
               founderAddressCount: address.count,
               founderAddressSource: address.source,
+              // Written at insert time and OVERWRITTEN by `annotate` once the
+              // send has been attempted. If a person ever reads this value on a
+              // row, the attempt did not complete — the row says that rather
+              // than implying a copy went out. There is no state in which this
+              // key is absent, which is the point: a row silent about its copy
+              // is the absence-as-health shape wearing a stamp.
+              endNoticeMailState: "pending",
+              endNoticeMail:
+                "The emailed copy has not been attempted yet on this row.",
               // Stated in the payload so no reader has to infer them.
               houseIdentitiesWithheld: report.houseIdentitiesWithheld,
               abandonedIsAFloor: report.abandonedIsAFloor,
@@ -242,6 +315,29 @@ export class ExperimentEndedProducer {
           },
         },
       );
+
+      // THE MAIL IS A COPY OF THE ROW, SO IT GOES SECOND AND ONLY IF THE ROW
+      // WENT. `emit` returns "written" only when it actually inserted; on
+      // "already_claimed", "no_audience" or "failed" there is nothing to copy
+      // and nothing is sent. This ordering is the rule the founder's sentence
+      // turns on and it is pinned by a mutation case.
+      if (outcome !== "written") continue;
+
+      const send = announcedBefore
+        ? {
+            state: "not_attempted" as const,
+            words: readFailure
+              ? `No copy was emailed from this sweep: the claim ledger could not be read (${readFailure}), so whether the copy had already gone out was unknown and it was held rather than risked twice.`
+              : "No copy was emailed from this sweep: the email for this ending had already been sent with the first notice. This row is a later copy for a reader who was inside their quiet hours.",
+          }
+        : await this.sendCopy(report, address, timeZone);
+
+      // NEVER A SILENT SKIP. Every one of the four states is written back onto
+      // the row in words, including the two that did not send.
+      await this.ledger.annotate(founderHouseId, groupKey, {
+        endNoticeMailState: send.state,
+        endNoticeMail: send.words,
+      });
     }
 
     if (ended === 0 && tally.withheldReason === null && tally.failed === 0) {
@@ -256,6 +352,86 @@ export class ExperimentEndedProducer {
     }
 
     return tally;
+  }
+
+  /**
+   * Send the copy, and come back with what happened in words.
+   *
+   * NEVER THROWS, and never reports a hopeful default. `GmailService.sendEmail`
+   * resolves `{ success, error }` rather than throwing (it catches internally
+   * and falls back to SMTP), so the failure path here is a false `success` and
+   * not an exception — the try/catch is a second belt for the case where the
+   * sender itself breaks before it can answer.
+   *
+   * ON "NO GRANT TO SEND FROM". The sender does not expose its readiness:
+   * `ensureGmailReady` is private and the only signal a caller gets is a failed
+   * result whose `error` names the missing credential in the sender's own
+   * words ("Fix GMAIL_REFRESH_TOKEN ... or set a valid GMAIL_APP_PASSWORD").
+   * Measured, not guessed — so a missing grant lands in `refused` carrying that
+   * sentence verbatim, rather than being classified by sniffing the string for
+   * keywords. The row therefore always says WHY, and never says less than the
+   * sender knew.
+   */
+  private async sendCopy(
+    report: AdminExperimentReport,
+    address: { count: number; source: string; emails: string[] },
+    timeZone: string,
+  ): Promise<{ state: "sent" | "refused" | "not_attempted"; words: string }> {
+    if (address.emails.length === 0) {
+      return {
+        state: "not_attempted",
+        words:
+          "No copy was emailed: no address resolves for the founder on this deployment, so there was nowhere to send it. The notice above is the whole record.",
+      };
+    }
+
+    const subject = `The ${report.experimentKey} experiment has ended with no winner named`;
+    const body = this.sentence(report, timeZone, address);
+
+    try {
+      const result = await this.gmail.sendEmail({
+        to: address.emails,
+        subject,
+        // Plain text in both parts. The same rule the inbox row lives under
+        // (`notification-text-is-plain.spec.ts`): no emoji, no markup carrying
+        // a mood, nothing a restyle cannot reach.
+        html: escapeHtml(body),
+        text: body,
+      });
+
+      if (result.success) {
+        this.logger.log(
+          `EXPERIMENT_ENDED_MAIL_SENT experiment=${report.experimentKey} ` +
+            `to=${address.emails.join(",")} messageId=${result.messageId ?? "none"}`,
+        );
+        return {
+          state: "sent",
+          words: `A copy was emailed to the address on file${
+            result.messageId ? ` (message ${result.messageId})` : ""
+          }. The address itself is in the gateway log, not on this row.`,
+        };
+      }
+
+      this.logger.warn(
+        `EXPERIMENT_ENDED_MAIL_REFUSED experiment=${report.experimentKey} — ${result.error ?? "no reason given"}`,
+      );
+      return {
+        state: "refused",
+        words: `The emailed copy was refused: ${
+          result.error ?? "the sender gave no reason"
+        }. The notice above stands and is unaffected; nothing was retried.`,
+      };
+    } catch (e: any) {
+      this.logger.warn(
+        `EXPERIMENT_ENDED_MAIL_REFUSED experiment=${report.experimentKey} — ${e?.message}`,
+      );
+      return {
+        state: "refused",
+        words: `The emailed copy was refused: ${
+          e?.message ?? "the sender failed before it could answer"
+        }. The notice above stands and is unaffected; nothing was retried.`,
+      };
+    }
   }
 
   /**
@@ -280,7 +456,7 @@ export class ExperimentEndedProducer {
    */
   private async founderAddress(
     founderHouseId: string,
-  ): Promise<{ count: number; source: string }> {
+  ): Promise<{ count: number; source: string; emails: string[] }> {
     const source =
       "RecipientResolverService manager query on DEFAULT_RESTAURANT_ID, with the global " +
       "MANAGER_EMAIL fallback allowed. Which of the two answered is not distinguishable " +
@@ -297,7 +473,9 @@ export class ExperimentEndedProducer {
           (count > 0 ? ` to=${resolved.emails.join(",")}` : "") +
           " — resolved for the record only; this producer writes an inbox row and sends no mail.",
       );
-      return { count, source };
+      // `emails` is handed to the SENDER and to nothing else. The two callers
+      // that touch the row (`sentence` and the metadata) read `count`.
+      return { count, source, emails: resolved.emails };
     } catch (e: any) {
       this.logger.warn(
         `EXPERIMENT_ENDED_RECIPIENT_UNRESOLVED house=${founderHouseId} — ${e?.message}. ` +
@@ -305,6 +483,7 @@ export class ExperimentEndedProducer {
       );
       return {
         count: 0,
+        emails: [],
         source: `${source} This lookup FAILED (${e?.message ?? "unknown error"}), so no address is known.`,
       };
     }
@@ -319,7 +498,7 @@ export class ExperimentEndedProducer {
   private sentence(
     report: AdminExperimentReport,
     timeZone: string,
-    address: { count: number; source: string },
+    address: { count: number; source: string; emails?: string[] },
   ): string {
     const parts: string[] = [];
 
@@ -368,3 +547,20 @@ export class ExperimentEndedProducer {
     return parts.join(" ");
   }
 }
+
+/**
+ * The five characters that would otherwise let a figure or a founder's own
+ * words change the shape of the HTML part. The body is plain prose assembled in
+ * this file, so this is belt rather than braces — but `founderWords` is a
+ * person's free text and the arms come from the database, and neither should
+ * ever be one `<` away from mattering.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+

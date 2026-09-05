@@ -36,6 +36,7 @@ export class FakeDb {
     notification_preferences: [],
     notification_producer_claims: [],
     notification_producer_runs: [],
+    notifications: [],
     pos_checks: [],
     procurement_documents: [],
     procurement_order_items: [],
@@ -335,17 +336,43 @@ export function fakeDatabase(db: FakeDb, members: string[]) {
 export function fakeNotifications(
   members: string[],
   insertedOverride?: () => number | null,
+  /**
+   * Optional store. When given, the double also LANDS the rows in
+   * `db.tables.notifications` with the `group_key` the funnel stamps.
+   *
+   * Added 2026-09-05 for the experiment-ended producer, which writes back onto
+   * its own row after the fact (whether the emailed copy went out). Without
+   * real rows that write-back would find nothing and pass by doing nothing —
+   * a test measuring the double instead of the code, which is the exact trap
+   * this file's header is about. Optional so the eight specs that predate it
+   * are untouched.
+   */
+  db?: FakeDb,
 ) {
   return {
     persistForRestaurant: recorder(
-      async (_r: string, _p: any, opts: any) => {
+      async (restaurantId: string, payload: any, opts: any) => {
         const targets: string[] = opts?.onlyUserIds ?? members;
         const forced = insertedOverride?.();
         const inserted = forced === null || forced === undefined ? targets.length : forced;
-        return {
-          inserted,
-          ids: inserted ? targets.map((u) => `notif-${u}`) : [],
-        };
+        const ids = inserted ? targets.map((u) => `notif-${u}`) : [];
+        if (db && inserted) {
+          const rows =
+            db.tables.notifications ?? (db.tables.notifications = []);
+          for (let i = 0; i < ids.length; i += 1) {
+            rows.push({
+              id: ids[i],
+              restaurant_id: restaurantId,
+              user_id: targets[i],
+              type: payload?.type ?? null,
+              title: payload?.title ?? null,
+              message: payload?.message ?? null,
+              group_key: payload?.groupKey ?? null,
+              metadata: payload?.metadata ?? {},
+            });
+          }
+        }
+        return { inserted, ids };
       },
     ),
   };

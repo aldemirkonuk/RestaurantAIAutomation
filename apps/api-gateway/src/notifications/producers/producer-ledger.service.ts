@@ -518,6 +518,96 @@ export class ProducerLedgerService {
   }
 
   /**
+   * Has this producer EVER claimed this dedupe key in this house?
+   *
+   * Added 2026-09-05 for the experiment-ended producer's mail copy, and narrow
+   * on purpose. `emit` answers "did I win a claim on THIS sweep", which is not
+   * the same question: quiet hours defer a member, so a second sweep wins a
+   * second claim for the same event and `emit` says "written" again. That is
+   * correct for an inbox row — the sleeping member must still be served — and
+   * wrong for an email, which is one copy of one ending.
+   *
+   * Together with the UNIQUE index this is atomic, and that is worth spelling
+   * out because a read used as a guard usually is not. Two instances on the
+   * same tick both read `false` here and both call `emit`; the index lets only
+   * ONE of them win the claims, so only that one sees `"written"` and only that
+   * one sends. The read suppresses LATER sweeps; the index settles the tie
+   * within one.
+   *
+   * Throws rather than answering `false`: a failed read reported as "never
+   * claimed" would send the copy again on every sweep for as long as the
+   * failure lasted.
+   */
+  async hasClaimFor(
+    restaurantId: string,
+    producer: string,
+    dedupeKey: string,
+  ): Promise<boolean> {
+    const client = this.databaseService.getClient();
+    const { data, error } = await client
+      .from("notification_producer_claims")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("producer", producer)
+      .eq("dedupe_key", dedupeKey)
+      .limit(1);
+    if (error) {
+      throw new Error(
+        `could not read notification_producer_claims: ${error.message}`,
+      );
+    }
+    return (data ?? []).length > 0;
+  }
+
+  /**
+   * Write one fact onto the notification rows a producer has already written,
+   * addressed by the group key `emit` stamped on them.
+   *
+   * The ONE thing this is for: an outcome that is not knowable at insert time.
+   * The experiment-ended producer's mail is sent AFTER its row lands — the row
+   * is the record and the mail is a copy of it — so whether the copy went out
+   * cannot be part of the insert. It is merged into `metadata` rather than
+   * replacing it, and a failure is logged and returned rather than thrown: the
+   * row is already correct without this, and losing the sweep over an
+   * annotation would be the tail wagging the dog.
+   */
+  async annotate(
+    restaurantId: string,
+    groupKey: string,
+    patch: Record<string, unknown>,
+  ): Promise<boolean> {
+    const client = this.databaseService.getClient();
+    const { data, error } = await client
+      .from("notifications")
+      .select("id, metadata")
+      .eq("restaurant_id", restaurantId)
+      .eq("group_key", groupKey);
+    if (error) {
+      this.logger.warn(
+        `PRODUCER_ANNOTATE_UNREADABLE restaurant=${restaurantId} group=${groupKey} — ` +
+          `${error.message}. The notification stands; its metadata keeps what it was written with.`,
+      );
+      return false;
+    }
+    let ok = true;
+    for (const row of (data ?? []) as any[]) {
+      const merged = { ...(row?.metadata ?? {}), ...patch };
+      const { error: writeError } = await client
+        .from("notifications")
+        .update({ metadata: merged })
+        .eq("id", row.id);
+      if (writeError) {
+        ok = false;
+        this.logger.warn(
+          `PRODUCER_ANNOTATE_FAILED restaurant=${restaurantId} notification=${row.id} — ` +
+            `${writeError.message}.`,
+        );
+      }
+    }
+    return ok;
+  }
+
+  /**
    * The most recent run row for one producer in one house, or `null` when there
    * has never been one. `null` is a real answer and the page must say it —
    * "this producer has never run for this restaurant" — rather than drawing a

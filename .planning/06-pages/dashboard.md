@@ -764,9 +764,22 @@ the two or three actions worth doing before service, each of which actually happ
    `/admin/health`, which is `requiredRole="owner"` and would mean forwarding the
    admin key into a page every house's owner can open; and doing nothing. **Off
    until armed:** `NOTIFICATION_PRODUCERS_ENABLED` is unset on this deployment, so
-   it writes nothing yet. **It sends no mail** — no producer does; the notice says so
-   in words. Still open, filed as a fork in ADR 0127's second addendum: whether to
-   email it as well. The READ staying a `curl` is deliberate and unchanged.
+   it writes nothing yet. The READ staying a `curl` is deliberate and unchanged.
+   **And since batch 55 the notice is also EMAILED** (founder, 2026-09-05, against
+   the recommendation to keep it an inbox row: *"Inbox row and an email"*). One call
+   to the existing `GmailService`, **after** the row and only if the row landed —
+   the row is the record, the mail is a copy of it. **One copy per ending, ever:**
+   `emit` alone cannot carry that, because quiet hours defer a member and a later
+   sweep legitimately writes a second row, so the mail is gated on a new
+   `ledger.hasClaimFor` read taken before `emit`; with the UNIQUE claim index that
+   is atomic (both instances read false, only one wins the claims, only that one
+   sends). An unreadable ledger **holds the copy** rather than risking two. The
+   outcome is written back onto the row in words — **sent** (with the message id),
+   **refused** (the sender's own reason verbatim, which is where a missing Gmail
+   grant surfaces), or **not_attempted** (no address, or already sent with the first
+   notice) — and never a silent skip: the insert-time `"pending"` must not survive a
+   sweep. The address still never touches the row. All of it stays behind the one
+   switch.
 24. **`ux_experiment_state` cannot be applied to production from here, and the
    both-arms report is therefore unproven against real data.** Same standing
    blocker as item 11 and as ADR 0127's own: the local gateway points at production,

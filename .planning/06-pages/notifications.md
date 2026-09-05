@@ -250,7 +250,16 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   false. **It needs no new register row**: it writes `type: "system_alert"`, which
   `KIND_BY_TYPE` already maps to *System* and `nt-format.test.ts` already pins —
   checked rather than assumed, precisely because the seventh producer's rows fell
-  to *Other* until somebody noticed. It sends no mail; the message says so.
+  to *Other* until somebody noticed. **It is also the only producer that SENDS
+  MAIL** (founder, batch 55: *"Inbox row and an email"*): one call to the
+  existing `GmailService`, **after** the inbox row and only if the row landed,
+  gated on a new `ProducerLedgerService.hasClaimFor` read so a deferred member's
+  later row does not trigger a second copy — the claim index settles the
+  same-tick tie, the read suppresses later sweeps, and an unreadable ledger holds
+  the copy rather than risking two. The send outcome is written back onto the row
+  in words by a new `ledger.annotate` (`sent` / `refused` with the sender's own
+  reason / `not_attempted` with its reason), never a silent skip. The address
+  goes to the sender and the log, never the row. Still behind the one switch.
 - **The filter offers no control that can only return nothing.** Every entry in
   `TYPE_CHOICES` was checked against a real write site on 2026-09-03 and each is
   cited in `nt-book.ts`. `ai_suggestion` is deliberately absent: it is a member

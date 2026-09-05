@@ -83,11 +83,30 @@ function report(over: Record<string, any> = {}) {
 
 function build(
   reportOrThrow: any = report(),
-  opts: { emails?: string[]; resolveThrows?: string; house?: string | null } = {},
+  opts: {
+    emails?: string[];
+    resolveThrows?: string;
+    house?: string | null;
+    /** Make the sender refuse, the way GmailService does: a false `success`. */
+    sendRefusal?: string;
+    /** Make the sender break before it can answer. */
+    sendThrows?: string;
+  } = {},
 ) {
   const db = new FakeDb();
   const database = fakeDatabase(db, MEMBERS);
-  const notifications = fakeNotifications(MEMBERS);
+  // ONE ordered log across both doubles. The founder's rule is an ORDERING —
+  // the row is the record, the mail is a copy of it — and an ordering is only
+  // testable if both halves write into the same sequence.
+  const order: string[] = [];
+  const notifications = fakeNotifications(
+    MEMBERS,
+    () => {
+      order.push("row");
+      return null;
+    },
+    db,
+  );
   const ledger = new ProducerLedgerService(
     database as any,
     notifications as any,
@@ -111,13 +130,28 @@ function build(
       return { emails: opts.emails ?? ["founder@example.test"], phones: [] };
     }),
   };
+  const gmail = {
+    sendEmail: recorder(async () => {
+      order.push("mail");
+      if (opts.sendThrows) throw new Error(opts.sendThrows);
+      return opts.sendRefusal
+        ? { success: false, error: opts.sendRefusal }
+        : { success: true, messageId: "gmail-msg-1" };
+    }),
+  };
   const producer = new ExperimentEndedProducer(
     ux as any,
     ledger,
     config as any,
     recipients as any,
+    gmail as any,
   );
-  return { db, notifications, producer, ux, recipients };
+  return { db, notifications, producer, ux, recipients, gmail, order };
+}
+
+/** The stored notification rows, which is where the send outcome is recorded. */
+function storedRows(db: FakeDb) {
+  return db.tables.notifications ?? [];
 }
 
 /** The one notification body this producer wrote, or a thrown assertion. */
@@ -418,3 +452,252 @@ describe("ExperimentEndedProducer — what the status page may say", () => {
     await expect(producer.endedUnnamedCount()).resolves.toBeNull();
   });
 });
+
+/* ── the emailed copy (founder, 2026-09-05 batch 55) ─────────────────────── */
+
+/**
+ * "Inbox row and an email." The founder overruled the recommendation to leave
+ * it as an inbox row, so the notice now also goes out through the existing
+ * sender. Four rules, and each of these cases is one of them:
+ *
+ *   the row is the record and the mail is a copy of it (so: ordering, and only
+ *   if the row landed); one copy per ending ever; the outcome written back in
+ *   words, never a silent skip; and the address still off the row.
+ */
+describe("ExperimentEndedProducer — the emailed copy", () => {
+  it("[REVERT-FAILS] sends the copy AFTER the row, and only after it", async () => {
+    const { producer, order, gmail } = build();
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    // The ordering IS the rule. A mail that went out about a notice nobody can
+    // find would be the worst of both.
+    expect(order).toEqual(["row", "mail"]);
+    expect(gmail.sendEmail.calls).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS] sends NOTHING when the row did not land", async () => {
+    // The funnel is best-effort and returns 0 on failure; the ledger then
+    // releases the claims and `emit` reports "failed". There is nothing to copy.
+    const db = new FakeDb();
+    const database = fakeDatabase(db, MEMBERS);
+    const order: string[] = [];
+    const notifications = fakeNotifications(
+      MEMBERS,
+      () => {
+        order.push("row");
+        return 0; // the funnel wrote no rows
+      },
+      db,
+    );
+    const ledger = new ProducerLedgerService(
+      database as any,
+      notifications as any,
+    );
+    const gmail = {
+      sendEmail: recorder(async () => {
+        order.push("mail");
+        return { success: true };
+      }),
+    };
+    const producer = new ExperimentEndedProducer(
+      { adminExperimentReport: recorder(async () => report()) } as any,
+      ledger,
+      { get: () => HOUSE } as any,
+      {
+        resolveRecipients: recorder(async () => ({
+          emails: ["founder@example.test"],
+          phones: [],
+        })),
+      } as any,
+      gmail as any,
+    );
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    expect(gmail.sendEmail.calls).toHaveLength(0);
+    expect(order).toEqual(["row"]);
+  });
+
+  it("[REVERT-FAILS] a second sweep re-sends nothing", async () => {
+    const { producer, gmail } = build();
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    expect(gmail.sendEmail.calls).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS] a member served later by quiet hours gets a ROW but no second email", async () => {
+    // The hole `emit` alone cannot close: a deferred member is legitimately
+    // written to on a later sweep, so "emit said written" happens twice for one
+    // ending. The mail is gated on `hasClaimFor` instead, which is about the
+    // ending and not about the sweep.
+    const { producer, gmail, notifications } = build();
+    await producer.sweepFounder(
+      HOUSE,
+      ZONE,
+      { ready: ["user-1"], deferred: ["user-2"] },
+      NOW,
+    );
+    await producer.sweepFounder(
+      HOUSE,
+      ZONE,
+      { ready: ["user-2"], deferred: [] },
+      NOW,
+    );
+    expect(notifications.persistForRestaurant.calls).toHaveLength(2);
+    expect(gmail.sendEmail.calls).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS] records SENT on the row, in words", async () => {
+    const { producer, db } = build();
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    const rows = storedRows(db);
+    expect(rows.length).toBe(MEMBERS.length);
+    for (const row of rows) {
+      expect(row.metadata.endNoticeMailState).toBe("sent");
+      expect(row.metadata.endNoticeMail).toContain("A copy was emailed");
+      expect(row.metadata.endNoticeMail).toContain("gmail-msg-1");
+    }
+  });
+
+  it("[REVERT-FAILS] a REFUSED send leaves the row standing and says why", async () => {
+    const { producer, db, notifications } = build(report(), {
+      sendRefusal: "Fix GMAIL_REFRESH_TOKEN (run scripts/gmail-reauth.js)",
+    });
+    const tally = await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+
+    // The notice is unaffected: it emitted, it is stored, and the sweep is not
+    // a failure. Losing the record because the copy failed would be backwards.
+    expect(tally.emitted).toBe(MEMBERS.length);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    for (const row of storedRows(db)) {
+      expect(row.metadata.endNoticeMailState).toBe("refused");
+      expect(row.metadata.endNoticeMail).toContain("was refused");
+      // The sender's own sentence, verbatim — this is where a missing grant
+      // surfaces, since GmailService does not expose its readiness separately.
+      expect(row.metadata.endNoticeMail).toContain("GMAIL_REFRESH_TOKEN");
+      expect(row.metadata.endNoticeMail).toContain("stands and is unaffected");
+    }
+  });
+
+  it("[REVERT-FAILS] a sender that BREAKS is a refusal, not a lost sweep", async () => {
+    const { producer, db, notifications } = build(report(), {
+      sendThrows: "socket hang up",
+    });
+    await expect(
+      producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW),
+    ).resolves.toBeDefined();
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    for (const row of storedRows(db)) {
+      expect(row.metadata.endNoticeMailState).toBe("refused");
+      expect(row.metadata.endNoticeMail).toContain("socket hang up");
+    }
+  });
+
+  it("[REVERT-FAILS] NO ADDRESS is not attempted, and the row says so", async () => {
+    const { producer, db, gmail } = build(report(), { emails: [] });
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    expect(gmail.sendEmail.calls).toHaveLength(0);
+    for (const row of storedRows(db)) {
+      expect(row.metadata.endNoticeMailState).toBe("not_attempted");
+      expect(row.metadata.endNoticeMail).toContain("no address resolves");
+    }
+  });
+
+  it("[REVERT-FAILS] NEVER A SILENT SKIP — every row carries a state and a sentence", async () => {
+    for (const opts of [
+      {},
+      { emails: [] as string[] },
+      { sendRefusal: "mailbox full" },
+    ]) {
+      const { producer, db } = build(report(), opts);
+      await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+      for (const row of storedRows(db)) {
+        expect(["sent", "refused", "not_attempted"]).toContain(
+          row.metadata.endNoticeMailState,
+        );
+        expect(typeof row.metadata.endNoticeMail).toBe("string");
+        expect(row.metadata.endNoticeMail.length).toBeGreaterThan(20);
+        // "pending" is the insert-time value; if it survived, the write-back
+        // did not happen and the row would be implying nothing was tried.
+        expect(row.metadata.endNoticeMailState).not.toBe("pending");
+      }
+    }
+  });
+
+  it("[REVERT-FAILS] the deferred member's later row says the copy already went", async () => {
+    const { producer, db } = build();
+    await producer.sweepFounder(
+      HOUSE,
+      ZONE,
+      { ready: ["user-1"], deferred: ["user-2"] },
+      NOW,
+    );
+    await producer.sweepFounder(
+      HOUSE,
+      ZONE,
+      { ready: ["user-2"], deferred: [] },
+      NOW,
+    );
+    const later = storedRows(db).find((r: any) => r.user_id === "user-2");
+    expect(later).toBeDefined();
+    expect(later!.metadata.endNoticeMailState).toBe("not_attempted");
+    expect(later!.metadata.endNoticeMail).toContain(
+      "already been sent with the first notice",
+    );
+  });
+
+  it("[REVERT-FAILS] THE ADDRESS STILL NEVER TOUCHES THE ROW", async () => {
+    const { producer, db } = build(report(), {
+      emails: ["founder@example.test"],
+    });
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    for (const row of storedRows(db)) {
+      expect(JSON.stringify(row)).not.toContain("founder@example.test");
+      expect(row.metadata.founderAddressCount).toBe(1);
+    }
+  });
+
+  it("[REVERT-FAILS] the email carries the same words as the row, plain, both parts", async () => {
+    const { producer, gmail } = build();
+    await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+    const sent = gmail.sendEmail.calls[0][0];
+    expect(sent.to).toEqual(["founder@example.test"]);
+    expect(sent.subject).toBe(
+      "The note_close_control experiment has ended with no winner named",
+    );
+    expect(sent.text).toContain("Arm plain (80 per cent): 8 houses");
+    expect(sent.text).toContain("Arm die (20 per cent): 2 houses");
+    expect(sent.text).toContain("These are counts and not a verdict");
+    expect(sent.text).toContain(
+      "POST /ux/experiments/note_close_control/winner",
+    );
+    // No verdict in the mail either — it is the same sentence, so the rule
+    // travels with it.
+    expect(`${sent.subject} ${sent.text}`).not.toMatch(
+      /\b(won|wins|winning|leading|leads|beats|better|ahead)\b/i,
+    );
+    const EMOJI =
+      /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{20E3})/u;
+    expect(EMOJI.test(`${sent.subject} ${sent.text} ${sent.html}`)).toBe(false);
+  });
+
+  it("[REVERT-FAILS] an unreadable claim ledger HOLDS the copy rather than risking two", async () => {
+    const { producer, db, gmail } = build();
+    (db as any).failures.notification_producer_claims_select =
+      "connection reset";
+    // The guard read fails; the row must still go out and the copy must not.
+    const original = ProducerLedgerService.prototype.hasClaimFor;
+    ProducerLedgerService.prototype.hasClaimFor = async () => {
+      throw new Error("connection reset");
+    };
+    try {
+      const tally = await producer.sweepFounder(HOUSE, ZONE, AUDIENCE, NOW);
+      expect(tally.emitted).toBe(MEMBERS.length);
+      expect(gmail.sendEmail.calls).toHaveLength(0);
+      for (const row of storedRows(db)) {
+        expect(row.metadata.endNoticeMailState).toBe("not_attempted");
+        expect(row.metadata.endNoticeMail).toContain("connection reset");
+      }
+    } finally {
+      ProducerLedgerService.prototype.hasClaimFor = original;
+    }
+  });
+});
+

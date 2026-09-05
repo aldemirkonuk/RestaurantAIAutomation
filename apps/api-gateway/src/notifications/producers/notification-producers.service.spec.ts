@@ -195,6 +195,16 @@ describe("arming", () => {
     expect(sweeps).toContain("added_tool");
   });
 
+  it("[REVERT-FAILS] a disarmed deployment sends no end-of-experiment EMAIL", async () => {
+    // The mail is the loudest thing this repository can do to a person and it
+    // gets no second, quieter switch: the only way into `sweepFounder` is
+    // `sweepFast`, which returns before anything when the flag is unset.
+    const { service, sweeps, experimentEnded } = build();
+    await service.sweepFast();
+    expect(sweeps).not.toContain("experiment_ended_unnamed");
+    expect((experimentEnded as any).sweepFounder.calls).toHaveLength(0);
+  });
+
   it("[REVERT-FAILS] a disarmed deployment writes no suspension notification", async () => {
     const { service, sweeps, grantSuspended } = build();
     await service.sweepFast();

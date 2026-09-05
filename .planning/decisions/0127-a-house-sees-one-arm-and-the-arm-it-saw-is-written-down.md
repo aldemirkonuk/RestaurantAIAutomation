@@ -328,6 +328,7 @@ name, running `--self-test`, and deleting it).
 | 2026-09-05 | — | Created. Two open questions carried to the founder: who may read both arms, and what ends the experiment. |
 | 2026-09-05 | Aldemir (founder), batch 45 | BOTH open questions answered and locked: the founder alone reads both arms' figures, and the experiment ends one quarter after its first exposure. Built the same day — see the addendum. |
 | 2026-09-05 | Aldemir (founder), batch 53 | The ending must ANNOUNCE itself: a notification to the founder when the window closes with no winner named. Attribution of the winner act left unattributable, deliberately. Built the same day — see the second addendum. |
+| 2026-09-05 | Aldemir (founder), batch 55 | Against the recommendation: the notice is an inbox row AND an email. Built the same day — see the second addendum's closing section. |
 
 ## Open questions — the founder's, not an agent's
 
@@ -884,15 +885,94 @@ would have fallen to *Other*, which is exactly how a new register goes invisible
   mail was sent, no production row was touched, and `ux_experiment_state` still
   does not exist in production.
 
-### The fork this addendum leaves open
+### The fork this addendum left open, and how it was answered
 
-**Should the notice also be emailed?** As built it is an inbox row and the
-message says so. Emailing it would mean a producer acquiring an outbound
-channel, which no producer in that directory has, and the address is already
-resolved and logged so the change is small. *Recommendation: leave it as an
-inbox row for now.* The reason is not squeamishness about the code: it is that
-`NOTIFICATION_PRODUCERS_ENABLED` is off, so the first thing to learn is whether
-an armed sweep behaves, and an outbound channel is a worse thing to be wrong
-about than a row nobody read. If the founder wants mail, it is one call to the
+**Should the notice also be emailed?** As first built it was an inbox row and
+the message said so. The recommendation carried to the founder was *leave it as
+an inbox row for now* — the reasoning being that `NOTIFICATION_PRODUCERS_ENABLED`
+is off, so the first thing to learn is whether an armed sweep behaves, and an
+outbound channel is a worse thing to be wrong about than a row nobody read.
+
+**The founder decided against that recommendation (2026-09-05, batch 55):**
+
+> Inbox row and an email
+
+So the notice now also goes out through the existing `GmailService`, and the
+recommendation is recorded as overruled rather than quietly dropped.
+
+**D26. The row is the record; the mail is a copy of it.** The send happens
+AFTER `emit` and only when `emit` returned `"written"` — never before, never
+instead. On `already_claimed`, `no_audience` or `failed` there is nothing to
+copy and nothing is sent. A mail that went out about a notice nobody can find
+would be the worst of both, so the ordering is the rule and it is pinned by a
+mutation: moving the send above the row is caught by five cases.
+
+**D27. One copy per ending, ever — and `emit` alone could not carry it.** This
+is the subtle part and it is worth stating because the obvious implementation is
+wrong. `emit` answers "did I win a claim on THIS sweep". Quiet hours DEFER a
+member rather than dropping them, so when that member is finally served on a
+later sweep `emit` says `"written"` a second time for the same ending. That is
+correct for the inbox row — the sleeping member must still be served — and wrong
+for an email, which is one copy of one thing. The mail is therefore gated on a
+new, narrow ledger read, `hasClaimFor(restaurant, producer, dedupeKey)`, taken
+BEFORE `emit`: has this ending ever been claimed here at all.
+
+**That combination is atomic, which is why it is a read and not a race.** Two
+instances on the same tick both read `false`; the UNIQUE
+`(restaurant_id, producer, dedupe_key, user_id)` index lets only ONE of them win
+the claims, so only that one sees `"written"` and only that one sends. The read
+suppresses LATER sweeps; the index settles the tie WITHIN one. **A failed read
+counts as "already announced"**: the row still goes out and only the copy is
+held, because the opposite — an unreadable ledger read as "never announced" —
+would send a fresh email on every sweep for as long as the failure lasted, and
+that is the one failure mode a person cannot undo by ignoring it.
+
+**D28. The outcome is written back onto the row, in words, always.** The insert
+stamps `endNoticeMailState: "pending"` and a sentence saying the attempt has not
+been made; a new `ProducerLedgerService.annotate` then overwrites both with what
+actually happened. Four states, each with prose: **sent** (with the message id),
+**refused** (carrying the sender's own reason verbatim), and **not_attempted**
+for the two honest non-sends — no address resolved, or the copy already went out
+with the first notice. **There is no state in which the key is absent**: a row
+silent about its copy is the absence-reported-as-health shape wearing a stamp,
+and a case asserts that `"pending"` never survives a sweep.
+
+**On "no grant to send from", measured rather than guessed.** `GmailService`
+does not expose its readiness — `ensureGmailReady` is private, and the service
+resolves `{ success, error }` rather than throwing, falling back to SMTP first.
+So a missing grant reaches this producer as a failed result whose `error` names
+the credential in the sender's own words ("Fix GMAIL_REFRESH_TOKEN … or set a
+valid GMAIL_APP_PASSWORD"). It is therefore recorded as **refused carrying that
+sentence verbatim**, rather than classified into a separate state by sniffing
+the error text for keywords. The row always says why, and never says less than
+the sender knew.
+
+**D29. The address still never touches the row.** It goes to the sender and to
+the log. The metadata carries `founderAddressCount` and the resolution path in
+words, exactly as before; a mutation that adds the address to the metadata is
+caught by two cases.
+
+**D30. Still one switch.** The only way into `sweepFounder` is `sweepFast`,
+which returns before anything when `NOTIFICATION_PRODUCERS_ENABLED` is unset —
+and it IS unset on this deployment. An email is the loudest thing this
+repository can do to a person and it does not get a second, quieter switch.
+
+**What this cost elsewhere.** `ProducerLedgerService` gained two narrow methods
+(`hasClaimFor`, `annotate`) and the producers' test double
+(`testing/fake-db.ts`) now optionally LANDS its notification rows in the fake
+store. That last one is not tidying: without real rows the write-back would have
+found nothing and every assertion about it would have passed by doing nothing —
+a test measuring the double instead of the code, which is the trap that file's
+own header is about. It is an optional third parameter, so the eight specs that
+predate it are untouched.
+
+**Proof for this section.** `npx jest src/notifications src/ux-optimizer` —
+**348 passed / 22 suites**, of which 18 are new here (17 in
+`experiment-ended.producer.spec.ts`, 1 in the service spec). **Nine one-change
+mutations, all nine caught**: the copy sent before the row; the "only if the row
+landed" guard removed; the once-per-ending gate removed; the outcome not written
+back; the address written into the row; an unreadable claim ledger read as
+"never announced"; and the three earlier ones re-run to confirm they still bite.
+**Nothing was sent** — every send in every case went to a double. If the founder wants mail, it is one call to the
 existing `GmailService` behind the same producer.
 
