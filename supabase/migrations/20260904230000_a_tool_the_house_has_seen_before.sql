@@ -2,7 +2,7 @@
 --
 -- WHAT WAS MEASURED FIRST, AND WHY IT IS NOT ENOUGH
 -- -------------------------------------------------
--- `user_mcp_connections.probe_tools` already holds a tools/list result
+-- `restaurant_mcp_connections.probe_tools` already holds a tools/list result
 -- (20260903104500_user_mcp_connection_runtime.sql:89-92, JSONB array of
 -- {name, title, description}; NULL = never probed, [] = answered and offers
 -- nothing). It is the right column and it is NOT a history: every probe
@@ -13,7 +13,7 @@
 --
 -- WHY A TABLE HERE AND NOT A COLUMN THERE
 -- ---------------------------------------
--- A `probe_tools_previous` column on `user_mcp_connections` would be smaller,
+-- A `probe_tools_previous` column on `restaurant_mcp_connections` would be smaller,
 -- and it was rejected on two grounds. It would have to be written by the probe,
 -- which lives in `mcp-connections/` — another builder's module, under active
 -- edit — so the producer could not ship without their hunk landing first. And a
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS public.notification_mcp_tool_sightings (
   -- takes its sightings with it rather than leaving orphans that would read as
   -- tools on a server that no longer exists.
   connection_id UUID NOT NULL
-    REFERENCES public.user_mcp_connections(id) ON DELETE CASCADE,
+    REFERENCES public.restaurant_mcp_connections(id) ON DELETE CASCADE,
 
   -- The tool's own name, as the server declared it.
   tool_name TEXT NOT NULL CHECK (btrim(tool_name) <> ''),
@@ -99,7 +99,7 @@ CREATE POLICY notification_mcp_tool_sightings_service_role
 REVOKE ALL ON public.notification_mcp_tool_sightings FROM anon, authenticated;
 
 COMMENT ON TABLE public.notification_mcp_tool_sightings IS
-  'One tool, on one model-context server, over one contiguous run of sightings. The producers'' own memory: user_mcp_connections.probe_tools is overwritten by every probe (mcp-connections.service.ts:1666) and therefore cannot say what is NEW. A tool that disappears is stamped gone_at; if it returns it opens a new row with a new first_seen_at, so a removed-then-re-added tool is a new event and is said again. RLS on, service_role only, anon/authenticated revoked.';
+  'One tool, on one model-context server, over one contiguous run of sightings. The producers'' own memory: restaurant_mcp_connections.probe_tools is overwritten by every probe (mcp-connections.service.ts:1666) and therefore cannot say what is NEW. A tool that disappears is stamped gone_at; if it returns it opens a new row with a new first_seen_at, so a removed-then-re-added tool is a new event and is said again. RLS on, service_role only, anon/authenticated revoked.';
 
 COMMENT ON COLUMN public.notification_mcp_tool_sightings.gone_at IS
   'NULL while the tool is still offered. Stamped only from a probe that ANSWERED — a failed probe says nothing about what a server offers, and closing a run on one would invent a removal.';
