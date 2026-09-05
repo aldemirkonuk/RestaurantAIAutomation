@@ -15,6 +15,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { VendorComparisonService } from "./vendor-comparison.service";
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
 import { VendorSiteSweepService } from "./vendor-site-sweep.service";
+import { OutlierRejudgeService } from "./outlier-rejudge.service";
 import { ManualObservationDto } from "./dto/manual-observation.dto";
 
 const UUID_RE =
@@ -38,6 +39,7 @@ export class VendorIntelController {
     private readonly comparison: VendorComparisonService,
     private readonly extractor: VendorPageExtractorService,
     private readonly siteSweep: VendorSiteSweepService,
+    private readonly rejudge: OutlierRejudgeService,
   ) {}
 
   @Get("compare")
@@ -252,5 +254,52 @@ export class VendorIntelController {
       dryRun: body?.dryRun ?? false,
     });
     return { success: true, ...summary };
+  }
+
+  /**
+   * State of the nightly outlier re-judge.
+   *
+   * Deliberately its own route rather than a field on `site-sweep/status`: the
+   * sweep's status is per-vendor and tenant-scoped, and the re-judge is
+   * neither — it runs once for the whole register, market rows included, so
+   * folding it into a per-house answer would make a platform-wide fact look
+   * like a fact about this house's vendors.
+   *
+   * It carries the last run, what it flipped, and — when nothing has happened
+   * — the SENTENCE saying why. An empty flip count from a job that is switched
+   * off must never read as "the register agrees with itself".
+   *
+   * Owner-only, matching the sweep: it describes a job that rewrites verdicts
+   * on rows the market box reads.
+   */
+  @Get("outlier-rejudge/status")
+  @Roles("owner")
+  @ApiOperation({
+    summary:
+      "State of the nightly is_outlier re-judge: armed or not, last run, rows judged, flags set and cleared, and why it is silent",
+  })
+  outlierRejudgeStatus() {
+    return { success: true, ...this.rejudge.status() };
+  }
+
+  /**
+   * Run the re-judge now.
+   *
+   * Still gated on `PRICE_OUTLIER_REJUDGE_ENABLED`, like the sweep's hand-run:
+   * a manual trigger that bypasses the switch is not a switch. A disarmed call
+   * returns the status sentence saying so and writes nothing.
+   */
+  @Post("outlier-rejudge/run")
+  @Roles("owner")
+  @ApiOperation({ summary: "Run the outlier re-judge now over the whole register" })
+  async runOutlierRejudge(@Body() body: { dryRun?: boolean; windowDays?: number }) {
+    if (!this.rejudge.armed()) {
+      return { success: false, ran: false, ...this.rejudge.status() };
+    }
+    const summary = await this.rejudge.rejudge({
+      dryRun: body?.dryRun ?? false,
+      windowDays: body?.windowDays,
+    });
+    return { success: true, ran: true, ...summary };
   }
 }

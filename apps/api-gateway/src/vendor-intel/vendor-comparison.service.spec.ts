@@ -1,4 +1,5 @@
 import { VendorComparisonService } from "./vendor-comparison.service";
+import { MIN_OUTLIER_SAMPLE } from "./vendor-site-sighting";
 
 /**
  * The service is a thin adapter — its job is to hand database rows to the
@@ -311,6 +312,125 @@ describe("VendorComparisonService", () => {
           observedAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
         }),
       ).rejects.toMatchObject({ status: 400 });
+    });
+
+    describe("the outlier screen, added 2026-09-04", () => {
+      // Until this pass, THIS writer was the only one of the three that let
+      // `is_outlier` take its column DEFAULT of false — a hand-typed price,
+      // trust tier 7, entered the ladder pre-certified as clean while tier-1
+      // invoices and tier-4 scrapes both took the test.
+      const quoted = (price: number) =>
+        row({ source_type: "quote", raw_price: price, pack_size: 1 });
+
+      it("flags a typed price that is deviant against its own class", async () => {
+        const { svc, calls } = makeService([
+          quoted(20),
+          quoted(20.5),
+          quoted(19.8),
+          quoted(20.2),
+        ]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        const w = calls.inserted[0];
+        expect(w.is_outlier).toBe(true);
+        expect(w.outlier_basis).toBe("write_time");
+        expect(typeof w.outlier_judged_at).toBe("string");
+        expect(w.outlier_reason).toMatch(/Flagged at write time/);
+      });
+
+      it("is never a bound: the number is stored exactly as typed", async () => {
+        const { svc, calls } = makeService([
+          quoted(20),
+          quoted(20.5),
+          quoted(19.8),
+          quoted(20.2),
+        ]);
+        const out = await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].raw_price).toBe(2175);
+        // And the person who typed it is TOLD, rather than finding out later
+        // that their price never reached the ladder.
+        expect(out.isOutlier).toBe(true);
+        expect(out.outlierReason).toMatch(/stays visible/);
+      });
+
+      it("clears an ordinary typed price and records that it was judged", async () => {
+        const { svc, calls } = makeService([
+          quoted(20),
+          quoted(20.5),
+          quoted(19.8),
+          quoted(20.2),
+        ]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 20.1,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(
+          /Judged clean at write time/,
+        );
+      });
+
+      it("below the floor it flags nothing AND does not claim the row is clean", async () => {
+        const { svc, calls } = makeService([quoted(20), quoted(20.5)]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(/^Not judged:/);
+        expect(calls.inserted[0].outlier_reason).toContain(
+          `floor of ${MIN_OUTLIER_SAMPLE}`,
+        );
+      });
+
+      it("never lets public-site prices judge a quoted one", async () => {
+        // ADR 0117's closing rule. Five scraped list prices near $20 must not
+        // make a $95 quote look deviant — they are not the same kind of
+        // number. The default `row()` is a website_scrape.
+        const { svc, calls } = makeService([row(), row(), row(), row(), row()]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 95,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(/only 0 comparable/);
+      });
+
+      it("a register it could not read flags nothing and says so", async () => {
+        const { svc, calls } = makeService([], { message: "connection reset" });
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+        });
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(/not claimed to be clean/);
+      });
     });
   });
 });

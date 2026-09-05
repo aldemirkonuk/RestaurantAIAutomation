@@ -6,6 +6,7 @@ import { VendorComparisonService } from "./vendor-comparison.service";
 import { VendorIntelController } from "./vendor-intel.controller";
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
 import { VendorSiteSweepService } from "./vendor-site-sweep.service";
+import { OutlierRejudgeService } from "./outlier-rejudge.service";
 
 /**
  * AuthModule is required, not optional: VendorIntelController is guarded by
@@ -21,11 +22,13 @@ import { VendorSiteSweepService } from "./vendor-site-sweep.service";
     VendorComparisonService,
     VendorPageExtractorService,
     VendorSiteSweepService,
+    OutlierRejudgeService,
   ],
   exports: [
     VendorComparisonService,
     VendorPageExtractorService,
     VendorSiteSweepService,
+    OutlierRejudgeService,
   ],
 })
 export class VendorIntelModule {}

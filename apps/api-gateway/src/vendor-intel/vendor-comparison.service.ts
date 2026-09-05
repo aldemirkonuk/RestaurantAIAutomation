@@ -9,13 +9,23 @@ import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
 import {
   BelowAverageResult,
   ObservationRow,
+  comparisonClassOf,
   priceBelowAverage,
 } from "./price-below-average";
+// The floor and the dispersion test are the SAME ones the other two writers
+// use, imported rather than re-implemented. `vendor-site-sighting.ts`
+// re-exports them from `procurement/own-paper-sighting.ts`, which is where the
+// judgement and its reasoning live.
+import {
+  MIN_OUTLIER_SAMPLE,
+  isOutlierAgainstPriors,
+} from "./vendor-site-sighting";
 import {
   ConsensusResult,
   PriceObservation,
   PriceSourceType,
   PriceTrend,
+  normalizeUnitPrice,
   standardTrends,
   vendorPriceConsensus,
 } from "../analytics/engine/vendor-price-consensus";
@@ -255,6 +265,61 @@ export class VendorComparisonService {
       observedAt = parsed.toISOString();
     }
 
+    // SCREENED AT WRITE TIME, exactly like the other two writers.
+    //
+    // Until 2026-09-04 this was the ONE writer that still let `is_outlier` take
+    // its column DEFAULT of false — i.e. every hand-typed price entered the
+    // ladder pre-certified as clean, which is precisely the fault ADR 0117
+    // named when it said the column "has no writer anywhere". A typed price is
+    // the LEAST-provenanced row in the register (trust tier 7, and
+    // `parse_confidence` is deliberately null because nothing parsed it), so it
+    // is the last row that should be exempt from the test the tier-1 invoices
+    // and tier-4 scrapes both take.
+    //
+    // The test is `isOutlierAgainstPriors` — `flagOutliers` at 3.5 robust
+    // deviations — over the sightings of the SAME product in the SAME
+    // comparison class, and it is never a bound: no typed number is clamped,
+    // rounded, rejected or refused for being extreme. The row is written
+    // exactly as entered; a flag only keeps it out of the "cheaper than usual"
+    // ladder, stays visible, and the nightly re-judge clears it if later
+    // evidence proves it ordinary (`outlier-rejudge.ts`).
+    //
+    // Below `MIN_OUTLIER_SAMPLE` comparable priors nothing is flagged at all,
+    // and the reason SAYS the row was not judged rather than saying it is
+    // clean.
+    const candidateUnitPrice = normalizeUnitPrice({
+      price: params.price,
+      sourceType: sourceType as PriceSourceType,
+      observedAt,
+      packSize: params.packSize ?? 1,
+      unitVolumeMl: params.unitVolumeMl ?? undefined,
+      yieldFactor: 1,
+    }).unitPrice;
+
+    const priors =
+      candidateUnitPrice === null
+        ? []
+        : await this.priorUnitPricesInClass({
+            restaurantId: params.restaurantId,
+            masterWineId: params.masterWineId ?? null,
+            signatureHash: identityHash,
+            sourceClass: comparisonClassOf(sourceType),
+          });
+
+    const judged =
+      candidateUnitPrice !== null && priors.length + 1 >= MIN_OUTLIER_SAMPLE;
+    const isOutlier = judged
+      ? isOutlierAgainstPriors(priors, candidateUnitPrice as number)
+      : false;
+    const judgedAt = new Date().toISOString();
+    const outlierReason = !judged
+      ? candidateUnitPrice === null
+        ? `Not judged: the pack and volume given do not support a comparable unit price, so there is no number to test. The row is stored as entered; it is not claimed to be clean.`
+        : `Not judged: only ${priors.length} comparable sighting(s) of this product exist in its class, below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+      : isOutlier
+        ? `Flagged at write time against ${priors.length} earlier sighting(s) of this product in the same comparison class: it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+        : `Judged clean at write time against ${priors.length} earlier sighting(s) of this product in the same comparison class.`;
+
     const { data, error } = await this.databaseService.supabase
       .from("vendor_price_observations")
       .insert({
@@ -279,6 +344,10 @@ export class VendorComparisonService {
         // and nothing was parsed — a human asserted it. Claiming 1.0 would
         // make a typed number the best-parsed row in the ladder.
         parse_confidence: null,
+        is_outlier: isOutlier,
+        outlier_reason: outlierReason,
+        outlier_basis: "write_time",
+        outlier_judged_at: judgedAt,
         raw: {
           enteredBy: params.userId ?? null,
           note: params.note ?? null,
@@ -298,7 +367,73 @@ export class VendorComparisonService {
       );
     }
 
-    return { id: (data as any).id, observedAt: (data as any).observed_at };
+    return {
+      id: (data as any).id,
+      observedAt: (data as any).observed_at,
+      // Returned so the caller that just typed the price is TOLD it was set
+      // aside, rather than discovering later that it never reached the ladder.
+      isOutlier,
+      outlierReason,
+    };
+  }
+
+  /**
+   * The comparable unit prices already on the register for this product, in
+   * one comparison class.
+   *
+   * SCOPE matches `belowTrailingAverage`: market rows (`restaurant_id IS
+   * NULL`) plus this house's own, never another house's negotiating position.
+   * CLASS matches ADR 0117's closing rule — a quote is only ever set beside
+   * another quote — so a tier-4 public-site price can never make a quoted one
+   * look deviant.
+   *
+   * A read failure returns an EMPTY list, which puts the group below
+   * `MIN_OUTLIER_SAMPLE` and therefore flags nothing. A register we could not
+   * read is not a register that agrees with the number being typed.
+   */
+  private async priorUnitPricesInClass(args: {
+    restaurantId: string;
+    masterWineId: string | null;
+    signatureHash: string | null;
+    sourceClass: ReturnType<typeof comparisonClassOf>;
+  }): Promise<number[]> {
+    if (!args.masterWineId && !args.signatureHash) return [];
+    try {
+      let q = this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(
+          "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+        )
+        .or(`restaurant_id.is.null,restaurant_id.eq.${args.restaurantId}`)
+        .order("observed_at", { ascending: false })
+        .limit(200);
+      q = args.masterWineId
+        ? q.eq("master_wine_id", args.masterWineId)
+        : q.eq("signature_hash", args.signatureHash as string);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+
+      const out: number[] = [];
+      for (const r of (data ?? []) as any[]) {
+        if (comparisonClassOf(r.source_type) !== args.sourceClass) continue;
+        const { unitPrice } = normalizeUnitPrice({
+          price: Number(r.raw_price),
+          sourceType: r.source_type as PriceSourceType,
+          observedAt: r.observed_at,
+          packSize: Number(r.pack_size) || 1,
+          unitVolumeMl: r.unit_volume_ml ?? undefined,
+          yieldFactor: Number(r.yield_factor) || 1,
+        });
+        if (unitPrice !== null && Number.isFinite(unitPrice)) out.push(unitPrice);
+      }
+      return out;
+    } catch (e: any) {
+      this.logger.warn(
+        `Could not read the price register to screen a typed price for outliers: ${e?.message}. Nothing was flagged, and nothing is claimed to be clean.`,
+      );
+      return [];
+    }
   }
 
   /**
