@@ -121,7 +121,7 @@ survive a round trip through it. That gap is named in
 `from-parsed-document.ts` rather than papered over.
 
 **The extraction contract, after the first render against real documents
-(2026-09-05, PR #PRNUM — the nine findings in `v3.0-TECH-DEBT.md`).**
+(2026-09-05, PR #304 — the nine findings in `v3.0-TECH-DEBT.md`).**
 `SYSTEM_PROMPT` and `ParsedDocument` gained three fields, and each one closed a rule that
 could not be tested without it:
 
