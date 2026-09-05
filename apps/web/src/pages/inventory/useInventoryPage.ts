@@ -338,21 +338,6 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       (sum, item) => sum + (item.shadowStock || 0),
       0,
     );
-<<<<<<< HEAD
-    const critical = inventory.filter(
-      (item) =>
-        classifyStock(item.liveStock, item.threshold).key === "critical",
-    ).length;
-    const low = inventory.filter(
-      (item) => classifyStock(item.liveStock, item.threshold).key === "low",
-    ).length;
-    const healthy = inventory.filter(
-      (item) => classifyStock(item.liveStock, item.threshold).key === "healthy",
-    ).length;
-    const unknown = inventory.filter(
-      (item) => classifyStock(item.liveStock, item.threshold).key === "unknown",
-    ).length;
-=======
     // One pass, one classification per item — the counts cannot disagree with
     // each other, and `atPar` is counted rather than folded into `healthy` so
     // the five bands still sum to `total`. A wine exactly at par is NOT below
@@ -368,7 +353,6 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       else bands.unknown += 1;
     }
     const { critical, low, atPar, healthy, unknown } = bands;
->>>>>>> origin/main
     const needsReconciliation = inventory.filter(
       (item) => (item.shadowStock || 0) > 0,
     ).length;
@@ -379,10 +363,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       shadowTotal,
       critical,
       low,
-<<<<<<< HEAD
-=======
       atPar,
->>>>>>> origin/main
       healthy,
       unknown,
       needsReconciliation,
