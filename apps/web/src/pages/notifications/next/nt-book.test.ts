@@ -36,17 +36,24 @@ describe('foldFreshness', () => {
     // highest-count burst ("50 wines dropped below par", 11:24) and folds the
     // newest one ("20 wines dropped below par", 16:44) into it, so the line
     // stood for news five hours fresher than the age it printed.
+    // Since main's #313 (2026-09-05) the stacker folds two low-stock alerts
+    // only when they name the SAME wines (metadata.wines); the measured pair
+    // named different wines and no longer folds, so this fixture names one
+    // set on both — the freshness fault it pins is about the fold, not the
+    // wines.
     const winner = n({
       id: 'big',
       title: '50 wines dropped below par',
       timestamp: '2026-09-03T11:24:13.000Z',
       createdAt: '2026-09-03T11:24:13.000Z',
+      metadata: { wines: [{ wineId: 'w1' }, { wineId: 'w2' }] },
     });
     const fresher = n({
       id: 'new',
       title: '20 wines dropped below par',
       timestamp: '2026-09-03T16:44:09.000Z',
       createdAt: '2026-09-03T16:44:09.000Z',
+      metadata: { wines: [{ wineId: 'w1' }, { wineId: 'w2' }] },
     });
     const raw = [winner, fresher];
     const stack = collapseStackedNotifications(raw);
@@ -71,12 +78,14 @@ describe('foldFreshness', () => {
       title: '50 wines dropped below par',
       timestamp: '2026-09-03T16:00:00.000Z',
       createdAt: '2026-09-03T16:00:00.000Z',
+      metadata: { wines: [{ wineId: 'w1' }, { wineId: 'w2' }] },
     });
     const older = n({
       id: 'b',
       title: '2 wines dropped below par',
       timestamp: '2026-09-03T09:00:00.000Z',
       createdAt: '2026-09-03T09:00:00.000Z',
+      metadata: { wines: [{ wineId: 'w1' }, { wineId: 'w2' }] },
     });
     const raw = [newest, older];
     const stack = collapseStackedNotifications(raw);
