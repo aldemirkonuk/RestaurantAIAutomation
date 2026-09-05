@@ -420,6 +420,18 @@ export class DocumentCorrectionService {
           }
         : { ok: false, status: 500, error: revision.error };
 
+    /**
+     * THE CASTS ARE HOISTED, AND THAT IS NOT A STYLE CHOICE.
+     * `check_order_capture_contract.py` reads a write's column names only when
+     * the payload is a plain object literal; an inline
+     * `as unknown as Record<string, unknown>` splits its parser on the comma and
+     * makes the WHOLE write invisible to the guard — the exact defect its own
+     * header records against `document-intake.service.ts`. Hoisted, the payload
+     * below is a literal again and every column name is checked.
+     */
+    const beforeJson = prior as unknown as Record<string, unknown>;
+    const afterJson = after as unknown as Record<string, unknown>;
+
     const audit = await this.db
       .getClient()
       .from("document_corrections")
@@ -427,8 +439,8 @@ export class DocumentCorrectionService {
         document_id: documentId,
         revision: revision.value.revision,
         field_path: op.path,
-        before: prior as unknown as Record<string, unknown>,
-        after: after as unknown as Record<string, unknown>,
+        before: beforeJson,
+        after: afterJson,
         reason: op.reason,
         kind: op.kind,
         corrected_by: userId,
