@@ -40,6 +40,7 @@ import {
 import { RemoveFromInventoryModal } from "../../../components/inventory/RemoveFromInventoryModal";
 import { PosMappingPanel } from "../../../components/inventory/PosMappingPanel";
 import { getUnresolvedLines } from "../../../services/api/posHub";
+import { getActiveRestaurantId } from "../../../services/api/client";
 import { useTypedInventorySubscription } from "../../../contexts/RealtimeContext";
 import { ManualReceiptWorkspace } from "../../../components/inventory/ManualReceiptWorkspace";
 import { AddWineSelectionModal } from "../../../components/wines/AddWineSelectionModal";
@@ -277,13 +278,24 @@ export function InventoryCommandPage() {
    * must not paint the same "nothing waiting" as a genuinely clear queue
    * (ADR 0067). This is the only reader `pos_unresolved_lines` has ever had.
    */
+  //
+  // `enabled` and the id in the key are both load-bearing, and their absence
+  // was caught by a screenshot of this very chip: on mount `activeRestaurantId`
+  // is not in localStorage yet (AuthContext writes it after /auth/me), so the
+  // query threw "No restaurant ID available", `retry: false` kept the error,
+  // and the key had no id to invalidate on — leaving the chip reading "POS
+  // queue unreadable" over a queue that read fine a second later. Crying wolf
+  // is the same fault as staying silent: "we have not asked yet" and "we asked
+  // and it failed" are different states and must not render as one.
+  const activeRestaurantIdForPos = getActiveRestaurantId();
   const {
     data: posQueue,
     isError: posQueueUnavailable,
     refetch: refetchPosQueue,
   } = useQuery({
-    queryKey: ["pos-hub", "unresolved"],
-    queryFn: () => getUnresolvedLines(),
+    queryKey: ["pos-hub", "unresolved", activeRestaurantIdForPos],
+    queryFn: () => getUnresolvedLines(activeRestaurantIdForPos),
+    enabled: Boolean(activeRestaurantIdForPos),
     staleTime: 60_000,
     retry: false,
   });
