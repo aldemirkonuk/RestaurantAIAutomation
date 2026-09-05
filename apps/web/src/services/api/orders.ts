@@ -4,7 +4,8 @@
  * Handles all procurement order-related API calls to the NestJS backend.
  */
 
-import { apiClient, getActiveRestaurantId } from './client';
+import axios from 'axios';
+import { apiClient, getActiveRestaurantId, getErrorMessage } from './client';
 import type {
   Order,
   OrderStatus,
@@ -111,17 +112,78 @@ export async function updateOrderStatus(
 }
 
 /**
- * Approve an order
+ * Mint the one-time seal an approval has to carry back — at the moment the
+ * hold-to-approve gesture BEGINS.
+ *
+ * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0116 addendum).
+ * ADR 0114 shipped `sealed: true` as a claim made in the same request as the
+ * thing it claimed about, and said so in its own text. The gateway now mints a
+ * token bound to (this manager, this order, "approve", this order's own total
+ * and vendor) and redeems it exactly once, so an approval proves a person did
+ * it rather than asserting one did.
+ *
+ * It MUST be called when the gesture starts, never at the moment of approval: a
+ * token this request fetched for itself is the assertion model with extra steps.
+ * `HoldToApprove`'s `onChallenge` is the hook that guarantees the timing, and a
+ * mint that fails or returns null does NOT approve.
+ */
+export async function mintOrderSeal(orderId: string): Promise<string | null> {
+  const response = await apiClient.post<{ challenge?: string }>(
+    `${ORDERS_PATH}/${orderId}/seal-challenge`,
+    {},
+  );
+  return response.data?.challenge ?? null;
+}
+
+/**
+ * Approve an order, carrying the seal minted when the hold began.
+ *
+ * `challenge` is not optional in practice — the gateway refuses an approval
+ * without one, in words. It is typed optional only so the two callers that do
+ * not yet mint (the legacy `pages/Orders.tsx` and `dashboard/next`'s
+ * WaitingOnYou, both outside this pass's scope) keep COMPILING and receive the
+ * gateway's refusal sentence rather than a type error. That refusal is the
+ * honest outcome for them: they will say, in words, that the seal has to be
+ * proven and that nothing was approved.
  */
 export async function approveOrder(
   orderId: string,
-  restaurantId?: string
+  restaurantId?: string,
+  challenge?: string | null
 ): Promise<Order> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post<Order>(`${ORDERS_PATH}/${orderId}/approve`, {});
-  return response.data;
+  try {
+    const response = await apiClient.post<Order>(
+      `${ORDERS_PATH}/${orderId}/approve`,
+      {},
+      // The seal travels in a header, never in the body: it is not one of the
+      // arguments it is a seal OVER.
+      challenge ? { headers: { 'X-Seal-Challenge': challenge } } : undefined,
+    );
+    return response.data;
+  } catch (error) {
+    // THE REFUSAL HAS TO SURVIVE THE TRIP.
+    //
+    // Since ADR 0116 this endpoint answers 403 with a whole sentence — which
+    // rule fired, what the number was, and who may sign — because a person told
+    // only "forbidden" learns one thing: split the order in two. An axios error
+    // carries that sentence in `response.data.message` and puts "Request failed
+    // with status code 403" in `.message`, and every call site here reads
+    // `.message`: `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`,
+    // `pages/dashboard/next/WaitingOnYou.tsx` and the legacy `pages/Orders.tsx`.
+    //
+    // So the server's sentence is promoted onto `.message` and the SAME error
+    // object is rethrown — `response`, `status` and `isAxiosError` all intact,
+    // because callers branch on `err.response?.status` elsewhere. Rethrowing a
+    // fresh `Error` would fix the copy and break those.
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -299,6 +361,7 @@ export const ordersApi = {
   updateOrder,
   updateOrderStatus,
   approveOrder,
+  mintOrderSeal,
   cancelOrder,
   markOrderDelivered,
   getPendingOrdersCount,

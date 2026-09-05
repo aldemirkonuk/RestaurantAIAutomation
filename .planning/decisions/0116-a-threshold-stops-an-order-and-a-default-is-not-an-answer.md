@@ -329,3 +329,84 @@ how a true figure becomes a false claim.
 | 2026-09-04 | Sonnet audit | BLOCKER: the reader sweep missed `services/agent-orchestrator` — `Provider.lead_time_days: int = 7` would have made every restaurant report zero vendors. Fixed at the model AND the repository; proven against a HEAD copy |
 | 2026-09-04 | Aldemir (founder) | Drop both report-timezone defaults and their two Python defaults; make the weekday cleanup a MOVE with provenance |
 | 2026-09-04 | Aldemir (founder) | Asked for a pre-change snapshot before the UPDATE. Added with a per-column assertion; re-proven on local Postgres (3/3/2 cleared, snapshot matched exactly) and the assertion proven to FIRE against a deliberately broken snapshot. Expiry filed as settings.md §13.32 |
+
+---
+
+## Addendum — 2026-09-04: the seal on an order is REDEEMED, not asserted
+
+**Founder decision, 2026-09-04.** Challenge-and-redeem — built for MCP tool
+writes in ADR 0107's addendum of the same day — is extended to **order approval**
+and to **payments** (ADR 0110's addendum). Ordinary sealed settings deliberately
+stay a logged assertion.
+
+**What this addendum closes.** The gate above answers *may this ROLE seal this
+figure*. It has no way to answer *did a PERSON do this*. The hold-to-approve
+gesture lived entirely in the browser and left no trace the server could check,
+so anything holding a manager's session — a stolen token, a script, an agent with
+more autonomy than anybody granted it — could seal an order by calling
+`POST /procurement/orders/:id/approve`. ADR 0114 was explicit that its seal was
+"an assertion by an authenticated manager, recorded with their id — not a
+cryptographic proof of the gesture". This is that sentence being acted on.
+
+**The mechanism.** The binding from 0107's addendum is restated one level up, so
+the MCP case becomes an instance of the rule rather than the shape of it:
+
+    (actor, SUBJECT KIND, SUBJECT ID, act, args_hash)
+
+- `POST /procurement/orders/:id/seal-challenge` mints a one-time, 120-second
+  token when the **hold begins**. A token fetched at the moment of approval would
+  be one more thing the same request asked for itself.
+- `POST /procurement/orders/:id/approve` carries it back in `X-Seal-Challenge`
+  and redeems it exactly once. Single use is a property of the redeeming
+  `UPDATE`'s own `redeemed_at IS NULL` filter, not of the code path.
+- **The order's own money is hashed into the seal** (`procurement/order-seal.ts`):
+  a token minted over an order of 2,000 cannot be spent after somebody made it
+  20,000. That is the property the assertion model could not express.
+- The ROLE and the POLICY are checked when the seal is ISSUED **and** again when
+  it is redeemed, so a manager demoted between the two cannot spend a token they
+  were legitimately given — and nobody is handed a seal that will be refused two
+  seconds later, which is what teaches people the seal is decoration.
+- Every refusal names what did not match — spent, other actor, other order,
+  other act, arguments changed, expired — and is **filed** in `system_audit_log`
+  as `seal_refused` before it is thrown. A filing that fails is logged loudly and
+  does NOT turn the 403 into a 500.
+
+**What was rejected.**
+
+- *A second challenge table for orders.* Two tables of one-time seals is two
+  implementations of "exactly once", which is the property that has to be
+  singular or it is nothing. `mcp_seal_challenges` grew a subject instead
+  (`20260904210000`, additive; `20260904170000` is not edited).
+- *Hashing nothing.* The seal would then prove only that somebody held the
+  gesture on this order at some point, leaving the edit-after-approval hole open.
+- *Hashing the whole row.* The seal would break on a `synced_at` nobody
+  approved, and a control that refuses for invisible reasons teaches operators
+  to mash it until it works.
+- *One seal for a bulk approval.* The dry emboss is one impression on the group,
+  but that is a rule about ritual, not about authority: fourteen orders are
+  fourteen commitments of the house's money. `BulkApproveBar` mints one seal per
+  selected order at gesture start and approves NOTHING if any mint fails.
+
+**What is NOT sealed yet, and why that is visible rather than silent.** Two
+approval call sites were outside this pass's scope and still send no seal: the
+legacy `apps/web/src/pages/Orders.tsx` (via `hooks/useOrdersData.ts`) and
+`pages/dashboard/next/WaitingOnYou.tsx`. **The `mudavym_design_orders` flag is
+OFF in production, so the legacy page is what a house sees today** — meaning
+approval from it is now refused, in words ("a seal must be proven rather than
+asserted… nothing was changed"), until those two call sites mint. That is a
+deliberate, explained refusal rather than a silent approval, but it is a
+user-visible change and it is the one thing here a founder should look at before
+this merges. See `06-pages/orders.md` §9.
+
+**How it was proven.** `jest src/procurement src/payment-methods src/billing
+src/mcp-runtime src/common/seal src/mcp-connections` — 859 passed, 3 skipped, 0
+failed, including 16 cases in `common/seal/seal-challenge.service.spec.ts` and 9
+in `procurement/order-seal.spec.ts` that fail against the pre-pass tree because
+that tree accepts an approval with no seal at all. `vitest src/pages/orders/next
+src/components/mudavym` — 107 passed. Live on `:4000`: the challenge route
+answers a nonexistent order with the gate's own 404, and a payment write with no
+seal answers 403 with the whole sentence. **NOT proven live: a successful
+redemption** — the local Supabase this gateway points at has neither
+`mcp_seal_challenges` nor `payment_methods` ("not found in the schema cache"),
+so the migrations behind both are unapplied there. The redemption path is proven
+only by the specs.

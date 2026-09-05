@@ -26,12 +26,26 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const approveMock = vi.hoisted(() => ({
   mutate: vi.fn(),
   mutateAsync: vi.fn(),
   isPending: false,
+}));
+
+/**
+ * The mint. The row asks for a one-time seal when the GESTURE BEGINS (founder,
+ * 2026-09-04), so the ceremony is now asynchronous and every case below has to
+ * wait for it — which is itself the assertion that the approval no longer
+ * happens without one.
+ */
+const mintMock = vi.hoisted(() =>
+  vi.fn(async (): Promise<string | null> => 'seal-token'),
+);
+
+vi.mock('@/services/api/orders', () => ({
+  mintOrderSeal: mintMock,
 }));
 
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
@@ -112,6 +126,8 @@ function seal() {
 beforeEach(() => {
   approveMock.mutate.mockReset();
   approveMock.isPending = false;
+  mintMock.mockReset();
+  mintMock.mockResolvedValue('seal-token');
 });
 
 describe('a row the caller may not seal', () => {
@@ -179,31 +195,99 @@ describe('a gate that has not answered', () => {
 });
 
 describe('the refusal that comes back from the seal', () => {
-  it('prints a 403 body VERBATIM, without the generic wrapper', () => {
+  it('prints a 403 body VERBATIM, without the generic wrapper', async () => {
     const sentence =
       'This order is the first order this house has placed with this vendor, so it waits for an owner to seal it.';
-    approveMock.mutate.mockImplementation((_id: string, opts: { onError: (e: unknown) => void }) => {
-      opts.onError(Object.assign(new Error(sentence), { response: { status: 403 } }));
-    });
+    approveMock.mutate.mockImplementation(
+      (_input: unknown, opts: { onError: (e: unknown) => void }) => {
+        opts.onError(Object.assign(new Error(sentence), { response: { status: 403 } }));
+      },
+    );
 
     mount({ approval: verdict({ mayApprove: true, sentence: null }) });
     seal();
 
-    const alert = screen.getByRole('alert');
+    const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(sentence);
     expect(alert).not.toHaveTextContent(/The gateway refused/i);
   });
 
-  it('keeps the generic wrapper for a NON-403 — a dropped connection explains nothing', () => {
-    approveMock.mutate.mockImplementation((_id: string, opts: { onError: (e: unknown) => void }) => {
-      opts.onError(Object.assign(new Error('Network Error'), { response: { status: 500 } }));
-    });
+  it('keeps the generic wrapper for a NON-403 — a dropped connection explains nothing', async () => {
+    approveMock.mutate.mockImplementation(
+      (_input: unknown, opts: { onError: (e: unknown) => void }) => {
+        opts.onError(Object.assign(new Error('Network Error'), { response: { status: 500 } }));
+      },
+    );
 
     mount({ approval: verdict({ mayApprove: true, sentence: null }) });
     seal();
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
+    expect(await screen.findByRole('alert')).toHaveTextContent(
       /The gateway refused \(Network Error\) — still pending, nothing approved\./i,
     );
+  });
+});
+
+
+/**
+ * The seal on an order is REDEEMED, not asserted (founder, 2026-09-04; ADR 0116
+ * addendum). None of these pass against the row as it stood this morning: it
+ * called `approve.mutate(row.id)` with nothing else, and the gateway believed
+ * it because the claim and the act were the same request.
+ */
+describe('the seal the row carries', () => {
+  it('mints the seal when the gesture BEGINS, not when it completes', async () => {
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+
+    // One Enter arms the ceremony — the gesture has begun and nothing is
+    // approved yet. The mint must already have been asked for by now: a token
+    // fetched at the moment of approval is the assertion model with extra steps.
+    fireEvent.keyDown(die(), { key: 'Enter' });
+    await waitFor(() => expect(mintMock).toHaveBeenCalledWith('o-1'));
+    expect(approveMock.mutate).not.toHaveBeenCalled();
+  });
+
+  it('carries the minted token into the approval', async () => {
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+    seal();
+
+    await waitFor(() =>
+      expect(approveMock.mutate).toHaveBeenCalledWith(
+        { orderId: 'o-1', challenge: 'seal-token' },
+        expect.anything(),
+      ),
+    );
+  });
+
+  it('approves NOTHING when the seal cannot be issued, and says so', async () => {
+    mintMock.mockResolvedValue(null);
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+    seal();
+
+    expect(
+      await screen.findByText(/The seal could not be issued — nothing sent\./i),
+    ).toBeInTheDocument();
+    // The one failure this whole mechanism exists to prevent, arriving through
+    // the UI instead of the API.
+    expect(approveMock.mutate).not.toHaveBeenCalled();
+  });
+
+  it('approves NOTHING when the mint THROWS', async () => {
+    mintMock.mockRejectedValue(new Error('403'));
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+    seal();
+
+    expect(
+      await screen.findByText(/The seal could not be issued — nothing sent\./i),
+    ).toBeInTheDocument();
+    expect(approveMock.mutate).not.toHaveBeenCalled();
+  });
+
+  it('mints ONCE per gesture, however many times the key is pressed', async () => {
+    mount({ approval: verdict({ mayApprove: true, sentence: null }) });
+    fireEvent.keyDown(die(), { key: 'Enter' });
+    fireEvent.keyDown(die(), { key: 'Enter' });
+    await waitFor(() => expect(approveMock.mutate).toHaveBeenCalled());
+    expect(mintMock).toHaveBeenCalledTimes(1);
   });
 });

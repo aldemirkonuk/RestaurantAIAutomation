@@ -31,6 +31,7 @@ import { DatabaseService } from "../database/database.service";
 import { ModelClientModule } from "../common/model-client/model-client.module";
 import { McpConnectionsModule } from "./mcp-connections.module";
 import { McpConnectionsController } from "./mcp-connections.controller";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { McpConnectionsService } from "./mcp-connections.service";
 import { PaymentMethodsModule } from "../payment-methods/payment-methods.module";
 import { PaymentMethodsController } from "../payment-methods/payment-methods.controller";
@@ -194,6 +195,11 @@ describe("PaymentMethodsModule", () => {
     const controller = new PaymentMethodsController(
       service as unknown as PaymentMethodsService,
       organizations as unknown as OrganizationsService,
+      // Third dependency since 2026-09-04: the shared seal. What these tests
+      // pin is the ROLE check standing in front of the write, so the seal is a
+      // double — one that always redeemed would hide nothing here, and one
+      // that always refused would hide the very thing under test.
+      { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
     );
 
     await controller.create(req({ userId: "u1", restaurantId: "r1" }), {
@@ -216,6 +222,11 @@ describe("PaymentMethodsModule", () => {
     const controller = new PaymentMethodsController(
       service as unknown as PaymentMethodsService,
       organizations as unknown as OrganizationsService,
+      // Third dependency since 2026-09-04: the shared seal. What these tests
+      // pin is the ROLE check standing in front of the write, so the seal is a
+      // double — one that always redeemed would hide nothing here, and one
+      // that always refused would hide the very thing under test.
+      { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
     );
 
     await expect(
@@ -247,6 +258,11 @@ describe("PaymentMethodsModule", () => {
     const controller = new PaymentMethodsController(
       service as unknown as PaymentMethodsService,
       organizations as unknown as OrganizationsService,
+      // Third dependency since 2026-09-04: the shared seal. What these tests
+      // pin is the ROLE check standing in front of the write, so the seal is a
+      // double — one that always redeemed would hide nothing here, and one
+      // that always refused would hide the very thing under test.
+      { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
     );
 
     await expect(
@@ -270,6 +286,11 @@ describe("PaymentMethodsModule", () => {
     const controller = new PaymentMethodsController(
       service as unknown as PaymentMethodsService,
       organizations as unknown as OrganizationsService,
+      // Third dependency since 2026-09-04: the shared seal. What these tests
+      // pin is the ROLE check standing in front of the write, so the seal is a
+      // double — one that always redeemed would hide nothing here, and one
+      // that always refused would hide the very thing under test.
+      { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
     );
 
     await expect(

@@ -19,6 +19,9 @@ import { ReceivingService } from "./receiving.service";
 import { CreditsController } from "./documents/credits.controller";
 import { SettingsModule } from "../settings/settings.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
+// The seal on an order (founder, 2026-09-04). Not circular: SealModule imports
+// DatabaseModule and nothing else.
+import { SealModule } from "../common/seal/seal.module";
 
 /**
  * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
@@ -44,6 +47,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     WebsocketModule,
     SettingsModule,
     OrganizationsModule,
+    SealModule,
     forwardRef(() => NotificationsModule),
   ],
   controllers: [

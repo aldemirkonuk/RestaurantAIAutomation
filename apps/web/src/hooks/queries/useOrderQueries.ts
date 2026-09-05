@@ -120,16 +120,39 @@ export function useCreateOrder() {
 // Mutation: Approve order
 // ---------------------------------------------------------------------------
 
+/**
+ * What an approval is asked for.
+ *
+ * A bare id is still accepted, and that is deliberate rather than lazy: the two
+ * callers outside this pass's scope (the legacy `pages/Orders.tsx` via
+ * `useOrdersData`, and `dashboard/next`'s WaitingOnYou) pass one, and widening
+ * the type to `{ orderId, challenge }` alone would have broken their build in
+ * a pass that was told not to change them. They send no seal, so the gateway
+ * refuses them in words — which is a visible, explained refusal rather than a
+ * silent approval, and is the honest state until they mint too.
+ */
+export type ApproveOrderInput = string | { orderId: string; challenge?: string | null }
+
+function readApproveInput(input: ApproveOrderInput): {
+  orderId: string
+  challenge: string | null
+} {
+  if (typeof input === 'string') return { orderId: input, challenge: null }
+  return { orderId: input.orderId, challenge: input.challenge ?? null }
+}
+
 export function useApproveOrder() {
   const { activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (orderId: string) => {
+    mutationFn: (input: ApproveOrderInput) => {
       if (!activeRestaurantId) throw new Error('No restaurant selected')
-      return ordersApi.approveOrder(orderId, activeRestaurantId)
+      const { orderId, challenge } = readApproveInput(input)
+      return ordersApi.approveOrder(orderId, activeRestaurantId, challenge)
     },
-    onMutate: async (orderId) => {
+    onMutate: async (input) => {
+      const { orderId } = readApproveInput(input)
       // Optimistic update
       await queryClient.cancelQueries({ queryKey: queryKeys.orders.all })
       const prevOrders = queryClient.getQueryData<Order[]>(

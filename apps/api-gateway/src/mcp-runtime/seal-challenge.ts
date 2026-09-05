@@ -1,67 +1,28 @@
 /**
- * The arithmetic of a provable seal. No database, no Nest, no policy.
+ * The arithmetic of a provable seal — now shared, and still ONE copy.
  *
- * ADR 0114 shipped the seal as an assertion and said so: `sealed: true` was a
- * claim in the same request as the thing it claimed about, so anything holding
- * a manager's session could send it. The founder's rule of 2026-09-04 replaces
- * that with challenge-and-redeem, and this file is the three primitives it
- * needs — kept apart from the service so each is testable on its own and so
- * "what is the token bound to" has exactly one answer.
+ * ---------------------------------------------------------------------------
+ * WHY THIS FILE IS NOW A RE-EXPORT (founder, 2026-09-04)
+ * ---------------------------------------------------------------------------
+ * The founder extended challenge-and-redeem from MCP tool writes to ORDER
+ * APPROVAL and to PAYMENT-METHOD writes. Three surfaces need the same token
+ * arithmetic, so it moved to `common/seal/seal-token.ts`, which is where a
+ * primitive with three callers belongs.
+ *
+ * This file stays because `mcp-connections/**` imports it and that directory is
+ * deliberately not being edited in this pass: re-pointing its import would be a
+ * change to a module nobody asked to change, in service of a file move. A
+ * re-export costs nothing at runtime and keeps the rule that matters — there is
+ * exactly one implementation of `hashCallArgs`, so two surfaces can never
+ * disagree about what a given set of arguments hashes to.
+ *
+ * Do not add anything here. New behaviour goes in `common/seal/`.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from "crypto";
-
-/** How long a seal lives. Long enough to finish a hold, short enough that a
- *  token left in a log is worthless by the time anyone reads it. */
-export const SEAL_TTL_MS = 120_000;
-
-/** A fresh token. 32 bytes of CSPRNG — never derived from anything guessable. */
-export function newSealToken(): string {
-  return randomBytes(32).toString("hex");
-}
-
-/** What is stored. The token itself never is; see the migration's header. */
-export function hashSealToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-/**
- * A stable hash of the call arguments, so a seal minted for one call cannot be
- * spent on another.
- *
- * Keys are sorted at every level, because two JSON objects that differ only in
- * key order are the same arguments and must not produce two different seals —
- * a manager would approve a call and then be refused for it. Everything else is
- * compared exactly: a string "6" and a number 6 are different arguments, and
- * deciding they are the same is the kind of helpfulness that ends in an order
- * for six hundred.
- */
-export function hashCallArgs(args: Record<string, unknown> | undefined): string {
-  return createHash("sha256")
-    .update(canonical(args ?? {}))
-    .digest("hex");
-}
-
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${canonical(record[k])}`)
-    .join(",")}}`;
-}
-
-/**
- * Constant-time comparison of two hex digests.
- *
- * The hashes are not secrets, so this is belt rather than braces — but a token
- * check that short-circuits on the first differing byte is a habit worth not
- * having anywhere near a seal.
- */
-export function digestsMatch(a: string, b: string): boolean {
-  const left = Buffer.from(a, "hex");
-  const right = Buffer.from(b, "hex");
-  if (left.length === 0 || left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
-}
+export {
+  SEAL_TTL_MS,
+  newSealToken,
+  hashSealToken,
+  hashCallArgs,
+  digestsMatch,
+} from "../common/seal/seal-token";

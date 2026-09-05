@@ -27,6 +27,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
 import { McpSecretService } from "../mcp-runtime/mcp-secret.service";
 import { McpConnectionsService } from "./mcp-connections.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { hashCallArgs, hashSealToken } from "../mcp-runtime/seal-challenge";
 
 const CONNECTION_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -212,6 +213,10 @@ function build(fixture: Fixture, opts: { isManager?: boolean } = {}) {
     organizations,
     runtime,
     secrets,
+    // The GRANT seal, which nothing in this file exercises — the call path
+    // below redeems its own. A double rather than the real service, so a test
+    // about the CALL cannot fail for a reason belonging to the grant.
+    { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
   );
   return { service, runtime, organizations, recorder };
 }

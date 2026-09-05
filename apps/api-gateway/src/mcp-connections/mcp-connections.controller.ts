@@ -24,6 +24,7 @@ import {
   CallMcpToolDto,
   CreateMcpConnectionDto,
   GrantMcpToolDto,
+  GrantSealChallengeDto,
   McpConnectionResponse,
   McpRuntimeStateResponse,
   McpSealChallengeResponse,
@@ -277,7 +278,7 @@ export class McpConnectionsController {
   @ApiResponse({
     status: 200,
     description:
-      "The row with the grant on it. `writes` is required and is CONFIRMED against the server's own `annotations.readOnlyHint` from the last probe: a manager may classify a declared read as a write, and never a declared write as a read (400 if they try). A tool the server has not listed, or listed without annotations, is a write. Re-granting a tool that is suspended for a changed declaration additionally requires `sealed`.",
+      "The row with the grant on it. `writes` is required and is CONFIRMED against the server's own `annotations.readOnlyHint` from the last probe: a manager may classify a declared read as a write, and never a declared write as a read (400 if they try). A tool the server has not listed, or listed without annotations, is a write. Granting a tool as a WRITE, or re-consenting to one suspended for a changed declaration, requires `challenge` — a one-time seal from `POST :id/tools/:tool/grant-seal`, redeemed here exactly once. There is no `sealed` flag: whether a grant was sealed is derived by this server, never asserted by its caller.",
   })
   async grantTool(
     @Req() req: Request & { user: AuthenticatedUser },
@@ -295,8 +296,54 @@ export class McpConnectionsController {
       id,
       tool,
       dto.writes,
-      dto.sealed === true,
+      dto.challenge ?? null,
     );
+  }
+
+  /**
+   * Begin the hold on a grant: mint the seal the grant will have to carry.
+   *
+   * The same two-request shape as the seal on a call, and for the same reason —
+   * a single request carrying its own proof proves nothing. This route exists
+   * because the FIRST build of the re-consent control sent `sealed: true` from
+   * the browser and the gateway believed it, which is the flaw this whole
+   * mechanism was built to close, reintroduced one route over.
+   */
+  @Post(":id/tools/:tool/grant-seal")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Issue a one-time seal for granting one tool" })
+  @ApiResponse({
+    status: 200,
+    description:
+      "The token, once. Single-use and bound to this manager, this server, this tool and the tool list as it stands — so a seal held over one declaration cannot be spent after the server changes it.",
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "The classification could never be granted — e.g. a declared write asked for as a read.",
+  })
+  async grantSeal(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("tool") tool: string,
+    @Body() dto: GrantSealChallengeDto,
+  ): Promise<McpSealChallengeResponse> {
+    const { userId, restaurantId } = await this.manager(
+      req,
+      `seal the grant of "${tool}"`,
+    );
+    const issued = await this.service.issueGrantSeal(
+      restaurantId,
+      userId,
+      id,
+      tool,
+      dto.writes,
+    );
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      toolName: tool,
+    };
   }
 
   @Delete(":id/tools/:tool")

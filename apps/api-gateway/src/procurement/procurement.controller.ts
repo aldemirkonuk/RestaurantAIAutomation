@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Get,
   Header,
+  Headers,
   HttpException,
   HttpStatus,
   Param,
@@ -307,23 +308,65 @@ export class ProcurementController {
     return this.procurementService.approvalGate(user.restaurantId, user.userId);
   }
 
+  /**
+   * Begin the hold. Returns a one-time seal, once.
+   *
+   * The token is returned HERE and nowhere else, and it is minted at the moment
+   * the gesture STARTS — a token fetched at the moment of approval would be one
+   * more thing the same request asked for itself, which is the assertion model
+   * with extra steps (founder, 2026-09-04; ADR 0116 addendum).
+   *
+   * Everything that would refuse the approval refuses the seal first, so a
+   * manager is never handed a seal that is going to be refused two seconds
+   * later.
+   */
+  @Post("orders/:id/seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal this order's approval has to carry back",
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act`. The seal is bound to this actor, this order, this act and this order's own figures: it cannot be spent by another person, on another order, or after the order's total changes.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The same refusal `POST orders/:id/approve` would give. A seal is not issued for a call that is refused for another reason.",
+  })
+  async issueOrderSealChallenge(
+    @Param("id") orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueOrderSealChallenge(
+      user.restaurantId,
+      orderId,
+      user.userId,
+    );
+  }
+
   @Post("orders/:id/approve")
-  @ApiOperation({ summary: "Approve procurement order" })
+  @ApiOperation({ summary: "Approve procurement order, behind a redeemed seal" })
   @ApiResponse({ status: 200, type: OrderResponseDto })
   @ApiResponse({
     status: 403,
     description:
-      "This house's approval rules require a role the caller does not hold. The body's `message` is the whole sentence — which rule fired, what the number was, and who may sign — and is rendered verbatim by the page.",
+      "Either this house's approval rules require a role the caller does not hold, or the seal was absent, already spent, issued to somebody else, issued for a different order, or issued before the order's total changed. The body's `message` is the whole sentence and is rendered verbatim by the page.",
   })
   async approveOrder(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    // The seal travels in a HEADER rather than a body field so that DELETE and
+    // PATCH writes elsewhere can carry it identically, and so that a caller
+    // cannot confuse it with the arguments it is a seal OVER.
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<OrderResponseDto> {
     try {
       return await this.procurementService.approveOrder(
         user.restaurantId,
         orderId,
         user.userId,
+        challenge ?? null,
       );
     } catch (error) {
       // A refusal is not a server fault. Before the approval gate existed

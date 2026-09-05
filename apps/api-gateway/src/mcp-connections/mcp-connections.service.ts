@@ -12,6 +12,7 @@ import { DatabaseService } from "../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
 import { McpSecretService } from "../mcp-runtime/mcp-secret.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import type {
   McpProbeStatus,
   McpToolAnnotations,
@@ -144,6 +145,12 @@ export class McpConnectionsService {
     private readonly organizations: OrganizationsService,
     private readonly runtime: McpRuntimeService,
     private readonly secrets: McpSecretService,
+    // The SHARED seal, for the act of granting a tool. The CALL path below
+    // still redeems its own, because it files refusals in `mcp_tool_calls`
+    // rather than `system_audit_log`; collapsing the two is named as a
+    // follow-up in `20260904220000`'s header rather than done here, where it
+    // would silently move where an MCP refusal is read.
+    private readonly seals: SealChallengeService,
   ) {}
 
   private static row(
@@ -607,7 +614,10 @@ export class McpConnectionsService {
    *
    * This is also the re-consent path. Granting a tool that is currently
    * suspended clears the suspension, and because clearing it re-enables a call
-   * that was refused, it must arrive sealed.
+   * that was refused, it must arrive behind a REDEEMED seal — as must any grant
+   * that classifies a tool as a write. `challenge` is that seal, minted by
+   * `issueGrantSeal` when the hold began; there is no boolean a caller can send
+   * instead, which is the whole point.
    */
   async grantTool(
     restaurantId: string,
@@ -615,7 +625,7 @@ export class McpConnectionsService {
     id: string,
     toolName: string,
     writes: boolean,
-    sealed: boolean,
+    challenge: string | null,
   ): Promise<McpConnectionResponse> {
     const row = await this.liveRow(restaurantId, id);
     const name = toolName.trim();
@@ -635,10 +645,35 @@ export class McpConnectionsService {
     }
 
     const existing = await this.liveGrantRow(row.id, name);
-    if (existing?.needs_reconsent_at && !sealed) {
-      throw new ForbiddenException(
-        `"${name}" is suspended because ${String(existing.needs_reconsent_reason ?? "its declaration changed")}. Re-consenting restores a call that is currently refused, so it runs only behind the seal.`,
-      );
+
+    // THE SEAL ON THE GRANT ITSELF.
+    //
+    // Two acts turn a refused call ON: classifying a tool as a write, and
+    // re-consenting to a grant the server's changed declaration suspended.
+    // Until 2026-09-04 (second pass) the second was gated on a `sealed: true`
+    // BOOLEAN THE CLIENT SET, in the same request that asked for the change —
+    // the exact assertion-in-its-own-request flaw ADR 0114 named and the call
+    // path had already closed. So the grant is redeemed like a call, through
+    // the shared service rather than a third copy of the policy, and `sealed`
+    // is no longer a field any caller can send.
+    //
+    // A grant that classifies the tool as a READ is not sealed: it takes a
+    // permission away rather than granting one, and demanding a ceremony to
+    // narrow something teaches people to skip the ceremony.
+    const needsSeal = confirmed.writes || Boolean(existing?.needs_reconsent_at);
+    if (needsSeal) {
+      await this.seals.redeem({
+        restaurantId,
+        actorUserId: grantedBy,
+        subjectKind: "mcp_tool_grant",
+        subjectId: row.id,
+        action: `grant:${name}`,
+        // The tool list the manager was looking at. A seal held over one
+        // declaration cannot be spent after the server changed it — which is
+        // the very thing the suspension it lifts exists to catch.
+        args: this.grantSealArgs(name, row.probeTools),
+        challenge,
+      });
     }
 
     // Revoke-then-insert rather than upsert: the partial unique index is
@@ -676,6 +711,68 @@ export class McpConnectionsService {
     }
 
     return this.reread(restaurantId, grantedBy, id);
+  }
+
+  /**
+   * What a grant seal is minted OVER: the tool, and the tool list as it stands.
+   *
+   * One function, called by both the issuing and the redeeming side, so the two
+   * cannot drift into hashing slightly different things — which would present
+   * as "your seal expired" for a seal that was perfectly good.
+   *
+   * `toolListHash` is null when the server has never been probed. That is a
+   * value like any other and it hashes like one: a grant made against no
+   * declaration at all is still bound to the fact that there was none, so a
+   * seal minted before the first probe cannot be spent after it.
+   */
+  private grantSealArgs(
+    toolName: string,
+    tools: McpToolSummary[] | null,
+  ): Record<string, unknown> {
+    return {
+      toolName: toolName.trim().toLowerCase(),
+      toolListHash: tools ? fingerprintToolList(tools) : null,
+    };
+  }
+
+  /**
+   * Mint the seal for ONE grant, at the moment the hold begins.
+   *
+   * The role and the tool's classification are checked HERE as well as at
+   * redemption: a seal issued for an act that would be refused anyway is a seal
+   * a manager holds and is then told meant nothing.
+   */
+  async issueGrantSeal(
+    restaurantId: string,
+    userId: string,
+    id: string,
+    toolName: string,
+    writes: boolean,
+  ): Promise<{ challenge: string; expiresAt: string; action: string }> {
+    const row = await this.liveRow(restaurantId, id);
+    const name = toolName.trim();
+    if (!name) throw new BadRequestException("A tool grant needs a tool name");
+
+    const listed =
+      row.probeTools?.find(
+        (t) => t.name.trim().toLowerCase() === name.toLowerCase(),
+      ) ?? null;
+    const confirmed = confirmClassification(
+      declaredClassification(listed),
+      writes,
+    );
+    if (!confirmed.ok) {
+      throw new BadRequestException(confirmed.refusal);
+    }
+
+    return this.seals.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "mcp_tool_grant",
+      subjectId: row.id,
+      action: `grant:${name}`,
+      args: this.grantSealArgs(name, row.probeTools),
+    });
   }
 
   /** The live grant for one tool, or null. Used to see whether it is suspended. */

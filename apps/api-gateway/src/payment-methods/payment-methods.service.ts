@@ -163,6 +163,40 @@ export class PaymentMethodsService {
     };
   }
 
+  /**
+   * The facts a seal on this instrument is taken over. ONE reader, used when
+   * the seal is ISSUED and again when it is REDEEMED — two readers is how the
+   * two ends learn to disagree and every honest approval starts being refused.
+   *
+   * A missing row is a 404 here rather than a silent `null`: minting a seal for
+   * an instrument that does not exist would hand somebody a token bound to
+   * nothing, and nothing is a subject that never changes.
+   */
+  async sealFacts(
+    restaurantId: string,
+    id: string,
+  ): Promise<{ methodId: string; brand: string | null; last4: string | null }> {
+    const { data, error } = await this.databaseService.supabase
+      .from("payment_methods")
+      .select("id, brand, last4")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `The instrument could not be read, so a seal could not be taken over it: ${error.message}`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No payment method with that id belongs to this restaurant.",
+      );
+    }
+    const row = data as { id: string; brand: string | null; last4: string | null };
+    return { methodId: row.id, brand: row.brand ?? null, last4: row.last4 ?? null };
+  }
+
   async create(
     restaurantId: string,
     dto: CreatePaymentMethodDto,

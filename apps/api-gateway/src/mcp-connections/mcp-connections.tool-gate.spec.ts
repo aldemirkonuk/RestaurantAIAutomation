@@ -43,6 +43,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
 import { McpSecretService } from "../mcp-runtime/mcp-secret.service";
 import { McpConnectionsService } from "./mcp-connections.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 
 const CONNECTION_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const RESTAURANT = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
@@ -158,6 +159,10 @@ function build(
     organizations,
     runtime,
     secrets,
+    // The GRANT seal, which nothing in this file exercises — the call path
+    // below redeems its own. A double rather than the real service, so a test
+    // about the CALL cannot fail for a reason belonging to the grant.
+    { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
   );
   return { service, runtime, organizations, recorder };
 }
@@ -362,6 +367,7 @@ describe("withdrawing a consent", () => {
         unavailableReason: null,
         open: () => ({ secret: null, reason: null }),
       } as unknown as McpSecretService,
+      { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
     );
 
     await service.setConsent(RESTAURANT, "u-me", CONNECTION_ID, false);

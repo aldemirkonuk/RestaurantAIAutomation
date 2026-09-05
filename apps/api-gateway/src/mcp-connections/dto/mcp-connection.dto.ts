@@ -239,15 +239,25 @@ export class GrantMcpToolDto {
   writes!: boolean;
 
   /**
-   * The hold-to-approve assertion, required only when this grant is a
-   * RE-CONSENT — the tool is currently suspended because the server changed its
-   * declaration, and granting it again turns a refused call back on. A first
-   * grant does not need it; the service decides which case this is, so a client
-   * cannot decide it for itself by omitting the field.
+   * The one-time seal, minted by `POST :id/tools/:tool/grant-seal` when the
+   * hold began.
+   *
+   * THERE IS NO `sealed` FIELD, and its absence is the point. Until 2026-09-04
+   * (second pass) this DTO carried `sealed?: boolean` and a re-consent was
+   * gated on it — a claim the CLIENT set, travelling in the same request as the
+   * thing it claimed about, which is precisely the flaw ADR 0114 named and the
+   * call path had already closed. Whether a grant was sealed is now a fact the
+   * SERVER derives, by redeeming this token or refusing to.
+   *
+   * Required for any grant that classifies a tool as a write, and for any
+   * re-consent. Not required to grant a declared read, which takes a permission
+   * away rather than giving one.
    */
   @IsOptional()
-  @IsBoolean()
-  sealed?: boolean;
+  @IsString()
+  @MinLength(16)
+  @MaxLength(200)
+  challenge?: string;
 }
 
 /**
@@ -290,6 +300,22 @@ export class SealChallengeDto {
   @IsOptional()
   @IsObject()
   args?: Record<string, unknown>;
+}
+
+/**
+ * Begin the hold on a GRANT.
+ *
+ * `writes` is the classification the manager is about to agree to, and it is
+ * sent here so the seal is refused NOW if it could never be granted — a seal a
+ * manager holds and is then told meant nothing teaches people that the seal is
+ * decoration. There are no other arguments: what the seal is bound to (the tool
+ * and the tool list the manager is looking at) is derived by the server from
+ * the same function the redemption uses, so a client cannot change what its own
+ * seal covers.
+ */
+export class GrantSealChallengeDto {
+  @IsBoolean()
+  writes!: boolean;
 }
 
 /**

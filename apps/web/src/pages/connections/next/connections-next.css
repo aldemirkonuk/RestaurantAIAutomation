@@ -281,7 +281,23 @@
   color: var(--ink-3);
   cursor: not-allowed;
 }
-.mudavym .cx-btn.is-seal { border-color: var(--seal); color: var(--seal-deep); }
+/* EMPHASIS, NOT THE SEAL (audit, 2026-09-04).
+   This rule used to paint a plain button in the seal's own ring and ink, and
+   callers asked for it whenever an action felt weighty — the calendar feed's
+   "Regenerate", the declare-a-server button. So the seal marked two different
+   things at once: an act that had been PROVEN, and an act that merely mattered.
+   A reader could not tell which from looking, which is the whole value of a
+   seal.
+   The seal's appearance now belongs to `HoldToApprove` and to nothing else: it
+   draws its own track and stamps its own Seal, and it only appears where a
+   gesture is required and a one-time token is redeemed. What is left here is
+   ordinary emphasis in the house's ink, for the buttons that still want weight
+   without claiming proof. */
+.mudavym .cx-btn.is-seal {
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+  font-weight: 600;
+}
 /* The focus ring sits on a PAPER gap: a ring on the seal fill measured 1.00:1. */
 .mudavym .cx-btn:focus-visible,
 .mudavym .cx-linkbtn:focus-visible {
@@ -409,8 +425,16 @@
    breaks awkwardly; this one control opts out instead of being truncated,
    because a clipped label would hide WHICH tool the seal is for, which is the
    only thing that makes the control safe to press. */
-.mudavym .cx-btn.is-reconsent {
+/* The re-consent gesture. `HoldToApprove` draws its own track and its own seal
+   ring, so this only gives it the column's width and lets a tool name wrap —
+   a clipped label would hide WHICH tool the seal is for, which is the only
+   thing that makes the gesture safe to complete. */
+.mudavym .cx-hold {
+  width: 100%;
+}
+.mudavym .cx-hold-wide button {
   white-space: normal;
-  text-align: left;
   line-height: 1.35;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }

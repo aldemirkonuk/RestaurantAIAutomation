@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -41,6 +42,8 @@ type Row = Record<string, any>;
 interface Calls {
   orderUpdates: Row[];
   auditInserts: Row[];
+  /** The seals this harness has issued, and whether each was spent. */
+  seals: Row[];
 }
 
 const REST = "rest-1";
@@ -88,7 +91,7 @@ function makeDb(opts: {
   ledgerError?: { message: string } | null;
   auditFails?: boolean;
 }) {
-  const calls: Calls = { orderUpdates: [], auditInserts: [] };
+  const calls: Calls = { orderUpdates: [], auditInserts: [], seals: [] };
 
   const supabase: any = {
     from(table: string) {
@@ -132,6 +135,54 @@ function makeDb(opts: {
         }
         return { data: shape === "many" ? [] : null, error: null };
       };
+
+      // ── The seal challenges (founder, 2026-09-04) ───────────────────────
+      // A tiny in-memory table rather than the generic stub, because "exactly
+      // once" is a property of the redeeming UPDATE's own `redeemed_at IS NULL`
+      // filter and a stub that always answers `{data:null}` cannot express it.
+      if (table === "mcp_seal_challenges") {
+        const api: any = {};
+        let tokenHash: string | null = null;
+        let rowId: string | null = null;
+        api.select = () => api;
+        api.eq = (col: string, value: string) => {
+          if (col === "token_hash") tokenHash = value;
+          if (col === "id") rowId = value;
+          return api;
+        };
+        api.maybeSingle = async () => ({
+          data: calls.seals.find((sl: Row) => sl.token_hash === tokenHash) ?? null,
+          error: null,
+        });
+        api.insert = (row: Row) => {
+          calls.seals.push({ id: `seal-${calls.seals.length + 1}`, ...row });
+          return Promise.resolve({ error: null });
+        };
+        api.update = (patch: Row) => {
+          const upd: any = {};
+          let unspentOnly = false;
+          upd.eq = (col: string, value: string) => {
+            if (col === "id") rowId = value;
+            return upd;
+          };
+          upd.is = (col: string, value: unknown) => {
+            if (col === "redeemed_at" && value === null) unspentOnly = true;
+            return upd;
+          };
+          upd.select = () => ({
+            then: (res: any) => {
+              const row = calls.seals.find((sl: Row) => sl.id === rowId);
+              if (!row || (unspentOnly && row.redeemed_at)) {
+                return Promise.resolve({ data: [], error: null }).then(res);
+              }
+              row.redeemed_at = String(patch.redeemed_at);
+              return Promise.resolve({ data: [{ id: row.id }], error: null }).then(res);
+            },
+          });
+          return upd;
+        };
+        return api;
+      }
 
       const q: any = {
         select: (cols?: string, o?: { head?: boolean }) => {
@@ -224,7 +275,25 @@ function service(
     undefined,
     thresholds,
     orgs,
+    // The seal (founder, 2026-09-04). Supplied here rather than left undefined
+    // because `approveOrder` REFUSES when it is missing — a gate spec running
+    // against an unwired seal would be testing the refusal, not the gate.
+    new SealChallengeService(db),
   );
+}
+
+/**
+ * Seal an order the way the page does: begin the hold (mint), then approve
+ * carrying what it minted.
+ *
+ * Every APPROVING case below goes through this. The refusing cases still call
+ * `approveOrder` directly with no seal, and still fail for the reason they were
+ * written for, because `assertApprovalAllowed` runs BEFORE the redemption —
+ * that ordering is itself asserted in `order-seal.spec.ts`.
+ */
+async function sealedApprove(svc: ProcurementService) {
+  const issued = await svc.issueOrderSealChallenge(REST, ORDER, USER);
+  return svc.approveOrder(REST, ORDER, USER, issued.challenge);
 }
 
 const ORDER_ROW = {
@@ -288,7 +357,7 @@ describe("approveOrder — the ceiling", () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
-    await svc.approveOrder(REST, ORDER, USER);
+    await sealedApprove(svc);
 
     expect(calls.auditInserts).toHaveLength(0);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -298,7 +367,7 @@ describe("approveOrder — the ceiling", () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1000 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
-    await svc.approveOrder(REST, ORDER, USER);
+    await sealedApprove(svc);
 
     expect(calls.auditInserts).toHaveLength(0);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
@@ -322,7 +391,7 @@ describe("approveOrder — the ceiling", () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1001 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("owner"));
 
-    await svc.approveOrder(REST, ORDER, USER);
+    await sealedApprove(svc);
 
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
     expect(calls.auditInserts).toHaveLength(0);
@@ -353,7 +422,7 @@ describe("approveOrder — an unknown fact never fires a rule", () => {
     });
     const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
-    await svc.approveOrder(REST, ORDER, USER);
+    await sealedApprove(svc);
 
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
@@ -372,7 +441,7 @@ describe("approveOrder — an unknown fact never fires a rule", () => {
     const { db, calls } = makeDb({ order: ORDER_ROW, priorOrdersToVendor: 3 });
     const svc = service(db, thresholdsStub([newVendorRule()]), orgsStub("manager"));
 
-    await svc.approveOrder(REST, ORDER, USER);
+    await sealedApprove(svc);
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 });
@@ -382,7 +451,7 @@ describe("approveOrder — a house with no policy, and a policy that cannot be r
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 999999 } });
     const svc = service(db, thresholdsStub([]), orgsStub("staff"));
 
-    await svc.approveOrder(REST, ORDER, USER);
+    await sealedApprove(svc);
 
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
     expect(calls.auditInserts).toHaveLength(0);

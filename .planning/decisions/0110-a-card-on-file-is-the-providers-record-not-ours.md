@@ -221,3 +221,51 @@ file is written**. Re-run both before pushing.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-03 | — | Created; built behind `mudavym_design_profile`, founder review open |
+
+---
+
+## Addendum — 2026-09-04: a card-on-file change is REDEEMED, not asserted
+
+**Founder decision, 2026-09-04**, the same one recorded in ADR 0116's addendum:
+challenge-and-redeem extends from MCP tool writes to order approval and to
+payments.
+
+**Why here, given this ADR's own headline is that nothing charges anybody.** The
+seal is not protecting a payment; it is protecting the *setup* for one. The three
+writes that exist decide which instrument the provider is told to charge first
+and which instruments stay attached at all. Every one of them ran
+`assertCanManageRestaurant` and nothing else — which answers *may this role* and
+cannot answer *did a person*. An attacker holding a manager's session could
+quietly attach their own instrument as the default and wait for the charge path
+to arrive. Doing this before money moves is the only order in which it is cheap.
+
+**What changed.**
+
+- `POST /payment-methods/seal-challenge` mints a one-time, 120-second token for
+  one act — `create`, `set_default` or `remove` — at the moment the hold begins.
+- `POST /payment-methods`, `PATCH /payment-methods/:id/default` and
+  `DELETE /payment-methods/:id` each redeem it, from `X-Seal-Challenge`, after
+  the role check and **before** the write. An absent seal is refused before the
+  instrument is even read, so a caller with no seal gets the sentence telling
+  them to begin the hold rather than whatever the read happened to say.
+- **The card the manager was looking at is hashed into the seal**: a token minted
+  against "Visa ····4242" cannot be spent after the row behind that id became a
+  different card.
+- `create` has no instrument yet, so its subject is the **house's register** —
+  the restaurant's id — stated in `payment-methods/payment-seal.ts` rather than
+  inferred. A `create` seal still cannot pay for a `remove`, because the act is
+  part of the binding.
+
+**What is NOT built.** The `/profile` payment register's controls are still plain
+buttons, not the hold ceremony — `PaymentRegister.tsx` has never rendered
+`HoldToApprove`, and `pages/profile/next` was being edited by another builder in
+the same worktree during this pass, so it was left untouched rather than raced.
+The gateway therefore refuses those buttons today, in words. The patch that adds
+the ceremony is written out in the build report; it is a page change, not a
+gateway one.
+
+**Proven by** `payment-methods.seal.spec.ts` (14 cases, all failing against the
+pre-pass controller because it wrote with no seal at all) and, live on `:4000`, a
+403 carrying the whole sentence for a `DELETE` with no seal. A successful
+redemption is NOT proven live: the local Supabase has neither `payment_methods`
+nor `mcp_seal_challenges`.

@@ -23,6 +23,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { McpConnectionsService } from "./mcp-connections.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { DatabaseService } from "../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
@@ -139,6 +140,8 @@ function makeService(
       } as unknown as OrganizationsService,
       runtime,
       secrets,
+      // Nothing in this file grants a tool, so the grant seal is a double.
+      { issue: jest.fn(), redeem: jest.fn() } as unknown as SealChallengeService,
     ),
     rec,
     runtime,

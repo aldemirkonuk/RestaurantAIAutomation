@@ -510,6 +510,25 @@ export function Orders() {
     return configs[status] || configs.pending_approval
   }
 
+  /**
+   * What to tell a person whose approval was refused.
+   *
+   * A 403 from `POST /procurement/orders/:id/approve` carries a sentence naming
+   * the rule, the number and the role that may sign (ADR 0116). It is shown as
+   * itself. Anything else keeps a generic line, because a network error's
+   * message explains nothing about this order.
+   *
+   * The two call sites here post through `apiClient` directly rather than
+   * through `services/api/orders.ts`, so they do not get that module's
+   * message promotion and have to read the body themselves.
+   */
+  const approvalRefusalText = (error: unknown): string => {
+    const status = (error as { response?: { status?: number } })?.response?.status
+    const body = (error as { response?: { data?: { message?: string } } })?.response?.data
+    if (status === 403 && body?.message) return body.message
+    return 'Failed to approve order. Please try again.'
+  }
+
   const confirmApproval = async (price: number) => {
     try {
       if (selectedOrder && isUuid(selectedOrder.order_id)) {
@@ -523,7 +542,11 @@ export function Orders() {
       refetchOrders()
     } catch (error) {
       console.error('Approval failed:', error)
-      alert('Failed to approve order')
+      // ADR 0116: a 403 from this route carries the whole reason — which rule
+      // fired, what the number was, who may sign. `alert('Failed to approve
+      // order')` would replace a written explanation with a shrug, and the
+      // person would learn only to split the order in two.
+      alert(approvalRefusalText(error))
     }
   }
 
@@ -3320,7 +3343,7 @@ Shadow stock has been moved to Live Stock.`)
               alert('Order approved successfully! ✅')
             } catch (error) {
               console.error('Failed to confirm order:', error)
-              alert('Failed to confirm order. Please try again.')
+              alert(approvalRefusalText(error))
             }
           }}
           onCancel={async () => {

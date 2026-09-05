@@ -74,6 +74,8 @@ import {
   refusalSentence,
   roleSatisfies,
 } from "./order-approval-gate";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { ORDER_SEAL_ACT, orderSealArgs } from "./order-seal";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -215,6 +217,14 @@ export class ProcurementService {
     private readonly approvalThresholds?: ApprovalThresholdsService,
     @Optional()
     private readonly organizations?: OrganizationsService,
+    // ── The seal (founder, 2026-09-04) ──────────────────────────────────────
+    // Also declared LAST, and for the same reason as the two above: the specs
+    // that build this service positionally must keep compiling. Also NOT
+    // optional in the DI graph — `ProcurementModule` imports `SealModule` — and
+    // `approveOrder` REFUSES rather than seals when it is missing, because a
+    // seal check that disappears with its own dependency is not a seal check.
+    @Optional()
+    private readonly sealChallenges?: SealChallengeService,
   ) {}
 
   /**
@@ -1884,8 +1894,10 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     userId: string,
+    challenge?: string | null,
   ): Promise<OrderResponseDto> {
     await this.assertApprovalAllowed(restaurantId, orderId, userId);
+    await this.redeemOrderSeal(restaurantId, orderId, userId, challenge);
 
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
@@ -1963,6 +1975,138 @@ export class ProcurementService {
     }
 
     return order;
+  }
+
+  /* ── The seal on an order ───────────────────────────────────────────────── */
+
+  /**
+   * Mint the proof, at the moment the hold BEGINS.
+   *
+   * =========================================================================
+   * WHY A SEAL ON AN ORDER IS NOW REDEEMED RATHER THAN ASSERTED
+   * =========================================================================
+   * ADR 0116 gave `POST orders/:id/approve` a real gate: the house's own
+   * thresholds, the actor's role, a refusal in words. What it could not give
+   * was evidence that a PERSON did this. The hold-to-approve gesture lived
+   * entirely in the browser and left no trace the server could check, so
+   * anything holding a manager's session — a stolen token, a script, an agent
+   * with more autonomy than anybody granted it — could seal an order by
+   * calling the endpoint. ADR 0114 was explicit that its seal was "an assertion
+   * by an authenticated manager, recorded with their id — not a cryptographic
+   * proof of the gesture". The founder's decision of 2026-09-04 closes that for
+   * orders and for payments.
+   *
+   * THE ROLE IS CHECKED HERE **AND** AGAIN AT REDEMPTION. Not once: a manager
+   * demoted between the two must not be able to spend a token they were
+   * legitimately given, and a manager who could never have sealed this order
+   * must not be handed a seal that will be refused two seconds later — that
+   * teaches people the seal is decoration.
+   *
+   * THE ORDER'S MONEY IS HASHED INTO THE SEAL (`order-seal.ts`), so a token
+   * minted over an order of 2,000 cannot be spent after somebody made it
+   * 20,000. That is the property the assertion model had no way to express.
+   */
+  async issueOrderSealChallenge(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), " +
+          "so nothing can be approved. This is a gateway fault, not a decision about this order.",
+      );
+    }
+
+    // Everything that would refuse the approval refuses the SEAL, first.
+    await this.assertApprovalAllowed(restaurantId, orderId, userId);
+
+    const args = await this.readOrderSealArgs(restaurantId, orderId);
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEAL_ACT,
+      args,
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Spend it. Throws with the whole sentence on every refusal.
+   *
+   * Runs AFTER `assertApprovalAllowed` and BEFORE the write. After, so a person
+   * whose role cannot seal this order is told that rather than having their
+   * seal burned by a request that was never going to succeed. Before, so the
+   * status is never written on an unproven seal.
+   */
+  private async redeemOrderSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    challenge: string | null | undefined,
+  ): Promise<void> {
+    if (!this.sealChallenges) {
+      // Refuse, never seal. A seal check that vanishes with its own dependency
+      // is the [[absence-reported-as-health]] fault pointed at money.
+      throw new InternalServerErrorException(
+        "The seal could not be checked (the seal service is not wired into procurement), " +
+          "so nothing was approved. This is a gateway fault, not a decision about this order.",
+      );
+    }
+
+    const args = await this.readOrderSealArgs(restaurantId, orderId);
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEAL_ACT,
+      args,
+      challenge: challenge ?? null,
+    });
+  }
+
+  /**
+   * Read the facts the seal is taken over. ONE reader, used by both ends —
+   * two readers is how issue and redemption learn to disagree.
+   */
+  private async readOrderSealArgs(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Record<string, unknown>> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, total_cost, provider_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read, so the seal could not be taken over its own figures: ${error.message}`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to seal.",
+      );
+    }
+    const row = data as {
+      id: string;
+      total_cost: string | number | null;
+      provider_id: string | null;
+    };
+    return orderSealArgs({
+      id: row.id,
+      total: row.total_cost,
+      providerId: row.provider_id,
+    });
   }
 
   /* ── The approval gate ──────────────────────────────────────────────────── */

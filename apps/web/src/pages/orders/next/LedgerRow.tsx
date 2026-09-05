@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
+import * as ordersApi from '@/services/api/orders';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
@@ -86,9 +87,20 @@ export function LedgerRow({
     row.computedTotal !== null &&
     Math.abs(row.listedTotal - row.computedTotal) > 0.005;
 
-  const onApprove = () => {
+  /**
+   * Mint the proof, at the moment the hold BEGINS (founder, 2026-09-04).
+   *
+   * Not at the moment of approval: a token this request fetched for itself is
+   * the assertion `HoldToApprove`'s `onChallenge` exists to replace. A mint that
+   * fails leaves `HoldToApprove` in its "the seal could not be issued — nothing
+   * sent" state and never calls `onApprove`, so a refused seal cannot become a
+   * silent approval on the way through the UI.
+   */
+  const onChallenge = () => ordersApi.mintOrderSeal(row.id);
+
+  const onApprove = (challenge?: string | null) => {
     setApproveError(null);
-    approve.mutate(row.id, {
+    approve.mutate({ orderId: row.id, challenge }, {
       onError: (err) => {
         // Since ADR 0116 a refusal's `message` IS the explanation — which rule
         // fired, what the number was, who may sign (`services/api/orders.ts`
@@ -273,6 +285,7 @@ export function LedgerRow({
                       approvedLabel="Approved"
                       disabled={bulkRunning || approve.isPending || heldForApproval}
                       onApprove={onApprove}
+                      onChallenge={onChallenge}
                     />
                   </div>
                   {heldForApproval && approval?.sentence && (

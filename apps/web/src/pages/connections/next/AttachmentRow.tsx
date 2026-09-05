@@ -22,6 +22,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { HoldToApprove } from '../../../components/mudavym/HoldToApprove';
 import { DASH } from './cx-format';
 
 export type ChipTone = 'on' | 'off' | 'warn' | 'plain';
@@ -37,14 +38,37 @@ export interface RowPermission {
   can: boolean;
 }
 
+/**
+ * A plain control. There is NO `seal` flag on it any more, and its absence is
+ * the point (audit, 2026-09-04).
+ *
+ * `is-seal` used to be a colour a caller could ask for, and callers did: the
+ * calendar feed's "Regenerate" wore the seal's ring while being an ordinary
+ * click. So the seal marked two different things — an act that had been proven
+ * and an act that merely felt weighty — and the reader could not tell which
+ * from looking. Now the seal's appearance is produced by `HoldToApprove` and by
+ * nothing else, through `hold` below, so seeing it means a gesture is required.
+ */
 export interface RowControl {
   label: string;
   onClick?: () => void;
   /** Disabled controls MUST carry a reason — see `AttachmentRow`'s header. */
   disabled?: boolean;
-  seal?: boolean;
   busy?: boolean;
-  /** Lets a long label wrap instead of being clipped. See `.cx-btn.is-reconsent`. */
+  /**
+   * Render this control as a hold-to-approve gesture instead of a button.
+   *
+   * `onChallenge` is called when the hold BEGINS and must resolve the one-time
+   * seal the write will carry; `onApprove` receives it. A control that reaches
+   * a server-side seal MUST be one of these — a button that sends "I was
+   * sealed" is the assertion-in-its-own-request flaw, and the type is what
+   * stops the next person writing one.
+   */
+  hold?: {
+    onChallenge: () => Promise<string | null>;
+    onApprove: (challenge?: string | null) => void;
+  };
+  /** Lets a long label wrap instead of being clipped. See `.cx-hold-wide`. */
   wrap?: boolean;
 }
 
@@ -139,23 +163,29 @@ export function AttachmentRow({
       </div>
 
       <div className="cx-ctl">
-        {controls.map((c) => (
-          <button
-            key={c.label}
-            type="button"
-            className={[
-              'cx-btn',
-              c.seal ? 'is-seal' : '',
-              c.wrap ? 'is-reconsent' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            disabled={c.disabled || c.busy}
-            onClick={c.onClick}
-          >
-            {c.busy ? `${c.label}…` : c.label}
-          </button>
-        ))}
+        {controls.map((c) =>
+          c.hold ? (
+            <HoldToApprove
+              key={c.label}
+              className={c.wrap ? 'cx-hold cx-hold-wide' : 'cx-hold'}
+              label={c.busy ? `${c.label}…` : c.label}
+              approvedLabel="Sealed"
+              disabled={c.disabled || c.busy}
+              onChallenge={c.hold.onChallenge}
+              onApprove={c.hold.onApprove}
+            />
+          ) : (
+            <button
+              key={c.label}
+              type="button"
+              className="cx-btn"
+              disabled={c.disabled || c.busy}
+              onClick={c.onClick}
+            >
+              {c.busy ? `${c.label}…` : c.label}
+            </button>
+          ),
+        )}
         <span className="cx-ctl-note">{stopNote}</span>
       </div>
     </div>

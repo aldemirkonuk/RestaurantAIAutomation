@@ -5,6 +5,9 @@ import { BillingConfigModule } from "../billing/billing-config.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
 import { PaymentMethodsController } from "./payment-methods.controller";
 import { PaymentMethodsService } from "./payment-methods.service";
+// The seal on a card-on-file change (founder, 2026-09-04; ADR 0110 addendum).
+// Not circular: SealModule imports DatabaseModule and nothing else.
+import { SealModule } from "../common/seal/seal.module";
 
 /**
  * Payment types as a real register on `/profile`.
@@ -30,6 +33,7 @@ import { PaymentMethodsService } from "./payment-methods.service";
     // `BillingModule` can both use them without a cycle — see
     // `billing/billing-config.module.ts`.
     BillingConfigModule,
+    SealModule,
   ],
   controllers: [PaymentMethodsController],
   providers: [PaymentMethodsService],

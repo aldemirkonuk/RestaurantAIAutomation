@@ -27,6 +27,9 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { McpRuntimeService } from "../mcp-runtime/mcp-runtime.service";
 import { McpSecretService } from "../mcp-runtime/mcp-secret.service";
 import { McpConnectionsService } from "./mcp-connections.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { hashCallArgs, hashSealToken } from "../common/seal/seal-token";
+import { fingerprintToolList } from "../mcp-runtime/tool-classification";
 import { fingerprintTool } from "../mcp-runtime/tool-classification";
 import type {
   McpToolAnnotations,
@@ -57,12 +60,26 @@ function tool(
   };
 }
 
+interface SealRow {
+  id: string;
+  subject_kind: string;
+  subject_id: string;
+  actor_user_id: string;
+  tool_name: string;
+  args_hash: string;
+  token_hash: string;
+  expires_at: string;
+  redeemed_at: string | null;
+}
+
 interface Fixture {
   /** What the last probe stored on the connection row. */
   probeTools?: McpToolSummary[] | null;
   /** Live grant rows the double hands back. */
   grants?: Record<string, unknown>[];
   consent?: Record<string, unknown> | null;
+  /** Seals already issued. The grant path redeems from here. */
+  seals?: SealRow[];
 }
 
 interface Recorder {
@@ -70,6 +87,9 @@ interface Recorder {
   grantInserts: Record<string, unknown>[];
   grantUpdates: Array<{ patch: Record<string, unknown>; id: string | null }>;
   toolCalls: Record<string, unknown>[];
+  sealInserts: Record<string, unknown>[];
+  sealsRedeemed: string[];
+  auditRows: Record<string, unknown>[];
 }
 
 /**
@@ -83,6 +103,10 @@ function buildDb(fixture: Fixture): Recorder {
   const grantInserts: Record<string, unknown>[] = [];
   const grantUpdates: Array<{ patch: Record<string, unknown>; id: string | null }> = [];
   const toolCalls: Record<string, unknown>[] = [];
+  const sealInserts: Record<string, unknown>[] = [];
+  const sealsRedeemed: string[] = [];
+  const auditRows: Record<string, unknown>[] = [];
+  const seals = fixture.seals ?? [];
 
   const chain = (result: { data: unknown; error: null }) => {
     const self: Record<string, unknown> = {};
@@ -180,6 +204,65 @@ function buildDb(fixture: Fixture): Recorder {
             },
           };
         }
+        if (table === "mcp_seal_challenges") {
+          // The REAL SealChallengeService runs against this, so the grant path
+          // is proven end to end rather than against a stub that always says
+          // yes — which is exactly the shape of the bug this pass is fixing.
+          const api: Record<string, unknown> = {};
+          let tokenHash: string | null = null;
+          let rowId: string | null = null;
+          for (const m of ["select", "is", "ilike", "in", "order"]) api[m] = () => api;
+          api.eq = (col: string, value: string) => {
+            if (col === "token_hash") tokenHash = value;
+            if (col === "id") rowId = value;
+            return api;
+          };
+          api.maybeSingle = () =>
+            Promise.resolve({
+              data: seals.find((sl) => sl.token_hash === tokenHash) ?? null,
+              error: null,
+            });
+          api.insert = (row: Record<string, unknown>) => {
+            sealInserts.push(row);
+            return Promise.resolve({ data: null, error: null });
+          };
+          api.update = (patch: Record<string, unknown>) => {
+            const upd: Record<string, unknown> = {};
+            let unspentOnly = false;
+            for (const m of ["ilike", "in", "order"]) upd[m] = () => upd;
+            upd.eq = (col: string, value: string) => {
+              if (col === "id") rowId = value;
+              return upd;
+            };
+            upd.is = (col: string, value: unknown) => {
+              if (col === "redeemed_at" && value === null) unspentOnly = true;
+              return upd;
+            };
+            const settle = () => {
+              const r = seals.find((sl) => sl.id === rowId);
+              if (!r || (unspentOnly && r.redeemed_at)) return { data: [], error: null };
+              r.redeemed_at = String(patch.redeemed_at);
+              sealsRedeemed.push(r.id);
+              return { data: [{ id: r.id }], error: null };
+            };
+            upd.select = () => ({
+              then: (resolve: (v: unknown) => unknown) =>
+                Promise.resolve(settle()).then(resolve),
+            });
+            upd.then = (resolve: (v: unknown) => unknown) =>
+              Promise.resolve(settle()).then(resolve);
+            return upd;
+          };
+          return api;
+        }
+        if (table === "system_audit_log") {
+          return {
+            insert: (row: Record<string, unknown>) => {
+              auditRows.push(row);
+              return Promise.resolve({ data: null, error: null });
+            },
+          };
+        }
         if (table === "users") {
           return chain({ data: [], error: null });
         }
@@ -188,7 +271,7 @@ function buildDb(fixture: Fixture): Recorder {
     },
   } as unknown as DatabaseService;
 
-  return { db, grantInserts, grantUpdates, toolCalls };
+  return { db, grantInserts, grantUpdates, toolCalls, sealInserts, sealsRedeemed, auditRows };
 }
 
 function build(
@@ -228,6 +311,7 @@ function build(
     organizations,
     runtime,
     secrets,
+    new SealChallengeService(recorder.db),
   );
   return { service, runtime, organizations, recorder };
 }
@@ -248,13 +332,16 @@ describe("granting a tool against what the server declared", () => {
     const listed = tool("list_checks", { readOnlyHint: true });
     const { service, recorder } = build({ probeTools: [listed] });
 
+    // A declared read needs NO seal: this grant takes a permission away rather
+    // than giving one, and a ceremony to narrow something teaches people to
+    // skip the ceremony.
     await service.grantTool(
       RESTAURANT,
       MANAGER,
       CONNECTION_ID,
       "list_checks",
       false,
-      false,
+      null,
     );
 
     expect(recorder.grantInserts).toHaveLength(1);
@@ -275,25 +362,16 @@ describe("granting a tool against what the server declared", () => {
     });
 
     await expect(
-      service.grantTool(
-        RESTAURANT,
-        MANAGER,
-        CONNECTION_ID,
-        "place_order",
-        false,
-        false,
-      ),
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "place_order", false, null),
     ).rejects.toThrow(BadRequestException);
     expect(recorder.grantInserts).toHaveLength(0);
   });
 
   it("REFUSES to grant an UNANNOTATED tool as a read", async () => {
-    const { service, recorder } = build({
-      probeTools: [tool("mystery", null)],
-    });
+    const { service, recorder } = build({ probeTools: [tool("mystery", null)] });
 
     await expect(
-      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "mystery", false, false),
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "mystery", false, null),
     ).rejects.toThrow(/write/i);
     expect(recorder.grantInserts).toHaveLength(0);
   });
@@ -302,13 +380,84 @@ describe("granting a tool against what the server declared", () => {
     const { service } = build({ probeTools: null });
 
     await expect(
-      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "anything", false, false),
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "anything", false, null),
     ).rejects.toThrow(/has not listed/i);
   });
+});
 
-  it("records a manager TIGHTENING a declared read into a write", async () => {
+/* ── 1b. the seal on the GRANT itself ───────────────────────────────────── */
+
+/**
+ * The audit's BLOCKER, as tests.
+ *
+ * The first build gated re-consent on `sealed: true` — a boolean the CLIENT
+ * set, in the same request that asked for the change. That is the exact
+ * assertion-in-its-own-request flaw ADR 0114 named and the CALL path had
+ * already closed, reintroduced one route over. So: a grant that turns a call ON
+ * is redeemed, never asserted, and there is no boolean left to send.
+ */
+describe("the seal on a grant", () => {
+  const seal = (over: Partial<SealRow> & { token: string; args: Record<string, unknown> }): SealRow => ({
+    id: "seal-g1",
+    subject_kind: "mcp_tool_grant",
+    subject_id: CONNECTION_ID,
+    actor_user_id: MANAGER,
+    tool_name: `grant:${over.tool_name ?? "list_checks"}`,
+    args_hash: hashCallArgs(over.args),
+    token_hash: hashSealToken(over.token),
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+    redeemed_at: null,
+    ...over,
+  });
+
+  const argsFor = (name: string, tools: McpToolSummary[]) => ({
+    toolName: name.toLowerCase(),
+    toolListHash: fingerprintToolList(tools),
+  });
+
+  it("issues a seal bound to the connection, the act and the tool list", async () => {
+    const tools = [tool("list_checks", { readOnlyHint: true })];
+    const { service, recorder } = build({ probeTools: tools });
+
+    const issued = await service.issueGrantSeal(
+      RESTAURANT,
+      MANAGER,
+      CONNECTION_ID,
+      "list_checks",
+      true,
+    );
+
+    expect(issued.challenge).toHaveLength(64);
+    expect(recorder.sealInserts[0]).toMatchObject({
+      subject_kind: "mcp_tool_grant",
+      subject_id: CONNECTION_ID,
+      actor_user_id: MANAGER,
+      tool_name: "grant:list_checks",
+      args_hash: hashCallArgs(argsFor("list_checks", tools)),
+      token_hash: hashSealToken(issued.challenge),
+    });
+    // Never the token itself.
+    expect(JSON.stringify(recorder.sealInserts[0])).not.toContain(issued.challenge);
+  });
+
+  it("REFUSES a click without a hold — no challenge, no write grant", async () => {
+    const tools = [tool("list_checks", { readOnlyHint: true })];
+    const { service, recorder } = build({ probeTools: tools });
+
+    await expect(
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "list_checks", true, null),
+    ).rejects.toThrow(/proven rather than asserted/i);
+    expect(recorder.grantInserts).toHaveLength(0);
+    // And the refusal is filed, not silent.
+    expect(recorder.auditRows.at(-1)).toMatchObject({ action: "seal_refused" });
+  });
+
+  it("records a manager TIGHTENING a declared read into a write, behind a redeemed seal", async () => {
+    const tools = [tool("list_checks", { readOnlyHint: true })];
+    const token = "a".repeat(64);
     const { service, recorder } = build({
-      probeTools: [tool("list_checks", { readOnlyHint: true })],
+      probeTools: tools,
+      seals: [seal({ token, args: argsFor("list_checks", tools) })],
     });
 
     await service.grantTool(
@@ -317,9 +466,10 @@ describe("granting a tool against what the server declared", () => {
       CONNECTION_ID,
       "list_checks",
       true,
-      false,
+      token,
     );
 
+    expect(recorder.sealsRedeemed).toEqual(["seal-g1"]);
     expect(recorder.grantInserts[0]).toMatchObject({
       writes: true,
       declared_read: true,
@@ -328,8 +478,8 @@ describe("granting a tool against what the server declared", () => {
     });
   });
 
-  it("refuses to CLEAR a suspension without the seal, and allows it with one", async () => {
-    const listed = tool("place_order", { readOnlyHint: false });
+  it("REFUSES a re-consent without a hold, and completes one with a redeemed seal", async () => {
+    const tools = [tool("place_order", { readOnlyHint: false })];
     const suspended = {
       id: "g-1",
       connection_id: CONNECTION_ID,
@@ -340,8 +490,9 @@ describe("granting a tool against what the server declared", () => {
       needs_reconsent_at: "2026-09-04T09:00:00.000Z",
       needs_reconsent_reason: "the server changed readOnlyHint true to false",
     };
+    const token = "b".repeat(64);
 
-    const unsealed = build({ probeTools: [listed], grants: [suspended] });
+    const unsealed = build({ probeTools: tools, grants: [suspended] });
     await expect(
       unsealed.service.grantTool(
         RESTAURANT,
@@ -349,19 +500,29 @@ describe("granting a tool against what the server declared", () => {
         CONNECTION_ID,
         "place_order",
         true,
-        false,
+        null,
       ),
-    ).rejects.toThrow(/behind the seal/i);
+    ).rejects.toThrow(/proven rather than asserted/i);
     expect(unsealed.recorder.grantInserts).toHaveLength(0);
 
-    const sealed = build({ probeTools: [listed], grants: [suspended] });
+    const sealed = build({
+      probeTools: tools,
+      grants: [suspended],
+      seals: [
+        seal({
+          token,
+          tool_name: "grant:place_order",
+          args: argsFor("place_order", tools),
+        }),
+      ],
+    });
     await sealed.service.grantTool(
       RESTAURANT,
       MANAGER,
       CONNECTION_ID,
       "place_order",
       true,
-      true,
+      token,
     );
     expect(sealed.recorder.grantInserts[0]).toMatchObject({
       writes: true,
@@ -369,7 +530,70 @@ describe("granting a tool against what the server declared", () => {
       needs_reconsent_at: null,
     });
   });
+
+  it("REFUSES a REPLAY of a spent grant seal", async () => {
+    const tools = [tool("list_checks", { readOnlyHint: true })];
+    const token = "c".repeat(64);
+    const { service, recorder } = build({
+      probeTools: tools,
+      seals: [
+        seal({
+          token,
+          args: argsFor("list_checks", tools),
+          redeemed_at: "2026-09-04T09:59:00.000Z",
+        }),
+      ],
+    });
+
+    await expect(
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "list_checks", true, token),
+    ).rejects.toThrow(/already been spent/i);
+    expect(recorder.grantInserts).toHaveLength(0);
+  });
+
+  it("REFUSES a seal minted over a DIFFERENT tool list", async () => {
+    // The seal is held while the server changes what it offers. That is the
+    // very race the suspension exists to catch, so the seal must not survive it.
+    const before = [tool("list_checks", { readOnlyHint: true })];
+    const after = [
+      tool("list_checks", { readOnlyHint: true }),
+      tool("place_order", { readOnlyHint: false }),
+    ];
+    const token = "d".repeat(64);
+    const { service, recorder } = build({
+      probeTools: after,
+      seals: [seal({ token, args: argsFor("list_checks", before) })],
+    });
+
+    await expect(
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "list_checks", true, token),
+    ).rejects.toThrow(/changed after the seal was issued/i);
+    expect(recorder.grantInserts).toHaveLength(0);
+  });
+
+  it("REFUSES a seal issued for a different tool on the same server", async () => {
+    const tools = [
+      tool("list_checks", { readOnlyHint: true }),
+      tool("place_order", { readOnlyHint: false }),
+    ];
+    const token = "e".repeat(64);
+    const { service } = build({
+      probeTools: tools,
+      seals: [
+        seal({
+          token,
+          tool_name: "grant:list_checks",
+          args: argsFor("place_order", tools),
+        }),
+      ],
+    });
+
+    await expect(
+      service.grantTool(RESTAURANT, MANAGER, CONNECTION_ID, "place_order", true, token),
+    ).rejects.toThrow(/different act on this grant/i);
+  });
 });
+
 
 /* ── 2. the gate ────────────────────────────────────────────────────────── */
 

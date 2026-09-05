@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -19,6 +20,12 @@ import { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { PaymentMethodsService } from "./payment-methods.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import {
+  PaymentSealAct,
+  isPaymentSealAct,
+  paymentSealArgs,
+} from "./payment-seal";
 import {
   CreatePaymentMethodDto,
   PaymentMethodResponse,
@@ -58,7 +65,118 @@ export class PaymentMethodsController {
   constructor(
     private readonly service: PaymentMethodsService,
     private readonly organizations: OrganizationsService,
+    private readonly seals: SealChallengeService,
   ) {}
+
+  /**
+   * The seal on a payment write is REDEEMED, not asserted (founder,
+   * 2026-09-04; ADR 0110 addendum).
+   *
+   * Every write below ran behind `assertCanManageRestaurant` and nothing else,
+   * which answers "may this ROLE do it" and cannot answer "did a PERSON do it".
+   * Anything holding a manager's session could attach an instrument, make it
+   * the one charged first, or detach the house's card, and the gateway had no
+   * way to tell that from a manager's own thumb. ADR 0110 records that no
+   * charge path exists yet; that is exactly why this is cheap to fix now.
+   *
+   * Two checks, not one: the ROLE is asserted when the seal is issued AND again
+   * when the write arrives, so a manager demoted between the two cannot spend a
+   * token they were legitimately given.
+   */
+  private async assertSealed(
+    userId: string,
+    restaurantId: string,
+    act: PaymentSealAct,
+    methodId: string | null,
+    challenge: string | undefined,
+  ): Promise<void> {
+    // An ABSENT seal is refused before the instrument is read. Reading first
+    // would answer a caller with no seal with whatever the read said — which,
+    // when the register itself is unreachable, is a 500 about a table rather
+    // than the sentence telling them to begin the hold. The cheap, certain
+    // refusal comes first.
+    const present = (challenge ?? "").trim().length > 0;
+    const facts =
+      !present || methodId === null
+        ? { methodId: methodId ?? null, brand: null, last4: null }
+        : await this.service.sealFacts(restaurantId, methodId);
+
+    await this.seals.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "payment_method",
+      // `create` has no instrument yet, so its subject is the house's register.
+      // See `payment-seal.ts` for why that is stated rather than inferred.
+      subjectId: methodId ?? restaurantId,
+      action: act,
+      args: paymentSealArgs({ act, ...facts }),
+      challenge: challenge ?? null,
+    });
+  }
+
+  /**
+   * Begin the hold. Returns a one-time seal, once.
+   *
+   * Minted when the gesture STARTS, never at the moment of the write — a token
+   * fetched by the same request it authorises is the assertion model with extra
+   * steps.
+   */
+  @Post("seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal a payment-method write has to carry back",
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act`. Bound to this actor, this act and this instrument's own brand and last four — so it cannot be spent by another person, on another instrument, for another act, or after the row behind that id became a different card.",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not a manager or owner of this house.",
+  })
+  async sealChallenge(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Body() body: { act?: string; methodId?: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const { userId, restaurantId } = this.scope(req);
+    const act = body?.act;
+    if (!isPaymentSealAct(act)) {
+      throw new BadRequestException(
+        'A seal names the act it approves. Send `act` as one of "create", "set_default" or "remove".',
+      );
+    }
+    const methodId = act === "create" ? null : (body?.methodId ?? null);
+    if (act !== "create" && !methodId) {
+      throw new BadRequestException(
+        `A seal for "${act}" names the instrument it is for. Send \`methodId\`.`,
+      );
+    }
+
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "seal a change to how this house pays",
+    );
+
+    const facts =
+      methodId === null
+        ? { methodId: null, brand: null, last4: null }
+        : await this.service.sealFacts(restaurantId, methodId);
+
+    const issued = await this.seals.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "payment_method",
+      subjectId: methodId ?? restaurantId,
+      action: act,
+      args: paymentSealArgs({ act, ...facts }),
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
 
   private scope(req: Request & { user: AuthenticatedUser }): {
     userId: string;
@@ -110,6 +228,7 @@ export class PaymentMethodsController {
   async create(
     @Req() req: Request & { user: AuthenticatedUser },
     @Body() dto: CreatePaymentMethodDto,
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<PaymentMethodResponse> {
     const { userId, restaurantId } = this.scope(req);
     await this.organizations.assertCanManageRestaurant(
@@ -117,6 +236,7 @@ export class PaymentMethodsController {
       restaurantId,
       "add a payment method",
     );
+    await this.assertSealed(userId, restaurantId, "create", null, challenge);
     return this.service.create(restaurantId, dto);
   }
 
@@ -137,6 +257,7 @@ export class PaymentMethodsController {
   async setDefault(
     @Req() req: Request & { user: AuthenticatedUser },
     @Param("id", new ParseUUIDPipe()) id: string,
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<PaymentMethodResponse> {
     const { userId, restaurantId } = this.scope(req);
     await this.organizations.assertCanManageRestaurant(
@@ -144,6 +265,7 @@ export class PaymentMethodsController {
       restaurantId,
       "change which payment method is charged first",
     );
+    await this.assertSealed(userId, restaurantId, "set_default", id, challenge);
     return this.service.setDefault(restaurantId, id);
   }
 
@@ -160,6 +282,7 @@ export class PaymentMethodsController {
   async remove(
     @Req() req: Request & { user: AuthenticatedUser },
     @Param("id", new ParseUUIDPipe()) id: string,
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ removed: string }> {
     const { userId, restaurantId } = this.scope(req);
     await this.organizations.assertCanManageRestaurant(
@@ -167,6 +290,7 @@ export class PaymentMethodsController {
       restaurantId,
       "remove a payment method",
     );
+    await this.assertSealed(userId, restaurantId, "remove", id, challenge);
     return this.service.remove(restaurantId, id);
   }
 }
