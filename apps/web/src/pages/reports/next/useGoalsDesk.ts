@@ -34,6 +34,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
+import { useGoalScenarios, type GoalScenarios } from '@/hooks/useGoalScenarios';
 import { isGraphType, type AnalysisId, type GraphType } from './rp-sheet';
 import { isAnalysisId } from './rp-sheet';
 import { num } from './rp-format';
@@ -87,6 +88,13 @@ export interface GoalsDesk {
   dismiss: () => void;
   /** Put a proposed cutting on the sheet. Supplied by the page. */
   place: (cutting: { id: AnalysisId; graph: GraphType; days: number | null }) => void;
+  /**
+   * The book of scenarios the form's picker offers (ADR 0120). Read from
+   * `GET /analytics/goal-scenarios`, which is static and carries no tenant
+   * data — so a failure here is a browsing aid being down, never a figure
+   * going missing, and the form says exactly that.
+   */
+  scenarios: GoalScenarios;
 }
 
 export interface GoalsDeskOptions {
@@ -102,6 +110,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
   const [asking, setAsking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const scenarios = useGoalScenarios();
 
   const canWrite = activeRole === 'owner' || activeRole === 'manager';
   const readOnlyReason = canWrite
@@ -291,6 +300,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       proposal,
       dismiss,
       place,
+      scenarios,
     }),
     [
       archive,
@@ -305,6 +315,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       place,
       proposal,
       readOnlyReason,
+      scenarios,
       update,
     ],
   );

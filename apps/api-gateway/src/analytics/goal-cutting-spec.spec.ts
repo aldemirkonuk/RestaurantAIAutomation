@@ -24,6 +24,23 @@ import {
 } from "./report-cuttings";
 import { GoalsService, stripFence } from "./goals.service";
 
+/**
+ * The verdict recorder, captured (OD-59 / ADR 0029 P3.0).
+ *
+ * `goal_cutting_spec` used to emit a footprint row carrying `call_level_v0`
+ * alone — "the HTTP request returned 200" — which is silent about whether the
+ * assistant named an analysis this sheet carries. These rows are what
+ * `check_task_types_are_graded.py` demands and what a reader of
+ * `nf_a.doneability_verdict_coverage` will actually see.
+ */
+const graded: Array<{ basis: string; outcome: unknown; evidence: any }> = [];
+const verdicts = {
+  record: (_ref: unknown, basis: string, v: any) =>
+    graded.push({ basis, outcome: v.outcome, evidence: v.evidence }),
+  recordForEvent: () => {},
+} as any;
+
+
 describe("checkCuttingSpec — nothing outside the catalogue is honoured", () => {
   const good = {
     analysisId: "pacing",
@@ -185,6 +202,7 @@ describe("GoalsService.updateGoal — an edit writes only what was sent", () => 
       {} as any,
       { get: () => undefined } as any,
       {} as any,
+      verdicts,
     );
     return { service, seen };
   }
@@ -263,6 +281,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
           return {};
         },
       } as any,
+      verdicts,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -306,6 +325,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
           ],
         }),
       } as any,
+      verdicts,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -347,6 +367,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
           };
         },
       } as any,
+      verdicts,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -388,6 +409,7 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
           throw new Error("Anthropic 529: overloaded");
         },
       } as any,
+      verdicts,
     );
 
     const out = await service.proposeCuttingSpec("r1", "g1");
@@ -406,5 +428,149 @@ describe("stripFence — a fence is transport, not an answer", () => {
 
   it("does not turn unreadable output into a readable one", () => {
     expect(() => JSON.parse(stripFence("I think you should use pacing."))).toThrow();
+  });
+});
+
+/**
+ * The doneability verdict this call writes (OD-59 / ADR 0029 P3.0).
+ *
+ * Before this, `goal_cutting_spec` recorded `call_level_v0` and nothing else —
+ * "the HTTP request returned 200 and was not truncated" — so a model that named
+ * an analysis this sheet does not carry was indistinguishable, in the ledger,
+ * from one that configured the sheet correctly. `check_task_types_are_graded.py`
+ * refuses that.
+ *
+ * The three readings are asserted end to end through the service, not against
+ * `cuttingSpecVerdict` alone: a pure function returning the right object proves
+ * nothing if the service never calls it on one of its four exit paths.
+ */
+describe("goal_cutting_spec carries a real verdict, not just call_level_v0", () => {
+  const GOAL = {
+    id: "g1",
+    name: "Hold purchasing spend",
+    metric_key: "purchase_spend",
+    target_value: 4000,
+    direction: "at_most",
+    deadline: null,
+    period: "month",
+  };
+
+  /** A service whose model client answers with `text`, or throws `boom`. */
+  function serviceThat(answer: { text?: string; throws?: string }) {
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      maybeSingle: async () => ({ data: GOAL, error: null }),
+    };
+    return new GoalsService(
+      { getClient: () => ({ from: () => chain }) } as any,
+      {} as any,
+      {
+        get: (k: string) => (k === "ANTHROPIC_API_KEY" ? "sk-test" : undefined),
+      } as any,
+      {
+        call: async () => {
+          if (answer.throws) throw new Error(answer.throws);
+          return { content: [{ type: "text", text: answer.text }] };
+        },
+      } as any,
+      verdicts,
+    );
+  }
+
+  beforeEach(() => {
+    graded.length = 0;
+  });
+
+  it("grades an accepted spec success, and names the model the routing chose", async () => {
+    const service = serviceThat({
+      text: JSON.stringify({
+        analysisId: "pacing",
+        graph: "bars",
+        days: null,
+        why: "Spend pacing is the goal's own measure.",
+      }),
+    });
+    const out = await service.proposeCuttingSpec("r1", "g1", "user-7");
+    expect(out.spec?.analysisId).toBe("pacing");
+
+    expect(graded).toHaveLength(1);
+    expect(graded[0].basis).toBe("schema_v1");
+    expect(graded[0].outcome).toBe("success");
+    expect(graded[0].evidence.status).toBe("accepted");
+    expect(graded[0].evidence.analysis_id).toBe("pacing");
+    expect(graded[0].evidence.graph).toBe("bars");
+    // The routing that chose the model rides the verdict (ADR 0120), so a
+    // reader can ask "did the cheaper model start failing this check?".
+    expect(graded[0].evidence.model).toBe("claude-sonnet-5");
+    expect(graded[0].evidence.task_class).toBe("compose");
+    expect(graded[0].evidence.model_routed_by).toBe("class-default");
+  });
+
+  it("grades a refused spec FAILURE, carrying the check's own reason", async () => {
+    const service = serviceThat({
+      text: JSON.stringify({
+        analysisId: "wine_deep_dive",
+        graph: "bars",
+        days: null,
+        why: "made up",
+      }),
+    });
+    const out = await service.proposeCuttingSpec("r1", "g1");
+    expect(out.spec).toBeNull();
+
+    expect(graded).toHaveLength(1);
+    expect(graded[0].outcome).toBe("failure");
+    expect(graded[0].evidence.status).toBe("refused_by_check");
+    expect(graded[0].evidence.rejection).toBe("unknown-analysis");
+    expect(String(graded[0].evidence.detail)).toContain("wine_deep_dive");
+    // No user pressed it in this case, and that is recorded as null rather
+    // than as a placeholder string.
+    expect(graded[0].evidence.model).toBe("claude-sonnet-5");
+  });
+
+  it("grades an unreachable book NULL — the grader ran, the case is untestable", async () => {
+    const service = serviceThat({ throws: "socket hang up" });
+    const out = await service.proposeCuttingSpec("r1", "g1");
+    expect(out.reason).toContain("could not be reached");
+
+    expect(graded).toHaveLength(1);
+    // NOT `failure`: a model that never answered cannot be judged on how it
+    // configured the sheet, and grading it down would move the score with the
+    // network rather than with the model.
+    expect(graded[0].outcome).toBeNull();
+    expect(graded[0].evidence.status).toBe("degraded");
+    expect(graded[0].evidence.untestable).toBe("model_unreachable");
+  });
+
+  it("grades an unreadable answer NULL, with which failure it was", async () => {
+    const service = serviceThat({ text: "not json at all" });
+    const out = await service.proposeCuttingSpec("r1", "g1");
+    expect(out.rejected?.reason).toBe("not-an-object");
+
+    expect(graded).toHaveLength(1);
+    expect(graded[0].outcome).toBeNull();
+    expect(graded[0].evidence.untestable).toBe("answer_not_json");
+  });
+
+  it("writes NO verdict when no model was asked — an orphan row grades nothing", async () => {
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      maybeSingle: async () => ({ data: GOAL, error: null }),
+    };
+    const service = new GoalsService(
+      { getClient: () => ({ from: () => chain }) } as any,
+      {} as any,
+      { get: () => undefined } as any, // no ANTHROPIC_API_KEY
+      { call: async () => ({}) } as any,
+      verdicts,
+    );
+    const out = await service.proposeCuttingSpec("r1", "g1");
+    expect(out.available).toBe(false);
+    // The method returns before the model client is called, so there is no
+    // footprint row to grade. Coverage must not be inflated with rows that
+    // grade nothing.
+    expect(graded).toHaveLength(0);
   });
 });

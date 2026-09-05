@@ -28,8 +28,10 @@ import {
 } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
+import { goalScenarioBook } from "./goal-scenarios";
 import { ConsultantsService } from "./consultants.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
 import {
@@ -482,6 +484,31 @@ export class AnalyticsController {
   // Goals — metric-linked, AI-assisted
   // ==========================================================================
 
+  /**
+   * The book of scenarios a house might set as a goal (ADR 0120).
+   *
+   *   *"we're going to create possible analytic scenarios a restaurant might
+   *    set as a goal"*                            — the founder, 2026-09-04
+   *
+   * Deliberately NOT tenant-scoped, and the path says so: no `:restaurantId`
+   * segment, no restaurant id read anywhere in `goalScenarioBook()`. It is a
+   * catalogue of what a goal CAN be, with the operator benchmark for each and
+   * the source that published it — never a reading of anyone's books, and never
+   * a suggested target.
+   *
+   * Declared before `goals/:restaurantId` for readability only; Nest matches on
+   * the literal path, and `goal-scenarios` cannot collide with `goals/…`.
+   */
+  @Get("goal-scenarios")
+  @ApiOperation({
+    summary: "The catalogue of goal scenarios a restaurant might set",
+    description:
+      "Static. No tenant data is read and no target is ever suggested — each scenario carries the operator benchmark RANGE with its source URL and date, plus one standing caveat that a range is a fact about the houses in that report and not about yours. A scenario the goals module cannot hold today says so, and names the measure it would need.",
+  })
+  getGoalScenarios() {
+    return goalScenarioBook();
+  }
+
   @Get("goals/:restaurantId")
   @ApiOperation({
     summary: "List goals (status=active|all|achieved|missed|archived)",
@@ -569,9 +596,17 @@ export class AnalyticsController {
   async proposeGoalCuttingSpec(
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
-      return await this.goalsService.proposeCuttingSpec(restaurantId, goalId);
+      return await this.goalsService.proposeCuttingSpec(
+        restaurantId,
+        goalId,
+        // Metered as `context.asked_by` (ADR 0120). Read from the token, never
+        // from the body: "who asked" is a fact about the session, and a
+        // client-supplied one would be an assertion about someone else.
+        typeof user?.userId === "string" ? user.userId : null,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to propose a cutting",

@@ -123,6 +123,89 @@ const deskStub = {
   proposal: null as unknown,
   dismiss: vi.fn(),
   place: vi.fn(),
+  /** The book of scenarios (ADR 0120). Replaced per-case below. */
+  scenarios: { book: undefined, loading: false, failure: null } as unknown,
+};
+
+/**
+ * `GET /analytics/goal-scenarios`, as the desk hands it to the form.
+ *
+ * Two servable rows and one that cannot be held, because the picker has to be
+ * shown doing three different things: filling the form, printing a range with
+ * its source, and refusing to let a measure the gateway does not serve be
+ * chosen at all.
+ */
+const SCENARIO_BOOK = {
+  caveat: 'A range from a report is a fact about the houses in that report, not about yours.',
+  basis: 'This is a book of scenarios, not a reading of your books.',
+  counts: { total: 3, servable: 2, needsAMetric: 1 },
+  scenarios: [
+    {
+      id: 'hold-purchasing-spend',
+      name: 'Hold purchasing spend',
+      question: 'Keep what we spend with vendors under a line we set.',
+      metricKey: 'purchase_spend',
+      metricLabel: 'Purchasing spend',
+      needsMetric: null,
+      direction: 'at_most' as const,
+      period: 'month' as const,
+      range: {
+        kind: 'published' as const,
+        words: 'a median of 32.0% of sales among fullservice operators in 2024',
+        source: 'National Restaurant Association',
+        url: 'https://www.restaurant.org/example',
+        published: '2025-08-27',
+        caveat: 'That is a ratio to sales, not an absolute ceiling.',
+      },
+      cuttingId: 'pacing',
+      cuttingWhy: 'Spend pacing is the register the ceiling is read from.',
+      cuttingAnswers: 'Whether buying is running hot or cold',
+      producer: 'ceiling-held' as const,
+      ruleKeys: ['spend_acceleration'],
+      servable: true,
+    },
+    {
+      id: 'serve-more-checks',
+      name: 'Serve more checks',
+      question: 'Bring more guests through the room over the month.',
+      metricKey: 'checks',
+      metricLabel: 'Checks served',
+      needsMetric: null,
+      direction: 'at_least' as const,
+      period: 'month' as const,
+      range: { kind: 'none' as const, why: 'Guest counts are a house figure.' },
+      cuttingId: 'till',
+      cuttingWhy: 'Through the till counts the checks themselves.',
+      cuttingAnswers: 'What guests actually paid',
+      producer: 'goal-reached' as const,
+      ruleKeys: [],
+      servable: true,
+    },
+    {
+      id: 'waste-ratio',
+      name: 'Waste less of what we buy',
+      question: 'Cut the share of what we bought that never reached a guest.',
+      metricKey: null,
+      metricLabel: null,
+      needsMetric: 'waste_pct — nothing in this gateway records waste as an event.',
+      direction: 'at_most' as const,
+      period: 'month' as const,
+      range: {
+        kind: 'published' as const,
+        words: 'Restaurant food waste typically runs 4% to 10% of food purchases.',
+        source: 'Supy',
+        url: 'https://supy.io/example',
+        published: '2025-02-03',
+        caveat: 'Read second-hand from a vendor blog.',
+      },
+      cuttingId: null,
+      cuttingWhy: 'No cutting reads waste, because nothing writes it.',
+      cuttingAnswers: null,
+      producer: null,
+      ruleKeys: [],
+      servable: false,
+    },
+  ],
 };
 
 /** `GET /analytics/goals/:rid/progress` — three goals, three different truths. */
@@ -344,6 +427,7 @@ beforeEach(() => {
   deskStub.busy = null;
   deskStub.asking = null;
   deskStub.proposal = null;
+  deskStub.scenarios = { book: SCENARIO_BOOK, loading: false, failure: null };
   hook.current = base();
 });
 
@@ -1136,6 +1220,103 @@ describe('ReportsNext — the goals desk', () => {
     const goals = screen.getByRole('region', { name: 'Goals' });
     expect(within(goals).getByText(/ANTHROPIC_API_KEY is not configured/)).toBeInTheDocument();
     expect(within(goals).queryByRole('button', { name: 'Put it on the sheet' })).toBeNull();
+  });
+});
+
+/**
+ * The book of scenarios above the measure list (ADR 0120).
+ *
+ *   *"we're going to create possible analytic scenarios a restaurant might set
+ *    as a goal"*                                — the founder, 2026-09-04
+ *
+ * The one line that must never move: the picker fills the name, the measure,
+ * the direction and the period, and leaves the TARGET alone. A range from an
+ * operator report is a fact about other houses; the moment it reaches the
+ * number field it is indistinguishable from a target this house set.
+ */
+describe('ReportsNext — the book of scenarios', () => {
+  const openTheForm = () => {
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: /Set a goal/ }));
+    return goals;
+  };
+
+  it('fills the measure, the direction and the name — and never the target', () => {
+    const goals = openTheForm();
+    const picker = within(goals).getByLabelText('Start from a scenario') as HTMLSelectElement;
+    fireEvent.change(picker, { target: { value: 'hold-purchasing-spend' } });
+
+    expect((within(goals).getByLabelText('Measure') as HTMLSelectElement).value).toBe(
+      'purchase_spend',
+    );
+    expect((within(goals).getByLabelText('Direction') as HTMLSelectElement).value).toBe(
+      'at_most',
+    );
+    expect((within(goals).getByLabelText('Counted over') as HTMLSelectElement).value).toBe(
+      'month',
+    );
+    expect((within(goals).getByLabelText('What are we after') as HTMLInputElement).value).toBe(
+      'Hold purchasing spend',
+    );
+    // The one field the book has no business writing.
+    expect((within(goals).getByLabelText('Target') as HTMLInputElement).value).toBe('');
+    // And the form still refuses to submit without one.
+    expect(
+      within(goals).getByText(/needs a name and a target above zero/),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the range as words, with the source it came from and its date', () => {
+    const goals = openTheForm();
+    fireEvent.change(within(goals).getByLabelText('Start from a scenario'), {
+      target: { value: 'hold-purchasing-spend' },
+    });
+    const note = within(goals).getByTestId('rp-scenario-note');
+    expect(note.textContent).toContain('a median of 32.0% of sales');
+    expect(note.textContent).toContain('2025-08-27');
+    expect(note.textContent).toContain('not about yours');
+    expect(note.querySelector('a[href="https://www.restaurant.org/example"]')).toBeTruthy();
+  });
+
+  it('says there is no published range rather than showing an empty line', () => {
+    const goals = openTheForm();
+    fireEvent.change(within(goals).getByLabelText('Start from a scenario'), {
+      target: { value: 'serve-more-checks' },
+    });
+    expect(within(goals).getByTestId('rp-scenario-note').textContent).toContain(
+      'No operator source publishes a range for this.',
+    );
+  });
+
+  it('lists a scenario this engine cannot hold, disabled, and names what it would need', () => {
+    const goals = openTheForm();
+    const option = within(goals)
+      .getAllByRole('option')
+      .find((o) => o.textContent === 'Waste less of what we buy') as HTMLOptionElement;
+    expect(option).toBeTruthy();
+    expect(option.disabled).toBe(true);
+  });
+
+  it('does not offer the book on an EDIT, because the measure cannot change', () => {
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Edit Lift wine revenue' }));
+    expect(within(goals).queryByLabelText('Start from a scenario')).toBeNull();
+  });
+
+  it('says the book could not be read, and leaves the measure list working', () => {
+    deskStub.scenarios = {
+      book: undefined,
+      loading: false,
+      failure: 'The book of scenarios could not be read, so only the measure list below is offered.',
+    };
+    const goals = openTheForm();
+    expect(within(goals).queryByLabelText('Start from a scenario')).toBeNull();
+    expect(
+      within(goals).getByText(/The book of scenarios could not be read/),
+    ).toBeInTheDocument();
+    expect(within(goals).getByLabelText('Measure')).toBeInTheDocument();
   });
 });
 

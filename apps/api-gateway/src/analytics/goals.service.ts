@@ -4,7 +4,19 @@ import { DatabaseService } from "../database/database.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
-import { ModelClientService } from "../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import {
+  SCHEMA_BASIS,
+  cuttingSpecVerdict,
+} from "./goal-cutting-verdict";
+import {
+  resolveModel,
+  routingContext,
+} from "../common/model-client/model-routing";
 import {
   catalogueForPrompt,
   checkCuttingSpec,
@@ -40,6 +52,11 @@ export class GoalsService {
     // already made. Only `proposeCuttingSpec` uses them.
     private readonly configService: ConfigService,
     private readonly modelClient: ModelClientService,
+    // OD-59 / ADR 0029 P3.0: this call grades its own output. Without it the
+    // task type recorded `call_level_v0` alone — "HTTP 200, not truncated" —
+    // which says nothing about whether the assistant named an analysis this
+    // sheet actually carries.
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   static readonly SUPPORTED_METRICS: Record<
@@ -485,6 +502,13 @@ export class GoalsService {
   async proposeCuttingSpec(
     restaurantId: string,
     goalId: string,
+    /**
+     * The user who pressed "Ask the book". Metered as `context.asked_by`
+     * (ADR 0120). `null` — never a placeholder — when the caller cannot name
+     * them, so "we recorded that we do not know" stays distinguishable from a
+     * row written before the field existed.
+     */
+    askedBy: string | null = null,
   ): Promise<{
     available: boolean;
     reason: string | null;
@@ -525,9 +549,17 @@ export class GoalsService {
       };
     }
 
-    const model =
-      this.configService.get<string>("GOAL_CUTTING_MODEL") ||
-      "claude-haiku-4-5-20251001";
+    // Composing a cutting spec is the `compose` class (ADR 0120): the model is
+    // writing a configuration, not looking something up, so the founder's
+    // routing sends it to Sonnet 5. `GOAL_CUTTING_MODEL` still outranks the
+    // class — an operator who set it on a running gateway meant it.
+    const routing = resolveModel({
+      config: this.configService,
+      taskClass: "compose",
+      siteEnvVar: "GOAL_CUTTING_MODEL",
+    });
+    const model = routing.model;
+    const meter = routingContext(routing, askedBy);
 
     const system = `You configure an existing restaurant analytics page. You do NOT write analysis, numbers, or findings.
 
@@ -544,6 +576,20 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 {"analysisId":"...","graph":"...","days":null,"why":"..."}`;
 
     const goalLine = `Goal "${named.name}": measure ${metric?.label ?? named.metricKey} (${metric?.unit ?? "count"}), ${goal.direction === "at_most" ? "keep at most" : "reach at least"} ${goal.target_value}${goal.deadline ? ` by ${goal.deadline}` : ", no deadline"}, period ${goal.period}.`;
+
+    const eventRef = new NfEventRef();
+    /** The grader, run once per exit. `record` never throws (nf-verdict.service). */
+    const grade = (reading: Parameters<typeof cuttingSpecVerdict>[0]["reading"]) =>
+      this.nfVerdicts.record(
+        eventRef,
+        SCHEMA_BASIS,
+        cuttingSpecVerdict({
+          reading,
+          model,
+          taskClass: routing.taskClass,
+          routedBy: routing.routedBy,
+        }),
+      );
 
     let payload: any;
     try {
@@ -575,11 +621,28 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             }
           },
           restaurantId,
-          context: { goal_id: named.id, metric_key: named.metricKey },
+          // Metering keys written literally, so the row's shape is readable
+          // from this source rather than assembled out of a spread.
+          context: {
+            goal_id: named.id,
+            metric_key: named.metricKey,
+            task_class: meter.task_class,
+            model_routed_by: meter.model_routed_by,
+            asked_by: meter.asked_by,
+          },
+          eventRef,
         },
         timeoutMs: 20_000,
       });
     } catch (err: any) {
+      // The emitter wrote a failure row for the CALL. The task verdict is
+      // `null` — the grader ran and the case is untestable — because a model
+      // that never answered cannot be judged on how it configured the sheet.
+      grade({
+        status: "degraded",
+        why: "model_unreachable",
+        detail: String(err?.message ?? err),
+      });
       return {
         available: true,
         reason: `The book could not be reached (${String(err?.message ?? err).slice(0, 200)}). Nothing was proposed.`,
@@ -595,6 +658,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     try {
       parsed = JSON.parse(stripFence(text));
     } catch {
+      grade({
+        status: "degraded",
+        why: "answer_not_json",
+        detail: "the model's answer was not readable as JSON",
+      });
       return {
         available: true,
         reason: null,
@@ -612,6 +680,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       this.logger.warn(
         `goal cutting spec refused (${check.reason}): ${check.detail}`,
       );
+      grade({
+        status: "refused_by_check",
+        reason: check.reason,
+        detail: check.detail,
+      });
       return {
         available: true,
         reason: null,
@@ -621,6 +694,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       };
     }
 
+    grade({
+      status: "accepted",
+      analysisId: check.spec.analysisId,
+      graph: check.spec.graph,
+      days: check.spec.days,
+    });
     return {
       available: true,
       reason: null,

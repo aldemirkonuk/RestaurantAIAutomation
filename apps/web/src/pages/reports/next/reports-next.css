@@ -889,3 +889,29 @@
   align-items: center;
   gap: 4px;
 }
+
+/* The scenario reading under "Start from a scenario". A ruled block rather than
+   a tinted one: the proposal card above it is the seal's, because a model wrote
+   it; this is quoted from an operator report, and the house rule is that the
+   seal is the ONE chromatic colour and belongs to what the product says itself
+   (ADR 0042). Ink and paper, with a left rule to mark it as quoted matter. */
+.rp-scenario-note {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0 6px 10px;
+  border-left: 2px solid var(--ink-4);
+}
+.rp-scenario-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The picker owns a whole row of the form grid: its label and the reading
+   under it are one statement, and auto-fit would otherwise put them in
+   adjacent columns with the next field's label between them. */
+.rp-goalform > .rp-scenario {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}

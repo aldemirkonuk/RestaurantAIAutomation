@@ -15,6 +15,23 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 
 /**
+ * The verdict recorder, captured (OD-59 / ADR 0029 P3.0).
+ *
+ * `goal_cutting_spec` used to emit a footprint row carrying `call_level_v0`
+ * alone — "the HTTP request returned 200" — which is silent about whether the
+ * assistant named an analysis this sheet carries. These rows are what
+ * `check_task_types_are_graded.py` demands and what a reader of
+ * `nf_a.doneability_verdict_coverage` will actually see.
+ */
+const graded: Array<{ basis: string; outcome: unknown; evidence: any }> = [];
+const verdicts = {
+  record: (_ref: unknown, basis: string, v: any) =>
+    graded.push({ basis, outcome: v.outcome, evidence: v.evidence }),
+  recordForEvent: () => {},
+} as any;
+
+
+/**
  * OD-85 — POS-backed sales revenue.
  *
  * Four web surfaces (COGS ratio, Wine Consumption Analytics, the labour
@@ -99,6 +116,7 @@ function makeGoals(rowsByTable: Rows) {
     {} as InsightGeneratorService,
     { get: () => undefined } as never,
     {} as never,
+    verdicts,
   );
   return { service, client };
 }

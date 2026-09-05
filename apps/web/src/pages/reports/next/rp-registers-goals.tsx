@@ -35,9 +35,10 @@
  */
 
 import { useState } from 'react';
-import { Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
+import { BookOpen, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
 import { EM, countOf, figure, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
+import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk } from './useGoalsDesk';
 import type { ViewCtx } from './rp-spec';
 
@@ -94,8 +95,141 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/**
+ * What the picker says about one scenario, once it is chosen.
+ *
+ * Three sentences, in a fixed order, and never fewer: what operators publish
+ * (or why nothing is published), what that number is a fact ABOUT, and the
+ * standing caveat. The range is printed as WORDS — the source's own sentence —
+ * and never parsed into a number, because the moment a figure from a report
+ * reaches a numeric field it is indistinguishable from a target this house set.
+ */
+function ScenarioReading({ scenario, caveat }: { scenario: GoalScenario; caveat: string }) {
+  return (
+    <div className="rp-scenario-note" data-testid="rp-scenario-note">
+      <p className="rp-cap">{scenario.question}</p>
+      {scenario.range.kind === 'published' ? (
+        <p className="rp-cap">
+          What operators publish: {scenario.range.words}{' '}
+          <a
+            className="rp-focus"
+            href={scenario.range.url}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            {scenario.range.source}
+          </a>
+          , {scenario.range.published}. {scenario.range.caveat}
+        </p>
+      ) : (
+        <p className="rp-cap">No operator source publishes a range for this. {scenario.range.why}</p>
+      )}
+      <p className="rp-cap">{caveat}</p>
+      {scenario.metricKey === null && scenario.needsMetric && (
+        <p className="rp-cap" role="status">
+          This house cannot hold a goal on it yet. It would need: {scenario.needsMetric}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Start from a scenario" — the book, above the measure list.
+ *
+ *   *"we're going to create possible analytic scenarios a restaurant might set
+ *    as a goal"*                                — the founder, 2026-09-04
+ *
+ * It fills the name, the measure, the direction and the period. It does NOT
+ * fill the target, and that is the whole discipline of the panel: the book
+ * knows what operators measure, and it does not know what this room should
+ * take. The one field left blank is the one the manager must decide.
+ *
+ * Scenarios the gateway cannot hold are LISTED and disabled rather than hidden.
+ * A picker showing only the nine servable ones would say this product covers
+ * the field; it covers about half of it, and the missing half is the more
+ * useful thing to know.
+ */
+function ScenarioPicker({
+  scenarios,
+  chosenId,
+  onChoose,
+}: {
+  scenarios: GoalScenarios;
+  chosenId: string;
+  onChoose: (scenario: GoalScenario | null) => void;
+}) {
+  if (scenarios.failure) {
+    return (
+      <div className="rp-scenario">
+        <p className="rp-cap" role="status">
+          {scenarios.failure}
+        </p>
+      </div>
+    );
+  }
+  if (scenarios.loading || !scenarios.book) {
+    return (
+      <div className="rp-scenario">
+        <p className="rp-cap">Reading the book of scenarios{EM}</p>
+      </div>
+    );
+  }
+
+  const book = scenarios.book;
+  const held = book.scenarios.filter((s) => s.servable);
+  const unheld = book.scenarios.filter((s) => !s.servable);
+  const chosen = book.scenarios.find((s) => s.id === chosenId) ?? null;
+
+  return (
+    /* One full-width block. The form is an auto-fit grid, so a bare fragment
+       would drop the label in one column and its reading in the next — the
+       picker has to own the whole row for the two to read as one thing. */
+    <div className="rp-scenario">
+      <label className="rp-field">
+        <span className="rp-eyebrow">Start from a scenario</span>
+        <select
+          className="rp-select rp-focus"
+          value={chosenId}
+          aria-label="Start from a scenario"
+          onChange={(e) =>
+            onChoose(book.scenarios.find((s) => s.id === e.target.value) ?? null)
+          }
+        >
+          <option value="">Choose the measure yourself</option>
+          <optgroup label="Held on the figures this engine scores">
+            {held.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Not held yet — the measure does not exist">
+            {unheld.map((s) => (
+              <option key={s.id} value={s.id} disabled>
+                {s.name}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </label>
+      {chosen ? (
+        <ScenarioReading scenario={chosen} caveat={book.caveat} />
+      ) : (
+        <p className="rp-cap">
+          <BookOpen size={12} strokeWidth={1.6} aria-hidden />{' '}
+          {countOf(book.counts.servable, 'scenario', 'scenarios')} can be held on the figures
+          this engine already scores; {book.counts.needsAMetric} more are listed and greyed,
+          each naming the measure it would take. None of them carries a target.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function GoalForm({
   metrics,
+  scenarios,
   initial,
   submitLabel,
   busy,
@@ -103,6 +237,7 @@ function GoalForm({
   onCancel,
 }: {
   metrics: GoalsRegister['metrics'];
+  scenarios: GoalScenarios;
   initial: Partial<GoalRow> | null;
   submitLabel: string;
   busy: boolean;
@@ -124,10 +259,29 @@ function GoalForm({
     initial?.direction === 'at_most' ? 'at_most' : 'at_least',
   );
   const [period, setPeriod] = useState(initial?.period ?? 'month');
+  const [scenarioId, setScenarioId] = useState('');
   const editing = !!initial?.id;
 
   const targetValue = num(target);
   const ready = name.trim() !== '' && targetValue !== null && targetValue > 0 && metricKey !== '';
+
+  /**
+   * Choosing a scenario fills four fields and deliberately leaves the fifth.
+   *
+   * The name is overwritten rather than merged: the manager can retype it, and
+   * a half-replaced sentence ("Lift wine revenue before the holidaysHold
+   * purchasing spend") is worse than either version. The TARGET is never
+   * touched — not cleared, not filled — because the number the house is held to
+   * is the one thing the book has no business writing.
+   */
+  const chooseScenario = (s: GoalScenario | null) => {
+    setScenarioId(s?.id ?? '');
+    if (!s || s.metricKey === null) return;
+    setName(s.name);
+    setMetricKey(s.metricKey);
+    setDirection(s.direction);
+    setPeriod(s.period);
+  };
 
   return (
     <form
@@ -145,6 +299,17 @@ function GoalForm({
         });
       }}
     >
+      {/* The book sits ABOVE the measure list, because it is how a manager who
+          does not already know the six metric keys finds the right one. While
+          editing it is absent: a scenario fills the measure, and the measure is
+          the one field an existing goal cannot change. */}
+      {!editing && (
+        <ScenarioPicker
+          scenarios={scenarios}
+          chosenId={scenarioId}
+          onChoose={chooseScenario}
+        />
+      )}
       <Field label="What are we after">
         <input
           className="rp-input rp-focus"
@@ -304,6 +469,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
             {editing === g.id ? (
               <GoalForm
                 metrics={reg.metrics}
+                scenarios={desk.scenarios}
                 initial={g}
                 submitLabel="Save the change"
                 busy={desk.busy === g.id}
@@ -419,6 +585,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
         (adding ? (
           <GoalForm
             metrics={reg.metrics}
+            scenarios={desk.scenarios}
             initial={null}
             submitLabel="Set the goal"
             busy={desk.busy === 'new'}

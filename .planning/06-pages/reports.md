@@ -209,6 +209,39 @@ is what it still cannot do, and why.
 - **Show two cuttings of the same register.** Deliberate: a duplicate is not a
   comparison, and the two would issue the same request twice.
 
+### Added 2026-09-04 — the book of scenarios (ADR 0120)
+
+- **Start from a scenario.** The goals form opens on a picker above the measure
+  list, read from `GET /analytics/goal-scenarios` — a static, tenant-free
+  catalogue of **21 scenarios**, 9 of which this engine can hold today and 12 of
+  which name the measure they would need. Choosing one fills the name, the
+  measure, the direction and the period.
+- **It never fills the target.** A scenario carries a RANGE quoted in the
+  operator source's own words, with that source's URL and the date it was
+  published, plus one standing caveat — *"a range from a report is a fact about
+  the houses in that report, not about yours"*. `goal-scenarios.spec.ts` asserts
+  on the object's KEYS, so a `target` field added later fails the test even if
+  it is left undefined.
+- **A scenario with no published range says so.** Four of the nine servable
+  scenarios carry no range at all, because operator sources publish RATIOS and
+  almost never LEVELS: the NRA publishes a food-cost median of 32.0% of sales
+  and a labour median of 36.5% (fullservice, 2024), and nobody publishes what a
+  room's wine revenue or cover count should be. The row states that, rather than
+  borrowing a ratio and printing it beside a money field.
+- **A scenario this engine cannot hold is listed and greyed**, never hidden,
+  each naming the measure it would take — prime cost, food-cost ratio, labour
+  ratio, pour cost, waste, days of stock, table turns, RevPASH, vendor
+  concentration, on-time delivery, cash days, staff turnover.
+- **The picker is absent on an EDIT**, because a scenario fills the measure and
+  a live goal's measure cannot change (its baseline was taken against the old
+  one).
+- **Dark, honestly:** when `GET /analytics/goal-scenarios` fails, the picker is
+  replaced by one line saying the book could not be read; the measure list below
+  it still works, because a manager who already knows what they want must not be
+  blocked by a browsing aid being down. There is no bundled copy of the
+  catalogue to fall back to — a copy would drift from the gateway's silently and
+  would render as a working picker over a failed fetch.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_reports`)
 
 Canonical source with curves: `apps/web/src/pages/reports/next/MOTIONS.md` —
@@ -1106,3 +1139,65 @@ about it, with a visible line back to the data.
     (`apps/web/src/styles/globals.css:433-438`, `.dark` at `:464-468`; §9.6)
     overrides the house tokens on every Mudavym page. This page patches it
     locally; the rule itself should be scoped or dropped.
+
+21. **The keyboard-arrange modifier is decided: Shift+arrow STAYS resize**
+    (2026-09-04). The founder delegated the choice — *"you decide, it must be
+    flawless and smooth"* — and the parent settled it: **one modifier, two
+    verbs**, built, announced and audit-driven on the live page. React Flow's
+    bigger-step convention (Shift for a coarser move) was **rejected**: a second
+    modifier adds a key to learn without adding a destination, and the arrange
+    mode already has exactly two things a keyboard needs to do.
+22. **The book of scenarios wants three metrics it cannot have yet**
+    (ADR 0120). In the order they are cheapest to close:
+    **(a) `days_of_inventory`** — `/analytics/financial/:rid` already computes
+    `daysInventoryOutstanding` and `inventoryTurnover`
+    (`analytics.service.ts:444-451`); only a `SUPPORTED_METRICS` entry is
+    missing, and it is the single shortest gap on this list.
+    **(b) `food_cost_pct`** — `cogsRatio` exists but its denominator is a
+    sell-price valuation of purchased stock (`:432-437`), not POS revenue. It
+    needs the `pos_checks` denominator before it is the ratio an operator means.
+    **(c) `prime_cost_pct`** — `primeCostRatio` (`:464-467`) takes `labor`
+    defaulting to **0** and **no caller in this repo passes it** (grepped
+    2026-09-04: `?labor=` on `analytics.controller.ts:143`, unused by web and
+    mobile). Until a labour feed exists, that figure is a COGS ratio wearing a
+    prime-cost name — which is why the scenario for it is listed as unservable
+    rather than wired to what is there.
+23. **The four house layouts, read against how operators actually compose a
+    starting screen** (research 2026-09-04 — RECOMMENDED, not applied; the
+    cutting lists in `rp-sheet.ts` `HOUSE_LAYOUT_CUTTINGS` are unchanged).
+    The survey and the reasoning are in `DESIGN-FOUNDATION.md` §6e. The four
+    changes it argues for, each with the reading behind it:
+    - **`service` ("Before service")** — every product surveyed puts the same
+      three things in a pre-shift view: what is projected, who is on, and what
+      is 86'd (7shifts' Sales-vs-Labor and Who's-Working dashboards; Toast's
+      end-of-day reconciliation; R365's Flash Report, *"a snapshot of the day …
+      sales, labor costs, discounts and comps"*). Ours holds
+      `reading · till · week · seats · service`. **Add `restock`** — the 86 list
+      is the one pre-shift fact we can actually compute and it is missing;
+      **consider dropping `week`**, which is a planning register, not a
+      tonight register.
+    - **`buying` ("Buying week")** — MarginEdge and xtraCHEF both centre the
+      buying screen on **actual-versus-theoretical** and on invoice-derived
+      cost, not on menu mix. Ours holds
+      `restock · pacing · ahead · quadrants · reading`. **Consider dropping
+      `quadrants`** (margin against movement is a menu decision, and it is
+      already the heart of `month`), and note that the A-vs-T comparison every
+      competitor leads with **has no register here at all** — it is the
+      `waste_ratio` gap in item 22 wearing a different hat.
+    - **`month` ("Month end")** — R365 and MarginEdge both make period close a
+      **P&L** view; ours holds `ledger · goals · bench · till · quadrants ·
+      writing`, which is capital and goals but no cost ratio. Once (b) or (c)
+      above lands, `month` is where it belongs. `writing` stays even though it
+      is disabled, because the disabled control with its reason is the honest
+      statement about what month end still cannot produce.
+    - **`house` ("The house sheet")** — it is `DEFAULT_ON` and should stay the
+      alias for "everything the house reads", not a curated fifth list. No
+      change recommended.
+    Cross-reference for the founder: the goal-scenarios catalogue names, per
+    scenario, which cutting draws it (`goal-scenarios.ts` `cuttingId`), so the
+    layouts and the book can be checked against each other — `pacing` draws the
+    purchasing ceiling, `till` draws the average check and the cover count,
+    `quadrants` draws the idle-stock scenario, `restock` draws the stockout one,
+    `ledger` draws days-of-stock, `seats` draws table turns and RevPASH,
+    `service` draws the server spread, and `reading` is the only place attach
+    rate reaches the sheet at all.

@@ -952,3 +952,97 @@ already filters that table by `correlation_id`
 first; nothing in the survey does both. A sealed batch is therefore undoable **as a batch**
 here, with no new table — the only missing piece is that the settings writer does not set
 `correlation_id` today (`settings-audit.service.ts:205-221`).
+
+---
+
+### 6e. What operators hold themselves to, and how their dashboards open (2026-09-04)
+
+The founder, 2026-09-04: *"we're going to create possible analytic scenarios a restaurant
+might set as a goal"*, and separately he kept the four named house layouts on `/reports`
+(**The house sheet · Before service · Buying week · Month end**) with *"and research them
+well"*. Two surveys, both behind
+[ADR 0120](../decisions/0120-a-goal-comes-from-a-book-a-model-comes-from-the-task.md).
+Every row below was fetched or read from a search result on **2026-09-04**; the date column
+is the SOURCE's own publication date, not the day we read it.
+
+#### The benchmark sources the catalogue quotes
+
+`apps/api-gateway/src/analytics/goal-scenarios.ts` carries these verbatim, each with its URL
+and date, and each with a per-row caveat on top of the standing one.
+
+| Measure | What the source says | Source | Date |
+|---|---|---|---|
+| Food + non-alcohol beverage cost | median **32.0% of sales** fullservice, **32.4%** limited-service, 2024 | NRA, 2025 Restaurant Operations Data Abstract (900+ operators) — [link](https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-operators-kept-food-cost-ratios-in-check-in-2024/) | 2025-08-27 |
+| Salaries + wages incl. benefits | median **36.5% of sales** fullservice, **31.7%** limited-service; **34.2%** among fullservice operators who reported a pre-tax profit | NRA, same abstract — [link](https://www.restaurant.org/research-and-media/research/restaurant-economic-insights/analysis-commentary/restaurant-labor-costs-are-well-above-historical-averages/) | 2025-08-27 |
+| Prime cost | **60–65%** fullservice, **55–60%** QSR, ~60% for a sustainable business | Restaurant365 — [link](https://www.restaurant365.com/blog/how-to-calculate-prime-cost-in-a-restaurant/) | 2026 |
+| Prime cost (disagreeing) | **55–60%** is good; above **70%** makes profit hard | TouchBistro — [link](https://www.touchbistro.com/blog/important-restaurant-benchmarks/) | 2026 |
+| Pour cost | liquor **15–18%**, draft beer **15–20%**, bottled/canned **24–28%**, wine **25–40%** | Vast CFO — [link](https://www.vastcfo.com/breaking-down-restaurant-sales/) | 2026 |
+| Food waste | **4–10% of food purchases** (attributed to the NRA) | Supy — [link](https://supy.io/blog/the-impact-of-food-waste-on-restaurant-food-costs-and-how-to-reduce-it) | 2025-02-03 |
+| Inventory turnover | **4–8 times per month** | Sculpture Hospitality — [link](https://www.sculpturehospitality.com/blog/average-inventory-turnover-ratio-for-restaurant-food) | 2026-06-25 |
+| Table turnover | industry average for a family restaurant is **3** | TouchBistro — [link](https://www.touchbistro.com/blog/important-restaurant-benchmarks/) | 2026 |
+| Staff turnover | **27%** for the average full-service restaurant | TouchBistro — same page | 2026 |
+| Average check | rose **2.5% YoY** in July 2026 against a **2.3%** price rise | The Hospitality Hangout — [link](https://www.thehospitalityhangout.com/blog/qsr-check-growth-faq-2026/) | 2026 |
+| Fill rate / OTIF | **92–98%**, typical **85–95%**, high performers above **95%**; **90% on-time within 48h** for specialty food distributors | DCL Logistics — [link](https://dclcorp.com/blog/fulfillment/fill-rate/) | 2026 |
+| Days of cash | **three to six months** of operating expenses; restaurants typically last **16 days** without revenue (JPMorgan Chase Institute) | Relay — [link](https://relayfi.com/blog/how-much-cash-reserves-should-a-business-have/) | 2025-10-22 |
+| RevPASH | **no universal benchmark** — a fine-dining room with two-hour turns and $150 checks and a casual room with 45-minute turns and $25 checks have different good numbers | definition: Black Box Intelligence — [link](https://blackboxintelligence.com/resources/restaurant-glossary/revenue-per-available-seat-hour/) | — |
+| Wine attach rate | **no operator body publishes one.** The only figures found were a glassware supplier's marketing post (22–28% rising to 38–46% over twelve months) — a sales claim, named in the catalogue rather than shown as a range | [premiumwineglasses.com](https://premiumwineglasses.com/2026/05/30/high-margin-wine-program-custom-glassware/) | 2026-05-30 |
+
+**Three findings that shaped the catalogue more than any single figure.**
+
+1. **Published ranges exist for RATIOS and almost never for LEVELS.** Every row above that a
+   reader can act on is a percentage of something. Nobody publishes what a room's wine
+   revenue, cover count or bottle count should be, because those depend on the size of the
+   room. Four of the nine scenarios this engine can hold today therefore carry **no range at
+   all**, with the reason — a borrowed ratio printed beside a money field would read as a
+   target.
+2. **Source quality is not uniform, and the catalogue says which is which.** Two rows are
+   primary (the NRA abstract, 900+ operators, dated); two contradict each other by five
+   points (prime cost); one is second-hand (waste, attributed to the NRA by a vendor's blog,
+   primary not located); two are outside foodservice entirely (fill rate is logistics); one
+   is a vendor's sales claim and is deliberately **not** shown as a range.
+3. **The most useful sources refuse to give a number.** RevPASH's own literature says there
+   is no universal benchmark. That refusal is worth more to a manager than a fabricated
+   band, and the catalogue quotes it.
+
+#### How operator dashboards name and compose a starting screen
+
+| Product | What its starting screen is called | What it holds |
+|---|---|---|
+| **Toast** | ["10 Restaurant POS Reports Every Operator Should Run Weekly"](https://pos.toasttab.com/blog/on-the-line/restaurant-pos-reports) | end-of-day sales and payment reconciliation *daily*; product mix (PMix); labour variance — scheduled vs actual hours, overtime, sales per labour hour |
+| **Square** | [restaurant performance reports](https://squareup.com/help/us/en/article/6433-reporting-with-square-for-restaurants) | section sales and kitchen performance — ticket counts and average completed ticket time |
+| **Lightspeed** | [Advanced Insights](https://www.lightspeedhq.com/uk/pos/restaurant/advanced-insights/) | sales by month/week/day/**hour**, busiest time of day and week, best and worst selling items, covers |
+| **7shifts** | [Sales vs. Labor](https://kb.7shifts.com/hc/en-us/articles/4417519711251-Sales-vs-Labor-Dashboard-Overview) · [Who's Working](https://kb.7shifts.com/hc/en-us/articles/4417513719699-Who-s-Working-Dashboard-Overview) · [Manager Log Book](https://www.7shifts.com/manager-log-book/) | projected vs actual sales and labour; who is on right now; the log book's own list — daily sales, daily labour, guest feedback, **the 86 list**, repairs |
+| **MarginEdge** | [How it works](https://www.marginedge.com/how-it-works) · [Theoretical Usage](https://help.marginedge.com/hc/en-us/articles/360015329433-Getting-Started-with-Theoretical-Usage-Reporting) | daily controllable P&L; **actual vs theoretical** usage — purchased (invoices) against sold (POS) against on-hand (counts) |
+| **xtraCHEF by Toast** | [invoice & cost management](https://pos.toasttab.com/products/xtrachef) · [COGS report](https://support.toasttab.com/en/article/xtraCHEF-COGS-Report) | invoice line items, recipe costing, COGS allocated across groups and categories from Toast sales |
+| **Restaurant365** | [Flash Report](https://docs.restaurant365.com/docs/flash-report) · [Daily Sales Report](https://docs.restaurant365.com/docs/daily-sales-report) | *"a snapshot of a single day's performance … sales, labor costs, and discounts and comps"*, broken down by day, week and period, with exceptions, paid-outs and logbook entries |
+| **Restaurant365 (cadence)** | ["Top 5 Must Have Restaurant Reports"](https://www.restaurant365.com/blog/5-must-have-restaurant-reports-to-keep-you-on-track/) | flash **daily**, labour and inventory **weekly**, P&L **monthly** — the cadence our four layouts are an argument about |
+
+**What the survey says about our four.** The field converges on three starting screens, not
+four, and they are cut by CADENCE rather than by subject: a **daily flash** (what happened
+yesterday and what is on tonight), a **weekly cost review** (what was bought against what
+was used), and a **period close** (the P&L). Our `service` / `buying` / `month` map onto
+those three almost exactly, which is the strongest evidence the founder's four are right;
+`house` is the fourth because it is not a job, it is the default.
+
+Three concrete gaps the survey exposes, filed as recommendations in `reports.md` §13.23 and
+**not applied** — the cutting lists in `rp-sheet.ts` are unchanged:
+
+- **The 86 list is the one thing every pre-shift screen holds and ours does not.** 7shifts'
+  log book names it explicitly. Our nearest register is `restock` ("what is about to run
+  out"), which is not on `service` today.
+- **Actual-versus-theoretical is the centre of every buying screen in the field and has no
+  register here at all.** MarginEdge and xtraCHEF both lead with it. It is the `waste_pct`
+  gap in the goal-scenarios catalogue seen from the layout side: the same missing capture
+  path blocks both.
+- **Period close is a P&L everywhere else and a capital view here.** `month` holds `ledger ·
+  goals · bench · till · quadrants · writing` — real, but no cost ratio, because
+  `primeCostRatio` takes a labour figure nobody supplies and `cogsRatio`'s denominator is a
+  valuation rather than POS revenue (`analytics.service.ts:396,432-437,464-467`).
+
+**And the cross-reference that makes the two surveys one document:** the goal-scenarios
+catalogue names, per scenario, the cutting that draws it. `pacing` draws the purchasing
+ceiling; `till` draws the average check and the cover count; `quadrants` draws idle stock;
+`restock` draws the stockout; `ledger` draws days-of-stock; `seats` draws table turns and
+RevPASH; `service` draws the server spread; and `reading` is the only place attach rate
+reaches the sheet at all. A layout is therefore checkable against the book: *if a house sets
+this goal, does the layout it works from show it?*
