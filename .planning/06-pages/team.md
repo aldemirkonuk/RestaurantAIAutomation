@@ -656,6 +656,46 @@ re-deriving it.
    messaging staff through a staff member's own connection is a thing a house
    should be able to do at all — are exactly what that research is for.
 
+7d. **That research landed: [ADR 0121](../decisions/0121-the-houses-text-sender.md),
+   survey in [`07-reference/messaging-senders.md`](../07-reference/messaging-senders.md).**
+   Still nothing built. Four findings that bear directly on this page.
+
+   **"Use their connection" is closed by every platform, with one survivor.** iOS
+   has no third-party SMS send — the OS opens the composer and the person presses
+   send. Google Play restricts the SMS permission group to the device's registered
+   default SMS handler, which Mudavym will never be. WhatsApp's terms forbid "any
+   non-personal use of our Services" and "bulk messaging, auto-messaging"; Signal's
+   forbid the same; Apple Messages for Business and RCS are brand channels behind
+   an MSP or partner gate. The survivor is a **hand-off**: the app prefills the
+   person's own composer and the person sends it, and the record says
+   `HANDED_TO_PERSON` — never a delivery. On Android `expo-sms` returns `unknown`
+   in every case, so the product could not honestly claim more than "the composer
+   opened". `apps/mobile` has neither `expo-sms` nor `expo-contacts` today.
+
+   **The crew has nothing to text.** Measured on production 2026-09-04: **0 of 11
+   `team_members` carry a phone**, 3 of 11 `users` do, and **0 of the 3
+   `notification_preferences` rows have `sms_enabled`**. Restoring the SMS leg
+   today would reach nobody, so `withheldByProduct.sms` is honestly 0 and the
+   removal cost zero messages.
+
+   **But the channel that is still on reports reach it does not have.**
+   `mobile_devices` holds **0 rows**, and `ExpoPushService.sendToUsers` returns
+   silently on an empty read *and* on a failed one (`push/expo-push.service.ts:83`,
+   `if (error || !data?.length) return;`) while this route reports
+   `notified: pushIds.length` counted off the roster (`team.controller.ts:521,527`).
+   **A broadcast to the active crew reports `notified: 11` and delivers 0.** That
+   is [[absence-reported-as-health]] in the one channel §7a left standing, and ADR
+   0121 makes fixing it phase 0 — the honest version of "wait for a sender" is
+   "say what push actually did, then wait". This is a §9 gap on this page, filed
+   and not fixed in the docs pass that found it.
+
+   **Whether a crew text should exist at all is founder question 1 in ADR 0121.**
+   ADR 0118 D6 keeps the composer on the vendor book, and a staff text has a
+   different legal footing from a vendor one (employees, not businesses; TCPA
+   quiet hours of 8 a.m. to 9 p.m. local land squarely on a restaurant's closing
+   shift). The ADR proposes WhatsApp as a **vendor** channel first and does not
+   assume the SMS leg comes back here at all.
+
 7b. **RETIRE-ON-FLAG — what happens to the legacy desk, decided.** The legacy
    Manager Shift Desk retires **the day the flag turns on for a house**: from
    that moment it is not the surface anybody operates, and a fix belongs on the

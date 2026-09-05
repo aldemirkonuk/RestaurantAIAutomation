@@ -563,3 +563,30 @@ lands, this route is open.
 11. **Attachments on a house letter**, if the founder wants them — a storage
     path, a size bound, and a decision about whether an attachment may carry a
     figure the body may not.
+12. **The house's text sender** — [ADR 0121](../decisions/0121-the-houses-text-sender.md),
+    survey in [`07-reference/messaging-senders.md`](../07-reference/messaging-senders.md).
+    The founder answered ADR 0118's founder-question 2 on 2026-09-04: *"No letters
+    only, however, we def need a sms sender, and text mesg sender since most
+    conversations might just go with text"*, so this page's "letters only" framing
+    is superseded and the composer gains a text mode. **Nothing is built.** What
+    the research found, in four lines. **(1)** The existing sender is **Plivo, not
+    Twilio** — one `PLIVO_PHONE_NUMBER` for the whole deployment
+    (`communications/sms.service.ts:30-33`), the same shared-identity fault ADR
+    0118 D1 refused for mail, plus one email has no analogue for: **a STOP reply to
+    a shared number opts that person out of every restaurant on the deployment**,
+    for five years (47 CFR 64.1200(d)(6)). **(2)** Measured on production
+    2026-09-04, **0 of 21 providers are reachable by phone only** (4 have a phone
+    and all 4 also have an email), so turning SMS on today buys zero
+    conversations. **(3)** In Türkiye, the market where "most conversations go
+    with text" is most likely true, **two-way SMS is not supported at all**
+    (Twilio TR guidelines, fetched 2026-09-04) — an SMS there can carry a notice,
+    never a thread. **(4)** WhatsApp Cloud API bills **per message since
+    2025-07-01** and free-form messages inside an open 24-hour window are **free**,
+    which is the exact shape of this product's traffic (a vendor writes, the house
+    answers). Proposed: WhatsApp as a house-declared connection under ADR 0114
+    first, SMS per house second, never a shared number. Six founder questions are
+    open in the ADR — including whether book-only (D3) survives for a phone
+    number, which is harder to hold than an email address because a number is easy
+    to type from memory. The strongest counter-argument is in the ADR and is
+    genuinely strong: WhatsApp-first puts the house's vendor thread in Meta's
+    custody, and Meta may "pause and reject any Message Template at any time".
