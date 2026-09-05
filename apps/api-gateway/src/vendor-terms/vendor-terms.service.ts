@@ -142,6 +142,11 @@ export interface VendorTermsReadout {
     providers: SourceStatus;
     statedTerms: SourceStatus;
     orders: SourceStatus;
+    /**
+     * The `users` lookup behind every `statedBy.name`. Unreadable here means a
+     * row's author is unknown-because-unreadable, not unstated.
+     */
+    actors: SourceStatus;
   };
 }
 
@@ -291,7 +296,7 @@ export class VendorTermsService {
         stated.rows.get(p.id) ?? null,
         ordersByProvider.get(p.id) ?? [],
         house.zone,
-        actors,
+        actors.names,
         orders.readable,
       ),
     );
@@ -314,6 +319,7 @@ export class VendorTermsService {
         providers: providers.status,
         statedTerms: stated.status,
         orders: orders.status,
+        actors: actors.status,
       },
     };
   }
@@ -761,7 +767,12 @@ export class VendorTermsService {
     providerId: string,
   ): Promise<StatedTermsRow | null> {
     try {
-      const { data } = await this.databaseService.client
+      // `error` is BOUND on purpose. supabase-js resolves with { data, error },
+      // so without this the catch below — and the warning it exists to print —
+      // was unreachable: a failed read arrived as `data: null`, which
+      // `maybeSingle()` also returns for "no row", and the audit row silently
+      // claimed there had been no previous terms.
+      const { data, error } = await this.databaseService.client
         .from("restaurant_vendor_terms")
         .select(
           "provider_id, delivery_weekdays, order_cutoff_time, order_cutoff_offset_days, minimum_order_amount, lead_time_days, payment_terms, notes, stated_by, stated_at, updated_at",
@@ -769,6 +780,7 @@ export class VendorTermsService {
         .eq("restaurant_id", restaurantId)
         .eq("provider_id", providerId)
         .maybeSingle();
+      if (error) throw new Error(error.message);
       return (data as unknown as StatedTermsRow) ?? null;
     } catch {
       // A before-state we could not read is not the same as no before-state, and
@@ -834,21 +846,38 @@ export class VendorTermsService {
     }
   }
 
-  private async resolveActors(ids: string[]): Promise<Map<string, string | null>> {
-    const out = new Map<string, string | null>();
-    if (ids.length === 0) return out;
+  /**
+   * Names for the people who stated these terms.
+   *
+   * Returns a `SourceStatus` beside the names, like every other read on this
+   * page, so `sources.actors` can say "the names could not be looked up"
+   * instead of the readout quietly showing `statedBy: null` on every row — which
+   * is what "nobody stated this" looks like. The old shape bound only `data`,
+   * and supabase-js resolves rather than throws, so the `try/catch` was inert
+   * and the two facts were the same empty map.
+   */
+  private async resolveActors(
+    ids: string[],
+  ): Promise<{ names: Map<string, string | null>; status: SourceStatus }> {
+    const names = new Map<string, string | null>();
+    if (ids.length === 0)
+      return { names, status: { readable: true, reason: null, rows: 0 } };
     try {
-      const { data } = await this.databaseService.client
+      const { data, error } = await this.databaseService.client
         .from("users")
         .select("user_id, name")
         .in("user_id", ids);
+      if (error) return { names: new Map(), status: unreadable(error) };
       for (const r of (data ?? []) as Array<{ user_id: string; name: string | null }>) {
-        out.set(r.user_id, r.name ?? null);
+        names.set(r.user_id, r.name ?? null);
       }
-    } catch {
-      // A name we cannot resolve renders as the id, never as "nobody".
+      return {
+        names,
+        status: { readable: true, reason: null, rows: names.size },
+      };
+    } catch (err) {
+      return { names: new Map(), status: unreadable(err) };
     }
-    return out;
   }
 
   /* ── The diff that becomes the audit row ───────────────────────────────── */

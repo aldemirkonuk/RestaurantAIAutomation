@@ -162,6 +162,18 @@ falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a
 row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
 [ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
 
+> **2026-09-05, measured, not carried over.** `python3
+> scripts/check_read_errors_not_swallowed.py` on `feat/mudavym-design-p4` prints
+> **193 found / 193 baselined / 0 allowlisted** — the ratchet has moved on from
+> the 199 below and this line is the current number. Four sites that landed on
+> this branch the same day were FIXED rather than baselined (the baseline only
+> shrinks): `procurement.service.ts` own-paper dedup probe,
+> `approval-thresholds.service.ts` and `vendor-terms.service.ts` actor-name
+> lookups, `vendor-terms.service.ts` `readStatedOne` before-state. In the same
+> run the guard failed on a baseline row that no longer described the tree —
+> `team.service.ts::users::users` had been fixed from 2 sites to 1 by a
+> concurrent session — and the row was lowered to match.
+
 The 199 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it

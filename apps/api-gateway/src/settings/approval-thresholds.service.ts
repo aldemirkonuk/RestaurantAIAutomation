@@ -75,6 +75,15 @@ export interface ThresholdsReadout {
   policyEmpty: boolean;
   readable: boolean;
   reason: string | null;
+  /**
+   * Null when every `setBy` name was resolved (or there was nobody to resolve).
+   * A SENTENCE when the `users` read failed: a threshold whose author reads as
+   * "set" rather than "set by Deniz" must say which of the two it is —
+   * "nobody recorded it" and "we could not look it up" are different facts, and
+   * a null name reports both. supabase-js resolves with `{ data, error }`, so
+   * without this the second one wears the first one's face.
+   */
+  actorNamesReason: string | null;
   retrospective: {
     counts: RetrospectiveCount[];
     ordersRead: number;
@@ -173,7 +182,7 @@ export class ApprovalThresholdsService {
       percentLimit: num(r.percent_limit),
       requiredRole: r.required_role,
       setBy: r.set_by
-        ? { userId: r.set_by, name: actors.get(r.set_by) ?? null }
+        ? { userId: r.set_by, name: actors.names.get(r.set_by) ?? null }
         : null,
       updatedAt: r.updated_at,
     }));
@@ -188,6 +197,7 @@ export class ApprovalThresholdsService {
       ...base,
       thresholds,
       policyEmpty: thresholds.length === 0,
+      actorNamesReason: actors.reason,
       retrospective: {
         counts: retrospective(thresholds, orders.tests),
         ordersRead: orders.tests.length,
@@ -351,22 +361,44 @@ export class ApprovalThresholdsService {
     return { tests, readable: true, reason: null };
   }
 
-  private async resolveActors(ids: string[]): Promise<Map<string, string | null>> {
-    const out = new Map<string, string | null>();
+  /**
+   * Names for the people who set these rules.
+   *
+   * Returns the reason ALONGSIDE the names, never instead of them: a failed
+   * read still lets the numbers render, but the readout carries a sentence
+   * saying the authors are unknown-because-unreadable rather than
+   * unknown-because-nobody-signed. The old shape bound only `data`, and
+   * supabase-js resolves rather than throws, so the `try/catch` around it was
+   * inert and a failed lookup came back as an empty map — indistinguishable
+   * from a clean read of an unsigned policy.
+   */
+  private async resolveActors(
+    ids: string[],
+  ): Promise<{ names: Map<string, string | null>; reason: string | null }> {
+    const names = new Map<string, string | null>();
     const unique = [...new Set(ids)];
-    if (unique.length === 0) return out;
+    if (unique.length === 0) return { names, reason: null };
     try {
-      const { data } = await this.databaseService.client
+      const { data, error } = await this.databaseService.client
         .from("users")
         .select("user_id, name")
         .in("user_id", unique);
+      if (error) throw new Error(error.message);
       for (const r of (data ?? []) as Array<{ user_id: string; name: string | null }>) {
-        out.set(r.user_id, r.name ?? null);
+        names.set(r.user_id, r.name ?? null);
       }
-    } catch {
-      // A name we cannot resolve renders as the id, never as "nobody".
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `could not read users to name the authors of these thresholds; the ` +
+          `rules stand, the names do not: ${message}`,
+      );
+      return {
+        names: new Map(),
+        reason: `The people who set these rules could not be looked up (${message}), so a rule shows no author here even where one is recorded.`,
+      };
     }
-    return out;
+    return { names, reason: null };
   }
 
   private emptyReadout(restaurantId: string): ThresholdsReadout {
@@ -376,6 +408,7 @@ export class ApprovalThresholdsService {
       policyEmpty: true,
       readable: true,
       reason: null,
+      actorNamesReason: null,
       retrospective: {
         counts: [],
         ordersRead: 0,

@@ -156,7 +156,7 @@
     "apps/api-gateway/src/team/team.service.ts::team_settings::data": 1,
     "apps/api-gateway/src/team/team.service.ts::user_restaurant_access::access": 4,
     "apps/api-gateway/src/team/team.service.ts::users::user": 1,
-    "apps/api-gateway/src/team/team.service.ts::users::users": 2,
+    "apps/api-gateway/src/team/team.service.ts::users::users": 1,
     "apps/api-gateway/src/toast/toast.service.ts::pos_item_mappings::mapping": 1,
     "apps/api-gateway/src/toast/toast.service.ts::restaurant_inventory::inv": 1,
     "apps/api-gateway/src/user-preferences/user-preferences.service.ts::user_preferences::existing": 1,

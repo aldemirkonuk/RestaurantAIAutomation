@@ -1159,12 +1159,25 @@ export class ProcurementService {
     }
 
     try {
-      const { data: existing } = await this.databaseService.supabase
-        .from("vendor_price_observations")
-        .select("id")
-        .eq("source_ref", provisional.sourceRef)
-        .eq("content_hash", provisional.contentHash)
-        .maybeSingle();
+      // supabase-js RESOLVES with { data, error }. A dropped `error` here makes
+      // a FAILED dedup read indistinguishable from "not on the register yet",
+      // so the guard fails open and we insert the duplicate it exists to
+      // prevent. If we cannot tell, we do not write: the catch below turns this
+      // into the logged sentence "Could not record the price sighting".
+      const { data: existing, error: existingError } =
+        await this.databaseService.supabase
+          .from("vendor_price_observations")
+          .select("id")
+          .eq("source_ref", provisional.sourceRef)
+          .eq("content_hash", provisional.contentHash)
+          .maybeSingle();
+      if (existingError) {
+        throw new Error(
+          `could not read the register to check whether ${provisional.sourceRef} ` +
+            `is already on it, so this sighting is not written rather than ` +
+            `written twice: ${existingError.message}`,
+        );
+      }
       if (existing) {
         this.logger.log(
           `Price sighting already on the register for ${provisional.sourceRef}; ` +

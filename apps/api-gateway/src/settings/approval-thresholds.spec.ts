@@ -365,3 +365,76 @@ describe("ApprovalThresholdsService", () => {
     expect(result.audited).toBe(true);
   });
 });
+
+/**
+ * `resolveActors` used to bind `data` and drop `error`.
+ *
+ * supabase-js RESOLVES with `{ data, error }`, so the `try/catch` around it was
+ * inert and a dead `users` read came back as an empty name map — the same value
+ * a clean read of an unsigned policy returns. The register then showed every
+ * rule as "set" rather than "set by Deniz", and nothing anywhere said which of
+ * the two facts that was: nobody recorded the author, or we could not look the
+ * author up. `actorNamesReason` is the difference, and it is a SENTENCE the
+ * caller carries rather than a log line only a server sees.
+ *
+ * Both cases fail against the pre-fix file (`git show HEAD:` copy), where
+ * `actorNamesReason` does not exist on the readout at all.
+ */
+describe("ApprovalThresholdsService — a failed name lookup is not an unsigned rule", () => {
+  const POLICY = [
+    {
+      rule: "manager_ceiling",
+      enabled: true,
+      amount_limit: "15000.00",
+      percent_limit: null,
+      required_role: "owner",
+      set_by: "u-9",
+      updated_at: "2026-09-01T09:00:00.000Z",
+    },
+  ];
+
+  it("carries a sentence when the users read fails, and still renders the rule", async () => {
+    const { databaseService } = makeDb(
+      {
+        restaurant_approval_thresholds: POLICY,
+        procurement_orders: [],
+        users: [],
+      },
+      { users: { message: "connection terminated unexpectedly" } },
+    );
+
+    const out = await new ApprovalThresholdsService(
+      databaseService,
+      makeAudit().service,
+    ).read("rest-1");
+
+    expect(out.actorNamesReason).toContain(
+      "connection terminated unexpectedly",
+    );
+    expect(out.actorNamesReason).toContain("could not be looked up");
+    // The policy itself is unaffected: one unreadable lens does not blank a
+    // page, it only stops the page claiming the lens was empty.
+    expect(out.readable).toBe(true);
+    expect(out.thresholds).toHaveLength(1);
+    expect(out.thresholds[0].setBy).toEqual({ userId: "u-9", name: null });
+  });
+
+  it("leaves the sentence null when the read succeeds, so a null name means unsigned", async () => {
+    const { databaseService } = makeDb({
+      restaurant_approval_thresholds: POLICY,
+      procurement_orders: [],
+      users: [{ user_id: "u-9", name: "Deniz Aksoy" }],
+    });
+
+    const out = await new ApprovalThresholdsService(
+      databaseService,
+      makeAudit().service,
+    ).read("rest-1");
+
+    expect(out.actorNamesReason).toBeNull();
+    expect(out.thresholds[0].setBy).toEqual({
+      userId: "u-9",
+      name: "Deniz Aksoy",
+    });
+  });
+});
