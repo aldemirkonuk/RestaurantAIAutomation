@@ -284,6 +284,29 @@ off-premise licensee pays a state store, with that state's statutory markup bake
 (Iowa's median `state_bottle_retail / state_bottle_cost` is **exactly 1.50** across
 13,762 rows).
 
+**Class E is planned but not built, and its plan is elsewhere (2026-09-05).** Class E as
+written here names three sources and one rule (*never called a price for a named
+product*). What a class-E series may actually be *used for* — held in a register,
+compared, alerted on, or shown — is planned in
+[`.planning/07-reference/commodity-signals-plan.md`](../07-reference/commodity-signals-plan.md),
+written the same day on the founder's *"a seperate table for index series"* call. Three
+of its findings bear directly on this section. **(a)** An index series cannot enter
+`price_index_postings` at all: **five separate columns of
+`20260904200000_a_posted_price_names_its_state.sql` each refuse it** — `price NOT NULL`,
+`currency NOT NULL DEFAULT 'USD'`, `price_unit NOT NULL`, `product_name NOT NULL`, and
+`state NOT NULL CHECK (state ~ '^[A-Z]{2}-[A-Z0-9]{1,3}$')`, which no world-scoped index
+can satisfy. That is the measured reason the founder's separate table is structurally
+required, and it is also why `d7bv` was correctly left unregistered. **(b)** Class E
+needs a `value_kind` this ADR has no equivalent of — `price` / `index_number` / `rate` /
+`forecast` — because a rate (HMRC duty, the GİB ÖTV schedule) and an index number
+(FAO 133.3, ONS `d7bu` 144.0) are both admissible and neither is a price. **(c)** Two
+politeness findings measured 2026-09-05 constrain any class-E fetcher this ADR would
+authorise: **`www.ams.usda.gov/robots.txt` returns 403**, so under this ADR's own rule no
+scheduled fetcher may be pointed at the source it names first — the shell-egg index takes
+the Michigan upload path instead; and **`api.bls.gov/robots.txt` returns 200 with
+`User-agent: * / Disallow: /`** on the host of a documented, key-issuing, rate-limited
+public API, which is an open question about what robots.txt binds and is that plan's Q1.
+
 ### The provenance a sighting must carry
 
 `source · issuer · issuer_jurisdiction · issued_at · fetched_at · price_basis · unit ·
@@ -613,18 +636,25 @@ the numbers had been taken in the meantime.)
     It WOULD be refilled if the row were ever deleted and re-seeded, which is
     the second reason this clears a column instead of deleting a row.
 
-    **The fourth stays open.** `www.charmer.com` answers 200 with 114 bytes:
+    **The fourth is now cleared too, and Q13 is CLOSED entirely.**
+    `www.charmer.com` answers 200 with 114 bytes:
     `<script>window.onload=function(){window.location.href="/lander"}</script>`
-    — a parked domain, i.e. also no longer the vendor's. The founder named
-    three, so the script prints charmer under a separate "REPORTED ONLY"
-    heading and **will not take it**. Widening a cleaning run past what was
-    asked for is how a script becomes something nobody decided.
+    — a parked domain, i.e. also no longer the vendor's. The first cut printed
+    it under a separate "REPORTED ONLY" heading and refused to touch it,
+    because the instruction had named three, and widening a cleaning run past
+    what was asked for is how a script becomes something nobody decided. The
+    founder then said **"Clear it with the three"** (2026-09-05), so it is the
+    fourth PROPOSED row, with the same statement shape and the same note. The
+    dry run now reads 4 of 4 rows and proposes **4** statements; the REPORTED
+    ONLY heading is kept in the code printing "(none)", so the shape that
+    reports a row without acting on it is still there for whoever adds the
+    next one.
 
     **One thing found while measuring, which nobody asked about.** All three of
     the US rows carry `verified_at = 2026-08-10T17:21:2x`, set two months after
     the seed. Whatever ran that verification did not check the identity of the
     website it was verifying — a casino's homepage passed it. That is a
-    separate defect from this one and is filed as Q22 below.
+    separate defect from this one and is filed as Q26 below.
 
 14. **The sweep is pointed at the wrong population, and it currently reaches
     nothing at all.** The scheduled sweep reads `providers` per restaurant;
@@ -1238,10 +1268,219 @@ until the founder decides whether a drinks house should see a produce line at al
 24. **Should a drinks house be shown a PRODUCE line?** Defra is real, dated, licensed, fetchable
     and about vegetables. It is built and disarmed. This is Q11's other half, now with a working
     parser behind it, and it is one environment variable from being live.
-25. **`restaurants.currency` says `USD` for all fourteen houses, the two Turkish and the British
+
+    **ANSWERED by the founder, 2026-09-05, and CLOSED:** *"Show it, labelled as produce, in its
+    own box"* — an honest index of the market the house also buys from, never beside a wine
+    quote; the label says what it is. BUILT the same day:
+
+    * **Its own box, titled by the source's own words.** `MarketIndexPanel.tsx` splits the
+      register's lines on whether their SOURCE carries `display` in the registry — not on the
+      class, so the rule lives where the evidence is. A labelled source draws in a titled
+      `<section>` of its own, below the drinks list and never beside it:
+      `Wholesale produce · Defra · England and Wales · read on 5 Sep 2026`, with a sentence
+      under it saying *"A market this house also buys from. It is not a drinks price and is
+      never compared with one."* The main heading still names the DRINKS class held, so a box
+      holding only produce is not announced as a drinks list.
+    * **The date on the title is OURS.** "read on", from `fetched_at`, never the issuer's date —
+      the one date this box can always stand behind. (The line inside keeps ADR 0117 Q27's
+      `issuedAtBasis` rule, so a row still says "issued" only when a publisher stamped it.)
+    * **Two rendering faults found in the first capture and fixed.** A produce row was printing
+      an em dash for its container size — a size is a fact about a BOTTLE, and a price per
+      kilogram has no bottle, so the unknown is dropped rather than shown on a labelled source.
+      And it was printing *"to average wholesale market price"*: `to X` names the TRADE LEVEL a
+      posting is filed for ("to Retailers"), so the preposition asserted a trade relationship
+      the issuer never stated. Both are `labelled`-variant behaviour on `Line`.
+    * **The GB sentence stopped saying "none found".** It said no market price is published in
+      the United Kingdom — true of DRINK and false of the market as a whole once one source is
+      being shown. A sentence claiming nothing was found, beside a box that is showing
+      something, teaches a reader to distrust both. It now says *"No drinks price is published
+      in the United Kingdom … What was found is Defra's wholesale produce list for England and
+      Wales, shown separately and labelled as produce: a market this house also buys from,
+      never a stand-in for a wine price."*
+    * **And the unarmed sentence names the switch.** The generic *"has a fetchable posted list,
+      but the scheduled fetch is off"* was wrong twice for a UK house: there is no posting
+      regime in the UK at all, and the source waiting is produce, not drink. A jurisdiction
+      whose only fetchable sources are labelled ones now gets
+      `unarmedDisplaySilenceFor`: *"Wholesale produce (Defra, England and Wales) is the one
+      public list found for this house, and it has not been read yet: the scheduled fetch is off
+      until PRICE_INDEX_FETCH_ENABLED is set on the deployment."*
+    * **Arming is one thing and one thing only** — setting `PRICE_INDEX_FETCH_ENABLED` to
+      "true" or "1" on the deployment. It is not a code change, not a product toggle, and not
+      something an agent does. Said in the registry entry, in the endpoint's sentence and in
+      `price-sources.md`, because a reader who cannot find the switch assumes the product is
+      broken.
+
+    **Proved against the pre-fix component.** A probe copy of HEAD's `MarketIndexPanel.tsx`
+    (renamed only, run, then deleted) was rendered with the same two rows — a Defra cabbage and
+    an Iowa rye. It produced **one `<ul>` containing both**, under the single heading
+    **"Control-state shelf price · GB-ENG"**, with the word "produce" **absent from the entire
+    document**: a GBP 0.62 cabbage directly beneath a $34.99 bottle of rye, the whole box
+    announced as a control-state shelf price. Six new vitest cases hold the new behaviour, one
+    of them asserting that an unlabelled source still draws exactly as it did.
+
+    **What is NOT built, and why.** No row exists to show. `price_index_postings` is absent from
+    the project this deployment reaches and the fetch is unarmed, so the captures are a STUB —
+    real components, real tokens, real values from the 31/08/2026 edition, a banner saying STUB
+    on the face of every shot, and no request leaving the browser. Arming it or writing a row
+    would be a production write.
+25. ~~**`restaurants.currency` says `USD` for all fourteen houses, the two Turkish and the British
     included** — measured 2026-09-05. This settles Q10: fixing the class-A writer alone fixes
     nothing, because the tenant rows themselves carry the column default. The repair is a data
-    correction on three rows, and it is a WRITE, so it was not made.
+    correction on three rows, and it is a WRITE, so it was not made.~~
+
+    **ANSWERED 2026-09-05.** The founder, verbatim: *"correct three rows now, ask each house in
+    onboarding, but set a default based on location, edge case: there maybe several diff
+    currencies, so act accordingly to that"*. Built and recorded in
+    **A house names its money, and a recorded price names its own** below. The three rows are
+    still USD: the correction is a WRITE and it waits on the founder's word.
+
+## A house names its money, and a recorded price names its own (2026-09-05)
+
+> This section is the amendment that closes **Q25**. It is recorded here rather than as a new
+> ADR because it is not a new decision: the founder stated the rule in the three sentences
+> above, and this ADR already owns "a price names its unit" — of which "a price names its
+> money" is the same sentence about the other half of the figure. ADR 0070 owns the QUANTITY
+> axis and ADR 0119 the AGREEMENT's unit; neither owns a price's denomination.
+
+### The measurement, first
+
+Read off production 2026-09-05 (reads only; nothing was written):
+
+| what | count |
+|---|---|
+| `restaurants` rows | 14 |
+| carrying `currency = 'USD'` | **14** |
+| of those, houses NOT in a dollar country | **3** (Chez Community and The Old House Pub in Türkiye, ADMIN 1 in the United Kingdom) |
+| `price_history` rows | 0 |
+| `price_history.currency` column | **absent** |
+| `procurement_documents` rows | 5 |
+| of those, rows whose currency is not `USD` | **2**, both `TRY` — on a house whose own row says `USD` |
+| columns named `currency` in `public` | 6, and **every one of them defaults to `'USD'`** |
+
+**The writer that set USD is the column default.** `restaurants.currency` carries
+`DEFAULT 'USD'::character varying` (`20260805000000_baseline_from_production.sql:3576`) and the
+only insert that creates a house — `AuthService.registerRestaurant`,
+`apps/api-gateway/src/auth/auth.service.ts` — named no `currency` key at all. So no code was
+wrong; the COLUMN was the writer, and an unanswered question was stored as a confident answer.
+This is [[absence-reported-as-health]] in a column default, the same shape
+`20260903170000_a_default_is_not_an_answer.sql` removed from three other columns — a file that
+named `restaurants.currency` as deliberately NOT touched because it had not been decided.
+
+The last two rows of that table are the founder's edge case, already live: one house, `USD` on
+its own row, holding two `TRY` invoices.
+
+### The rule
+
+1. **`restaurants.currency` is the house's REPORTING currency** — what its own totals are stated
+   in. It is stated by a person or it is NULL. No default.
+2. **Every recorded price carries ITS OWN currency**, the vendor's, off the vendor's paper.
+   Never the house's by inheritance.
+3. **Nothing converts.** There is no exchange rate anywhere in this system. A reader that would
+   compare or sum figures in different currencies refuses in words instead.
+
+### What was built
+
+- **`supabase/migrations/20260905120000_a_house_names_its_money.sql`** — drops
+  `restaurants.currency`'s default, adds an ISO-4217-shape CHECK to it, adds
+  `price_history.currency` (nullable, no default, same CHECK), and four column comments carrying
+  the rule. **It writes no data**, and it raises a NOTICE naming how many houses still carry
+  `USD` so a green migration cannot imply the job is done.
+- **`scripts/correct_restaurant_currency.py`** — the three-row correction. Dry by default;
+  `--apply` refused unless `--i-have-the-founders-word` is passed with it; `--self-test` needs no
+  database. The dry run prints each changing row's whole tuple, the evidence, every foreign key
+  that references `restaurants`, and the exact statements. It talks to PostgREST with the
+  standard library rather than the `supabase` package — measured on this machine, the repo's own
+  `supabase/` directory shadows that package, so `import supabase` succeeds while
+  `from supabase import create_client` fails, and the default `python3` does not have it at all.
+  `scripts/backfill_restaurant_coordinates.py` carries that trap unfixed.
+- **The onboarding step** — `apps/web/src/components/onboarding/CurrencyStep.tsx`, mounted in
+  the sign-up form's Location section. A **stated** default from the address's country (ADR 0083:
+  the page says what it will record), which the manager confirms or changes, plus "Not yet" as a
+  real answer that records nothing. A country the table cannot place gets **no** default and says
+  so. The table is `apps/web/src/lib/currency.ts` (ISO 4217 alpha-3, SIX/ISO list A1, compiled
+  2026-09-05, no external call).
+- **The writers** — `recordPriceHistory` takes a required `currencyClaim` and writes the code or
+  NULL plus a logged sentence naming what would have admitted one
+  (`apps/api-gateway/src/procurement/price-currency.ts`). `own-paper-sighting.ts`'s
+  `(input.currency ?? "USD")` is now a **refusal**; the class-D sweep beside it already refused
+  `currency_unstated` with the words "A number without its currency is not a price"
+  (`vendor-intel/shop-reference-posting.ts`), so class A defaulting while class D refused was the
+  inconsistency.
+- **The readers** — `vendor-terms.service.ts` returns `code: string | null` and no longer falls
+  back to USD on an unreadable house; `lib/mudavym/format.ts`'s `fmtMoney` renders an unrecorded
+  currency as "N (currency not recorded)" rather than a symbol; both terms surfaces say it in
+  words.
+
+### Rejected alternatives
+
+- **`price_history.currency` NOT NULL, like `unit`.** Rejected on a measurement, not a
+  preference: the RECEIPT path can state a currency (the invoice header carries one, and
+  production proves it is sometimes TRY) but the AGREEMENT path cannot — neither
+  `procurement_orders` nor `procurement_order_items` has a currency column. NOT NULL would not
+  make the agreement state its currency; it would make the agreement path write nothing, deleting
+  a whole source from the series to punish a gap in a different table and leaving an empty table
+  that reads as "no prices". NULL plus a logged sentence keeps the observation and makes the gap
+  visible. Reversible in one line the day the agreement line names its currency.
+- **Clearing the other eleven houses' `USD`, as `20260903170000` cleared the timezones.** The
+  argument transfers exactly — ten US houses carry a value nobody can prove was chosen — but it
+  erases ten houses' currency to make a point about provenance, and the founder has not been
+  asked. Filed below, not done.
+- **Inheriting the house's currency onto a price when the paper states none.** This is the defect
+  wearing a helpful face. On the Fethiye house it would have written USD.
+- **A currency-conversion rate, anywhere.** No source, no date, no issuer — every requirement
+  this ADR puts on a price, a rate fails.
+- **A country-to-currency table in the gateway as well as the web.** Two tables of the same fact
+  rot apart. The gateway validates SHAPE only (`/^[A-Z]{3}$/`); the codes a manager can choose
+  come from the one table, in a select, so "TL" and "$" cannot be typed in.
+
+### Founder-only questions raised by this pass
+
+> Numbering note (2026-09-05): this section's founder questions are **Q30-Q35**. Q13-Q16 belong
+> to the size reader, Q17-Q21 to Michigan/Illinois, Q22-Q25 to Türkiye/UK and Q26-Q29 to the
+> merchant-shop sweep; Q29 was the highest in the file when these were written. Q30, Q31 and
+> Q33 were answered by the founder the same afternoon and built; Q34 and Q35 were raised by
+> that build.
+
+30. ~~**Clear the other eleven houses' `USD` too?**~~ **ANSWERED 2026-09-05**, founder:
+    *"Clear all eleven to unrecorded; the onboarding step asks"*. Built as a second mode on the
+    correction script, `--clear-inherited`, dry by default and refusing `--apply` without the
+    founder's-word flag. Eleven rows qualify; the three corrected earlier the same day carry
+    codes the default never supplied and are left alone. **It erases real answers with the
+    fabricated ones** — ten of the eleven are American and `USD` is probably right for them —
+    and that is the decision, on the same argument
+    `20260903170000_a_default_is_not_an_answer.sql` made for three other columns.
+31. ~~**Should the agreement line carry a currency column?**~~ **ANSWERED 2026-09-05**, founder:
+    *"A currency column on the agreement line, defaulted from the vendor's terms or the house,
+    stated on the sheet"*. `procurement_order_items.currency`, nullable with no default and an
+    ISO 4217 CHECK (`20260905200000_the_agreement_names_its_money.sql`). **One correction to the
+    sentence, measured rather than assumed:** `restaurant_vendor_terms` has seven columns and
+    none of them is a currency, so "the vendor's terms" has no field to read. The chain reads
+    the vendor's own PAPER instead — the currency on their most recent
+    `procurement_documents` row, by the document's own date — then the house, then nothing.
+    That is better evidence than a typed preference and it already exists in production.
+    Whether a typed term-currency should exist as well is Q34.
+32. **Who sends the invoice's currency on `verifyReceipt`?** STILL OPEN. The DTO accepts
+    `invoiceCurrency` and the receiving screen does not send it, so a verified receipt records
+    NOTHING for currency today. The document header already holds the real code
+    (`procurement_documents.currency`, two live `TRY` rows). One field on the receiving form, or
+    one read of the linked document. The confirm path no longer has this problem — Q31 gave it a
+    column — so receiving is now the only price writer with no currency to read.
+33. ~~**The country tables disagree.**~~ **ANSWERED 2026-09-05**, founder: *"One country table
+    keyed by ISO code, every surface reads it"*. `apps/web/src/lib/countries.ts` is now 194 rows
+    keyed by ISO 3166-1 alpha-2, each with a display name, the currency where this file can
+    state it, and every spelling anybody has actually sent as an alias. `PlacesAutocomplete`'s
+    `COUNTRY_ISO` and `lib/currency.ts`'s `COUNTRY_CURRENCY` are deleted, and
+    `countries.migration.test.ts` freezes all three retired tables verbatim and asserts every
+    pair still resolves — the retirement is proved, not trusted.
+34. **Should `restaurant_vendor_terms` carry a currency the desk can type?** Q31's chain reads
+    the vendor's invoices because the terms table has no such column. A typed one would let a
+    house state "this vendor bills us in EUR" before the first invoice arrives — which is
+    exactly the case a new vendor is in. It is a column, a form field, a DTO and an audit row,
+    and none of that was asked for, so it was not built.
+35. **Nothing lets a house CHANGE its currency after sign-up.** The step asks once, on the
+    sign-up form. After Q30 clears eleven houses to NULL, every one of them needs somewhere to
+    answer — and `/settings` renders the state without offering to set it. That is a hole the
+    clearing pass opens, and it is the first thing to build after the apply.
 
 ## Michigan and Illinois: the best honest line (2026-09-05)
 
@@ -1443,6 +1682,46 @@ borrowing Illinois' certainty.
     not authorised to add a migration. A JSONB key is not queryable the way a column is, and
     "which manager's upload put this number on the screen" is exactly the question someone will
     ask after a bad book. Add `uploaded_by`, `upload_file_name`, `upload_sha256`?
+
+    **ANSWERED by the founder, 2026-09-05: *"Promote them to columns on the postings row."*
+    BUILT the same day; Q17 is CLOSED.**
+    `supabase/migrations/20260905160000_an_uploaded_book_names_who_carried_it.sql` adds four
+    nullable columns with no DEFAULT: `uploaded_by` (**FK to `public.users(user_id)` — never
+    `auth.users`, which is a disjoint table whose ids would 23503 on every real write while CI
+    stayed green**, so the migration asserts the FK's target schema in its own `DO` block),
+    `upload_file_name`, `upload_sha256` (hex CHECK) and `upload_edition_date`. A partial index on
+    `(uploaded_by, issued_at DESC)` answers the question the founder asked in one seek.
+
+    **All four or none.** `price_index_postings_upload_provenance_complete` admits only
+    all-four-NULL (every fetched row, and every row written before the migration) or
+    all-four-NOT-NULL. A row carrying a file name and no uploader is worse than a row carrying
+    neither: it *looks* provenanced. The migration proves the CHECK refuses one rather than
+    trusting it was created, by attempting exactly that insert and requiring a `check_violation`.
+
+    **Why `upload_edition_date` is not a duplicate of `issued_at`.** Measured on the real
+    workbook: no cell in the sheet carries an effective date, and `docProps` holds only the
+    authoring day. The edition date exists in the FILE NAME and nowhere else — so `issued_at` on
+    an uploaded row is a value read out of a string a person could have renamed. The two are
+    equal at write time and are not the same *fact*: one is the register's date for the row, the
+    other is the evidence that date came from, and it survives any later correction.
+
+    **The JSONB copy stays**, carrying `fileBytes`, `sheetName`, `uploadedAt` and
+    `editionDateFrom` — none of them promoted. A column added later must never silently delete
+    the evidence that predates it.
+
+    The writer sets all four with **explicit keys**, never a conditional spread; the read path
+    returns them on every index line (`uploadedBy`, `uploadFileName`, `uploadSha256`,
+    `uploadEditionDate`) so a panel can say *"from the book <name> brought in on <date>"* and
+    never half of it. A commit that names no person is **refused with a sentence** rather than
+    left to fail as a database 500 — and refused last, so a dry run may still name nobody.
+    Measured against a `git show HEAD:` copy of the writer in a same-depth probe, since deleted:
+    the same upload produced **0 of 4 columns before and 4 of 4 after**, with the same facts
+    reachable before only by scanning JSONB.
+
+    **The migration's in-file assertions are UNEXECUTED: Docker is down in this environment, so
+    no local Postgres could apply it.** The SQL is asserted by tests that read the file
+    (`upload-provenance-columns.spec.ts`) — the FK target, the all-or-nothing CHECK, the absence
+    of a DEFAULT and of any RLS or GRANT statement — which is not the same thing as running it.
 18. **A doctored workbook is undetectable, and that is not fixable by code.** The MLCC publishes
     no signature. The defence is provenance — the row names the person and the sha256 lets anyone
     re-download the same edition and compare byte for byte — plus the fact that an uploaded line
@@ -1453,16 +1732,75 @@ borrowing Illinois' certainty.
     retail licensees. Those are public records. A standing quarterly FOIA request would give the
     Michigan houses a wine and beer posted list that exists nowhere else — at the cost of a
     manual, correspondence-based intake with no cadence guarantee. Worth pursuing?
+
+    **THE PREMISE OF THIS QUESTION IS WRONG, and the correction is dated here rather than
+    rewritten over it (2026-09-05, later the same day; ADR 0126).** ~~"Those are public
+    records."~~ **MCL 436.1609a** — read verbatim on `codes.findlaw.com`, HTTP 200, after
+    `legislature.mi.gov` answered 403 to `curl` and failed TLS verification to the harness
+    fetcher — provides that "a net cash price filed under subsection (1) and a price change
+    filed under subsection (2) are **exempt from disclosure** under section 13 of the freedom of
+    information act, 1976 PA 442, MCL 15.243, **until 1 year after** the net cash price or price
+    change is filed", with the same exemption stated for the wine filings. So a standing
+    quarterly request cannot produce "a wine and beer posted list"; it produces a rolling
+    **twelve-month-lagged** series. Also corrected, from the rules themselves
+    (`law.cornell.edu`, HTTP 200): the quarterly cadence is **wine's** alone — R 436.1726(1),
+    filed "before January 1, April 1, July 1, and October 1 of each year" — and **beer has no
+    recurring filing date**; R 436.1625 requires a schedule and requires a reduction to be filed
+    before its effective date and held "at least 180 days". The register now holds
+    `michigan-lcc-filed-beer-wine-schedules` (`intake: "foia"`, `status: "not_yet_filed"`,
+    `maxAgeDays: 480` documented as the embargo's arithmetic and not a freshness allowance), and
+    the request is drafted for the FOUNDER at
+    `.planning/07-reference/MICHIGAN-FOIA-BEER-WINE-SCHEDULES.md`. **Nothing has been sent.**
+    The question the founder now faces is ADR 0126 Q2: is a twelve-month-lagged wine and beer
+    series worth a quarterly correspondence cycle?
 20. **Illinois' honest answer is "declare your distributor".** Nothing public exists, and
     Breakthru, Southern Glazer's and RNDC all price per account behind a login. That makes class C
     the only route to a real Illinois number. `/connections` (ADR 0114) would need a distributor
     connection type per house with credentials the house owns. Is that the next build for the
     three Illinois houses, or do they stay on their own invoices?
+
+    **RESEARCHED 2026-09-05, and there is no feed to declare (ADR 0126).** ~~"That makes class C
+    the only route to a real Illinois number."~~ A login is not a feed, and both of the two
+    distributors whose terms were read forbid the mirror in their own words:
+    `now.breakthrubev.com/robots.txt` publishes `User-agent: *` / `Allow: /bbg/en/login` /
+    `Disallow: /`; Breakthru's Terms §6.2(c) forbid "web crawlers, data mining, scraping, robots,
+    spiders"; and Southern Glazer's Terms forbid "any robot, spider, or other automatic device"
+    **and, separately, providing "any other person with access to this Website … using your
+    username, password, or other security information"** — so declaring a portal login to this
+    product is itself the breach. **This ADR's own class-C registry row is also corrected:**
+    LibDib's public OpenAPI was read in full (HTTP 200, 70,801 B, 52 paths, 49 schemas) and the
+    string `price` appears **zero** times, so "the most promising class-C connection" was read
+    from a Swagger page's existence rather than from the document. And the industry ships
+    invoices, not catalogues: Southern Glazer's documented EDI set on two independent
+    trading-partner pages is 850/856/810(/997) with **no 832**; Restaurant365 ticks Multi-Invoice
+    and leaves Order Guides **blank** for all three wine-and-spirits distributors it lists; and
+    MarginEdge says it outright — *"We update your order guides based on your invoices."* So the
+    answer to this question, on the evidence, is the second half of it: **they stay on their own
+    invoices**, which is this ADR's class A and already built. The founder's call on whether to
+    build the mirror anyway, with the clauses in front of him, is ADR 0126 Q1.
 21. **The archive was used for the fixture. Is that acceptable, and where is the line?** The
     parser is written against a real MLCC workbook obtained from an Internet Archive capture of
     michigan.gov, because the origin refuses this fetcher. No browser User-Agent was sent, nothing
     fetches the archive on a schedule, and the fixture is thirteen months old so it can only ever
     prove a shape. It is still content the origin denied us. Recorded rather than assumed.
+
+    **ANSWERED by the founder, 2026-09-05: *"Acceptable for shape only, labelled; never for a
+    price line."* Q21 is CLOSED**, and the label is now in all three places a reader could look:
+    the fixture's own `_note`, `__fixtures__/MICHIGAN-PROVENANCE.md` (a new section stating what
+    it is for and what it may never do), and the registry entry beside `fixture:`.
+
+    **How the upload path actually distinguishes a real book from the fixture — measured, and
+    honestly only one of the two barriers holds.** (1) The fixture on disk is JSON, not a
+    workbook, so `michiganRowsFromWorkbook` cannot open it. Real, but weak: anyone can rebuild an
+    `.xlsx` from those rows in four lines, and this repository's own tests do. (2) **The edition
+    date, which is the one that holds.** The file name states 2025-08-03 against a 105-day bound:
+    **398 days stale on the day it was recorded, 763 a year later**, and monotonically worse.
+    There is no clock at which the gate admits it — asserted at 2026, 2027, 2030 and 2099 in
+    `michigan-fixture-not-a-price.spec.ts`, together with the boundary (it would have passed on
+    2025-11-16 and not on 2025-11-17). **There is no third barrier**, and the tests do not
+    pretend otherwise: the fixture is not blocked because it is *the fixture*, it is blocked
+    because it is *old*. That is a stronger guarantee than an identity check, which would compare
+    a sha256 that changes the moment anyone re-serialises the rows.
 
 ## The sweep that reads merchant shops (2026-09-05)
 
@@ -1688,6 +2026,99 @@ file wins over the recorded one whenever they differ.
    and a shop that lists a half-bottle beside a magnum would file the wrong
    one. Refusing names the fault; picking hides it.
 
+### The date a shop never states, and whose clock stands in (2026-09-05)
+
+Q27, answered: *"Yes: an `issued_at_basis` column, fetch-dated rows labelled and
+aged from the read."*
+
+**The migration.**
+`supabase/migrations/20260905080000_a_posting_says_whose_date_it_carries.sql`
+adds `issued_at_basis VARCHAR(16)` to `price_index_postings`, CHECKed to
+`issuer_stated | fetch_date`, **nullable with no DEFAULT**. The absent default is
+the point: every row written before the column existed came from a parser that
+reads a publisher's own edition date, so `'issuer_stated'` would even have been
+*true* — and a DEFAULT asserting a property of rows nobody has looked at is this
+codebase's standing fault written into DDL. NULL means "written before a basis
+was recorded", which is what separates it from a row that was judged; the same
+shape as `outlier_basis`. Additive: no existing row is rewritten, no existing
+CHECK altered, RLS and grants untouched. The file's `DO` block asserts the column
+exists, is nullable, has no default, and that the CHECK **actually refuses** — it
+attempts an insert with `issued_at_basis = 'guessed'` and fails the migration if
+that succeeds, rather than trusting a constraint it has just written.
+
+**Where the label is load-bearing.** Three places, none of them decoration:
+
+1. **`refuseStale`** (`staleness.ts`) takes an optional `{ basis, readAt }`. A
+   `fetch_date` row is aged from the READ, not from the edition it never had.
+   Omitting the option keeps the old behaviour exactly, so every periodical
+   caller is unchanged.
+2. **The writers state it rather than inherit it.**
+   `price-index-fetch.service.ts` and `price-index-upload.service.ts` write
+   `'issuer_stated'` explicitly — true by construction there, because
+   `refuseStale` has already refused any run whose parser could not read an
+   issuer's date. The shop writer takes it from the decision. It is deliberately
+   NOT a member of `PostingSighting`: it is a property of the WRITER (one reads
+   publishers, one reads shops), and making it required on the type would have
+   forced five parsers to restate a fact their own gate proves.
+3. **The panel prints "read on", never "issued"**
+   (`apps/web/src/pages/notifications/next/MarketIndexPanel.tsx`). A null basis
+   gets the weaker wording too — an unknown is never upgraded by rendering. The
+   same change relabels class D from *"Control-state shelf price"* to **"Retail
+   reference"**, because class D stopped being only Iowa and Oregon the moment a
+   merchant shop joined it, and calling a Berry Bros line a control-state price
+   would be false on its face.
+
+**Both halves proved against the pre-fix code**, by writing verbatim
+`git show HEAD:` copies to same-depth probes, running them, and deleting both:
+
+* `refuseStale`: HEAD took three arguments and ignored a fourth, so a row whose
+  `issued_at` is our read date but which was last actually read **35 days ago**
+  against a 7-day cadence came back `{"stale":false,"ageDays":0}` — **certified
+  fresh**. After: `{"stale":true,"ageDays":35}`, reason *"nobody published a date
+  for this price and we last read it 35 days ago … a read is not a
+  publication"*. That is the vacuous gate, measured rather than argued.
+* the panel: HEAD failed all three new cases, rendering a Berry Bros row as
+  *"Control-state shelf price · GB-ENG"* with *"issued Sep 5, 2026"* — a class
+  label false for a merchant, and our own read date presented as the shop's
+  publication.
+
+**The re-measurement**, same command as the first pass
+(`npx jest --silent=false --runInBand src/vendor-intel/shop-reference-posting.spec.ts`):
+
+```
+  bbr-cremant-de-limoux-2026-09-04.fixture.html  ADMITTED 15.5 GBP 750ml via json_ld_offer, read on 2026-09-05 (fetch_date)
+  bbr-dom-perignon-2026-09-04.fixture.html       REFUSED  identity_conflict
+  slurp-pellehaut-rose-2026-09-04.fixture.html   ADMITTED 11.99 GBP 750ml via json_ld_offer, read on 2026-09-05 (fetch_date)
+  tanners-andre-clouet-2026-09-04.fixture.html   ADMITTED 35 GBP 750ml via json_ld_offer, issued 2026-09-05 (issuer_stated)
+  hedonism-ruinart-2026-09-04.fixture.html       REFUSED  currency_not_jurisdiction
+  winechateau-caymus-1l-2026-09-04.fixture.html  ADMITTED 84.99 USD 1000ml via json_ld_offer, read on 2026-09-05 (fetch_date)
+    admitted 4/6 — by date basis: {"fetch_date":3,"issuer_stated":1}
+```
+
+**1 of 6 became 4 of 6**, and all three added rows carry `fetch_date`, so not one
+of them is dated as though a shop had published it. `no_issue_date` is now **0**;
+the two remaining refusals are the two that were never about the date — the Dom
+Pérignon page whose only JSON-LD block is Caol Ila whisky at GBP 225
+(`identity_conflict`), and the London shop serving USD
+(`currency_not_jurisdiction`).
+
+**`no_issue_date` survives, narrowed.** It now means the page states no date AND
+no usable read date stands in for one — reachable only when the caller's own
+fetch clock is unusable, and pinned by a test that hands in `"not a time"`. A
+price with no date of any kind is still not a sighting.
+
+**What this does NOT do.** It does not touch `issued_at`'s meaning for any
+periodical: Iowa, Oregon, California, Michigan and Defra still carry their
+publishers' own edition dates and are still aged against them. It does not put
+the basis into `content_hash` — a re-read of an unchanged shop page must dedup,
+and hashing our own clock would make every re-read look like new evidence
+(pinned by a test). And the migration is **unapplied and its `DO` assertions
+unexecuted**: the Docker daemon was down in this session, so unlike
+`20260904200000` it has not been run against a live local Postgres. Its parent
+migration is unapplied on the production project too, which is why
+`GET /price-index/GB-ENG` still answers *"The index register could not be read.
+This is unknown, not empty."*
+
 ### Founder-only questions raised by this pass
 
 26. **Something stamped `verified_at` on rows whose websites are a casino, a
@@ -1700,13 +2131,14 @@ file wins over the recorded one whenever they differ.
     thing that set it be found before it runs again?
 
 27. **May a shop's price be filed with our READ date, labelled as such?** Three
-    of six pages state no date at all, and this build refuses them, so the
-    class delivers one row out of six. The alternative is an additive migration
-    adding `issued_at_basis` (`issuer_stated` | `fetch_date`, nullable, NULL
-    meaning "written before the column existed") so a fetch-dated row can never
-    be mistaken for an issuer-dated one — and `refuseStale` would have to learn
-    to ignore a `fetch_date` row, because such a row is fresh by construction.
-    Refuse and stay thin, or extend and label?
+    of six pages state no date at all, and the first build refused them, so the
+    class delivered one row out of six.
+
+    **ANSWERED by the founder, 2026-09-05: *"Yes: an `issued_at_basis` column,
+    fetch-dated rows labelled and aged from the read."* Q27 is CLOSED and
+    BUILT** — see §"The date a shop never states, and whose clock stands in"
+    below for the migration, the three places the label is load-bearing, and
+    the re-measurement (1 of 6 admitted became **4 of 6**).
 
 28. **Which pages should the sweep read?** It reads the pages it is given, and
     nothing today decides which. The honest options are: a house nominates the
@@ -1728,6 +2160,8 @@ file wins over the recorded one whenever they differ.
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-05 | Claude (build, Q17 + Q21 on the Michigan upload) | **Q17 ANSWERED (*"Promote them to columns on the postings row"*) and CLOSED.** `supabase/migrations/20260905160000_an_uploaded_book_names_who_carried_it.sql` adds `uploaded_by` (**FK to `public.users(user_id)`, asserted in-file to point inside `public` — `auth.users` is a disjoint table whose ids would 23503 on every real write while CI stayed green**), `upload_file_name`, `upload_sha256` and `upload_edition_date`: nullable, no DEFAULT, RLS and grants untouched, a partial index on `(uploaded_by, issued_at DESC)`, and an all-or-nothing CHECK the migration **proves refuses a half-provenanced row** rather than trusting it exists. `upload_edition_date` is deliberately not a duplicate of `issued_at`: the workbook carries no date in any cell, so `issued_at` is read out of a file name a person could have renamed, and the evidence must survive a later correction. The writer sets all four with explicit keys and the read path returns them on every index line; a commit naming no person is refused with a sentence, last, so a dry run may still name nobody. The `raw.upload` copy stays, carrying the three facts not promoted. **Q21 ANSWERED (*"Acceptable for shape only, labelled; never for a price line"*) and CLOSED.** The label is in the fixture's `_note`, in `MICHIGAN-PROVENANCE.md` and beside `fixture:` in the registry. **Measured how the path actually distinguishes the fixture from a real book, and only one of the two barriers holds:** the file is JSON not a workbook (weak — the rows rebuild into an `.xlsx` in four lines), and **the edition date**, 398 days past a 105-day bound on the day it was recorded and worse every day after. Asserted stale at 2026, 2027, 2030 and 2099, with the boundary measured (passes 2025-11-16, fails 2025-11-17). There is no third barrier and the tests say so. **Proven against pre-fix code** by `git show HEAD:` into a same-depth probe, since deleted: the same upload wrote **0 of 4 provenance columns before and 4 of 4 after**. `pnpm --filter @wineops/api-gateway exec jest src/price-index` on the tree reported here: **166 passed / 17 suites**, of which 15 in 2 suites are new here; gateway `tsc --noEmit -p tsconfig.spec.json` clean; `eslint --quiet` clean on the touched files; `check_fk_targets_exist.py`, `check_read_columns_exist.py` and `check_new_tables_are_locked_down.py` all exit 0; emoji grep empty; migration prefixes unique. **The migration's in-file `DO` assertions are UNEXECUTED — Docker is down in this environment**, so it was never applied to a live Postgres; the SQL's contract is asserted only by tests that read the file. Q18 (a second person) is another builder's and untouched. |
+| 2026-09-05 | Claude (build, two founder decisions on the shop sweep) | **Q13 CLOSED ENTIRELY and Q27 CLOSED AND BUILT.** (1) *"Clear it with the three"*: `www.charmer.com` moved from REPORTED ONLY to PROPOSED in `scripts/clean_vendor_catalogue_websites.py`, same statement shape and note; the REPORTED ONLY heading kept, printing "(none)". Dry run re-run on the tree reported here: **4 of 4 rows read, 4 statements proposed, nothing written**; `--self-test` passes (4 proposed / 0 reported); `--apply` without `--i-have-the-founders-word` exits **2** and writes nothing. The PARENT runs `--apply`; this session never did. (2) *"Yes: an `issued_at_basis` column, fetch-dated rows labelled and aged from the read"*: migration `20260905080000_a_posting_says_whose_date_it_carries.sql` (nullable, no DEFAULT, CHECK proven to refuse by an in-file probe insert, RLS untouched; `ls supabase/migrations | cut -c1-14 | sort | uniq -d` empty); `refuseStale` gained `{basis, readAt}` and ages a fetch-dated row from the read; both registry writers state `'issuer_stated'` explicitly; the shop reader files an undated page under the read date; `MarketIndexPanel` prints **"read on"** for `fetch_date` and for null, **"issued"** only for `issuer_stated`, and class D is relabelled **"Retail reference"**. **Both proved against `git show HEAD:` same-depth probes, since deleted**: HEAD certified a row last read 35 days ago as `{"stale":false,"ageDays":0}`, and HEAD's panel rendered a Berry Bros row as *"Control-state shelf price … issued Sep 5, 2026"*. **The six-fixture measurement went from 1 of 6 to 4 of 6**, `no_issue_date` from 3 to 0, the three new rows all `fetch_date`. `npx jest --runInBand --forceExit src/vendor-intel src/price-index` from `apps/api-gateway`: **400 passed, 28 suites**, of which **36 cases in 3 suites are mine** (`npx jest --runInBand src/vendor-intel/shop-reference src/price-index/staleness-basis`). `pnpm --filter @wineops/web exec vitest run src/pages/notifications/next`: **97 passed, 1 failed of 98**, and the failure is NOT this change — `MarketIndexPanel.tsx` was edited by another builder at 08:19:32 while this task ran, rewriting *"never placed beside, ranked against or averaged with a vendor quote"* into *"None of them is ever placed beside…"*, which breaks the pre-existing assertion at `MarketIndexPanel.test.tsx:96`. All three of the cases added here pass and all three of this change's hunks in the panel survive their edit (verified by name); the broken assertion is left for the owner of that copy, not repaired over their edit. Gateway `tsc --noEmit` and `-p tsconfig.spec.json` clean; web `tsc` shows **0 errors in my two files** (44 elsewhere, in other builders' in-flight or pre-existing files). Guards exit 0 including `check_new_tables_are_locked_down`, `check_fk_targets_exist` and `check_read_columns_exist`; emoji grep empty on my files. **The migration is UNAPPLIED and its `DO` assertions UNEXECUTED — the Docker daemon was down, so unlike `20260904200000` it was not proven against a live local Postgres.** No flag armed, no shop fetched by the gateway, no row written to any database. |
 | 2026-09-05 | Claude (build, the sweep reads merchant shops) | **The founder's call — *"Point it at merchant shops, as their own class, and clean the three websites"* — is BUILT.** Q14 CLOSED by a SECOND instrument (`shop-reference-posting.ts`, `shop-reference-sweep.ts`, `shop-reference-sweep.service.ts`, `price-reference-shops.ts`, `GET/POST vendor-intel/shop-sweep/*`), writing class D to `price_index_postings` and never to `vendor_price_observations` — the ladder reads the other table, so the separation is structural. The shop registry is a **config file, not a table**, on five recorded grounds, with the counter-argument and the trigger to revisit written into the file. **Nine hosts measured 2026-09-05**, one request each: four GB shops readable; Hi-Time (US-CA) readable and its price is microdata + Open Graph with **no** `Product` JSON-LD; K&L 403 at robots.txt itself; Binny's advertised sitemap 403; Merchant's Fine Wine publishes 24 lines of comment and **no content signal**; Kavaklıdere's homepage carries zero price signals. **`www.bbr.com` publishes `Visit-time: 0200-0700`** — honoured, and this session refused to re-fetch that host at 11:14:35Z. Measured on the six recorded pages: **1 admitted, 5 refused** — 3 `no_issue_date`, 1 `identity_conflict` (the Caol Ila block on the Dom Pérignon page), 1 `currency_not_jurisdiction` (a London shop serving USD). Q13 CLOSED for the three websites by `scripts/clean_vendor_catalogue_websites.py`, dry by default, `--apply` refused without `--i-have-the-founders-word` (proven: exit 2, nothing written); the dry run read **4 of 4 rows** and proposed **3** statements; the writer is NAMED (two seeds, both `ON CONFLICT (id) DO NOTHING`, so a cleared website is not refilled) and charmer.com is REPORTED, not proposed. `npx jest --runInBand --forceExit src/vendor-intel src/price-index` on this tree: **390 passed, 27 suites**, of which **27 cases in 2 suites are new here** (`shop-reference-posting`, `shop-reference-sweep`) — the run includes the two market researchers' suites, live in the same worktree; gateway `tsc --noEmit -p tsconfig.spec.json` clean; `eslint --quiet` clean on the six touched files; emoji grep empty; every guard exit 0. **No flag armed, no page fetched by the gateway, no row written to any database.** Four founder questions, Q26-Q29. |
 | 2026-09-05 | Claude (research + build, Michigan and Illinois) | **The founder's call — *"research deep and validate … do the best option"* — is ANSWERED, and the answer is TWO options because the two states are not alike.** See the section **"Michigan and Illinois: the best honest line"**. **Michigan gets the human-fetch path**: the MLCC publishes the LICENSEE price a house actually pays, with size and pack on every row, as an `.xlsx`; one real edition (2025-08-03, 804,270 bytes, sha256 `ff592f82…`) measured in full shows **12,530 product rows and zero defects** on every test that caught defects in Iowa and Oregon — no duplicate item code at all, against Iowa's 2,308. Built: `parse-michigan.ts`, `michigan-workbook.ts` (no new dependency — `exceljs` was already here), `price-index-upload.service.ts` and `POST /price-index/upload`, owner/manager, **dry run by default**, `commit` additionally gated on `PRICE_INDEX_UPLOAD_ENABLED`, staleness gate before every write, provenance (person + file name + sha256 + `editionDateFrom: "file_name"`) on every row. **Illinois gets the sentence**, because there is nothing to fetch and that is permanent: 235 ILCS 5/6-19 repealed eff. 1998-01-01, 11 Ill. Adm. Code 100 read whole (53 section headings, none about price), Article VI's only price schedule being a bar's own drink list. **Three corrections to this ADR's own Michigan record, measured:** the cadence is **quarterly (91 days)** not monthly, so `maxAgeDays` 62 would have refused a current book from day 63 — corrected to 105; the block is **host-specific** (`ars.apps.lara.state.mi.us` serves us normally, `data.michigan.gov` serves us and then publishes `Disallow: /`); and *"no honest sample exists to parse"* is no longer true. **Michigan DOES post beer and wine prices** — R. 436.1625 and R. 436.1726 make wholesalers *"file with the commission in Lansing"* quarterly — but filing is not publishing, so they are FOIA-only (Q19). Measured against a `git show HEAD:` copy in a same-depth probe, since deleted: HEAD told an Illinois house *"no index line until one is found"* about a statute repealed 28 years ago. `pnpm --filter @wineops/api-gateway exec jest src/price-index` on the tree reported here: **144 passed / 14 suites**, of which **54 in 4 suites are new here** (`parse-michigan`, `price-index-upload`, `silence-notes`, `price-index.mi-il`); gateway `tsc --noEmit -p tsconfig.spec.json` clean; `eslint --quiet` clean on the 13 touched files; emoji grep empty; `check_gateway_boots.sh` PASS and every other guard exit 0. **Curled live, and the result is itself a finding.** `GET /price-index/MI`, `/IL`, `/Michigan` and `/Illinois` all return `"The index register could not be read. This is unknown, not empty."` — **the new sentences are correct in code and unreachable on this gateway**, because `price_index_postings` does not exist on the production project (the `20260904200000` migration is on this branch, unapplied), so `silenceFor` short-circuits on `readFailed` before reaching them. The log names it: *Could not find the table 'public.price_index_postings' in the schema cache*. This is the same condition the 2026-09-04 trail row recorded, not a regression from this change. `GET /price-index/status` DOES prove the registry live — Michigan now reports `quarterly (the price book moves every 91 days)` with the corrected withheld reason — and `POST /price-index/upload` is mounted, guarded and inert (`armed: false`; an empty body returns *"'' is not a source this register accepts a file for"*, and the Michigan key with no file returns *"no file was sent."*, `written: 0` on both). The sentences themselves are proved through the real service in `price-index.mi-il.spec.ts`. Nothing was fetched on a schedule, no flag was armed, nothing was written to any database. Five founder questions, Q17-Q21. |
 | 2026-09-04 | Claude (research + build, how a size is read) | **The founder's question — may a size be taken from anywhere on the page, "research do the best one if it was live SOTA" — is ANSWERED AND BUILT** in `vendor-intel/bottle-size.ts` (`fb47d99c`). The answer is the live SOTA answer and it is not "anywhere": Zyte's own published model instruction ranks selected-variant, then most-specific, then labelled field, and the product NAME **last resort**; Diffbot ships `size` marked *"highly experimental and often unreliable"*. So: a five-level precedence (`structured_offer` -> `variant_option` -> `unit_price_label` -> `spec_field` -> `title`), the raw string and locator recorded in `raw.volume` with every candidate, `weight` never read, an identity gate on structured data, and a new `volume_conflict` refusal so a contradiction never counts as an absence. Findings that outlive the build: `htmlToText` drops `<script>` contents, so **no vendor's JSON-LD had ever reached the extraction model**; WooCommerce's structured data emits no size by construction; Shopify's `unit_price_measurement` was null on 4 of 4 shops read, three of them UK; `weight` is a shipping weight (75000 on a 75cl champagne); the only per-quantity price labels on any of the six pages were a duty table's decoys. **Three of the sweep's 23 recorded vendor websites are no longer the vendor's** — Banfi -> an online-gambling domain, Henry Wine Group -> a wine school, Sevilen -> a women's clothing shop with `beden=s` in its links. The sweep flag was not touched, nothing was written to the database, and no page was fetched by the gateway. |
@@ -1742,3 +2176,7 @@ file wins over the recorded one whenever they differ.
 | 2026-09-04 | Claude (market research, TR + UK) | **Q4 researched, not decided.** ~65 fetch attempts recorded in `.planning/07-reference/price-sources.md` §"Türkiye and the United Kingdom, 2026-09-04". Verified: GİB ÖTV (III)(A) PDF, HMRC duty rates, hal.gov.tr HKS (daily, TL/kg, live today), Defra wholesale fruit and veg CSV, ONS `d7bv` JSON, TÜİK/Metro/Bizim Toptan robots.txt, five Turkish producers, five UK trade portals, WSTA, Liv-ex, AHDB terms. Unverified and named as such: resmigazete.gov.tr and mevzuat.gov.tr (TLS/DNS), TCMB EVDS, İBB Swagger, Booker, Brakes, Venus, all three UK grocers' robots.txt. Found the class-A USD-default defect above. Q5 updated (quote requested); Q8–Q12 filed in the registry. No code changed. |
 | 2026-09-04 | Claude (build, the index line on /notifications) | **The founder's call of 2026-09-04 — *"Run it, labelled tier 4, never beside a quote"* / *"Show as a labelled index line, own register"* — is BUILT on the page.** `apps/web/src/pages/notifications/next/MarketIndexPanel.tsx` + `useHouseIndex.ts` draw `GET /price-index/me` as their OWN box below the market box, on `--paper-0` against its `--paper-1`, with each line's class, issuer, issue date, posted unit and basis, printed as posted and never normalised to a bottle. The four silences are told apart in the endpoint's own words, and a withheld publisher (Michigan) is named even when the register is silent for another reason. The older tier-4 patch to `MarketPricePanel.tsx` / `useMarketPrice.ts` was re-checked against the current tree and applied; its rule-paragraph wording ("this house's own quotes plus public list prices") was NOT kept, being false once the classes were separated. Measured live on :4000 with a dev-bypass owner session: `me` -> no `state_province` on the demo house; `Michigan`/`Illinois`/`California` -> "The index register could not be read" (`price_index_postings` is not present on that project; the migration is on this branch, unapplied); `Turkey` -> not a recognised jurisdiction. So the withheld sentence is real but **unreachable today** — the read failure short-circuits it. Found and fixed while building: a date-only `issued_at` rendered through `new Date` printed the ISSUER'S DATE ONE DAY EARLY west of Greenwich. 96 vitest in `pages/notifications/next` (24 new), web tsc and eslint `--quiet` clean on the directory, `check_no_seeded_defaults.py` PASS, emoji grep empty. Captures: `shots-index-line/notifications{,-charcoal}.png`. |
 | 2026-09-05 | Claude (market research + build, TR + UK) | **Q4 ANSWERED and the codes are BUILT.** Founder's call the same day: *"their own source class, researched per market"*. Every load-bearing claim re-fetched 2026-09-05 (log: `$SP/p4ab-fetch-log.md`, ~30 fetches with status and first bytes). **Türkiye: none found** — HKS is live and dated (bulletin 5.09.2026) but has no machine endpoint, its two REST alternatives returned 403 and an empty reply, GİB is a tax whose unit is unstated, TÜİK renders "JavaScript Required", and `mevzuat.gov.tr`/`resmigazete.gov.tr` refused this environment a second day. **United Kingdom: one found** — Defra's wholesale produce CSV (HTTP 200, 861,585 B, sha256 `ab56ded3…c258c3d`, 17,594 rows, OGL v3.0, issuer + date + unit + GBP, extent "England and Wales" = `GB-EAW`), built as `parse-defra.ts` with a 59-row fixture of real bytes. **The trap found and avoided:** ONS's four RPI drink average-price series still return HTTP 200 with `releaseDate` 2026-08-18 and `nextRelease` 16 September 2026 while every last observation is **2025 JAN** — recorded `silent: discontinued`; only the observation-date staleness gate catches it. `normalizeJurisdiction` learns ISO 3166-1 (`TR`/`GB`/`US`), all 81 ISO 3166-2:TR provinces and ISO 3166-2:GB incl. `GB-EAW`/`GB-UKM`; `forHouse` falls back to `restaurants.country`; a new `silent` field sits beside `withheld` (read-but-priceless vs unreadable) and Michigan's entry was not touched. **Measured: `restaurants.currency` is `USD` on all 14 houses**, which settles Q10 — the repair is a data correction, not a writer fix, and was not made (a write). Verification: `npx jest --testPathPattern "src/price-index"` from `apps/api-gateway` — my four suites 59/59 pass; module-wide 116/117 with the one failure in another builder's in-flight `parse-michigan.spec.ts`. Gateway tsc `-p tsconfig.spec.json`: 0 errors in `src/price-index` (1 error in another builder's `one-tap-actions.service.spec.ts`). eslint `--quiet` clean on `src/price-index/*.ts`; seven guards exit 0; emoji grep empty. **Live curls NOT exercised: the gateway would not boot** — `BOOT_FAIL: Nest can't resolve dependencies of the OneTapActionsService … ProcurementService`, another builder's module, on every retry between 07:23 and 07:35Z. Proved instead with a temporary probe (created, run, deleted) that instantiated the REAL `PriceIndexService` against the project the gateway points at, read-only: `Muğla`->`TR-48`, `Türkiye`->`TR`, `England`->`GB-ENG`, `USA`->`US`, with the correct source lists, and `/me` for the three real houses resolving `requested` `Muğla` / `Türkiye` / `England` — the Antalya house proving the `country` fallback on real data. **Every one of them then returned "The index register could not be read"**: `restaurants` read fine in the same run, `price_index_postings` did not (the migration is on this branch, unapplied on that project). So the market sentences are correct and, in that environment today, unreachable — the read-failure branch stands in front of them, exactly as recorded for Michigan's withheld sentence on 2026-09-04. Four new founder questions, Q22-Q25. |
+| 2026-09-05 | Claude (build, the produce line) | **Q24 ANSWERED by the founder and CLOSED, built the same day.** *"Show it, labelled as produce, in its own box"*. `price-index.registry.ts` gains a `display` block on the Defra entry (category / short issuer / extent, the publication's own words) and says in the entry that arming is `PRICE_INDEX_FETCH_ENABLED` on the deployment and nothing else; the endpoint carries `display` on every source row; `MarketIndexPanel.tsx` splits lines by SOURCE and draws a labelled one in its own titled section below the drinks list — *Wholesale produce - Defra - England and Wales - read on 5 Sep 2026* — with *"It is not a drinks price and is never compared with one."* under it. The GB market sentence stopped saying "no market price" (true of drink, false once a source is shown) and now names the produce list; a jurisdiction whose only fetchable source is a labelled one gets `unarmedDisplaySilenceFor`, which names the env var rather than claiming a "posted list" the UK does not have. **Pre-fix proof:** a probe copy of HEAD's panel (renamed only, run, deleted) rendered the same two rows into ONE `<ul>` under the single heading "Control-state shelf price - GB-ENG" with the word "produce" absent from the document — a GBP 0.62 cabbage beneath a $34.99 rye. Two faults found in the first capture and fixed: an em-dash container size on a per-kilogram row (a size is a fact about a bottle), and *"to average wholesale market price"* (`to X` names a trade level). **Counts, my runs:** `npx --prefix apps/web vitest run src/pages/notifications/next --root apps/web` -> 6 files, **104 passed**; `npx jest --testPathPattern "src/price-index"` from `apps/api-gateway` -> 15 suites, **151 passed**. Web tsc: **0 errors in `notifications/next`** (6 elsewhere, in `orders/next/AgreementFees.test.tsx` and `providers/next/TermsSection.tsx`, another builder's). Gateway eslint `--quiet` clean on `src/price-index/*.ts`; **web eslint could not run in this environment** (`eslint-plugin-jsx-a11y` missing). `check_no_seeded_defaults` and `check_read_columns_exist` exit 0; `check_read_errors_not_swallowed` exits 1 on a baseline row for `procurement.service.ts preCancelRow` — another builder's fix, in the good direction, not mine to re-baseline. Emoji grep clean. **Captures: `p4-scratch/shots-defra-line/` — `produce-box-{paper,charcoal}.png`, `index-register-{paper,charcoal}.png`, `notifications-{paper,charcoal}.png`, every one banner-labelled STUB**: `price_index_postings` is absent from the project this deployment reaches and the fetch is unarmed, so the rows are real values from the 31/08/2026 edition served by `page.route`, and no request left the browser. |
+| 2026-09-05 | Claude (build, a house's currency) | **Q25 ANSWERED by the founder and BUILT.** Verbatim: *"correct three rows now, ask each house in onboarding, but set a default based on location, edge case: there maybe several diff currencies, so act accordingly to that"*. **Measured on production, read-only:** 14 houses, `currency = 'USD'` on **all 14**, three of them not in a dollar country (Chez Community / The Old House Pub in Türkiye, ADMIN 1 in London); `price_history` 0 rows and **no currency column**; `procurement_documents` 5 rows of which **2 are TRY, on a house whose own row says USD** — the founder's edge case, already live. **Six** columns named `currency` exist in `public` and **every one defaults to `'USD'`**. **The writer that set USD is the column default** (`20260805000000:3576`); `registerRestaurant`'s insert named no currency key, so no code was wrong and the repair is data plus shape. **Built:** `20260905120000_a_house_names_its_money.sql` (drops the default, ISO-4217 CHECK on both, adds nullable `price_history.currency`, four comments, **writes no data**, NOTICEs how many houses still carry USD); `scripts/correct_restaurant_currency.py` (dry by default, `--apply` refused without `--i-have-the-founders-word`, `--self-test`, prints whole tuples + FK sweep + exact statements); `components/onboarding/CurrencyStep.tsx` + `lib/currency.ts` (a STATED default from the address's country, "Not yet" records nothing, an unplaceable country gets NO default and says so); `procurement/price-currency.ts` and a required `currencyClaim` on `recordPriceHistory`; `own-paper-sighting.ts`'s `?? "USD"` becomes a refusal. **83 foreign keys reference `restaurants`, every one on `id`** — the UPDATE touches no key. **Verification:** jest `own-paper-sighting` 22/22, `price-currency` 14/14, `register-currency` 4/4, `vendor-terms` 36/36; vitest `currency` 12/12, `Register.currencyStep` 12/12, `TermsSection`+`SettingsNext` 59/59; gateway `tsc -p tsconfig.json` 0 errors and `-p tsconfig.spec.json` 0 in my files; web `tsc` 0 in my files; gateway eslint `--quiet` clean; nine guards run (`check_queried_tables_exist` and `check_read_errors_not_swallowed` fail on **other builders'** work — 0 NEW relations, and a `preCancelRow` baseline row another hand deleted); `check_gateway_boots.sh` PASS; `check_decision_claims.sh` 226/226; migration prefixes unique; emoji grep empty. **Pre-fix proof:** a `git show HEAD:` copy of `own-paper-sighting.ts` run beside the current one — PRE-FIX `currency: "USD"` on a Turkish invoice stating none, POST-FIX the refusal sentence; probe deleted. **NOT done, and said rather than left to be found:** the three rows are still USD (the correction is a write and waits on the founder's word); the migration was NOT executed anywhere (no Docker, no psql on this machine); the receiving screen does not yet send `invoiceCurrency`, so a verified receipt records NOTHING for currency today and writes no class-A sighting at all. Four new founder questions, Q30-Q33. |
+| 2026-09-05 | Claude (build, the three currency decisions) | **Q30, Q31 and Q33 ANSWERED by the founder the same afternoon and BUILT; the three wrong rows were CORRECTED in production on his word** (read back: ADMIN 1 `GBP`, Chez Community `TRY`, The Old House Pub `TRY`, `updated_at` 2026-09-05T12:40:5x — the trigger fired as documented; 11 rows still `USD`). **Q30** *"Clear all eleven to unrecorded; the onboarding step asks"*: `--clear-inherited` added to `scripts/correct_restaurant_currency.py`, dry by default, `--apply` refused without the founder's-word flag. Dry run reads **11 clear / 0 correct-first / 3 stated / 0 already-unrecorded**. NULL needed **no migration** — `restaurants.currency` is `is_nullable = YES` in the live catalogue and always has been. The self-test now asserts the two modes are **DISJOINT** on 13 rows, which caught a real hazard: a row that is wrong AND inherited was claimed by both, so the correction now wins and clearing defers (`correct-first`). **Q31** *"A currency column on the agreement line"*: `20260905200000_the_agreement_names_its_money.sql` adds `procurement_order_items.currency` (nullable, no default, ISO 4217 CHECK); `agreement-currency.ts` resolves the sheet's stated default — **measured: `restaurant_vendor_terms` has seven columns and no currency**, so "the vendor's terms" reads the vendor's own PAPER (`procurement_documents.currency`, by the document's own date) then the house then nothing; `GET /procurement/agreement-currency` serves it so the sheet and the writer use ONE tested chain; `AgreementSheet` shows it with the gateway's own evidence sentence. **This restores what Q25 cost:** a confirmed order with a stated currency now writes a class-A sighting again, where the refusal had blocked every one. **Q33** *"One country table keyed by ISO code"*: `lib/countries.ts` rebuilt as 194 rows keyed by ISO 3166-1 alpha-2 with display name, currency and aliases; `PlacesAutocomplete.COUNTRY_ISO` (113 pairs) and `currency.ts`'s `COUNTRY_CURRENCY` (122 pairs) DELETED; `countries.migration.test.ts` freezes all three retired tables verbatim and asserts every pair still resolves. **Measured: no country-name table exists outside `apps/web`**, and the gateway depends on no workspace package, so one table in the app that has the surfaces is the whole answer. **Verification:** both migrations EXECUTED against a real Postgres (PGlite, `$SP/pglite-probe/p4am-probe.mjs`) — **17/17**, in-file assertions passed, every CHECK bites (`'usd'`, `'US$'`, `'TL'` all 23514), NULL accepted on all three columns, and a house inserted naming no currency comes out **NULL, not USD**. jest 140/140 across 8 suites; vitest 190/190 across 12 files incl. 11 new retirement-proof cases and 7 new sheet cases; gateway `tsc` and web `tsc` clean in my files; gateway eslint `--quiet` clean; seven guards exit 0. **New guard:** `check_money_states_its_currency.py` — a baselined census of every rendered money figure that pins a currency, **53 files / 96 sites**, which only ever shrinks; it exits 2 if it matches nothing, and it caught the new country table on its first run (allowlisted with the reason). An earlier draft of it reported 1,465 sites because its patterns matched every template literal; that number was noise and the patterns were narrowed. **NOT done:** the clear-inherited apply (the founder runs it); Q32, so a verified receipt still records no currency; the 96 baselined `$` sites, which have no house currency in scope; and nothing lets a house change its currency after sign-up (Q35), which the clearing pass makes urgent. Two new questions, Q34-Q35. |
+| 2026-09-05 | Claude (research + build, approval tiers) | **Q18 is ANSWERED, in [0128](0128-an-approval-fits-the-decision.md), and the answer is a tier rather than a rule.** The founder: *"Yes, it needs an approval however we can't wait 2 people to approve a small decision, or a big one."* Both halves are constraints and the second one is a fact about this estate, measured read-only against production the same day, twice: of 15 houses **TEN have one owner-or-manager or none**, and of the eight jurisdictions the estate resolves to **FIVE contain exactly ONE person** — so "always two" would have been "never" for most of it. Because `price_index_postings` has no `restaurant_id` (`20260904200000`'s own header), the pool is the JURISDICTION and not the house; US-MI, the only jurisdiction with an uploadable source today, has three houses and **three** distinct owner-or-manager people. **This ADR's own framing of the defence is confirmed and sharpened, not overturned:** provenance stands, because a forged single price is 1 row in 12,530 and no band — and no second human being reading a table — will ever see it. What a second person CAN do is fetch the book from the issuer themselves and compare the sha256, so `POST /price-index/uploads/:id/confirm` accepts the bytes and records `byte_match` only when they agree, `attested` when nothing was produced, and `same_person` with a stated reason where the jurisdiction has nobody else (GAO-25-107721 §10.23). The upload path built here on 2026-09-04/05 is unchanged in every respect except that its rows now land HELD unless the book is a routine later edition: `price_index_postings.admitted_at`, one exported `MARKET_VISIBILITY` predicate on every read, and a panel label so a held book never reads as "nothing is posted here" — the same fault this ADR corrected for Illinois, wearing the other hat. Q17's four provenance columns are untouched and are what the review row joins on. |

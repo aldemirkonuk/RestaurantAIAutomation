@@ -45,6 +45,10 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 - One-Tap Action Center embedded (approve orders, low-stock reorders)
 - Create a custom one-tap action (🚧 not persisted — gone on refresh)
 
+- Posted-price index box says when a hand-carried price book is **waiting for a
+  second pair of eyes**, and that nothing is drawn from it until an owner or
+  manager admits it (ADR 0128, 2026-09-05)
+
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
 
@@ -802,6 +806,10 @@ the action center's order reads.
 | GET | `/notifications?userId=&restaurantId=&type=&status=&dateFrom=&dateTo=&page=&limit=` | the rebuild's own read — all four narrowings are `GetNotificationsQueryDto` fields (`notifications/dto/notifications.dto.ts:63-80`) applied as `eq`/`eq`/`gte`/`lte` (`notifications.service.ts:811-821`); `notifications/next/useNotificationsNextData.ts` |
 | GET | `/vendor-intel/below-average?windowDays=&minObservations=&limit=` | **new 2026-09-03**, built for the market-price box — `vendor-intel/vendor-intel.controller.ts`, `VendorComparisonService.belowTrailingAverage`, arithmetic in `vendor-intel/price-below-average.ts`; owner/manager only, read by `notifications/next/useMarketPrice.ts`. Since 2026-09-04 it also returns `publicSiteItems` (tier-4, its own list), `scanned.comparisons`, `byClass`, `classesRanked` and `skipped.unrecognisedClass` (`vendor-intel/price-below-average.ts:166-192`) |
 | GET | `/price-index/me` | **new 2026-09-04**, the posted-price index box — `price-index/price-index.controller.ts:57-82` resolves `restaurants.state_province` server-side and returns `{ requested, state, lines[], sources[], silence }`; owner/manager only, read by `notifications/next/useHouseIndex.ts`. Verified live on :4000 (dev-bypass owner session): `me` → `state: null` + the "no state recorded" sentence; `Michigan`/`Illinois`/`California` → `lines: []` + "could not be read"; `Turkey` → "not a jurisdiction this register recognises" |
+| GET | `/price-index/uploads` | **new 2026-09-05** (ADR 0128), the books this house's jurisdiction is holding — `price-index/price-index.controller.ts`, declared BEFORE `GET :state` or "uploads" would be captured as a jurisdiction. Returns `{ state, pending[], recent[], othersWhoCouldAdmit, note }`; `othersWhoCouldAdmit` is `null` when the pool could not be read, which is not zero. Verified live on :4000 (dev-bypass): the demo house records no jurisdiction, so it answers the "Set the address in Settings" sentence with empty lists |
+| POST | `/price-index/uploads/:reviewId/challenge` | **new 2026-09-05** — mints the one-time seal (`subject_kind = price_index_upload`) that admitting a held book must carry back. NOT called by the web yet |
+| POST | `/price-index/uploads/:reviewId/confirm` | **new 2026-09-05** — admits a held book. Optional `fileBase64`: the confirmer's own copy is hashed and must match, recorded `byte_match`; without it, `attested`; by the uploader where the jurisdiction has nobody else (or after the escalation), `same_person` with a required reason. NOT called by the web yet |
+| POST | `/price-index/uploads/:reviewId/refuse` | **new 2026-09-05** — the book is never admitted; its rows stay written and stay out of the market. Deliberately not sealed (the seal guards the direction that puts numbers on screens), but a reason is required. NOT called by the web yet |
 
 ## 5. Signals
 
@@ -848,6 +856,13 @@ dashboard.md §7.
 | Price-index poll | 300s (`useHouseIndex.ts` `INDEX_POLL_MS`) — a posted list moves on a weekly-to-monthly cadence, so a faster poll would only cost requests |
 
 ## 9. Gaps
+
+- **A held price book has no way to be admitted from the product** (ADR 0128,
+  2026-09-05). `GET /price-index/uploads`, `POST …/challenge`, `…/confirm` and
+  `…/refuse` are built, guarded, sealed and tested, and **no web call site
+  exists**. `MarketIndexPanel` tells a manager a book is waiting and gives them
+  nothing to press. Until that is drawn, admitting a book is a curl. The seal
+  ceremony to reuse is `HoldToApprove` with `onChallenge` (ADR 0112).
 
 **Filed 2026-09-04, with the fifth pass (§1b), and why each is not yet closed:**
 
@@ -1631,11 +1646,22 @@ sibling's implementation differs, the sibling's file is the truth.
        `GET /vendor-intel/shop-sweep/status` returning every registered shop including
        the ones deliberately not fetched and the reason for each.
 
+       **The panel's date wording changed with it (2026-09-05, ADR 0117 Q27).** A
+       shop publishes no date, so its row carries the day WE read the page under
+       `issued_at` with `issued_at_basis = 'fetch_date'`, and the line now prints
+       **"read on <date>"** for such a row — **"issued <date>"** is reserved for a
+       date a publisher actually stamped, and a row whose basis is NULL (written
+       before the column existed) gets the weaker wording too. The class label
+       moved with it: `retail_reference` reads **"Retail reference"** rather than
+       "Control-state shelf price", which stopped being true the moment a merchant
+       shop joined the class. `MarketIndexPanel.tsx` + `useHouseIndex.ts`; three new
+       cases in `MarketIndexPanel.test.tsx`, proved against a `git show HEAD:` probe
+       that rendered a Berry Bros line as "Control-state shelf price … issued".
+
        **What the panel will actually have to say for a while, measured 2026-09-05.**
-       Of six recorded merchant pages, **one** is admitted; three state no date at
-       all and are refused rather than stamped with our fetch clock, one publishes
-       structured data about a different product, and one serves USD on a London
-       shop. Of the estate's markets, only **GB-ENG (1 house)** and **US-CA (3
+       Of six recorded merchant pages, **four** are admitted (three of them dated by
+       our read, one by the shop); one publishes structured data about a different
+       product, and one serves USD on a London shop. Of the estate's markets, only **GB-ENG (1 house)** and **US-CA (3
        houses)** have a shop that may be fetched today: Illinois' candidate answers
        403 at its own sitemap, Michigan's declares no content signal, and Türkiye
        publishes no shelf price at all. So the honest empty state for a house here is
@@ -1793,3 +1819,134 @@ sibling's implementation differs, the sibling's file is the truth.
     about the proof changes: what makes it hermetic is that BOTH runs execute
     the whole three-sweep sequence and assert identical tallies, not the size of
     the gap between them.
+
+### 13.30 The produce index draws in its own box (ADR 0117 Q24, 2026-09-05)
+
+The founder, shown that the only public UK source found is Defra's wholesale
+fruit and vegetable prices: **"Show it, labelled as produce, in its own box"** —
+an honest index of a market the house also buys from, never beside a wine quote,
+with the label saying what it is.
+
+`MarketIndexPanel.tsx` now splits the register's lines on whether their SOURCE
+carries a `display` block in the gateway registry, not on the class — the rule
+lives where the evidence is, so the panel only draws what the registry decides.
+A labelled source gets its own titled `<section>` **below** the drinks list and
+never beside it:
+
+> **Wholesale produce · Defra · England and Wales · read on 5 Sep 2026**
+> *A market this house also buys from. It is not a drinks price and is never
+> compared with one.*
+
+The date on that title is **ours** — `fetched_at`, "read on" — because it is the
+one date the box can always stand behind; the rows inside keep §13.29's
+`issuedAtBasis` rule and say "issued" only where a publisher stamped a date. The
+main heading still names the DRINKS class held, so a box holding only produce is
+never announced as a drinks list. A source with no `display` renders exactly as
+it did, which a test asserts.
+
+**Nothing is showing yet, and the box says why.** `price_index_postings` is
+absent from the project this deployment reaches, and the Defra fetch is off
+until **`PRICE_INDEX_FETCH_ENABLED`** is set on the deployment — a switch the
+founder flips, not a code change and not a toggle in the product. Until then the
+box prints the endpoint's own sentence naming the produce list and that variable
+by name, because a reader who cannot find the switch assumes the product is
+broken.
+
+Captures (STUB-labelled, real components and real values from the 31/08/2026
+edition, no request leaving the browser): `p4-scratch/shots-defra-line/`.
+
+### 13.31 The market box says which key it grouped on (ADR 0124, 2026-09-05)
+
+`priceBelowAverage` — the pure half of this page's "cheaper than usual" box — now
+prefers a **confirmed bottle identity** as its group key (`identity:<uuid>`),
+falling back to `wine:<uuid>` then `sig:<hash>` exactly as before, and it
+**reports which per item** (`keyedBy`) and in one sentence (`groupingNote`).
+
+**Why the box has to say it.** `normalizeUnitPrice`
+(`analytics/engine/vendor-price-consensus.ts:132`) scales every sighting to a
+price per 750 ml, so a 375 ml half bottle and a 750 ml bottle of one wine reduce
+to the same number — and until now they landed in the same group, because the
+group key was the wine. ADR 0119 Q7 named that: *volumetrically right,
+commercially wrong.* Grouping by identity fixes it where an identity exists;
+where none does, the old behaviour is unchanged and the box now **says so** rather
+than presenting two different questions under one heading. The sentence for the
+current state is *"No sighting carries a confirmed identity yet, so every
+comparison is grouped the old way — by wine and name — and a 375ml and a 750ml of
+the same wine still land in one group."*
+
+**That is the state today, and it is a real zero, not a read failure.** Measured
+read-only on production 2026-09-05: `vendor_price_observations` holds **0 rows**,
+`price_history` **0 rows**, and no identity column anywhere in the estate carries
+a value (`master_wine_library` 0 of 4,226 with a upc/ean/barcode; `beverages` 0 of
+608; `restaurant_inventory` has no such column). `GET /vendor-intel/identity/status`
+answers with those counts and the reason, and distinguishes "0 identities" from
+"the register could not be read" in words.
+
+### 13.32 The Michigan FOIA source, and why no class-C line joins the index box (ADR 0126, 2026-09-05)
+
+**One new source appears in the index box for the three Michigan houses, and it
+draws itself with no change to `MarketIndexPanel.tsx`.** The panel already
+renders every withheld source with its own reason
+(`withheld.map((s) => <Withheld …>)`), so
+`michigan-lcc-filed-beer-wine-schedules` — the beer and wine schedules
+wholesalers *file* with the Commission rather than publish — shows up beside the
+spirits price book, carrying the sentence that matters: **MCL 436.1609a exempts
+each filing from disclosure under the Freedom of Information Act until one year
+after it was filed.** A request reaches them; it can never reach one less than
+twelve months old.
+
+`GET /price-index/US-MI`'s `silence` gained one clause for the same reason. It
+used to end *"A manager can download the quarterly book from the issuer and
+upload it, and these lines will fill"* — true, and read by a **wine** house as a
+promise the spirits book cannot keep. It now adds that a second list here is
+filed rather than published, reachable only by a written request, and held back
+365 days by statute.
+
+**And the class-C line the brief asked for is deliberately NOT here.** A licensed
+distributor's price is the price ONE licence pays. It is tenant-keyed and lives
+on `vendor_price_observations` with `restaurant_id` set, because
+`price_index_postings` has no restaurant column at all and
+`belowTrailingAverage` reads `restaurant_id.is.null` as *every house on the
+deployment* — a licensee price drawn into this box would be one house's buying
+terms shown to its competitors. ADR 0117's own class table says class C compares
+to "class A and B **for that house**", and class A is the market box's register:
+so a class-C line belongs beside the market box, not beside the postings.
+`comparisonClassOf` already maps `api_catalog` into the `quoted` class and its
+docblock already calls that class "ADR 0117 classes A and C" — the placement was
+answered in code before it was asked. `MarketIndexPanel.tsx` was not edited by
+this pass; two other builders were live in it.
+
+Nothing is connectable today in any case: no Illinois distributor publishes a
+feed, and two forbid an automated reader in their own terms (ADR 0126,
+`.planning/07-reference/price-sources.md` §"Class C re-measured 2026-09-05").
+
+### 13.33 A carried price book waits, and the box says so (ADR 0128, 2026-09-05)
+
+**What changed here.** `MarketIndexPanel` gains one label: when the house's
+jurisdiction is holding a hand-carried price book that nobody has admitted, the
+box says so — in the singular or with a count — and says that nothing is drawn
+from it until an owner or manager admits it. It is drawn **whether or not there
+are lines**, because a jurisdiction can hold a new book while an older admitted
+edition is still on screen, and a label that appeared only on an empty panel
+would hide the waiting book at exactly the moment the panel looked healthy.
+
+`heldBooks === null` means the gateway could not answer. Nothing is drawn then:
+null is not zero, and "no book is waiting" is a claim.
+
+**Why the box could go empty now, when it did not before.** Until 2026-09-05 an
+uploaded book was the index line the instant it was written — measured against a
+same-depth `git show HEAD:` probe of `price-index.service.ts`, run and then
+deleted (the measurement is recorded in `price-index-held-book.spec.ts`'s
+header). A book that trips any band in `upload-tier.ts`, and **every first book
+of a source**, is now written and held: `price_index_postings.admitted_at` is
+null, and one exported predicate — `MARKET_VISIBILITY` — keeps it out of the
+lines and out of the row counts. So the first time a Michigan manager carries a
+book in, this box will be EMPTY until somebody admits it, and this label is the
+only thing standing between that and the panel reading as "nothing is posted for
+Michigan".
+
+**What is NOT built here.** No web surface admits a book. The three POST routes
+exist, are guarded and are sealed, and nothing in `apps/web` calls them — a
+manager cannot yet confirm or refuse from the product, and the label says a book
+is waiting without offering the gesture that would clear it. That is the
+honest gap; it is filed as a defect below rather than described as done.

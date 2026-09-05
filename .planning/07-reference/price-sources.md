@@ -71,6 +71,45 @@ in three plans that names no source. **Owed and outside this session's paths:** 
 | **LibDib** | `https://app.libdib.com/login`, `https://analyticsapi.libdib.com/login` | **no** — buyers upload a licence to shop | **An Analytics API exists** with Swagger (`/docs`) and Redoc (`/redoc`), behind a login | partial | The one distributor in this list that publishes API docs at all. The most promising class-C connection, and it needs the founder's licence |
 | **Breakthru Beverage** | — | — | — | **no** | Not fetched this session. Recorded as unexamined, not as absent |
 
+### Class C re-measured 2026-09-05 — and the finding is that there is nothing to connect (ADR 0126)
+
+The rows above were written on 2026-09-04 from marketing pages and registration flows. Each was
+re-measured on 2026-09-05 by reading what the portal itself publishes. **Four of the five change,
+and one of them reverses.** Full transcript with status lines: `$SP/p4ar-fetch-log.md`.
+
+| Source | Re-measured 2026-09-05 | What changes |
+|---|---|---|
+| **Breakthru Beverage (IL)** | `now.breakthrubev.com/` 200 → redirects to `/bbg/en/login` (SAP Commerce). **`now.breakthrubev.com/robots.txt` 200, 834 B: `User-agent: *` / `Allow: /bbg/en/login` / `Disallow: /`.** `breakthrubev.com/sitemap.xml` 200, 17,340 B — **60 `<loc>` entries enumerated in full, zero product/price/catalogue paths**. `/account-services`: "Breakthru Now — order anytime, anywhere … Browse our full product portfolio, view real-time pricing and deals" and no EDI, API or export named. Terms §6.2(c) forbids "web crawlers, data mining, scraping, robots, spiders" | From **unexamined** to **measured and forbidden**. The portal's own robots policy closes it to every automated reader but the login page |
+| **Southern Glazer's Proof** | `shop.sgproof.com/robots.txt` 200, 791 B: allows all but cart/checkout/my-account, **and publishes `Crawl-delay: 10`, `Request-rate: 1/10`, `Visit-time: 0400-0845`** — honoured, and **no page on that host was fetched** because the request would have been at 12:18 UTC. `my.sgproof.com/robots.txt` returns `text/html` (a Salesforce shell), so no rules are readable from it. `southernglazers.com/terms-of-use` 200: forbids "any robot, spider, or other automatic device … including monitoring or copying any of the material", and separately **"agree not to provide any other person with access to this Website or portions of it using your username, password, or other security information"** | The credential clause is new and it is decisive: **declaring an SG Proof login to this product is itself the breach**, before any request is made |
+| **RNDC (eRNDC)** | `app.erndc.com/login` 200, 10,966 B. `app.erndc.com/robots.txt` **404** — no rules, unrestricted per RFC 9309. `rndc-usa.com/robots.txt` 200, WordPress default. **No terms of use located**, so its position is recorded as **unstated**, never as permission | Unchanged in substance; the absence of a robots.txt is recorded as an absence, not as consent |
+| **LibDib** | **`analyticsapi.libdib.com/openapi.json` 200, 70,801 B, sha256 `30e452d6…`. OpenAPI 3.0.2, 52 paths, 49 schemas. Counted over the whole document: `price` **0**, `cost` **0**, `catalog` **0**, `wholesale` **0**.** The one `Price` is the literal `"Price Bands"` in a propensity-model example. The paths are recommendation engines, telemetry, experiments and reseller depletion analytics | **REVERSED.** The 2026-09-04 row called it "the most promising class-C connection" from the existence of a Swagger page. The document was read: it is LibDib's internal ML portal and holds no price at all |
+| **Provi / SevenFifty** | `provi.com/partnerships/encompass` 200: the integration is **distributor-ERP-side** and arranged by Provi's own sales team, who "complete the EDI setup". `go.sevenfifty.com/distributors/` 200: "Integrate with your ERP or RAS". **No buyer-facing API or developer documentation on either side** | Sharpened: Provi's "customer-specific pricing" reaches Provi *from* the distributor and stops there. A house cannot connect Provi to anything |
+
+**What the industry actually ships to a venue, measured the same day.** This is the more useful
+finding, and it is why ADR 0126 concludes there is no missing feed:
+
+| Source | Fetched 2026-09-05 | What it says |
+|---|---|---|
+| `cleo.com/trading-partner-network/southern-glazers-wine-spirits` | 200 | SGWS EDI: **850 PO, 856 ASN, 810 Invoice, 997 Ack** |
+| `truecommerce.com/trading-partner/southern-glazer/` | 200 | SGWS: **810, 850, 856** |
+| both | — | **No EDI 832 price/sales catalogue on either page.** No beverage-alcohol wholesaler was found documented as sending one |
+| `docs.restaurant365.com/docs/vendor-integrations-list` | 200, 3,077,923 B | Columns `Vendor / Multi-Invoice / Purchase Order / Order Guides`. **Southern Glazers, Republic National Distributing and Youngs Market each tick Multi-Invoice ONLY** — Order Guides blank for all three |
+| `marginedge.com/bar-inventory` | 200, 103,853 B | **"We update your order guides based on your invoices, so you can track orders from start to finish in one place."** |
+| `fintech.com/blog/alcohol-business-management-made-simple-…` | 200 | Two options: an "EDI file integration that seamlessly inputs all your **line-item invoice data**", or an electronic data file to upload. **No catalogue** |
+| `help.marginedge.com/hc/en-us/articles/218400627-…-Order-Guides` | **403** to both fetchers, on a path its own `robots.txt` (200) permits | The order-guide help article was **not read**. Only the marketing page above was |
+
+**Conclusion.** The buyer-side "distributor price list" in this industry is **derived from the
+buyer's own invoices**. Mudavym already records those (ADR 0117 class A,
+`procurement/own-paper-sighting.ts`). A class-C row, when one ever exists, is house-scoped and lands
+on `vendor_price_observations` as `api_catalog` / tier 3 — never on `price_index_postings`, which has
+no restaurant column and whose `restaurant_id IS NULL` rows are read by every house in the state.
+
+**Two published EDI 832 implementation guides were fetched and are the parser's only spec**, since
+neither the standard's summary pages nor any distributor publishes the segment positions:
+CDW's X12/V4010/832 (55,216 B, sha256 `6d44bb14…`) and SPS Commerce's MSSS guide v2.6
+(437,803 B, sha256 `06bee0d5…`), the latter carrying a real sample 832 now recorded verbatim as a
+fixture. Provenance: `apps/api-gateway/src/distributor-feed/__fixtures__/EDI832-PROVENANCE.md`.
+
 ---
 
 ## Class D — retail references (never beside a vendor quote)
@@ -108,12 +147,23 @@ intelligence)`. **Both flags default off and no shop has ever been fetched by th
 | **Kavaklıdere** | TR | 2 | **200, 293 B**; `*` allowed everything but /wp-admin/, and **`Google-Extended`, `GPTBot` and `CCBot` disallowed by name** | none found | n/a | **no** | Homepage 170,717 B with **zero** occurrences of the lira sign, "TL", "fiyat" or a cart — what Law 4250 art. 6 and md. 11/1 predict (unverified at primary source; see §Türkiye). The two Türkiye houses have no merchant-shop line |
 | **Wine Chateau** | US-NJ | **0** | 200, 3,622 B after a 301 www→apex; Shopify storefront file | schema.org `Offer` + og | no | **no** | Registered and not fetched because it **serves no house**: the register scopes by state at read time and no tenant is in NJ. Also the page that proved the title trap — it publishes **three** `og:title` values and the first is the shop's slogan, *"Buy Wine Online - WineChateau® for Fine Wines"* |
 
+**Update 2026-09-05 — the date rule changed, and the numbers with it.** The founder answered
+ADR 0117 Q27 (*"Yes: an `issued_at_basis` column, fetch-dated rows labelled and aged from the
+read"*), so a shop page that states no date is no longer refused: it is filed under the day we
+read it with `issued_at_basis = 'fetch_date'`, `refuseStale` ages such a row from that read
+rather than from an edition it never had, and the index line prints **"read on"** for it and
+**"issued"** only for a shop that published a date. The "States a date?" column above is
+therefore a statement about the shop, not about admission — a `no` now costs the row its
+"issued" wording, not its place in the register. Measured again on the same six fixtures:
+**4 of 6 admitted** (3 `fetch_date`, 1 `issuer_stated`), `no_issue_date` down from 3 to 0, and
+the two remaining refusals unchanged (`identity_conflict`, `currency_not_jurisdiction`).
+
 **What the sweep does with them.** `apps/api-gateway/src/vendor-intel/shop-reference-posting.ts` reads
 the price in the precedence *schema.org `Offer` (bound to a product node whose identity matches the
 page) → microdata `itemprop="price"` → Open Graph*, takes the size from `readBottleSize` unchanged,
-and refuses rather than guesses. Measured on the six committed fixtures: **1 admitted, 5 refused** —
-three `no_issue_date`, one `identity_conflict` (the Dom Pérignon page whose only JSON-LD block is
-Caol Ila whisky at GBP 225), one `currency_not_jurisdiction`. The register the rows enter is
+and refuses rather than guesses. Measured on the six committed fixtures: **4 admitted, 2 refused** —
+one `identity_conflict` (the Dom Pérignon page whose only JSON-LD block is Caol Ila whisky at
+GBP 225) and one `currency_not_jurisdiction`. The register the rows enter is
 `price_index_postings`, which `belowTrailingAverage` does not read at all.
 
 ---
@@ -404,7 +454,7 @@ class-A writer alone fixes nothing.
 
 | Source | URL | Class | Verified 2026-09-05 | Registry |
 |---|---|---|---|---|
-| **Defra wholesale fruit and vegetable prices** | series `https://www.gov.uk/government/statistical-data-sets/wholesale-fruit-and-vegetable-prices-weekly-average`; edition `.../media/6a918dd7f5b35599aec18f5b/fruitvegprices-260901.csv` | **E — the only entry with a parser** | Series page **200**; CSV **200, 861,585 B**, sha256 `ab56ded3a4bc3f65fd49e438fc6b43d7a0a9f22f2595afd1c2049941cc258c3d`. **17,594 rows**, headers exactly `category,item,variety,date,price,unit`; newest date **31/08/2026**, 55 rows; units kg 14,612 / head 2,108 / stem 428 / twin 397 / unit 49; zero blank prices, zero blank units; **one published price of 0** (`cut_flowers,gladioli,all_varieties,05/07/2024,0,stem`). Page states issuer *Department for Environment, Food & Rural Affairs*, cadence *fortnightly*, extent *"in England and Wales"* (Birmingham, Bristol, Manchester and a London market), licence **OGL v3.0** | **`parse-defra.ts`, `GB-EAW`, GBP, fetch OFF** |
+| **Defra wholesale fruit and vegetable prices** | series `https://www.gov.uk/government/statistical-data-sets/wholesale-fruit-and-vegetable-prices-weekly-average`; edition `.../media/6a918dd7f5b35599aec18f5b/fruitvegprices-260901.csv` | **E — the only entry with a parser** | Series page **200**; CSV **200, 861,585 B**, sha256 `ab56ded3a4bc3f65fd49e438fc6b43d7a0a9f22f2595afd1c2049941cc258c3d`. **17,594 rows**, headers exactly `category,item,variety,date,price,unit`; newest date **31/08/2026**, 55 rows; units kg 14,612 / head 2,108 / stem 428 / twin 397 / unit 49; zero blank prices, zero blank units; **one published price of 0** (`cut_flowers,gladioli,all_varieties,05/07/2024,0,stem`). Page states issuer *Department for Environment, Food & Rural Affairs*, cadence *fortnightly*, extent *"in England and Wales"* (Birmingham, Bristol, Manchester and a London market), licence **OGL v3.0** | **`parse-defra.ts`, `GB-EAW`, GBP. SHOWN as its own labelled box on the founder's Q24 call of 2026-09-05 (*"show it, labelled as produce, in its own box"*). Arming the fetch is one thing only: setting `PRICE_INDEX_FETCH_ENABLED` to "true" or "1" on the deployment — not a code change, not a product toggle** |
 | **ONS RPI average prices — drink** | `.../timeseries/{kef4,czms,czmt,czmr}/mm23/data` | D | **All four HTTP 200**, unit `Pence`, a stated measure and a monthly date. **Every last observation is 2025 JAN** (517 / 483 / 380 / 390) while `releaseDate` says **2026-08-18** and `nextRelease` **16 September 2026**. `czmj`-equivalent food series (`CZNJ` tomatoes) stops the same month, so the family is dead, not only drink | `silent: discontinued` — **the trap this pass exists to record** |
 | **ONS CPI alcohol index** | `.../timeseries/d7bv/mm23/data` | E | **HTTP 200**, live (2026 JUL = 159.9, `releaseDate` 2026-08-18). Its own metadata declares `unit: "Index, base year = 100"` — **an index number, not a price**, and `price_index_postings` requires a price with a currency and a unit | not registered (Q23) |
 | **HMRC alcohol duty rates** | `https://www.gov.uk/guidance/alcohol-duty-rates` + `https://www.gov.uk/api/content/guidance/alcohol-duty-rates` | E | Page **200, 90,801 B**; Content API **200** with `public_updated_at` `2026-02-01T00:15:01Z` and organisation *"HM Revenue & Customs"* — issuer and date machine-readable. Rates per litre of pure alcohol (wine/spirits 3.5-8.4% GBP 26.61, 8.5-22% GBP 30.62, >22% GBP 33.99; beer 3.5-8.4% GBP 22.58). **A rate, not a price** | `silent: not_a_price` |
@@ -472,6 +522,27 @@ records, and **only a FOIA request reaches them.** The honest line for a Michiga
 therefore *not* "Michigan posts no wine prices"; it is that the schedules are filed rather than
 published. Filed as founder question Q19 in ADR 0117.
 
+> **Corrected 2026-09-05, later the same day (ADR 0126).** "Those are public records" is only half
+> true and the missing half changes what a request is worth. **MCL 436.1609a** — read verbatim on
+> `codes.findlaw.com` (HTTP 200; `legislature.mi.gov` answers 403 to `curl` and fails TLS
+> verification to the harness fetcher, and every `michigan.gov` path answers 403 including its own
+> `robots.txt`) — provides that "a net cash price filed under subsection (1) and a price change
+> filed under subsection (2) are exempt from disclosure under section 13 of the freedom of
+> information act, 1976 PA 442, MCL 15.243, **until 1 year after** the net cash price or price
+> change is filed", with the same exemption stated for the wine filings. So a granted request can
+> never return a schedule less than twelve months old, and a standing quarterly request yields a
+> rolling twelve-month-lagged series rather than a posted list. **Two smaller corrections from the
+> rules themselves**, both read verbatim on `law.cornell.edu`, HTTP 200: the quarterly cadence is
+> **wine's** — R 436.1726(1), filed "before January 1, April 1, July 1, and October 1 of each year"
+> — and **beer has no recurring filing date at all** (R 436.1625 requires a schedule and requires a
+> reduction to be filed before its effective date and held "at least 180 days"). The request text
+> is drafted for the founder to send at
+> [`MICHIGAN-FOIA-BEER-WINE-SCHEDULES.md`](MICHIGAN-FOIA-BEER-WINE-SCHEDULES.md); **nothing has
+> been sent**, and the register records the request as `not_yet_filed`, never as `requested`. The
+> source entry is `michigan-lcc-filed-beer-wine-schedules` with `intake: "foia"`, no `parse` (the
+> Commission's format for these schedules is unknown — nobody has seen one) and `maxAgeDays: 480`,
+> which is the embargo's arithmetic and **not** a freshness allowance.
+
 ### Illinois
 
 | Source | URL | Format | Terms | Verified | Measured 2026-09-05 |
@@ -490,6 +561,15 @@ published. Filed as founder question Q19 in ADR 0117.
 and refuses the reader; Illinois welcomes the reader and publishes no number. Michigan's answer
 is therefore a path (a person carries the file); Illinois' answer is a sentence naming a repealed
 statute. Neither answer works for the other state.
+
+**Amended 2026-09-05, later the same day (ADR 0126).** The Illinois sentence used to end by
+pointing the house at "a connection this house declares". That door was then tried, and it is
+locked: Breakthru's buyer portal publishes `Disallow: /` for every path but its login, and both
+Breakthru's and Southern Glazer's terms of use forbid automated access — Southern Glazer's
+separately forbidding you from giving "any other person" access with your credentials, which is
+what declaring a portal login would be. See §"Class C re-measured 2026-09-05" above. The Illinois
+sentence now ends where the answer actually is: **the house's own invoices are the licensee price
+list**, and this house already records them.
 
 ## The register these feed, built 2026-09-04 (ADR 0117 steps 2–3)
 
@@ -517,6 +597,18 @@ keyed by **state, not restaurant**, RLS on and anon/authenticated revoked, uniqu
   name and the file's sha256 on every row. Its cadence was corrected in the same pass from
   `monthly`/62 days to **`quarterly`/105 days** — 62 would have refused a current book from day
   63 of its own 91-day cycle.
+
+  **Since 2026-09-05 (ADR 0128) a carried book is not the index line until somebody lets it in.**
+  The rows are written either way, but `price_index_postings.admitted_at` decides whether they
+  are the market, and one exported predicate (`MARKET_VISIBILITY`) applies it to every read. A
+  ROUTINE book — a later edition whose diff against the last admitted one sits inside every band
+  in `upload-tier.ts` — is stamped admitted at write time and the other owners and managers in
+  the jurisdiction are told. **Every first book of a source is held**, because there is nothing to
+  compare it with, as is any book outside a band or any book whose comparison could not be made.
+  The pool that may admit it is the JURISDICTION, not the house: this table has no
+  `restaurant_id`, so a carried book is every house in that state's number. The bands are reasoned
+  and **UNMEASURED** — this repository holds one edition of one state book — and every upload
+  records its real diff so the second edition can replace the reasoning with evidence.
 
 The scheduled fetch defaults **OFF** behind `PRICE_INDEX_FETCH_ENABLED`;
 `GET /price-index/status` says per source when it last fetched, how many rows, and why it

@@ -2,7 +2,7 @@
 type: reference
 title: Messaging senders — provider and channel survey
 status: live
-updated: 2026-09-05
+updated: 2026-09-05 (second pass, §10)
 links: ["[[0121-the-houses-text-sender]]", "[[0118-the-house-writes-its-own-mail]]", "[[0114-connections-are-the-houses-profile-is-the-persons]]", "[[0084-the-communications-gateway-says-what-it-did]]"]
 ---
 
@@ -446,11 +446,45 @@ fetched 2026-09-05 via search summary — see caveat below); the UK Companies Ac
 2006 s.388(4) requires **3 years** (private company) or **6 years** (public)
 for accounting records
 ([legislation.gov.uk/ukpga/2006/46/section/388](https://www.legislation.gov.uk/ukpga/2006/46/section/388)).
-**Caveat:** the Turkish figures were read from a secondary Q&A (a law firm's own
+~~**Caveat:** the Turkish figures were read from a secondary Q&A (a law firm's own
 summary), not from Kanun No. 213 or TTK Art. 82 directly — the primary Turkish
 statute text could not be fetched this pass (mevzuat.gov.tr failed the same way
 it did on 2026-09-04, per §7 above) — so these two numbers are one step short of
-primary-sourced and should be re-verified before anything is built on them.
+primary-sourced and should be re-verified before anything is built on them.~~
+
+**CAVEAT CLOSED, 2026-09-05, and the primary text moved the finding.**
+`mevzuat.gov.tr` still will not resolve (`unable to verify the first
+certificate`), but both consolidated statutes are published on other `.gov.tr`
+hosts and were read directly, in Turkish, this pass:
+
+- **TTK No. 6102 Art. 82**, from the Ministry of Justice:
+  [mgm.adalet.gov.tr/.../181020191508056102sk.pdf](https://mgm.adalet.gov.tr/Resimler/SayfaDokuman/181020191508056102sk.pdf).
+  Para. 1 lists what every trader must keep in classified form, and it is not
+  only books: **(b) "Alınan ticari mektupları"** — the commercial letters
+  RECEIVED — and **(c) "Gönderilen ticari mektupların suretlerini"**, copies of
+  those sent. Para. 2: *"Ticari mektuplar, bir ticari işe ilişkin tüm
+  yazışmalardır"* — commercial letters are ALL correspondence relating to a
+  commercial matter. Para. 5: those documents are kept **ten years**. Para. 6:
+  the period starts at the end of the calendar year in which the correspondence
+  took place. Para. 3 permits storage on image or data carriers provided that,
+  when made readable, they match the received letters in content and stay
+  reachable throughout the period.
+- **VUK No. 213 Art. 253**, from `hukukmusavirligi.diyanet.gov.tr`
+  ([213 Sayılı Vergi Usul Kanunu](https://hukukmusavirligi.diyanet.gov.tr/Documents/213%20Say%C4%B1l%C4%B1%20Vergi%20Usul%20Kanunu.pdf)):
+  *"Bu Kanuna göre defter tutmak mecburiyetinde olanlar, tuttukları defterlerle
+  üçüncü kısımda yazılı vesikaları, ilgili bulundukları yılı takibeden takvim
+  yılından başlıyarak beş yıl süre ile muhafaza etmeye mecburdurlar"* — **five
+  years**, starting from the calendar year following the year they relate to.
+
+**Why this is not just a footnote upgrade.** The secondary summary supported the
+sentence "TR and UK law requires storage of the FACTS". The primary text says
+more than that: in Türkiye the obligation reaches the *correspondence itself*,
+for ten years. That is GDPR Art. 28(3)(g)'s "unless Union or Member State law
+requires storage" landing on the raw mail, not only on the order's fields. ADR
+0118 D14 records the reconciliation this build rests on — Mudavym holds a
+mirror, and the house's own Art. 82 record is the message still in the mailbox
+it was read from — and files the question of whether that reading is the
+founder's as a founder-only decision rather than treating it as settled.
 
 **What this means in practice: the two options the founder was given are not
 actually "delete the mail" vs. "keep the mail" — they are "delete the mail" vs.
@@ -474,6 +508,100 @@ solely as a live copy of the email body.
 
 | Claim | Intended primary source | What happened |
 |---|---|---|
-| Turkish Tax Procedure Law No. 213 (5-year retention) and TTK Art. 82 (10-year retention), primary statute text | `mevzuat.gov.tr` | Same DNS/TLS failure as 2026-09-04 (§7); read instead from [a Turkish law firm's Practical Law Q&A](https://www.gurkaynak.av.tr/docs/cc68a-records-retention-turkey.pdf), a secondary source |
+| ~~Turkish Tax Procedure Law No. 213 (5-year retention) and TTK Art. 82 (10-year retention), primary statute text~~ **RESOLVED later on 2026-09-05** | `mevzuat.gov.tr` | `mevzuat.gov.tr` still fails (`unable to verify the first certificate`), but both consolidated statutes are published on other `.gov.tr` hosts and were fetched and read in Turkish: TTK 6102 from [mgm.adalet.gov.tr](https://mgm.adalet.gov.tr/Resimler/SayfaDokuman/181020191508056102sk.pdf) and VUK 213 from [hukukmusavirligi.diyanet.gov.tr](https://hukukmusavirligi.diyanet.gov.tr/Documents/213%20Say%C4%B1l%C4%B1%20Vergi%20Usul%20Kanunu.pdf). See §8.6 — the primary text is broader than the summary was |
 | Whether HubSpot's connected-email sync counts as a Google Workspace "restricted scope" pull (vs. IMU/forwarding) | HubSpot's own API/scopes documentation | not pursued this pass — the retention/training findings above stand regardless of which ingestion path HubSpot uses, but the Google Limited Use clause only binds HubSpot's ingestion if it is in fact a Workspace API scope, and this file does not confirm that either way |
 | Front's Google-specific privacy notice (a named sub-page the main notice links to) | `front.com/legal/front-products-and-services-privacy-notice#google_user_data_privacy_notice` | not fetched this pass; the general privacy notice was fetched instead |
+
+---
+
+## 10. Second pass, 2026-09-05 — what a house must provide, and four corrections
+
+Added when ADR 0121 was accepted in part and built. Everything here is fetched
+**2026-09-05** from the provider's own documentation unless the row says
+otherwise. It **amends** §2 and §3 rather than replacing them; where a figure
+here disagrees with one above, the one here is later and its source is named.
+
+### 10.1 Four corrections to the 2026-09-04 pass
+
+| Claim as written 2026-09-04 | Corrected 2026-09-05 | Source |
+|---|---|---|
+| US 10DLC registration is "several days or even several weeks" | **13-20 business days end to end**: brand approved in minutes to 3-5 business days, campaign 10-15 business days. The older wording is Twilio's sole-proprietor-transition page and is vaguer than its own ISV onboarding guidance | Twilio ISV onboarding / compliance onboarding, 2026-09-05 |
+| (not recorded) | **A Meta business portfolio is capped at 2 registered business phone numbers, raisable to 20** (50 by exception). This is the WhatsApp analogue of the 100-campaign TCR cap and it bites the "Mudavym registers for you" path exactly the same way: one portfolio holding every house's number would cap the deployment at 20 houses | Meta, WhatsApp Business Accounts overview; Twilio WhatsApp sender management |
+| (not recorded) | **"Shared phone numbers" is a listed restricted use case in Twilio's US SMS guidelines.** The shared-Plivo shape ADR 0121 refused on STOP-scope grounds is *independently* prohibited at the carrier layer | twilio.com/en-us/guidelines/us/sms |
+| (not recorded) | **A US campaign is rejected if consent is a condition of purchase or of creating an account**: "Consent must be voluntary... the registration **will be rejected**." This binds product design, not just paperwork — a crew-text consent can never be a roster column | Twilio A2P 10DLC compliance onboarding |
+
+### 10.2 What a house must provide — WhatsApp Business (Cloud API)
+
+- A phone number **not already active on WhatsApp or WhatsApp Business**.
+- A Meta business portfolio, and **Meta Business Verification** before
+  production messaging — "can take several weeks".
+- A display name that passes Meta's review. A declined display name limits the
+  sender to **250 messages per 24 hours**; a newly created business portfolio
+  starts at 250 regardless, and verification is one of three ways to reach 2,000.
+- An opt-in from each recipient — Meta's own policy, independent of any law.
+- **Bring your own** arrives through Meta's **Embedded Signup**, which "returns
+  the customer's WABA ID, business phone number ID, and an exchangeable token
+  code". No password reaches this platform, and there is no field for one.
+- **Mudavym registers** requires Meta **App Review for advanced access** with
+  `whatsapp_business_management` and `whatsapp_business_messaging`: "You will
+  not be able to onboard business customers until your app has been approved."
+- One structural constraint that rules self-signup out for a multi-tenant
+  product entirely: in the self-signup flow **all senders on the same Twilio
+  account share one WABA**. The Tech Provider path is not an optimisation.
+
+### 10.3 What a house must provide — US 10DLC
+
+Legal business name **exactly as on EIN records**; EIN or tax id; business type;
+registered address; a **live, publicly reachable** website; a named contact with
+a corporate email; a campaign use case; **two or more sample messages matching
+it**, each carrying an opt-out line; the **opt-in flow in 40-2049 characters**
+naming the method, the frequency, the "message and data rates may apply"
+disclosure and a **publicly accessible** link or screenshot; a privacy policy
+stating mobile information is **not** shared with third parties for marketing;
+and terms carrying **HELP and STOP in bold**. The opt-in field is "the #1 reason
+campaigns get rejected", and reviewers follow the links.
+
+Fees are unchanged from §2 and recur **per house**: $44 / $4 brand, $15 campaign
+vetting, $1.50-$10 per campaign per month, plus the number.
+
+### 10.4 What a house must provide — Türkiye alphanumeric Sender ID
+
+**This is wet-signed, stamped paperwork and no form in a product can automate
+it.** The Turkish operators require, via the provider:
+
+- A company or brand registration certificate.
+- A **Letter of Authorization**, a separate **authorization letter**, and an
+  **NOC letter** — each on the **house's own letterhead**, signed by an
+  authorized signatory, and **stamped**.
+- Where the Sender ID does not match the company name, a formal document
+  (trademark registration, official website) showing the linkage.
+
+Required form fields: the sender company's letterhead, the Sender ID requested,
+the legal company name, the name and title of the authorized signatory, the
+signature, the company stamp, the date. Refusals: promotional traffic; a Sender
+ID resembling a domain; P2P, gambling, political and religious content; a URL
+without a local Turkish entity from 2026-04-01; and **any reply at all** —
+alphanumeric Sender IDs are one-way by construction, and Twilio's Türkiye page
+still states "Two-way SMS supported: No" on this fetch.
+
+**Provisioning: about two weeks. Unregistered Sender IDs are BLOCKED from
+2026-11-18.**
+
+### 10.5 One rule that governs both paths
+
+**The identity registered is always the house's.** A regulatory bundle "must
+represent the actual end-user" and "Twilio audits this"; an ISV registering
+Sender IDs "must provide your customers' business and representative
+information, including a government ID"; and sharing campaigns across customers
+"violates carrier policies". So "Mudavym registers for you" means Mudavym
+operates the submission and never that Mudavym's name goes on the sender. This
+is the same conclusion §2a reached from the fee schedule, arrived at
+independently from the providers' own architecture guidance.
+
+### 10.6 Still not fetched, 2026-09-05
+
+| Claim | Source | What happened |
+|---|---|---|
+| Meta's per-country WhatsApp rate card for TR and US | developers.facebook.com/docs/whatsapp/pricing (rate-card downloads), whatsappbusiness.com platform pricing | Both serve the rates through an interactive tool / CSV download rather than as page text. The figures in circulation for Türkiye (marketing about $0.0109, utility about $0.0014 from 2026-04-01) come from **third-party summaries** and are recorded as unverified |
+| İYS registration obligation and scope | iys.org.tr | Still client-rendered, as on 2026-09-04. The Türkiye consent row remains the weakest citation in this file |
+| WhatsApp reach in Türkiye (88.6%) | TurkStat | Still not fetched. The founder's "both" answer does not make this figure fetched, and ADR 0121's Türkiye-first recommendation still rests on it |

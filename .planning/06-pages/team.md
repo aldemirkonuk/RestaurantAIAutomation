@@ -161,6 +161,30 @@ name on file" with the reason — and never prints the placeholder. The gateway
 half is §9; the Edit sheet prefills the account's name so one save repairs a row
 for good.
 
+**The crew text (ADR 0121, founder 2026-09-05: *"a crew text exists and build it
+next"*).** The note composer now carries a **text leg** with three states and no
+switch, because a switch would imply the sender is this composer's choice and it
+is not: a note reaches somebody by text when *this house* has a connected sender
+**and** *that person* has consented, and neither is the writing manager's to
+decide. (1) **No sender** — the control is off and names why, including why a
+number shared with other restaurants is not offered as an easy alternative. (2)
+**A sender and nobody consented** — still off, and it says whose decision that
+is; nobody can consent on another person's behalf. (3) **A sender and consents**
+— live, naming how many of the addressed will be texted and stating that the
+rest are reached on the inbox and the phone only. A failed read is a fourth
+thing and gets its own sentence: "unknown — not no".
+
+**Every note now leaves a receipt per person per channel** (`team_note_deliveries`,
+migration `20260905210000`). This is the P0 half of ADR 0121 and it closes a
+measured lie: `POST …/broadcast` returned `notified: 11` counted off the roster
+while `mobile_devices` held **0 rows**, because `ExpoPushService.sendToUsers`
+returned silently on an empty read *and* on a failed one. `notified` is now the
+number of registered **devices** the payload was handed to, `addressedForPush`
+carries the old number under a name that says what it is, and the four outcomes
+are kept apart: `accepted_by_service` is not `delivered` (a push service taking
+a ticket is not a handset showing a notification), and `read_failed` is a fact
+about this system rather than about the crew.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_team`)
 
 Canonical source with curves: `apps/web/src/pages/team/next/MOTIONS.md` — this
@@ -349,6 +373,29 @@ dashboard.md §7.
   until POS depth exists — the S04 ⚠ wine-only depletion caveat applies
   ([TIER-MAP](../03-scenarios/TIER-MAP.md):40).
 - No debt-register entries name `/team` (checked `v3.0-TECH-DEBT.md` — no hits).
+- **G-TXT1 — the crew text cannot actually send, and the page says so.** The
+  three-state control's live state is reachable only when a house has a
+  `connected` sender, and no house on this deployment has one; even then
+  `TextSenderService.send()` returns `transport_not_built`, because a connected
+  row is a record of a registration and not a wired provider client. Filed, not
+  hidden: the composer prints the server's own sentence rather than implying a
+  send (ADR 0121, "What shipped").
+- **G-TXT3 — the note textarea ignores the ground, on BOTH grounds** (found
+  2026-09-05 while capturing the crew-text control; **pre-existing**, not caused
+  by that change). `.tm-textarea` declares `background: var(--paper-0)`
+  (`team-next.css:519-527`) and something with higher specificity beats it.
+  Measured inside the open composer by `getComputedStyle`, via
+  `$SP/shoot-crew-text.mjs`: on paper `--paper-0` resolves to `#FAF7F1` while
+  the element's `background` is `rgb(255, 255, 255)`; on charcoal `--paper-0`
+  resolves to `#15130F` and the background is still `rgb(255, 255, 255)`, with
+  `color: rgb(31, 41, 55)`. So on the charcoal ground a manager types into a
+  white box inside a dark sheet. Filed rather than fixed: the fix is in
+  `team-next.css`, which this pass had no brief to touch.
+- **G-TXT2 — a receipt is per channel and not per device.** `team_note_deliveries`
+  records `accepted_by_service` once per person, not once per handset, so a
+  person with two phones has one row. That is the right grain for "was this
+  person reached" and the wrong one for "which device failed"; the second
+  question is not asked yet and the table is not shaped for it.
 - **The whole scheduling domain is empty in production** (measured 2026-09-02):
   `coverage_templates` 0, `schedules` 0, `shifts` 0, `team_certifications` 0,
   `server_sales` 0, `team_settings` 0, `schedule_receipts` 0. Only the 11-row
@@ -575,6 +622,12 @@ The boundary to defend: TIER-MAP:104-105 — Floor Checker scenarios (S05/S07/S1
 sales-ingest based, which is the permitted kind. Keep them apart.
 
 ## 13. Roadmap
+
+0. **The crew text's transport** — ADR 0121. The states, the consents and the
+   receipts exist; the send does not. What is missing is a per-house provider
+   credential and, before it, the sealed act that submits a registration. The
+   registration playbook per market is ADR 0121's own section; the sender rows
+   live on `/connections`, the consent on `/profile`.
 
 1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:279-286`)
    — turns the performance panel from a data-entry chore into a by-product. Blocked

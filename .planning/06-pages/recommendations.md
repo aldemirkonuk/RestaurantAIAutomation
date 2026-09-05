@@ -1346,5 +1346,35 @@ execution, no first-fired timestamp — in the same way.
     (`origin_rule_key`, "where the conversation started", distinct from "what
     this goal watches") would keep both facts. New column, new decision — filed,
     not built.
+31. **A thirteenth rule is planned and not built: `commodity_exposure_rising`**
+    (2026-09-05). The founder's call — *"a seperate table for index series"*, and
+    *"triggers of a uprise might give our assistant to alert owners to stock up"* —
+    is researched and planned in
+    [`.planning/07-reference/commodity-signals-plan.md`](../07-reference/commodity-signals-plan.md).
+    It would sit in this service's `rule(key, fired, make)` loop beside the twelve
+    that exist today, with a producer beside the eight in
+    `notifications/producers/`, modelled on `market-signal.ts`. **Three findings
+    from that plan land on this page and are the reason it is not a ticket.**
+    (a) `market-signal.ts`'s shape — one global constant, one env override
+    (`DEFAULT_DROP_THRESHOLD = 0.1`, `MARKET_SIGNAL_DROP_PCT`) — **does not
+    generalise to an index series.** Backtested on 2026-09-05 over three real
+    series pulled the same day, the threshold that yields about two alerts a year
+    is **8.5 %** on the FAO Food Price Index, **35.7 %** on BLS `APU0000708111`
+    (retail eggs) and **67.8 %** on BLS `WPU017107` (wholesale eggs) — a factor of
+    eight. A 15 % threshold fires in **34.5 % of all months** on retail eggs. So
+    the operator sets a *budget* (how often to hear about a series) and the code
+    derives the percentage from that series' own measured history, storing the
+    window it was computed over. (b) The same measurement kills a global
+    implausibility ceiling: a 35 % single-step guard, the analogue of
+    `IMPLAUSIBLE_DROP_CEILING = 0.6`, **refused 25 of 114 evaluated months** on the
+    wholesale egg series, whose p99 month-on-month move is 82 %. Per-series again.
+    (c) The rule's storability condition **has no input**: measured on this tree,
+    `grep -rn -i "shelf_life" supabase/migrations/` returns **zero** shelf-life
+    columns, so *"stock up"* on a perishable cannot be gated. Blocked on that and
+    on the plan's Q1 (whether `api.bls.gov`'s `Disallow: /` bars a documented,
+    key-issuing API) and Q2 (whether this should be an interruption at all, given
+    that Kansas City Fed RWP 24-16 puts row-crop pass-through at about a year and
+    calls it *"small and imprecisely estimated"* even with futures in the model).
+    **Founder decision, not a ticket.**
 
 - **Correction to a commit message (recorded 2026-09-05).** Commit `f45ada70` ("the small defects the audits of 2026-09-04 named") claimed the six citation corrections in this note and said providers/next "no longer imports settings/next"; the six citation fixes landed in `71916602`, and only the formatters were hoisted — `pages/providers/next/{TermsSection.tsx,TermSection.test.tsx,useProviderTerms.ts}` still import `../../settings/next/useSettingsNextData` (a coupling still to hoist). The message also said "eight" fixes and enumerated six.

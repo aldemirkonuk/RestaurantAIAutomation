@@ -176,6 +176,23 @@ the two registers that would actually leak are refused at the gateway as well.
   of a long list. Honoured once the register behind the fragment has answered, so a
   deep link never scrolls to a skeleton.
 
+- **The house's text senders** *(ADR 0121, 2026-09-05)*. Two rows in Register I —
+  **WhatsApp Business** and **SMS sender** — because they are different products
+  with different registrars, different fees and, in Türkiye, different
+  *capabilities*: an alphanumeric Sender ID there is one-way and cannot receive
+  a reply, so one averaged row would have claimed a conversation the channel
+  cannot hold. Each row offers the founder's two paths — *bring our own* and
+  *ask Mudavym to register one* — **both disabled, carrying the server's own
+  sentence** rather than one this page invented: no provider credential for a
+  per-house sender exists on this deployment. The rows are drawn at full weight
+  with nothing connected, which is this page's structural rule applied to its
+  newest attachment: a live POS feed and an unconnected sender get the same
+  amount of design, so an absence cannot be flattered by being drawn thinner.
+  `Last proven reachable` is empty and says **never probed**, which is neither
+  "unreachable" nor health (ADR 0107). An unread register is named and is never
+  allowed to fall through to the "none" row — an outage must not read as a fact
+  about the restaurant.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -459,6 +476,21 @@ because it is true, and it changes when the deployment's mailbox does.
 
 Each is rendered honestly on the page rather than hidden.
 
+- **G-C10 — neither text-sender control does anything yet.** Both paths are
+  drawn and both are disabled. `POST /communications/text-senders/own` and
+  `…/request` exist and are manager-gated, but this page has no form that calls
+  them: connecting a WhatsApp number means running Meta's Embedded Signup in
+  Meta's own window, which is a browser flow this page does not yet host, and
+  requesting a registration means collecting a legal name, an address, a tax-id
+  reference, a use case, two sample messages and a 40-2049-character opt-in
+  description — a sheet, not a button. Filed rather than papered over with a
+  control that would open nothing.
+- **G-C11 — a sender can never reach `connected` from this surface.** Only a
+  live probe may move a row there and no probe exists (`last_probe_at` is NULL
+  on every row, by construction). So the `connected` state is currently
+  unreachable in production, and the row says "never probed" rather than
+  implying the state is merely unused.
+
 - ~~**G-PAY-SEAL — the payment register's controls are buttons, not the seal
   ceremony**~~ — **CLOSED 2026-09-04.** Gateway half in `cd2b86d8`; page half in
   this pass. On this page it closed together with half of G-C9 below, because the
@@ -639,6 +671,15 @@ is unread would see the dash only in that cell.
 
 ## 13. Roadmap
 
+0. **The two text-sender flows** (ADR 0121, §9 G-C10/G-C11): host Meta's
+   Embedded Signup for *bring your own*, and a registration sheet for
+   *Mudavym registers* carrying the per-market checklist the ADR's playbook
+   section holds. Then the live probe, which is the only thing that may move a
+   sender to `connected`. The submitting act itself is sealed and has no route
+   at all today — the seal on it is satisfied vacuously, which the ADR states
+   rather than leaving to be inferred.
+
+
 1. **Call a granted tool from the row, behind hold-to-approve.** The gateway
    gate is built and specced, and since 2026-09-04 so is the provable seal:
    `POST :id/tools/:tool/seal-challenge` mints the one-time token and
@@ -746,3 +787,75 @@ is unread would see the dash only in that cell.
     subtracted.~~ **Done 2026-09-05.** `components/mudavym/StripeCardPanel.tsx`,
     one component with two callers rather than a second copy; the row that said
     adding a card had no home is the panel. §9 G-C9 closed.
+11. **A licensed distributor connection — defined, and deliberately not offered**
+    (ADR 0126, 2026-09-05). The founder's call that day was *"build the
+    distributor connection as a class C source"*: house-declared,
+    person-consented, the portal's price list mirrored into the register. It is
+    **defined and inert**. `DISTRIBUTOR_FEED_CONNECTION`
+    (`apps/api-gateway/src/distributor-feed/distributor-feed.registry.ts`) carries
+    the id, the label, `declaredBy: "restaurant"` / `consentedBy: "person"` per
+    ADR 0114, and the same four required disclosure questions the OAuth
+    catalogue asks — what is read (**a price list**), what is not (**orders,
+    invoices, deliveries, credit terms, rep messages, balances**), where it lands
+    (`vendor_price_observations`, **this** restaurant, `api_catalog` / tier 3 —
+    *not* `price_index_postings`, which has no restaurant column and is read by
+    every house in the state) and who can then see it. It carries
+    **`offerable: false`** with the reason on the same object, and there is **no
+    declare route, no credential column and no fetcher**.
+
+    **Why nothing is offered, measured 2026-09-05.** No Illinois distributor
+    publishes a feed a house could connect, and two forbid the attempt in their
+    own words: `now.breakthrubev.com/robots.txt` is `Disallow: /` for every path
+    but its login; Breakthru's Terms §6.2(c) ban "web crawlers, data mining,
+    scraping, robots, spiders"; and Southern Glazer's Terms ban "any robot,
+    spider, or other automatic device" **and, separately, providing "any other
+    person with access to this Website … using your username, password, or other
+    security information"** — which is exactly what declaring a portal login
+    here would be. Building the box first and asking later is how a product ends
+    up holding credentials it may not use.
+
+    **What a person sees instead.** `GET /distributor-feed/:jurisdiction` (owner
+    and manager, read-only; `me` resolves the house's own state) returns, per
+    distributor, the verbatim robots rule, the verbatim terms clause, the day it
+    was measured, the evidence URLs, and a sentence that says what is true rather
+    than "coming soon". For Illinois it ends where the answer actually is: the
+    house's own invoices are the licensee price list, and this house already
+    records them (ADR 0117 class A). **Drawing that on this page is web work this
+    session did not do** — the endpoint returns everything a register needs and
+    no component reads it yet, so a manager cannot reach it from the product.
+    That is the honest state of this item, not a claim that the register exists.
+
+---
+
+**Retention is now part of what a grant means, 2026-09-05 (ADR 0118 D12-D15).**
+A `gmail_read` grant is the one connection on this page that copies a person's
+mail into the house's book, and until today nothing on the consent screen said
+how long that copy was kept or what disconnecting did to it. Four things changed
+that reach this register:
+
+1. **Disconnecting a mirroring grant now deletes, and can now fail loudly.**
+   `DELETE /integrations/oauth/gmail_read` revokes upstream, drops the tokens,
+   and then deletes the raw mail that grant mirrored — body, headers and
+   attachment bytes — scoped by `procurement_conversations.mirrored_by_grant_id`.
+   It returns the sweep's own counts. If the deletion cannot run it **throws**
+   rather than reporting `{success: true}` for a revocation whose second half
+   silently did not happen, so a disconnect row on this page can now report a
+   failure it previously could not have known about.
+2. **The catalogue carries `mirrorsMail`.** Every entry says whether consenting
+   copies mail into the house, served from `MIRRORING_INTEGRATION_IDS` rather
+   than inferred from the id — `gmail_send` is a Gmail grant that mirrors
+   nothing, and a page that guessed from the prefix would get it wrong. Any
+   register on this page that wants to mark the mirroring grants differently
+   reads that field.
+3. **`dataHandling` has a fifth question**, `keptFor`, required on every
+   definition like the other four. A grant that keeps nothing says so; that is a
+   real answer and a different one from silence.
+4. **NOT wired, deliberately: the house-grant suspend control.**
+   `PUT /integrations/oauth/house-grants/:id/access` with `houseUses: false` is
+   the house withdrawing its own use of a member's grant (ADR 0114). It does
+   **not** delete raw mail, because the member has not revoked anything and
+   their consent still stands — deleting on it would let a manager destroy a
+   colleague's mirrored correspondence without the colleague acting. Filed as a
+   founder question in ADR 0118 rather than defaulted either way. If the founder
+   wants the stronger version it is one call beside the upsert in
+   `setHouseGrantAccess`.

@@ -105,10 +105,31 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   not being read, and the words name which of the two doors is shut
 - **The consent screen says where what is read lands, and who can see it**
   (founder's rule: everything valuable is welcome, no person's privacy touched by
-  surprise). Every integration carries a required four-part `dataHandling` block —
-  what we read, what we never read, where it lands, who can see it — served from
-  the same constant the scope list comes from, so the sentence cannot drift from
-  what the server does
+  surprise). Every integration carries a required **five**-part `dataHandling`
+  block — what we read, what we never read, where it lands, who can see it, and
+  **how long it is kept** — served from the same constant the scope list comes
+  from, so the sentence cannot drift from what the server does
+- **A mirrored reply is kept as two objects, with two rules** (ADR 0118 D12-D15,
+  founder 2026-09-05). The RAW MAIL — body, headers, attachment bytes — has a
+  window and goes on revocation; the FACTS the understand step wrote onto the
+  order stay under the house's bookkeeping floor. `communications/retention/`
+  holds the rule table, the derivation and the sweep
+- **The window is derived, never a constant.** The longest dispute the house has
+  recorded (`procurement_credits`, measured from the first message on that
+  order) plus a margin of 92 days — one re-derivation interval, because the
+  figure is only re-derived quarterly and a shorter margin could expire mail on a
+  three-month-old figure. A house with no dispute recorded gets the margin alone
+  and `longest_dispute_days` is NULL, never 0
+- **The bookkeeping floor is per house, from its country, with the statute named
+  and the date it was read.** TR 10 years (TTK 6102 Art. 82), GB 6 (Companies Act
+  2006 s.388 + HMRC), US 7 (IRS), US-CA 7 (+ CDTFA and CCPA's disclosure duty). No
+  country recorded means the strictest rule and a printed sentence saying why
+- **Revoking the reading grant deletes the raw mail immediately**, scoped to that
+  grant by `procurement_conversations.mirrored_by_grant_id`, with a notice to the
+  grant's owner and a count recorded whether or not anything changed. The consent
+  screen says all of this BEFORE the grant, from
+  `GET /communications/retention/disclosure`, and disables Continue for a
+  mirroring grant when it cannot read the figure
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
 
@@ -410,6 +431,49 @@ chrome per dashboard.md §7.
 - **NOT BUILT — a letter carries no attachment.** There is no attachment path on the
   manager-written route, and the composer does not pretend there is.
 
+### Retention's own gaps, 2026-09-05 (ADR 0118 D12-D15)
+
+- **THE DELETION IS NOT COMPLETE, and this is the sentence that says so rather
+  than a claim that it is.** `public.conversation_embeddings.message_text` is
+  `text NOT NULL` and holds a second copy of a message's text beside its vector
+  (`services/agent-orchestrator/agents/provider_conversation_agent.py:1161-1175`).
+  That table carries `session_id`, `provider_id` and `restaurant_id` and **no
+  `conversation_id`**, so nothing can join a mirrored conversation row to its
+  embedding row and the sweep cannot reach it. A mirrored reply whose text also
+  reached that table still has its text in the database after its raw mail is
+  "deleted". Closing it needs either a `conversation_id` column on that table or
+  a rule that the Python agent never embeds a mirrored row.
+- **Google's required Limited Use sentence is still absent from the consent
+  screen.** Measured 2026-09-04 (`messaging-senders.md` §8.1) and re-measured
+  2026-09-05: no `dataHandling` field carries "The use of information received
+  from Google Workspace APIs will adhere to the Google User Data Policy,
+  including the Limited Use requirements", which Google's own policy requires be
+  disclosed in the application. One sentence in
+  `integrations-oauth.constants.ts`; deliberately not folded into the retention
+  field, because a use disclosure hidden inside a retention answer is a
+  disclosure nobody will find.
+- **`message_text` cannot be nulled**, so a deleted body is a tombstone sentence
+  rather than absence. `procurement_conversations.message_text` is `text NOT
+  NULL` on the production baseline and relaxing that is a constraint change on a
+  table five subsystems write to. The tombstone names the date and the reason;
+  an empty string would have read as "the vendor sent nothing".
+- **Two grants in one house make two independently deletable halves of one
+  thread.** The sweep keys on `mirrored_by_grant_id`, so one person revoking
+  deletes only what their mailbox produced. A conversation view will show one
+  half tombstoned and the other intact. That is correct behaviour and it will
+  look like a bug the first time somebody sees it.
+- **The window is derived but never yet exercised on real data.** Measured
+  2026-09-05 through the local gateway against production: the readable tenant
+  `550e8400-e29b-41d4-a716-446655440000` has zero `procurement_credits` and zero
+  `procurement_conversations`, so every house on this deployment would derive
+  `no_dispute_recorded` and get the 92-day margin alone. The dispute-span branch
+  is proved by unit test and by nothing on live rows.
+- **`setHouseGrantAccess(houseUses: false)` deliberately does NOT delete.** The
+  house withdrawing its own use of a member's grant is not that member revoking
+  consent, and deleting on it would let a manager destroy a colleague's mirrored
+  correspondence without the colleague acting. Named as a founder question in
+  ADR 0118 rather than defaulted either way.
+
 ### The house inbox's own gaps, 2026-09-04 (ADR 0118 D8-D11)
 
 - **CLOSED 2026-09-05 — the house can switch the reader on.** The founder was
@@ -675,6 +739,20 @@ lands, this route is open.
     which is a weaker promise. Worth doing only if the latency is felt.
 14. **The house's text sender** — [ADR 0121](../decisions/0121-the-houses-text-sender.md),
     survey in [`07-reference/messaging-senders.md`](../07-reference/messaging-senders.md).
+    **UPDATED 2026-09-05: ACCEPTED IN THREE PARTS AND BUILT TO THE EDGE OF A
+    SEND, so the "Nothing is built" sentence below is now wrong and is corrected
+    here rather than in place.** The founder decided a crew text exists, that the
+    first market is *both* (Türkiye WhatsApp-first, the US on SMS), and that a
+    house gets a number *either* by bringing its own name *or* by Mudavym
+    registering per house. Built: `house_text_senders`, `person_text_consents`
+    and `team_note_deliveries` (migration `20260905210000`), one
+    `TextSenderService` behind `/communications/text-senders`, and rows on
+    `/connections`, `/team` and `/profile`. **The composer's text mode is still
+    NOT built** — this item's own subject — and nothing sends: no per-house
+    provider credential exists, so `send()` returns `transport_not_built` even
+    for a connected sender with a consenting recipient. The per-market
+    registration checklist a house must work through is ADR 0121's own
+    "registration playbook" section.
     The founder answered ADR 0118's founder-question 2 on 2026-09-04: *"No letters
     only, however, we def need a sms sender, and text mesg sender since most
     conversations might just go with text"*, so this page's "letters only" framing
@@ -700,3 +778,27 @@ lands, this route is open.
     to type from memory. The strongest counter-argument is in the ADR and is
     genuinely strong: WhatsApp-first puts the house's vendor thread in Meta's
     custody, and Meta may "pause and reject any Message Template at any time".
+
+15. **Reach the second copy of a mirrored body, or stop making one** (ADR 0118
+    D12-D15, §9). `conversation_embeddings.message_text` holds the text again,
+    beside its vector, and has no `conversation_id` to join on — so the retention
+    sweep deletes the body from `procurement_conversations` and cannot touch the
+    copy. Two shapes: add `conversation_id` to that table and extend the sweep,
+    or bound the Python embedder so a row with `mirrored_by_grant_id` is never
+    embedded. The second is smaller and loses the search over mirrored replies;
+    the first keeps the search and needs a migration plus a backfill nobody can
+    make truthful for existing rows. Founder's call, and it is a real one
+    because until it is closed the consent screen's deletion promise is broader
+    than the deletion.
+16. **Put Google's Limited Use affirmative sentence on the consent screen** (§9).
+    Google's own policy requires the application to disclose that its use of
+    Workspace data adheres to the Limited Use requirements, and no field carries
+    it. One sentence in `integrations-oauth.constants.ts` for both Gmail grants.
+    Not blocked on anything; deliberately left out of the retention change so it
+    is visible as its own item rather than buried in a retention field.
+17. **Exercise the dispute-span branch on real data.** The window derivation's
+    long branch is proved by unit test only: measured 2026-09-05, the readable
+    production tenant has zero `procurement_credits` and zero
+    `procurement_conversations`, so every house on this deployment derives
+    `no_dispute_recorded`. The scenario harness (ADR 0093) is where a real
+    dispute span can be produced without touching production.
