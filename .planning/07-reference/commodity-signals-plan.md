@@ -122,7 +122,7 @@ something adjacent was measured, `no` means the fetch failed and the reason is s
 | **USDA AMS Daily National Shell Egg Index** | National FOB wholesale shell-egg weighted averages by colour, class and size; caged and cage-free; regional volume movement | **daily** | PDF at `www.ams.usda.gov/mnreports/ams_2843.pdf`; the same report is `viewReport/2843` on My Market News | **yes** — "Fri Sep 4, 2026", "Report for: 09/04/2026", "Cents Per Dozen / FOB", USDA AMS Livestock, Poultry & Grain Market News | US Government work; **the host's own terms were not read** — see the rate-limit cell | **`www.ams.usda.gov/robots.txt` returned HTTP 403** (Akamai, reference `#18.a4ed2117.…`) | **yes (three one-off research reads)** — and see §3c: **its crawl rules cannot be read, so no scheduled fetcher may be pointed at this host** |
 | **USDA AMS legacy report files, generally** | Everything AMS Market News publishes, per report id | varies | `www.ams.usda.gov/mnreports/ams_<id>.pdf` | yes | as above | as above | **yes.** `ams_2140.pdf` fetched: 241,994 B, a Virginia feeder-cattle board sale dated **Thu Aug 13, 2026** — so this path is **not** uniformly frozen, correcting the impression left by `bh_fv020.txt`'s 975-day-stale file. Live and dead reports share one path and are told apart only by their own dates |
 | **USDA My Market News / MARS API v1.2** | The machine face of everything above: terminal produce, dairy, poultry, eggs | daily | `https://marsapi.ams.usda.gov/services/v1.2` | yes, in the payload | **unread.** Search results describe a free key on registration; that page has now timed out on four consecutive days and **"free" remains second-hand** | unread | **no.** `/services/v1.2/reports` **403** unauthenticated (second day, key requirement confirmed by measurement); `mymarketnews.ams.usda.gov` timed out at 45 s and 60 s over HTTP/1.1 and HTTP/2; `marsapi.ams.usda.gov/robots.txt` **404** |
-| **BLS Public Data API v1** | PPI and CPI series, and the **AP average-price series which are prices in dollars, not index numbers** | monthly | `https://api.bls.gov/publicAPI/v1/timeseries/data/` | yes, in the payload, including a `"Preliminary"` footnote | **the terms page named by the FAQ, `bls.gov/bls/termsofservice.htm`, returned 404 — the terms are unread and are not asserted here** | **v1: 25 queries/day, 25 series, 10 years, no key. v2: 500/day, 50 series, 20 years, free annual key. Both 50 requests / 10 s** — quoted from `bls.gov/developers/api_faqs.htm` | **yes, and then a problem.** `APU0000708111` (*Eggs, grade A, large, per doz., US city average*) returned 2026 M07 = **2.189**, M02 = 2.500. `WPU017107` (*PPI, eggs for fresh use*) and `WPU0223` both returned clean. **Then `https://api.bls.gov/robots.txt` returned 200 with `User-agent: * / Disallow: /`** — see §3c and founder question Q1 |
+| **BLS Public Data API v1** | PPI and CPI series, and the **AP average-price series which are prices in dollars, not index numbers** | monthly | `https://api.bls.gov/publicAPI/v1/timeseries/data/` | yes, in the payload, including a `"Preliminary"` footnote | **the terms page named by the FAQ, `bls.gov/bls/termsofservice.htm`, returned 404 — the terms are unread and are not asserted here** | **v1: 25 queries/day, 25 series, 10 years, no key. v2: 500/day, 50 series, 20 years, free annual key. Both 50 requests / 10 s** — quoted from `bls.gov/developers/api_faqs.htm` | **yes, and then a problem.** `APU0000708111` (*Eggs, grade A, large, per doz., US city average*) returned 2026 M07 = **2.189**, M02 = 2.500. `WPU017107` (*PPI, eggs for fresh use*) and `WPU0223` both returned clean. **Then `https://api.bls.gov/robots.txt` returned 200 with `User-agent: * / Disallow: /`** — see §3c. **Q1 CLOSED by the founder 2026-09-05: register a v2 key and use the API under its terms.** One gap that must close before arming: the terms document itself is **unread** — `bls.gov/bls/termsofservice.htm`, the page the FAQ names, returned **404** — so the only BLS terms this plan can currently point at are the published limits in `api_faqs.htm`. **The source row's `terms_url` may not be a 404** |
 | **FAO Food Price Index** | A world index of food commodity prices, plus five sub-indices: cereals, vegetable oils, dairy, meat, sugar | **monthly**, on a published calendar | **CSV**, keyless: `www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv` | **yes** — the page states the release date and the next one; the CSV states its own base | **no licence declared on the page.** Footer is "© FAO 2026" with a general terms link. **Unstated, recorded as unstated** | `robots.txt` **200**: `*` disallows `/index.php`, `/t3lib/`, `/typo3/`, `/*?id=*` and two `user_upload` paths. **The CSV path is permitted; no crawl-delay is declared** | **yes.** August 2026 = **133.3**, released **2026-09-04**, next **2026-10-02**. CSV: 48,006 B, sha256 `746104cf…c62f`, 444 lines, base **2014-2016=100**, last row `2026-08,133.3` |
 | **ONS time series (JSON)** | UK CPI, including **`d7bu` — CPI INDEX 01: FOOD AND NON-ALCOHOLIC BEVERAGES 2015=100** | monthly | keyless per-series URL: `.../timeseries/d7bu/mm23/data` | **yes** — `releaseDate`, `nextRelease`, and an `updateDate` on **every observation** | **Open Government Licence v3.0** | `www.ons.gov.uk/robots.txt` returns **404** (re-read 2026-09-05T14:12:41Z: 404, 101,929 B, an ONS "Page not found" page with zero `disallow` lines) — unrestricted per RFC 9309, the same reading the registry already applies to `ilcc.illinois.gov` | **yes.** 125,504 B, 463 months, 2026 JUL = **144.0**, `unit: "Index, base year = 100"` |
 | **USDA ERS Food Price Outlook** | **Forecasts** of annual food price change by category, plus the CPI and PPI series behind them | **monthly, on the 25th**; next **2026-09-25** | CSV and XLSX | yes | not stated on the page; a USDA work | not measured | **partial.** Both pages read. Its own documentation states it *"generates 95 percent forecast intervals"* — **the only source in this register that publishes an interval rather than a point** |
@@ -206,8 +206,11 @@ recorded in `p4-scratch/p4as-fetch-log.md` §"Correction". That is a
 registry's existing precedent (Metro Türkiye: *"A polite fetcher may not read this source
 at all"*) says that closes it. The counter-reading is that robots.txt governs crawlers
 and an API whose publisher documents it, publishes its limits and issues keys for it is
-governed by its own terms instead. **This is genuinely the founder's call and it is Q1
-below. Nothing in this plan assumes an answer.**
+governed by its own terms instead. **The founder took the second reading on 2026-09-05:
+*"Register a key, use the API under its terms."* The API's terms are the specific
+permission and the robots file the general one. Q1 is CLOSED; see §12 Q1 for the decision,
+the two rejected paths and what the source row must then carry, and §10 for the phase that
+arms it — which is not phase 0.**
 
 **The shortcut, declared per CLAUDE.md §0.5 — and corrected upward at 14:12Z.** Data
 requests were made to `api.bls.gov` **before** its `robots.txt` was read, and the read came
@@ -387,6 +390,10 @@ per series, one row per observation.
 | `licence` | `text NOT NULL` | verbatim, or the literal `unstated` |
 | `attribution` | `text NULL` | the string that must travel with the number (the Iowa CC BY 4.0 precedent) |
 | `redistribution` | `text NOT NULL` CHECK `{permitted, attribution_required, prohibited, unstated}` | §3a. A `prohibited` series may be fetched and may never be shown |
+| `robots_url`, `robots_read_at`, `robots_sha256`, `robots_verdict` | `text` / `timestamptz` / `text` / `text` | **Required by the founder's Q1 decision of 2026-09-05**: the source row records the robots reading *with its time and its hash*. `robots_verdict` holds what it actually said (`disallow_all`, `permits_path`, `unreadable`, `absent`), so a source admitted **against** a `Disallow: /` is visibly admitted against one rather than quietly. BLS's row would read `disallow_all` with sha256 `331ea909…` — the honest shape of a decision to proceed on the API's terms |
+| `terms_url`, `terms_read_at`, `terms_basis` | `text` / `timestamptz` / `text` | The other half of the same decision: **the terms the row relies on**, by URL, with when they were read and the specific permission relied on, verbatim. A `terms_url` that 404s is not a term — see the BLS row in §2a |
+| `access_key_required`, `key_env_var`, `fetch_user_agent` | `boolean` / `text` / `text` | The key is a fact about the source, never a committed value; the User-Agent carries a contact URL so a publisher can block us deliberately rather than by accident, which is ADR 0117's existing rule |
+| `daily_request_budget` | `integer NULL` | **My rendering of the founder's *"stays under the daily limit"*, not their words.** A number the fetcher counts against, refusing rather than exceeding. It exists because I demonstrably needed it: §3c records that I spent **13-14 of the v1 tier's 25** on a research pass while believing I had spent 7 |
 | `rise_threshold` / `step_guard` | `numeric NULL` | derived from the series' own history — §9b. **NULL means the rule cannot fire for this series**, and that is said out loud |
 | `threshold_window_from` / `_to` / `_n_obs` / `_computed_at` | | so the number on the screen can be traced to the window that produced it |
 | `armed` | `boolean NOT NULL DEFAULT false` | |
@@ -635,7 +642,9 @@ to state their crawl rules: the **USDA AMS shell-egg index** (`www.ams.usda.gov/
 403) gets a parser written against a real recorded fixture plus an upload endpoint — a
 person's own download, dry run by default, staleness gate before every write, the person and
 the file's sha256 on every row, exactly as `POST /price-index/upload` already does for the
-Michigan price book. **BLS** waits on Q1.
+Michigan price book. **BLS is now permitted and is deliberately still not armed in phase
+0** — see the phase-1 note below. **Phase 0's armed pair stays FAO + ONS**, unchanged by
+the founder's Q1 answer, so a builder already underway on phase 0 is unaffected.
 
 Also in phase 0, and cheap: **the exposure mapping for the top N house items by spend**, typed
 by a person; and **the threshold calibration job** of §9b, which needs only the series.
@@ -663,8 +672,23 @@ observation.
 answered first. Every fire records series, threshold, budget, exposure and item, so that §9d's
 hit rate becomes computable later.
 
+**BLS arms here, at the start of phase 1 — not in phase 0.** The founder's Q1 answer of
+2026-09-05 permits it, and phase 1 is where it becomes *necessary*: both of phase 0's armed
+sources are `value_kind = 'index_number'`, and the alert's most useful sentence needs a
+series whose `value_kind` is `price` — the AP average-price family, in dollars per dozen, is
+the only free one measured anywhere in this plan. Arming it is four things, none of them
+code: a person **registers a v2 key** (500/day, 50 series, 20 years, 50 requests per 10 s);
+the fetcher sends **an honest User-Agent with a contact URL**; a `daily_request_budget` is
+set and counted against so the limit is respected by construction rather than by care; and
+the source row carries **both** the robots reading — `disallow_all`, its read time and its
+sha256 — **and** the terms relied on, by URL and read date. **The terms URL is the open item:
+`bls.gov/bls/termsofservice.htm` returned 404 on 2026-09-05, so the real terms document must
+be located and read before the row can honestly name one.** Until then `terms_url` would
+point at `api_faqs.htm`, which publishes limits but is not a terms of service.
+
 **What it proves:** whether a house acts on a commodity signal at all. **What it costs:** the
-rule, the producer, the sentence and the panel. **What it is blocked on:** Q3.
+rule, the producer, the sentence and the panel, plus one key registration. **What it is
+blocked on:** Q3, and the BLS terms document above.
 
 ### Phase 2 — licensed data, and only if phase 1 earns it
 
@@ -713,20 +737,35 @@ frequency is chosen by the house and the sentence says what it does not know —
 
 ## 12. Founder-only questions
 
-Numbered for this document. None is answered here.
+Numbered for this document. **Q1 was answered by the founder on 2026-09-05 and is struck
+through below rather than removed; the other five are open.**
 
-1. **Does `Disallow: /` on a documented, key-issuing API host bar our fetcher?**
-   `api.bls.gov/robots.txt` is **200** and reads `User-agent: * / Disallow: /`, while BLS
-   itself documents the API, publishes its limits and issues keys for it. The registry's
-   existing precedent (Metro Türkiye) says a `Disallow: /` closes a source outright. The
-   counter-reading is that robots.txt governs crawlers and an API is governed by its own
-   terms. **This decides whether the richest source in this plan — the only one publishing
-   an actual dollars-per-dozen price — is in or out**, and it sets a rule for every future API.
-   I made **thirteen or fourteen** data requests to that host before reading its
-   robots.txt, and I then omitted that robots read from the fetch log; both are corrected
-   in §3c and in the log's §"Correction". The order was wrong, the count I first reported
-   was too low, and I stopped after the read. **The finding itself is unchanged on a
-   re-read at 14:12Z**, so this question stands exactly as posed.
+1. ~~**Does `Disallow: /` on a documented, key-issuing API host bar our fetcher?**~~
+   **ANSWERED AND CLOSED by the founder, 2026-09-05.** The question was whether
+   `api.bls.gov/robots.txt` — **200**, 26 bytes, `User-agent: * / Disallow: /` — closes a
+   host whose owner documents an API, publishes its limits and issues keys for it. The
+   founder's words: **"Register a key, use the API under its terms."** The reasoning
+   recorded with it: **the API's terms are the specific permission and the robots file the
+   general one.** So Mudavym registers a **v2** key, sends an honest User-Agent with a
+   contact, stays under the daily limit, and **records both the robots reading (with its
+   time and its hash) and the terms it relies on in the source row** — the columns are in
+   §7a, the arming step is in §10's phase 1, and the shape of a row admitted *against* a
+   `Disallow: /` is `robots_verdict = 'disallow_all'` beside a named `terms_url`, so the
+   decision is visible on the row rather than buried in this document.
+   **Two paths rejected**: honour robots and take only the `download.bls.gov` flat files —
+   measured 2026-09-05, that host's own `robots.txt` returns **404**, and the flat files are
+   a different product with a different cadence; and hold BLS entirely, which would leave
+   this plan with no free price series in dollars at all, only index numbers.
+   **This sets a rule for every future API**, not just this one.
+   **The record of how I got here is kept rather than tidied away:** I made thirteen or
+   fourteen data requests to that host *before* reading its robots.txt, and I then omitted
+   that robots read from the fetch log; both are corrected in §3c and in the log's
+   §"Correction", and the re-read at 14:12Z was byte-identical. The founder's answer makes
+   the requests permissible in hindsight; it does not make the order or the omission
+   correct, and neither is deleted.
+   **One item this answer opens rather than closes:** the terms it tells us to rely on are
+   **unread** — `bls.gov/bls/termsofservice.htm` returned **404** on 2026-09-05. Locating
+   and reading the real terms document is a precondition of arming, recorded in §10.
 2. **The alert, or the context line?** §11. An interruption that fires on a threshold, or a
    labelled series shown beside the order for that item with no claim attached. The evidence
    in §5d is genuinely uncomfortable for the first, and the second gives up the thing you
