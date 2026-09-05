@@ -43,6 +43,7 @@ function seed(
         },
       ],
       plan_message_allowances: [],
+      house_message_allowances: [],
       house_message_meter: [],
       house_message_credits: [],
       ...over,
@@ -331,6 +332,7 @@ describe("recordPurchase — money in, with its provenance", () => {
       amountMinor: 5000,
       currency: "USD",
       recordedBy: USER,
+      paymentRef: "pi_1",
     });
     expect(out.recorded).toBe(true);
     const written = db.tables.house_message_credits[0];
@@ -351,6 +353,7 @@ describe("recordPurchase — money in, with its provenance", () => {
       amountMinor: 5000,
       currency: "$$",
       recordedBy: USER,
+      paymentRef: "pi_1",
     });
     expect(out.recorded).toBe(false);
     expect(out.words).toContain("is not money");
@@ -366,6 +369,7 @@ describe("recordPurchase — money in, with its provenance", () => {
         amountMinor,
         currency: "USD",
         recordedBy: USER,
+        paymentRef: "pi_1",
       });
       expect(out.recorded).toBe(false);
     }
@@ -383,6 +387,7 @@ describe("recordPurchase — money in, with its provenance", () => {
       amountMinor: 5000,
       currency: "USD",
       recordedBy: USER,
+      paymentRef: "pi_1",
     });
     expect(out.recorded).toBe(false);
     expect(out.words).toContain("was NOT recorded");
@@ -405,5 +410,195 @@ describe("entries — an unreadable ledger is not an empty one", () => {
     const out = await svc(seed()).entries(RID);
     expect(out.rows).toEqual([]);
     expect(out.reason).toBeNull();
+  });
+});
+
+describe("one house first — the founder's answer to question 8", () => {
+  /**
+   * `plan_message_allowances` is keyed on `plan_code`, and
+   * `restaurants.subscription_tier` carries `DEFAULT 'pilot'` on every house
+   * that never chose it. So a number written to the plan row lands on the whole
+   * fleet at once, which is exactly what "one house first, deliberately, then
+   * watch" refused. These cases are what make the per-house row load-bearing
+   * rather than decorative.
+   */
+  const houseRow = (allowance: number | null) => ({
+    restaurant_id: RID,
+    monthly_allowance: allowance,
+    stated_source:
+      "founder, 2026-09-06: first house to carry a stated allowance",
+    set_via: "founder_script",
+    set_by: null,
+    set_at: "2026-09-06T00:00:00Z",
+  });
+
+  const planRow = (allowance: number | null) => ({
+    plan_code: "pilot",
+    monthly_allowance: allowance,
+    stated_source: "measured usage after one quarter, fleet-wide",
+    stated_at: "2026-09-06T00:00:00Z",
+  });
+
+  it("uses the HOUSE's number over the plan's, and says which it used", async () => {
+    const db = seed({
+      house_message_allowances: [houseRow(50)],
+      plan_message_allowances: [planRow(9999)],
+    });
+    const out = await svc(db).readout(RID, NOW);
+    expect(out.allowance).toBe(50);
+    expect(out.allowanceScope).toBe("house");
+    expect(out.allowanceWords).toContain("for THIS house specifically");
+    expect(out.allowanceWords).toContain("not for its plan");
+  });
+
+  it("falls back to the plan's number and says THAT is where it came from", async () => {
+    const db = seed({ plan_message_allowances: [planRow(300)] });
+    const out = await svc(db).readout(RID, NOW);
+    expect(out.allowance).toBe(300);
+    expect(out.allowanceScope).toBe("plan");
+    expect(out.allowanceWords).toContain("included on this plan");
+  });
+
+  it("reports scope 'none' when neither row exists", async () => {
+    const out = await svc(seed()).readout(RID, NOW);
+    expect(out.allowanceScope).toBe("none");
+    expect(out.allowance).toBeNull();
+  });
+
+  it("a house row with a NULL number is NOT the same as no row, and says so", async () => {
+    const db = seed({ house_message_allowances: [houseRow(null)] });
+    const out = await svc(db).readout(RID, NOW);
+    expect(out.allowance).toBeNull();
+    expect(out.allowanceScope).toBe("house");
+    expect(out.allowanceWords).toContain("No allowance stated for this house");
+    expect(out.allowanceWords).toContain("not an allowance of zero");
+  });
+
+  it("does NOT fall through to the plan when the house row could not be READ", async () => {
+    // The shape this guards: answering with the fleet's number when the house's
+    // own read failed is a wrong answer that looks exactly like a right one.
+    const db = seed(
+      { plan_message_allowances: [planRow(9999)] },
+      { "house_message_allowances:select": { message: "connection reset" } },
+    );
+    const out = await svc(db).readout(RID, NOW);
+    expect(out.allowance).toBeNull();
+    expect(out.allowanceScope).toBe("none");
+    expect(out.readable).toBe(false);
+    expect(out.reason).toContain("this house's allowance");
+    expect(out.allowanceWords).toContain("could not be read");
+  });
+
+  it("THE REFUSAL, proven against the one house's own allowance", async () => {
+    // The whole point of question 8: the founder sets a number on one house and
+    // watches. This is what that house sees when it passes the number he set.
+    const db = seed({
+      house_message_allowances: [houseRow(2)],
+      house_message_meter: metered(2, true),
+    });
+    const g = await svc(db).gate({
+      restaurantId: RID,
+      ownKeys: false,
+      now: NOW,
+    });
+    expect(g.verdict).toBe("refused");
+    expect(g.readout.allowanceScope).toBe("house");
+    expect(g.words).toContain("This month's 2 included messages are used");
+    expect(g.words).toContain("nothing was sent");
+    expect(g.words).toContain(
+      "Nothing has been queued and nothing will arrive later",
+    );
+    expect(g.words).toContain("buy credits");
+    expect(g.words).toContain("own Twilio or Meta account");
+  });
+
+  it("counts down inside the one house's own allowance", async () => {
+    const db = seed({
+      house_message_allowances: [houseRow(10)],
+      house_message_meter: metered(4, true),
+    });
+    const g = await svc(db).gate({
+      restaurantId: RID,
+      ownKeys: false,
+      now: NOW,
+    });
+    expect(g.verdict).toBe("allowed");
+    expect(g.words).toContain("6 of this month's 10");
+  });
+
+  it("still does not gate a house on its own provider keys", async () => {
+    const db = seed({
+      house_message_allowances: [houseRow(1)],
+      house_message_meter: metered(50, true),
+    });
+    const g = await svc(db).gate({
+      restaurantId: RID,
+      ownKeys: true,
+      now: NOW,
+    });
+    expect(g.verdict).toBe("allowed");
+    expect(g.words).toContain("billed to it by that provider");
+  });
+});
+
+describe("recordPurchase — a credit never exists without a payment", () => {
+  it("refuses an empty payment reference, and writes nothing", async () => {
+    const db = seed();
+    const out = await svc(db).recordPurchase({
+      restaurantId: RID,
+      sealId: SEAL,
+      amountMinor: 5000,
+      currency: "USD",
+      recordedBy: USER,
+      paymentRef: "   ",
+    });
+    expect(out.recorded).toBe(false);
+    expect(out.words).toContain("names the payment it was charged on");
+    expect(db.tables.house_message_credits).toHaveLength(0);
+  });
+
+  it("writes the PaymentIntent id onto the row", async () => {
+    const db = seed();
+    await svc(db).recordPurchase({
+      restaurantId: RID,
+      sealId: SEAL,
+      amountMinor: 5000,
+      currency: "USD",
+      recordedBy: USER,
+      paymentRef: "pi_3Nabc",
+    });
+    expect(db.tables.house_message_credits[0].payment_ref).toBe("pi_3Nabc");
+  });
+});
+
+describe("purchaseForSeal — the recovery read", () => {
+  it("finds a purchase already written for this seal", async () => {
+    const db = seed({
+      house_message_credits: [
+        {
+          id: "c1",
+          restaurant_id: RID,
+          entry_kind: "purchase",
+          seal_id: SEAL,
+          amount_minor: 5000,
+          currency: "USD",
+          recorded_at: "2026-09-06T00:00:00Z",
+        },
+      ],
+    });
+    const out = await svc(db).purchaseForSeal(RID, SEAL);
+    expect(out.found).toBe(true);
+    expect(out.entryId).toBe("c1");
+    expect(out.readable).toBe(true);
+  });
+
+  it("says the read FAILED rather than answering 'no'", async () => {
+    const db = seed(
+      {},
+      { "house_message_credits:select": { message: "boom" } },
+    );
+    const out = await svc(db).purchaseForSeal(RID, SEAL);
+    expect(out.readable).toBe(false);
+    expect(out.found).toBe(false);
   });
 });

@@ -42,10 +42,29 @@
  * refuses with `arguments_changed`. Binding it to the restaurant alone would
  * let a browser that obtained one gesture spend any amount it liked.
  *
- * NO PAYMENT IS TAKEN HERE. This records that a house bought credits; charging
- * an instrument is `/billing`'s job and is deliberately not wired to this
- * route. Wiring them together is a decision about who is charged and when, and
- * that decision has not been made (see the report's fork Q2).
+ * THE PAYMENT IS TAKEN HERE, SINCE 2026-09-05 (founder, Q2: *"Wire it to the
+ * card on file, sealed"*; rejected: leave it unwired). The order is the whole
+ * design and it is not negotiable:
+ *
+ *   1. the role check, 2. the seal redeemed, 3. THE CHARGE, 4. the ledger row.
+ *
+ * A refused charge writes nothing and says why. A charge is never attempted
+ * without a redeemed seal, and a credit never exists without a PaymentIntent
+ * id on it — enforced again at the database by
+ * `house_message_credits_purchase_is_paid`.
+ *
+ * IDEMPOTENT ON THE SEAL, TWICE OVER. Stripe's idempotency key is derived from
+ * the seal id, so a repeated charge returns the original intent; and
+ * `uq_house_message_credits_purchase_seal` makes a second credit row for one
+ * seal impossible. The seal itself is single-use, so a replayed request is
+ * refused before it reaches either.
+ *
+ * THE ONE WINDOW THIS CANNOT CLOSE, STATED RATHER THAN HIDDEN. If the charge
+ * succeeds and the ledger write then fails, the money moved and the credit did
+ * not. The response says exactly that, with the PaymentIntent id in it, so a
+ * person can reconcile — it does NOT report a success, and it does not retry
+ * silently. Closing it properly needs a pre-recorded intent row, which is a
+ * bigger change than this decision asked for.
  */
 
 import {
@@ -65,6 +84,7 @@ import { Request } from "express";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 import { OrganizationsService } from "../../../organizations/organizations.service";
 import { SealChallengeService } from "../../../common/seal/seal-challenge.service";
+import { BillingService } from "../../../billing/billing.service";
 import { TextUsageService, type MeterReadout } from "../text-usage.service";
 
 interface AuthenticatedUser {
@@ -100,6 +120,7 @@ export class TextCreditsController {
     private readonly usage: TextUsageService,
     private readonly organizations: OrganizationsService,
     private readonly seals: SealChallengeService,
+    private readonly billing: BillingService,
   ) {}
 
   private scope(req: Request & { user: AuthenticatedUser }): {
@@ -215,7 +236,7 @@ export class TextCreditsController {
   @ApiResponse({
     status: 200,
     description:
-      "The recorded entry and the meter as it stands after it. NO PAYMENT IS TAKEN by this route: it records that credits were bought, and charging an instrument is /billing's job.",
+      "`charged` says whether the card was charged and `paymentIntentId` names the payment; `recorded` says whether the credit landed. They are separate fields because they can disagree: a charge that succeeded with a write that failed reports charged: true, recorded: false and names the PaymentIntent, rather than reporting a plain failure.",
   })
   @ApiResponse({
     status: 403,
@@ -228,6 +249,8 @@ export class TextCreditsController {
     @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{
     recorded: boolean;
+    charged: boolean;
+    paymentIntentId: string | null;
     entryId: string | null;
     words: string;
     meter: MeterReadout;
@@ -241,9 +264,9 @@ export class TextCreditsController {
       "buy message credits",
     );
 
-    // REDEEMED BEFORE ANYTHING IS WRITTEN. The order is the point: redeeming
-    // after the insert would record a purchase and then decide whether it was
-    // allowed, which is auditing a capability instead of gating it.
+    // REDEEMED BEFORE ANYTHING ELSE HAPPENS. The order is the point: redeeming
+    // after the charge would take money and then decide whether it was allowed,
+    // which is auditing a capability instead of gating it.
     const { sealId } = await this.seals.redeem({
       restaurantId,
       actorUserId: userId,
@@ -254,15 +277,59 @@ export class TextCreditsController {
       challenge: challenge ?? null,
     });
 
+    // THE CHARGE. Before the ledger, never after: a credit written first and
+    // charged second is a balance that exists whether or not the money did.
+    const charge = await this.billing.chargeForMessageCredits({
+      restaurantId,
+      amountMinor,
+      currency,
+      sealId,
+    });
+
+    if (!charge.charged) {
+      // NOTHING IS WRITTEN. The seal is spent — single use is what makes it a
+      // seal — so carrying on needs a fresh hold, and the sentence says so
+      // rather than leaving a manager pressing a button that cannot work.
+      return {
+        recorded: false,
+        charged: false,
+        paymentIntentId: null,
+        entryId: null,
+        words: `${charge.words} Nothing was recorded and this house's balance is unchanged. The hold you gave has been used up, so buying again starts a new one.`,
+        meter: await this.usage.readout(restaurantId),
+      };
+    }
+
     const recorded = await this.usage.recordPurchase({
       restaurantId,
       sealId,
       amountMinor,
       currency,
       recordedBy: userId,
-      paymentRef: null,
+      paymentRef: charge.paymentIntentId,
     });
 
-    return { ...recorded, meter: await this.usage.readout(restaurantId) };
+    if (!recorded.recorded) {
+      // THE MONEY MOVED AND THE CREDIT DID NOT. Reported in those words, with
+      // the provider's own reference, because the alternative — reporting a
+      // failure and saying nothing about the charge — is how a house is billed
+      // for something that never appears on its meter.
+      return {
+        recorded: false,
+        charged: true,
+        paymentIntentId: charge.paymentIntentId,
+        entryId: null,
+        words: `The card WAS charged (${charge.paymentIntentId}) and the credit was NOT recorded: ${recorded.words} The money has moved; this house's balance below does not yet show it, and that needs a person rather than a retry.`,
+        meter: await this.usage.readout(restaurantId),
+      };
+    }
+
+    return {
+      ...recorded,
+      charged: true,
+      paymentIntentId: charge.paymentIntentId,
+      words: `${charge.words} ${recorded.words}`,
+      meter: await this.usage.readout(restaurantId),
+    };
   }
 }

@@ -20,8 +20,11 @@
  * `arguments_changed` — asserted below, because that is the property the rest
  * of the design rests on.
  *
- * NOTHING IN THIS FILE TAKES A PAYMENT. The route records a purchase; charging
- * an instrument is `/billing`'s job and is deliberately not wired to it.
+ * NOTHING IN THIS FILE TALKS TO STRIPE. `BillingService.chargeForMessageCredits`
+ * is stubbed, so what is proven is the ORDER — role check, seal, charge, ledger
+ * — and what happens at each way it can fail. The request Stripe would actually
+ * receive is proven separately in `billing/stripe.client.spec.ts`, against a
+ * mocked axios, from the documented PaymentIntent parameters.
  */
 
 import { ForbiddenException } from "@nestjs/common";
@@ -30,6 +33,7 @@ import { DatabaseService } from "../../../database/database.service";
 import { SealChallengeService } from "../../../common/seal/seal-challenge.service";
 import { OrganizationsService } from "../../../organizations/organizations.service";
 import { TextUsageService } from "../text-usage.service";
+import type { BillingService } from "../../../billing/billing.service";
 import {
   TextCreditsController,
   creditPurchaseSealArgs,
@@ -72,7 +76,22 @@ function reqWithNoHouse(userId = MANAGER) {
  * tested: a store that answered any filter with the same row would prove
  * nothing about either.
  */
-function build(opts: { allow?: boolean } = {}) {
+function build(
+  opts: {
+    allow?: boolean;
+    /** How the charge behaves. Default: it succeeds. */
+    charge?:
+      | {
+          charged: true;
+          paymentIntentId: string;
+          status: string;
+          words: string;
+        }
+      | { charged: false; reason: string; words: string };
+    /** Force the ledger write to fail, to exercise the charged-but-unrecorded window. */
+    writeFails?: boolean;
+  } = {},
+) {
   const seals: Row[] = [];
   const credits: Row[] = [];
   const audits: Row[] = [];
@@ -189,13 +208,47 @@ function build(opts: { allow?: boolean } = {}) {
 
   const sealService = new SealChallengeService(db);
   const usage = new TextUsageService(db);
+
+  /**
+   * The charge, stubbed. NOTHING HERE TALKS TO STRIPE: what this file proves is
+   * the ORDER and the failure sentences. The request Stripe would actually
+   * receive is proven in `billing/stripe.client.spec.ts` against a mocked axios,
+   * from the documented PaymentIntent parameters.
+   */
+  const charge = jest.fn(
+    async (_input: {
+      restaurantId: string;
+      amountMinor: number;
+      currency: string;
+      sealId: string;
+    }) =>
+      opts.charge ?? {
+        charged: true as const,
+        paymentIntentId: "pi_1",
+        status: "succeeded",
+        words: "Charged 5000 USD minor units to the card on file.",
+      },
+  );
+  const billing = {
+    chargeForMessageCredits: charge,
+  } as unknown as BillingService;
+
+  if (opts.writeFails) {
+    jest.spyOn(usage, "recordPurchase").mockResolvedValue({
+      recorded: false,
+      entryId: null,
+      words: "The purchase was NOT recorded: connection reset.",
+    });
+  }
+
   const controller = new TextCreditsController(
     usage,
     organizations,
     sealService,
+    billing,
   );
 
-  return { controller, credits, seals, organizations };
+  return { controller, credits, seals, organizations, charge };
 }
 
 describe("POST /communications/text-credits/purchase — the seal is spent, not claimed", () => {
@@ -239,6 +292,94 @@ describe("POST /communications/text-credits/purchase — the seal is spent, not 
     expect(credits[0].entry_kind).toBe("purchase");
     expect(credits[0].seal_id).toBeTruthy();
     expect(credits[0].currency).toBe("USD");
+  });
+
+  it("charges BEFORE it writes, and names the payment on the row", async () => {
+    const { controller, credits, charge } = build();
+    const minted = await controller.sealChallenge(req(), {
+      amountMinor: 5000,
+      currency: "USD",
+    });
+    const out = await controller.purchase(
+      req(),
+      { amountMinor: 5000, currency: "USD" },
+      minted.challenge,
+    );
+
+    expect(charge).toHaveBeenCalledTimes(1);
+    // The seal the charge was told about is the seal that was redeemed, and the
+    // amount is the amount the seal was minted over — not the body read again.
+    const passed = charge.mock.calls[0][0];
+    expect(passed.amountMinor).toBe(5000);
+    expect(passed.currency).toBe("USD");
+    expect(passed.sealId).toBeTruthy();
+    expect(out.charged).toBe(true);
+    expect(out.paymentIntentId).toBe("pi_1");
+    expect(credits[0].payment_ref).toBe("pi_1");
+    expect(credits[0].seal_id).toBe(passed.sealId);
+  });
+
+  it("a REFUSED charge writes nothing, says why, and says the hold is used up", async () => {
+    const { controller, credits } = build({
+      charge: {
+        charged: false,
+        reason: "no_instrument",
+        words:
+          "This house has no card on file, so nothing was charged and no credits were added.",
+      },
+    });
+    const minted = await controller.sealChallenge(req(), {
+      amountMinor: 5000,
+      currency: "USD",
+    });
+    const out = await controller.purchase(
+      req(),
+      { amountMinor: 5000, currency: "USD" },
+      minted.challenge,
+    );
+
+    expect(out.charged).toBe(false);
+    expect(out.recorded).toBe(false);
+    expect(out.paymentIntentId).toBeNull();
+    expect(out.words).toContain("no card on file");
+    expect(out.words).toContain("balance is unchanged");
+    expect(out.words).toContain("hold you gave has been used up");
+    expect(credits).toHaveLength(0);
+  });
+
+  it("does not charge at all when the seal is refused", async () => {
+    const { controller, credits, charge } = build();
+    await expect(
+      controller.purchase(
+        req(),
+        { amountMinor: 5000, currency: "USD" },
+        "not-a-seal",
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // The order is the point: money is never touched before authority is proven.
+    expect(charge).not.toHaveBeenCalled();
+    expect(credits).toHaveLength(0);
+  });
+
+  it("reports a charge that succeeded with a write that FAILED, in those words", async () => {
+    const { controller } = build({ writeFails: true });
+    const minted = await controller.sealChallenge(req(), {
+      amountMinor: 5000,
+      currency: "USD",
+    });
+    const out = await controller.purchase(
+      req(),
+      { amountMinor: 5000, currency: "USD" },
+      minted.challenge,
+    );
+
+    // The one window this design cannot close inside a request. It must not
+    // read as a plain failure: the money moved.
+    expect(out.charged).toBe(true);
+    expect(out.recorded).toBe(false);
+    expect(out.paymentIntentId).toBe("pi_1");
+    expect(out.words).toContain("card WAS charged");
+    expect(out.words).toContain("needs a person rather than a retry");
   });
 
   it("SPENDS the seal once: the same challenge is refused the second time", async () => {

@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import axios, { AxiosError, AxiosInstance } from "axios";
 import * as crypto from "crypto";
 import { StripeConfigService } from "./stripe-config.service";
@@ -51,6 +55,18 @@ export interface StripeSetupIntent {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface StripePaymentIntent {
+  id: string;
+  status?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  client_secret?: string | null;
+  payment_method?: string | null;
+  livemode?: boolean | null;
+  last_payment_error?: { message?: string | null; code?: string | null } | null;
+  [key: string]: unknown;
+}
+
 export interface StripePaymentMethod {
   id: string;
   type: string;
@@ -78,6 +94,25 @@ const STRIPE_BASE_URL = "https://api.stripe.com/v1";
  * on purpose: an allow-list of four would silently permit nothing new, but a
  * deny-list of the money-moving resources fails loudly at the exact moment
  * somebody adds a fifth call that takes money.
+ *
+ * `payment_intents` IS STILL ON THIS LIST, and that is deliberate.
+ * ----------------------------------------------------------------
+ * The guard's own refusal used to read: "Charging requires a price, and pricing
+ * is an open decision (OD-23). Removing this guard is a decision, not a
+ * refactor." On 2026-09-05 the founder took that decision — OD-23's
+ * message-billing half is answered and `POST
+ * /communications/text-credits/purchase` charges the card on file — so the
+ * precondition the guard named has been met.
+ *
+ * It was NOT met for `charges`, `subscriptions`, `invoices`, `refunds`,
+ * `transfers`, `payouts` or `checkout/sessions`, and it was met for exactly one
+ * call: a PaymentIntent for a stated amount, on a stated instrument, behind a
+ * redeemed seal. So the deny-list is kept whole and ONE door is cut through it,
+ * named by `CHARGE_INTENT` below. A second `payment_intents` caller still fails
+ * — `assertAllowed` only stands aside for a caller that passes the token, and
+ * `chargeCardOnFile` is the only method in this file that holds it. Deleting
+ * the entry from the array instead would have opened the resource to every
+ * future method silently, which is precisely what the deny-list exists to stop.
  */
 const FORBIDDEN_PATHS = [
   "payment_intents",
@@ -91,6 +126,17 @@ const FORBIDDEN_PATHS = [
   "payouts",
   "checkout/sessions",
 ];
+
+/**
+ * The key to the one door through FORBIDDEN_PATHS.
+ *
+ * A unique symbol rather than a boolean or a string: a boolean parameter is one
+ * inverted condition away from opening the resource by accident, and a string
+ * can be typed by anyone. A symbol that is not exported cannot be produced
+ * outside this module at all, so every caller that charges is in this file and
+ * `grep CHARGE_INTENT` is the complete census of them.
+ */
+const CHARGE_INTENT: unique symbol = Symbol("stripe-charge-card-on-file");
 
 @Injectable()
 export class StripeClient {
@@ -129,10 +175,7 @@ export class StripeClient {
   }
 
   /** Stripe's form encoding: `a[b]=c` for nesting, repeated `k[]=v` for lists. */
-  static form(
-    params: Record<string, unknown>,
-    prefix = "",
-  ): URLSearchParams {
+  static form(params: Record<string, unknown>, prefix = ""): URLSearchParams {
     const out = new URLSearchParams();
     const walk = (value: unknown, key: string) => {
       if (value === undefined || value === null) return;
@@ -146,27 +189,37 @@ export class StripeClient {
         out.append(key, String(value));
       }
     };
-    for (const [k, v] of Object.entries(params)) walk(v, prefix ? `${prefix}[${k}]` : k);
+    for (const [k, v] of Object.entries(params))
+      walk(v, prefix ? `${prefix}[${k}]` : k);
     return out;
   }
 
-  private assertAllowed(path: string): void {
+  private assertAllowed(path: string, exempt?: typeof CHARGE_INTENT): void {
     const normalised = path.replace(/^\/+/, "").toLowerCase();
     for (const forbidden of FORBIDDEN_PATHS) {
       if (normalised === forbidden || normalised.startsWith(`${forbidden}/`)) {
+        // The one door. It opens for `payment_intents` and for nothing else,
+        // and only for a caller holding the token — which, in this file, is
+        // `chargeCardOnFile` alone.
+        if (exempt === CHARGE_INTENT && forbidden === "payment_intents")
+          continue;
         throw new Error(
-          `StripeClient refuses to call /${normalised}: this product stops at "a card on file". ` +
-            `Charging requires a price, and pricing is an open decision (OD-23). ` +
-            `Removing this guard is a decision, not a refactor — see ADR 0110.`,
+          `StripeClient refuses to call /${normalised}: this product takes money in exactly one place — ` +
+            `a PaymentIntent for message credits, behind a redeemed seal (chargeCardOnFile). ` +
+            `Every other money-moving resource stays shut. ` +
+            `Opening another is a decision, not a refactor — see ADR 0110 and ADR 0121's addendum.`,
         );
       }
     }
   }
 
   private describe(error: unknown): string {
-    const err = error as AxiosError<{ error?: { message?: string; code?: string } }>;
+    const err = error as AxiosError<{
+      error?: { message?: string; code?: string };
+    }>;
     const body = err?.response?.data?.error;
-    if (body?.message) return body.code ? `${body.message} (${body.code})` : body.message;
+    if (body?.message)
+      return body.code ? `${body.message} (${body.code})` : body.message;
     if (err?.response?.status) return `Stripe answered ${err.response.status}`;
     return err?.message ?? "Stripe could not be reached";
   }
@@ -175,16 +228,16 @@ export class StripeClient {
     path: string,
     params: Record<string, unknown>,
     idempotencyKey?: string,
+    exempt?: typeof CHARGE_INTENT,
   ): Promise<T> {
-    this.assertAllowed(path);
+    this.assertAllowed(path, exempt);
     try {
       const { data } = await this.client().post<T>(
         `/${path.replace(/^\/+/, "")}`,
         StripeClient.form(params).toString(),
         {
           headers: {
-            "Idempotency-Key":
-              idempotencyKey ?? crypto.randomUUID(),
+            "Idempotency-Key": idempotencyKey ?? crypto.randomUUID(),
           },
         },
       );
@@ -192,21 +245,31 @@ export class StripeClient {
     } catch (error) {
       const message = this.describe(error);
       this.logger.error(`Stripe POST /${path} failed: ${message}`);
-      throw new ServiceUnavailableException(`Stripe refused the request: ${message}`);
+      throw new ServiceUnavailableException(
+        `Stripe refused the request: ${message}`,
+      );
     }
   }
 
-  private async get<T>(path: string, params: Record<string, unknown>): Promise<T> {
+  private async get<T>(
+    path: string,
+    params: Record<string, unknown>,
+  ): Promise<T> {
     this.assertAllowed(path);
     try {
-      const { data } = await this.client().get<T>(`/${path.replace(/^\/+/, "")}`, {
-        params,
-      });
+      const { data } = await this.client().get<T>(
+        `/${path.replace(/^\/+/, "")}`,
+        {
+          params,
+        },
+      );
       return data;
     } catch (error) {
       const message = this.describe(error);
       this.logger.error(`Stripe GET /${path} failed: ${message}`);
-      throw new ServiceUnavailableException(`Stripe refused the request: ${message}`);
+      throw new ServiceUnavailableException(
+        `Stripe refused the request: ${message}`,
+      );
     }
   }
 
@@ -267,14 +330,20 @@ export class StripeClient {
   }
 
   retrieveSetupIntent(id: string): Promise<StripeSetupIntent> {
-    return this.get<StripeSetupIntent>(`setup_intents/${encodeURIComponent(id)}`, {});
+    return this.get<StripeSetupIntent>(
+      `setup_intents/${encodeURIComponent(id)}`,
+      {},
+    );
   }
 
   async listPaymentMethods(customerId: string): Promise<StripePaymentMethod[]> {
-    const page = await this.get<{ data: StripePaymentMethod[] }>("payment_methods", {
-      customer: customerId,
-      limit: 100,
-    });
+    const page = await this.get<{ data: StripePaymentMethod[] }>(
+      "payment_methods",
+      {
+        customer: customerId,
+        limit: 100,
+      },
+    );
     return Array.isArray(page?.data) ? page.data : [];
   }
 
@@ -304,6 +373,66 @@ export class StripeClient {
         invoice_settings: { default_payment_method: paymentMethodId },
       },
       `default:${customerId}:${paymentMethodId}`,
+    );
+  }
+
+  /**
+   * Take money, once, for message credits (ADR 0121 addendum; founder, Q2
+   * 2026-09-05: *"Wire it to the card on file, sealed"*).
+   *
+   * THE ONLY METHOD IN THIS PRODUCT THAT MOVES MONEY, AND IT IS NARROW ON
+   * PURPOSE. It takes a stated amount in minor units, a stated currency, one
+   * named instrument and one named customer, and it names the seal that
+   * authorised it in the intent's metadata — the same way `createSetupIntent`
+   * stamps its seal, and for the same reason: the metadata is what survives a
+   * round trip through the provider.
+   *
+   * `confirm: true` with `off_session: true` because there is no browser in the
+   * loop: the manager already approved the instrument through the SetupIntent
+   * path, and this charges the instrument they approved. A card that needs
+   * authentication fails here with `authentication_required` rather than
+   * silently succeeding, and the caller reports that sentence.
+   *
+   * IDEMPOTENT ON THE SEAL. `idempotencyKey` is derived from the seal id by the
+   * caller, so a retry after a crash between the charge and the write returns
+   * Stripe's ORIGINAL intent instead of making a second one. That is one of two
+   * enforcements: `uq_house_message_credits_purchase_seal` is the other, and it
+   * stops the second ROW even if the provider's key were bypassed.
+   *
+   * IT DOES NOT WRITE ANYTHING. The credit row is the caller's to write, after
+   * this resolves, and only then.
+   */
+  chargeCardOnFile(input: {
+    customerId: string;
+    paymentMethodId: string;
+    amountMinor: number;
+    currency: string;
+    restaurantId: string;
+    sealId: string;
+    idempotencyKey: string;
+    description: string;
+  }): Promise<StripePaymentIntent> {
+    return this.post<StripePaymentIntent>(
+      "payment_intents",
+      {
+        amount: input.amountMinor,
+        // Stripe wants the currency lower-case; the ledger holds it upper-case
+        // (ISO 4217, as `house_message_credits.currency` CHECKs). Converted in
+        // exactly one place so the two cannot drift.
+        currency: input.currency.toLowerCase(),
+        customer: input.customerId,
+        payment_method: input.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        description: input.description,
+        metadata: {
+          mudavym_restaurant_id: input.restaurantId,
+          mudavym_seal_id: input.sealId,
+          mudavym_purpose: "text_credit_purchase",
+        },
+      },
+      input.idempotencyKey,
+      CHARGE_INTENT,
     );
   }
 }

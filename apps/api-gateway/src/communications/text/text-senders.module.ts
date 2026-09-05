@@ -33,6 +33,7 @@ import { AuthModule } from "../../auth/auth.module";
 import { OrganizationsModule } from "../../organizations/organizations.module";
 import { CryptoModule } from "../../common/crypto/crypto.module";
 import { SealModule } from "../../common/seal/seal.module";
+import { BillingModule } from "../../billing/billing.module";
 import { TextSenderService } from "./text-sender.service";
 import { TextSendersController } from "./text-senders.controller";
 import { TextCreditsController } from "./credits/text-credits.controller";
@@ -51,6 +52,14 @@ import { TextTransportRegistry } from "./providers/text-transport.registry";
  * the house is charged, which ADR 0107 puts behind a redeemed seal. Imported
  * rather than reimplemented, for the same reason `BillingModule` imports it.
  *
+ * WHY `BillingModule`. `POST /communications/text-credits/purchase` charges the
+ * house's card on file (founder, 2026-09-05), and `BillingService` is the one
+ * implementation of "take money from this house" — it already holds the
+ * customer lookup, the instrument mirror and the Stripe client. A second
+ * charging path here would be a second answer to who is charged and on what.
+ * Not circular: `BillingModule` imports Database, Auth, Organizations, its own
+ * config module and Seal, and nothing in `communications`.
+ *
  * WHY `ConfigModule`. The PLATFORM path's provider credential is a deployment
  * secret read from the environment and never stored per tenant, so
  * `TextCredentialsService` needs `ConfigService`.
@@ -62,6 +71,7 @@ import { TextTransportRegistry } from "./providers/text-transport.registry";
     OrganizationsModule,
     CryptoModule,
     SealModule,
+    BillingModule,
     ConfigModule,
   ],
   controllers: [TextSendersController, TextCreditsController],

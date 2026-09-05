@@ -1,6 +1,15 @@
 # 0121 — The house's text sender
 
 - **Status:** **Accepted 2026-09-05 in FIVE parts the founder decided; the rest stays Proposed.**
+  **A sixth and seventh were accepted on 2026-09-05/06** and are written up in
+  the founder-answer sections at the foot of this document: (6) WhatsApp is
+  **bring-your-own billing** — a Tech Provider has no credit line, so each house
+  attaches its own card to its own WABA and Mudavym bills only the platform;
+  (7) the credit purchase **charges the card on file, sealed**, before the credit
+  is written, and the first message allowance is set on **one named house** by a
+  founder-run script rather than fleet-wide. Taking money required narrowing
+  `StripeClient`'s money-resource deny-list to exactly one door, which the guard's
+  own refusal text named as a decision rather than a refactor.
   Parts 4 and 5 were added later the same day and are written up in
   "Who pays for a message" below: (4) the **standing** — Mudavym registers directly
   with Meta as a **Tech Provider** and with Twilio as an **ISV**, rejecting Twilio
@@ -868,7 +877,10 @@ quarter's aggregate.
    pressure to allow a free-text number will be higher — and the consequence of
    allowing it is that the message leaves the book, the round count and the
    guardrails at once.
-7. **Does Mudavym stay a Tech Provider, or pursue Solution Partner status?**
+7. **ANSWERED 2026-09-05 (batch 53): *"Accept: WhatsApp is bring-your-own
+   billing."*** See the founder-answer section at the foot of this document for
+   the words and the rejected alternatives. The question as it stood:
+   **Does Mudavym stay a Tech Provider, or pursue Solution Partner status?**
    This is the sharpest consequence of the standing, and it was not visible when
    the standing was chosen. A **Tech Provider has no credit line and cannot
    invoice for API usage**: Meta bills each house directly for WhatsApp, and
@@ -883,7 +895,11 @@ quarter's aggregate.
    credit line with houses onboarded through the joint solution. Nothing in this
    build depends on the answer; every surface that would name a price is absent
    until it exists.
-8. **Who sets the first allowance, on which house, and when?** The number comes
+8. **ANSWERED 2026-09-05 (batch 54): *"One house first, deliberately, then
+   watch."*** Built as `house_message_allowances` plus
+   `scripts/set_house_message_allowance.py`; see the founder-answer section at
+   the foot of this document. The question as it stood:
+   **Who sets the first allowance, on which house, and when?** The number comes
    from a quarter of measured usage, and `plan_message_allowances` ships empty so
    that "no allowance stated" is true rather than convenient. The consequence is
    that the refusal sentence — the load-bearing one — is unreachable in
@@ -949,3 +965,108 @@ cover the SMS leg and the platform fee only. Rejected: pursue Solution Partner s
 Multi-Partner Solution with a Solution Partner (a middleman with a margin, which the
 direct standing was chosen to avoid). Revisit if template-initiated messages become
 common. Question 8 (charging an instrument on the credits purchase route) is open.
+
+## Founder answers, 2026-09-05 (batch 54) — the charge, and the first allowance
+
+**A note on numbering, because two schemes crossed.** The paragraph above answers this
+document's **question 7** (Tech Provider vs Solution Partner) and calls the charging
+question "question 8"; this document's own **question 8** is *who sets the first
+allowance*. Both are answered below, named by what they are about rather than by number,
+and neither renumbering is applied — moving a question after it has been cited is how a
+citation stops meaning anything.
+
+### Charging the card on file — ANSWERED
+
+> **"Wire it to the card on file, sealed."**
+
+`POST /communications/text-credits/purchase` charges the house's Stripe instrument for
+the stated amount and currency **before** the credit is written. A refused charge writes
+nothing and says why. **Rejected: leave it unwired** — a credit that records a debt
+nobody collects is a balance that drifts from reality, and every row written under it
+would have to be reconciled later.
+
+**This required removing a guard, and that is stated rather than done quietly.**
+`StripeClient` carried a deny-list of every money-moving Stripe resource, and its refusal
+read: *"Charging requires a price, and pricing is an open decision (OD-23). Removing this
+guard is a decision, not a refactor — see ADR 0110."* The founder has now taken that
+decision, so the precondition the guard itself named has been met.
+
+The guard was **narrowed, not deleted**. `payment_intents` is still on the deny-list;
+one door is cut through it by a module-private `unique symbol` that only
+`chargeCardOnFile` holds, so a second `payment_intents` caller still fails and
+`grep CHARGE_INTENT` is the complete census of the code that can take money. Deleting the
+array entry instead would have opened the resource to every future method silently, which
+is exactly what the deny-list exists to prevent. `charges`, `subscriptions`, `invoices`,
+`refunds`, `transfers`, `payouts` and `checkout/sessions` remain shut, and a test asserts
+that `payment_intents` is still refused through the ordinary path.
+
+**The order, and why it is not negotiable:** role check → seal redeemed → **charge** →
+ledger row. Redeeming after the charge would take money and then decide whether it was
+allowed, which is auditing a capability rather than gating it. Writing the credit first
+would create a balance whether or not the money moved.
+
+**Idempotent on the seal, twice over.** Stripe's idempotency key is
+`text-credits:<sealId>`, so a repeated charge returns the original intent; and
+`uq_house_message_credits_purchase_seal` makes a second credit row for one seal
+impossible at the database. The seal itself is single-use, so a replayed request is
+refused before it reaches either. A third enforcement is structural:
+`house_message_credits_purchase_is_paid` refuses a purchase with no `payment_ref`, so
+credits cannot appear without a payment behind them.
+
+**The one window this does not close, stated plainly.** If the charge succeeds and the
+ledger write then fails, the money moved and the credit did not. The response says
+exactly that — `charged: true, recorded: false`, with the PaymentIntent id in the
+sentence — so a person can reconcile. It does **not** report a success and it does not
+retry silently. Closing it properly needs a pre-recorded intent row written before the
+charge, which is a larger change than this decision asked for, and it is named here so it
+is a known debt rather than a surprise.
+
+**What is NOT wired.** Nothing charges a subscription, nothing charges for a message, and
+nothing charges automatically. The only thing that takes money is a manager buying
+credits, with a hold, for a figure they named.
+
+### The first allowance, on one house — ANSWERED
+
+> **"One house first, deliberately, then watch."**
+
+The founder sets an allowance on one restaurant he names, and the meter runs there before
+any plan-wide number.
+
+**`plan_message_allowances` cannot express that**, and the reason is measured rather than
+stylistic: it is keyed on `plan_code`, which maps to `restaurants.subscription_tier`, and
+that column carries `DEFAULT 'pilot'` on every house that never chose it. A number
+written there lands on the whole fleet at once — the opposite of what was decided. So
+`house_message_allowances` is a per-house row that **takes precedence over the plan row**,
+and `MeterReadout.allowanceScope` reports which of the two answered: *"200 because we set
+it for this house"* and *"200 because every house on its plan has it"* are different
+facts, and only one of them was decided.
+
+Two rules the readout keeps, and each is a test:
+
+- **A house row that could not be READ does not fall through to the plan row.** Answering
+  with the fleet's number when the house's own read failed is a wrong answer that looks
+  exactly like a right one.
+- **A house row carrying NULL is not the absence of a row.** The first means somebody
+  looked at this house and set nothing, with a reason on the row; the second means nobody
+  has looked. The sentence says which.
+
+**The door is a script, not a route:** `scripts/set_house_message_allowance.py`, run by
+the founder with `--apply --i-have-the-founders-word`, taking **one** `--restaurant` UUID.
+There is no `--all`, no glob and no plan argument; the statement it prints before running
+names exactly one house; and it will not write a number without a reason of at least
+twenty characters — the same floor
+`house_message_allowances_number_has_provenance` enforces at the database, so a
+placeholder fails even if it gets past the script. A route was the alternative and was
+refused: the act happens once or twice, deliberately, and a service-key route is a door
+that stays open afterwards for something nobody should be able to do casually. What that
+costs is that the write cannot be proven in the jest suite; it is answered by proving the
+**read** side there (the meter and the refusal, against a house-scoped allowance) and by
+the script's own `--self-test`, which checks eight refusals and six statement properties
+against fixtures with no database.
+
+**What this changes today: nothing, for anybody.** Both allowance tables are empty, so
+every house still reads *"no allowance stated"*, and an unstated allowance does not
+refuse. The refusal sentence becomes reachable the first time the founder runs that
+script, on the one house he names.
+
+| 2026-09-06 | Claude (charge + first allowance pass) | **Both answers built.** `StripeClient.chargeCardOnFile` — the first and only method in this product that moves money — behind a `unique symbol` that narrows the money-resource deny-list to exactly one door rather than deleting the entry; `BillingService.chargeForMessageCredits` with five outcomes kept apart (`provider_not_connected`, `no_customer`, `no_instrument`, `read_failed`, `refused_by_provider`), reading the register the house was SHOWN rather than asking the provider, and refusing a `requires_action` status that a 200 would otherwise pass off as a payment; the purchase route reordered to charge before it writes, reporting `charged` and `recorded` as separate fields because they can disagree. Migration `20260906080000`: `house_message_allowances` (per-house, PK on the restaurant, `set_via` with no default, a twenty-character provenance floor), `uq_house_message_credits_purchase_seal` and `house_message_credits_purchase_is_paid` (added `NOT VALID`, so purchases written before anything could charge stay readable rather than being declared wrong). `scripts/set_house_message_allowance.py` with `--self-test`. Every migration assertion executed against PGlite: **60 checks, 0 errors**, and the three new constraints proven by rows that had to be refused rather than by asserting the constraints exist. |

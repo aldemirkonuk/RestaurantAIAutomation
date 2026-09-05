@@ -43,6 +43,8 @@ import { DatabaseService } from "../../database/database.service";
 /** Columns read here, as module-level literals for check_read_columns_exist.py. */
 const ALLOWANCE_COLUMNS =
   "plan_code, monthly_allowance, stated_source, stated_at";
+const HOUSE_ALLOWANCE_COLUMNS =
+  "restaurant_id, monthly_allowance, stated_source, set_via, set_by, set_at";
 const CREDIT_COLUMNS =
   "id, entry_kind, amount_minor, currency, provider_cost_minor, platform_fee_minor, fee_basis, detail, recorded_at";
 const RESTAURANT_COLUMNS = "id, subscription_tier, timezone, currency";
@@ -81,6 +83,15 @@ export interface MeterReadout {
   allowance: number | null;
   /** Where the allowance number came from, when there is one. */
   allowanceSource: string | null;
+  /**
+   * WHICH row the allowance came from. `"house"` is this restaurant's own
+   * override, `"plan"` its plan's, `"none"` neither. Reported rather than left
+   * implicit because the founder's answer to question 8 is that ONE house gets
+   * a number first — so "this house has 200 because we set it for this house"
+   * and "this house has 200 because every house on its plan does" are different
+   * facts, and only one of them was decided.
+   */
+  allowanceScope: "house" | "plan" | "none";
   /** The sentence a page prints about the allowance. Always populated. */
   allowanceWords: string;
 
@@ -184,14 +195,14 @@ export class TextUsageService {
     const free = await this.countMeter(restaurantId, monthKey, false);
     if (free === null) failures.push("this month's uncounted messages");
 
-    const allowance = planCode
-      ? await this.allowanceFor(planCode)
-      : {
-          value: null as number | null,
-          source: null as string | null,
-          readable: true,
-        };
-    if (!allowance.readable) failures.push("the plan's allowance");
+    // THE HOUSE'S OWN ROW WINS, and the reason is the founder's answer to
+    // question 8: he sets a number on ONE named house and watches it before any
+    // plan-wide figure exists. A plan row would land on every house sharing a
+    // `subscription_tier`, and that column carries DEFAULT 'pilot' on houses
+    // that never chose it — so plan-first would make "one house, deliberately"
+    // impossible to express. Which row answered is itself reported.
+    const allowance = await this.allowanceForHouse(restaurantId, planCode);
+    if (!allowance.readable) failures.push("this house's allowance");
 
     const credits = await this.creditBalance(restaurantId);
     if (!credits.readable) failures.push("the credit ledger");
@@ -209,6 +220,7 @@ export class TextUsageService {
       planCode,
       allowance: allowance.value,
       allowanceSource: allowance.source,
+      allowanceScope: allowance.scope,
       allowanceWords: this.allowanceSentence(planCode, allowance),
       creditBalanceMinor: credits.readable ? credits.minor : null,
       creditCurrency: credits.currency,
@@ -311,10 +323,71 @@ export class TextUsageService {
     return count ?? 0;
   }
 
+  /**
+   * This house's allowance: its own row if it has one, else its plan's.
+   *
+   * `readable` is false when EITHER read failed, and the caller then shows the
+   * allowance as unknown rather than as absent. A house-row read that failed
+   * must NOT fall through to the plan row: answering with the fleet's number
+   * when the house's own could not be read is the shape where a wrong answer
+   * looks exactly like a right one.
+   */
+  private async allowanceForHouse(
+    restaurantId: string,
+    planCode: string | null,
+  ): Promise<{
+    value: number | null;
+    source: string | null;
+    readable: boolean;
+    scope: "house" | "plan" | "none";
+  }> {
+    const { data, error } = await this.sb
+      .from("house_message_allowances")
+      .select(HOUSE_ALLOWANCE_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error(
+        `house_message_allowances read failed: ${error.message}`,
+      );
+      return { value: null, source: null, readable: false, scope: "none" };
+    }
+
+    const row = (data as Record<string, unknown> | null) ?? null;
+    if (row) {
+      const raw = row.monthly_allowance;
+      return {
+        value: typeof raw === "number" ? raw : null,
+        source: (row.stated_source as string | null) ?? null,
+        readable: true,
+        scope: "house",
+      };
+    }
+
+    if (!planCode) {
+      return { value: null, source: null, readable: true, scope: "none" };
+    }
+    const plan = await this.allowanceFor(planCode);
+    return {
+      value: plan.value,
+      source: plan.source,
+      readable: plan.readable,
+      // "plan" only when a plan ROW actually answered. A missing plan row and a
+      // plan row carrying NULL are different facts: the first means nobody has
+      // said anything about this plan, the second means somebody looked and set
+      // nothing, and a scope of "plan" on the first would attribute a silence
+      // to a decision.
+      scope: plan.readable && plan.found ? "plan" : "none",
+    };
+  }
+
   private async allowanceFor(planCode: string): Promise<{
     value: number | null;
     source: string | null;
     readable: boolean;
+    /** Whether a row for this plan EXISTS, which is not the same as its number. */
+    found: boolean;
   }> {
     const { data, error } = await this.sb
       .from("plan_message_allowances")
@@ -326,15 +399,17 @@ export class TextUsageService {
       this.logger.error(
         `plan_message_allowances read failed: ${error.message}`,
       );
-      return { value: null, source: null, readable: false };
+      return { value: null, source: null, readable: false, found: false };
     }
     const row = (data as Record<string, unknown> | null) ?? null;
-    if (!row) return { value: null, source: null, readable: true };
+    if (!row)
+      return { value: null, source: null, readable: true, found: false };
     const raw = row.monthly_allowance;
     return {
       value: typeof raw === "number" ? raw : null,
       source: (row.stated_source as string | null) ?? null,
       readable: true,
+      found: true,
     };
   }
 
@@ -405,7 +480,14 @@ export class TextUsageService {
     amountMinor: number;
     currency: string;
     recordedBy: string;
-    paymentRef?: string | null;
+    /**
+     * The Stripe PaymentIntent id the money moved on. REQUIRED since the
+     * founder's answer to question 7 (2026-09-05): a purchase names the payment
+     * behind it or it is not written. `house_message_credits_purchase_is_paid`
+     * enforces the same rule one layer down, so a caller that got past the type
+     * meets a database refusal rather than writing free credits.
+     */
+    paymentRef: string;
   }): Promise<{ recorded: boolean; entryId: string | null; words: string }> {
     if (!Number.isInteger(params.amountMinor) || params.amountMinor <= 0) {
       return {
@@ -423,6 +505,17 @@ export class TextUsageService {
           "A credit purchase names its currency as a three-letter ISO 4217 code. An amount with no currency is not money, so nothing was recorded.",
       };
     }
+    if (!params.paymentRef || !params.paymentRef.trim()) {
+      // Reachable only from JavaScript that bypassed the type. Kept because the
+      // rule it enforces — credits never appear without a payment behind them —
+      // is the one thing on this table a house would dispute.
+      return {
+        recorded: false,
+        entryId: null,
+        words:
+          "A credit purchase names the payment it was charged on. Nothing was recorded, because credits with no payment behind them are a balance nobody can audit.",
+      };
+    }
 
     const { data, error } = await this.sb
       .from("house_message_credits")
@@ -437,7 +530,7 @@ export class TextUsageService {
         fee_basis: PLATFORM_FEE_BASIS_UNSET,
         meter_id: null,
         seal_id: params.sealId,
-        payment_ref: params.paymentRef ?? null,
+        payment_ref: params.paymentRef,
         detail: `Credits bought: ${params.amountMinor} ${params.currency} minor units. ${PLATFORM_FEE_BASIS_UNSET}`,
         recorded_by: params.recordedBy,
       })
@@ -458,6 +551,39 @@ export class TextUsageService {
       entryId: String((data as Record<string, unknown>).id),
       words:
         "Recorded. The balance below now includes it, and every message charged against it will appear on this meter with the provider's own cost beside it.",
+    };
+  }
+
+  /**
+   * Has this seal already bought credits?
+   *
+   * The recovery read for the one window this design cannot close inside a
+   * single request: the charge succeeds and the ledger write fails. The seal is
+   * spent by then, so the ordinary retry path cannot reach the charge again —
+   * but a caller that wants to finish the job needs to know whether the row
+   * landed. `null` means the READ failed and is not "no".
+   */
+  async purchaseForSeal(
+    restaurantId: string,
+    sealId: string,
+  ): Promise<{ found: boolean; entryId: string | null; readable: boolean }> {
+    const { data, error } = await this.sb
+      .from("house_message_credits")
+      .select("id, seal_id, entry_kind, restaurant_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("seal_id", sealId)
+      .eq("entry_kind", "purchase")
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error(`purchaseForSeal read failed: ${error.message}`);
+      return { found: false, entryId: null, readable: false };
+    }
+    const row = (data as Record<string, unknown> | null) ?? null;
+    return {
+      found: row !== null,
+      entryId: row ? String(row.id) : null,
+      readable: true,
     };
   }
 
@@ -495,16 +621,26 @@ export class TextUsageService {
       value: number | null;
       source: string | null;
       readable: boolean;
+      scope: "house" | "plan" | "none";
     },
   ): string {
     if (!allowance.readable) {
-      return "This plan's allowance could not be read, so how many messages are included is unknown. That is not the same as none being included.";
-    }
-    if (!planCode) {
-      return "This house has no plan recorded, so no allowance applies to it yet.";
+      return "This house's allowance could not be read, so how many messages are included is unknown. That is not the same as none being included.";
     }
     if (allowance.value === null) {
+      if (allowance.scope === "house") {
+        // A house row that EXISTS with a NULL number: somebody looked at this
+        // house deliberately and set none. A different fact from no row at all,
+        // and the sentence says which.
+        return `No allowance stated for this house. ${allowance.source ?? "No reason is recorded."} Nothing is counted against an allowance — this is not an allowance of zero.`;
+      }
+      if (!planCode) {
+        return "This house has no plan recorded and no allowance of its own, so no allowance applies to it yet.";
+      }
       return "No allowance stated. The number is set from measured usage after a quarter of it, so today nothing is counted against one — this is not an allowance of zero.";
+    }
+    if (allowance.scope === "house") {
+      return `${allowance.value} messages a month are included for THIS house specifically, not for its plan. ${allowance.source ?? "The source of that number is not recorded."}`;
     }
     return `${allowance.value} messages a month are included on this plan. ${allowance.source ?? "The source of that number is not recorded."}`;
   }

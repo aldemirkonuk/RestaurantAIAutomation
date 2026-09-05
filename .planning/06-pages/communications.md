@@ -59,8 +59,20 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   and a ledger holding two currencies is flagged rather than summed. Buying
   credits is `POST /communications/text-credits/purchase` and is **sealed** —
   bound to the amount and the currency, so a hold obtained for one figure cannot
-  be spent on another. **No payment is taken by that route**; charging an
-  instrument is `/billing`'s job and is deliberately not wired to it.
+  be spent on another. **Updated 2026-09-05 (founder: *"Wire it to the card on
+  file, sealed"*): that route now CHARGES** the house's Stripe instrument for the
+  stated amount before the credit is written. A refused charge writes nothing and
+  says why, and the response carries `charged` and `recorded` as **separate**
+  fields because they can disagree: a charge that succeeded with a write that
+  failed reports `charged: true, recorded: false` and names the PaymentIntent, so
+  a person can reconcile rather than reading a plain failure.
+- **The allowance a house sees may be its own, not its plan's** (2026-09-05,
+  founder: *"One house first, deliberately, then watch"*). `MeterReadout`
+  carries `allowanceScope`: `"house"`, `"plan"` or `"none"`. The page must say
+  which — *"200 because we set it for this house"* and *"200 because every house
+  on its plan has it"* are different facts and only one of them was decided. A
+  house row that could not be READ does not fall through to the plan's number,
+  and a house row carrying NULL is not the absence of a row.
 
 ### Redesign feature summary (behind the flag)
 

@@ -53,6 +53,14 @@ import type {
  * whose row says `handled = false` is PROCESSED rather than refused. Only a
  * completed event is idempotently ignored.
  */
+/**
+ * Every column the charge path reads, as a module-level `const` of literal
+ * names, for `scripts/check_read_columns_exist.py` (a class static reads to
+ * that guard as unreadable — see `seal-challenge.service.ts`).
+ */
+const PAYMENT_INSTRUMENT_COLUMNS =
+  "id, restaurant_id, kind, brand, last4, provider, provider_ref, is_default, synced_at";
+
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
@@ -285,7 +293,12 @@ export class BillingService {
 
     try {
       const outcome = await this.apply(eventType, event?.data?.object ?? {});
-      await this.settle(eventId, outcome.handled, outcome.reason, outcome.restaurantId);
+      await this.settle(
+        eventId,
+        outcome.handled,
+        outcome.reason,
+        outcome.restaurantId,
+      );
       return {
         received: true,
         handled: outcome.handled,
@@ -326,12 +339,13 @@ export class BillingService {
 
     if (!error) return "claimed";
 
-    const { data: existing, error: readError } = await this.databaseService.supabase
-      .from("billing_webhook_events")
-      .select("handled")
-      .eq("provider", "stripe")
-      .eq("event_id", eventId)
-      .maybeSingle();
+    const { data: existing, error: readError } =
+      await this.databaseService.supabase
+        .from("billing_webhook_events")
+        .select("handled")
+        .eq("provider", "stripe")
+        .eq("event_id", eventId)
+        .maybeSingle();
 
     if (readError || !existing) {
       // The insert failed for a reason that is not "already there". Fail loudly
@@ -381,7 +395,11 @@ export class BillingService {
   private async apply(
     eventType: string,
     object: Record<string, unknown>,
-  ): Promise<{ handled: boolean; reason: string; restaurantId: string | null }> {
+  ): Promise<{
+    handled: boolean;
+    reason: string;
+    restaurantId: string | null;
+  }> {
     if (!BillingService.HANDLED_EVENTS.includes(eventType)) {
       return {
         handled: false,
@@ -465,6 +483,169 @@ export class BillingService {
       handled: true,
       reason: `recorded ${pm.id} (${pm.type}) on restaurant ${restaurantId}`,
       restaurantId,
+    };
+  }
+  /* ── 4. taking money, in exactly one place ──────────────────────────── */
+
+  /**
+   * Charge this house's card on file for message credits.
+   *
+   * THE FOUNDER'S DECISION THIS IMPLEMENTS (Q2, 2026-09-05, ADR 0121 addendum):
+   * *"Wire it to the card on file, sealed."* The purchase route redeems a seal,
+   * calls this, and writes the credit row ONLY if this succeeds. A refused
+   * charge writes nothing and says why. Rejected: leaving it unwired.
+   *
+   * IT DOES NOT REDEEM THE SEAL AND IT DOES NOT WRITE THE LEDGER. This service
+   * does not know who is calling — the same reason `createSetupIntent` takes a
+   * `sealId` it did not mint. Authority is the controller's; the ledger is the
+   * caller's; taking the money is this method's, and nothing else's.
+   *
+   * FIVE OUTCOMES, NOT TWO. "This house has no card" and "we could not read
+   * whether it has one" are different facts, and a caller that could not tell
+   * them apart would tell a manager to add a card during a database outage.
+   */
+  async chargeForMessageCredits(input: {
+    restaurantId: string;
+    amountMinor: number;
+    currency: string;
+    sealId: string;
+  }): Promise<
+    | {
+        charged: true;
+        paymentIntentId: string;
+        status: string | null;
+        words: string;
+      }
+    | {
+        charged: false;
+        reason:
+          | "provider_not_connected"
+          | "no_customer"
+          | "no_instrument"
+          | "read_failed"
+          | "refused_by_provider";
+        words: string;
+      }
+  > {
+    if (!this.config.connected()) {
+      return {
+        charged: false,
+        reason: "provider_not_connected",
+        words: `No payment provider is connected in this deployment, so nothing was charged and no credits were added: ${
+          this.config.state().reason ?? "STRIPE_SECRET_KEY is not set."
+        }`,
+      };
+    }
+
+    const customerId = await this.customers.find(input.restaurantId);
+    if (!customerId) {
+      return {
+        charged: false,
+        reason: "no_customer",
+        words:
+          "This house has no billing account with the payment provider yet, so nothing was charged and no credits were added. Adding a card on file creates one.",
+      };
+    }
+
+    const instrument = await this.instrumentToCharge(input.restaurantId);
+    if (instrument.state === "read_failed") {
+      return {
+        charged: false,
+        reason: "read_failed",
+        words: `This house's payment methods could not be read, so nothing was charged and no credits were added: ${instrument.reason}. That is not the same as this house having no card.`,
+      };
+    }
+    if (!instrument.providerRef) {
+      return {
+        charged: false,
+        reason: "no_instrument",
+        words:
+          "This house has no card on file, so nothing was charged and no credits were added. Add one on the profile's payment register first.",
+      };
+    }
+
+    try {
+      const intent = await this.stripe.chargeCardOnFile({
+        customerId,
+        paymentMethodId: instrument.providerRef,
+        amountMinor: input.amountMinor,
+        currency: input.currency,
+        restaurantId: input.restaurantId,
+        sealId: input.sealId,
+        // IDEMPOTENT ON THE SEAL. A retry after a crash between this call and
+        // the ledger write returns Stripe's ORIGINAL intent rather than making
+        // a second one, and `uq_house_message_credits_purchase_seal` stops the
+        // second row even if this key were bypassed.
+        idempotencyKey: `text-credits:${input.sealId}`,
+        description: "Mudavym message credits",
+      });
+
+      const status = intent.status ?? null;
+      // `succeeded` is the only status that means the money moved. Stripe can
+      // answer 200 with `requires_action` (an authentication the operator is
+      // not present for) or `requires_payment_method` (the card declined at
+      // confirmation), and reading the HTTP code alone would file either as a
+      // payment.
+      if (status !== "succeeded") {
+        return {
+          charged: false,
+          reason: "refused_by_provider",
+          words: `The payment did not complete (${status ?? "no status returned"}), so no credits were added.${
+            status === "requires_action"
+              ? " The card asked for authentication, which cannot be given without the cardholder present; a different instrument, or the same one re-confirmed on the register, is the way through."
+              : ""
+          } Nothing is queued and nothing will settle later.`,
+        };
+      }
+
+      return {
+        charged: true,
+        paymentIntentId: intent.id,
+        status,
+        words: `Charged ${input.amountMinor} ${input.currency} minor units to the card on file.`,
+      };
+    } catch (error) {
+      const said = (error as Error)?.message ?? "the provider gave no reason";
+      this.logger.error(`message-credit charge failed: ${said}`);
+      return {
+        charged: false,
+        reason: "refused_by_provider",
+        words: `The payment was refused, so no credits were added: ${said}. Nothing is queued and nothing will settle later.`,
+      };
+    }
+  }
+
+  /**
+   * The instrument this house is charged on: its default, or its only one.
+   *
+   * Reads the MIRROR rather than asking the provider, because the register is
+   * what the house was shown and charging something the page never displayed is
+   * how a dispute starts. `read_failed` is a first-class outcome: supabase-js
+   * resolves `{ data, error }` and never throws, so a caller ignoring `error`
+   * would turn an outage into "this house has no card".
+   */
+  private async instrumentToCharge(
+    restaurantId: string,
+  ): Promise<
+    | { state: "read"; providerRef: string | null }
+    | { state: "read_failed"; providerRef: null; reason: string }
+  > {
+    const { data, error } = await this.databaseService.supabase
+      .from("payment_methods")
+      .select(PAYMENT_INSTRUMENT_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .eq("kind", "card")
+      .order("is_default", { ascending: false })
+      .order("synced_at", { ascending: false });
+
+    if (error) {
+      return { state: "read_failed", providerRef: null, reason: error.message };
+    }
+    const rows = (data ?? []) as Record<string, unknown>[];
+    const first = rows[0];
+    return {
+      state: "read",
+      providerRef: first ? String(first.provider_ref) : null,
     };
   }
 }

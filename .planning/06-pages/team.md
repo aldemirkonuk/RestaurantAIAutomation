@@ -647,10 +647,21 @@ sales-ingest based, which is the permitted kind. Keep them apart.
 0a. **The crew text's money, answered 2026-09-05** — OD-23's message-billing half.
    Each plan includes a monthly allowance set from measured usage after a quarter;
    past it the house buys credits or connects its own provider account.
-   `plan_message_allowances` ships **empty**, so `/team`'s composer must print
+   Both allowance tables ship **empty**, so `/team`'s composer must print
    *"no allowance stated"* and must never render it as 0 — and an unstated
    allowance does not refuse. When it does refuse, the sentence says nothing was
    queued and names both ways to carry on.
+
+0b. **Updated 2026-09-05/06 — the money is wired and the first allowance is one
+   house's.** Buying credits now charges the house's card on file before the
+   credit is written (founder: *"Wire it to the card on file, sealed"*); a
+   refused charge writes nothing. The first allowance is set on **one named
+   house** by `scripts/set_house_message_allowance.py --apply
+   --i-have-the-founders-word`, never fleet-wide (founder: *"One house first,
+   deliberately, then watch"*), and the meter reports whether the number it used
+   came from the house or from its plan. Nothing on `/team` changes until that
+   script is run: the refusal sentence stays unreachable while every allowance is
+   unstated, which is the state today.
 
 1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:279-286`)
    — turns the performance panel from a data-entry chore into a by-product. Blocked
