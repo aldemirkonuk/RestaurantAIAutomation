@@ -1,4 +1,4 @@
--- SQL tests for 20260905120000_document_correction_reason_and_kind.sql.
+-- SQL tests for 20260905231500_document_correction_reason_and_kind.sql.
 --
 -- HOW TO RUN. Plain psql assertions against a throwaway Postgres built from
 -- supabase/migrations in filename order (recipe: pgvector/pgvector:pg17 +
@@ -6,7 +6,7 @@
 -- `extensions`, pg_trgm/btree_gist/vector/postgis in `public`, an `auth.users`
 -- stub, the PostGIS revokes). Then:
 --
---     psql -v ON_ERROR_STOP=1 -f supabase/tests/20260905120000_document_correction_reason_and_kind_test.sql
+--     psql -v ON_ERROR_STOP=1 -f supabase/tests/20260905231500_document_correction_reason_and_kind_test.sql
 --
 -- Every assertion RAISEs on failure. The whole file runs in one transaction that
 -- is ROLLED BACK: it writes fixtures and leaves nothing behind. NEVER run it
