@@ -285,16 +285,23 @@ const USDA_SHELL_EGG: SeriesEntry = {
   },
   withheld: {
     reason:
-      "www.ams.usda.gov/robots.txt returns HTTP 403, so this host's crawl rules cannot be read and nothing may be fetched from it. A person may bring the report; nothing here goes and gets it.",
+      "www.ams.usda.gov/robots.txt returns HTTP 403, so this host's crawl rules cannot be read and NO FETCHER MAY EVER BE POINTED AT IT. The report was read ONCE, by a person, in a browser, on 2026-09-05 (the founder's batch-57 rule: a one-off human read, logged) - and a one-off read is not a cadence. This series is DAILY and is refreshed only when a person brings the file again.",
     measuredOn: "2026-09-05",
   },
   silent: null,
-  // The founder's answer to Q1, 2026-09-05: a one-off human read, logged. The
-  // parser is written (`parse-usda-shell-egg.ts`) against the format the plan
-  // recorded and against `__fixtures__/USDA-SHELL-EGG-CONTRACT.md`, and it has
-  // never seen real bytes. This flag is what stops any surface reporting this
-  // series as working before the file lands.
-  awaitingHumanDownload: true,
+  // FLIPPED 2026-09-05: the file landed. A person read the report's HTML data
+  // view on My Market News through the app's Browser pane - not the PDF, which
+  // answers a browser with a download dialog the pane cannot complete - and all
+  // 23 rows are recorded as
+  // `__fixtures__/usda-ams-2843-2026-09-04.report-detail-weighted.tsv`
+  // (9,115 bytes, sha256 0371c7c7...23d49c), with the parser and its tests
+  // re-pointed at those bytes.
+  //
+  // WHAT THAT DID NOT CHANGE: `admission` stays `upload_only`. The one-off read
+  // was a person, once; the series publishes DAILY; and the host's crawl rules
+  // are still unreadable. Flipping this flag says "the parser has seen real
+  // bytes", never "this source is now on a schedule".
+  awaitingHumanDownload: false,
 };
 
 /**

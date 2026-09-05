@@ -118,7 +118,7 @@ export function parseTuikSdmx(
 ): SeriesParseRun {
   const observations: SeriesObservation[] = [];
   const refusals: ObservationRefusal[] = [];
-  const lines = csv.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  const lines = csv.replace(/^\ufeff/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
 
   if (lines.length === 0) {
     return {

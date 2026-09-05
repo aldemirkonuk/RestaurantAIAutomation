@@ -92,6 +92,10 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   `inbound-responder.service.ts:1287`) and pending one-tap actions with **no
   author** (`createSystemAction` inserts no `user_id`,
   `one-tap-actions.service.ts:366-382`). Dashed edge, "nothing was sent", a human
+- The **shell-egg index** no longer says it is waiting on a download: a person
+  brought the report on 2026-09-05 and the register holds that day. It still
+  says the source is not fetched, because a one-off read is not a cadence
+  (2026-09-05)
   control beside it — hold-to-approve to record, plain *Undo* to cancel.
 - **Custom one-tap actions now persist** — `POST /one-tap-actions` through the
   guarded gateway module, creator stamped from the token. Closes §13.2 and the
@@ -2321,3 +2325,82 @@ an index and 0.22 a monthly percentage is a dimension called `DEGISIM` that the
 file never explains. A parser that trusted the file would have put both on this
 box and both would have looked like data. The axis is declared on the series and
 any other value is refused by name.
+
+### 13.38 The shell-egg file landed, and it corrected two things this box believed (2026-09-05)
+
+§13.34 recorded the shell-egg series as registered, parsed against a contract,
+and **waiting on a person's own download**. The download happened. What came
+back was not what the contract described, and both surprises would have shown on
+this box.
+
+**It is the HTML data view, not the PDF.** The PDF URL answers a browser with a
+download dialog the pane cannot complete, so the same report was read through My
+Market News — *Report Detail Weighted*, 2026-09-04, Final, all 23 rows, 9,115
+bytes, sha256 `0371c7c7…23d49c`, recorded whole and hashed by a test.
+
+**The facts are columns, not face text.** `Report Date`, `Price Unit` and
+`Freight` are per-row columns; the parser written before the bytes existed
+looked for all three in prose above the table and would have refused the real
+file three times over.
+
+**Three rows are graded loose, white and Large — and only one is the series.**
+Cage-Free California *Delivered* reads **50.46**, Cage-Free National FOB reads
+**28.67**, and the series is the **Caged National FOB** row at **35.28**.
+Selecting on "white Large" alone would have put a 50.46 on this box under the
+series' name: a different market, a 43 percent error, and entirely
+ordinary-looking. The selection is now a six-part tuple and an ambiguous match
+is refused by name.
+
+**Six of the 23 rows carry no price at all.** `Number("")` is 0, so an empty cell
+read as a value would have drawn **0.00 cents a dozen** here. It is refused with
+the words *"that market did not report on this date - it is not a price of
+zero"*.
+
+**What the line says now.** The *"waiting on a person's own download"* sentence
+is gone, because it would be false. The *"Not fetched"* sentence stays and has
+grown a clause: the host's crawl rules are still unreadable, **a one-off read is
+not a cadence**, and this daily series is refreshed only when a person brings the
+file again. Nothing about it is armed for alerting.
+
+### 13.36 The alert now has a price on it, and it decided the cadence (2026-09-06)
+
+**The founder, 2026-09-05 batch 59, answering `commodity-signals-plan.md` §12 Q5:**
+*"Twice a year, and the house types its carrying cost."* The evidence is that plan's
+new §9f; the model is `apps/api-gateway/src/commodity/cadence-value.ts` and its 32
+tests.
+
+**What was measured, and why the two halves are one answer.** Over 440 recorded FAO
+months, walk-forward — the threshold at each observation derived only from the
+observations before it — a fire is followed by a higher index three months later
+**66.7 %** of the time against a **54.4 %** benchmark; pooled over seven recorded
+histories that is 923 fires and a lift of **+3.88 pp**. So the rule carries information.
+But buying three months of cover costs six unit-months of carry, and the break-even
+carrying cost is **0.96 %/month** on the FAO headline, **1.66 %** on Dairy and **0.27 %**
+on Meat. Between 0.5 % and 1 % the recommendation flips from "worth having on six
+series" to "worth having on one" — so the cadence was never separable from what holding
+stock costs the house, and nothing in this product had ever asked.
+
+**What changed on this page's rule.**
+
+* `carryPerPeriod` is `number | null` and `carryFraction` is **null, never zero**. Zero
+  would price holding three months of stock as free, which is the single assumption that
+  makes every fire look like a win.
+* Two new named refusals join the vocabulary: `no_carrying_cost_typed` (fixable by a
+  person in a minute, on the settings page) and `below_spend_floor` (a fact about the
+  line). Neither is a silence.
+* A **tenth condition the plan's nine do not have**: item size. At 8 units of attention a
+  fire, the smallest monthly spend that repays being told is 168-450 on the friendliest
+  parameters and runs into the thousands on realistic ones. Every one of the nine
+  conditions asks about the SERIES; none of them can see that a line is too small to be
+  worth a sentence.
+
+**Still dark.** `COMMODITY_ALERT_DARK` is off, `CommodityModule` still imports no
+`NotificationsModule`, and no sentence from this file has reached a person. The three
+money states are exercised in `cadence-value.spec.ts` against the recorded fixture, not
+on a screen.
+
+**Open, and the founder's** (carried in ADR 0117's class-E notes): the identical rule on
+this repository's own committed 40-month FAO fixture has a **negative lift at every
+cadence** and a **0 % hit rate at once a year**. Thirty-six years say the rule beats a
+coin; three and a half say it does not. Nothing further that could be measured settles
+which of the two is the future.

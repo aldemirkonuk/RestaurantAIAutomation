@@ -632,6 +632,89 @@ item and a quantity the manager sets. Nothing is sent, nothing is approved, noth
 without `HoldToApprove`. A commodity signal is the weakest evidence in the building and it
 may never be the thing that moves money on its own.
 
+### 9f. Is it profitable? Measured, and the answer decided the cadence
+
+The founder asked the quant question directly on 2026-09-05: *"deploy (opus) to be quant
+agent, and understand how can it be profitable? maybe once in a week, 2 weeks...?"* The pass
+is `cadence-value.ts` and its 32 tests; the full working is `p4-scratch/p4bf-quant-cadence.md`.
+**Zero outbound requests** — every series was already recorded by phase 0 and its sha256
+re-verified before the run (`p4bf-fetch-log.md`).
+
+**What was measured.** Seven recorded monthly histories: the FAO Food Price Index and its
+five sub-indices (440 rows each, 1990-01 to 2026-08) and ONS `D7BU` (463 rows, 1988-01 to
+2026-07). **No egg series**: the human download the fixture contract asks for has still not
+landed, so every number here is an index number and none of them is money.
+
+**The cadence that was asked for does not exist.** These series publish monthly.
+
+| asked for | verdict | why |
+|---|---|---|
+| weekly (52/yr) | **refused** `finer_than_the_series_publishes` | the series speaks 12 times a year |
+| fortnightly (26/yr) | **refused** same | same |
+| monthly (12/yr) | **refused** `no_threshold` on FAO | at 12 fires on 12 chances the quantile lands on the smallest move the series ever made, which is a fall |
+
+On ONS the monthly cadence does derive — a 0.25 % threshold, 15 fires in 20 evaluable months,
+**lift −0.23 pp**. Not a refusal; worse than one.
+
+**The rule carries information, out of sample.** Threshold derived at each observation from
+the observations strictly before it, K = 12, three months of cover:
+
+| | fires / evaluable | hit rate | mean 3-month rise after a fire | benchmark (any month) | lift |
+|---|---|---|---|---|---|
+| FAO headline, quarterly | 135 / 401 | **66.7 %** | 4.81 % | 1.40 % | **+3.41 pp** |
+| FAO headline, twice a year | 76 / 401 | 65.8 % | 5.77 % | 1.40 % | +4.37 pp |
+| pooled, all seven, quarterly | 923 / 2,768 | 64.5 % | 5.65 % | 1.77 % | **+3.88 pp** |
+| FAO Meat, once a year | 54 / 401 | 53.7 % | 0.16 % | 1.06 % | **−0.90 pp** |
+
+**So §11's fear is half wrong** — it predicts something — **and half right**: on Meat the lift
+is negative at the cadence a house would most likely pick, which is why arming stays
+per-series.
+
+**And the money dies on two numbers nobody had measured.** Buying `H` periods of cover costs
+`c · H(H+1)/2` — triangular, because the units bought for the third month sit for three — and
+the pass-through multiplies the BENEFIT and never the COST. Break-even carrying cost, φ = 1:
+
+| series | H = 1 | H = 3 | H = 6 |
+|---|---|---|---|
+| FAO Food Price Index | 1.29 % | **0.96 %** | 0.84 % |
+| FAO Dairy | 1.71 % | **1.66 %** | 1.57 % |
+| FAO Meat | 0.53 % | **0.27 %** | 0.10 % |
+| ONS D7BU | 0.58 % | **0.60 %** | 0.62 % |
+
+At the pass-through USDA ERS measured for anything processed (16-53 %, §5b), **every fire
+loses money at any carrying cost above a quarter of a percent a month.** This is §5e made
+arithmetical: the alert is for goods whose published series IS the price the house pays.
+
+**Which cadence.** Net per year, FAO headline, H = 3, 1,000 a month of spend, 8 an
+interruption — every figure a stated parameter:
+
+| φ | carry /month | quarterly | twice a year | once a year |
+|---|---|---|---|---|
+| 1.0 | 0.25 % | **+101.3** | +78.9 | +63.9 |
+| 1.0 | 0.50 % | +40.7 | **+44.8** | +39.7 |
+| 1.0 | 0.75 % | −19.9 | +10.7 | **+15.4** |
+| 1.0 | 1.00 % | −80.4 | −23.4 | **−8.8** |
+| 0.5 | 0.50 % | −56.4 | −20.8 | **−10.9** |
+
+Quarterly wins one corner and collapses fastest; once a year is the most robust and leaves
+value unclaimed; **twice a year is never the worst and is within a small margin of the best
+almost everywhere.** That is the founder's answer, and the table is why.
+
+**A tenth condition the nine do not have: item size.** At 8 an interruption, the smallest
+monthly spend that repays being told is 168-450 on the friendliest parameters and runs into
+the thousands on realistic ones. The nine conditions in §9a all ask about the SERIES; none can
+see that a line is too small to be worth a sentence. `valueBacktest` names it
+`below_spend_floor` and the alert prints the floor as the reason.
+
+**The strongest thing against all of it, measured on this repository's own fixture.** Run the
+identical rule on the committed 40-month window (2023-05 to 2026-08) and the sign flips at
+every cadence: quarterly **−0.79 pp**, twice a year **−2.74 pp**, once a year **−4.42 pp** with
+a **0 % hit rate**. Thirty-six years say it beats a coin; three and a half say it does not.
+The 36-year table is the evidence and the 40-month window is the world the house lives in, and
+nothing further that could be measured settles which is the future.
+
+---
+
 ---
 
 ## 10. Phasing
@@ -1110,10 +1193,28 @@ through below rather than removed; the other five are open.**
    registry's standing rule is that unstated terms are recorded as unstated and never as
    permissive, but it has never had to decide whether "unstated" blocks *display*. AHDB is the
    settled `prohibited` case; this is the unsettled one.
-5. **How often do you want to hear about a series?** §9b turns this from a percentage into a
-   budget, and the budget is yours: about four times a year, twice, or once. On the retail egg
-   series those are thresholds of 17.6, 35.7 and 57.2 percent respectively. The number is
-   derived; the frequency is a decision.
+5. ~~**How often do you want to hear about a series?**~~
+   **ANSWERED AND CLOSED by the founder, 2026-09-05, batch 59.** The question was which of
+   three budgets — four times a year, twice, or once — the register should propose. The
+   founder's words: **"Twice a year, and the house types its carrying cost."** Both halves
+   are now code. `DEFAULT_BUDGET = 2` in `commodity-calibration.ts`, marked on the proposal
+   the admin reads before arming, with the rejected budgets carrying their reasons beside
+   them (`BUDGET_RATIONALE`) rather than disappearing; and
+   `restaurants.carrying_cost_percent_per_month`
+   (`20260906140000_a_carrying_cost_is_typed_by_a_person.sql`), nullable, no default,
+   author and moment enforced as one fact, with its own settings register at
+   `/settings?tab=carrying-cost`.
+   **The evidence is §9f below, and it is what makes both halves one answer**: the alert
+   does carry information, and its whole gain is spent by a carrying cost of about one
+   percent a month — so the frequency was never separable from the cost of acting on it.
+   **The cadence that was asked for and does not exist is named rather than left absent**:
+   weekly and fortnightly are refused by `backtestCadence` as
+   `finer_than_the_series_publishes`, because FAO and ONS publish monthly and a rule cannot
+   speak more often than its series does (`CADENCE_NOT_ON_OFFER`).
+   **One thing this answer opens rather than closes**: the six questions the quant pass
+   raised are carried into ADR 0117's class-E notes, and the first two — will a house type
+   a carrying cost at all, and do we act on 36 years or on 40 months — are still the
+   founder's.
 6. **Is a rate a series?** HMRC duty, the GİB ÖTV schedule and the Illinois gallonage tax all
    fit `value_kind = 'rate'` cleanly, and they are exact, dated, unit-stamped and openly
    licensed — better provenance than most prices here. Putting them in this table would give
@@ -1212,3 +1313,70 @@ environment (Railway) before this series arms there.** Nothing built here sets
 it, and nothing can. Until it is, `GET /commodity-index/me` on production says,
 in words, *"Read over a credential this deployment does not hold: TUIK_SDMX_API_KEY
 is not set here"* — which is the honest sentence and not a silence.
+
+#### Phase 0, continued — the shell-egg file landed, and it corrected two of our own expectations (2026-09-05)
+
+**The founder's Q1 answer executed.** *A one-off human read, logged* — the
+parent read USDA AMS report 2843 through the app's Browser pane on 2026-09-05,
+and the parser and its tests are now against those bytes. **No fetcher, script
+or job touched the host, then or now.**
+
+**CORRECTION to this plan's §1 and §10: it is not the PDF.**
+`www.ams.usda.gov/mnreports/ams_2843.pdf` — the URL §1 records and §10 names as
+the Michigan-path target — answers a browser with a **file-download dialog the
+pane cannot complete**. The same report's **HTML data view** on My Market News
+was read instead (`mymarketnews.ams.usda.gov/public_data?slug_id=2843`, section
+*Report Detail Weighted*, Final, 2026-09-04, all 23 rows). 9,115 bytes, sha256
+`0371c7c7…23d49c`, recorded whole.
+
+**CORRECTION to the fixture contract, and the second one would have been a live
+bug.**
+
+1. **The facts are COLUMNS, not face text.** §1 quotes the PDF's
+   *"Caged 30-Dozen Cases / Cents Per Dozen / FOB"* line, and the parser written
+   before the bytes existed looked for exactly that in prose. In this view
+   `Report Date` is a column on every row, `Price Unit` reads `Cents Per Dozen`
+   on every row, and `Freight` reads `FOB` **or `Delivered` per row**. That
+   parser would have refused the real file three times over.
+
+2. **THREE rows are graded loose, white and Large.** §1 records the series as
+   *"Graded loose, white, Large: weighted average 35.28"* — true, and not
+   sufficient to find it:
+
+   | Environment | Origin | Freight | Wtd Avg |
+   |---|---|---|---|
+   | Cage-Free | California | Delivered | **50.46** |
+   | Cage-Free | National | FOB | **28.67** |
+   | **Caged** | **National** | **FOB** | **35.28** |
+
+   The contract's own `ambiguous_row` refusal would have fired on the real file
+   — which is the refusal working, not failing. **Selecting on "white Large"
+   alone would have taken 50.46 for 35.28: a 43 percent error, on a different
+   market, that looks entirely ordinary on a screen.**
+
+**So the parser was REPLACED rather than extended**, and the choice is stated
+because it is a choice: the PDF-text shape is gone. Keeping it beside the
+tabular one would mean shipping a second code path that has never seen a byte
+and can never be proved — the exact shape this register refuses everywhere else.
+If a PDF is ever brought, that gets a recorded fixture first and a branch
+second, in that order.
+
+**The selection is now a six-part tuple** — egg type, environment, colour,
+class, origin, freight — declared on the series and matched exactly; more than
+one match is `ambiguous_row`, none is `row_not_found`, and neither is resolved
+by guessing. Columns are resolved BY NAME (a test reverses the header and the
+parser still reads 35.28), the unit is checked per row, and **six of the 23 rows
+carry an empty `Wtd Avg Price`** — refused as *"that market did not report on
+this date - it is not a price of zero"*, because `Number("")` is 0.
+
+**What the landing did NOT change, and the register says so.**
+`awaitingHumanDownload` flipped to `false`, which means *the parser has seen
+real bytes*. `admission` stays **`upload_only`**, the withheld reason now
+carries the words *a one-off read is not a cadence*, and the series is still
+**not fetchable**: `www.ams.usda.gov/robots.txt` still returns 403, the report
+publishes **daily**, and this register holds one day of it. It also remains
+**unarmed for alerting** for the reason §9b gives — every threshold measurement
+behind this design was made on monthly series.
+
+**Verified.** `npx jest src/commodity` — **260 passed, 15 suites**, of which 19
+are this parser's, all against the recorded bytes with the sha256 asserted.

@@ -67,17 +67,64 @@ never have entered `price_index_postings`, whose `price_unit` is `VARCHAR(24)`.
 
 ---
 
-## The source with no fixture, and why
+## `usda-ams-2843-2026-09-04.report-detail-weighted.tsv`
 
-**USDA AMS Daily National Shell Egg Index** is registered (`admission = 'upload_only'`,
-`armed = false`) and **has no fixture and no parser here.**
-`https://www.ams.usda.gov/robots.txt` returned HTTP **403** on 2026-09-04 and again on
-2026-09-05, and this repo's own rule — recorded in `price-sources.md` for K&L Wine
-Merchants, Majestic and Tesco — is that a host whose crawl rules cannot be read may not
-be fetched. **This task did not contact that host at all.** Building a parser would have
-required bytes it may not go and get, so the series carries the 403 as its
-`withheld_reason` and waits for a person to bring the file, exactly as the Michigan
-price book does.
+**The file landed on 2026-09-05, brought by a person, and it is not the PDF.**
+
+| | |
+|---|---|
+| **Who** | Claude Fable 5.1, the parent session, through the app's Browser pane — on the founder's batch-57 rule, *a one-off human read, logged*. **No fetcher, script or job touched the host.** |
+| **When** | 2026-09-05T22:40:20Z |
+| **sha256** (whole file) | `0371c7c7e617683adb37d6ab22e0c6245e6784055c0657181d83d43df423d49c` |
+| **Bytes** | **9,115** — header plus **23 data rows**, every row verbatim as the page rendered it |
+| Source URL | `https://mymarketnews.ams.usda.gov/public_data?slug_id=2843` |
+| Reduction | Page chrome (filters, pagination, footer links) dropped; the table header and all 23 rows kept verbatim, tab-separated as the page text renders them |
+
+**IT IS THE HTML DATA VIEW, NOT THE PDF.**
+`https://www.ams.usda.gov/mnreports/ams_2843.pdf` answers a browser with a file-download
+dialog the pane cannot complete, so the same report was read through My Market News
+instead: report **Daily National Shell Egg Index Report (5-day rolling average)** (slug
+2843, `AMS_2843`), section **Report Detail Weighted**, Report Begin Date = Report End Date
+= **2026-09-04**, published 09/04/2026 08:03:53, **Final**. The page stated *Total Rows
+returned in this view: 23 - Total Rows available: 23*, and all 23 are in the file.
+
+### Two things the contract did not foresee, and the second was a live bug
+
+**1. The facts arrive as COLUMNS, not as the PDF's face text.** `Report Date` is a column
+on every row; `Price Unit` reads `Cents Per Dozen` on every row; `Freight` reads `FOB` or
+`Delivered` **per row**. The contract asked the parser to find all three in prose above the
+table, and against this file that parser would have refused three times over.
+
+**2. THREE rows are graded loose, white and Large** — so the contract's own `ambiguous_row`
+refusal would have fired on the real file, exactly as it was written to:
+
+| Environment | Origin | Freight | Wtd Avg Price |
+|---|---|---|---|
+| Cage-Free | California | Delivered | **50.46** |
+| Cage-Free | National | FOB | **28.67** |
+| **Caged** | **National** | **FOB** | **35.28** — the series the plan recorded |
+
+Selecting on "white Large" alone would take whichever came first, and a cage-free
+California *delivered* price is a different market: **50.46 against 35.28, a 43 percent
+error that looks entirely ordinary on a screen.** So the selection is a **six-part tuple** —
+egg type, environment, colour, class, origin, freight — declared on the series and matched
+exactly, with more-than-one refused as `ambiguous_row` and none as `row_not_found`.
+
+The chosen row's neighbours confirm the plan's own note: `Wtd Avg Price Previous` **36.14**
+(35.28 minus 36.14 = **-0.86**), `Wtd Avg Price Last Year` **215.53**, `Volume` 33,234.
+Those two are read and **deliberately not written as observations**: they are the issuer
+restating other dates, and writing them would post one number twice under two periods.
+
+**Six of the 23 rows carry an EMPTY `Wtd Avg Price`.** `Number("")` is 0, so an empty cell
+read as a value would post a price of zero cents a dozen. It is refused as `no_value` with
+the words *"that market did not report on this date - it is not a price of zero"*.
+
+### What the landing did NOT change
+
+`admission` stays **`upload_only`** and `www.ams.usda.gov/robots.txt` still returns **403**.
+A one-off human read is not a cadence: the series publishes **daily** and this register
+holds one day of it. `awaitingHumanDownload` flipped to `false` — which says *the parser has
+seen real bytes*, never *this source is now on a schedule*.
 
 ---
 

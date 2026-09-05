@@ -330,8 +330,12 @@ describe("the fetch service, driven with the RECORDED fixtures and no network", 
     // reader being pointed at a host whose robots.txt returns 403.
     const egg = SERIES["usda_ams.shell_egg_index.national"];
     expect(parserFor(egg)).not.toBeNull();
+    // The file landed on 2026-09-05, so the parser has seen real bytes — and
+    // the series is STILL upload_only. A one-off human read is not a cadence,
+    // and the host's robots.txt still returns 403.
+    expect(egg.awaitingHumanDownload).toBe(false);
     expect(egg.admission).toBe("upload_only");
-    expect(egg.awaitingHumanDownload).toBe(true);
+    expect(egg.withheld?.reason).toMatch(/one-off/i);
     expect(fetchableSeries().map((s) => s.seriesKey)).not.toContain(egg.seriesKey);
   });
 
