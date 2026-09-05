@@ -16,6 +16,7 @@ import { VendorComparisonService } from "./vendor-comparison.service";
 import { VendorPageExtractorService } from "./vendor-page-extractor.service";
 import { VendorSiteSweepService } from "./vendor-site-sweep.service";
 import { OutlierRejudgeService } from "./outlier-rejudge.service";
+import { ShopReferenceSweepService } from "./shop-reference-sweep.service";
 import { ManualObservationDto } from "./dto/manual-observation.dto";
 
 const UUID_RE =
@@ -40,6 +41,7 @@ export class VendorIntelController {
     private readonly extractor: VendorPageExtractorService,
     private readonly siteSweep: VendorSiteSweepService,
     private readonly rejudge: OutlierRejudgeService,
+    private readonly shopSweep: ShopReferenceSweepService,
   ) {}
 
   @Get("compare")
@@ -299,6 +301,56 @@ export class VendorIntelController {
     const summary = await this.rejudge.rejudge({
       dryRun: body?.dryRun ?? false,
       windowDays: body?.windowDays,
+    });
+    return { success: true, ran: true, ...summary };
+  }
+
+  /**
+   * State of the merchant-shop sweep — the class-D retail reference line.
+   *
+   * Its own route, not a field on `site-sweep/status`, because it is a
+   * different register with a different scope: the vendor sweep is per house
+   * and writes `vendor_price_observations`; this one is per JURISDICTION and
+   * writes `price_index_postings`, which no house owns. Folding a public
+   * register's state into a per-house answer would make it look like a fact
+   * about this house's vendors, which is exactly the confusion ADR 0117 draws
+   * the class line to prevent.
+   *
+   * Every registered shop is returned, including the ones deliberately not
+   * fetched, each with the reason and the day it was measured.
+   */
+  @Get("shop-sweep/status")
+  @Roles("owner")
+  @ApiOperation({
+    summary:
+      "Per-shop state of the merchant-shop (class D) sweep: armed or not, last fetch, postings written, refusals by reason, and why a shop is silent",
+  })
+  shopSweepStatus() {
+    return { success: true, ...this.shopSweep.status() };
+  }
+
+  /**
+   * Run the merchant-shop sweep now, over the pages named in the body.
+   *
+   * Gated on `PRICE_REFERENCE_SHOP_SWEEP_ENABLED` exactly like the vendor
+   * sweep's hand-run: a manual trigger that bypasses the switch is not a
+   * switch. It reads the pages it is given and never enumerates a catalogue —
+   * see the service's header for why.
+   */
+  @Post("shop-sweep/run")
+  @Roles("owner")
+  @ApiOperation({
+    summary: "Run the merchant-shop sweep now over the named pages",
+  })
+  async runShopSweep(
+    @Body() body: { pages?: Record<string, string[]>; dryRun?: boolean },
+  ) {
+    if (!this.shopSweep.armed()) {
+      return { success: false, ran: false, ...this.shopSweep.status() };
+    }
+    const summary = await this.shopSweep.sweep({
+      pages: body?.pages ?? {},
+      dryRun: body?.dryRun ?? false,
     });
     return { success: true, ran: true, ...summary };
   }

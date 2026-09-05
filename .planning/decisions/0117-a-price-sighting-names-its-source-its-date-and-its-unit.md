@@ -551,6 +551,125 @@ and not an implementation detail.
    verdict table instead of a column — is a larger change and was not made
    unasked.
 
+**Numbering, stated because it is easy to get wrong.** The list above ends at
+Q7. **Q8–Q12 are the TR/UK market research's**, and they live in
+`.planning/07-reference/price-sources.md` §"Founder-only questions raised by
+this research" rather than here, so there is one place to answer them. The size
+reader's questions therefore start at **Q13**. (An earlier draft of this section
+numbered them Q8–Q11; that draft was lost in the 2026-09-05 scratchpad wipe and
+the numbers had been taken in the meantime.)
+
+13. **Three of the sweep's 23 recorded vendor websites are not the vendor's any
+    more, and one of them sells clothes.** Measured 2026-09-04:
+    `www.banfivintners.com` redirects to `dtoto5000.com`, an online-gambling
+    site; `www.henrywine.com` resolves to `vinology.com`, a wine school;
+    `www.sevilen.com`, filed as the Turkish winery Sevilen Şarapçılık, is a
+    women's clothing retailer whose product links carry `beden=s` ("size: S") —
+    and it is the ONLY one of the twenty reachable vendor sites with prices on
+    it. `www.charmer.com` returns 114 bytes and no title. Do those four
+    `vendor_catalogue` rows get their websites cleared (so the sweep says "no
+    website" rather than fetching a casino in the house's name), or corrected,
+    or does a periodic identity check get built? **Nothing was changed:
+    `vendor_catalogue` is production data and this work wrote nothing.**
+
+    **ANSWERED by the founder, 2026-09-05: clear the three, with a note. Q13 is
+    CLOSED for those three and OPEN for the fourth.** The instrument is
+    `scripts/clean_vendor_catalogue_websites.py`, which **runs dry by default
+    and refuses `--apply` unless `--i-have-the-founders-word` is passed with
+    it** (proven: `--apply` alone exits 2 and writes nothing). It prints each
+    row's whole tuple, the evidence, the writer, every foreign key that
+    references the row, and the exact `UPDATE`. Nothing has been written; the
+    dry run of 2026-09-05 read 4 of 4 rows and proposed 3 statements.
+
+    **Re-measured 2026-09-05** with the sweep's own agent, and all three
+    reproduce a day later: `www.banfivintners.com` → 2 redirects →
+    `https://dtoto5000.com/` (200, 31,988 bytes, title *"TOTO5000: Bandar
+    SBOBET Piala Dunia dan Platform Toto Online Resmi No.1"*);
+    `www.henrywine.com` → `https://www.vinology.com/` (200, 388,104 bytes,
+    *"Philly's Wine School | Sommelier Courses and Wine Classes"*);
+    `www.sevilen.com` → `https://sevilen.com/` (200, 570,105 bytes, *"Kadın
+    Giyiminde Tarz ve Kalitenin Adresi - Sevilen"*).
+
+    **The change is `website = NULL` plus a dated sentence appended to `notes`,
+    and it is an UPDATE, not a DELETE.** `vendor_catalogue` has no `metadata`
+    column and no `website_note` column — measured against the baseline
+    (`…baseline_from_production.sql:6230-6247`) and every later `alter table
+    vendor_catalogue add column` — so `notes text` is where the sentence goes.
+    Seven constraints reference `vendor_catalogue(id)` and three of them
+    CASCADE (`vendor_service_territories`, `vendor_locations`,
+    `vendor_portfolio_facets`); `vendor_price_observations.vendor_catalogue_id`
+    points at the table with no constraint at all. **An UPDATE of a non-key
+    column fires none of them**, which is the reason the column is cleared
+    rather than the row deleted, and the script prints the whole list so that
+    reason is visible rather than asserted.
+
+    **The writer is NOT gone, and it is named.** Both seeds were found by grep:
+    `supabase/migrations/seed/27_vendor_catalogue_seed.sql` (Banfi
+    `a1000001-…-016`, Henry `…-020`, Charmer `…-005`, ending `ON CONFLICT (id)
+    DO NOTHING;`) and `supabase/migrations/20260807001752_turkey_distributors_seed.sql`
+    (Sevilen `a1000002-…-005`, ending `on conflict (id) do nothing;`). Because
+    both key on the row's fixed id and do nothing on conflict, **a cleared
+    website is not refilled by a re-run** — for as long as the row keeps its id.
+    It WOULD be refilled if the row were ever deleted and re-seeded, which is
+    the second reason this clears a column instead of deleting a row.
+
+    **The fourth stays open.** `www.charmer.com` answers 200 with 114 bytes:
+    `<script>window.onload=function(){window.location.href="/lander"}</script>`
+    — a parked domain, i.e. also no longer the vendor's. The founder named
+    three, so the script prints charmer under a separate "REPORTED ONLY"
+    heading and **will not take it**. Widening a cleaning run past what was
+    asked for is how a script becomes something nobody decided.
+
+    **One thing found while measuring, which nobody asked about.** All three of
+    the US rows carry `verified_at = 2026-08-10T17:21:2x`, set two months after
+    the seed. Whatever ran that verification did not check the identity of the
+    website it was verifying — a casino's homepage passed it. That is a
+    separate defect from this one and is filed as Q22 below.
+
+14. **The sweep is pointed at the wrong population, and it currently reaches
+    nothing at all.** The scheduled sweep reads `providers` per restaurant;
+    `GET /vendor-intel/site-sweep/status` on the demo house returned an empty
+    vendor list, because that house records no provider website. The 23 in
+    `vendor_catalogue` are US three-tier wholesalers, importers and Turkish
+    producers — **zero of the twenty reachable ones publish a price at all**, so
+    there is nothing for a size to be attached to. Every page the size reader was
+    built and measured against is a retail merchant shop. Is the sweep meant to
+    read merchant shops (which needs a source of shop URLs, and a decision about
+    whether a retail shelf price may sit in the same register as a wholesale
+    quote), or is the vendor-site sweep simply not the right instrument?
+
+    **ANSWERED by the founder, 2026-09-05: *"Point it at merchant shops, as
+    their own class."* Q14 is CLOSED.** Built the same day as a SECOND
+    instrument rather than a change to the first — see the section *"The sweep
+    that reads merchant shops"* below for the register it writes to, the shop
+    registry's shape and the measurement. The vendor-site sweep is unchanged
+    and still reads `providers`: a house's own vendors and a public retail shop
+    are different classes, and one job doing both would be one flag arming two
+    kinds of outbound request.
+
+15. **A pack printed on the page overrides the model's default of 1, and does
+    not override a pack the model actually read.** `validateItem` assigns
+    `packSize = 1` whenever the model reported nothing, so a 1 carries no
+    information and a page that says "6 x 75cl" is read instead — otherwise a
+    six-pack's price enters the ladder as a bottle's, six times too high. But
+    when the model reports 6 and the page's size statement says 12, this build
+    keeps the model's 6 and records both on the row (`raw.modelPackSize`,
+    `raw.packFromPageStatement`) rather than refusing. That is a judgement, not
+    a measurement: no page in the sample exhibited it. Both halves are pinned by
+    tests as of 2026-09-05 — the second half was untested until an audit caught
+    it. Should a pack disagreement be a refusal too?
+
+16. **The size fixtures are 282 kB of reduced third-party markup in the repo,
+    and CodeQL is now flagging them.** Six merchant pages, mechanically cut down
+    from 400–800 kB each to their structured data, their labelled fields and
+    every window around a size or a price, with the originals' sha256 recorded
+    (`apps/api-gateway/src/vendor-intel/__fixtures__/PROVENANCE.md`). Marketing
+    prose was elided, so this is a fixture rather than a copy of the merchants'
+    pages — but it is still their markup, in our repository, and CodeQL raises
+    warnings inside it on every run (`corrections-queue.md` proposes a
+    `paths-ignore`). Keep it with the ignore (it is the only regression corpus
+    the reader has), trim it, or move it out of the repo?
+
 ## The index register, built (2026-09-04)
 
 This is the concrete shape of steps 2 and 3. Classes D and E were always going to be
@@ -618,10 +737,1002 @@ returns the labelled index line(s) for one state, owner/manager-guarded like ven
 each line carrying its class, issuer and date so the caller draws it as its OWN line and
 never beside a vendor quote.
 
+## How a size is read (2026-09-04; this section rewritten 2026-09-05 after the scratchpad wipe)
+
+The founder asked whether the sweep may take a bottle size stated **anywhere**
+on the page rather than only beside the price, and said: *"research do the best
+one if it was live SOTA"*. This section is the answer, the evidence it rests
+on, and what was built (`fb47d99c`). Code:
+`apps/api-gateway/src/vendor-intel/bottle-size.ts`, `bottle-size.spec.ts`,
+`bottle-size-fixtures.spec.ts`, `__fixtures__/PROVENANCE.md`.
+
+Stated because it changes what can be re-checked: this section was written on
+2026-09-04, lost uncommitted in the 2026-09-05 scratchpad wipe, and rewritten
+from the committed tree. Every number below was re-measured on 2026-09-05 with
+the command named, EXCEPT the fetch-time facts about the 23 vendors and the six
+merchant pages, which were measured on 2026-09-04 against recorded files the
+wipe destroyed. Those are marked, and the fixtures' sha256 in
+`__fixtures__/PROVENANCE.md` remains the tie back to re-fetchable sources. The
+two things that CAN be re-read from the live gateway — the 23-vendor count and
+the sweep's reach — were re-measured on 2026-09-05 and are marked as such.
+
+### What the live state of the art does
+
+Two commercial extractors publish their own answer, both fetched 2026-09-04:
+
+- **Zyte** ships the instruction it gives its model, in order of preference
+  (`zyte_common_items/items/product.py`,
+  <https://raw.githubusercontent.com/zytedata/zyte-common-items/main/zyte_common_items/items/product.py>):
+  the size of the *default selected variant*, then the *most specific*, then
+  the *most clarifying*, then the *most obvious one — introduced by a label
+  like "Size", "Dimensions"* — and the product name **"as a very last
+  resort … and only if you cannot find any other size information in the
+  page."** Its `additionalProperties` hint refuses cherry-picked pairs: a
+  property counts only inside a block that is "mostly key/value
+  specifications". `size` is returned as the raw displayed string; Zyte does
+  not normalise it to a number and a unit.
+- **Diffbot**'s Product API returns `size` with its own published caveat,
+  *"Highly experimental and often unreliable"*
+  (<https://diffbot-php-client-docs.readthedocs.io/en/latest/api-product.html>).
+  Its `specs` field is name/value pairs, nothing more.
+- **Firecrawl**'s `extract` documents no guarantee that an extracted value
+  appears on the page, no null-handling contract and no hallucination guard,
+  and states results "might differ across runs"
+  (<https://docs.firecrawl.dev/features/extract>). Apify publishes no
+  cross-site normalised product schema at all; its output is per-actor.
+
+So the state of the art is **not a field**. It is a ranked set of identified
+places, the raw string kept beside the number, and the title last. Nobody
+normalises, and the one vendor that returns a size at all says out loud that it
+is unreliable. What none of them has is a refusal, because a missing size in a
+dataset is a blank cell; here it is a false best price on a ladder a person
+acts on.
+
+### Where a size is machine-readable at all
+
+Fetched and read on 2026-09-04:
+
+| carrier | what it holds | verdict |
+|---|---|---|
+| schema.org `Product.additionalProperty` / `hasMeasurement` / `size` | a `PropertyValue` or `QuantitativeValue`; `size` may be `Text`, `QuantitativeValue`, `DefinedTerm` or `SizeSpecification` (<https://schema.org/Product>) | **read**, and the only place a merchant states the volume as data |
+| `UnitPriceSpecification.referenceQuantity` + `unitCode` | *the reference* a unit price is quoted per (<https://schema.org/UnitPriceSpecification>: "the reference quantity for which a certain price applies") | **not a bottle size.** It says "per 75 cl", not "this bottle is 75 cl". Used only in the derivation below |
+| UN/CEFACT Rec. 20 codes | `LTR` litre, `MLT` millilitre, `CLT` centilitre (published code list, fetched 2026-09-04) | **read**, case-sensitively — `MLT` is a code, `ml` is a word |
+| Shopify `unit_price_measurement` | `{measured_type: "volume", quantity_value: 750, quantity_unit: "ml", reference_value: 1, reference_unit: "L"}` (<https://shopify.dev/docs/api/liquid/objects/unit_price_measurement>) | **read** — the cleanest declaration that exists. Measured **null on 4 of 4** Shopify shops read that day, three of them UK |
+| Shopify variant `option`/`title` | free text: `"1x75cl"`, `"1 / 1L / Red"`, with the option NAMES on the product (`["Bottle","Size","Color"]`) | **read** — in practice the commonest machine-adjacent carrier |
+| Shopify `grams` / `weight` | **not the liquid.** Measured: Tanners `75000` on a 75cl champagne, Slurp `2000` on a 75cl rosé, Hedonism `1500`, Wine Chateau `2722` on a 1 L cabernet | **never read** |
+| Google Merchant `unit_pricing_measure` | "750ml", "9l"; units ml/cl/l/cbm/floz/pt/qt/gal; mandatory in the EU, EFTA, UK, AU, NZ for goods sold by volume (<https://support.google.com/merchants/answer/6324455>) | a **feed** attribute; it is not emitted into page markup, so there is nothing to read |
+| GS1 `gs1:netContent` | net content as a `gs1:QuantitativeValue` (value + `unitCode`) | **read** if present. `gs1.org` refused this environment's bot user-agent even for `robots.txt`; recorded **unverified**, never as unavailable |
+| Open Graph `product:*` | `og:price:amount` / `og:price:currency`; **no** unit-pricing tag (<https://developers.facebook.com/docs/marketing-api/catalog/reference/>) | nothing to read |
+| WooCommerce `WC_Structured_Data::generate_product_data()` | measured against the source (`plugins/woocommerce/includes/class-wc-structured-data.php`, trunk, fetched 2026-09-04): emits `@type/@id/name/url/description/image/sku/gtin/offers` and, for variable products, a `UnitPriceSpecification` **carrying only a price**. It sets **no** `size`, `weight`, `additionalProperty`, `referenceQuantity` or `unitCode` | **a WooCommerce shop's JSON-LD never carries the bottle size**, by construction |
+
+### The law, and what it is actually worth here
+
+A unit price beside the selling price is compulsory for prepacked drinks in the
+EU (Directive 98/6/EC art. 3; "unit price" defined in art. 2 as the price "for
+one kilogramme, one litre, one metre, one square metre or one cubic metre") and
+in the UK (Price Marking Order 2004 art. 5, with **Schedule 1 setting the
+quantity for "Wines, sparkling wine, liqueur wine, fortified wine" at 75 cl**
+where the default in art. 1(2) would be a litre). Türkiye's Fiyat Etiketi
+Yönetmeliği requires the same *birim fiyat* on a retail label; the ministry's
+own PDF could not be fetched from this environment (TLS chain), so it is
+recorded here as **stated in secondary sources and not verified** — the same
+refusal by `mevzuat.gov.tr` that the TR/UK research records under Q8.
+
+That makes a unit price a legal statement about *this* price, which is why it
+sits third. But measured against the pages we could actually read, it is worth
+much less than it sounds: **not one of the six product pages fetched printed a
+selling-price unit price**, and the only per-quantity prices on any of them
+were Hedonism's duty-rate table — "£2.87 per 75cl bottle", "£3.10 per 75cl
+bottle", "£11.47 per 70cl bottle" — three strings that look exactly like a
+unit-price label and are not one. So the derivation is implemented, is
+restricted to a label within 400 characters of this row's own price, and its
+result is accepted only when it lands within **1%** of a quantity a bottle is
+permitted to be.
+
+1% and not 2%, because the closest pair on the list is 700 ml and 720 ml, 2.86%
+apart: a 2% window around 730 reaches 720 and would snap a derivation that
+means neither. `deriveFromUnitPrice`'s docstring said 2% until 2026-09-05 while
+the code had already been tightened to 1%; both now say 1% and a test pins it
+(a 730 ml derivation is refused, and the same arithmetic onto 720 still passes).
+
+Those permitted quantities are not a taste list: Directive 2007/45/EC's Annex
+prescribes them, and its wine rows are quoted verbatim in the code — still wine
+100·187·250·375·500·750·1000·1500 ml, yellow wine 620, sparkling
+125·200·375·750·1500, spirits 100·200·350·500·700·1000·1500·1750·2000. The
+`KNOWN_FORMATS` list already in `vendor-page-extraction.ts` had no source at
+all; this one does.
+
+### The precedence that was built, and why in that order
+
+The ordering principle is **not** "most machine-readable". It is *how tightly
+the statement is bound to the price being recorded*, because the only thing a
+sighting must never get wrong is which unit its number is in.
+
+1. `structured_offer` — a volume inside the same schema.org node as the price,
+   or Shopify's declared `unit_price_measurement`.
+2. `variant_option` — the option label of the variant the price belongs to.
+   Zyte puts the selected variant first for the same reason.
+3. `unit_price_label` — the compulsory per-litre/per-75cl figure, beside this
+   price, derived and snapped as above.
+4. `spec_field` — a labelled key/value in the page's own specification block.
+5. `title` — the product's own name, last, exactly as Zyte instructs.
+
+Nothing else is a candidate. **"Anywhere on the page" was measured and
+rejected**, and the measurement is in §"What the sweep's 23 vendors actually
+publish" below: three of the sweep's own recorded vendor websites are no longer
+the vendor's, and one of them — filed as the Turkish winery Sevilen — is a
+women's clothing shop whose product links carry `beden=s`. A reader that took a
+size stated anywhere would read a dress size under a wine vendor's name.
+
+Two further rules, both from measurement rather than from taste:
+
+- **An identity gate on structured data.** `bbr.com/products-20188000200-2018-champagne-dom-perignon-brut`
+  returned HTTP 200 with `og:title` "2018 Champagne Dom Pérignon, Brut" and
+  exactly one JSON-LD block, describing **Caol Ila 25-Year-Old whisky** at £225
+  with SKU `1000-01-00700-00-8086983`. Structured data is the
+  highest-precedence source and the lowest-trust identity: it is machine
+  written, so it can be machine wrong, and nothing on the page says so. A node
+  is read only when its SKU or its name matches the row being priced;
+  otherwise the row is refused and the note says which product the markup named.
+- **A conflict is a refusal, not a choice.** Two statements that disagree
+  produce `volume_conflict`, a new `ScrapeRefusalReason` counted separately
+  from `no_bottle_volume`. Folding them together would make "this merchant
+  contradicts itself" render as "this merchant does not print sizes", which is
+  the standing absence-reported-as-health fault in a new place.
+
+The winning statement, the raw string, the locator and **every** candidate go
+into `raw.volume` on the row, so a sighting says not only that it is 750 ml but
+where on the vendor's page that 750 came from and what the page actually wrote.
+Named exactly as the code names it, because `fb47d99c`'s commit message called
+it `volume_source` and there is no such field: it is **`volume.source`** on the
+input and `raw.volume.source` on the row, beside `raw.volume.statement` (the
+page's own words), `raw.volume.locator` (where they were read),
+`raw.volume.candidates[]`, `raw.volume.nonStandardFormat` and
+`raw.volume.notes[]`. `unit_volume_ml` remains the column; `raw.volume` is its
+provenance, and nothing was added to the table.
+
+### Why this reads the markup and not the model's text
+
+`htmlToText` (`common/html/html-to-text.ts`) drops the *contents* of `<script>`,
+deliberately and correctly. schema.org JSON-LD lives inside
+`<script type="application/ld+json">`. So before `fb47d99c` the extraction model
+had never once been shown a vendor's structured data, and **every `Bottle
+Volume` a merchant publishes was being discarded before the model saw it.** That
+is not a tuning problem; it is why the highest-quality carrier scored zero.
+
+### What this does not do, stated rather than left to be discovered
+
+- **The identity gate can refuse a good page.** It matches the model's product
+  name against the markup's, by SKU or by name containment or by a 0.6
+  token-overlap. A merchant whose JSON-LD names the wine differently from its
+  own visible heading will fail that test and the row will be refused
+  `no_bottle_volume` with the note saying which name the markup used. That is
+  the safe direction — the alternative is the Dom Pérignon case, where a
+  confident whisky is filed under a champagne — but it IS a false-refusal path
+  and the note is what makes it findable. No sample page exercised it.
+- **`unit_price_label` has no coverage from a real page.** Not one of the six
+  pages fetched printed a selling-price unit price, so that level is proven only
+  by unit tests built from the law (Price Marking Order 2004 sch. 1's 75 cl) and
+  by the Hedonism duty table, which it correctly refuses. It is implemented
+  because it is compulsory in two of the tenants' jurisdictions and it will
+  appear the moment the sweep is pointed at an EU or UK grocer; it is not
+  implemented because it was measured working.
+- **A pack disagreement is recorded, not refused.** A pack the size statement
+  itself names ("6 x 75cl") corrects the model's default of 1 — `validateItem`
+  assigns 1 whenever the model reported nothing, so a 1 carries no information —
+  but it never overrules a pack the model actually read; both go on the row as
+  `raw.modelPackSize` and `raw.packFromPageStatement`. Both halves are pinned by
+  tests as of 2026-09-05; the second half was untested until then. See Q15.
+- **`gs1:netContent` is read but unverified.** `gs1.org` refused this
+  environment's robots.txt to an identifying bot user-agent, so the property is
+  implemented from its published definition in the GS1 Web Vocabulary
+  (`ref.gs1.org/voc/netContent`) rather than from a fetched page. Nothing in the
+  sample emitted it.
+- **Nothing here reads a size out of free text.** A volume that appears in prose,
+  in a tag list, in a description or in a neighbouring product's card is not a
+  candidate. That is the direct answer to the founder's question and the
+  measurement below is why.
+
+### The measurement, before and after, on six real pages
+
+Six merchant product pages fetched 2026-09-04 (robots first, 10 s per host, full
+provenance and sha256 in `__fixtures__/PROVENANCE.md`). Re-run on 2026-09-05 on
+the committed tree; BEFORE loads verbatim `git show fb47d99c^:` copies of
+`html-to-text.ts` and `vendor-site-sighting.ts` — the tree as it stood
+immediately before the reader landed — from a scratch directory. No file in the
+worktree was reverted.
+
+```
+BEFORE — the tree at fb47d99c^ (git show copies), the model's text only:
+  bbr-cremant-de-limoux-2026-09-04.fixture.html  REFUSED no_bottle_volume — the model's text contains no size at all (the bottle is 750ml)
+  bbr-dom-perignon-2026-09-04.fixture.html       REFUSED no_bottle_volume — the model's text contains no size at all (the bottle is unstated on this page)
+  slurp-pellehaut-rose-2026-09-04.fixture.html   WRITES    750ml — the only size in the model's text (the bottle is 750ml)
+  tanners-andre-clouet-2026-09-04.fixture.html   WRITES  one of [700,750]ml — whichever the model picked; the row records neither which nor why (the bottle is 750ml)
+  hedonism-ruinart-2026-09-04.fixture.html       WRITES  one of [700,750]ml — whichever the model picked; the row records neither which nor why (the bottle is 750ml)
+  winechateau-caymus-1l-2026-09-04.fixture.html  WRITES   1000ml — the only size in the model's text (the bottle is 1000ml)
+  admitted 4/6   refused 2/6   of the admitted, 2 were admitted from a text offering more than one size
+
+AFTER — bottle-size.ts reading the markup:
+  bbr-cremant-de-limoux-2026-09-04.fixture.html  READ      750ml  structured_offer  "75 cl" @ ld+json[0].hasVariant[0].additionalProperty[Bottle Volume]
+  bbr-dom-perignon-2026-09-04.fixture.html       REFUSED        no_bottle_volume
+  slurp-pellehaut-rose-2026-09-04.fixture.html   READ      750ml  variant_option    "1x75cl" @ variants[].title = "1x75cl"
+  tanners-andre-clouet-2026-09-04.fixture.html   READ      750ml  spec_field        "Bottle size cl: 75" @ <span title="Bottle size cl: 75">
+  hedonism-ruinart-2026-09-04.fixture.html       READ      750ml  spec_field        "75 cl" @ .product__unit-size
+  winechateau-caymus-1l-2026-09-04.fixture.html  READ     1000ml  variant_option    "1L" @ variant option "Size" = "1L"
+  admitted 5/6   refused 1/6   wrong 0
+```
+
+Read plainly: the pre-reader tree admits four and refuses two, and **two of the
+four it admits are chosen out of a text that offers two different sizes**, with
+nothing on the row saying which was chosen or why. The reader admits five,
+refuses the one page that genuinely says nothing about this row, and every
+admitted row names its source and carries the page's own words. The BBR crémant
+line is the whole argument in miniature: the merchant publishes
+`"Bottle Volume": "75 cl"` as data, and the pre-reader tree cannot see it
+because it is inside a `<script>`.
+
+**One check in `__fixtures__/PROVENANCE.md` is no longer re-runnable.** That file
+records that the reader gave the same answer on each fixture as on the whole
+page it was cut from (6/6), and that the largest original — 800 kB — read in
+13 ms. Both were measured on 2026-09-04; the originals lived in the session
+scratchpad and were destroyed in the 2026-09-05 wipe. The fixtures themselves,
+their sha256 and their source URLs survive, so the check can be re-made by
+re-fetching, and until someone does it stands as a record rather than a
+verification.
+
+### What the sweep's 23 vendors actually publish
+
+All 23 were fetched on 2026-09-04, robots.txt first, our own UA, a 10-second
+floor per host (Palm Bay's robots asked for 2 s; nobody asked for more). The 23
+are the active `vendor_catalogue` rows with a website: **18 US + 5 TR**,
+counted through `GET /api/v1/vendor-catalogue/search?includeRegistry=true` for
+each country. **The count was re-measured on 2026-09-05** against the live
+gateway (`GET /api/v1/vendor-catalogue/search?limit=50&includeRegistry=true&country=US`
+then `…&country=TR`, read-only with a dev-bypass owner session): **US total 18,
+all 18 with a website; TR total 5, all 5 with a website — 23.** The rest of this
+paragraph is the 2026-09-04 fetch and was NOT re-run: those logs were lost in the
+wipe, and re-crawling 23 third-party sites is a fresh crawl, not a re-check.
+
+- **20 of 23 answered HTTP 200.** Empire Merchants answered **400** to both
+  robots.txt and the page; `www.terlatowines.com` presents a certificate that
+  is not valid for that hostname; `www.kayrasaraplari.com` does not resolve.
+- **0 of the 20 emit a schema.org `Product`.** The JSON-LD they do publish is
+  `Organization`, `WebSite`, `WebPage`, `BreadcrumbList`, `ImageObject`,
+  `LocalBusiness`, `Store` and one `Event` with an `Offer` for a tasting class.
+- **0 emit** microdata `Product`, `og:type=product`, `UnitPriceSpecification`,
+  `referenceQuantity`, `additionalProperty`, `hasMeasurement`, `gs1:`,
+  `unit_pricing_measure`, or a per-litre label.
+- **1 of the 20 shows any currency-formatted price on its landing page** — and
+  it is the clothing shop below.
+- Platforms: WordPress 11 (WooCommerce 4 of those), Drupal 1, HubSpot 1,
+  7 unrecognised.
+- **Three of the 23 recorded websites no longer belong to the vendor.**
+  `www.banfivintners.com` redirects to `dtoto5000.com`, an Indonesian
+  online-gambling site. `www.henrywine.com` resolves to `vinology.com`, a
+  Philadelphia wine school. `www.sevilen.com`, filed as the Turkish winery
+  Sevilen Şarapçılık, is a women's clothing retailer — the only one of the 20
+  with prices on it, and its product links carry `beden=s` ("size: S").
+  `www.charmer.com` returns 114 bytes and no `<title>`.
+
+Two consequences follow, and neither is about the size reader.
+
+First, **the size question is decided by pages the sweep does not currently
+reach.** The US wholesalers and importers in `vendor_catalogue` are three-tier
+trade houses; they do not publish prices, so there is nothing for a size to be
+attached to. The six pages the reader was built and measured against are real
+merchant shops, which is what the sweep would have to be pointed at for any of
+this to matter.
+
+Second, **the sweep's reach for the demo house is zero.** The scheduled sweep
+reads `providers`, not `vendor_catalogue`; `GET /vendor-intel/site-sweep/status`
+returned `armed: false`, `lastRun: null` and an **empty vendor list**, because
+this house has no provider with a website recorded. Measured 2026-09-04 and
+**re-measured on the live gateway on 2026-09-05** (read-only, owner session):
+identical — `{armed: false, flag: "VENDOR_SITE_SWEEP_ENABLED", cron: "20 4 * * *",
+hostIntervalSeconds: 10, inMemoryOnly: true}`, 0 vendors. The flag was not
+touched and nothing was fetched by the gateway.
+
+## Non-US markets: Türkiye and the United Kingdom (2026-09-05)
+
+> Numbering note (2026-09-05): this section's founder questions are **Q22–Q25**. They were first written as Q13–Q16 while the size reader's section, rewritten the same morning, took Q13–Q16 and the Michigan/Illinois section took Q17–Q21; the parent renumbered this section so every question in the ADR has one number.
+
+**This answers Q4.** Told that two of fourteen houses sit in Türkiye and one in the United
+Kingdom and that all three resolved to "not a jurisdiction", the founder chose, 2026-09-05:
+**"their own source class, researched per market"** — each market gets a named class of
+public price source, or an honest "none found" with the sentence that proves it, and the
+register learns ISO country and region codes. The 2026-09-04 pass established the shape of
+both markets; this pass re-measured every load-bearing claim, found the one UK source that
+survives the test, found the trap that would have swallowed the obvious alternative, and
+built the codes. Every fetch below is in `$SP/p4ab-fetch-log.md` with its status and first
+bytes.
+
+### The finding, first: three houses had been told a falsehood
+
+Read off the production tenant rows on 2026-09-05 (a read; nothing was written):
+
+| house | city | `state_province` | `country` | resolved before | resolves now |
+|---|---|---|---|---|---|
+| Chez Community | Fethiye | `Muğla` | `Türkiye` | null | `TR-48` |
+| The Old House Pub | Antalya | `NULL` | `Türkiye` | null | `TR` |
+| ADMIN 1 | London | `England` | `United Kingdom` | null | `GB-ENG` |
+
+All three got *"X is not a jurisdiction this register recognises."* That sentence is false
+about Muğla, England and Türkiye and true only about our table — the absence-reported-as-health
+fault wearing a geography costume. Two distinct silences had been collapsed into one: **a place
+we do not know** and **a place with no source**. The build separates them.
+
+### Türkiye: none found, and the sentence that proves it
+
+Every Turkish candidate was re-fetched on 2026-09-05.
+
+* **HKS — Ticaret Bakanlığı hal bulletin** (`https://www.hal.gov.tr/Sayfalar/FiyatDetaylari.aspx`,
+  HTTP 200, 64,583 bytes). Live, public, no login, headed *"Bülten Tarihi : 5.09.2026 (4.09.2026
+  Tarihli Veriler Kullanılmıştır.)"*, with a real row read verbatim:
+  `ACUR | ACUR | Geleneksel(Konvansiyonel) | 23,78 | 69216 | Kg`. It is the closest Türkiye comes
+  to a public price index — and it is **not machine-readable**: the served HTML references no
+  `.ashx`, `/api/` or `.json` endpoint at all, its export ("Aktarma Seçenekleri") is a postback
+  control rather than a URL, and pages after the first need `__VIEWSTATE`. No currency is stated
+  on a row. Both machine alternatives failed the same day: `data.ibb.gov.tr` **HTTP 403** and
+  `halfiyatlaripublicdata.ibb.gov.tr/swagger/docs/v1` an **empty reply**. Recorded `silent:
+  no_machine_endpoint`. Parsing page one and calling it the bulletin would report a fraction of
+  a market as the market.
+* **GİB ÖTV (III)(A)**. `gib.gov.tr/robots.txt` HTTP 200, `User-agent: * / Allow: /`; the ÖTV
+  landing page HTTP 200 (39,777 bytes) — but a Next.js shell with **no PDF link and no
+  `cdn.gib.gov.tr` reference in its served HTML**, so the schedule was not re-read today and the
+  2026-09-04 reading is cited as that day's. It is a tax, not a price, and the unit the figure is
+  per is not stated on the face of the table. Recorded `silent: not_a_price`.
+* **TÜİK**. `veriportali.tuik.gov.tr/robots.txt` HTTP 200 — `Allow: /`, and it still names
+  `anthropic-ai`, `ClaudeBot`, `ClaudeUser` and `Claude-SearchBot` in an explicit allow group, the
+  only source in this register that permits us by name. Its own sitemap advertises
+  `/sdmx-web-service-documentation` and `/bulk-download`, so **a machine route is claimed to
+  exist** — but both pages render *"JavaScript Required"* to a fetcher and the entry bundle names
+  no API base. Unverified, and worth one more look (Q22). Even if reached, a CPI series is an
+  index number, not a price (see the UK note below on why that matters).
+* **Producers**. `kavaklidere.com` allows `*` but blocks GPTBot, CCBot, Google-Extended and AdsBot
+  by name; `doluca.com` **disallows `/shop/`**; `diageoturkiye.com` **disallows its own catalogue**
+  (`/markalarimiz/katalog`). None publishes a price.
+* **Retail**. `migros.com.tr/robots.txt` HTTP 200 — `Disallow: /arama` (search) only, so a
+  catalogue could be enumerated by sitemap; `carrefoursa.com/robots.txt` **HTTP 403**. Moot for
+  drink either way: online alcohol sale is unlawful in Türkiye.
+* **Primary law, still unverified for a second day.** `mevzuat.gov.tr` timed out (45s) and
+  `resmigazete.gov.tr` redirected to `http://` and returned **HTTP 400** with an empty error body.
+  The statutory claim (Law 4250 md. 6; the sales regulation md. 11) therefore still rests on
+  secondary commentary. Q8 stands.
+
+**Verdict: none found.** Türkiye gets the honest sentence, not a source.
+
+### The United Kingdom: one source found, and one trap avoided
+
+* **The trap, and it is the important finding of this pass.** ONS publishes four RPI
+  average-price series for drink — `KEF4` wine per 175ml glass, `CZMS` draught lager per pint,
+  `CZMT` draught bitter per pint, `CZMR` whisky per nip. Each is a **money figure in pence with a
+  stated measure and a monthly date**, keyless, OGL v3.0: everything this ADR asks of a sighting.
+  Fetched 2026-09-05, all four **HTTP 200**. And every one's **last observation is 2025 JAN**
+  (517p / 483p / 380p / 390p) — nineteen months ago — while the same payload's `releaseDate` says
+  **2026-08-18** and its `nextRelease` says **16 September 2026**. A food series sampled the same
+  way (`CZNJ` tomatoes) stops in the same month, so the family has stopped, not only drink.
+  **This is the `bh_fv020.txt` fault in a better disguise:** there, a 200 carried a visibly old
+  report; here a 200 carries a *fresh-looking publisher field* wrapped around a dead series. A
+  fetcher trusting either the status code or `releaseDate` would file a nineteen-month-old price
+  as this month's. The staleness gate catches it **only because it reads the observation's own
+  date** — which is the whole argument for that gate, now confirmed twice.
+* **HMRC alcohol duty.** Guidance page HTTP 200 (90,801 bytes); the **GOV.UK Content API** returns
+  HTTP 200 with `public_updated_at` `2026-02-01T00:15:01Z` and organisation
+  *"HM Revenue & Customs"* — issuer and date both machine-readable, and still **no price**. The
+  table gives a rate per litre of pure alcohol (wine and spirits 3.5–8.4% GBP 26.61, 8.5–22%
+  GBP 30.62, over 22% GBP 33.99; beer 3.5–8.4% GBP 22.58). Multiplying it by the house's own ABV
+  and volume produces a figure no issuer published. Recorded `silent: not_a_price`.
+* **No open dataset exists.** `ckan.publishing.service.gov.uk` (the data.gov.uk API) returns
+  **2 results** for `alcohol price` — both *non-alcoholic* beverage CPI from the Greater London
+  Authority — and **1 result** for `wine OR spirits OR beer price`: HMRC's *Alcohol Duties
+  Factsheet*. The UK state publishes the tax and nothing else about what drink costs.
+* **Trade is class C without exception.** `mcbdrinks.co.uk/robots.txt` allows everything but
+  `/umbraco/`, and its own wine listing (`/products/wine`, HTTP 200, 71,184 bytes) carries **zero
+  `£` figures** and a "Customer Login" — the largest UK on-trade drinks wholesaler permits the
+  crawl and has nothing priced to read. `lwc-drinks.co.uk` allows all with `Crawl-delay: 10`;
+  `bibendum-wine.co.uk` redirects into MCB; `enotria.co.uk` returned **522**.
+* **Retail cannot even be asked.** `majestic.co.uk/robots.txt` **403** (a Cloudflare interstitial),
+  `tesco.com/robots.txt` **403**, `waitrose.com/robots.txt` a **transport failure** (HTTP/2
+  INTERNAL_ERROR). Three for three, on a second consecutive day: **until a robots.txt is actually
+  read, no UK retail sweep may be written.**
+* **WSTA** re-read: *"All data not to be shared outside of WSTA member organisation."* Volume and
+  value, not price. Not a source.
+* **Scotland's MUP** returned **HTTP 202 with a zero-byte body** (a bot challenge). It is also a
+  legal floor rather than a price, and Scotland-only — the estate's one UK house is in London, so
+  it would not reach it even if read. This is precisely why the codes are regional and not just
+  `GB`.
+* **The one source that survives: Defra's wholesale fruit and vegetable prices.** Series page
+  HTTP 200; CSV HTTP 200, **861,585 bytes**, sha256
+  `ab56ded3a4bc3f65fd49e438fc6b43d7a0a9f22f2595afd1c2049941cc258c3d`, **17,594 rows**, headers
+  exactly `category,item,variety,date,price,unit`, newest date **31/08/2026** with 55 rows, zero
+  blank prices and zero blank units, and exactly one published price of 0
+  (`cut_flowers,gladioli,all_varieties,05/07/2024,0,stem`). The page states its own issuer
+  (*Department for Environment, Food & Rural Affairs*), cadence (*fortnightly*), extent
+  (*"in England and Wales"* — Birmingham, Bristol, Manchester and a London market) and licence
+  (**Open Government Licence v3.0**). It carries every fact this ADR requires **and** is
+  machine-readable. **It is produce, not drink, and that is stated everywhere it appears.**
+
+### What was built, and the constraint that shaped it
+
+`apps/api-gateway/src/price-index/jurisdiction.ts` (new) teaches the register:
+
+* **ISO 3166-1 alpha-2** `TR`, `GB`, `US` — a house or a source known only to its country.
+* **ISO 3166-2:TR** `TR-01`…`TR-81`, all 81 provinces, from a listing **fetched today** rather
+  than remembered. `Muğla` → `TR-48`, `Antalya` → `TR-07`. Names are diacritic- and case-folded,
+  so `MUĞLA`, `mugla` and `İstanbul` all resolve.
+* **ISO 3166-2:GB** `GB-ENG`, `GB-SCT`, `GB-WLS`, `GB-NIR`, plus the remark-part-2 extents
+  **`GB-UKM`** (United Kingdom) and **`GB-EAW`** (England and Wales) — because UK publications are
+  issued at exactly those extents, HMRC's UK-wide and Defra's England-and-Wales.
+
+**The constraint that decided the keys.** `price_index_postings.state` carries
+`CHECK (state ~ '^[A-Z]{2}-[A-Z0-9]{1,3}$')`
+(`20260904200000_a_posted_price_names_its_state.sql:57`). A bare country code has no hyphen and
+**cannot be written**: `GB` and `TR` fail that pattern; `GB-ENG`, `GB-EAW`, `GB-UKM` and `TR-48`
+pass it. (Measured earlier on 2026-09-05 against a local Postgres built from these migrations —
+an INSERT with `state` `'GB'` was refused by constraint name — and re-checked against the pattern
+itself afterwards, because that container did not survive the session crash.) So the UK sources
+are keyed to codes the standard already provides and the constraint already admits, and **no
+migration was needed**. A Türkiye-wide source would need one; none can produce a row today, so
+none was added on speculation.
+
+**Coverage is containment, and deliberately not symmetric.** `GB-UKM` covers `GB-ENG`; `GB-EAW`
+covers `GB-ENG` and `GB-WLS`; `TR` covers `TR-48`. But **`GB-EAW` does not cover a house known
+only as `GB`** — that house may be in Scotland, where a Birmingham wholesale price is not the
+market. Guessing the other way is how a register starts answering questions nobody asked.
+
+**A new field, because two silences are two facts.** `SourceEntry.silent` sits beside `withheld`
+and never replaces it: `withheld` means *we could not get the bytes* (Michigan's 403);
+`silent` means *we got them, read them, and there is no price in them for this register* —
+`not_a_price` (HMRC, GİB), `discontinued` (ONS), `no_machine_endpoint` (HKS). Michigan's entry
+was not touched.
+
+**Five registry entries** were added: Defra (**the only one with a parser**), HMRC, ONS RPI, GİB
+ÖTV, HKS. **`parse-defra.ts`** admits the newest edition and refuses the rest by name, with the
+price check deliberately BEFORE the date check — a row publishing 0 is not a price at any date,
+and refusing it as "old" would file the wrong defect. Rows carry `GBP`, `per kg`/`per head`/
+`per stem`, `GB-EAW`, the OGL attribution the licence requires, a NULL container size (never a 0),
+and a `source_ref` keyed on the **series page** rather than the edition URL, whose content hash
+changes every fortnight.
+
+**`forHouse` now reads `country` as a fallback**, region first. That is what makes the Antalya
+house resolvable at all: it records no province, and its country is the level Türkiye publishes
+at. And a US house that records a country but no state is told *"set the state"* rather than
+*"nothing is posted"* — because in the United States price posting is a state power, and the two
+sentences are not interchangeable.
+
+Nothing is armed. `PRICE_INDEX_FETCH_ENABLED` remains off, so the Defra parser writes nothing
+until the founder decides whether a drinks house should see a produce line at all.
+
+### Rejected alternatives
+
+1. **A per-bottle duty line** (ABV × volume × the HMRC or ÖTV rate). Rejected as the register's
+   content: it is arithmetic wearing a citation — no issuer published that number for that
+   bottle — and it inherits every error in the house's own ABV and volume, the least-verified
+   data in the ledger, while carrying a government name that makes it read as authoritative.
+   Recorded instead as a `not_a_price` source so the box can SAY the duty exists. Whether to
+   compute it anyway is the founder's, and stays open.
+2. **Writing the ONS CPI alcohol index (`d7bv`, 2026 JUL = 159.9) as an index line.** Rejected on
+   the table's own shape: `price_index_postings` requires `price`, `currency CHAR(3)` and
+   `price_unit` NOT NULL, and the ONS payload declares its own unit as *"Index, base year = 100"*.
+   Filing 159.9 with a currency would be inventing one. Class E has no home in this table for a
+   unitless index, and that is a real gap rather than an oversight (Q23).
+3. **A migration relaxing the `state` CHECK to admit a bare country code.** Rejected as unasked
+   and unnecessary: `GB-UKM` and `GB-EAW` are real ISO codes that already pass, and no Turkish
+   source can write a row for the relaxation to serve.
+4. **Scraping page one of the HKS grid.** Rejected: it would report a fraction of a national
+   market as the market, and the refusal is the honest outcome.
+5. **Mapping only the two Turkish provinces with a house.** Rejected: it would leave 79 real
+   jurisdictions being told they do not exist — the same fault this section opened with.
+
+### Founder-only questions raised by this pass
+
+13. **TÜİK claims an SDMX web service in its own sitemap and is the one source that permits us by
+    name — worth one more agent to find the endpoint?** Both its documentation pages render
+    "JavaScript Required" to a fetcher. Even if found it yields index numbers, not prices, so it
+    cannot enter this table today (Q23) — but it would give Türkiye a labelled index line the day
+    that changes.
+14. **Class E has no home in `price_index_postings` for an index NUMBER.** The type union and the
+    CHECK both admit `public_index`, but the columns require a price in a currency with a unit.
+    Every genuine public index found for either market (ONS `d7bv`, TÜİK CPI) is unitless. Add
+    the columns, keep a separate table, or drop class E from the union and say so?
+15. **Should a drinks house be shown a PRODUCE line?** Defra is real, dated, licensed, fetchable
+    and about vegetables. It is built and disarmed. This is Q11's other half, now with a working
+    parser behind it, and it is one environment variable from being live.
+16. **`restaurants.currency` says `USD` for all fourteen houses, the two Turkish and the British
+    included** — measured 2026-09-05. This settles Q10: fixing the class-A writer alone fixes
+    nothing, because the tenant rows themselves carry the column default. The repair is a data
+    correction on three rows, and it is a WRITE, so it was not made.
+
+## Michigan and Illinois: the best honest line (2026-09-05)
+
+The founder, asked how the index box should read for the six houses in these two states, was
+offered three options — a sentence naming why, per state; an em dash with the reason in a
+tooltip; a human-fetch path for Michigan — and chose none of them: *"research deep and
+validate, deploy agents for deep analysis (opus). deploy agent(sonnet) to review. do the best
+option"*. This section is the evidence, and the answer the evidence gives is **different for
+the two states**, which is itself the finding: one option was never going to fit both.
+
+Every fetch below was made today with the identifying User-Agent
+`MudavymPriceSightings/0.1 (+https://mudavym.com/bot; …)`. No browser User-Agent was sent and
+no block was routed around. The full transcript — URL, UTC time, status line, response headers
+and the first 200 bytes of every body — is `p4ac-fetch-log.md` in the session scratch.
+
+### Michigan: the block is real, narrower than recorded, and the book is better than recorded
+
+**Three corrections to this ADR's own Michigan record, all measured.**
+
+1. **The block is host-specific, not state-wide.** `www.michigan.gov` answers **403** with
+   `server: AkamaiGHost` on the price-book page, on a direct PDF (`5-3-26-PRICE-BOOK-PDF.pdf`)
+   and on `robots.txt` itself, every reference sharing one edge-config hash
+   (`18.6353d117.*`), so the deny is host-wide rather than path-specific. `dig` names the
+   product: `www.michigan.gov` -> `edgekey.michigan.gov` -> **`e4514.ksd.akamaiedge.net`** —
+   `ksd` is Akamai **Kona Site Defender**. The body is a static "Access Denied" page: no
+   captcha, no JavaScript challenge, no `Retry-After`. `www.legislature.mi.gov` answers 403
+   from a different WAF. But **`ars.apps.lara.state.mi.us`** — LARA's own Administrative Rules
+   site, behind Cloudflare — serves this fetcher normally (200, 130,880 bytes). Michigan does
+   not refuse us; one Michigan host does.
+2. **`data.michigan.gov` is not a way round it, and the reason is robots, not a WAF.** The
+   state runs a Socrata portal there (`X-Socrata-Region: aws-us-east-1-fedramp-prod`) which
+   answers this fetcher with **HTTP 200** and then publishes, under `User-agent: *`,
+   **`Disallow: /`**. Nothing on that host was read beyond `robots.txt`. So even if the price
+   book were ever loaded there as a dataset, this repository may not fetch it. That is a
+   stronger and more permanent bar than the Akamai 403, and it had not been recorded.
+3. **"No honest sample exists to parse" stopped being true.** The Commission publishes every
+   artefact as **`.xlsx` as well as `.pdf`** — the archived issuer page lists
+   `PRICE-BOOK-EXCEL.xlsx`, `NEW-ITEM-PRICE-LIST-EXCEL.xlsx`, `RETAIL-PRICE-CHANGES-EXCEL.xlsx`,
+   `ADA-CHANGES-EXCEL.xlsx`, `PRODUCTS-FROM-MI-MANUFACTURER-EXCEL.xlsx`. An `.xlsx` is a
+   deterministic parse target; a PDF is not. A real edition was obtained and measured (below).
+
+**The cadence in the registry was wrong, and wrong in the dangerous direction.** It read
+`monthly (spirits price book)` / `maxAgeDays: 62`. Measured from 125 archived captures, grouped
+by artefact and differenced: the **PRICE-BOOK moves every 91 days** (14 editions 2022-01-30 to
+2025-11-02; 8 of 13 gaps exactly 91, the two 182s being missed captures; the 2026 editions are
+2026-02-01, 2026-05-03, 2026-08-02 — 91 and 91), while the **NEW ITEM PRICE LIST moves every 28
+days** (34 editions; modal gap 28, then 35). The four-weekly series that made the book look
+monthly is a different artefact. A 62-day bound refuses a perfectly current price book from day
+63 of its own cycle. Corrected to `quarterly (the price book moves every 91 days)` /
+`maxAgeDays: 105`.
+
+**The book prices exactly what a Michigan house buys.** The issuer's own column page defines
+the columns, verbatim: `BASE PRICE` is "what the State of Michigan paid for the liquor
+(including the Federal Excise Tax), plus a 65% markup"; **`LICENSEE PRICE` is "the price paid by
+licensees… includes the 17% licensee discount and the specific taxes of 4% + 4% + 4%"**;
+`MINIMUM SHELF PRICE` is retail. `SIZE IN ML` and `PACK SIZE` are published on every row. So the
+licensee price is a genuine **class-B posted wholesale price** for the three Michigan houses,
+and ADR 0117's unit and pack requirements are met by the source itself rather than inferred.
+
+**The file is the cleanest this register has measured.** One real edition (2025-08-03,
+804,270 bytes, sha256 `ff592f82…`) read in full with a stdlib `zipfile` + `ElementTree` reader,
+so the measurement does not depend on the library the gateway uses: 12,795 rows — 3 header, 1
+blank, 261 category headings, **12,530 product rows** — and **zero** defects on every test that
+caught defects elsewhere. No missing size, no missing pack, no missing licensee price, no
+licensee above base, no shelf below licensee, **no duplicate item codes at all** (Iowa published
+2,308). `LICENSEE/BASE` sits in a tight band, median 0.949944, min 0.9194, max 0.9773 — the
+Commission rounds each step of its own stated arithmetic rather than applying one factor, which
+is why the parser checks the measured band and never the formula.
+
+**Michigan's beer and wine ARE posted — and are not published.** The brief assumed Michigan
+posts no wholesale beer or wine prices. It does, quarterly, and the distinction is the whole
+answer. `Mich. Admin. Code R. 436.1726`: a manufacturer or wholesaler "shall **file with the
+commission in Lansing**, before January 1, April 1, July 1, and October 1 of each year, a
+schedule of the net cash prices to retail licensees for all wine by kind, type, size, and
+brand", held for the quarter. `R. 436.1625` says the same for case and keg beer, with price
+reductions held 180 days. **Neither rule requires publication.** The verb is "file with the
+commission" in both. So a Michigan wine house's honest line is not "Michigan posts no wine
+prices" — it is that the schedules exist, the state holds them, and only a FOIA request reaches
+them. That is a different sentence and a different (unbuilt) path.
+
+**Everything else in Michigan is class C or worse.** `imperialbeverage.com` (robots: everything
+allowed) serves 4,105 visible characters with **no dollar amount** and three login doors;
+`greatlakeswineandspirits.com` serves a JavaScript shell; `rndc-usa.com` is a corporate site.
+`liquorli.st` republishes Michigan prices and disqualifies itself twice over in its own words:
+it shows "Michigan's **minimum retail shelf price**" — the retail column, not the licensee one —
+and states it "is not affiliated with or endorsed by the Michigan Liquor Control Commission",
+so its provenance is a third party's scrape, which fails this ADR's issuer test exactly as the
+Connecticut intermediary does.
+
+### Illinois: there is nothing to fetch, and that is a fact about the state
+
+Three primary sources, all read today, all agreeing:
+
+- **235 ILCS 5/6-19, in full:** "Sec. 6-19. (Repealed). (Source: P.A. 82-783. **Repealed by
+  P.A. 90-432, eff. 1-1-98.**)"
+- **11 Ill. Adm. Code 100** — the Commission's own rules — read whole (216,637 bytes, 2,148
+  text lines): **53 distinct section headings, none containing "price", "posting" or
+  "schedule"**, and all 16 body occurrences of "price" are trade-practice rules (a uniform
+  admission price, inducements, quantity discounts, a ban on an industry member affixing prices
+  for a retailer).
+- **Article VI of the Act**: across the whole article the only "schedule of the prices" is
+  235 ILCS 5/6-28, *happy hours* — a retailer's own drink list at its own bar.
+
+The ILCC's own Statutes and Rules page links to the Act and two administrative codes and
+nothing else: no price file, no posting page, no lookup. Illinois state hosts do **not** block
+us (`ilcc.illinois.gov` has no `robots.txt` and served us; `tax.illinois.gov` served us) —
+there is simply nothing there. Every Illinois distributor is per-account: `breakthrubev.com`
+publishes `Allow: /` and serves us 107,889 bytes containing **no dollar amount at all**, only
+"Partner Portal" and "Customers Order Here". The obvious class-D retail reference, **Binny's**,
+publishes a permissive `robots.txt` that even advertises a sitemap — and its server answers
+**403 with a Cloudflare challenge** on the sitemap and on the home page alike.
+
+The one public, dated, issuer-stamped Illinois number is the **tax**: the Illinois Department
+of Revenue's Liquor Gallonage Tax, in force for reporting periods July 2026 or after — $0.231
+per gallon for beer/cider 0.5-7% ABV, $1.39 up to 20%, **$8.55 above 20%**. `www.chicago.gov`
+answers **403 `AkamaiGHost`** — the same shape as michigan.gov — so **Chicago's own liquor-tax
+rate is unverified**; the city's third-party code publisher disallows `ClaudeBot` in
+`robots.txt` and reserves `ai-train`, and was not fetched.
+
+### The option chosen, and why it is two options
+
+**Michigan gets the human-fetch path. Illinois gets the sentence.** Neither state's answer works
+for the other, and forcing one shape on both is what made the old box wrong in two different
+ways at once.
+
+For **Michigan** a sentence alone would be a lie of omission. The Commission publishes the exact
+number the house pays, in a machine-readable file, updated quarterly; a browser driven by a
+person downloads it in one click. Telling a Michigan house "this cannot be fetched" and stopping
+there hides a fix its own manager could apply in a minute. The em-dash-with-tooltip option is
+worse than either: it hides the most useful thing this register knows about its best-matched
+jurisdiction behind a hover.
+
+For **Illinois** the human-fetch path has nothing to carry — no file exists — and an em dash
+says nothing at all. What Illinois needs is the *cause*, which is permanent, statutory, and
+useful: it tells the house to stop waiting and tells it where the answer actually lives (its own
+invoices, and a declared distributor connection).
+
+**What was built.**
+
+- `apps/api-gateway/src/price-index/parse-michigan.ts` — the class-B parser, emitting the
+  LICENSEE price with the issuer's own definition as `price_basis`, base and shelf kept on
+  `raw` and never emitted. Refusals: `no_size` (never assumed to be 750 ml), `bad_pack`,
+  `no_licensee_price`, `licensee_price_out_of_band`, `shelf_below_licensee`,
+  `duplicate_liquor_code`, `no_brand`, `no_liquor_code`, and `not_a_product_row` for the
+  header, category and spacer rows — counted, never silently dropped.
+- **`readEditionDate` and the reason it is load-bearing.** Measured on the real workbook: **no
+  cell carries an effective date** and `docProps` holds only the authoring day. The edition date
+  lives in the file name and nowhere else. So the date is read from the name, a future or
+  impossible date is refused, and a file that states none is refused **before a row is parsed**.
+  Nothing is ever dated by the upload clock.
+- `michigan-workbook.ts` — the `exceljs` adapter. **`exceljs` was already a gateway dependency**
+  (`menus/parsers/csv-parser.service.ts`), so no dependency was added, and the base64-in-JSON
+  upload shape already existed in this gateway.
+- `price-index-upload.service.ts` + `POST /price-index/upload` — owner/manager, **dry run by
+  default**, `commit: true` additionally requiring `PRICE_INDEX_UPLOAD_ENABLED` (the same
+  allow-list predicate as the fetch, imported rather than re-implemented). The staleness gate
+  stands before any write. `raw.upload` carries the file name, the sha256 of the exact bytes,
+  the user id, the upload time and `editionDateFrom: "file_name"`.
+- `silence-notes.ts` — the per-jurisdiction sentence, with its primary sources on the record,
+  and the distinction between a **settled** jurisdiction and an **unresearched** one.
+- The registry's Michigan entry: corrected cadence and bound, the fixture, `intake: "upload"`,
+  and a `withheld.reason` narrowed to *why no machine can read it*. It deliberately keeps **no
+  `parse`**, so the scheduled sweep's own `withheld || !parse` guard means nothing here will
+  ever fetch michigan.gov.
+
+**Measured before and after, against a copy of HEAD** (`git show
+HEAD:apps/api-gateway/src/price-index/price-index.service.ts` into a same-depth probe, run, then
+deleted — no git state change). For `US-IL`, HEAD returns:
+
+> "No posted list or public index is known for US-IL. A house here has no index line until one
+> is found."
+
+Illinois' price-filing section was repealed twenty-eight years ago. "Until one is found" reports
+a settled legal fact as a pending search — the same shape as reporting an absence as health. It
+now returns the researched sentence naming the statute, the repeal, the rules and where the
+answer actually lives. A jurisdiction nobody has researched now says *that*, rather than
+borrowing Illinois' certainty.
+
+**What was NOT built, and why.**
+
+- **No fetcher for Michigan, and none is possible.** No S3, CDN, FTP, legislature or ADA mirror
+  exists; the open-data portal forbids it in `robots.txt`. Nothing here fetches michigan.gov or
+  the archive on any schedule.
+- **No FOIA path for the beer and wine schedules.** They exist and the Commission holds them.
+  Building a request workflow is a different piece of work and needs the founder's answer to
+  Q19.
+- **No web surface for the upload.** The endpoint returns everything the panel needs to say
+  "this book is yours, brought in on this date by this person" — drawing it is web work this
+  session did not do, so a Michigan manager cannot yet reach the route from the product.
+- **No migration**, so the uploader's identity lives in `raw` rather than a column of its own
+  (Q17).
+- **No Chicago or Cook County tax line.** Chicago's rate is unverified and the derived-tax-line
+  fork is already open as Q9.
+
+### Founder-only questions
+
+17. **Should who-uploaded-it be a column rather than a key in `raw`?** Today the person, the
+    file name and the sha256 live in `price_index_postings.raw.upload`, because this session was
+    not authorised to add a migration. A JSONB key is not queryable the way a column is, and
+    "which manager's upload put this number on the screen" is exactly the question someone will
+    ask after a bad book. Add `uploaded_by`, `upload_file_name`, `upload_sha256`?
+18. **A doctored workbook is undetectable, and that is not fixable by code.** The MLCC publishes
+    no signature. The defence is provenance — the row names the person and the sha256 lets anyone
+    re-download the same edition and compare byte for byte — plus the fact that an uploaded line
+    is class B in its own register and is never compared with a vendor quote. Is provenance
+    enough, or should an uploaded book require a second person's confirmation before it is shown?
+19. **Michigan's beer and wine schedules are filed with the Commission, not published. Open a
+    FOIA request?** R. 436.1625 and R. 436.1726 make every wholesaler file net cash prices to
+    retail licensees. Those are public records. A standing quarterly FOIA request would give the
+    Michigan houses a wine and beer posted list that exists nowhere else — at the cost of a
+    manual, correspondence-based intake with no cadence guarantee. Worth pursuing?
+20. **Illinois' honest answer is "declare your distributor".** Nothing public exists, and
+    Breakthru, Southern Glazer's and RNDC all price per account behind a login. That makes class C
+    the only route to a real Illinois number. `/connections` (ADR 0114) would need a distributor
+    connection type per house with credentials the house owns. Is that the next build for the
+    three Illinois houses, or do they stay on their own invoices?
+21. **The archive was used for the fixture. Is that acceptable, and where is the line?** The
+    parser is written against a real MLCC workbook obtained from an Internet Archive capture of
+    michigan.gov, because the origin refuses this fetcher. No browser User-Agent was sent, nothing
+    fetches the archive on a schedule, and the fixture is thirteen months old so it can only ever
+    prove a shape. It is still content the origin denied us. Recorded rather than assumed.
+
+## The sweep that reads merchant shops (2026-09-05)
+
+> Numbering note (2026-09-05): this section's founder questions are **Q26–Q29**; the size reader holds Q13–Q16, Michigan/Illinois Q17–Q21, Türkiye/UK Q22–Q25. Each was first numbered by its own builder in a shared file; the parent renumbered so every question in this ADR has one number.
+
+The founder's call, in full: **"Point it at merchant shops, as their own class,
+and clean the three websites."** This section is the first half; Q13 above is
+the second. Code: `apps/api-gateway/src/vendor-intel/price-reference-shops.ts`,
+`shop-reference-posting.ts`, `shop-reference-sweep.ts`,
+`shop-reference-sweep.service.ts`, and the two specs beside them.
+
+### The register, and why the separation is structural rather than a check
+
+A merchant's shelf price is **class D**. This ADR's table says class D may be
+compared only to other class-D lines and may **never** be placed beside a
+vendor quote, and ADR 0111 says it renders as its own line. So the shop sweep
+writes to `price_index_postings`, not to `vendor_price_observations`.
+
+That is not a preference; it is the only register the row can honestly enter.
+`vendor_price_observations.restaurant_id` is NOT NULL and
+`belowTrailingAverage` reads `restaurant_id.is.null OR restaurant_id.eq.<tenant>`
+(`vendor-comparison.service.ts:341`), so a jurisdiction-scoped row there would
+have to either pretend to be one house's own sighting or be visible to every
+house on the platform — the same objection that demoted the Iowa load.
+`price_index_postings` was built for exactly this: keyed by `state`, no
+`restaurant_id` at all, `source_class` CHECKed to `retail_reference` among the
+three. **The ladder reads the other table**, so a shelf price cannot reach it
+even by mistake; there is no flag to forget and no class check to get wrong.
+
+### The shop registry is a config file, not a `price_reference_shops` table
+
+The brief allowed either and asked for the decision on evidence. Five things
+decided it, and the counter-argument is recorded with them.
+
+1. **The sibling register already answers this question in code.**
+   `price-index.registry.ts` holds every class-B/D/E source with its issuer,
+   jurisdiction, cadence, terms and a `withheld`/`silent` record carrying
+   `measuredOn`. A shop is the same kind of entry, and two registries for one
+   register would be two answers to "where does a source come from".
+2. **A shop row's content is the evidence of a fetch**, not configuration: the
+   robots status, the day it was read, the crawl delay, the visit window,
+   whether the shop states a date on its prices. That belongs where it is
+   reviewed and where `git blame` says who claimed it.
+3. **Arming a shop starts outbound requests in the house's name.**
+   `isSweepArmed`'s docblock already argues that a job with that property must
+   not be switchable without a deploy; a boolean column would let anyone with
+   `service_role` arm a crawler with no review.
+4. **A seeded table is a production write executed by a merge.** Migrations
+   auto-apply on merge here, so seeding shops by migration would move the
+   decision to point at a particular shop out of the founder's hands and into a
+   squash-merge.
+5. **Cost.** A table needs a migration, RLS, two guards and a CRUD surface
+   nobody asked for.
+
+**The counter-argument, which is real:** an operator cannot add a shop without a
+deploy, and no house can keep its own shop list. Neither costs anything today —
+the register has deliberately no `restaurant_id`, so a per-house list has
+nowhere to live, and a shop may not be added until a fetch has proved its terms,
+which is research rather than a settings change. **The trigger to revisit is
+recorded in the file itself:** the day a non-engineer must add shops at will,
+this file becomes the seed for a table.
+
+### Which markets the estate needs, and what each one actually got
+
+Coverage read from `price-sources.md`'s own measurement of `restaurants`
+(14 houses: 3 Michigan, 3 Illinois, 3 California, 2 Türkiye, 1 UK, 2 with no
+state). Every row below was measured on **2026-09-05** with the sweep's own
+agent, one request per host.
+
+| Market | Houses | Shop measured | robots.txt | Verdict |
+|---|---|---|---|---|
+| GB-ENG | 1 | Berry Bros. & Rudd | 200, 1,502 B, `Crawl-delay: 10`, **`Visit-time: 0200-0700`** | armed |
+| GB-ENG | — | Slurp, Tanners, Hedonism | 200, Shopify storefront files, `/products/` allowed | Slurp + Tanners armed; **Hedonism refused on currency** |
+| US-CA | 3 | Hi-Time Wine Cellars | 200, 1,674 B, `Crawl-delay: 10` | **armed** — and its price is in microdata + Open Graph, not JSON-LD |
+| US-CA | — | K&L Wine Merchants | **403 to robots.txt itself** (5,606 B challenge) | unarmed: its crawl rules are unknown, so nothing may be fetched |
+| US-IL | 3 | Binny's Beverage Depot | 200, 297 B, product pages allowed — **and the sitemap it advertises answered 403** (Cloudflare, 4,574 B) | unarmed: a fact about our fetcher |
+| US-MI | 3 | Merchant's Fine Wine | 200, 1,248 B — **24 lines, every one a comment**: the Cloudflare content-signals preamble with **no signal stated** | unarmed: its own rule (c) says permission is neither granted nor restricted |
+| TR | 2 | Kavaklıdere | 200, 293 B; `*` allowed, `GPTBot`/`CCBot`/`Google-Extended` disallowed by name | unarmed: the homepage is 170,717 B with **zero** occurrences of the lira sign, "TL", "fiyat" or a cart |
+| US-NJ | 0 | Wine Chateau | 200, Shopify storefront file | unarmed: **serves no house** — the register scopes by state at read time |
+
+**The finding is the same asymmetry this ADR keeps meeting, one layer down.**
+The market with a working merchant shop has **one** house; the three markets
+with nine houses between them have none that may be fetched today, and each for
+a different reason — a challenge page, an unstated term, and a statute. Türkiye
+is not a fetcher problem: Law 4250 art. 6 and the sales regulation md. 11/1 make
+consumer-facing online alcohol sale unlawful (recorded here as unverified at
+primary source — see `price-sources.md`), so there is no Turkish shelf price to
+read, and the measured silence is what that predicts.
+
+### How a price is read, and why in that order
+
+The vendor sweep sends page text to a model because a wholesaler's page is
+prose. A merchant shop is a commerce platform and publishes its price as data,
+so this reader reads the markup: deterministic, no tokens, testable against a
+recorded file, and unable to hallucinate a number. It is also the only way to
+see the price at all — `htmlToText` drops `<script>`, which is where the offer
+lives, the same finding that drove the size reader.
+
+1. **schema.org `Offer` inside a `Product` node.** The merchant's own machine
+   statement, the only one carrying `priceCurrency`, and the only one that ever
+   carries a date. Present on **6 of 6** recorded fixture pages.
+2. **Microdata `itemprop="price"`.** The same statement inline. It is the ONLY
+   machine-readable price on Hi-Time, whose single JSON-LD block is a
+   `BreadcrumbList` — measured 2026-09-05 on `/pommery-brut-royal-354430`:
+   `itemprop="price" content="54.99"`, `product:price:amount` 54.99,
+   `product:price:currency` USD, `og:price:standard_amount` 59.95.
+3. **Open Graph, last**, because a share tag is written for a scraper and
+   drifts. The Wine Chateau page publishes **three** `og:title` values and the
+   FIRST is the shop's own slogan, *"Buy Wine Online - WineChateau® for Fine
+   Wines"*. Reading the first refused a perfectly well-formed page, so the
+   page's claim about itself is the **set** of titles it publishes and a
+   product node matching any of them is accepted.
+
+The **size** is not re-implemented: `readBottleSize` is imported. A second
+answer to "how big is this bottle" is a second answer.
+
+### What is refused, and the measurement on the six recorded pages
+
+Run on the tree this section describes, with
+`npx jest --silent=false src/vendor-intel/shop-reference-posting.spec.ts`; the
+test prints the table so the numbers here are reproducible from one command.
+
+```
+  bbr-cremant-de-limoux-2026-09-04.fixture.html  REFUSED  no_issue_date
+  bbr-dom-perignon-2026-09-04.fixture.html       REFUSED  identity_conflict
+  slurp-pellehaut-rose-2026-09-04.fixture.html   REFUSED  no_issue_date
+  tanners-andre-clouet-2026-09-04.fixture.html   ADMITTED 35 GBP 750ml via json_ld_offer, issued 2026-09-05
+  hedonism-ruinart-2026-09-04.fixture.html       REFUSED  currency_not_jurisdiction
+  winechateau-caymus-1l-2026-09-04.fixture.html  REFUSED  no_issue_date
+    admitted 1/6
+```
+
+**One admitted, five refused, and every refusal is a different real fault.**
+
+* `identity_conflict` — the Dom Pérignon page whose only JSON-LD block is
+  **Caol Ila 25-Year-Old whisky at GBP 225**. A reader that trusted structured
+  data because it is structured would file GBP 225 as the champagne's price.
+  The Open Graph price is deliberately NOT used as a fallback there: a page
+  whose machine data is about another product has not earned trust in the rest.
+* `currency_not_jurisdiction` — Hedonism, a London shop, serves
+  `priceCurrency: USD` (and `og:price:currency: USD`) to an anonymous fetcher.
+  A USD figure on a GB index line is not the UK shelf price, and putting it
+  beside GBP lines is the comparison this ADR exists to prevent.
+* `no_issue_date`, **three of six, and the important one.** ADR 0117 admits a
+  row only if it names when the price was published;
+  `price_index_postings.issued_at` is documented as *"the ISSUER's own
+  effective/publication date, never the fetch date"* and `refuseStale` reads
+  that column as the freshness signal. Of the six pages, exactly **one** states
+  `Offer.validFrom` (Tanners, 2026-09-05, with `priceValidUntil` 2026-12-04).
+  Slurp states only `priceValidUntil` — and publishes it as `"2027-09-5"`, a
+  single-digit day, which is why the reader parses the value instead of
+  shape-testing it. **The five undated pages are refused rather than stamped
+  with our own clock**, because a row dated by our fetch is fresh by
+  construction and would make the staleness gate vacuous for the entire class.
+  Whether a shop price may instead be filed with a read-date basis is the
+  founder's call, not a default taken here: **Q27**.
+
+`price_conflict` and the remaining refusals are pinned by unit cases rather than
+by a fixture, since no recorded page exhibited them — stated so the difference
+between "measured" and "designed for" is visible. The Wine Chateau bourbon page
+fetched the same day DOES exhibit it (five offers, 33.95 and 39.95 on one
+product), and it was not added as a fixture: see below.
+
+### Politeness, and one directive nobody implements
+
+robots.txt is fetched per host and an explicit `Disallow` is honoured; the
+host's own `Crawl-delay` replaces our floor whenever it is larger — both by
+importing the vendor sweep's own limiter rather than writing a second one.
+
+**And `Visit-time` is honoured, which is new.** It is not in the original robots
+specification and almost nobody publishes it — and `www.bbr.com` does:
+`Visit-time: 0200-0700`, beside `Request-rate: 1/10`. A publisher that states
+the hours it wants to be read has told us something specific, and ignoring it
+because the standard does not compel us would be choosing not to listen. The
+two committed Berry Bros fixtures were fetched at **02:08Z**, inside the window;
+**this session wanted to re-read that host at 11:14:35Z and did not**, which is
+the case the test pins. The registry's recorded window is checked before any
+request at all, so an out-of-hours host costs not even a robots probe; the live
+file wins over the recorded one whenever they differ.
+
+### What is deliberately NOT built, stated rather than left to be discovered
+
+* **Catalogue enumeration.** A run reads the pages it is given. The register
+  carries the product identity AS POSTED and has no join to a house's own
+  wines, so a thousand enumerated rows would be a thousand prices nobody asked
+  about, bought with a thousand requests. The permitted enumeration routes are
+  recorded (Hi-Time's `/xmlsitemap.php?type=products` returned 1,154,767 bytes
+  of product URLs on 2026-09-05) so whoever answers the identity question does
+  not have to find them again. **Q28.**
+* **A seventh fixture.** Hi-Time's page is the only measured microdata-only
+  shop and it is 138,070 bytes. Q16 already asks whether 282 kB of reduced
+  third-party markup should stay in the repo; adding to it while that question
+  is open would be answering it by accident. The microdata and Open Graph paths
+  are pinned by synthetic cases carrying the exact strings the real page
+  serves, and the real page's URL, date, byte count and strings are recorded
+  here and in the registry.
+* **A live run.** Nothing was fetched by the gateway, no flag was armed, and
+  **no row was written to any database.** Both flags default off:
+  `PRICE_REFERENCE_SHOP_SWEEP_ENABLED` to run at all, and
+  `PRICE_REFERENCE_SHOPS_ARMED` to name which shops may be touched.
+* **A `price_reference_shops` table**, per the argument above.
+* **Any change to the vendor-site sweep.** It still reads `providers`. Two
+  instruments, two flags, two registers.
+
+### Rejected alternatives
+
+1. **Widen `vendor_price_observations` with a `jurisdiction` column** so a
+   shelf price could live beside the quotes with a class label. Rejected: the
+   column would be a promise that every reader honours the label, and this
+   repo's standing fault is precisely a label nobody reads (`is_outlier`
+   DEFAULT false, which certified every row as clean for months). The register
+   split makes the ladder unable to see the row at all.
+2. **File undated shop prices with `issued_at` = the fetch date plus an
+   `issued_at_basis` column.** It was the obvious way to admit 5 of 6 instead
+   of 1 of 6, and it is rejected as a default rather than as an idea: it
+   weakens `refuseStale` for a whole class, and it decides a question the
+   founder has not been asked. It is Q27, with the migration named.
+3. **A model reading of the shop page**, as the vendor sweep does. Rejected on
+   the measurement: the price was machine-readable on 6 of 6 pages, so a model
+   would add tokens, latency and a new way to be wrong for nothing.
+4. **Taking the lowest of several offers** on a multi-variant page. Rejected:
+   nothing on the page says which variant a single reference line should carry,
+   and a shop that lists a half-bottle beside a magnum would file the wrong
+   one. Refusing names the fault; picking hides it.
+
+### Founder-only questions raised by this pass
+
+22. **Something stamped `verified_at` on rows whose websites are a casino, a
+    wine school and a clothes shop.** Measured in the dry run of 2026-09-05:
+    Banfi, Henry Wine Group and Charmer all carry
+    `verified_at = 2026-08-10T17:21:2x`, two months after the seed wrote them,
+    while `source` is still `curated` and `source_ref` is NULL. Whatever ran
+    that verification did not check the identity of the site it verified.
+    Should `verified_at` be cleared for every row it touched, and should the
+    thing that set it be found before it runs again?
+
+23. **May a shop's price be filed with our READ date, labelled as such?** Three
+    of six pages state no date at all, and this build refuses them, so the
+    class delivers one row out of six. The alternative is an additive migration
+    adding `issued_at_basis` (`issuer_stated` | `fetch_date`, nullable, NULL
+    meaning "written before the column existed") so a fetch-dated row can never
+    be mistaken for an issuer-dated one — and `refuseStale` would have to learn
+    to ignore a `fetch_date` row, because such a row is fresh by construction.
+    Refuse and stay thin, or extend and label?
+
+24. **Which pages should the sweep read?** It reads the pages it is given, and
+    nothing today decides which. The honest options are: a house nominates the
+    wines it wants a reference for (needs a UI and a per-house list, which the
+    public register deliberately cannot hold); or the sweep reads a shop's
+    best-sellers collection; or the identity join to `master_wine_library` is
+    built first and the register becomes searchable by wine. The third is the
+    largest and the only one that makes an index line answer "what does this
+    bottle cost elsewhere".
+
+25. **Two of the four fetchable shops are unarmable for reasons that are not
+    about us.** Hedonism serves USD to an anonymous fetcher and Wine Chateau
+    serves a market with no house in it. Is it worth sending a presentment
+    hint (a `?currency=GBP` or a locale header) to pin Hedonism to GBP, or is
+    a shop that will not quote its own market's currency to an anonymous
+    visitor simply not a source?
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-05 | Claude (build, the sweep reads merchant shops) | **The founder's call — *"Point it at merchant shops, as their own class, and clean the three websites"* — is BUILT.** Q14 CLOSED by a SECOND instrument (`shop-reference-posting.ts`, `shop-reference-sweep.ts`, `shop-reference-sweep.service.ts`, `price-reference-shops.ts`, `GET/POST vendor-intel/shop-sweep/*`), writing class D to `price_index_postings` and never to `vendor_price_observations` — the ladder reads the other table, so the separation is structural. The shop registry is a **config file, not a table**, on five recorded grounds, with the counter-argument and the trigger to revisit written into the file. **Nine hosts measured 2026-09-05**, one request each: four GB shops readable; Hi-Time (US-CA) readable and its price is microdata + Open Graph with **no** `Product` JSON-LD; K&L 403 at robots.txt itself; Binny's advertised sitemap 403; Merchant's Fine Wine publishes 24 lines of comment and **no content signal**; Kavaklıdere's homepage carries zero price signals. **`www.bbr.com` publishes `Visit-time: 0200-0700`** — honoured, and this session refused to re-fetch that host at 11:14:35Z. Measured on the six recorded pages: **1 admitted, 5 refused** — 3 `no_issue_date`, 1 `identity_conflict` (the Caol Ila block on the Dom Pérignon page), 1 `currency_not_jurisdiction` (a London shop serving USD). Q13 CLOSED for the three websites by `scripts/clean_vendor_catalogue_websites.py`, dry by default, `--apply` refused without `--i-have-the-founders-word` (proven: exit 2, nothing written); the dry run read **4 of 4 rows** and proposed **3** statements; the writer is NAMED (two seeds, both `ON CONFLICT (id) DO NOTHING`, so a cleared website is not refilled) and charmer.com is REPORTED, not proposed. `npx jest --runInBand --forceExit src/vendor-intel src/price-index` on this tree: **390 passed, 27 suites**, of which **27 cases in 2 suites are new here** (`shop-reference-posting`, `shop-reference-sweep`) — the run includes the two market researchers' suites, live in the same worktree; gateway `tsc --noEmit -p tsconfig.spec.json` clean; `eslint --quiet` clean on the six touched files; emoji grep empty; every guard exit 0. **No flag armed, no page fetched by the gateway, no row written to any database.** Four founder questions, Q26-Q29. |
+| 2026-09-05 | Claude (research + build, Michigan and Illinois) | **The founder's call — *"research deep and validate … do the best option"* — is ANSWERED, and the answer is TWO options because the two states are not alike.** See the section **"Michigan and Illinois: the best honest line"**. **Michigan gets the human-fetch path**: the MLCC publishes the LICENSEE price a house actually pays, with size and pack on every row, as an `.xlsx`; one real edition (2025-08-03, 804,270 bytes, sha256 `ff592f82…`) measured in full shows **12,530 product rows and zero defects** on every test that caught defects in Iowa and Oregon — no duplicate item code at all, against Iowa's 2,308. Built: `parse-michigan.ts`, `michigan-workbook.ts` (no new dependency — `exceljs` was already here), `price-index-upload.service.ts` and `POST /price-index/upload`, owner/manager, **dry run by default**, `commit` additionally gated on `PRICE_INDEX_UPLOAD_ENABLED`, staleness gate before every write, provenance (person + file name + sha256 + `editionDateFrom: "file_name"`) on every row. **Illinois gets the sentence**, because there is nothing to fetch and that is permanent: 235 ILCS 5/6-19 repealed eff. 1998-01-01, 11 Ill. Adm. Code 100 read whole (53 section headings, none about price), Article VI's only price schedule being a bar's own drink list. **Three corrections to this ADR's own Michigan record, measured:** the cadence is **quarterly (91 days)** not monthly, so `maxAgeDays` 62 would have refused a current book from day 63 — corrected to 105; the block is **host-specific** (`ars.apps.lara.state.mi.us` serves us normally, `data.michigan.gov` serves us and then publishes `Disallow: /`); and *"no honest sample exists to parse"* is no longer true. **Michigan DOES post beer and wine prices** — R. 436.1625 and R. 436.1726 make wholesalers *"file with the commission in Lansing"* quarterly — but filing is not publishing, so they are FOIA-only (Q19). Measured against a `git show HEAD:` copy in a same-depth probe, since deleted: HEAD told an Illinois house *"no index line until one is found"* about a statute repealed 28 years ago. `pnpm --filter @wineops/api-gateway exec jest src/price-index` on the tree reported here: **144 passed / 14 suites**, of which **54 in 4 suites are new here** (`parse-michigan`, `price-index-upload`, `silence-notes`, `price-index.mi-il`); gateway `tsc --noEmit -p tsconfig.spec.json` clean; `eslint --quiet` clean on the 13 touched files; emoji grep empty; `check_gateway_boots.sh` PASS and every other guard exit 0. **Curled live, and the result is itself a finding.** `GET /price-index/MI`, `/IL`, `/Michigan` and `/Illinois` all return `"The index register could not be read. This is unknown, not empty."` — **the new sentences are correct in code and unreachable on this gateway**, because `price_index_postings` does not exist on the production project (the `20260904200000` migration is on this branch, unapplied), so `silenceFor` short-circuits on `readFailed` before reaching them. The log names it: *Could not find the table 'public.price_index_postings' in the schema cache*. This is the same condition the 2026-09-04 trail row recorded, not a regression from this change. `GET /price-index/status` DOES prove the registry live — Michigan now reports `quarterly (the price book moves every 91 days)` with the corrected withheld reason — and `POST /price-index/upload` is mounted, guarded and inert (`armed: false`; an empty body returns *"'' is not a source this register accepts a file for"*, and the Michigan key with no file returns *"no file was sent."*, `written: 0` on both). The sentences themselves are proved through the real service in `price-index.mi-il.spec.ts`. Nothing was fetched on a schedule, no flag was armed, nothing was written to any database. Five founder questions, Q17-Q21. |
+| 2026-09-04 | Claude (research + build, how a size is read) | **The founder's question — may a size be taken from anywhere on the page, "research do the best one if it was live SOTA" — is ANSWERED AND BUILT** in `vendor-intel/bottle-size.ts` (`fb47d99c`). The answer is the live SOTA answer and it is not "anywhere": Zyte's own published model instruction ranks selected-variant, then most-specific, then labelled field, and the product NAME **last resort**; Diffbot ships `size` marked *"highly experimental and often unreliable"*. So: a five-level precedence (`structured_offer` -> `variant_option` -> `unit_price_label` -> `spec_field` -> `title`), the raw string and locator recorded in `raw.volume` with every candidate, `weight` never read, an identity gate on structured data, and a new `volume_conflict` refusal so a contradiction never counts as an absence. Findings that outlive the build: `htmlToText` drops `<script>` contents, so **no vendor's JSON-LD had ever reached the extraction model**; WooCommerce's structured data emits no size by construction; Shopify's `unit_price_measurement` was null on 4 of 4 shops read, three of them UK; `weight` is a shipping weight (75000 on a 75cl champagne); the only per-quantity price labels on any of the six pages were a duty table's decoys. **Three of the sweep's 23 recorded vendor websites are no longer the vendor's** — Banfi -> an online-gambling domain, Henry Wine Group -> a wine school, Sevilen -> a women's clothing shop with `beden=s` in its links. The sweep flag was not touched, nothing was written to the database, and no page was fetched by the gateway. |
+| 2026-09-05 | Claude (rewrite after the scratchpad wipe, plus two audit fixes) | **This section and its founder questions were LOST** — written 2026-09-04, never committed (`fb47d99c` says "held"), and destroyed with the session scratchpad at ~06:46Z. Rewritten here from the committed tree. **Renumbered Q13-Q16**: the draft used Q8-Q11, and Q8-Q12 were taken in the meantime by the TR/UK research, which keeps them in `price-sources.md` §"Founder-only questions raised by this research". Two defects an audit of the reader found, both now fixed and pinned: (a) `deriveFromUnitPrice`'s docstring claimed a **2%** snap window while `snapToNominal`'s default had already been tightened to **1%** (`bottle-size.ts` `tolerance = 0.01`) — docstring corrected, and a new case pins that a **730 ml** derivation is refused while the same arithmetic onto 720 still passes; proved against a `git show HEAD:` copy mutated to `tolerance = 0.02`, where `derive(21.9)` returns `{ml: 720, raw: 730}`. (b) the pack rule — a printed pack corrects the model's default of 1 but never overrules a pack the model read — was tested only for the override half; the second half is now pinned, proved against a `git show HEAD:` copy with the `item.packSize === 1` condition removed, where the same row writes `pack_size=12` and `normalized_unit_price=21`, **half** the true per-750ml price. Also: `fb47d99c`'s message called the field `volume_source`; it is `volume.source` / `raw.volume.source`, and the section now names it as the code does. Re-measured on the committed tree, BEFORE from `git show fb47d99c^:` copies: **4 admitted / 2 refused with 2 of the 4 chosen out of a text offering two sizes; after, 5 admitted / 1 refused / 0 wrong.** `npx jest --runInBand --forceExit --testPathPattern "src/vendor-intel"` -> **219 passed, 11 suites**; gateway `tsc --noEmit -p tsconfig.spec.json` and `eslint --quiet` clean on the module. The gateway came back up mid-task, so the two live reads WERE re-exercised (read-only, owner session): `vendor-catalogue/search` -> US 18 + TR 5, all 23 with a website; `GET /vendor-intel/site-sweep/status` -> `armed: false`, `lastRun: null`, **0 vendors**. Still not re-exercised, and marked as records rather than verifications: the 23-vendor page fetch (logs lost; re-crawling is a fresh crawl) and `PROVENANCE.md`'s fixture-vs-full-page 6/6 and 13 ms figures (the originals were in the wiped scratchpad). |
+| 2026-09-05 | Claude (commit-message corrections, re-added after the wipe) | Three rows that `3b4cf88c` claimed to have recorded were in this file's working tree and were lost; re-added here per `p4-scratch/corrections-queue.md`. **`6edfed6c`** — its message carried provenance that belonged to **`115d2260`**, not to itself. **`2b260dff`** — its message claimed 309 tests across 19 suites; measured, it is **160 static cases across 9 suites**. **`ce6fdcdb`** — its message claimed 159 across 9; measured, **180 static cases across 10 suites**. All three static counts are `grep`-of-`it(` counts and are therefore **lower bounds**, labelled as such: a table-driven `it.each` counts once statically and many times at runtime. History is not rewritten; the correction lives in the note that owns the claim. |
 | 2026-09-04 | Claude (research) | Created. Sources fetched and measured the same day; the leading candidate attacked and demoted from class B to class D before being recorded. Registry: `.planning/07-reference/price-sources.md`. Proof: `scripts/fetch_price_sightings.py` |
 | 2026-09-04 | Claude (build, index register) | Steps 2+3 BUILT on `feat/mudavym-design-p4`: `price_index_postings` migration (applied to a live local PG — RLS on, anon/authenticated NONE, uniqueness present, assertion NOTICE fired, idempotent), the gateway `price-index/` module (California LIVE via the app's anonymous JWT path; Iowa/Oregon class-D shelf lines; Michigan WITHHELD with the 403 evidence and no fabricated parser), a fetch job defaulting OFF behind `PRICE_INDEX_FETCH_ENABLED` with the staleness gate, and `GET /price-index/:state` + `/status`. 40 tests pass, gateway tsc + eslint clean on the module. Fixtures recorded in `.planning/07-reference/price-sources.md` and the module's `__fixtures__/`. |
 | 2026-09-04 | Claude (build, sweep, correction) | Founder's second call, applied to `vendor-site-sighting.ts` and its tests on top of `115d2260`: `observed_at` = our fetch clock, the page's claimed date = `effective_date`, `raw.fetchedAt` beside both, `undated` unchanged. The comparison's 30-day window therefore reads our read date and never a claimed effective date. `jest src/vendor-intel` 137 pass. |
@@ -630,3 +1741,4 @@ never beside a vendor quote.
 | 2026-09-04 | Claude (build) | **Q7 ANSWERED (BOTH) and CLOSED.** The third writer (`recordManualObservation`) is now screened with the same function and floor as the other two, restricted to its own comparison class. The nightly re-judge is BUILT (`vendor-intel/outlier-rejudge.ts` + `.service.ts`), OFF by default behind `PRICE_OUTLIER_REJUDGE_ENABLED`, judging the readers' own trailing-30-day window, with `GET /vendor-intel/outlier-rejudge/status`. Migration `20260905000000_an_outlier_verdict_names_its_reason.sql` adds `outlier_reason` / `outlier_judged_at` / `outlier_basis` (all nullable; `is_outlier` and RLS untouched). 309 tests pass across `src/vendor-intel` + `src/analytics/engine`; the disarmed status route verified live on :4000. One founder-visible consequence recorded under Q7: a market row's verdict is necessarily platform-wide. |
 | 2026-09-04 | Claude (market research, TR + UK) | **Q4 researched, not decided.** ~65 fetch attempts recorded in `.planning/07-reference/price-sources.md` §"Türkiye and the United Kingdom, 2026-09-04". Verified: GİB ÖTV (III)(A) PDF, HMRC duty rates, hal.gov.tr HKS (daily, TL/kg, live today), Defra wholesale fruit and veg CSV, ONS `d7bv` JSON, TÜİK/Metro/Bizim Toptan robots.txt, five Turkish producers, five UK trade portals, WSTA, Liv-ex, AHDB terms. Unverified and named as such: resmigazete.gov.tr and mevzuat.gov.tr (TLS/DNS), TCMB EVDS, İBB Swagger, Booker, Brakes, Venus, all three UK grocers' robots.txt. Found the class-A USD-default defect above. Q5 updated (quote requested); Q8–Q12 filed in the registry. No code changed. |
 | 2026-09-04 | Claude (build, the index line on /notifications) | **The founder's call of 2026-09-04 — *"Run it, labelled tier 4, never beside a quote"* / *"Show as a labelled index line, own register"* — is BUILT on the page.** `apps/web/src/pages/notifications/next/MarketIndexPanel.tsx` + `useHouseIndex.ts` draw `GET /price-index/me` as their OWN box below the market box, on `--paper-0` against its `--paper-1`, with each line's class, issuer, issue date, posted unit and basis, printed as posted and never normalised to a bottle. The four silences are told apart in the endpoint's own words, and a withheld publisher (Michigan) is named even when the register is silent for another reason. The older tier-4 patch to `MarketPricePanel.tsx` / `useMarketPrice.ts` was re-checked against the current tree and applied; its rule-paragraph wording ("this house's own quotes plus public list prices") was NOT kept, being false once the classes were separated. Measured live on :4000 with a dev-bypass owner session: `me` -> no `state_province` on the demo house; `Michigan`/`Illinois`/`California` -> "The index register could not be read" (`price_index_postings` is not present on that project; the migration is on this branch, unapplied); `Turkey` -> not a recognised jurisdiction. So the withheld sentence is real but **unreachable today** — the read failure short-circuits it. Found and fixed while building: a date-only `issued_at` rendered through `new Date` printed the ISSUER'S DATE ONE DAY EARLY west of Greenwich. 96 vitest in `pages/notifications/next` (24 new), web tsc and eslint `--quiet` clean on the directory, `check_no_seeded_defaults.py` PASS, emoji grep empty. Captures: `shots-index-line/notifications{,-charcoal}.png`. |
+| 2026-09-05 | Claude (market research + build, TR + UK) | **Q4 ANSWERED and the codes are BUILT.** Founder's call the same day: *"their own source class, researched per market"*. Every load-bearing claim re-fetched 2026-09-05 (log: `$SP/p4ab-fetch-log.md`, ~30 fetches with status and first bytes). **Türkiye: none found** — HKS is live and dated (bulletin 5.09.2026) but has no machine endpoint, its two REST alternatives returned 403 and an empty reply, GİB is a tax whose unit is unstated, TÜİK renders "JavaScript Required", and `mevzuat.gov.tr`/`resmigazete.gov.tr` refused this environment a second day. **United Kingdom: one found** — Defra's wholesale produce CSV (HTTP 200, 861,585 B, sha256 `ab56ded3…c258c3d`, 17,594 rows, OGL v3.0, issuer + date + unit + GBP, extent "England and Wales" = `GB-EAW`), built as `parse-defra.ts` with a 59-row fixture of real bytes. **The trap found and avoided:** ONS's four RPI drink average-price series still return HTTP 200 with `releaseDate` 2026-08-18 and `nextRelease` 16 September 2026 while every last observation is **2025 JAN** — recorded `silent: discontinued`; only the observation-date staleness gate catches it. `normalizeJurisdiction` learns ISO 3166-1 (`TR`/`GB`/`US`), all 81 ISO 3166-2:TR provinces and ISO 3166-2:GB incl. `GB-EAW`/`GB-UKM`; `forHouse` falls back to `restaurants.country`; a new `silent` field sits beside `withheld` (read-but-priceless vs unreadable) and Michigan's entry was not touched. **Measured: `restaurants.currency` is `USD` on all 14 houses**, which settles Q10 — the repair is a data correction, not a writer fix, and was not made (a write). Verification: `npx jest --testPathPattern "src/price-index"` from `apps/api-gateway` — my four suites 59/59 pass; module-wide 116/117 with the one failure in another builder's in-flight `parse-michigan.spec.ts`. Gateway tsc `-p tsconfig.spec.json`: 0 errors in `src/price-index` (1 error in another builder's `one-tap-actions.service.spec.ts`). eslint `--quiet` clean on `src/price-index/*.ts`; seven guards exit 0; emoji grep empty. **Live curls NOT exercised: the gateway would not boot** — `BOOT_FAIL: Nest can't resolve dependencies of the OneTapActionsService … ProcurementService`, another builder's module, on every retry between 07:23 and 07:35Z. Proved instead with a temporary probe (created, run, deleted) that instantiated the REAL `PriceIndexService` against the project the gateway points at, read-only: `Muğla`->`TR-48`, `Türkiye`->`TR`, `England`->`GB-ENG`, `USA`->`US`, with the correct source lists, and `/me` for the three real houses resolving `requested` `Muğla` / `Türkiye` / `England` — the Antalya house proving the `country` fallback on real data. **Every one of them then returned "The index register could not be read"**: `restaurants` read fine in the same run, `price_index_postings` did not (the migration is on this branch, unapplied on that project). So the market sentences are correct and, in that environment today, unreachable — the read-failure branch stands in front of them, exactly as recorded for Michigan's withheld sentence on 2026-09-04. Four new founder questions, Q22-Q25. |

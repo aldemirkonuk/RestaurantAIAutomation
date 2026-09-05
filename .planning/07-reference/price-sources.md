@@ -2,7 +2,7 @@
 type: reference
 title: Price source registry
 status: live
-updated: 2026-09-04
+updated: 2026-09-05
 links: ["[[0117-a-price-sighting-names-its-source-its-date-and-its-unit]]", "[[0111-the-calendar-is-the-houses-day-book]]", "[[0114-connections-are-the-houses-profile-is-the-persons]]"]
 ---
 
@@ -44,7 +44,7 @@ in three plans that names no source. **Owed and outside this session's paths:** 
 | **Confirmed order price** | same table, `source='order_confirmed'` (`procurement.service.ts:4393`) | rows | per order | ours | none | yes | yes (DB) | **0 rows.** `procurement_orders` = 2, `procurement_order_items` = 1 |
 | **Invoice document lines** | `procurement_document_lines.unit_price` | rows | per document | ours | none | yes, via the parent document | yes (DB) | **0 rows**, and `procurement_documents` = 0 |
 | **Catalogue reference price** | `master_wine_library.price_reference` | column | none | ours | none | **NO** — no date column, no issuer column | yes (DB) | **3,674 of 4,226 rows carry one**, 3,474 of them from `source='menu_corpus'` — i.e. **restaurant menu list prices**. `retail_price_avg` exists and is NULL on all 4,226. **Inadmissible under ADR 0117** and already constrained by `PRODUCER_REPUTATION_PLAN.md:31` |
-| **Vendor website scrape** | `vendor-page-extractor.service.ts` -> tier 4 `website_scrape`, judged by `vendor-site-sighting.ts` | HTML -> model extraction | **daily cron `20 4 * * *`, OFF by default** (`VENDOR_SITE_SWEEP_ENABLED`); `sweepCatalogue` still available by hand | robots.txt checked, fails closed on a disallow; **`Crawl-delay` now parsed** (`parseCrawlDelay`) and honoured as the floor | **10s per host** (`DEFAULT_HOST_INTERVAL_SECONDS`), raised to the host's own Crawl-delay when larger, never below 2s; identifying UA | yes - `source_url`, `content_hash`, `http_status`, **`observed_at` = when WE fetched it** (the comparison window reads this column, so it is never a claim printed on the vendor's page), and **`effective_date` = the page's own claimed date** when it makes one, else NULL with `raw.undated = true`; `raw.fetchedAt` and `raw.pageStatedDate` carry both dates on every row | yes (code + a live dry run) | **BUILT and RUN once, in dry run, 2026-09-04** (founder's Q1 answer: *"Run it, labelled tier 4, never beside a quote"*). `www.wine.com/robots.txt` fetched with the identifying UA: **6,038 bytes, no `Crawl-delay` for any agent**, `/search` **disallowed** (no permitted way to enumerate a catalogue), `/` and `/product/*` allowed. The allowed homepage then returned **HTTP 403** with a DataDome captcha body (768 bytes). `www.klwines.com` returned **403 to the robots.txt request itself**, behind a Cloudflare challenge. **Two of two real merchant sites refused this environment at the page** - recorded as unverified, never as unavailable. Production still holds 23 active `vendor_catalogue` vendors with a website; the sweep now reads `providers` per restaurant instead, so a sighting is never written tenant-less. Refusals are counted by reason and reported at `GET /vendor-intel/site-sweep/status` |
+| **Vendor website scrape** | `vendor-page-extractor.service.ts` -> tier 4 `website_scrape`, judged by `vendor-site-sighting.ts` | HTML -> model extraction | **daily cron `20 4 * * *`, OFF by default** (`VENDOR_SITE_SWEEP_ENABLED`); `sweepCatalogue` still available by hand | robots.txt checked, fails closed on a disallow; **`Crawl-delay` now parsed** (`parseCrawlDelay`) and honoured as the floor | **10s per host** (`DEFAULT_HOST_INTERVAL_SECONDS`), raised to the host's own Crawl-delay when larger, never below 2s; identifying UA | yes - `source_url`, `content_hash`, `http_status`, **`observed_at` = when WE fetched it** (the comparison window reads this column, so it is never a claim printed on the vendor's page), and **`effective_date` = the page's own claimed date** when it makes one, else NULL with `raw.undated = true`; `raw.fetchedAt` and `raw.pageStatedDate` carry both dates on every row | yes (code + a live dry run) | **BUILT and RUN once, in dry run, 2026-09-04** (founder's Q1 answer: *"Run it, labelled tier 4, never beside a quote"*). `www.wine.com/robots.txt` fetched with the identifying UA: **6,038 bytes, no `Crawl-delay` for any agent**, `/search` **disallowed** (no permitted way to enumerate a catalogue), `/` and `/product/*` allowed. The allowed homepage then returned **HTTP 403** with a DataDome captcha body (768 bytes). `www.klwines.com` returned **403 to the robots.txt request itself**, behind a Cloudflare challenge. **Two of two real merchant sites refused this environment at the page** - recorded as unverified, never as unavailable. Production still holds 23 active `vendor_catalogue` vendors with a website; the sweep now reads `providers` per restaurant instead, so a sighting is never written tenant-less. Refusals are counted by reason and reported at `GET /vendor-intel/site-sweep/status` **UPDATED 2026-09-04 (how a size is read), re-recorded 2026-09-05 after the scratchpad wipe destroyed this edit.** The row's unit is now read from the MARKUP by `vendor-intel/bottle-size.ts` (`fb47d99c`), in the precedence `structured_offer` -> `variant_option` -> `unit_price_label` -> `spec_field` -> `title`, with the raw string, the locator and every candidate written into `raw.volume` (`raw.volume.source`, NOT a `volume_source` column - the commit message was wrong); a contradiction is a new refusal `volume_conflict`, counted apart from `no_bottle_volume`. The reason it had to move off the model's text: `htmlToText` drops the CONTENTS of `<script>`, so **no vendor's JSON-LD had ever reached the extraction model** and every `Bottle Volume` a merchant publishes was being discarded before it was read. **All 23 vendors fetched 2026-09-04** (robots first, our UA, 10s/host; only Palm Bay published a `Crawl-delay`, of 2s): 20 answered 200; Empire Merchants 400, `www.terlatowines.com` a certificate not valid for that hostname, `www.kayrasaraplari.com` NXDOMAIN. **Zero of the 20 emit a schema.org `Product`**, microdata product, `og:type=product`, `UnitPriceSpecification`, `referenceQuantity`, `additionalProperty`, `hasMeasurement`, `gs1:` or `unit_pricing_measure`; exactly one shows a price at all. Platforms: WordPress 11 (WooCommerce 4), Drupal 1, HubSpot 1, 7 unrecognised. **Three recorded websites are no longer the vendor's** - `www.banfivintners.com` -> `dtoto5000.com` (online gambling), `www.henrywine.com` -> `vinology.com` (a wine school), `www.sevilen.com` (filed as the winery Sevilen Sarapcilik) -> a women's clothing shop whose links carry `beden=s`; `www.charmer.com` returns 114 bytes and no title. Six real merchant product pages were fetched instead and recorded as fixtures (`apps/api-gateway/src/vendor-intel/__fixtures__/`, sha256 + full provenance). Measured on them and re-run 2026-09-05 against `git show fb47d99c^:` copies, the pre-reader tree admits 4/6 and refuses 2/6 with 2 of the 4 chosen out of a text offering two sizes; the reader admits 5/6, refuses 1, none wrong. **Re-measured on the live gateway 2026-09-05, read-only**: `vendor-catalogue/search` gives US 18 + TR 5, all 23 with a website; `GET /vendor-intel/site-sweep/status` gives `armed: false`, `lastRun: null` and **0 vendors** — the demo house records no provider website, so the sweep reaches nothing. The 23-vendor page FETCH was not re-run (logs lost in the wipe; re-crawling 23 third-party sites is a fresh crawl, not a re-check). The sweep flag was never set and the gateway fetched nothing. Full reasoning: ADR 0117 §"How a size is read"; its founder questions are **Q13-Q16** (Q8-Q12 are this registry's own, above). |
 
 ---
 
@@ -54,7 +54,7 @@ in three plans that names no source. **Owed and outside this session's paths:** 
 |---|---|---|---|---|---|---|---|---|
 | **New York SLA price postings** | `https://www.nyslapricepostings.com/public/price-lookup` (named by `https://sla.ny.gov/price-posting`) | web lookup | monthly; wholesale schedules due the 25th, two months ahead | public by statute | unstated | yes — the wholesaler and the posting month | **partial** | The SLA's own page confirms *"price schedules are publicly viewable"* and names the lookup URL. **The lookup itself returned an empty body to WebFetch** (twice, two paths) — a JS app, most likely. Prices, wholesaler-to-retailer, for the largest wine market in the US. **The single best class-B candidate found, and unverified** |
 | **California ABC beer price posting** | `https://priceposting.abc.ca.gov/publicPricePosts`; data via `https://s7fcylvn8j.execute-api.us-west-2.amazonaws.com/prod/public/graphql` (AppSync) | SPA → GraphQL | continuous; new schedules effective on filing, amendments after 10 days | public; mandatory online filing since 2023-10-15 | app signs a 20s JWT per query; one request per county per day, identifying UA | yes — the filing licensee and the effective date (`effectiveDate`, epoch ms) | **yes** | **LIVE and parsed 2026-09-04.** The public search is a SPA; its data comes from an AppSync `public/graphql` endpoint whose queries are authorised by a JWT the app **signs in the browser** with a secret shipped in its own bundle (`REACT_APP_JWT_SECRET`). Reproducing that is the anonymous path the public uses — no login, no scrape. Fetched Santa Clara county (where the CA houses sit): `PricePostings` returns `manufacturer/product/tradeName/status/package/productSize{size,unit,containerType}/county/pricesTo/price/pricePromotion/containerCharge/effectiveDate`. Statuses `Active`/`Inactive`/`Old`; `pricesTo` `Retailers`/`Wholesalers`/`Manufacturers`; units ML/OZ/Gallon/Liter. **Parser: `apps/api-gateway/src/price-index/parse-california.ts`**; the earlier "TLS chain failure" was this environment lacking that host's CA cert — Node in the gateway has it. Fixture: 13 real rows, `california-abc-beer-2026-09-04.sample.json`. **Beer only** — but 3 of 14 tenants are in California |
-| **Michigan LCC spirits price book** | `https://www.michigan.gov/lara/bureau-list/lcc/spirits-price-book-info` | PDF + Excel "New Item Price List" + a searchable book | monthly | state publication | unstated | yes — the book's effective date | **no** | **403 to this environment's fetcher on both the info page and a direct PDF** (Akamai edge; `www.michigan.gov/robots.txt` is itself 403). Search results confirm the book carries a **Licensee Price** (what a licensee pays) distinct from Base Price. **3 of 14 tenants are in Michigan — the best jurisdictional match in the estate, and unread.** **WITHHELD in the registry** (`price-index.registry.ts`): no parser is written, because there is no honest sample. A human Excel download is the path |
+| **Michigan LCC spirits price book** | `https://www.michigan.gov/lara/bureau-list/lcc/spirits-price-book-info`; editions at `…/lara/-/media/Project/Websites/lara/lcc/Price-Book/<M-D-YY>-PRICE-BOOK-EXCEL.xlsx` (and `-PDF.pdf`) | **Excel + PDF** (also NEW-ITEM-PRICE-LIST, RETAIL-PRICE-CHANGES, ADA-CHANGES, PRODUCTS-FROM-MI-MANUFACTURER, each in both) | **quarterly — MEASURED, 91 days** (14 archived editions 2022-01-30..2025-11-02, 8 of 13 gaps exactly 91; 2026-02-01 / 2026-05-03 / 2026-08-02). The NEW ITEM list is the four-weekly one (34 editions, modal gap 28) | no licence declared; michigan.gov's own footer asserts "Copyright State of Michigan" — unstated, recorded as unstated, never as permissive | n/a (nothing fetches it) | yes — `LICENSEE PRICE` per row, and the edition date **in the file name only** (no cell in the sheet carries one; `docProps` holds only the authoring day) | **no (fetch) / yes (one real edition, measured)** | **403 to this fetcher on 2026-09-05**, `server: AkamaiGHost`, on the info page, on `5-3-26-PRICE-BOOK-PDF.pdf` and on `robots.txt` itself, every reference sharing the edge-config hash `18.6353d117.*`; `dig` gives `www.michigan.gov -> edgekey.michigan.gov -> e4514.ksd.akamaiedge.net` — Akamai **Kona Site Defender**. Static Access-Denied body: no captcha, no JS challenge, no `Retry-After`. **`data.michigan.gov` is NOT a way round**: the state's Socrata portal answers this fetcher 200 and publishes `Disallow: /` for `User-agent: *`; nothing beyond its `robots.txt` was read. `www.legislature.mi.gov` 403s from its own WAF. **But `ars.apps.lara.state.mi.us` (LARA, Cloudflare) serves us normally, 200/130,880 bytes** — the block is host-specific, not state-wide. No S3/CDN/FTP/legislature/ADA mirror exists. **The book itself, measured in full** (2025-08-03 edition, 804,270 bytes, sha256 `ff592f82…`, via an Internet Archive capture; stdlib zip+XML reader): 12,795 rows = 3 header + 1 blank + 261 category headings + **12,530 product rows**, and **zero** defects — no missing size/pack/licensee price/brand, no licensee above base, no shelf below licensee, **no duplicate item codes** (Iowa published 2,308). `LICENSEE/BASE` median **0.949944**, band 0.9194-0.9773. Issuer's own definition: licensee price = base less a 17% licensee discount plus 4%+4%+4% specific taxes. **Class B and BUILT as an upload, not a fetch**: `price-index/parse-michigan.ts` + `POST /price-index/upload` (dry run by default, `PRICE_INDEX_UPLOAD_ENABLED` off, staleness gate, provenance = person + file name + sha256). Registry cadence corrected from `monthly`/62 days to `quarterly`/105 |
 | **Connecticut DCP posted prices** | `https://biznet.ct.gov/DCPOpenAccess/LiquorControl/ItemList.aspx` | web list | monthly; wholesale posts by the 12th, effective the 1st | public by statute | unstated | yes | **no** | **WAF rejection** (*"The requested URL was rejected"*) to WebFetch. A commercial intermediary (`ctpricefile.com`) exists, which is itself evidence the data is not conveniently machine-readable |
 | **Pennsylvania PLCB quarterly price listing** | `https://www.pa.gov/agencies/lcb/about-us/reports-and-publications/quarterly-price-listing` | **PDF only** | quarterly (Jan/Apr/Jul/Oct), back to 2016 | Act 39 of 2016 publication | unstated | yes — the report date is in the filename (`CRO000002_Report_20260701.pdf`) | **partial** | Page fetched; format and cadence confirmed. **Quarterly PDF is the wrong cadence and the wrong format** for a register whose comparison window is 30 days |
 | **New Jersey ABC price posting** | `https://www.nj.gov/oag/abc/` | PDF orders | monthly, with administrative extensions | public | unstated | yes | **no** | Only reached indirectly (a 2023 administrative order extending posted prices surfaced in search). Not fetched |
@@ -85,6 +85,37 @@ in three plans that names no source. **Owed and outside this session's paths:** 
 | **Vivino** | `https://www.vivino.com/` | HTML | — | — | **no** | `robots.txt` could not be fetched: *"Unable to verify if domain www.vivino.com is safe to fetch"* from this environment. Named in `EXTERNAL_CONNECTIONS.md:153` as a host the code scrapes without the SSRF guard |
 | **LCBO (Ontario)** | — | — | — | — | **no** | No official open API found. The best-known community mirror, `LCBOstats`, **sunset 2025-06-03** with data ending May 2025. AGCO publishes an open-data inventory (April 2026) but not prices |
 
+### Merchant shops — the class-D sweep's own registry (measured 2026-09-05)
+
+The founder's call of 2026-09-05, *"point it at merchant shops, as their own class"*, gave class D
+a second kind of source: a retail shop's own shelf price, read off its markup, filed in
+`price_index_postings` as `source_class = 'retail_reference'` and never beside a vendor quote.
+The registry is a config file, `apps/api-gateway/src/vendor-intel/price-reference-shops.ts`, and the
+reasons it is not a table are in ADR 0117 §"The sweep that reads merchant shops". Every row below is
+one request per host, made on 2026-09-05 with `WineOpsBot/1.0 (+https://wineops.ai/bot; vendor price
+intelligence)`. **Both flags default off and no shop has ever been fetched by the gateway.**
+
+| Shop | Jurisdiction | Houses | robots.txt, 2026-09-05 | Where the price is | States a date? | Armed | Measured |
+|---|---|---|---|---|---|---|---|
+| **Berry Bros. & Rudd** | GB-ENG | 1 | **200, 1,502 B.** `*` disallows only /cart, /checkout, /my-account, /search, `/*?q=*`. Publishes **`Crawl-delay: 10`, `Request-rate: 1/10` and `Visit-time: 0200-0700`** — the only visit window in this register | schema.org `Offer` | **no** | yes | The window is honoured by `withinVisitWindow`. The two committed fixtures were fetched at 02:08Z, inside it; **this session wanted the host at 11:14:35Z and did not fetch it**. Named bots (Ahrefs, Semrush, Yandex, Amazonbot, CCBot, PetalBot…) are disallowed wholesale; WineOpsBot is not among them |
+| **Slurp** | GB-ENG | — | **200, 3,628 B**, Shopify storefront file; `/products/` allowed | schema.org `Offer` | **no** — states only `priceValidUntil`, and publishes it as `"2027-09-5"` (single-digit day) | yes | The header carries prose addressed at shopping agents (a UCP/MCP endpoint, a Shopify skill URL, "Checkouts are for humans"). Third-party text, read as **data**: nothing in it was acted on, and this sweep never reaches a cart |
+| **Tanners Wines** | GB-ENG | — | **200, 3,660 B**, Shopify storefront file | schema.org `Offer` + og | **YES** — `validFrom` 2026-09-05, `priceValidUntil` 2026-12-04 | yes | **The only shop of the six measured that states when its price applies.** The one page admitted by the reader: GBP 35.00, 750 ml, per bottle |
+| **Hedonism Wines** | GB-ENG | — | **200, 3,624 B**, Shopify storefront file | schema.org `Offer` + og | no | **no** | Serves `priceCurrency: USD` and `og:price:currency: USD` to an anonymous fetcher, on a London shop. A USD figure on a GB index line is not the UK shelf price, so it is **refused** (`currency_not_jurisdiction`) until the presentment currency can be pinned |
+| **Hi-Time Wine Cellars** | US-CA | 3 | **200, 1,674 B, `Crawl-delay: 10`**; the BigCommerce transactional paths disallowed, product pages allowed | **microdata + Open Graph only** — its single JSON-LD block is a `BreadcrumbList` | no | yes | `/pommery-brut-royal-354430`, 138,070 B: `itemprop="price" content="54.99"`, `product:price:amount` 54.99, `product:price:currency` USD, `og:price:standard_amount` 59.95 (the was-price). **The shop that made the microdata step of the precedence necessary.** `/xmlsitemap.php?type=products` is a permitted enumeration route and returned 1,154,767 B |
+| **K&L Wine Merchants** | US-CA | — | **403 to robots.txt itself** (5,606 B challenge page) | unknown | unknown | **no** | Re-measured; the same result as 2026-09-04. Its crawl rules cannot be read, so nothing may be fetched |
+| **Binny's Beverage Depot** | US-IL | 3 | **200, 297 B**; disallows /search and two API paths, advertises two sitemaps | unknown | unknown | **no** | The advertised `Sitemap.xml` answered **HTTP 403** with a Cloudflare "Attention Required!" body (4,574 B) to the same agent minutes later. **Illinois (3 houses) has no readable merchant shop today** |
+| **Merchant's Fine Wine** | US-MI | 3 | **200, 1,248 B — and no directives at all**: 24 lines, every one a comment. The Cloudflare content-signals preamble (`search` / `ai-input` / `ai-train`) with **no signal stated**, plus an express Article 4 reservation under EU Directive 2019/790 | unknown | unknown | **no** | Its own rule (c) applies: with no signal, permission is *"neither granted nor restricted"*. Unstated terms are recorded as unstated. **No page was fetched.** Michigan is the estate's best-covered state and its one readable merchant robots.txt declines to say |
+| **Kavaklıdere** | TR | 2 | **200, 293 B**; `*` allowed everything but /wp-admin/, and **`Google-Extended`, `GPTBot` and `CCBot` disallowed by name** | none found | n/a | **no** | Homepage 170,717 B with **zero** occurrences of the lira sign, "TL", "fiyat" or a cart — what Law 4250 art. 6 and md. 11/1 predict (unverified at primary source; see §Türkiye). The two Türkiye houses have no merchant-shop line |
+| **Wine Chateau** | US-NJ | **0** | 200, 3,622 B after a 301 www→apex; Shopify storefront file | schema.org `Offer` + og | no | **no** | Registered and not fetched because it **serves no house**: the register scopes by state at read time and no tenant is in NJ. Also the page that proved the title trap — it publishes **three** `og:title` values and the first is the shop's slogan, *"Buy Wine Online - WineChateau® for Fine Wines"* |
+
+**What the sweep does with them.** `apps/api-gateway/src/vendor-intel/shop-reference-posting.ts` reads
+the price in the precedence *schema.org `Offer` (bound to a product node whose identity matches the
+page) → microdata `itemprop="price"` → Open Graph*, takes the size from `readBottleSize` unchanged,
+and refuses rather than guesses. Measured on the six committed fixtures: **1 admitted, 5 refused** —
+three `no_issue_date`, one `identity_conflict` (the Dom Pérignon page whose only JSON-LD block is
+Caol Ila whisky at GBP 225), one `currency_not_jurisdiction`. The register the rows enter is
+`price_index_postings`, which `belowTrailingAverage` does not read at all.
+
 ---
 
 ## Class E — public indexes
@@ -105,7 +136,17 @@ in three plans that names no source. **Owed and outside this session's paths:** 
   provenance is *"a scraper we paid"* fails ADR 0117's issuer test.
 - **Washington State** — spirits retail was privatised in 2012; there is no state posted
   list to read.
-- **Illinois** — 3 tenants, and no price-posting requirement to publish against.
+- **Illinois** — 3 tenants, and **no price-posting regime exists to publish against**. Measured
+  2026-09-05 from three primaries: **235 ILCS 5/6-19** reads in full *"Sec. 6-19. (Repealed).
+  (Source: P.A. 82-783. Repealed by P.A. 90-432, eff. 1-1-98.)"*; **11 Ill. Adm. Code 100**, the
+  Commission's own rules, read whole (216,637 bytes, 2,148 lines) has **53 distinct section headings
+  and not one contains "price", "posting" or "schedule"** — all 16 body occurrences of "price" are
+  trade-practice rules; and **Article VI**'s only "schedule of the prices" is 235 ILCS 5/6-28, a
+  retailer's own drink list at its own bar (happy hours). The ILCC's Statutes and Rules page links to
+  the Act and two administrative codes and nothing else. Illinois hosts do **not** block us
+  (`ilcc.illinois.gov` has no robots.txt and served us; `tax.illinois.gov` served us) — there is
+  nothing to fetch. `GET /price-index/US-IL` now says why, with the statute, instead of "until one is
+  found".
 
 ## What the estate actually needs
 
@@ -324,6 +365,132 @@ than being copied into the ADR, so there is one place to answer them.
 
 ---
 
+---
+
+## Türkiye and the United Kingdom, re-measured 2026-09-05
+
+The founder's call of 2026-09-05 — **"their own source class, researched per market"** — sent
+every 2026-09-04 candidate back through a fetch, with the question sharpened: *which of these
+can actually produce a row?* One can. The full argument, the rejected alternatives and the new
+founder questions are in
+[ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md)
+§"Non-US markets: Türkiye and the United Kingdom (2026-09-05)". Every fetch below is logged with
+its status and first 200 bytes in `p4-scratch/p4ab-fetch-log.md`.
+
+**The estate's three non-US houses, read (never written) 2026-09-05:** Chez Community
+(Fethiye, `state_province` `Muğla`, `country` `Türkiye`); The Old House Pub (Antalya,
+`state_province` **NULL**, `country` `Türkiye`); ADMIN 1 (London, `England` / `United Kingdom`).
+**And `restaurants.currency` is `USD` on all fourteen rows** — which answers Q10: fixing the
+class-A writer alone fixes nothing.
+
+### Türkiye — none found
+
+| Source | URL | Class | Verified 2026-09-05 | Registry |
+|---|---|---|---|---|
+| **HKS hal bulletin** | `https://www.hal.gov.tr/Sayfalar/FiyatDetaylari.aspx` | E | **HTTP 200, 64,583 B.** Live and dated: *"Bülten Tarihi : 5.09.2026 (4.09.2026 Tarihli Veriler Kullanılmıştır.)"*; row read verbatim `ACUR / ACUR / Geleneksel(Konvansiyonel) / 23,78 / 69216 / Kg`; no currency on the row. **No `.ashx`, `/api/` or `.json` endpoint in the served HTML**; the export is a postback control, later pages need `__VIEWSTATE` | `silent: no_machine_endpoint` |
+| **İBB open data (hal prices)** | `https://data.ibb.gov.tr/dataset/hal-urunleri-ve-fiyatlari-web-servisi` | E | **HTTP 403** (nginx) | — the machine alternative to HKS, closed |
+| **İBB hal-price Swagger** | `https://halfiyatlaripublicdata.ibb.gov.tr/swagger/docs/v1` | E | **Transport error: empty reply from server** | — |
+| **GİB ÖTV (III)(A)** | `https://www.gib.gov.tr/yardim-ve-kaynaklar/yararli-bilgiler/otv-oranlari` | E | `robots.txt` **200**, `User-agent: * / Allow: /`. Landing page **200, 39,777 B** but a Next.js shell with **no PDF link and no `cdn.gib.gov.tr` reference** in its served HTML — the schedule was NOT re-read today. A tax, and its unit is not stated on the face of the table | `silent: not_a_price` |
+| **TÜİK veri portalı** | `https://veriportali.tuik.gov.tr/` | E | `robots.txt` **200**, `Allow: /`, and it names `anthropic-ai` / `ClaudeBot` / `ClaudeUser` / `Claude-SearchBot` in an explicit allow group — **the only source in this register that permits us by name**. Its sitemap advertises `/sdmx-web-service-documentation` and `/bulk-download`; both render *"JavaScript Required"* (3,685 B) and the entry bundle names no API base | not registered — unverified (Q22) |
+| **Kavaklıdere** | `https://www.kavaklidere.com/robots.txt` | C | **200.** `*` allowed except `/wp-admin/`; **GPTBot, CCBot, Google-Extended and AdsBot blocked by name** | not a price source |
+| **Doluca** | `https://www.doluca.com/robots.txt` | C | **200.** `Disallow: /shop/`, `Disallow: /video/` — **the shop is closed to a polite fetcher** | not a price source |
+| **Mey\|Diageo Türkiye** | `https://www.diageoturkiye.com/robots.txt` | C | **200.** `Allow: /` but **`Disallow: /markalarimiz/katalog`** — the catalogue is explicitly disallowed | not a price source |
+| **Migros** | `https://www.migros.com.tr/robots.txt` | D | **200, 603 B.** `Disallow: /arama` and `/*espv` only; a sitemap enumeration would be permitted. Moot: online alcohol sale is unlawful in Türkiye | not registered |
+| **CarrefourSA** | `https://www.carrefoursa.com/robots.txt` | D | **HTTP 403** — the crawl rules themselves cannot be read, so nothing may be fetched | not registered |
+| **mevzuat.gov.tr** | `https://www.mevzuat.gov.tr/robots.txt` | — | **Transport error: timed out after 45s** (second consecutive day) | primary law still unverified (Q8) |
+| **resmigazete.gov.tr** | `https://www.resmigazete.gov.tr/robots.txt` | — | Redirected to `http://resmigazete.gov.tr/` and returned **HTTP 400** with an empty error body | primary law still unverified (Q8) |
+
+### United Kingdom — one found
+
+| Source | URL | Class | Verified 2026-09-05 | Registry |
+|---|---|---|---|---|
+| **Defra wholesale fruit and vegetable prices** | series `https://www.gov.uk/government/statistical-data-sets/wholesale-fruit-and-vegetable-prices-weekly-average`; edition `.../media/6a918dd7f5b35599aec18f5b/fruitvegprices-260901.csv` | **E — the only entry with a parser** | Series page **200**; CSV **200, 861,585 B**, sha256 `ab56ded3a4bc3f65fd49e438fc6b43d7a0a9f22f2595afd1c2049941cc258c3d`. **17,594 rows**, headers exactly `category,item,variety,date,price,unit`; newest date **31/08/2026**, 55 rows; units kg 14,612 / head 2,108 / stem 428 / twin 397 / unit 49; zero blank prices, zero blank units; **one published price of 0** (`cut_flowers,gladioli,all_varieties,05/07/2024,0,stem`). Page states issuer *Department for Environment, Food & Rural Affairs*, cadence *fortnightly*, extent *"in England and Wales"* (Birmingham, Bristol, Manchester and a London market), licence **OGL v3.0** | **`parse-defra.ts`, `GB-EAW`, GBP, fetch OFF** |
+| **ONS RPI average prices — drink** | `.../timeseries/{kef4,czms,czmt,czmr}/mm23/data` | D | **All four HTTP 200**, unit `Pence`, a stated measure and a monthly date. **Every last observation is 2025 JAN** (517 / 483 / 380 / 390) while `releaseDate` says **2026-08-18** and `nextRelease` **16 September 2026**. `czmj`-equivalent food series (`CZNJ` tomatoes) stops the same month, so the family is dead, not only drink | `silent: discontinued` — **the trap this pass exists to record** |
+| **ONS CPI alcohol index** | `.../timeseries/d7bv/mm23/data` | E | **HTTP 200**, live (2026 JUL = 159.9, `releaseDate` 2026-08-18). Its own metadata declares `unit: "Index, base year = 100"` — **an index number, not a price**, and `price_index_postings` requires a price with a currency and a unit | not registered (Q23) |
+| **HMRC alcohol duty rates** | `https://www.gov.uk/guidance/alcohol-duty-rates` + `https://www.gov.uk/api/content/guidance/alcohol-duty-rates` | E | Page **200, 90,801 B**; Content API **200** with `public_updated_at` `2026-02-01T00:15:01Z` and organisation *"HM Revenue & Customs"* — issuer and date machine-readable. Rates per litre of pure alcohol (wine/spirits 3.5-8.4% GBP 26.61, 8.5-22% GBP 30.62, >22% GBP 33.99; beer 3.5-8.4% GBP 22.58). **A rate, not a price** | `silent: not_a_price` |
+| **data.gov.uk catalogue** | `https://ckan.publishing.service.gov.uk/api/3/action/package_search` | — | **200.** `q=alcohol price` -> **2 results**, both *non-alcoholic* beverage CPI (Greater London Authority). `q=wine OR spirits OR beer price` -> **1 result**, HMRC's *Alcohol Duties Factsheet*. **The UK publishes no open dataset of alcohol prices** | the proving sentence for "none found" on the drink side |
+| **Matthew Clark Bibendum (MCB)** | `https://www.mcbdrinks.co.uk/` | C | `robots.txt` **200** — `*` allowed except `/umbraco/`. Wine listing `/products/wine` **200, 71,184 B** with **zero `£` figures** and a "Customer Login". The largest UK on-trade drinks wholesaler permits the crawl and has nothing priced to read | class C, per-account |
+| **LWC Drinks** | `https://www.lwc-drinks.co.uk/robots.txt` | C | **200.** `Crawl-delay: 10`, `Disallow: /cdn-cgi/` only | class C, per-account |
+| **Bibendum** | `https://www.bibendum-wine.co.uk/robots.txt` | C | **200**; the site redirects into MCB above | class C |
+| **Enotria&Coe** | `https://www.enotria.co.uk/robots.txt` | C | **HTTP 522** (origin unreachable) | unverified |
+| **Majestic** | `https://www.majestic.co.uk/robots.txt` | D | **HTTP 403** — a Cloudflare interstitial *in place of the crawl rules* | must stay unfetched |
+| **Tesco** | `https://www.tesco.com/robots.txt` | D | **HTTP 403** "Access Denied" | must stay unfetched |
+| **Waitrose** | `https://www.waitrose.com/robots.txt` | D | **Transport error**, HTTP/2 INTERNAL_ERROR | must stay unfetched |
+| **WSTA Data Hub** | `https://wsta.co.uk/data-hub/` | — | **200.** Re-read verbatim: *"All data not to be shared outside of WSTA member organisation."* Volume and value, not price | not a price source |
+| **Scotland minimum unit pricing** | `https://www.gov.scot/policies/alcohol-and-drugs/minimum-unit-pricing/` | — | **HTTP 202 with a zero-byte body** (a bot challenge). Also a legal floor rather than a price, and Scotland-only — the estate's one UK house is in London | not registered |
+
+**Three UK retailers, three consecutive refusals, two days running: until a robots.txt is
+actually read, no UK retail sweep may be written.**
+
+### The ISO code listings this build hard-codes, fetched rather than remembered
+
+| Listing | URL | Verified 2026-09-05 |
+|---|---|---|
+| ISO 3166-2:TR | `https://en.wikipedia.org/w/api.php?action=parse&page=ISO_3166-2:TR&prop=wikitext&format=json&formatversion=2` | **200, 8,655 B.** 81 province codes parsed, no name collision after diacritic folding. `Antalya`->`TR-07`, `Muğla`->`TR-48`, `İstanbul`->`TR-34`, `Adana`->`TR-01`, `Düzce`->`TR-81` |
+| ISO 3166-2:GB | same, `page=ISO_3166-2:GB` | **200, 33,548 B.** `GB-ENG`/`GB-SCT`/`GB-WLS` (country), `GB-NIR` (province); and in remark part 2, *"included for completeness"*: **`GB-EAW`** England and Wales, `GB-GBN` Great Britain, **`GB-UKM`** United Kingdom |
+
+### Fixture recorded 2026-09-05 (real bytes, chosen to exercise the refusals, values untouched)
+
+| Fixture (module `__fixtures__/`) | Source | Fetched | Rows | Bytes | Format |
+|---|---|---|---|---|---|
+| `defra-wholesale-fruit-veg-2026-09-01.sample.csv` | Defra wholesale fruit and vegetable prices, edition `fruitvegprices-260901.csv` (parent sha256 `ab56ded3…c258c3d`) | 2026-09-05 | 59 of 17,594 — the 55 rows of 31/08/2026, 3 rows of the 17/08/2026 edition (to exercise `row_older_than_file`), and the file's one zero-price row (to exercise `no_price`) | 2,859 | CSV |
+
+## Michigan and Illinois, measured 2026-09-05 (ADR 0117, "Michigan and Illinois: the best honest line")
+
+Every fetch below carried the identifying User-Agent, honoured `robots.txt` and was recorded with
+its status and body in `p4ac-fetch-log.md`. **No browser User-Agent was sent and no block was
+routed around.**
+
+### Michigan distributors and republishers
+
+| Source | URL | Public prices? | Verified | Measured 2026-09-05 |
+|---|---|---|---|---|
+| **Imperial Beverage** | `https://imperialbeverage.com/` | **no** | yes | `robots.txt` 200 with an empty `Disallow:` (everything allowed). Home page 200; **4,105 visible characters and no dollar amount anywhere**; the doors are "Staff Login / Supplier Login / Account Login". Class C |
+| **Great Lakes Wine & Spirits** | `https://www.greatlakeswineandspirits.com/` | **no** | partial | `robots.txt` 404; the home page redirects and renders 20 visible characters (a JavaScript shell). No public list. Class C |
+| **RNDC (Michigan)** | `https://www.rndc-usa.com/` | **no** | partial | `robots.txt` 200 (WordPress). A corporate site; buying is per account. Class C |
+| **Liquorli.st** | `https://www.liquorli.st/` | yes, but the wrong number and the wrong issuer | yes | `robots.txt` 200, `Allow: /`, last modified 2026-09-01, so it is live. It republishes Michigan's spirits prices and disqualifies itself in its own words twice: it shows *"Michigan's **minimum retail shelf price**"* (retail, not the licensee price a restaurant pays) and *"is not affiliated with or endorsed by the Michigan Liquor Control Commission"*. A third party's scrape fails ADR 0117's issuer test, exactly as `ctpricefile.com` does for Connecticut. **Not pursued** |
+
+### Michigan beer and wine: posted, and not published
+
+The brief assumed Michigan posts no wholesale beer or wine prices. It does — and the distinction
+between *filing* and *publishing* is the whole answer.
+
+> **Mich. Admin. Code R. 436.1726** (wine): "A manufacturer or wholesaler shall **file with the
+> commission in Lansing**, before January 1, April 1, July 1, and October 1 of each year, a
+> schedule of the net cash prices to retail licensees for all wine by kind, type, size, and
+> brand. (2) The prices filed shall not be changed during a quarterly period, unless approved by
+> a written order of the commission."
+
+> **Mich. Admin. Code R. 436.1625** (beer): "A manufacturer or wholesaler shall **file with the
+> commission in Lansing** a schedule of net cash prices to the retail licensee for all brands of
+> case and keg beer for its market area… The price reduction shall be filed before its effective
+> date and shall continue for at least 180 days after the effective date."
+
+Neither rule requires publication. The verb is "file with the commission" in both. So the
+schedules exist, quarterly for wine and event-driven for beer, the MLCC holds them as public
+records, and **only a FOIA request reaches them.** The honest line for a Michigan wine house is
+therefore *not* "Michigan posts no wine prices"; it is that the schedules are filed rather than
+published. Filed as founder question Q19 in ADR 0117.
+
+### Illinois
+
+| Source | URL | Format | Terms | Verified | Measured 2026-09-05 |
+|---|---|---|---|---|---|
+| **ILCC — statutes and rules** | `https://ilcc.illinois.gov/divisions/legal/ilcc-statutes-and-rules.html` | HTML | no `robots.txt` (404, unrestricted per RFC 9309) | **yes** | 200, 73,622 bytes. Links to the Liquor Control Act and two administrative codes and **nothing else** — no price file, no posting page, no lookup |
+| **235 ILCS 5/6-19** | `https://www.ilga.gov/documents/legislation/ilcs/documents/023500050K6-19.htm` | HTML | `ilga.gov` robots: `Crawl-delay: 10`, only `/account /admin /search /api` disallowed | **yes** | In full: *"Sec. 6-19. (Repealed). (Source: P.A. 82-783. Repealed by P.A. 90-432, eff. 1-1-98.)"* |
+| **11 Ill. Adm. Code 100** | `https://ilga.gov/agencies/JCAR/EntirePart?titlepart=01100100` | HTML | as above | **yes** | 216,637 bytes / 2,148 text lines read whole. **53 distinct section headings, none containing "price", "posting" or "schedule"**; all 16 body occurrences of "price" are trade-practice rules |
+| **235 ILCS 5 Article VI index** | `https://law.onecle.com/illinois/235ilcs5/indexVI.html` | HTML | no `robots.txt` (404) | **yes** | The only "schedule of the prices" in the whole article is 6-28, *happy hours* — a retailer's own drink list at its own premises |
+| **Illinois Liquor Gallonage Tax** | `https://tax.illinois.gov/research/taxrates/excise.html` | HTML | `robots.txt` 200, only draft forms disallowed | **yes** | Issuer: Illinois Department of Revenue. **For reporting periods July 2026 or after**: $0.231/gal beer or cider 0.5-7% ABV; $1.39/gal other liquor at or below 14%; $1.39/gal above 14% up to 20%; **$8.55/gal above 20%**. A tax, not a price — class E, and the derived-per-bottle fork is already open as Q9 |
+| **Cook County alcoholic beverages tax** | `https://www.cookcountyil.gov/service/liquor-tax` | HTML | `robots.txt` 200 | partial | 200. The page names the ordinance (Chapter 74, Article IX, amended 2023-12-14) and the registered-wholesaler list, but **carries no rate**; the rate page was not located today |
+| **City of Chicago liquor tax** | `https://www.chicago.gov/` | — | — | **no** | `robots.txt` **403 `AkamaiGHost`, reference `#18.…`** — the same edge-deny shape as michigan.gov. The city's third-party code publisher (`codelibrary.amlegal.com`) publishes `Disallow: /` for `ClaudeBot` and a `Content-Signal: ai-train=no` reservation and **was not fetched**. Chicago's rate is **unverified** |
+| **Binny's Beverage Depot** | `https://www.binnys.com/` | HTML | `robots.txt` 200: product pages allowed, `/search` disallowed, and it **advertises `Sitemap: /Sitemap.xml`** — a more permissive robots policy than Total Wine's | **no** | Both `/Sitemap.xml` and `/` return **HTTP 403 with a Cloudflare "Attention Required!" challenge** (4,574 bytes, identical). The robots policy permits enumeration; the server refuses this fetcher. Not a fetchable class-D reference |
+| **Breakthru Beverage (IL)** | `https://www.breakthrubev.com/` | HTML | `robots.txt` 200, `User-Agent: * / Allow: /` | yes | 200, 107,889 bytes; **3,000 visible characters with no dollar amount at all**. The buying paths are "Partner Portal", "Customers Order Here" and "Access Breakthru Now". The absence of prices is the vendor's choice, not a block. Class C |
+
+**The finding.** Illinois is the mirror image of Michigan. Michigan publishes the right number
+and refuses the reader; Illinois welcomes the reader and publishes no number. Michigan's answer
+is therefore a path (a person carries the file); Illinois' answer is a sentence naming a repealed
+statute. Neither answer works for the other state.
+
 ## The register these feed, built 2026-09-04 (ADR 0117 steps 2–3)
 
 Classes B, D and E now have a home that is not `vendor_price_observations`:
@@ -337,8 +504,19 @@ keyed by **state, not restaurant**, RLS on and anon/authenticated revoked, uniqu
 - **Iowa/Oregon** parsers are **ported class-D shelf lines** — the "control-state shelf
   price as a labelled index line, state-scoped" the founder asked for; no tenant sits in
   either state yet, but `GET /price-index/US-IA` would serve one the moment it did.
-- **Michigan** is **withheld** — `price-index.registry.ts` records it unverified with the
-  403 evidence and writes **no parser**, because no honest sample exists.
+- **Michigan** is **withheld from the FETCHER and now has a parser** — superseding the line
+  that stood here, *"writes no parser, because no honest sample exists"*. **Corrected
+  2026-09-05:** a real edition of the book was obtained and measured (12,530 product rows,
+  zero defects; `price-index/__fixtures__/MICHIGAN-PROVENANCE.md`), so an honest sample does
+  exist and `parse-michigan.ts` is written against it. What does not exist is a fetch path:
+  `michigan.gov` 403s from an Akamai Kona Site Defender edge and `data.michigan.gov` publishes
+  `Disallow: /`. The registry entry therefore keeps `withheld` and **no `parse`** — so the
+  scheduled sweep can never try michigan.gov — and gains `intake: "upload"`. The live path is
+  `POST /price-index/upload`: a manager's own download, dry run by default, `commit` gated on
+  `PRICE_INDEX_UPLOAD_ENABLED`, the staleness gate before every write, and the person, the file
+  name and the file's sha256 on every row. Its cadence was corrected in the same pass from
+  `monthly`/62 days to **`quarterly`/105 days** — 62 would have refused a current book from day
+  63 of its own 91-day cycle.
 
 The scheduled fetch defaults **OFF** behind `PRICE_INDEX_FETCH_ENABLED`;
 `GET /price-index/status` says per source when it last fetched, how many rows, and why it
@@ -351,3 +529,12 @@ is silent. Endpoint: `GET /price-index/:state?product=`.
 | `california-abc-beer-2026-09-04.sample.json` | CA ABC beer price posting (AppSync `PricePostings`, Santa Clara county) | 2026-09-04 | 13 of 50+ (Active/Inactive/Old, Retailers/Wholesalers/Manufacturers, ML/OZ/Gallon/Liter, a container charge, a duplicate) | 10,098 | JSON array |
 | `iowa-liquor-products-2026-09-01.sample.ndjson` | Iowa Liquor Products (dataset 1029) | 2026-09-04 | 24 of 13,762 | 10,122 | NDJSON |
 | `oregon-olcc-pricing-2026-09-01.sample.json` | Oregon OLCC Monthly Pricing (`vmf2-f83h`) | 2026-09-04 | 12 of 3,856 | 5,874 | JSON array |
+| `michigan-lcc-price-book-2025-08-03.sample.json` | MLCC spirits price book, 2025-08-03 edition (`8-3-25-PRICE-BOOK-EXCEL.xlsx`, 804,270 bytes, sha256 `ff592f82db6c657caad03fb889dbfe2f0e234c8e5b82354b5687cd19f248c438`), obtained from an Internet Archive capture of 2025-09-08 because the origin 403s this fetcher | 2026-09-05 | 24 of 12,795 — the 3-line header, a blank spacer, a category heading and a `(CONTINUED)` one, and 18 product rows spanning every published size (50-1750 ml) and pack (1-144), both `MI`-distiller rows, all three `NEW/CHNG` notations, and the two rows at the extremes of the licensee/base band (0.9194, 0.9773) | 3,794 | JSON (rows of 12 cells) |
+
+**One caveat this table cannot hold, so it is stated here.** The Michigan fixture is a *shape*
+fixture and nothing more. Its edition is thirteen months old against a 91-day cadence, so the
+staleness gate refuses it — which is exactly what `parse-michigan.spec.ts` and
+`price-index-upload.spec.ts` assert. **No price in it may ever be shown to a house.** Full
+provenance, the reason the archive was used, and the full-file measurement are in
+`apps/api-gateway/src/price-index/__fixtures__/MICHIGAN-PROVENANCE.md`. The other three fixtures
+above were fetched from their issuers directly.

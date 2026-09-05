@@ -1615,6 +1615,35 @@ sibling's implementation differs, the sibling's file is the truth.
        **OFF** (`PRICE_INDEX_FETCH_ENABLED`); `GET /price-index/status` says per
        source when it last fetched, how many rows, and why it is silent.
 
+       **Update 2026-09-05 — the retail row of that same index line.** The founder's
+       call — *"point it at merchant shops, as their own class"* — adds a second kind
+       of class-D source beside the control states: a **merchant shop's shelf price**,
+       read off the shop's own markup and filed in the SAME register with
+       `source_class = 'retail_reference'`, so the panel draws it exactly as it draws
+       Iowa and Oregon: **"retail reference, <shop>, <date>"**, its own line, never
+       beside a quote. Nothing on this page changes and no new endpoint is needed —
+       `GET /price-index/:state` already returns `sourceClass`, `issuer` and
+       `issuedAt` per line, and a shop row fills those with the shop's name and the
+       date the shop itself states the price applies from. The instrument is
+       `apps/api-gateway/src/vendor-intel/shop-reference-sweep.service.ts`, OFF behind
+       **two** flags (`PRICE_REFERENCE_SHOP_SWEEP_ENABLED` to run at all,
+       `PRICE_REFERENCE_SHOPS_ARMED` to name which shops), with
+       `GET /vendor-intel/shop-sweep/status` returning every registered shop including
+       the ones deliberately not fetched and the reason for each.
+
+       **What the panel will actually have to say for a while, measured 2026-09-05.**
+       Of six recorded merchant pages, **one** is admitted; three state no date at
+       all and are refused rather than stamped with our fetch clock, one publishes
+       structured data about a different product, and one serves USD on a London
+       shop. Of the estate's markets, only **GB-ENG (1 house)** and **US-CA (3
+       houses)** have a shop that may be fetched today: Illinois' candidate answers
+       403 at its own sitemap, Michigan's declares no content signal, and Türkiye
+       publishes no shelf price at all. So the honest empty state for a house here is
+       not "no prices" but the sentence naming which of those it is — which
+       `silenceFor` (`price-index.service.ts`) already carries for the fetch and which
+       the shop status endpoint carries per shop. Filed as a gap only in the sense
+       that the panel itself is still the unapplied patch above; the sentences exist.
+
     c. **A subject on every row (§13.21) is what the producers want next.** All
        five write rich `metadata` (`goalId`, `receiptEventId`, `documentId`,
        `serviceDate`, `productKey`) but leave `related_entity_type` /
