@@ -1,8 +1,16 @@
 # 0090 — An Opus audit gate reviews every PR before it merges to main, and an approval merges + deploys with no human click
 
-- **Status:** Proposed (founder answered the two forks live via `AskUserQuestion` on
-  2026-09-02; formal lock is a separate founder action per this log's convention —
-  see Review trail)
+- **Status:** **Merged** — PR [#261](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/261)
+  squash-merged to `main` 2026-09-03 as `ce519d4208b5bd27751d8acc572c1b53ca99fc78`
+  (SHA-pinned via `gh api .../pulls/261/merge`, all five required contexts green,
+  `--self-test` 29/29 on `main`'s own copy). Merged under **direct founder
+  authorization in chat**, not the automated skill/hook path: this PR touches the
+  gate's own owned paths (`_GATE_OWNED_PATHS`), so `touches_own_gate` force-escalates
+  it to BLOCK by the gate's own design — the system cannot self-clear a PR that
+  modifies itself. That escalation firing here is the intended shape, not a bug.
+  The seventh Correction's fix, PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297),
+  hit the identical escalation and was merged the identical way, 2026-09-06, as
+  `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec` — see Review trail's final two rows.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** audit, merge-gate, autonomous-deploy, opus, branch-protection, ci,
@@ -146,20 +154,16 @@ limitation, not a verified guarantee.
 - What becomes harder / given up: a bad audit call now ships to production
   unattended. The adversarial pass and fail-closed error handling are the
   mitigations; they are not a proof of safety.
-- **What this does NOT yet do:** it does not add `PR Audit Gate` to `main`'s
-  required status contexts (that PATCH is a persistent-config change needing
-  explicit founder permission per this session's operating rules — command is
-  ready, not run) and, as of 2026-09-02, it does not yet have an
-  `ANTHROPIC_API_KEY` **Actions secret** — the founder has the key in a local,
-  gitignored `.env`, which is a different store: GitHub Actions reads only its
-  own secret store, never a repo's `.env` file, and I do not read a credential's
-  value out of `.env` and enter it anywhere myself (prohibited regardless of
-  authorization). The founder still needs to run
-  `gh secret set ANTHROPIC_API_KEY` (or the GitHub UI) themselves. Until both
-  happen, the CI half posts findings and will still attempt its own
-  `gh pr merge --auto`, but nothing stops a merge that bypasses this workflow
-  entirely — only the Claude-side hook is a hard constraint, and only inside a
-  Claude Code session.
+- **What this does NOT yet do, as of the 2026-09-03 merge:** it does not add
+  `PR Audit Gate` to `main`'s required status contexts. That PATCH is a
+  persistent branch-protection change needing explicit founder permission per
+  this session's operating rules — still not run, still open, tracked
+  alongside this ADR in `SKILL.md`'s "Known limitations". Until it lands, the
+  CI half posts findings and attempts its own SHA-pinned merge on PASS, but
+  nothing stops a merge that bypasses this workflow entirely — only the
+  Claude-side hook is a hard constraint, and only inside a Claude Code session.
+  (The `ANTHROPIC_API_KEY` Actions secret half of this gap is closed — added
+  2026-09-02, confirmed live by this gate's own first real run against PR #261.)
 - **Correction, second live audit (2026-09-03):** the line above originally
   claimed fork PRs can't see this secret, true of `pull_request` (ADR 0072's
   precedent) and carried over unchanged when this workflow moved to
@@ -482,7 +486,7 @@ contrived shape, not a realistic `gh pr merge` invocation today, named
 rather than engineered around given the "loose regex, known limitation"
 design already stated for this whole hook.
 
-## Correction — 2026-09-03, found by the gate's own SIXTH real audit (final)
+## Correction — 2026-09-03, found by the gate's own SIXTH real audit (final round of the introducing PR's own self-audit — see the seventh and eighth Corrections below for later, differently-sourced fixes)
 
 A closing round, deliberately scoped as one combined correctness+security
 pass rather than three separate angles, explicitly asked to try to defeat
@@ -521,6 +525,154 @@ only the Claude-Code path still writes `.planning/07-reference/pr-audits/`,
 corrected in place above) and the Review-trail table, which had fallen two
 rows behind its own Correction count (fixed by this edit).
 
+## Correction — 2026-09-04, found by live incident forensics, not an audit round
+
+The sixth round's "genuinely converged" held for the parsers and the hook —
+it did not hold for `wait_upstream`'s red branch, and this was not found by
+an Opus auditor at all. It was found the way this repo's `absence-reported-
+as-health` finding says most of these are found: production kept doing it.
+Confirmed on **four** separate PRs before this correction was written: two
+peer sessions independently reported the same shape on **#288** and **#294**
+(`Upstream red: ['CodeQL']` fired 93s into their runs, 2s and ~90s
+respectively after CodeQL's own check-run had already completed SUCCESS);
+this session's own **#291** hit it live during this exact investigation
+(28s after CodeQL finished clean); and re-checking open PRs while writing
+this correction turned up a fourth, independent instance already sitting on
+**#290** (`docs: close out ADR 0090` — the very PR that would have closed
+this document out, blocked by the bug it describes). All four cleared on
+`gh run rerun --failed` with no code change, which is what a transient
+misread predicts and a genuine failure would not.
+
+**Root cause, confirmed by direct capture, not inferred:** the working
+hypothesis going in was a *pending*-vocabulary gap — some interim
+`status`/`conclusion` combination (`IN_PROGRESS`-adjacent) that the old
+pending allow-list (`PENDING`, `IN_PROGRESS`, `QUEUED`) didn't name, so it
+fell through to `failed`. That hypothesis was wrong, and this PR (#297)
+proved it wrong against itself: polling
+`repos/.../commits/<sha>/check-runs` directly (not just `gh pr checks`,
+in case the gap was gh's own GraphQL mapping) every ~9s through this PR's
+own CI run, the `CodeQL` check-run (app `github-advanced-security`,
+distinct from the `Analyze Code (python/javascript)` matrix jobs that feed
+it) was captured going through, on the **same** check-run and the **same**
+`started_at`:
+
+```
+18:13:02Z  status=completed  conclusion=neutral
+18:13:12Z  status=completed  conclusion=success   (10s later, same check-run)
+```
+
+`NEUTRAL` is not an interim status — it is a real, already-`completed`
+**terminal** conclusion, and it is not a stale read of an old state:
+GitHub's own Checks REST API, not just `gh pr checks`'s GraphQL rollup,
+returned it. The code-scanning bridge that turns a matrix job's SARIF
+upload into this aggregate check-run posts a `neutral` conclusion first —
+plausibly a default it writes before the alert-processing step that
+decides the real verdict — and corrects it to the true conclusion within
+about ten seconds, without changing `completed_at`. `_classify_poll`
+correctly treats `NEUTRAL` as `failed`, and correctly so **in general**:
+round 3's own fix exists because a check that concludes NEUTRAL for a real
+reason (nothing to report) must not fall through to silently green. That
+is exactly why **option 2 (allow-listing `NEUTRAL` as pending) was
+considered and rejected**, not just skipped — it would have reopened the
+precise bug round 3 fixed, for the next PR where a check-run's NEUTRAL
+conclusion is genuine. The bug here was never in the vocabulary; it was in
+trusting a single read of a value GitHub itself had not finished settling.
+
+**Fix:** the green branch below has required the identical check SET on
+two consecutive polls since `wait_upstream` was first written, for exactly
+this class of reason (a check not yet scheduled is invisible, not
+missing). The red branch had no equivalent protection. It now does:
+`_confirmed_red()` requires the SAME non-empty failed set on two
+consecutive polls before returning red; a set that clears or changes shape
+between polls is logged but not trusted; a set that never stabilizes still
+times out red via the existing deadline path, so the fail-closed property
+this must not regress stayed intact — verified by keeping the "confirms on
+2 identical polls" case in `--self-test` alongside the new "1 poll never
+confirms" case. `_classify_poll` (the missing/pending/failed split) and
+`_confirmed_red` (the new debounce) are both extracted as pure functions
+`wait_upstream` calls and `--self-test` now calls directly too, closing a
+smaller, adjacent gap: the self-test's own state-classifier check had been
+a hand-retyped mirror of the real logic, not the real logic, since round 3
+added it — agreement by construction, not by sharing code. `--self-test`
+grown 29 → 35 invariants. A new `CLAIMS.jsonl` entry
+(`ADR-0090`) pins that the printed invariant count and the actual number
+of `check()` calls in the file stay equal, so this count cannot silently
+drift the way this document's own Review-trail table already had to be
+corrected once, in the sixth round above, for falling behind by two rows.
+
+Fix PR: [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297)
+— branch `fix/pr-audit-gate-red-debounce`. Like PR #261 before it, this PR
+touches `scripts/pr_audit_gate.py`, one of this ADR's own
+`_GATE_OWNED_PATHS`, so `touches_own_gate` force-escalates it to BLOCK
+regardless of what the audit angles conclude — it needs the founder to
+merge it directly, the same escalation path PR #261 needed and the sixth
+Correction's Review-trail row above records.
+
+**Merged 2026-09-06, same mechanism as PR #261.** `require_pr_audit.py`
+correctly blocked a plain `gh pr merge 297` (no PASS marker exists for this
+PR, by design — it never can, since `touches_own_gate` forces BLOCK
+regardless of verdict). Founder authorized completing the merge directly in
+this chat session; done via `gh api repos/.../pulls/297/merge`, SHA-pinned
+to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646` (the head after resolving
+main's concurrent merges of #290 and #291 into this branch), squash-merged
+to `main` as `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec` — all five of
+`main`'s actual required contexts green first (`CI Complete`, the beverage
+identity/guest-merge/schema-parity checks); `PR Audit Gate` itself stayed
+red throughout, as expected, since it is not one of those five required
+contexts and audits from `main`'s pre-fix copy by design. `--self-test`
+35/35 re-confirmed on the merged tree before merging, matching the count
+`CLAIMS.jsonl`'s new entry pins.
+
+**Addendum, same day:** a **fifth** live instance, on PR #297 itself, before
+the fix above had even merged — `wait_upstream`'s own "Checkout the TRUSTED
+base commit" step (by design, see the top of this file: a PR cannot rewrite
+the code auditing it) ran the bug being fixed, from `main`, against the fix
+PR that fixes it. `CodeQL` completed SUCCESS at 18:18:16Z; the unfixed code
+declared "Upstream red: ['CodeQL']" at 18:18:46Z. Left as-is deliberately —
+not re-run — as a fifth data point the same shape as the first four, and
+because re-running it would only prove the OLD code again; the fix cannot
+validate itself until it is on `main`.
+
+## Correction — 2026-09-04, found by PR #291's security audit
+
+Landed concurrently with the seventh Correction above (a different fix, by
+a different session, discovered independently) — both PRs were open at once
+and both cited themselves as "ADR 0090's seventh Correction" in their own
+commit messages before either merged; this section is renumbered eighth to
+resolve that collision, the same rule this repo already applies to a
+colliding OD or ADR number: move the one with fewer citations elsewhere,
+never leave two sections claiming the same ordinal.
+
+Unlike the first six, this correction did not come from a round of the gate
+auditing its own introducing PR — it came from the gate auditing an unrelated
+PR ([PR #291](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/291),
+`fix/deploy-check-path-scoped`, ADR 0097's path-scoped deploy check) whose
+security angle noticed, in passing, that the gap it was about to hit itself
+generalizes: **`_GATE_OWNED_PATHS` covered `.github/workflows/ci.yml` but not
+`.github/workflows/deploy.yml`**, the post-merge production-deploy-verification
+workflow ADR 0097 built. A PR that loosened `check_deployed_sha.py`'s
+`--expect`, dropped a verification stage, or redefined what counts as
+`provenance_verified` would have been evaluated as an ordinary PR and could
+self-merge on three APPROVEs, even though it edits the only thing that proves
+production actually got what merged — the same class of hole `ci.yml` was
+added to close in the fifth Correction, just on the other workflow file. PR
+#291's own report named this explicitly rather than silently working around
+it or bundling the fix into an unrelated PR (which would itself have needed
+this same escalation, for an unrelated reason) — flagged as its own follow-up.
+
+Fixed: `.github/workflows/deploy.yml` added to `_GATE_OWNED_PATHS` in
+`scripts/pr_audit_gate.py`, and to the matching list in
+`.claude/skills/pr-audit-gate/SKILL.md` step 4 (kept in sync per the third
+Correction's own note — they had drifted once before, over `CLAUDE.md`).
+`--self-test` was checked for a case enumerating `_GATE_OWNED_PATHS`'s
+contents; it has none (the escalation tests exercise the generic
+`touches_own_gate` decision against a synthetic reason string, not the tuple
+itself), so no test needed growing on this count alone — it grew to 35
+anyway, via the seventh Correction's merge into this same branch. This PR,
+editing `_GATE_OWNED_PATHS` itself, force-escalates under its own new rule —
+per ADR 0090's design, it is not self-merged; the founder reviews and merges
+it directly, the same path PR #261 and PR #297 both needed.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -534,3 +686,7 @@ rows behind its own Correction count (fixed by this edit).
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — a GITHUB_TOKEN merge silently removes the post-merge deploy audit (confirmed against GitHub's documented behavior + this repo's own merge history); a repo-wide hook that both over- and under-blocked real git commands (confirmed by execution); a diff-truncation gap the third round's correctness angle didn't reach (confirmed by harness-executing a planted regression past the old cut); 6 fixes landed same day, `--self-test` grown 17 → 24, see fourth Correction above |
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — round 4's own `workflow_dispatch` fix 403'd on every run (missing `actions: write`, self-caught independently before either report landed) and round 4's own `\n`-exclusion regex fix regressed a real backslash-continuation case; both fixed same day, `--self-test` grown 24 → 29, see fifth Correction above |
 | 2026-09-03 | pr-audit-gate skill, combined correctness+security (fresh Opus subagent, final round) | BLOCK — one finding, in the YAML consuming `wait_upstream`'s return value rather than the Python producing it: a confirmed-red required check reported job SUCCESS having audited nothing; fixed same day. Explicitly stated the parsers/hook have converged after five prior rounds' adversarial testing found nothing new, see sixth Correction above |
+| 2026-09-03 | Aldemir (chat, direct authorization) | PR #261 modifies `_GATE_OWNED_PATHS` itself, so `touches_own_gate` force-escalates it to BLOCK by design — the gate cannot self-clear a PR that changes itself; that is the intended shape, not a bug. Founder authorized completing the merge directly in chat, the escalation path this exact case exists for. Merged via `gh api .../pulls/261/merge`, SHA-pinned to `ce519d4208b5bd27751d8acc572c1b53ca99fc78`, all five required contexts green, `--self-test` 29/29 re-confirmed on `main`'s own copy post-merge. **Status → Merged.** The branch-protection PATCH gap (still needs founder go) is carried forward, not closed by this merge |
+| 2026-09-03 | pr-audit-gate skill, security angle, auditing PR #291 (unrelated PR) | Noted in passing, not a BLOCK on PR #291 itself: `_GATE_OWNED_PATHS` doesn't cover `deploy.yml`, flagged as its own follow-up PR rather than bundled in; fixed 2026-09-04, see eighth Correction above |
+| 2026-09-04 | Live production incidents, not an audit round (PRs #288, #290, #291, #294) | `wait_upstream`'s red branch had no debounce, unlike its green branch — a single poll catching the `CodeQL` check-run's real but transient `neutral` conclusion (self-corrects to `success` ~10s later, confirmed by direct Checks-API capture) was enough to declare upstream red on four separate PRs. Fixed same day: red branch now requires the same failed set on two consecutive polls; `--self-test` grown 29 → 35, see seventh Correction above. Fix PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297) — touches this ADR's own `_GATE_OWNED_PATHS`, needs the founder to merge directly |
+| 2026-09-06 | Aldemir (chat, direct authorization) | PR #297 modifies `_GATE_OWNED_PATHS` itself, same as #261, so `touches_own_gate` force-escalates it to BLOCK by design and `require_pr_audit.py` correctly refused a plain `gh pr merge 297`. Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/297/merge`, SHA-pinned to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646`, all five of `main`'s actual required contexts green (`PR Audit Gate` itself is not one of them); squash commit `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
