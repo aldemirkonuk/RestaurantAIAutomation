@@ -295,3 +295,60 @@ tsconfig.spec.json` clean; `scripts/check_gateway_boots.sh` PASS (the real
   proven with the real Dockerfile lines in a probe image; the full api-gateway
   image was not built locally, and Railway's build-arg passing is asserted from
   its documented behaviour, not measured against this project's service.
+
+## Correction — 2026-09-03, found by PR #291's own compliance and correctness audits
+
+This ADR's Decision section (and `CLAIMS.jsonl:154`, unchanged until this
+correction) stated the invariant as "Stage 2 compares the deployed revision
+against **the merged sha**." That stopped being literally true the moment PR
+#291 landed, found and fixed the same day as ADR 0090's PR-audit-gate went
+live (the two efforts are unrelated in cause, coincident in date): Railway's
+`@wineops/api-gateway` only rebuilds when a push touches its own
+`watchPatterns` (`apps/api-gateway/**`, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `package.json`), so a merge that legitimately does not
+touch those paths makes Railway correctly SKIP a rebuild — and comparing the
+still-running (correct) build against the raw merged sha reported a false
+MISMATCH. Confirmed live on two consecutive real merges: PR #284 and PR
+#261 (ADR 0090's own introducing PR) both correctly skipped an api-gateway
+rebuild and both then failed this exact check for it — the deploy audit this
+ADR built, catching a defect in a system this ADR did not anticipate.
+
+**The invariant is now:** Stage 2 compares the deployed revision against the
+merged sha for an ordinary change, or — for a path-scoped service, when the
+merge itself did not touch that service's watched paths — against the last
+commit that did. `scripts/resolve_watched_commit.py` (new) resolves which
+commit applies; `deploy.yml`'s Stage 2 passes that resolved commit to
+`check_deployed_sha.py --expect`, not the raw merged sha directly.
+`CLAIMS.jsonl:154` is marked superseded (kept, not deleted, per this file's
+own append-only convention) and replaced with a claim whose `verify` asserts
+the new comparison target by name, not by a substring that could survive the
+target moving underneath it — the exact gap PR #291's compliance audit found:
+the old `verify` command greps for `head_sha` anywhere in the job's run text,
+which still passed after this PR because `head_sha` simply moved into the new
+resolver step, so a claim that had gone false kept reporting as resolved.
+
+**A second, more severe defect was found and fixed in the same PR, before it
+ever merged:** the first version of `resolve_watched_commit.py` used plain
+`git log <sha> -- <paths>`, which applies git's default history
+simplification — at a real (non-squash) merge commit M that is TREESAME to
+one parent for the watched paths, git silently follows only that parent and
+never reports M itself. Reproduced against 4 of this repo's own real merge
+commits and in a constructed case: the pre-fix function resolved a
+side-branch commit that was never `main`'s pushed head and that Railway never
+built from, flipping a correct MATCH into a false MISMATCH for an ordinary,
+successful merge-commit deploy — a strict regression against the pre-PR-291
+behaviour, not merely an incomplete fix. `git log --first-parent` closes it;
+`resolve_watched_commit.py --self-test` now builds a real `git merge --no-ff`
+commit and asserts against it, not only a linear history, so this class of
+bug fails a committed test the next time rather than needing a second live
+merge to notice it again.
+
+**Left open, not defaulted:** the `--paths` list `deploy.yml` passes to the
+resolver is a hand-typed mirror of Railway's dashboard `watchPatterns`
+setting, with no guard against the two drifting apart — filed as
+[OD-122](OPEN-DECISIONS.md) rather than decided here, since the fork (read
+Railway's config live vs. keep the hand-mirror) is the founder's per
+CLAUDE.md §0.1, and the concrete failure direction (a real failed deploy
+certified MATCH against a stale, too-narrow mirror) is exactly this ADR's own
+"never weaken anything to make this green" line, reached from a different
+angle than the one this ADR's Decision section anticipated.
