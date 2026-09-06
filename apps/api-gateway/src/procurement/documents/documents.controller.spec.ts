@@ -51,6 +51,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       {} as any, // CanonicalDocumentService — unused by the routes under test
       {} as any, // DeliverySpineService
       {} as any, // DocumentCorrectionService (ADR 0104 D5)
+      {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
     );
   });
 

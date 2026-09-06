@@ -29,6 +29,8 @@ import {
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
+import { DeliveryService } from "../canonical/delivery.service";
+import { DoorCountDto } from "../dto/deliveries.dto";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
@@ -60,6 +62,7 @@ export class DocumentsController {
     private readonly canonical: CanonicalDocumentService,
     private readonly spine: DeliverySpineService,
     private readonly corrections: DocumentCorrectionService,
+    private readonly deliveries: DeliveryService,
   ) {}
 
   /**
@@ -273,6 +276,127 @@ export class DocumentsController {
     );
     if (!result.ok) throw new HttpException(result.error, result.status);
     return result.value;
+  }
+
+  /**
+   * THE DOOR COUNT — a document we AUTHOR (ADR 0104 D2/D11, ADR 0103 A6).
+   *
+   * `POST /procurement/documents` reads a document somebody else wrote. This one
+   * records what a person at the door SAYS they counted: `doc_type
+   * receiving_advice`, `source manual`, `direction issued_by_us`, explicit lines,
+   * an optional photograph as evidence, and no extraction at all — so
+   * `extraction_confidence` is NULL rather than 0.
+   *
+   * WHY IT IS ITS OWN ROUTE AND NOT A BRANCH INSIDE THE UPLOAD DOOR. The upload
+   * door's whole contract is "here are bytes, tell me what they say". A count
+   * has no bytes to read and nothing to be confident about; folding it in would
+   * have made `contentBase64` optional on a route whose only job is to receive
+   * it, and every reader would then have to work out which kind of document a
+   * given request was. The two doors are different sentences, so they are
+   * different routes.
+   *
+   * A LINE NOBODY COUNTED IS ABSENT, NOT ZERO. There is no `notCounted` flag:
+   * the lines somebody counted are submitted and the rest keep the canonical
+   * `not counted` they already carry (ADR 0103 A6).
+   */
+  @Post("door-count")
+  @ApiOperation({
+    summary:
+      "Record a door count as a receiving_advice document (ADR 0104 D11)",
+    description:
+      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
+  })
+  async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
+    let photo: {
+      bytes: Buffer;
+      filename: string | null;
+      mimeType: string | null;
+    } | null = null;
+    if (body.photoBase64) {
+      let bytes: Buffer;
+      try {
+        bytes = Buffer.from(body.photoBase64, "base64");
+      } catch {
+        throw new HttpException(
+          "photoBase64 is not valid base64",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (!bytes.length)
+        throw new HttpException(
+          "photoBase64 decoded to no bytes. Send a photograph or send none — an empty one is a failed upload wearing the shape of evidence.",
+          HttpStatus.BAD_REQUEST,
+        );
+      photo = {
+        bytes,
+        filename: body.photoFilename ?? null,
+        mimeType: body.photoMimeType ?? null,
+      };
+    }
+
+    const result = await this.intake.recordDoorCount({
+      restaurantId: user.restaurantId,
+      providerId: body.providerId ?? null,
+      countedBy: user.userId,
+      countedAt: body.countedAt ?? null,
+      lines: body.lines,
+      signedBy: body.signedBy ?? null,
+      note: body.note ?? null,
+      photo,
+    });
+    if (result.error || !result.documentId)
+      throw new HttpException(
+        result.error ?? "the door count could not be recorded",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+
+    let delivery: unknown = null;
+    let differsOnLines: number | null = null;
+    if (body.deliveryId) {
+      const linked = await this.deliveries.linkDocument(
+        user.restaurantId,
+        body.deliveryId,
+        result.documentId,
+        "door_count",
+      );
+      if (!linked.ok)
+        throw new HttpException(
+          // The COUNT landed. Saying "the door count failed" would send a
+          // receiver to type it again on top of a document that already exists.
+          `The door count was recorded as ${result.documentId} but could not be attached to delivery ${body.deliveryId}: ${linked.error}`,
+          linked.status,
+        );
+      delivery = linked.value.delivery;
+    } else if (body.createDelivery) {
+      const created = await this.deliveries.create(
+        user.restaurantId,
+        user.userId,
+        {
+          orderId: body.orderId ?? null,
+          providerId: body.providerId ?? null,
+          jurisdiction: body.jurisdiction ?? null,
+          deliveredAt: body.countedAt ?? null,
+          documents: [{ documentId: result.documentId, role: "door_count" }],
+        },
+      );
+      if (!created.ok)
+        throw new HttpException(
+          `The door count was recorded as ${result.documentId} but the delivery could not be created: ${created.error}`,
+          created.status,
+        );
+      delivery = created.value.delivery;
+      differsOnLines = created.value.differsOnLines;
+    }
+
+    return {
+      documentId: result.documentId,
+      document: result.parsed,
+      delivery,
+      // NULL = no comparison was possible (no order, or the read failed).
+      // 0 = compared, and nothing differed. The two are never the same answer.
+      differsOnLines,
+      ...(result.storageError ? { storageError: result.storageError } : {}),
+    };
   }
 
   @Post()
