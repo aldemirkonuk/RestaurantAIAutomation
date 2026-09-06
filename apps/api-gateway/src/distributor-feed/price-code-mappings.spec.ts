@@ -31,6 +31,7 @@ function mapping(over: Partial<PriceCodeMapping> = {}): PriceCodeMapping {
     declaredByName: "Ada Manager",
     declaredAt: "2026-09-05T09:00:00.000Z",
     withdrawnBy: null,
+    withdrawnByName: null,
     withdrawnAt: null,
     withdrawnReason: null,
     ...over,
@@ -312,14 +313,36 @@ describe("PriceCodeMappingsService.withdraw", () => {
       mappingId: "m-1",
       restaurantId: HOUSE,
       withdrawnBy: ADA,
+      withdrawnByName: "Ada Manager",
       reason: "the rep had sent the wrong guide",
     });
     expect(out.ok).toBe(true);
     expect(state.updated).toMatchObject({
       withdrawn_by: ADA,
+      // The NAME, not only the account id (migration 20260906150000; the
+      // founder, 2026-09-06: "Add withdrawn_by_name now"). Until this column
+      // the register could say when a statement was withdrawn and why, but not
+      // by whom in words.
+      withdrawn_by_name: "Ada Manager",
       withdrawn_reason: "the rep had sent the wrong guide",
     });
     expect(typeof (state.updated as Record<string, string>).withdrawn_at).toBe("string");
+  });
+
+  it("refuses a withdrawal that names nobody, and writes nothing", async () => {
+    const { svc, state } = db();
+    const out = await svc.withdraw({
+      mappingId: "m-1",
+      restaurantId: HOUSE,
+      withdrawnBy: ADA,
+      withdrawnByName: "   ",
+      reason: "the rep had sent the wrong guide",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.refusedBecause).toContain("must name the person");
+    // Refused HERE, in words, rather than written blank and bounced back as a
+    // 23514 from `distributor_price_code_mappings_withdrawer_is_named`.
+    expect(state.updated).toBeNull();
   });
 
   it("filters the write on the caller's own house, not only the id", async () => {
@@ -328,6 +351,7 @@ describe("PriceCodeMappingsService.withdraw", () => {
       mappingId: "m-1",
       restaurantId: HOUSE,
       withdrawnBy: ADA,
+      withdrawnByName: "Ada Manager",
       reason: "r",
     });
     expect(state.updateFilters).toContainEqual(["restaurant_id", HOUSE]);
@@ -339,6 +363,7 @@ describe("PriceCodeMappingsService.withdraw", () => {
       mappingId: "m-1",
       restaurantId: HOUSE,
       withdrawnBy: ADA,
+      withdrawnByName: "Ada Manager",
       reason: "  ",
     });
     expect(out.ok).toBe(false);
@@ -352,6 +377,7 @@ describe("PriceCodeMappingsService.withdraw", () => {
       mappingId: "m-1",
       restaurantId: HOUSE,
       withdrawnBy: ADA,
+      withdrawnByName: "Ada Manager",
       reason: "again",
     });
     expect(out.ok).toBe(false);

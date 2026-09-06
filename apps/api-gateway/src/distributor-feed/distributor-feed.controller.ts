@@ -131,6 +131,12 @@ export class DistributorFeedController {
    * ON DELETE RESTRICT and the mark is the join to `withdrawn_at`. The count of
    * those rows is returned, because "how far did this go" is the first question
    * anyone asks — and it is `null`, never 0, when it could not be counted.
+   *
+   * A withdrawal is SIGNED, like the statement it ends (the founder,
+   * 2026-09-06, batch 61: "Add withdrawn_by_name now"). The name comes from the
+   * session, never from the body, so nobody can withdraw under a colleague's
+   * name; a session that resolves no name is refused rather than written
+   * unsigned.
    */
   @Post("codes/:distributorKey/:mappingId/withdraw")
   @ApiOperation({
@@ -138,7 +144,14 @@ export class DistributorFeedController {
       "Withdraw a price-code meaning. Nothing is deleted: the rows it admitted keep naming it and are marked by the withdrawal",
   })
   async withdrawCode(
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      fullName?: string;
+      name?: string;
+      email?: string;
+    },
     @Param("mappingId") mappingId: string,
     @Body() body: { reason?: string },
   ) {
@@ -151,6 +164,14 @@ export class DistributorFeedController {
       mappingId,
       restaurantId: user.restaurantId,
       withdrawnBy: user.userId,
+      // The same chain the statement is signed with, for the same reason: the
+      // register recorded `withdrawn_by` (an account id) and no name until
+      // 2026-09-06, so it could say when a statement was withdrawn and why but
+      // not by whom in words. `fullName` stays first in case a future strategy
+      // sets it; `name` is what `JwtStrategy.validate` resolves today; the
+      // email is the last resort; a session with none of the three is refused
+      // by the service rather than written unsigned.
+      withdrawnByName: (user.fullName ?? user.name ?? user.email ?? "").trim(),
       reason: body?.reason ?? "",
     });
     const admitted = await this.mappings.rowsAdmittedBy(mappingId);

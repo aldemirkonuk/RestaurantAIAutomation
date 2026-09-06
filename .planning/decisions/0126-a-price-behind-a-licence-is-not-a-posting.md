@@ -277,9 +277,18 @@ things before a byte is sent, each saying **nothing was sent**: a blank code, a 
 evidence. It refuses nothing the gateway would admit — the code's shape, a code already live, a
 session with no name are the server's judgements and its sentence is printed verbatim. The ingest
 report's `unmappedCodes` are now buttons that fill that sender's form in and focus it, which is the
-loop the founder described. Owner and manager only: staff get the whole register **disabled with the
-sentence**, never hidden (ADR 0083), and `canManage` **defaults to false** so a missing prop cannot
-read as permission.
+loop the founder described. Owner and manager only.
+
+> **Corrected 2026-09-06** (batch 62 Q3, the founder: _"Keep the page-level refusal; correct the
+> note"_). This paragraph originally read _"staff get the whole register **disabled with the
+> sentence**, never hidden (ADR 0083)"_. That cannot happen on `/connections`:
+> `ConnectionsNext.tsx:274-292` returns the whole page's written refusal — _"This page is for
+> managers and owners"_ — **before** `DistributorFeedPanel` is mounted, a gate that predates this
+> pass (commit `a9747074`, ADR 0114). The panel's `canManage=false` state is real, is disabled
+> rather than hidden, and is now tested with the prop **omitted entirely** as well as passed
+> `false`; it is a defence for any page that later admits staff, not a state a staff member sees
+> here today. `canManage` **defaults to false** so a missing prop cannot read as permission
+> (ADR 0051). The page's admission is unchanged.
 
 `useConnectionsNextData.ts` gained read 11 and two writes. Read 11 is one query over every
 distributor in the register, each sender fetched in its own request inside the queryFn and **each
@@ -300,10 +309,12 @@ pre-fix code by running a probe spec on `git show HEAD:…/distributor-feed.cont
 asserted `declaredByName === "ada@example.test"` and **passed**; fixed to `fullName ?? name ??
 email` and pinned by the new `distributor-feed.controller.spec.ts`. **The identical line is still
 wrong in `procurement/documents/documents.controller.ts:326`** (`uploadedByName`), which this pass
-was fenced out of and names rather than fixes quietly. Second defect, unfixed and a decision: a
-withdrawal records `withdrawn_by` (an account id) and **no name**, so the register can say when and
-why but not by whom in words. The panel says exactly that instead of printing a uuid as a person;
-closing it is a migration plus a controller line.
+was fenced out of and names rather than fixes quietly. **Both are now closed** — the documents
+controller on 2026-09-06 (batch 61 Q2, _"One-line fix now, with a spec"_), see the follow-ups below.
+Second defect, unfixed at the time and a decision: a withdrawal records `withdrawn_by` (an account
+id) and **no name**, so the register can say when and why but not by whom in words. The panel said
+exactly that instead of printing a uuid as a person; closing it was a migration plus a controller
+line, and the founder took it on 2026-09-06 (batch 61 Q1).
 
 **Verification, on the tree this note describes.** `npx vitest run src/pages/connections` from
 `apps/web` — **111 passed / 3 files**, of which **25 in 1 file are new here** (measured baseline
@@ -320,8 +331,52 @@ migration.** Both grounds captured against a **stubbed** gateway
 (`$SP/shoot-price-codes.mjs` → `$SP/shots-price-codes/`, every `/api/v1/**` request fulfilled in the
 harness so nothing reached :4000): paper `--paper-0` computed `rgb(250, 247, 241)`, charcoal
 `rgb(21, 19, 15)`. **No row was written to any database and no route was called on a live gateway.**
-`eslint` could not be run at all — `eslint-plugin-jsx-a11y` is absent from every checkout on this
-machine, which is a known environment fault, not a clean result.
+`eslint` could not be run **by the builder** — `eslint-plugin-jsx-a11y` is absent from every checkout
+on this machine, which is a known environment fault, not a clean result. **The parent then ran it**
+on the index archive with `eslint-plugin-jsx-a11y` **6.10.2** resolved from `p4-scratch/web-lint`
+(`--resolve-plugins-relative-to`), **exit 0** — which is what commit `da71cebe`'s message records.
+Both facts stand and neither replaces the other: a builder that cannot lint says so, and a parent
+that could says how it did. *(Amended 2026-09-06; the sentence here gave only the first half and so
+read as a contradiction of the commit message — audit of `da71cebe`, BLOCKING 2.)*
+
+### The follow-ups closed, 2026-09-06 (the founder, batches 61 and 62)
+
+**A withdrawal names the person who made it.** _"Add withdrawn_by_name now."_ The second defect
+named above is closed: `supabase/migrations/20260906150000_a_withdrawal_names_the_person_who_made_it
+.sql` adds `withdrawn_by_name TEXT` with
+`distributor_price_code_mappings_withdrawer_is_named` — present **exactly** when `withdrawn_at` is,
+blank refused. It is **additive**: the older `_withdrawal_is_whole` CHECK is left alone rather than
+dropped and widened, because dropping a live CHECK to rewrite it opens a window in which the old
+rule is not enforced. **Nothing is backfilled** — there is no name to backfill with, so the file
+asserts that no withdrawn row lacks one and RAISES with the count if any does, rather than writing a
+signature nobody gave. The controller signs the withdrawal from the session with the same
+`fullName ?? name ?? email` chain the statement uses; the service refuses an empty name in words
+(_"the withdrawal must name the person making it"_) rather than letting the CHECK answer with a
+23514. The panel prints _withdrawn by &lt;name&gt; on &lt;date&gt;: &lt;reason&gt;_, and a
+withdrawal recorded before this migration says it holds no name instead of printing a uuid.
+Measured on PGlite (`p4-scratch/pglite-probe/p4bn-withdrawn-by-name.mjs`, applying
+`20260905240000` then this file **twice**): **7 accepted/applied, 6 refused, 0 errors** — the
+unnamed withdrawal, a whitespace name, an empty-string name and a name with no withdrawal are all
+`23514`, and the two older withdrawal CHECKs still fire on a missing reason and a missing withdrawer.
+
+**A file's `CUR` disagreeing with the declaration refuses the whole file.** _"Refuse the file,
+naming both."_ `parse-edi832.ts` had let the file's own `CUR` win silently, discarding the manager's
+typed declaration with no trace in the response (audit of `da71cebe`, finding 3). It now refuses the
+document with a new `currency_disagreement` reason and the sentence _"the file states EUR and the
+declaration says USD; nothing was read"_, surfaced through `refusedWhole` exactly as the parser's
+other whole-file refusals are and printed verbatim by `DistributorFeedPanel`. Agreement (the same
+code twice) and absence (no declaration) are unchanged. **The 810 path is untouched and that is
+measured, not assumed**: `grep -rn declaredCurrency apps/api-gateway/src apps/web/src` shows
+`declaredCurrency` reaching only `admitCatalogue`, which runs only behind `looksLikeEdi832`, so the
+invoice reader never sees a declared currency to disagree with. It carries a separate
+`?? "USD"` default at `procurement/documents/x12/x12-invoice.ts:254-257`, which is named here and
+**not** changed: it is a different question, on a path this pass was fenced out of.
+
+**The founder's third batch-62 answer, recorded and unchanged in code.** _"Keep as built"_ on the
+currency field: blank omitted rather than padded, a partial value refused in the browser, and a file
+with neither `CUR` nor declaration refused whole by the parser naming both absences. Nothing was
+built for it because it was already the behaviour; it is written here so the reading is on the
+record.
 
 ## Alternatives rejected
 

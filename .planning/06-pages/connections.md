@@ -285,11 +285,20 @@ the two registers that would actually leak are refused at the gateway as well.
   `unmappedCodes` prints each one as *State what MSR means*, which fills that
   sender's form in and focuses it. An upload that named no sender says why there
   is no link instead of drawing a dead one
-- **Owner and manager only, disabled and never hidden** (ADR 0083). Staff see
-  the register, the form and the withdraw control greyed with the sentence
-  saying the gateway refuses both acts for anyone who is not a manager or an
-  owner. The panel's `canManage` prop **defaults to false**: a missing prop must
-  not read as permission
+- **Owner and manager only.** A staff account never reaches the register at
+  all: `ConnectionsNext.tsx:274-292` returns the whole page's written refusal
+  (*"This page is for managers and owners"*) **before** `DistributorFeedPanel`
+  is mounted, which is the admission recorded at line 65 above and is unchanged.
+  The panel's own `canManage=false` state — the form, the withdraw control and
+  the code field disabled and never hidden, with the sentence saying the gateway
+  refuses both acts for anyone who is not a manager or an owner (ADR 0083) — is
+  a **tested defence for any page that later admits staff**, not a state a staff
+  member sees on `/connections` today. The prop **defaults to false**, so a
+  panel mounted somewhere that forgot to pass it refuses rather than admits: a
+  missing prop must not read as permission (ADR 0051). *(Corrected 2026-09-06,
+  batch 62 Q3 — the founder: "Keep the page-level refusal; correct the note".
+  The bullet this replaces claimed staff saw the register greyed, which
+  contradicted line 65 and could not happen.)*
 - **A failed read of the statements is a failure with its reason**, per sender
   and never shared: the gateway's own sentence when the gateway could not read
   the table, this browser's when the request never landed, and in both cases the
@@ -1071,6 +1080,42 @@ that reach this register:
     of `distributor_price_code_mappings` exists in production and none was
     written by this pass. The panel was captured against a stubbed gateway, not
     against real distributor bytes.
+
+    **Corrections and follow-ups, 2026-09-06 (batches 61 and 62, and the audit
+    of `da71cebe`).**
+
+    - **Who may reach it.** The claim that staff see the register greyed was
+      wrong and is corrected in §1a: `ConnectionsNext.tsx:274-292` refuses a
+      staff session with the whole page's written sentence before this panel is
+      ever mounted, which is the admission line 65 already recorded and which
+      the founder kept (*"Keep the page-level refusal; correct the note"*). The
+      panel's `canManage=false` state is real and tested — including with the
+      prop **omitted entirely**, which the commit asserted and nothing pinned —
+      but it is a defence for a page that later admits staff, not something a
+      staff member sees here today.
+    - **A withdrawal now names the person.** `withdrawn_by_name` (migration
+      `20260906150000`, the founder: *"Add withdrawn_by_name now"*) is present
+      exactly when `withdrawn_at` is, refused blank by a CHECK and by the
+      service in words. The panel prints *withdrawn by &lt;name&gt; on
+      &lt;date&gt;: &lt;reason&gt;*, and a withdrawal recorded before that day
+      carries no name — which the row says as a gap in the record rather than
+      printing an account id as if it were a person.
+    - **A currency disagreement refuses the whole file.** When an 832 states its
+      own `CUR` **and** the declared currency disagrees, the parser refuses the
+      document naming both (*"the file states EUR and the declaration says USD;
+      nothing was read"*) instead of letting the file win silently, which is
+      what it did until this pass. Agreement and absence are unchanged. The 810
+      path is untouched because it never reads a declared currency at all.
+    - **Three failure states for the register, not two.** The commit message
+      named two. There are three, each with its own sentence and each now
+      tested: `registerError` — *this house's price-code statements could not be
+      read … no code is shown here as unmapped on the strength of a read that
+      failed* — is the whole query failing and is the only one not per sender;
+      `unreadable` — *&lt;sender&gt;'s price-code statements could not be read …
+      that is unknown, not none* — is this browser never reaching the gateway;
+      `readFailed` carries the **gateway's own** sentence about the table it
+      could not read. A fourth branch, `!statements`, says *that is silence, not
+      an empty register* when a sender was never fetched at all.
 
 13. **Wire the archive's CHOICE onto this page** (ADR 0118 D16). The row now
     states which archive the house keeps and whose Drive holds it, and the

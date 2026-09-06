@@ -159,6 +159,7 @@ export type FeedRefusalReason =
   | "not_a_832"
   | "no_catalog_header"
   | "no_currency"
+  | "currency_disagreement"
   | "no_item_id"
   | "no_description"
   | "no_price"
@@ -348,11 +349,34 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
   const cur = segs.find((s) => s.tag === "CUR");
   const curCode = cur ? element(cur, 2).toUpperCase() : "";
   const declared = (opts.declaredCurrency ?? "").trim().toUpperCase();
-  const currency = /^[A-Z]{3}$/.test(curCode)
-    ? curCode
-    : /^[A-Z]{3}$/.test(declared)
-      ? declared
-      : null;
+  const fileStates = /^[A-Z]{3}$/.test(curCode);
+  const houseStated = /^[A-Z]{3}$/.test(declared);
+  /*
+   * A DISAGREEMENT REFUSES THE WHOLE FILE, NAMING BOTH (the founder,
+   * 2026-09-06, batch 62 Q2: "Refuse the file, naming both").
+   *
+   * Until this line, the file's own `CUR` silently won and the manager's typed
+   * declaration was discarded with no trace in the response. Either one of them
+   * is wrong, and neither this parser nor the person can tell which from here:
+   * a EUR file read as EUR when the house typed USD prices a catalogue in a
+   * currency the manager did not expect, and the opposite writes a number that
+   * is right by roughly the exchange rate. Both are silent, and both reach the
+   * market box as real money.
+   *
+   * Refusing the whole document is the only answer that leaves the disagreement
+   * visible. Agreement (the same code twice) and absence (no declaration at
+   * all) are unchanged: the ordinary case is a file that states its own `CUR`
+   * and a manager who leaves the box empty.
+   */
+  if (fileStates && houseStated && curCode !== declared) {
+    run.refusedWhole = `the file states ${curCode} and the declaration says ${declared}; nothing was read. One of the two is wrong and this parser cannot tell which — reading either would price a whole catalogue in a currency somebody did not mean. Send the file again with the declaration corrected, or leave it empty and let the file state its own.`;
+    run.refusals.push({
+      reason: "currency_disagreement",
+      detail: `CUR02 was '${curCode}' and declaredCurrency was '${declared}'`,
+    });
+    return run;
+  }
+  const currency = fileStates ? curCode : houseStated ? declared : null;
   if (!currency) {
     run.refusedWhole =
       "the catalogue states no CUR currency and none was declared for this connection. A price with no currency is not a price, and there is deliberately no USD default here.";

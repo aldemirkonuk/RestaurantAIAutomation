@@ -499,6 +499,57 @@ describe('the declared currency', () => {
     );
     expect(up.mutateAsync).not.toHaveBeenCalled();
   });
+
+  /**
+   * The DISAGREEMENT (the founder, 2026-09-06, batch 62 Q2: "Refuse the file,
+   * naming both"). It is the gateway's judgement, not this page's — the file's
+   * bytes are only readable there — so the panel's job is to print the
+   * parser's sentence verbatim, the way it prints every other whole-file
+   * refusal.
+   */
+  it('prints the gateway\u2019s refusal naming BOTH currencies, and nothing of its own', async () => {
+    const up = uploader({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'price_list' },
+      catalog: admission({
+        admitted: 0,
+        refused: 1,
+        linesRead: 0,
+        unmappedCodes: [],
+        lines: [],
+        refusedWhole:
+          'the file states EUR and the declaration says USD; nothing was read. One of the two is wrong and this parser cannot tell which.',
+        sentence:
+          'Nothing was priced. the file states EUR and the declaration says USD; nothing was read.',
+      }),
+    });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByLabelText(/Currency, if the file states none/i), {
+      target: { value: 'USD' },
+    });
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file()] },
+    });
+    const report = await screen.findByTestId('cx-df-report');
+    // Twice, deliberately: the report's headline sentence and the whole-file
+    // refusal beneath it. Both are the gateway's own words.
+    expect(
+      within(report).getAllByText(
+        /the file states EUR and the declaration says USD; nothing was read/,
+      ),
+    ).toHaveLength(2);
+    expect(
+      within(report).getByText(/this parser cannot tell which/),
+    ).toBeInTheDocument();
+  });
+
+  it('says on the page what a disagreement will do, before anything is uploaded', () => {
+    render(<DistributorFeedPanel distributors={reg(catalogue)} />);
+    expect(
+      screen.getByText(/the file is refused whole and the answer names both/i),
+    ).toBeInTheDocument();
+  });
 });
 
 /* ── the price-code register in the distributor row (ADR 0126 §7) ────────── */
@@ -519,6 +570,7 @@ const statement = (
   declaredByName: 'Ada Manager',
   declaredAt: '2026-09-01T09:00:00.000Z',
   withdrawnBy: null,
+  withdrawnByName: null,
   withdrawnAt: null,
   withdrawnReason: null,
   ...over,
@@ -606,6 +658,7 @@ describe('the price-code register — what it shows', () => {
               statement({
                 id: 'm-old',
                 withdrawnBy: 'u-1',
+                withdrawnByName: 'Ada Manager',
                 withdrawnAt: '2026-09-04T10:00:00.000Z',
                 withdrawnReason: 'the rep corrected it to the delivered price',
               }),
@@ -620,9 +673,49 @@ describe('the price-code register — what it shows', () => {
     );
     const r = sgws();
     expect(
-      r.getByText(/withdrawn on 2026-09-04 because the rep corrected it/),
+      r.getByText(
+        /Withdrawn by Ada Manager on 2026-09-04: the rep corrected it/,
+      ),
     ).toBeInTheDocument();
     expect(r.getByText(/Kept, not deleted/)).toBeInTheDocument();
+    // The account is no longer offered as if it were a person.
+    expect(r.queryByText(/holds no name for a withdrawal/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * A withdrawal written before migration 20260906150000 carries an account id
+   * and no name. That is a GAP IN THE RECORD, said as one — never filled in
+   * with a uuid, and never quietly dropped so the row reads as if nobody had
+   * ever asked who did it.
+   */
+  it('says a pre-2026-09-06 withdrawal holds no name, instead of printing an id', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(
+          codes({
+            rows: [
+              statement({
+                id: 'm-old',
+                withdrawnBy: 'u-1',
+                withdrawnByName: null,
+                withdrawnAt: '2026-09-04T10:00:00.000Z',
+                withdrawnReason: 'the rep corrected it to the delivered price',
+              }),
+            ],
+            live: 0,
+            withdrawn: 1,
+            note: 'No code has a live meaning for this sender; 1 withdrawn statement is kept.',
+          }),
+        )}
+        canManage
+      />,
+    );
+    const r = sgws();
+    expect(
+      r.getByText(/before the register began naming the person who made one/),
+    ).toBeInTheDocument();
+    expect(r.queryByText(/u-1/)).not.toBeInTheDocument();
   });
 
   it('a failed read of the list is a FAILURE with its reason, never an empty register', () => {
@@ -911,6 +1004,114 @@ describe('who may state a price code', () => {
     );
     expect(sgws().getByLabelText(/^Code$/i)).not.toBeDisabled();
     expect(sgws().getByRole('button', { name: 'Withdraw CON' })).not.toBeDisabled();
+  });
+
+  /**
+   * The DEFAULT, with the prop left off entirely (audit of da71cebe, finding
+   * 4). Every other test here passes `canManage` explicitly, so the default
+   * `canManage = false` at `DistributorFeedPanel.tsx:120` was asserted in the
+   * commit message and in `connections.md` but pinned by nothing. A missing
+   * prop must not read as permission (ADR 0051): a manager shown the refusal by
+   * mistake loses a control, a staff member shown an enabled form loses the
+   * truth about who may state a price.
+   */
+  it('refuses by DEFAULT when the prop is omitted, rather than reading absence as permission', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        declareCode={declarer()}
+        withdrawCode={withdrawer()}
+      />,
+    );
+    const r = sgws();
+    expect(r.getByLabelText(/^Code$/i)).toBeDisabled();
+    expect(r.getByLabelText(/What it means here/i)).toBeDisabled();
+    expect(r.getByLabelText(/How you know/i)).toBeDisabled();
+    expect(
+      r.getByRole('button', { name: /State what this code means/i }),
+    ).toBeDisabled();
+    expect(r.getByRole('button', { name: 'Withdraw CON' })).toBeDisabled();
+    expect(
+      r.getByText(
+        /the gateway refuses both for anyone who is not a manager or an owner/i,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * THREE failure states, not two (audit of da71cebe, finding 5).
+ *
+ * `registerError` is the QUERY itself failing — `priceCodesQ.error`, the one
+ * failure that is not per sender, so it is the only one of the three that can
+ * be true while `statements` is undefined for every distributor at once. The
+ * other two are per sender: `unreadable` (this browser never reached the
+ * gateway) and `readFailed` (the gateway answered 200 with words). The commit
+ * that built the register named only the second and the third.
+ */
+describe('the register\u2019s three failure states, each with its own sentence', () => {
+  it('names a failed price-code QUERY and refuses to call any code unmapped on it', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(null, { error: 'the price-code query never resolved' })}
+        canManage
+      />,
+    );
+    const r = sgws();
+    expect(
+      r.getByText(/This house\u2019s price-code statements could not be read/i),
+    ).toBeInTheDocument();
+    expect(r.getByText(/the price-code query never resolved/)).toBeInTheDocument();
+    expect(
+      r.getByText(/no code is shown here as unmapped on the strength of a read that failed/i),
+    ).toBeInTheDocument();
+    // No list, and no withdraw control: there is nothing read to act on.
+    expect(r.queryByRole('button', { name: /^Withdraw/ })).not.toBeInTheDocument();
+    // And a new statement made now would be refused, which it says.
+    expect(
+      r.getByText(/While these statements cannot be read, a new one will be refused/i),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the three apart: the query, this browser, and the gateway', () => {
+    const { unmount } = render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(null, { error: 'the price-code query never resolved' })}
+        canManage
+      />,
+    );
+    expect(
+      sgws().getByText(/the price-code query never resolved/),
+    ).toBeInTheDocument();
+    unmount();
+
+    const second = render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(
+          codes({ rows: [], live: 0, readFailed: true, note: '', unreadable: 'the request never landed' }),
+        )}
+        canManage
+      />,
+    );
+    expect(sgws().getByText(/the request never landed/)).toBeInTheDocument();
+    second.unmount();
+
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(
+          codes({ rows: [], live: 0, readFailed: true, note: 'the gateway could not read the table' }),
+        )}
+        canManage
+      />,
+    );
+    expect(
+      sgws().getByText(/the gateway could not read the table/),
+    ).toBeInTheDocument();
   });
 });
 

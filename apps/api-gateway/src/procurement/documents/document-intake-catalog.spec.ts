@@ -284,3 +284,77 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     expect(catalogIngest.admit).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The uploader's SIGNATURE on an admitted catalogue (batch 61 Q2, 2026-09-06).
+ *
+ * `documents.controller.ts` read `user.fullName ?? user.email` and
+ * `JwtStrategy.validate` sets no `fullName` anywhere in this gateway — it
+ * returns `name` — so `uploadedByName` carried the uploader's EMAIL ADDRESS
+ * while claiming to be a name, on every admitted class-C price. The identical
+ * defect was measured and fixed on `distributor-feed.controller.ts` on
+ * 2026-09-05 and named as still open here (ADR 0126 §7).
+ *
+ * These three cases are the regression fence: the session's own `name`, the
+ * email as a LAST resort rather than a first answer, and a session that
+ * resolves nothing at all staying `null` — never a placeholder, because a row
+ * that says "unknown" and a row that says "Unknown User" are different claims.
+ */
+describe("DocumentsController.upload — who handed the catalogue over", () => {
+  const intake = {
+    ingest: jest.fn().mockResolvedValue({
+      documentId: "doc-9",
+      duplicate: false,
+      parsed: { docType: "price_list", warnings: [] },
+    }),
+  };
+  const catalogIngest = {
+    admit: jest.fn().mockResolvedValue({ admitted: 3, sentence: "three" }),
+  };
+  const controller = new DocumentsController(
+    intake as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    catalogIngest as any,
+  );
+  const body = () =>
+    ({
+      contentBase64: Buffer.from(CATALOGUE, "utf8").toString("base64"),
+      filename: "q3.832",
+      distributorKey: "southern-glazers-il",
+    }) as any;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("names the person with the session's `name`, which is the field JwtStrategy sets", async () => {
+    await controller.upload(body(), {
+      userId: "u-1",
+      restaurantId: "r-1",
+      name: "Ada Manager",
+      email: "ada@example.test",
+    } as any);
+    expect(catalogIngest.admit.mock.calls[0][0].uploadedByName).toBe(
+      "Ada Manager",
+    );
+  });
+
+  it("falls back to the email ONLY when the session resolves no name", async () => {
+    await controller.upload(body(), {
+      userId: "u-1",
+      restaurantId: "r-1",
+      email: "ada@example.test",
+    } as any);
+    expect(catalogIngest.admit.mock.calls[0][0].uploadedByName).toBe(
+      "ada@example.test",
+    );
+  });
+
+  it("leaves the name NULL when the session carries none of the three", async () => {
+    await controller.upload(body(), {
+      userId: "u-1",
+      restaurantId: "r-1",
+    } as any);
+    expect(catalogIngest.admit.mock.calls[0][0].uploadedByName).toBeNull();
+  });
+});

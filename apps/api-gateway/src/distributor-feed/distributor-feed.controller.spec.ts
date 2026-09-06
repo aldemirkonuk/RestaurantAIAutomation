@@ -34,13 +34,22 @@ interface DeclareArg {
   declaredByName: string;
 }
 
+/** Same reason, for the withdrawal. */
+interface WithdrawArg {
+  mappingId: string;
+  restaurantId: string;
+  withdrawnBy: string;
+  withdrawnByName: string;
+  reason: string;
+}
+
 function build(over: Partial<Record<string, unknown>> = {}) {
   const declare = jest.fn(async (_req: DeclareArg) => ({
     ok: true,
     mappingId: "m-1",
     refusedBecause: null,
   }));
-  const withdraw = jest.fn(async () => ({
+  const withdraw = jest.fn(async (_req: WithdrawArg) => ({
     ok: true,
     mappingId: "m-1",
     refusedBecause: null,
@@ -126,6 +135,61 @@ describe("DistributorFeedController — the statement's signature", () => {
       { priceCode: "CON", priceBasis: "contract price", evidence: "guide p7" },
     );
     expect(declare.mock.calls[0][0]).toMatchObject({ declaredByName: "" });
+    expect(out.success).toBe(false);
+    expect(out.refusedBecause).toMatch(/must name the person/);
+  });
+});
+
+describe("DistributorFeedController — the withdrawal's signature", () => {
+  /**
+   * A withdrawal is signed the same way a statement is (the founder,
+   * 2026-09-06, batch 61 Q1: "Add withdrawn_by_name now"). Until migration
+   * 20260906150000 the register recorded `withdrawn_by` — an account id — and
+   * no name, so it could say when a statement was withdrawn and why but not by
+   * whom in words.
+   */
+  it("signs the withdrawal with the session's `name`", async () => {
+    const { controller, withdraw } = build();
+    await controller.withdrawCode(
+      {
+        userId: "u-1",
+        restaurantId: "r-1",
+        name: "Ada Manager",
+        email: "ada@example.test",
+      },
+      "m-1",
+      { reason: "the rep corrected it" },
+    );
+    expect(withdraw.mock.calls[0][0]).toMatchObject({
+      withdrawnByName: "Ada Manager",
+    });
+  });
+
+  it("falls back to the email only when the session resolves NO name", async () => {
+    const { controller, withdraw } = build();
+    await controller.withdrawCode(
+      { userId: "u-1", restaurantId: "r-1", email: "ada@example.test" },
+      "m-1",
+      { reason: "the rep corrected it" },
+    );
+    expect(withdraw.mock.calls[0][0]).toMatchObject({
+      withdrawnByName: "ada@example.test",
+    });
+  });
+
+  it("sends an empty name rather than a placeholder, and lets the service refuse it", async () => {
+    const withdraw = jest.fn(async (_req: WithdrawArg) => ({
+      ok: false,
+      mappingId: "m-1",
+      refusedBecause: "the withdrawal must name the person making it",
+    }));
+    const { controller } = build({ withdraw });
+    const out = await controller.withdrawCode(
+      { userId: "u-1", restaurantId: "r-1" },
+      "m-1",
+      { reason: "the rep corrected it" },
+    );
+    expect(withdraw.mock.calls[0][0]).toMatchObject({ withdrawnByName: "" });
     expect(out.success).toBe(false);
     expect(out.refusedBecause).toMatch(/must name the person/);
   });

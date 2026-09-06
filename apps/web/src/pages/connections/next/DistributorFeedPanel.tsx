@@ -408,7 +408,10 @@ export function DistributorFeedPanel({
           letters here answer it. There is deliberately <b>no default</b>: a
           file with no CUR and nothing declared is refused whole rather than
           read as dollars, because a house buying in lira would then have its
-          prices filed as a currency nobody stated.
+          prices filed as a currency nobody stated. If the file <i>does</i>{' '}
+          state a currency and it disagrees with what you type here, the file is
+          refused whole and the answer names both: one of the two is wrong and
+          nothing here can tell which, so neither is allowed to win quietly.
         </p>
         <input
           ref={fileRef}
@@ -789,14 +792,21 @@ function PriceCodeRegister({
                   <b>{m.priceCode}</b> &mdash; {m.priceBasis}
                   <span className="cx-pc-meta">Evidence: {m.evidence}</span>
                   <span className="cx-pc-meta">
-                    Stated by {m.declaredByName} on {m.declaredAt.slice(0, 10)},
-                    withdrawn on {(m.withdrawnAt ?? '').slice(0, 10)} because{' '}
-                    {m.withdrawnReason ?? 'no reason was recorded'}.
+                    Stated by {m.declaredByName} on {m.declaredAt.slice(0, 10)}.
+                  </span>
+                  {/* A withdrawal is signed, like the statement it ends. The
+                      name comes from the row, and a row written before
+                      2026-09-06 carries none — which is said as a gap in the
+                      record rather than filled in with an account id or a
+                      guess. */}
+                  <span className="cx-pc-meta">
+                    {m.withdrawnByName
+                      ? `Withdrawn by ${m.withdrawnByName} on ${(m.withdrawnAt ?? '').slice(0, 10)}: ${m.withdrawnReason ?? 'no reason was recorded'}`
+                      : `Withdrawn on ${(m.withdrawnAt ?? '').slice(0, 10)}: ${m.withdrawnReason ?? 'no reason was recorded'} — this withdrawal was recorded before the register began naming the person who made one, so it holds an account and no name`}
+                    .
                   </span>
                   <span className="cx-pc-meta">
-                    Kept, not deleted. The prices it admitted still name it. This
-                    register records the account that withdrew it and holds no
-                    name for a withdrawal, only for a statement.
+                    Kept, not deleted. The prices it admitted still name it.
                   </span>
                 </li>
               ))}

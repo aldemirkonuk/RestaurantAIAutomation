@@ -49,6 +49,18 @@ export interface PriceCodeMapping {
   declaredByName: string;
   declaredAt: string;
   withdrawnBy: string | null;
+  /**
+   * The name of the person who withdrew it, AS IT WAS on the day.
+   *
+   * Stored beside `withdrawnBy` rather than joined, for the same reason
+   * `declaredByName` is: a rename next year does not make it a different act,
+   * and a deleted account does not erase who did it. Null exactly when
+   * `withdrawnAt` is — the CHECK
+   * `distributor_price_code_mappings_withdrawer_is_named` (migration
+   * 20260906150000) refuses every other combination, so a withdrawal in this
+   * register can never again say when and why but not by whom.
+   */
+  withdrawnByName: string | null;
   withdrawnAt: string | null;
   withdrawnReason: string | null;
 }

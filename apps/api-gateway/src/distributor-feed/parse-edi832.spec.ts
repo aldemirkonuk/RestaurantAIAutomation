@@ -96,6 +96,69 @@ describe("parseEdi832 — the whole-document refusals", () => {
   });
 });
 
+/**
+ * The file's own CUR against the manager's typed declaration (the founder,
+ * 2026-09-06, batch 62 Q2: "Refuse the file, naming both").
+ *
+ * Until that answer the file's CUR silently won and the declaration was
+ * discarded with no trace in the response. Either one of them is wrong and
+ * nothing here can tell which: reading either prices a whole catalogue in a
+ * currency somebody did not mean, and the number reaches the market box as
+ * real money. Agreement and absence are unchanged.
+ */
+describe("parseEdi832 — the file's CUR against the house's declaration", () => {
+  const constructed = () => fixture("edi832-constructed-from-spec.edi");
+
+  it("refuses the WHOLE file on a disagreement, naming both", () => {
+    const run = parseEdi832(constructed(), {
+      ...BASE,
+      declaredCurrency: "EUR",
+    });
+    expect(run.refusals[0].reason).toBe("currency_disagreement");
+    expect(run.refusedWhole).toContain("the file states USD");
+    expect(run.refusedWhole).toContain("the declaration says EUR");
+    expect(run.refusedWhole).toContain("nothing was read");
+    expect(run.sightings).toHaveLength(0);
+    // Not silently resolved to either one: the run carries NO currency at all.
+    expect(run.currency).toBeNull();
+    expect(run.linesRead).toBe(0);
+    expect(run.refusals[0].detail).toContain("USD");
+    expect(run.refusals[0].detail).toContain("EUR");
+  });
+
+  it("reads the file when the two AGREE, and does not mention the declaration", () => {
+    const run = parseEdi832(constructed(), {
+      ...BASE,
+      declaredCurrency: "usd",
+    });
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("USD");
+    expect(run.linesRead).toBeGreaterThan(0);
+  });
+
+  it("reads the file when NOTHING was declared and it states its own", () => {
+    const run = parseEdi832(constructed(), BASE);
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("USD");
+    expect(run.linesRead).toBeGreaterThan(0);
+  });
+
+  it("takes the declaration when the file states none — unchanged", () => {
+    const run = parseEdi832(
+      fixture("edi832-msss-guide-sample-2022-06-02.edi"),
+      { ...BASE, declaredCurrency: "TRY" },
+    );
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("TRY");
+  });
+
+  it("ignores a malformed declaration against a file that states its own", () => {
+    const run = parseEdi832(constructed(), { ...BASE, declaredCurrency: "US" });
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("USD");
+  });
+});
+
 describe("parseEdi832 — the published MSSS sample", () => {
   /**
    * The whole value of this fixture. It is a real catalogue from a real

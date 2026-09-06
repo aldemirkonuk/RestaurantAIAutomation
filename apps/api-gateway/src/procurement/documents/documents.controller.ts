@@ -29,15 +29,25 @@ import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
 import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
 
 /**
- * `fullName` and `email` are read for ONE purpose: an admitted class-C price
- * names the person who handed the catalogue over, as the session named them.
- * Optional because a token that carries neither is a real state, and the row
- * then says the name is unknown rather than inventing one.
+ * `fullName`, `name` and `email` are read for ONE purpose: an admitted class-C
+ * price names the person who handed the catalogue over, as the session named
+ * them. All three optional because a token that carries none of them is a real
+ * state, and the row then says the name is unknown rather than inventing one.
+ *
+ * `name` IS THE FIELD THE SESSION ACTUALLY HAS, and it was missing from this
+ * type until 2026-09-06. `JwtStrategy.validate` (`auth/strategies/
+ * jwt.strategy.ts:55-69`) returns `{ userId, email, name, role, restaurantId,
+ * … }` and sets no `fullName` anywhere in this gateway, so `uploadedByName`
+ * below carried the uploader's EMAIL ADDRESS while claiming to be a name —
+ * silently, because the fallback made it look deliberate. The same defect was
+ * measured and fixed on `distributor-feed.controller.ts` on 2026-09-05 and
+ * named there as still open here (ADR 0126 §7); this is that one line.
  */
 type AuthedUser = {
   userId: string;
   restaurantId: string;
   fullName?: string;
+  name?: string;
   email?: string;
 };
 
@@ -323,7 +333,13 @@ export class DocumentsController {
       sha256,
       documentId,
       uploadedBy: user.userId,
-      uploadedByName: (user.fullName ?? user.email ?? "").trim() || null,
+      // `fullName ?? name ?? email`, in that order: `fullName` stays first in
+      // case a future strategy sets it, `name` is what resolves today, and the
+      // email is the last resort rather than the first answer. A session with
+      // none of the three stays `null`, which the row reads as "unknown" — an
+      // absent name is never filled in with a placeholder.
+      uploadedByName:
+        (user.fullName ?? user.name ?? user.email ?? "").trim() || null,
       receivedAt,
       declaredCurrency: body.declaredCurrency ?? null,
       providerId: body.providerId ?? null,

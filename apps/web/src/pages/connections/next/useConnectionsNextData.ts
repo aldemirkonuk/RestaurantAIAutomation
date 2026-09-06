@@ -368,10 +368,11 @@ export interface CatalogueAdmissionVM {
  *
  * Field-for-field against `PriceCodeMapping` (`distributor-feed/
  * price-code-mappings.ts`) as `mapRow` hands it out, so a key this page reads
- * is a key the gateway sends. `withdrawnBy` is an account id and NOT a name:
- * the table records `declared_by_name` for a statement and holds no equivalent
- * for a withdrawal, which the panel says rather than printing an id as if it
- * were a person.
+ * is a key the gateway sends. `withdrawnBy` is an account id and NOT a name;
+ * `withdrawnByName` is the name, added 2026-09-06 (migration 20260906150000)
+ * because until then the register could say when a statement was withdrawn and
+ * why but not by whom in words. It is null on a withdrawal recorded before that
+ * day, and the panel says so rather than printing an id as if it were a person.
  */
 export interface PriceCodeStatementVM {
   id: string;
@@ -385,6 +386,7 @@ export interface PriceCodeStatementVM {
   declaredByName: string;
   declaredAt: string;
   withdrawnBy: string | null;
+  withdrawnByName: string | null;
   withdrawnAt: string | null;
   withdrawnReason: string | null;
 }
