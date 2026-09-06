@@ -41,6 +41,7 @@ describe("DocumentsController.canonicalDocument", () => {
   const mockDb = { getClient: jest.fn(() => mockChain) };
   const canonical = { buildFromDocumentId: jest.fn() };
   const spine = { forDocument: jest.fn() };
+  const corrections = { correctionLog: jest.fn() };
 
   const user = { userId: "u1", restaurantId: "rest-1" };
 
@@ -102,12 +103,16 @@ describe("DocumentsController.canonicalDocument", () => {
       value: CANONICAL,
     });
     spine.forDocument.mockResolvedValue({ ok: true, value: [] });
+    // ADR 0104 D5, slice 3. `[]` is a real answer — nobody has corrected this
+    // document — and is deliberately not the same as the log read failing.
+    corrections.correctionLog.mockResolvedValue({ ok: true, value: [] });
 
     controller = new DocumentsController(
       {} as any,
       mockDb as any,
       canonical as any,
       spine as any,
+      corrections as any,
     );
   });
 
