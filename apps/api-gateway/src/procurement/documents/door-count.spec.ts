@@ -200,4 +200,82 @@ describe("DocumentIntakeService.recordDoorCount", () => {
       ),
     ).toEqual([]);
   });
+  /**
+   * v3.0-TECH-DEBT 2026-09-06, finding 4: the same count twice answered with
+   * `duplicate key value violates unique constraint "uq_pd_restaurant_sha256"`.
+   */
+  describe("the same count, twice", () => {
+    it("names the document that already holds it, and no constraint", async () => {
+      db.answers.procurement_documents = {
+        data: { id: "doc-already" },
+        error: null,
+      };
+      const res = await service.recordDoorCount({
+        restaurantId: "rest-1",
+        countedBy: "u1",
+        countedAt: "2026-08-14T08:41:00Z",
+        lines: [line()],
+      });
+      expect(res.duplicate).toBe(true);
+      expect(res.documentId).toBe("doc-already");
+      expect(res.error).toBeUndefined();
+      // And nothing was written a second time.
+      expect(
+        db.writes.filter((w) => w.table === "procurement_documents"),
+      ).toEqual([]);
+    });
+
+    it("answers the RACE the pre-check cannot close through the same door", async () => {
+      // Nothing exists when the check runs; the index catches the other writer.
+      db.answers.procurement_documents = { data: null, error: null };
+      db.insertAnswers.procurement_documents = {
+        data: null,
+        error: {
+          message:
+            'duplicate key value violates unique constraint "uq_pd_restaurant_sha256"',
+          code: "23505",
+        },
+      };
+      let call = 0;
+      const realFrom = db.client.getClient;
+      db.client.getClient = () => {
+        const c = realFrom();
+        return {
+          from: (t: string) => {
+            if (t === "procurement_documents" && ++call === 2)
+              db.answers.procurement_documents = {
+                data: { id: "doc-raced" },
+                error: null,
+              };
+            return (c as { from: (t: string) => unknown }).from(t);
+          },
+        } as unknown as ReturnType<typeof realFrom>;
+      };
+      const res = await service.recordDoorCount({
+        restaurantId: "rest-1",
+        countedBy: "u1",
+        lines: [line()],
+      });
+      expect(res.duplicate).toBe(true);
+      expect(res.documentId).toBe("doc-raced");
+      expect(res.error ?? "").not.toMatch(/uq_pd_restaurant_sha256/);
+    });
+
+    it("fails the count rather than writing one when the duplicate CHECK itself fails", async () => {
+      db.answers.procurement_documents = {
+        data: null,
+        error: { message: "statement timeout" },
+      };
+      const res = await service.recordDoorCount({
+        restaurantId: "rest-1",
+        countedBy: "u1",
+        lines: [line()],
+      });
+      expect(res.documentId).toBeNull();
+      expect(res.error).toMatch(/duplicate check failed/);
+      expect(
+        db.writes.filter((w) => w.table === "procurement_documents"),
+      ).toEqual([]);
+    });
+  });
 });

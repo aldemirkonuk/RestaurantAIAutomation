@@ -788,4 +788,292 @@ describe("DeliveryService", () => {
       ).toEqual([]);
     });
   });
+  // -------------------------------------------------------------------------
+  describe("A11 — a difference must be answered before AGREED", () => {
+    /**
+     * The vendor lens, 2026-09-06 finding 1, as a test.
+     *
+     * A door count of 10 against an invoice of 12 on an ORDERED delivery: both
+     * sides are on the record, nothing is open, and rule A used to agree it in
+     * one call while the gateway's own notification said the two disagreed.
+     * The founder's answer (2026-09-06): "Difference must be answered."
+     */
+    const shortShip = (orderedBottles = 10, billedBottles = "12") => {
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "RECONCILING", order_id: "ord-1" }),
+        error: null,
+      };
+      db.answers.document_deliveries = {
+        data: [
+          { document_id: "doc-count", role: "door_count" },
+          { document_id: "doc-inv", role: "invoice" },
+        ],
+        error: null,
+      };
+      db.answers.procurement_documents = {
+        data: [
+          {
+            id: "doc-count",
+            provider_id: "prov-1",
+            doc_type: "receiving_advice",
+            direction: "issued_by_us",
+            extracted: {},
+          },
+          {
+            id: "doc-inv",
+            provider_id: "prov-1",
+            doc_type: "invoice",
+            direction: "issued_by_vendor",
+            extracted: {},
+          },
+        ],
+        error: null,
+      };
+      db.answers.procurement_document_lines = {
+        data: [
+          {
+            id: "dl-1",
+            document_id: "doc-inv",
+            line_no: 1,
+            vendor_sku: null,
+            description: "SYNTHETIC Okuzgozu 2021",
+            vintage: 2021,
+            format_ml: 750,
+            qty_bottles: billedBottles,
+            unit_price: "71",
+          },
+        ],
+        error: null,
+      };
+      db.answers.procurement_order_items = {
+        data: [
+          {
+            id: "ol-1",
+            wine_name: "SYNTHETIC Okuzgozu 2021",
+            vendor_sku: null,
+            vintage: 2021,
+            quantity: orderedBottles,
+            bottles_per_unit: 1,
+            total_bottles: orderedBottles,
+            quoted_unit_price: 71,
+            final_unit_price: null,
+          },
+        ],
+        error: null,
+      };
+      db.answers.delivery_proposals = { data: [], error: null };
+      db.answers.delivery_line_acceptances = { data: [], error: null };
+      db.updateAnswers.deliveries = {
+        data: deliveryRow({
+          state: "AGREED",
+          order_id: "ord-1",
+          agreed_at: "2026-09-06T10:00:00Z",
+          agreed_rule: "both_sides_recorded",
+        }),
+        error: null,
+      };
+    };
+
+    it("REFUSES a delivery that differs on a line nothing has answered, and names the line", async () => {
+      shortShip();
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/recorded difference/i);
+        expect(res.error).toMatch(/line 1 of document doc-inv/);
+        expect(res.error).toMatch(/accept/i);
+      }
+      // And nothing moved. A refusal that still wrote AGREED would be worse
+      // than no gate at all.
+      expect(
+        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+      ).toEqual([]);
+    });
+
+    it("agrees once the line is ACCEPTED AS BILLED, and still says which rule fired", async () => {
+      shortShip();
+      db.answers.delivery_line_acceptances = {
+        data: [{ document_id: "doc-inv", line_no: 1 }],
+        error: null,
+      };
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.value.rule).toBe("both_sides_recorded");
+    });
+
+    it("agrees once an ACCEPTED PROPOSAL covers the line", async () => {
+      shortShip();
+      db.answers.delivery_proposals = {
+        data: [
+          {
+            document_id: "doc-inv",
+            line_no: 1,
+            side: "restaurant",
+            status: "accepted",
+          },
+        ],
+        error: null,
+      };
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.value.rule).toBe("both_sides_recorded");
+    });
+
+    it("RULE A IS UNCHANGED where the comparison ran and nothing differed", async () => {
+      shortShip(12, "12");
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.value.rule).toBe("both_sides_recorded");
+    });
+
+    it("refuses rather than agreeing when the difference check could not RUN (ADR 0067)", async () => {
+      shortShip();
+      db.answers.procurement_order_items = {
+        data: null,
+        error: { message: "statement timeout" },
+      };
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(500);
+        expect(res.error).toMatch(/could not run/i);
+      }
+      expect(
+        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+      ).toEqual([]);
+    });
+
+    it("gates rule B too — a signed ticket does not agree an unanswered difference", async () => {
+      shortShip();
+      db.answers.vendor_terms = {
+        data: [{ signed_ticket_is_final: true }],
+        error: null,
+      };
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.status).toBe(409);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe("A11 — accept as billed is a human decision with a reason", () => {
+    const onDelivery = () => {
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "RECONCILING" }),
+        error: null,
+      };
+      db.answers.procurement_documents = {
+        data: [
+          {
+            id: "doc-inv",
+            provider_id: "prov-1",
+            doc_type: "invoice",
+            direction: "issued_by_vendor",
+            extracted: {},
+          },
+        ],
+        error: null,
+      };
+      db.answers.document_deliveries = {
+        data: [{ document_id: "doc-inv", role: "invoice" }],
+        error: null,
+      };
+    };
+
+    it("refuses a call with no user rather than attributing it to the platform", async () => {
+      onDelivery();
+      const res = await service.acceptAsBilled(REST, DEL, null, {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "two bottles short, not worth the claim",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.status).toBe(403);
+      expect(db.writes).toEqual([]);
+    });
+
+    it("refuses an acceptance with no reason", async () => {
+      onDelivery();
+      const res = await service.acceptAsBilled(REST, DEL, "u1", {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "   ",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.status).toBe(400);
+      expect(db.writes).toEqual([]);
+    });
+
+    it("refuses a line of a document that is not on this delivery", async () => {
+      onDelivery();
+      db.answers.document_deliveries = { data: [], error: null };
+      const res = await service.acceptAsBilled(REST, DEL, "u1", {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "accepted as billed",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.status).toBe(409);
+      expect(
+        db.writes.filter((w) => w.table === "delivery_line_acceptances"),
+      ).toEqual([]);
+    });
+
+    it("records who, when and why", async () => {
+      onDelivery();
+      db.answers.delivery_line_acceptances = { data: [], error: null };
+      db.insertAnswers.delivery_line_acceptances = {
+        data: {
+          id: "acc-1",
+          accepted_at: "2026-09-06T10:00:00Z",
+          accepted_by: "u1",
+        },
+        error: null,
+      };
+      const res = await service.acceptAsBilled(REST, DEL, "u1", {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "two bottles short, not worth the claim",
+      });
+      expect(res.ok).toBe(true);
+      const write = db.writes.find(
+        (w) => w.table === "delivery_line_acceptances" && w.verb === "insert",
+      );
+      expect(write?.payload).toMatchObject({
+        delivery_id: DEL,
+        document_id: "doc-inv",
+        line_no: 1,
+        accepted_by: "u1",
+        reason: "two bottles short, not worth the claim",
+      });
+    });
+
+    it("is idempotent — a second acceptance returns the first and writes nothing", async () => {
+      onDelivery();
+      db.answers.delivery_line_acceptances = {
+        data: [
+          {
+            id: "acc-1",
+            accepted_at: "2026-09-06T10:00:00Z",
+            accepted_by: "u1",
+          },
+        ],
+        error: null,
+      };
+      const res = await service.acceptAsBilled(REST, DEL, "u2", {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "again",
+      });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.value.alreadyAccepted).toBe(true);
+        expect(res.value.acceptedBy).toBe("u1");
+      }
+      expect(
+        db.writes.filter((w) => w.table === "delivery_line_acceptances"),
+      ).toEqual([]);
+    });
+  });
 });

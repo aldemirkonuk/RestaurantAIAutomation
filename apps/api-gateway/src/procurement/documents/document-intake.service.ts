@@ -245,6 +245,39 @@ export class DocumentIntakeService {
       )
       .digest("hex");
 
+    /**
+     * THE SAME COUNT, TWICE, IS ANSWERED — NOT LEAKED (v3.0-TECH-DEBT 2026-09-06,
+     * finding 4).
+     *
+     * `uq_pd_restaurant_sha256` catches this correctly, but a receiver who
+     * pressed the button twice was told `duplicate key value violates unique
+     * constraint "uq_pd_restaurant_sha256"` with a 422 indistinguishable from a
+     * malformed body. The sentence that matters is: this exact count is already
+     * recorded, and here it is. The read is not a substitute for the index —
+     * the index is still what makes it true under a race, and the 23505 below
+     * comes back through this same sentence.
+     */
+    const already = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("sha256", sha256)
+      .maybeSingle();
+    if (already.error)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error: `the door count could not be recorded: the duplicate check failed (${already.error.message}), and a count written without it could silently double a document`,
+      };
+    if (already.data?.id)
+      return {
+        documentId: (already.data as { id: string }).id,
+        parsed,
+        duplicate: true,
+      };
+
     let storagePath: string | null = null;
     let storageError: string | undefined;
     if (input.photo?.bytes?.length) {
@@ -311,13 +344,32 @@ export class DocumentIntakeService {
       .select("id")
       .single();
 
-    if (error)
+    if (error) {
+      // The race the pre-check cannot close: two receivers pressing at once.
+      // The index is what makes the guarantee; this turns its 23505 into the
+      // same sentence rather than a constraint name.
+      if (error.code === "23505") {
+        const raced = await this.db
+          .getClient()
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", input.restaurantId)
+          .eq("sha256", sha256)
+          .maybeSingle();
+        if (raced.data?.id)
+          return {
+            documentId: (raced.data as { id: string }).id,
+            parsed,
+            duplicate: true,
+          };
+      }
       return {
         documentId: null,
         parsed: null,
         duplicate: false,
         error: `the door count could not be recorded: ${error.message}`,
       };
+    }
     if (!data)
       return {
         documentId: null,

@@ -749,17 +749,38 @@ export function canonicalFromParsedDocument(
       }),
   };
 
-  // Layer 3. `received` is "not_counted" unless the caller supplies a door
-  // count — ADR 0103 A6, and the reason the invariant exists.
+  /**
+   * Layer 3. `received` is "not_counted" unless the caller supplies a door
+   * count — ADR 0103 A6, and the reason the invariant exists.
+   *
+   * OUR OWN DOOR COUNT IS THE RECEIVED COLUMN, NEVER THE BILLED ONE.
+   * (v3.0-TECH-DEBT 2026-09-06, finding 3.) A `receiving_advice` is the document
+   * this restaurant authored to say what it counted; it carries no money at all
+   * (D11), so a quantity on it is not a billed quantity in any sense. Measured
+   * on `/documents/54de12fb`: the counted 10, 24 and 6 rendered under **Billed**
+   * while **Received** read "not counted" on every line — the page told a
+   * receiver the delivery had not been counted moments after they counted it,
+   * and the verdict cards said "billed 10 bottle. Nothing was … counted against
+   * it" about the document that IS the count.
+   *
+   * The fix is here rather than in the page because the columns are read by the
+   * page, the verdict sentences and the API alike; correcting one of the three
+   * would have left the other two saying the old thing.
+   */
+  const weCountedThis = parsed.docType === "receiving_advice";
   const adjudicatedLines: AdjudicatedLine[] = parsed.lines.map(
     (l, i): AdjudicatedLine => {
       const s = opts.spine?.[i];
+      const counted: ReceivedQuantity | null = weCountedThis
+        ? (l.qtyBottles ?? null)
+        : null;
       return {
         lineIndex: i,
         ordered: s?.ordered ?? null,
         shipped: s?.shipped ?? null,
-        received: s?.received ?? "not_counted",
-        billed: l.qtyBottles ?? null,
+        received: s?.received ?? counted ?? "not_counted",
+        // NULL, not the counted number: nothing has billed us for this line.
+        billed: weCountedThis ? null : (l.qtyBottles ?? null),
         verdict: "not_adjudicated",
         reason: null,
         moneyAtRisk: null,

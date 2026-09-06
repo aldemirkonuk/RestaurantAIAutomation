@@ -344,6 +344,21 @@ export class DocumentsController {
       note: body.note ?? null,
       photo,
     });
+    /**
+     * THE SAME COUNT TWICE IS A CONFLICT, AND IT NAMES THE DOCUMENT.
+     *
+     * 409, not 422. 422 says "I understood the request and cannot process this
+     * content" — but the content is fine; it is the SECOND request for a state
+     * that already exists, which is what 409 is for, and it lets a caller tell
+     * "you already recorded this" from "your body is wrong" without parsing
+     * prose. The document id travels in the message and in `documentId`, so the
+     * receiver is taken to the count rather than told to type it again.
+     */
+    if (result.duplicate && result.documentId)
+      throw new HttpException(
+        `This count was already recorded as document ${result.documentId}. A re-count at a different moment is a different document — change the time it was counted, or open the one that exists.`,
+        HttpStatus.CONFLICT,
+      );
     if (result.error || !result.documentId)
       throw new HttpException(
         result.error ?? "the door count could not be recorded",

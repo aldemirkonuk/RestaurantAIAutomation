@@ -32,6 +32,11 @@ import { EM, MONO, SERIF, fmtMoney, fmtQty, fmtReceived } from './canonical-form
  * `received === 'not_counted'` is the explicit statement that nobody counted.
  */
 export function hasComparisonSource(l: AdjudicatedLine): boolean {
+  // OUR OWN DOOR COUNT IS NOT ITS OWN COMPARISON (2026-09-06, finding 3). Once
+  // a `receiving_advice` puts the counted number in `received` where it belongs,
+  // `received !== 'not_counted'` alone would read as "something was compared" on
+  // a document whose other three columns are empty — the count grading itself.
+  if (l.ordered == null && l.shipped == null && l.billed == null) return false
   return l.ordered != null || l.shipped != null || l.received !== 'not_counted'
 }
 
@@ -64,7 +69,13 @@ export function exceptionSentences(doc: CanonicalDocument): {
         return {
           lineNo: l.lineIndex + 1,
           kind: 'not compared',
-          sentence: `${name} — billed ${fmtQty(l.billed, currency)}${suffix}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
+          // A door count and a vendor document are not the same absence: on our
+          // own count the number IS the count, and saying "billed —" about it
+          // would be the same mis-column the four-way table just stopped making.
+          sentence:
+            l.billed == null && l.received !== 'not_counted'
+              ? `${name} — counted ${fmtReceived(l.received, currency)}${suffix} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
+              : `${name} — billed ${fmtQty(l.billed, currency)}${suffix}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
           money: null,
           compared: false,
         }

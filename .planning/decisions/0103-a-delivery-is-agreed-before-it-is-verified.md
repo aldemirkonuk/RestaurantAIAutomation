@@ -170,7 +170,7 @@ absence of an order as the presence of one.
   depends on the goods' value or the vendor's licence class in a way D4 cannot key), or
   when the first month of `LAPSED` counts shows the escalation ladder is not being read.
 
-## Amendments after the premortem, scale and adversary passes (2026-09-03)
+## Amendments after the premortem, scale and adversary passes (2026-09-03), and after the vendor lens (A11, 2026-09-06)
 
 Three Sonnet passes were run against this ADR and 0104 before any build, as the founder
 asked for the irsaliye process (annexes: `annex-0103-0104-premortem.md`,
@@ -269,6 +269,56 @@ what it changes; none reopens a founder-locked answer.
   idempotent poller that catches up after a missed tick (a deploy, a crash); never
   in-process timers — the scale pass named this as the place the absence-as-health fault
   would return.
+- **A11 — A DIFFERENCE MUST BE ANSWERED (founder, 2026-09-06; amends D3).** Recorded
+  verbatim: _"Difference must be answered — AGREED is refused while any recorded difference
+  (door count vs paperwork, or invoice vs PO) has no accepted proposal or an explicit
+  'accept as billed' from the restaurant. Rule A stays for deliveries with no difference."_
+  **Why it was needed:** the vendor lens ran the whole flow on the sim tenant and found that
+  a delivery whose door count said 10 against an invoice of 12 — a difference the gateway had
+  *already notified about* — reached `AGREED` in ONE call under rule A with no proposal ever
+  filed (`v3.0-TECH-DEBT.md`, 2026-09-06 finding 1). Rule A tested that *a* position existed
+  on each side; that the two contradicted each other was not part of the test, so the one case
+  this ADR exists for was the case that could walk through its gate.
+  **What it changes in code:** the gate runs BEFORE either D3 rule is considered. A recorded
+  difference is answered by an **accepted proposal covering that line**, or by an **explicit
+  accept-as-billed** on it — a new door, `POST /procurement/deliveries/:id/accept-as-billed`
+  with `{ documentId, lineNo, reason }`, writing `delivery_line_acceptances` (migration
+  `20260906163412`). A refusal is a 409 that NAMES the unanswered lines; a success still names
+  which rule fired. Rule A is untouched where the comparison ran and nothing differed.
+  **Four things this pass settled deliberately, each with its rejected alternative:**
+  1. **One comparison, not two.** The gate and the `delivery_differs` notification both call
+     `scanDifferences`. A second copy in the gate is the failure this amendment would otherwise
+     have created — the notification saying a line differs while the gate, reading its own
+     copy, agreed the delivery: one system telling a person two things.
+  2. **A scan that could not be READ refuses the gate.** Three answers, never two:
+     `compared`, `not_comparable` (nothing to compare — rule A stands untouched) and
+     `unreadable` (a failed read — 500, and nothing moves). Collapsing the third into the
+     second would let a statement timeout open the gate. _Rejected: treat a failed comparison
+     as no difference_ — that is [[absence-reported-as-health]] with a new face.
+  3. **The gate binds rule B as well as rule A.** The founder's sentence names AGREED, not one
+     of its routes, and a signed ticket that contradicts the count is exactly the moment
+     somebody must say, in one tap, that the difference is accepted anyway. _Rejected: gate
+     rule A only_ — it leaves the gate escapable through a per-vendor setting, which is a
+     configuration that silently un-decides a decision.
+  4. **The acceptance is its own row, not a proposal.** A proposal is a POSITION one side asks
+     the other to accept; "we counted 10, they billed 12, and we are not disputing it" is the
+     decision NOT to raise one. _Rejected: record it as an accepted `SHORT_SHIP` from the
+     restaurant_ — it would put a claim on the record the restaurant deliberately did not make.
+     Keyed `(delivery, document, line_no)`, never "the delivery's line n": A2 puts N documents
+     on a delivery, so line 3 of the invoice and line 3 of the count are different lines. The
+     unique index IS the idempotency; a second acceptance returns the first unchanged.
+  **In scope by choice:** a line that pairs with NOTHING on the other document counts as
+  unanswered too, named separately in the refusal. The notification rightly calls it "a
+  question, not a difference", but a billed line that pairs with nothing counted is the most
+  expensive question at the door and is answerable by the same two doors.
+  **Rejected outright, and recorded because they were real options:** _"warn, do not block"_
+  (a flag plus a notification — the flag already existed and was already ignored: finding 1 is
+  a delivery agreed one call after the notification fired), and _"leave rule A as is"_ (an
+  accepted risk — the founder declined to accept it).
+  **Named, not fixed here:** a difference that only appears when a document is attached AFTER
+  the delivery is agreed. `linkDocument` re-runs the scan and re-notifies, and A4's
+  `LAPSED_AMENDED` path is untouched, but nothing re-opens an `AGREED` delivery. That is the
+  amend-after-agreement stop, and it is named rather than half-built.
 
 ## Review trail
 
@@ -278,4 +328,6 @@ what it changes; none reopens a founder-locked answer.
 | 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)                             | A1–A10 recorded; A8 leaves one Turkish clock basis open for a YMM                                                          |
 | 2026-09-03 | Founder (in session) delegating D9 to "the SOTA, safest, most robust, most scalable" answer; Fable | D9 locked with the ladder-with-floor, owner + deputy, durable timers, LAPSED/LAPSED_AMENDED, one-tap draft, lapses counted |
 | 2026-09-05 | Fable — slice 3 stop 2: the delivery's doors and its two gates | **Built.** `POST /procurement/deliveries` (provenance decided ONCE and permanent — D5), `…/:id/documents` (the many-to-many join, and a document attached to a LAPSED delivery moves it to LAPSED_AMENDED without touching what the law deemed — A4), `…/:id/proposals` + `…/proposals/:pid/counter` + `…/accept` (D7; **WRONG_VENUE rejects rather than reconciles**, and every contradiction is a row with a reason class — the silent drop of A5 is replaced), `…/:id/agree` (**D3, and the row records WHICH of the two rules fired**: `both_sides_recorded` or `signed_ticket_is_final`; a refusal names what is missing, and vendor silence never becomes agreement), `…/:id/verify` (D6 — a named human, only from AGREED, idempotent), `POST /procurement/documents/door-count` (the door count as OUR `receiving_advice`, ADR 0104 S6/D11: `direction issued_by_us`, `extraction_confidence` NULL not 0, no money, and **a line nobody counted is ABSENT rather than a zero** — A6), and `delivery_timers` + an idempotent poller (D9/A10) whose ladder is 50 %, then 80 % floored at 48 h — and at 10 days for the payment clock, which is where D8's "US alcohol day ~20 of 30" comes from; the Turkish 7-day window lands on day 3½ and day 5 exactly as D9 and D8 both say. **A clock that cannot be computed is a `blocked_unknown` ROW that asks and never fires** (D4/A8: no rule, no number, an `unknown` basis, or a basis date not on the record — one answer for all four), so the unseeded Turkish rows produce a visible question rather than an invented deadline. 60 gateway tests, 15 web tests, 7 SQL assertions (T20–T26) proven failing-first on a 100-migration control. **NO STOCK OR COST IS WRITTEN, and that is measured:** `cost_state` and `inventory_transactions.delivery_id` still have zero writers on this tree, so `verify` is deliberately not the first one — A5's consolidation is the next stop, named in `v3.0-TECH-DEBT.md` rather than half-done. |
+| 2026-09-06 | Founder (in session), recorded verbatim; built by Fable | **A11 locked and built.** "Difference must be answered": `agree()` refuses (409, naming the lines) while any recorded difference — door count against paperwork, or invoice against PO — has neither an accepted proposal covering the line nor an explicit `accept-as-billed` on it, and the gate runs **before either D3 rule** so a per-vendor `signed_ticket_is_final` cannot walk past it. The gate and the `delivery_differs` notification read **one** comparison (`scanDifferences`), whose three answers keep `unreadable` from wearing `not_comparable`'s clothes. New door `POST …/deliveries/:id/accept-as-billed { documentId, lineNo, reason }` + migration `20260906163412` (`delivery_line_acceptances`; the unique index IS the idempotency), proven on a 105-migration control and a 106-migration build (6 SQL assertions, all false or erroring on the control). 12 new gateway tests; the 3 gate tests proven failing-first against a sabotaged gate. Rejected and recorded: "warn, do not block", "leave rule A as is", gating rule A only, and filing the acceptance as an accepted `SHORT_SHIP`. Closed alongside: finding 3 (our own door count now lands in **Received**, `billed` NULL — fixed in the mapper so page, verdict sentences and API agree) and finding 4 (a repeated door count answers **409** naming the existing document, never `uq_pd_restaurant_sha256`). Finding 2 (`cost_state` defaulting to `final` with no writer) stays OPEN: it belongs to A5's stock/cost booking stop. |
+
 | 2026-09-06 | Fable — slice 3 stop 3: the vendor lens, run on the sim tenant | **Measured, and D3 rule A did not survive it.** One short-ship event through the doors only (Sim Meyhouse, gateway from `origin/main` `417474e6`): door count 10 of 12 with a labelled synthetic photograph, invoice `b1e02edf` + delivery note `dac9a3e8` linked, the `delivery_differs` notification observed, `SHORT_SHIP` proposed, countered with a ₺142,00 credit, accepted, AGREED under `both_sides_recorded`, VERIFIED by a named person. The gates refuse the wrong way with reasons: one side only **409** ("the vendor's position is not on the record … Silence is not agreement here"), an open proposal **409**, verify before AGREED **409**, a proposal on a VERIFIED delivery **409**, a second verify **201** returning the first stamp. A1/A5 hold **by query, not by assertion** — 0 `inventory_transactions` for these deliveries, 0 lots touched. **The finding: a delivery that differs from the vendor's paperwork on a line the gateway itself flagged reached AGREED in ONE call under rule A, with no proposal filed** — rule A tests that both positions exist, never that a recorded difference was answered. Filed as `v3.0-TECH-DEBT.md` (2026-09-06, finding 1); amending the D3 predicate is a decision for the founder, not a stop-3 patch. Second finding against A1: `inventory_lots.cost_state` is `DEFAULT 'final' NOT NULL` with no writer — 165 of 165 rows read `final`, so cost certifies itself by absence. |
