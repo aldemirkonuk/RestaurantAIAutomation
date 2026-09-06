@@ -12,6 +12,7 @@ import {
   TUIK_KEY_ENV,
   TUIK_TOKEN_URL,
   TuikTokenHolder,
+  WHOLE_MESSAGE_WITHHELD,
   scrubSecrets,
   type HttpPost,
 } from "./tuik-token";
@@ -237,6 +238,85 @@ describe("the scrubber knows a key by its shape and by its value", () => {
     const out = await holder.get(envWith(SYNTHETIC_UUID_KEY));
     expect(out.detail).not.toContain(SYNTHETIC_UUID_KEY);
     expect(out.detail).toContain("[key redacted]");
+  });
+});
+
+/**
+ * A SECRET BROKEN BY A LINE WRAP IS STILL A SECRET.
+ *
+ * The audit of 78861031 (finding 1) measured that none of the three in-place
+ * rules tolerates an interruption: `aaaaaaaa-bbbb-cccc\n-dddd-eeeeeeeeeeee`
+ * came back byte for byte identical, both halves in plaintext. The answer is
+ * not a cleverer pattern — it is that when a credential survives the ordinary
+ * pass with its whitespace taken out, the WHOLE message goes, because a partial
+ * redaction of a broken run leaves both halves in the log.
+ *
+ * Every key here is SYNTHETIC. Nothing reads `.env` and no real key exists in
+ * this repository.
+ */
+describe("the scrubber withholds a whole message rather than half a secret", () => {
+  const UUID = "7f3c9a21-4b8e-4d1f-9c62-0ae5d3b17f04";
+  const HEAD = UUID.slice(0, 18); // "7f3c9a21-4b8e-4d1f"
+  const TAIL = UUID.slice(18); // "-9c62-0ae5d3b17f04"
+  const envWith = (value: string) => ({ [TUIK_KEY_ENV]: value }) as NodeJS.ProcessEnv;
+  const noEnv = {} as NodeJS.ProcessEnv;
+
+  it("withholds the whole message when a UUID is split by a NEWLINE", () => {
+    const out = scrubSecrets(`key=${HEAD}\n${TAIL}`, noEnv);
+    expect(out).toBe(WHOLE_MESSAGE_WITHHELD);
+    // Neither half survives anywhere in the output.
+    expect(out).not.toContain(HEAD);
+    expect(out).not.toContain(TAIL);
+  });
+
+  it("withholds the whole message when a UUID is split by a SPACE inside a URL", () => {
+    const out = scrubSecrets(
+      `GET https://example.invalid/data?api_key=${HEAD} ${TAIL}&format=json failed`,
+      noEnv,
+    );
+    expect(out).toBe(WHOLE_MESSAGE_WITHHELD);
+    expect(out).not.toContain(HEAD);
+    expect(out).not.toContain(TAIL);
+  });
+
+  it("withholds the whole message when the key appears twice and ONE is split", () => {
+    const out = scrubSecrets(`api_key=${UUID} retried with api_key=${HEAD}\n${TAIL}`, envWith(UUID));
+    // The intact occurrence would have been redacted in place; the broken one
+    // survived that pass, so no partial result is returned at all.
+    expect(out).toBe(WHOLE_MESSAGE_WITHHELD);
+    expect(out).not.toContain(HEAD);
+    expect(out).not.toContain(TAIL);
+  });
+
+  it("withholds when the CONFIGURED value itself is broken, whatever its shape", () => {
+    const odd = "tuik-probe-key-2026";
+    const out = scrubSecrets(`sending api_key=tuik-probe\n-key-2026 now`, envWith(odd));
+    expect(out).toBe(WHOLE_MESSAGE_WITHHELD);
+  });
+
+  it("returns an ordinary message with no secret in it UNCHANGED", () => {
+    const cases = [
+      "The token endpoint answered HTTP 401.",
+      "connect ECONNREFUSED 10.0.0.1:443",
+      "This environment has no TUIK_SDMX_API_KEY, so no token was requested and nothing was read.",
+      "The publisher answered 200 with a body that is not JSON, so nothing was parsed from it.",
+      "read the series\nover two lines, with no credential anywhere in either of them",
+    ];
+    for (const prose of cases) {
+      expect(scrubSecrets(prose, noEnv)).toBe(prose);
+      expect(scrubSecrets(prose, envWith(UUID))).toBe(prose);
+    }
+  });
+
+  it("still redacts IN PLACE when the secret is whole, keeping the message useful", () => {
+    const out = scrubSecrets(
+      `GET https://example.invalid/data?api_key=${UUID}&format=json failed`,
+      envWith(UUID),
+    );
+    expect(out).not.toBe(WHOLE_MESSAGE_WITHHELD);
+    expect(out).toContain("[key redacted]");
+    expect(out).toContain("format=json failed");
+    expect(out).not.toContain(UUID);
   });
 });
 

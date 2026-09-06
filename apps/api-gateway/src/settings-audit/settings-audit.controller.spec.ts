@@ -20,7 +20,9 @@
  *
  *   `EVERY` is a `Record<SettingsRegister, true>` written out by hand. Add a
  *   member to the union and `tsc -p tsconfig.spec.json` fails HERE, at compile
- *   time, before any test runs — TS2739, the property is missing. Remove one
+ *   time, before any test runs — TS2741, the property is missing (measured, by
+ *   the audit of 78861031, finding 2, against this repository's own TypeScript:
+ *   TS2739 is what a Record missing SEVERAL members produces). Remove one
  *   and the extra key is an excess property, which `tsc` also refuses. So the
  *   record cannot silently drift from the union in either direction.
  *

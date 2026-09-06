@@ -1438,8 +1438,9 @@ second, in that order.
 class, origin, freight — declared on the series and matched exactly; more than
 one match is `ambiguous_row`, none is `row_not_found`, and neither is resolved
 by guessing. Columns are resolved BY NAME (a test reverses the header and the
-parser still reads 35.28), the unit is checked per row, and **six of the 23 rows
-carry an empty `Wtd Avg Price`** — refused as *"that market did not report on
+parser still reads 35.28), the unit is checked per row, and **eight of the 23 rows
+carry an empty `Wtd Avg Price`** (measured 2026-09-06 with `awk` on column 28; an
+earlier draft here said six, which counts only the 19 Graded Loose rows) — refused as *"that market did not report on
 this date - it is not a price of zero"*, because `Number("")` is 0.
 
 **What the landing did NOT change, and the register says so.**

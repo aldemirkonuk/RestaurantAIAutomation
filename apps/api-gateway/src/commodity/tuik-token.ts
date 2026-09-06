@@ -124,19 +124,73 @@ const UUID_SHAPED =
  *    wrong in, and a scrubber that errs the other way is not a scrubber.
  * 2. **A JWT** — three base64url segments separated by dots. That is the token.
  * 3. **A UUID, then any long unbroken key-ish run.** Shape first, length second.
+ * 4. **Then, whatever survived, with its whitespace taken out.** If the
+ *    configured key or a credential SHAPE is still there once every space and
+ *    line break is removed, the entire message is replaced with
+ *    `WHOLE_MESSAGE_WITHHELD` — never a partial. A run broken by a newline
+ *    passed all three rules above byte for byte (audit of 78861031, finding 1),
+ *    and half a key in a log is still half a key in a log.
  *
  * `env` is a parameter rather than a closure over `process.env` so a test can
  * prove rule 1 with a synthetic key and never touch the real environment.
  */
+export const WHOLE_MESSAGE_WITHHELD =
+  "A credential was present in this message and the whole message was withheld rather than partly redacted.";
+
+/** Every whitespace character removed, so a run broken across a line rejoins. */
+function withoutWhitespace(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
+/**
+ * A credential shape, looked for in text whose whitespace has been removed.
+ *
+ * Only the SHAPED rules belong here — a UUID and a JWT. The `{40,}` length rule
+ * from the ordinary pass deliberately does NOT run against collapsed text:
+ * removing the spaces from any ordinary English sentence longer than forty
+ * characters produces a forty-character run, and a scrubber that replaced every
+ * such sentence with the withheld notice would withhold every error message in
+ * the service. That is a known and stated gap: a 40-character key with no
+ * hyphens, split by a newline, is not caught by this rule.
+ */
+function collapsedCarriesAShapedSecret(collapsed: string): boolean {
+  return (
+    new RegExp(UUID_SHAPED.source).test(collapsed) ||
+    /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/.test(collapsed)
+  );
+}
+
 export function scrubSecrets(text: string, env: NodeJS.ProcessEnv = process.env): string {
   const configured = env[TUIK_KEY_ENV];
   const key = typeof configured === "string" ? configured.trim() : "";
   const withKeyGone =
     key === "" ? text : text.replace(new RegExp(escapeForRegExp(key), "g"), "[key redacted]");
-  return withKeyGone
+  const ordinary = withKeyGone
     .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, "[token redacted]")
     .replace(UUID_SHAPED, "[key redacted]")
     .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[redacted]");
+
+  /*
+   * WHAT SURVIVED THE ORDINARY PASS, WITH ITS WHITESPACE TAKEN OUT.
+   *
+   * The audit of 78861031 (finding 1) measured this: none of the three rules
+   * above tolerates an interruption, so `aaaaaaaa-bbbb-cccc\n-dddd-…` came out
+   * byte for byte identical to what went in. A secret is still a secret when a
+   * line wrap lands in the middle of it.
+   *
+   * The check runs on `ordinary` — what the rules above already handled is
+   * gone, so the ordinary case (a whole UUID in a URL) keeps its precise
+   * in-place marker and the surrounding message. Only a secret that SURVIVED
+   * reaches here, and then the whole message goes: a partial redaction of a
+   * broken run would leave both halves in the log, which is the leak.
+   */
+  const collapsed = withoutWhitespace(ordinary);
+  const collapsedKey = withoutWhitespace(key);
+  const keySurvives = collapsedKey !== "" && collapsed.includes(collapsedKey);
+  if (keySurvives || collapsedCarriesAShapedSecret(collapsed)) {
+    return WHOLE_MESSAGE_WITHHELD;
+  }
+  return ordinary;
 }
 
 /**

@@ -159,6 +159,88 @@ describe("parseEdi832 — the file's CUR against the house's declaration", () =>
   });
 });
 
+/**
+ * The file against ITSELF (audit of 19ab0258, finding 6).
+ *
+ * The reader used to take `segs.find(s => s.tag === "CUR")` — the first CUR
+ * segment — so a second one that disagreed was dropped with no trace: a file
+ * carrying `CUR*SE*USD~` then `CUR*SE*EUR~` read silently as USD. These cases
+ * pin the refusal, and the three edge cases the audit probed and found
+ * unpinned: a lowercase code IN THE FILE, whitespace around the code, and a CUR
+ * segment whose currency element is empty.
+ */
+describe("parseEdi832 — a file that disagrees with itself about its currency", () => {
+  const constructed = () => fixture("edi832-constructed-from-spec.edi");
+  /** Replace the fixture's single CUR line with whatever these cases need. */
+  const withCur = (...lines: string[]) =>
+    constructed().replace("CUR*SE*USD~", lines.join("\n"));
+
+  it("refuses the WHOLE file when two CUR segments disagree, naming every currency seen", () => {
+    const run = parseEdi832(withCur("CUR*SE*USD~", "CUR*SE*EUR~"), BASE);
+    expect(run.refusals[0].reason).toBe("currency_disagreement");
+    expect(run.refusedWhole).toContain("USD and EUR");
+    expect(run.refusedWhole).toContain("nothing was read");
+    expect(run.refusals[0].detail).toContain("USD");
+    expect(run.refusals[0].detail).toContain("EUR");
+    // Neither one silently wins, and not a single line is read.
+    expect(run.currency).toBeNull();
+    expect(run.sightings).toHaveLength(0);
+    expect(run.linesRead).toBe(0);
+  });
+
+  it("names all three when three disagree", () => {
+    const run = parseEdi832(
+      withCur("CUR*SE*USD~", "CUR*SE*EUR~", "CUR*SE*TRY~"),
+      BASE,
+    );
+    expect(run.refusedWhole).toContain("USD and EUR and TRY");
+    expect(run.refusedWhole).toContain("3 different currencies");
+    expect(run.currency).toBeNull();
+  });
+
+  it("reads the file when two CUR segments AGREE", () => {
+    const run = parseEdi832(withCur("CUR*SE*USD~", "CUR*SE*USD~"), BASE);
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("USD");
+    expect(run.linesRead).toBeGreaterThan(0);
+  });
+
+  it("normalises a lowercase code in the FILE before comparing, so it is not a disagreement", () => {
+    const run = parseEdi832(withCur("CUR*SE*usd~", "CUR*SE*USD~"), BASE);
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("USD");
+    // And a lone lowercase CUR still reads as the upper-case code.
+    expect(parseEdi832(withCur("CUR*SE*eur~"), BASE).currency).toBe("EUR");
+  });
+
+  it("normalises whitespace around the code before comparing", () => {
+    const run = parseEdi832(withCur("CUR*SE* USD ~", "CUR*SE*USD~"), BASE);
+    expect(run.refusedWhole).toBeNull();
+    expect(run.currency).toBe("USD");
+    expect(parseEdi832(withCur("CUR*SE*  try  ~"), BASE).currency).toBe("TRY");
+  });
+
+  it("treats a CUR with an EMPTY currency element as no CUR at all", () => {
+    // Alone: the file states no currency, and there is no USD default.
+    const alone = parseEdi832(withCur("CUR*SE*~"), BASE);
+    expect(alone.refusals[0].reason).toBe("no_currency");
+    expect(alone.currency).toBeNull();
+
+    // Alone, with a declaration: the declaration stands, exactly as "no CUR".
+    const declared = parseEdi832(withCur("CUR*SE*~"), {
+      ...BASE,
+      declaredCurrency: "TRY",
+    });
+    expect(declared.refusedWhole).toBeNull();
+    expect(declared.currency).toBe("TRY");
+
+    // Beside a real one: it is dropped, not counted as a second, blank opinion.
+    const beside = parseEdi832(withCur("CUR*SE*~", "CUR*SE*EUR~"), BASE);
+    expect(beside.refusedWhole).toBeNull();
+    expect(beside.currency).toBe("EUR");
+  });
+});
+
 describe("parseEdi832 — the published MSSS sample", () => {
   /**
    * The whole value of this fixture. It is a real catalogue from a real

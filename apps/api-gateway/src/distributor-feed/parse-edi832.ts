@@ -346,8 +346,36 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
   run.catalogNumber = element(bct, 2) || null;
   run.catalogVersion = element(bct, 3) || null;
 
-  const cur = segs.find((s) => s.tag === "CUR");
-  const curCode = cur ? element(cur, 2).toUpperCase() : "";
+  /*
+   * A FILE THAT DISAGREES WITH ITSELF REFUSES THE WHOLE FILE TOO.
+   *
+   * Until this line the reader took `segs.find(s => s.tag === "CUR")` — the
+   * FIRST `CUR` segment — and a second, disagreeing one was dropped with no
+   * trace at all (audit of 19ab0258, finding 6: `CUR*SE*USD~` then
+   * `CUR*SE*EUR~` read silently as USD). That is the same silent-money failure
+   * the file-versus-declaration case below refuses, only with nobody at all to
+   * notice it, so it takes the same answer and the same `refusedWhole` path.
+   *
+   * Normalisation happens BEFORE comparison, because `CUR*SE*usd~` and
+   * `CUR*SE* USD ~` are the same currency written by two text editors, not a
+   * disagreement: `element()` trims (line 253) and `toUpperCase()` folds case.
+   * A `CUR` segment whose currency element is EMPTY (`CUR*SE*~`) states no
+   * currency and is treated exactly as "no CUR" — it is dropped from the
+   * comparison rather than counted as a third, blank opinion.
+   */
+  const curSegs = segs.filter((s) => s.tag === "CUR");
+  const curCodes = curSegs.map((s) => element(s, 2).toUpperCase()).filter((c) => c !== "");
+  const distinctCurCodes = [...new Set(curCodes)];
+  if (distinctCurCodes.length > 1) {
+    const named = distinctCurCodes.join(" and ");
+    run.refusedWhole = `the file states ${distinctCurCodes.length} different currencies — ${named} — in its own CUR segments; nothing was read. A catalogue has one currency, and this parser will not pick one of them for you: reading the first would price the whole catalogue in a currency the rest of the file contradicts. Send the file again with a single CUR.`;
+    run.refusals.push({
+      reason: "currency_disagreement",
+      detail: `the file's CUR segments stated ${named}`,
+    });
+    return run;
+  }
+  const curCode = distinctCurCodes[0] ?? "";
   const declared = (opts.declaredCurrency ?? "").trim().toUpperCase();
   const fileStates = /^[A-Z]{3}$/.test(curCode);
   const houseStated = /^[A-Z]{3}$/.test(declared);
@@ -382,7 +410,10 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
       "the catalogue states no CUR currency and none was declared for this connection. A price with no currency is not a price, and there is deliberately no USD default here.";
     run.refusals.push({
       reason: "no_currency",
-      detail: cur ? `CUR02 was '${element(cur, 2)}'` : "no CUR segment",
+      detail:
+        curSegs.length > 0
+          ? `CUR02 was '${element(curSegs[0], 2)}'`
+          : "no CUR segment",
     });
     return run;
   }
