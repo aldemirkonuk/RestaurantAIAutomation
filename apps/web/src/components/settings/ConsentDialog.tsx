@@ -5,12 +5,42 @@
  * categories of data move, where they go, and be able to decline without
  * changing anything. Requiring the acknowledgement checkbox keeps a stray click
  * on the switch from becoming a grant.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102 row "Share this with the engine?") ─
+ * SHAPE: `Panel`, ASSERTED and not sealed (the settings ruling of 2026-09-04).
+ * It is a question the reader answers and leaves; a consent is asserted by
+ * ticking the acknowledgement, and the wax is rationed to commitments that move
+ * stock, money or a letter.
+ *
+ * The focus decision survives the move and is worth restating, because the
+ * primitive would otherwise undo it: `initialFocusRef` is NOT pointed at the
+ * confirm control. Landing on the affirmative action invites an Enter keypress
+ * that skips the disclosure entirely, which is how a consent dialog becomes a
+ * formality. Focus goes to the acknowledgement tick — the one control the
+ * reader has to pass through on the way to granting anything.
+ *
+ * ── AN OPEN FORK, STATED RATHER THAN DEFAULTED ────────────────────────────
+ * This dialog has exactly one opener: `ServicesPermissions.tsx:300`, which is
+ * mounted only by the LEGACY settings page (pages/Settings.tsx:1262). The
+ * rebuilt page's `ServicesSection.tsx` deliberately renders the same four
+ * consents as records with NO switches, because nothing in any of the four
+ * runtimes branches on them and ADR 0020 forbids a control whose effect does
+ * not exist. So the house branch below is correct and unreachable: with the
+ * settings flag on, the page that opens this is not on screen.
+ *
+ * It is built anyway, and the fork is raised rather than answered here: either
+ * the rebuilt page gets a real consent control back (which requires something
+ * to actually read the consent first), or this act is a deletion. Neither is a
+ * builder's call. See the packet 1 report.
  */
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Check, X } from 'lucide-react'
+import { Panel } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import '../inventory/inventory-mudavym.css'
 
 export interface ConsentCopy {
   title: string
@@ -32,10 +62,12 @@ interface ConsentDialogProps {
 }
 
 export function ConsentDialog({ open, copy, onCancel, onConfirm }: ConsentDialogProps) {
+  const shell = useMudavymShell()
   const [acknowledged, setAcknowledged] = useState(false)
   const titleId = useId()
   const confirmRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const ackRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) setAcknowledged(false)
@@ -43,6 +75,9 @@ export function ConsentDialog({ open, copy, onCancel, onConfirm }: ConsentDialog
 
   useEffect(() => {
     if (!open) return
+    // The primitive owns focus, Esc and the opener's restoration for the house
+    // branch. Running this effect there too would fight it for all three.
+    if (shell.on) return
 
     const previouslyFocused = document.activeElement as HTMLElement | null
     // Focus the dialog itself rather than Confirm — landing on the affirmative
@@ -58,7 +93,106 @@ export function ConsentDialog({ open, copy, onCancel, onConfirm }: ConsentDialog
       document.removeEventListener('keydown', onKeyDown)
       previouslyFocused?.focus?.()
     }
-  }, [open, onCancel])
+  }, [open, onCancel, shell.on])
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    return (
+      <Panel
+        open={open && !!copy}
+        onClose={onCancel}
+        label={
+          copy
+            ? `${copy.title} Turning it on records your consent. Leaving it off changes nothing.`
+            : 'Share this with the engine?'
+        }
+        eyebrow="Your account"
+        title={copy?.title ?? 'Share this with the engine?'}
+        closeLabel="Keep it off"
+        initialFocusRef={ackRef}
+        zIndex={120}
+        footer={
+          <span>
+            You can withdraw this at any time from this page. Withdrawing is never gated.
+          </span>
+        }
+      >
+        {copy ? (
+          <div className="mdv-form">
+            <p className="mdv-contract">{copy.summary}</p>
+
+            <div>
+              <span className="mdv-head">
+                <span>What gets shared</span>
+              </span>
+              <div className="mdv-lines">
+                {copy.dataCategories.map((cat) => (
+                  <div key={cat} className="mdv-line">
+                    <span className="mdv-line__name">{cat}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="mdv-head">
+                <span>What never leaves</span>
+              </span>
+              <div className="mdv-lines">
+                {copy.exclusions.map((ex) => (
+                  <div key={ex} className="mdv-line">
+                    <span className="mdv-line__name">{ex}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* The tick is the assertion. Focus lands here, not on the grant. */}
+            <label className="mdv-pick" style={{ alignItems: 'flex-start' }}>
+              <span style={{ minWidth: 0 }}>
+                <span className="mdv-pick__label" style={{ whiteSpace: 'normal' }}>
+                  {copy.acknowledgement}
+                </span>
+                <span className="mdv-pick__sub">
+                  <Link to="/privacy" className="mdv-link" onClick={(e) => e.stopPropagation()}>
+                    Read the privacy notice
+                  </Link>
+                </span>
+              </span>
+              <input
+                ref={ackRef}
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+              />
+            </label>
+
+            <div className="mdv-actions">
+              <span className="mdv-tally">
+                {acknowledged ? 'Acknowledged' : 'Not acknowledged yet'}
+              </span>
+              <button type="button" className="mdv-btn" onClick={onCancel}>
+                Keep it off
+              </button>
+              <button
+                ref={confirmRef}
+                type="button"
+                className="mdv-btn mdv-btn--seal"
+                disabled={!acknowledged}
+                onClick={onConfirm}
+              >
+                {copy.confirmLabel}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="mdv-quiet">
+            There is nothing to consent to here — no permission was named.
+          </p>
+        )}
+      </Panel>
+    )
+  }
 
   return createPortal(
     <AnimatePresence>
