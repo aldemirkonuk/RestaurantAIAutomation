@@ -43,6 +43,7 @@ import { UserPreferencesModule } from "./user-preferences/user-preferences.modul
 import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-templates.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { McpConnectionsModule } from "./mcp-connections/mcp-connections.module";
+import { McpServerModule } from "./mcp-server/mcp-server.module";
 import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
 import { BillingModule } from "./billing/billing.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
@@ -129,6 +130,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     TextSendersModule, // The house's own WhatsApp/SMS sender + each person's consent (ADR 0121)
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     McpConnectionsModule, // Model-context (MCP) servers declared per user + restaurant
+    McpServerModule, // The INBOUND half: Mudavym answers MCP for a house-scoped key (ADR 0132)
     PaymentMethodsModule, // Payment instruments on file; create refuses with no provider
     BillingModule, // Stripe: SetupIntents, reconcile, signed webhook (ADR 0110)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)

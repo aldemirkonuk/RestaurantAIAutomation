@@ -3,27 +3,33 @@ type: software
 slug: mudavym-mcp
 name: Mudavym MCP Server
 division: platform-admin
-status: planned
+status: partial
 tier: internal
-routes: []
+routes: ["POST /api/v1/mcp", "GET /api/v1/mcp", "/api/v1/mcp-server-keys"]
 pages: []
-api_modules: []
+api_modules: ["apps/api-gateway/src/mcp-server"]
 agents: []
 owner_unit: ""
-updated: 2026-09-03
-links: ["[[SOFTWARE-MAP]]", "[[SOFTWARE-CONTRACT]]", "[[06-pages/profile]]", "[[0013-one-commitment-guardrail]]", "[[0020-no-fabricated-answers]]", "[[0050-agent-dispatch-hardness-threshold]]", "[[0052-software-catalog-layer]]"]
+updated: 2026-09-06
+links: ["[[SOFTWARE-MAP]]", "[[SOFTWARE-CONTRACT]]", "[[06-pages/profile]]", "[[0013-one-commitment-guardrail]]", "[[0020-no-fabricated-answers]]", "[[0050-agent-dispatch-hardness-threshold]]", "[[0052-software-catalog-layer]]", "[[0132-mudavym-answers-mcp]]", "[[06-pages/connections]]"]
 ---
 
 # Mudavym MCP Server
 
-> **STATUS — documented, not built. No code exists.** There is no MCP *server* package
-> anywhere in the tree: `packages/` holds exactly two workspaces, `database` and `ui`.
-> Every `mcp` match in `apps/api-gateway/src` is the `mcp-connections/` module or its import
-> (`app.module.ts:36,113`), which is the
-> **client-side register** on `/profile` (a list of servers *we* may call), not a server
-> that exposes Mudavym. This note is a capabilities document. Nothing below has been
-> implemented, tested, or deployed, and every endpoint it cites is an endpoint that exists
-> **today for the browser** — none is reached by an MCP client.
+> **STATUS — PARTLY BUILT since 2026-09-06 (ADR 0132). Read this before the rest of the note.**
+> `apps/api-gateway/src/mcp-server/` answers `initialize`, `tools/list`, `tools/call`,
+> `resources/list`/`read`, `prompts/list`/`get` and `ping` at `POST /api/v1/mcp` over
+> Streamable HTTP, revision `2025-06-18`. **Ten of §3's 34 reads are live** (the §8 step-4
+> list) and **all eight of its writes are declared in order to be refused** — none can run.
+> Auth is a per-house hashed key, not the JWT §7b describes; see the amendment in §7b.
+> Everything else below is still a capabilities document: the other 24 reads exist for the
+> browser and are reached by no MCP client. Not deployed, not run against production, and
+> the `/connections` register has routes but no UI yet.
+>
+> *Superseded by the build, and left in place as history:* the original banner said "there
+> is no MCP server package anywhere in the tree" and that `packages/` holds exactly two
+> workspaces. The second half is still true — the server lives in the gateway, not in a
+> package, and ADR 0132 fork 2 says why.
 
 ## §0 What it is
 
@@ -40,8 +46,10 @@ reply that forms a contract — stops at a draft a human approves in Mudavym.
 
 ## §1 Features today
 
-**None.** Nothing is built. The ladder below is the shape a build would take, smallest
-first, and every rung is `planned`:
+**The first four rungs, as of 2026-09-06 (ADR 0132).** The ladder is unchanged; what
+changed is that rungs 1, 2 (partly), 6 (partly), 7 and 9 are `built`, and the rest are
+still `planned`. Rung 8 is `declared-and-refused`, which is a state this ladder did not
+originally have and now needs — a write tool that a client can see and cannot run.
 
 - Answer a handshake and list tools, resources and prompts for one authenticated tenant
 - Read stock, ledger balances, orders, calendar and notifications for that tenant
@@ -162,8 +170,16 @@ this one tool is the guest-facing menu the Restaurant division happens to own.*
 | `ask_ai.propose` | proposes an action from a question | `ask-ai/ask-ai.controller.ts:34` | question → proposal | W | approve (`:70` confirm **not exposed**) |
 | `one_tap.pending` | actions awaiting a human | `one-tap-actions/one-tap-actions.controller.ts:118` | — → actions[] | R | tenant scope (`:214` execute **not exposed**) |
 
-**42 tools. 33 read-only, 9 write — and every one of the 9 writes a draft, a proposal, or
+**42 tools. 34 read-only, 8 write — and every one of the 8 writes a draft, a proposal, or
 a record of something that already physically happened. None sends, approves, or executes.**
+
+*(Corrected 2026-09-06, ADR 0132. This line said "33 read-only, 9 write" from 2026-09-03
+until the build counted its own tables: Restaurant 8R/4W, Vendor 6R/1W, POS 3R/1W,
+Sommelier 4R, Intelligence 6R/1W, Platform 5R, Customer 1R, Agent 1R/1W = 34R + 8W = 42.
+The eight are `inventory.count`, `ledger.post_transaction`, `orders.draft`,
+`receiving.log_door`, `reply.draft`, `pos.propose_matches`, `reports.generate`,
+`ask_ai.propose` — and those eight, exactly, are what `tools/list` now declares and
+`tools/call` refuses.)*
 
 ## §4 Automation
 
@@ -270,7 +286,19 @@ behind each fronted module — but none claims this. Recorded as a gap row in
 
 ## §7 Maturity & seams
 
-**`planned` — documented, not built, no code.** The honest seams a build would inherit:
+**`partial` — built 2026-09-06 (ADR 0132), not deployed.** What exists:
+`apps/api-gateway/src/mcp-server/` — a controller, a credential guard, a dispatcher, a
+catalogue, ten read implementations and a key register; two tables
+(`mcp_server_credentials`, `mcp_server_call_log`,
+`supabase/migrations/20260906170000_a_house_gives_its_assistant_a_key.sql`); 35 specs.
+Measured on 2026-09-06 against a local Supabase: `initialize`, `tools/list` (14 tools for
+a four-scope key), two reads, a write refused, an ungranted scope refused,
+`resources/list`, `prompts/list`, a 401 with no key, a 401 for a JWT, a 405 on `GET`, and
+a **401 on the very next call after revocation** — with all eight log rows written and
+`asked_by` NULL on every one. It has never run against production.
+
+The four seams below were the honest ones a build would inherit. Three are now closed by
+construction and the fourth is inherited and stated on the wire:
 
 1. **`TenantGuard` fails open.** It returns `true` when `request.user` is unset
    (`common/tenant/tenant.guard.ts:47-52`), and the two global guards are only
@@ -278,15 +306,30 @@ behind each fronted module — but none claims this. Recorded as a gap row in
    therefore rests on `JwtAuthGuard` being present per route — which is exactly the posture
    that left 9 `toast/` routes unguarded (`.planning/foundation/ENDPOINTS.md:15,21`). An
    MCP façade must assert the tenant itself, not inherit the assumption.
+   **CLOSED (2026-09-06):** the façade asserts it. The restaurant comes from the
+   credential row; no tool's `inputSchema` declares a `restaurantId` and a resource URI
+   naming another house is refused before any read runs.
 2. **Rate limits key on the user, then the restaurant, then the IP**
    (`common/rate-limit/rate-limit.guard.ts:246-266`), defaults 100/60s, `ai` 20/60s
    (`:27-33`). A single MCP client would consume one user's whole budget.
+   **CLOSED (2026-09-06):** 60/60s **per credential**, in-process, on
+   `X-Mcp-RateLimit-*` headers kept distinct from the global guard's. The multi-replica
+   caveat is said on the wire by `describeLimiter()` rather than assumed away.
 3. **Read postures are not always the write postures.** `getLocation` enforces org
    membership only (`organizations/organizations.service.ts:123-153`), so a staff token
    reads the billing email; an MCP tool would inherit that.
+   **STILL OPEN, and narrowed:** none of the ten live tools reads an organization or a
+   billing field, so the posture is not inherited *yet*. It would be the moment
+   `vendors.profile` or a settings read is added — which is the signal to fix the posture
+   rather than the tool.
 4. **An empty array can mean "could not read".** `listConnections` logs a query error and
    returns `[]` (`integrations/integrations-oauth.service.ts:485-488`) — the shape §7a's
    honesty rules exist to stop reaching a tool result.
+   **INHERITED AND SAID OUT LOUD (2026-09-06):** `insights.list` has exactly this seam —
+   `getStored` logs its error and returns `[]`
+   (`analytics/insights/insight-generator.service.ts:299-308`), so from outside it the two
+   cases are indistinguishable. The tool returns `null` and says *that*, rather than
+   reporting "no insights". Fixing the swallow is the service's job, not the façade's.
 
 ## §7a Honesty rules for tool results
 
@@ -308,6 +351,19 @@ absence-reported-as-health rule):
 - **A stale read is dated.** Anything cached carries `as_of`.
 
 ## §7b Auth and tenancy
+
+> **AMENDED 2026-09-06 (ADR 0132 fork 3): authentication is NOT the JWT.** The first
+> bullet below was written on 2026-09-03, before ADR 0114 made the model-context
+> attachment the **house's** rather than a person's. A JWT-bearing assistant acts with one
+> person's full authority, cannot be revoked without ending that person's session, and
+> silently outlives their role change. The built server authenticates with a per-house key
+> — `Authorization: Bearer mud_mcp_…`, SHA-256 hashed in `mcp_server_credentials`, shown
+> once at mint, soft-revoked, effective on the **next** call — and refuses a JWT **by
+> shape, before the table is touched**. The rest of this section holds as written, with one
+> further amendment: the hide-an-ungranted-scope rule (bullet 2) applies to **reads only**.
+> All eight write tools are declared to every key, because no key can be granted one and
+> hiding them would tell every assistant that Mudavym cannot draft an order. The original
+> bullet is left below as history.
 
 - **Authentication reuses the JWT the gateway already issues.** Payload is signed at
   `auth/auth.service.ts:521-536` and carries `sub` (= `public.users.user_id`) plus
@@ -340,6 +396,21 @@ The two vault resources are the founder's own documentation, served read-only so
 assistant can answer "what is `/receiving` supposed to do?" from the contract rather than
 from the code.
 
+**Built 2026-09-06 (ADR 0132): two of the five, and the three absences are reasoned.**
+`mudavym://day-book/{restaurantId}` and `mudavym://cellar/{restaurantId}` are served.
+The `{date}` segment is **dropped** from the day-book URI: `LogsTimelineService.getTimeline`
+takes no date, and a URI accepting one it cannot honour would answer every date alike.
+`mudavym://reports/{reportId}` waits on the reports tool. **The two vault resources cannot
+be served from the deployed image at all** — `.planning/` is not copied into it
+(`apps/api-gateway/Dockerfile:39` takes `apps/api-gateway/dist` only), so they would work
+locally and 404 in production. Serving them needs a decision about shipping the vault, not
+a handler.
+
+**Prompts: all five are served**, and every one of them was rewritten to end in a *read*.
+`chase-the-short-delivery` says "drafts a chase reply" above; the served text stops at the
+discrepancy and hands the draft to a person, because `reply.draft` refuses in this build
+and a prompt instructing an assistant to call a refusing tool wastes its turn.
+
 **Prompts** — canned tasks, each a fixed sequence of the tools above:
 
 | Prompt | What it does |
@@ -352,32 +423,60 @@ from the code.
 
 ## §8 Where it's going — what building it would take
 
-Not started. In order:
+**Steps 1, 4 and 5 are done; steps 2 and 3 were decided the other way (ADR 0132, forks 1
+and 2), and step 6's dispatch rule was followed.** The list below is left as written,
+annotated, because the reasoning it recorded is what the ADR had to answer.
+
+In order:
 
 1. **An ADR first.** Nothing here is decided. The forks a build must not default:
    transport, scope vocabulary, whether a grant is a new table or a row shape on
    `user_mcp_connections`, and whether the server is multi-tenant or one process per
    house. Take the number from `next_free()` in `scripts/check_adr_numbers_unique.py:198`
    **plus a `git worktree list` sweep** — the guard sees refs only.
+   **DONE:** [[0132-mudavym-answers-mcp]], number from `next_free()` plus a sweep of every
+   worktree (0130 and 0131 were claimed and unpushed; 0132 was free).
 2. **Transport.** Ship **stdio first**: it is a local process holding the user's own token,
    with no new public surface, no CORS, no session store, and it is what a desktop client
    configures. **HTTP/SSE second**, and only behind the same `JwtAuthGuard` posture as the
    gateway — a remote MCP endpoint is a new unauthenticated-by-default door, which is the
    `toast/` failure repeated (§7.1).
+   **DECIDED THE OTHER WAY (ADR 0132 fork 1): Streamable HTTP first, no stdio.** The
+   argument for stdio — no new public surface — was an argument about a build
+   authenticating with a person's JWT. With a per-house, revocable, read-only key it stops
+   deciding, and stdio's cost (a second artifact to build, sign and ship, which still
+   reaches the services over HTTP) is permanent. The `toast/` failure is guarded against
+   directly instead: the route carries an `…AuthGuard` that `check_route_exposure.py` can
+   see, and the tenant is asserted rather than inherited.
 3. **Package location.** `packages/mcp-server/` — a third workspace beside `database` and
    `ui`. **Not** inside `apps/api-gateway`: its Dockerfile copies only
    `apps/api-gateway/dist`, and ADR 0013 §Options-1 records that build boundary being
    discovered the expensive way.
+   **DECIDED THE OTHER WAY (ADR 0132 fork 2), on the same evidence read the other
+   direction:** because the Dockerfile copies only `apps/api-gateway/dist`, a
+   `packages/mcp-server/` would not be in the deployed image — it would need a Dockerfile
+   change, a second build target and a second process. And a tool's whole value is calling
+   the *same service the page calls*, which means living in that injector; a separate
+   package could only reach them over HTTP, a second query path with a network hop in it.
 4. **The first ten tools** — read-only, one division at a time, so the first release
    cannot commit anything: `inventory.list`, `inventory.low_stock`, `orders.list`,
    `orders.get`, `vendors.search`, `prices.compare`, `insights.list`, `analytics.financial`,
    `logs.timeline`, `health.live`. Write verbs land only after the refusal contract (§7a)
    has a test suite.
+   **DONE, unchanged and in this order.** Write verbs are declared and refused rather than
+   absent — see §7b's amendment for why.
 5. **Tests.** A contract test per tool asserting the honesty rules (null-with-reason, never
    0); a tenancy test proving a token for house A cannot read house B through any tool; a
    refusal test per §4 row proving the verb is absent from `tools/list`; and the guardrail
    test importing the **canon** patterns, never a copy — extending
    `commitment-patterns.spec.ts` rather than adding a fourth list.
+   **DONE, with one part not needed yet.** 35 specs: the honesty rules, the tenancy proof
+   (a resource URI for another house is refused before any read), a refusal spec per write
+   row asserting the seal sentence, and the transport contract. The **guardrail** test is
+   not among them and does not need to be: no MCP output text can reach a vendor while
+   every write refuses, so this build imports no commitment patterns at all — not the
+   canon and certainly not a copy. The day one write lands, that spec is the gate.
 6. **Dispatch note.** Building this scores ≥ 4 on [ADR 0050](../decisions/0050-agent-dispatch-hardness-threshold.md)
    — blast radius 2 (auth, tenancy, an outward-facing surface), ambiguity 2 (every fork in
    step 1 is open) — so any agent that builds it runs on Opus, not Sonnet.
+   **FOLLOWED:** built by an Opus agent on 2026-09-06.

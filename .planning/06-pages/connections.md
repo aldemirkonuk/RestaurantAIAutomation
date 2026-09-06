@@ -78,6 +78,13 @@ the two registers that would actually leak are refused at the gateway as well.
   signed delivery has ever arrived), the sender identity, the calendar feed
   (address, copy, regenerate), the public page *(states that none exists for a
   house — see §9)*, and the model-context servers with a row each.
+- **Your assistant's key (INBOUND — routes only, no UI yet; ADR 0132, 2026-09-06).**
+  The other direction of the same register: the keys assistants present to *us* so
+  Mudavym can answer MCP for this house. `GET/POST/DELETE /mcp-server-keys` mint (secret
+  shown once), list and revoke; manager-or-owner to mint or revoke, any member to read.
+  **The page does not call them yet** — see G-C-MCP in §9. It must never be drawn in
+  Register I beside the outbound rows: "we may call them" and "they may read us" are
+  opposite facts and one rail showing both is how they get confused.
 - **Model-context rows** carry the declarer, the reader's own consent, how many
   people have consented, the tools granted by name, and which of those can
   change something outside this app. *(New this pass: consent and per-tool
@@ -554,6 +561,9 @@ manager; a staff member reaches the written refusal.
 | GET | `/calendar/ical-token` | JWT | provisions on read |
 | POST | `/calendar/ical-token/regenerate` | JWT | revokes every subscription |
 | GET | `/mcp-connections` | JWT | **house-scoped this pass**; carries consent and tool grants |
+| GET | `/mcp-server-keys` | JWT | **INBOUND half, new 2026-09-06 (ADR 0132)** — keys assistants present to us. Also serves the grantable read-scope vocabulary and the rate-limit sentence, so the page cannot offer a scope the server does not honour. No UI calls it yet (G-C-MCP) |
+| POST | `/mcp-server-keys` | JWT + **manager/owner** | mints a key; the secret is returned **once** and stored only as a SHA-256 hash. Write scopes cannot be typed — `@IsIn` restricts minting to the seven read slugs |
+| DELETE | `/mcp-server-keys/:id` | JWT + **manager/owner** | soft revoke, effective on the key's **next** call. Answers `{revoked:false, reason}` rather than a bare success when nothing matched |
 | GET | `/mcp-connections/runtime` | JWT | `invocation.enabled` is now `true`, with the terms |
 | PUT | `/mcp-connections/:id/consent` | JWT | the caller's own consent; no user id is accepted |
 | POST | `/mcp-connections/:id/probe` | JWT + **manager/owner** | |
@@ -610,6 +620,19 @@ because it is true, and it changes when the deployment's mailbox does.
 ## 9. Gaps
 
 Each is rendered honestly on the page rather than hidden.
+
+- **G-C-MCP — the inbound key register has routes and no UI (2026-09-06, ADR 0132).**
+  `GET/POST/DELETE /mcp-server-keys` are built, guarded, specced and proven end-to-end
+  against a local database, but **no component on this page calls them**, so a house
+  cannot yet mint or revoke a key from the product — only from the database. This is
+  stated here rather than half-drawn: a disabled "Your assistant's key" tile would be a
+  fourth disabled control on a page that already carries three, and the 2026-09-02
+  lesson was that the founder's answer to a drawn-but-dead control is to build the thing.
+  What the tile needs when it lands: a create form (label + a multi-select over the
+  seven read scopes the `GET` already returns), a **show-once** panel that never
+  re-reads the secret, a row per key showing prefix · scopes · last used (em dash when
+  NULL, never the mint time) · revoked, and a revoke control. It belongs in its own
+  register section, **not** in Register I beside the outbound `mcp-connections` rows.
 
 - **G-C10 — neither text-sender control does anything yet.** Both paths are
   drawn and both are disabled. `POST /communications/text-senders/own` and
