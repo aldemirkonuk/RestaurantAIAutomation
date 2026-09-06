@@ -18,8 +18,8 @@
  */
 
 import { useId, useState, type ReactNode } from 'react'
-import type { FieldEnvelope } from '../../services/api/canonical'
-import { MONO, confidenceWord, sourceSentence } from './canonical-format'
+import type { CorrectionLogEntry, FieldEnvelope } from '../../services/api/canonical'
+import { MONO, confidenceWord, correctionSentence, sourceSentence } from './canonical-format'
 
 export interface ProvenanceHoverProps {
   /** What this field IS, in words — "Unit price, line 4". */
@@ -31,6 +31,21 @@ export interface ProvenanceHoverProps {
   children: ReactNode
   /** Footnote number, when the sheet is numbering its provenance (print). */
   footnote?: number
+  /**
+   * The layer-1 path this field is, e.g. `lines[3].netPrice`. Present only when
+   * the field is correctable — the gateway holds the closed list, and a field
+   * with no path here simply offers no correction affordance.
+   */
+  path?: string
+  /** Every correction and tick on THIS field, newest first (ADR 0104 D5). */
+  log?: CorrectionLogEntry[]
+  /** Opens the correction form. Absent = this screen is read-only. */
+  onCorrect?: (path: string, label: string) => void
+  /** The per-field `verified_by` tick. Absent = read-only. */
+  onVerify?: (path: string, label: string) => void
+  /** Read from the document, so the log's stamps print in its own convention. */
+  jurisdiction?: string | null
+  currency?: string | null
 }
 
 export function ProvenanceHover({
@@ -38,6 +53,12 @@ export function ProvenanceHover({
   envelope,
   children,
   footnote,
+  path,
+  log,
+  onCorrect,
+  onVerify,
+  jurisdiction,
+  currency,
 }: ProvenanceHoverProps) {
   const [open, setOpen] = useState(false)
   const id = useId()
@@ -145,6 +166,81 @@ export function ProvenanceHover({
             >
               Verified by {envelope.verified_by}
               {envelope.verified_at ? ` · ${envelope.verified_at.slice(0, 10)}` : ''}
+            </span>
+          )}
+
+          {/* ADR 0104 D5 — the log, per field, in the popover that already
+              explains where the number came from. A correction that is only
+              visible on a separate audit screen is a correction nobody reads. */}
+          {(log ?? []).map((entry) => (
+            <span
+              key={`${entry.revision}-${entry.correctedAt}`}
+              data-testid="provenance-correction"
+              style={{
+                display: 'block',
+                fontSize: 10.5,
+                marginTop: 3,
+                color: 'var(--ink-2, #4F473C)',
+              }}
+            >
+              {correctionSentence(entry, jurisdiction, currency)}
+              {entry.reason ? ` — ${entry.reason}` : ''}
+            </span>
+          ))}
+
+          {path && (onCorrect || onVerify) && (
+            <span
+              className="cd-no-print"
+              style={{ display: 'flex', gap: 10, marginTop: 5 }}
+            >
+              {onCorrect && (
+                <button
+                  type="button"
+                  data-testid="correct-field"
+                  onMouseDown={(e) => {
+                    // MOUSE DOWN, not click: the popover closes on blur, and a
+                    // click handler fires after the button below has already
+                    // lost focus — so the affordance would appear and do
+                    // nothing, which is worse than not offering it.
+                    e.preventDefault()
+                    onCorrect(path, label)
+                  }}
+                  style={{
+                    font: 'inherit',
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    background: 'none',
+                    border: 0,
+                    padding: 0,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Correct this
+                </button>
+              )}
+              {onVerify && !envelope.verified_by && (
+                <button
+                  type="button"
+                  data-testid="verify-field"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    onVerify(path, label)
+                  }}
+                  style={{
+                    font: 'inherit',
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: 'var(--ink-2, #4F473C)',
+                    background: 'none',
+                    border: 0,
+                    padding: 0,
+                    cursor: 'pointer',
+                  }}
+                >
+                  I have checked this
+                </button>
+              )}
             </span>
           )}
         </span>
