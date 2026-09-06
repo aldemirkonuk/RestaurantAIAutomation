@@ -34,6 +34,10 @@ import {
   AICommandPill,
 } from "../components/reports/organisms/AICommandPalette";
 import { MonthlyReconciliation } from "../components/reports/organisms/MonthlyReconciliation";
+import { useQuery } from "@tanstack/react-query";
+import { describeReportsGap } from "../lib/reportsDataGap";
+import { getPosStatus } from "../services/api/posHub";
+import { getActiveRestaurantId } from "../services/api/client";
 import { PeriodCompareBar } from "../components/reports/molecules/PeriodCompareBar";
 import { formatMoney } from "../lib/utils";
 // `bottlesToVolume` is gone on purpose: bottle volume is now the MEASURED
@@ -494,11 +498,56 @@ export function Reports() {
       (sum, p) => sum + p.totalBottles,
       0,
     );
-    const totalOrders = purchaseData.length;
+    // `purchaseData.length` is one row per DAY of the selected window, so this
+    // read "30 orders" over a tenant with zero `procurement_orders` — thirty
+    // days wearing the word "orders" (intelligence lens, defect 2). Each day
+    // already carries its own order count; summing those counts orders.
+    const totalOrders = purchaseData.reduce(
+      (sum, p) => sum + (p.orderCount || 0),
+      0,
+    );
     const avgCostPerBottle =
       totalBottlesPurchased > 0 ? totalSpent / totalBottlesPurchased : 0;
     return { totalSpent, totalBottlesPurchased, totalOrders, avgCostPerBottle };
   }, [purchaseData]);
+
+  /**
+   * Is a POS connected, and is it sending? Read so the empty-state banner can
+   * name the RIGHT gap rather than always blaming the connection (defect 9).
+   * A failed status read is its own case — never a guess in either direction.
+   *
+   * `enabled` + the id in the key are load-bearing: AuthContext writes
+   * `activeRestaurantId` to localStorage only after /auth/me returns, so an
+   * ungated query throws "No restaurant ID available" on mount and — with
+   * `retry: false` and no id to invalidate on — stays failed. The banner would
+   * then say "we could not check whether your POS is connected" forever, which
+   * is the honest branch reporting a dishonest thing. Measured on the
+   * /inventory chip and fixed there too.
+   */
+  const activeRestaurantIdForPos = getActiveRestaurantId();
+  const posStatusQuery = useQuery({
+    queryKey: ["pos-hub", "status", "reports-banner", activeRestaurantIdForPos],
+    queryFn: () => getPosStatus(activeRestaurantIdForPos),
+    enabled: Boolean(activeRestaurantIdForPos),
+    staleTime: 300_000,
+    retry: false,
+  });
+  const dataGap = useMemo(
+    () =>
+      describeReportsGap({
+        totalSpend: metrics.totalSpend,
+        totalOrders: metrics.totalOrders,
+        posChecks: posStatusQuery.data?.totalChecks ?? null,
+        posStatusUnavailable:
+          posStatusQuery.isError || posStatusQuery.data?.unavailable === true,
+      }),
+    [
+      metrics.totalSpend,
+      metrics.totalOrders,
+      posStatusQuery.data,
+      posStatusQuery.isError,
+    ],
+  );
 
   const checkScans: CheckScan[] = useMemo(() => [], []);
 
@@ -1271,28 +1320,28 @@ export function Reports() {
       />
 
       <div className="p-6 space-y-6">
-        {/* Purchasing-data indicator. NOTE: this page charts vendor spend from
-            purchase orders only — it never reads POS sales. The banner is gated
-            on purchasing data, so it says nothing about POS connectivity. */}
-        {metrics.totalSpend === 0 && metrics.totalOrders === 0 && (
+        {/* Purchasing-data indicator. This page charts vendor spend from
+            purchase orders only — it never reads POS sales. It used to blame a
+            missing POS connection unconditionally, which on the lens run was
+            said over 44 ingested checks from a POS that was working (defect 9).
+            `describeReportsGap` decides which of the three things is true. */}
+        {dataGap && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
               <p className="text-sm font-semibold text-amber-900">
-                No purchasing data yet
+                {dataGap.title}
               </p>
-              <p className="text-xs text-amber-700">
-                These charts track vendor spend from your purchase orders, not
-                sales. Place or import orders to populate them. Sales revenue
-                needs a connected POS and is not shown here.
-              </p>
+              <p className="text-xs text-amber-700">{dataGap.body}</p>
             </div>
-            <a
-              href="/settings?tab=pos"
-              className="ml-auto px-4 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
-            >
-              Configure POS
-            </a>
+            {dataGap.action && (
+              <a
+                href={dataGap.action.href}
+                className="ml-auto px-4 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
+              >
+                {dataGap.action.label}
+              </a>
+            )}
           </div>
         )}
 

@@ -37,6 +37,7 @@ Designed for a porter on a sidewalk with a phone at 12% and no signal in the wal
 - Full-screen, one-handed door flow asking exactly three things: photo of the paper the driver handed over, how many boxes, was anything obviously broken
 - Works offline — submissions queue in an outbox and sync later, nothing is lost in the walk-in
 - No prices anywhere by design; the count and match happen later at a desk
+- **The count BOOKS the stock (ADR 0103 A1, built 2026-09-06).** A counted line posted against a delivery goes on the shelf immediately, so staff can pour it, and the lot is marked `cost_state = provisional` with **no price at all** — absent, never zero. Cost is settled later at VERIFIED. A line that names no item on the shelf comes back in `booking.notBooked` with the reason and is never matched to an item by its description.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving_door`)
 

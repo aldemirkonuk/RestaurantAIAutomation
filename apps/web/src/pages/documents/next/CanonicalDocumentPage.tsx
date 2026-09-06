@@ -11,8 +11,12 @@
  * only direction rigorous about per-field provenance and print), and **B's
  * verdict block on top** (the manager reads what differs before anything else).
  *
- * READ-ONLY. No corrections, no claims workflow, no mapping memory — slices 3
- * and 4. Nothing on this page writes.
+ * TWO WRITES, AND ONLY TWO (slice 3, ADR 0104 D5): correcting one layer-1 field
+ * and ticking one field as verified. Neither EDITS anything — the gateway
+ * appends a revision and an audit row that the database refuses to update or
+ * delete, and this page re-reads the document afterwards rather than patching
+ * what it is holding. The claims workflow and the mapping memory are slices 4
+ * and 5; nothing else here writes.
  *
  * BEHIND THE GATE, OFF BY DEFAULT. `/documents/:id` renders through PageGate on
  * the `document` page name; a restaurant without `mudavym_design_document` is
@@ -33,18 +37,23 @@ import { useQuery } from '@tanstack/react-query'
 import { Wordmark } from '@/components/mudavym'
 import {
   CanonicalSheet,
+  CorrectionDialog,
   DegradedNotice,
+  DeliveryGates,
   DeliverySpine,
   DoorFrame,
   MONO,
   OriginalPane,
+  ProposalThread,
   SANS,
   SERIF,
   VerdictBlock,
   degradedReasons,
+  envelopeAt,
   sourceSentence,
 } from '../../../components/documents'
 import { canonicalApi } from '../../../services/api/canonical'
+import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -61,6 +70,22 @@ export function CanonicalDocumentPage() {
   const [params] = useSearchParams()
   const [tab, setTab] = useState<Tab>(params.get('view') === 'door' ? 'door' : 'sheet')
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
+  /** The field a correction form is open on, or null. */
+  const [correcting, setCorrecting] = useState<{ path: string; label: string } | null>(null)
+  /**
+   * The GATEWAY's own words when it refused, shown verbatim.
+   *
+   * It knows things this page deliberately does not — which fields are
+   * correctable, what type each one is, whether somebody else's correction
+   * landed first — and paraphrasing "`lines[9].quantity`: this document has 1
+   * line" into "something went wrong" would throw away the only sentence that
+   * tells the person what to do next.
+   */
+  const [writeError, setWriteError] = useState<string | null>(null)
+  const [writing, setWriting] = useState(false)
+  /** The gateway's words when a GATE or a proposal refused, kept apart from a
+   *  correction's error so one does not overwrite the other on screen. */
+  const [deliveryError, setDeliveryError] = useState<string | null>(null)
 
   const q = useQuery({
     queryKey: ['canonical-document', id],
@@ -72,6 +97,89 @@ export function CanonicalDocumentPage() {
   const fetchedAt = q.dataUpdatedAt || Date.now()
   const res = q.data
   const doc = res?.canonical
+
+  /**
+   * The delivery this document sits on — the FIRST one, and only when there is
+   * exactly one to be unambiguous about.
+   *
+   * A document on several deliveries (a consolidated weekly invoice, ADR 0104
+   * S5) has no single event to agree or verify, so the gates are not offered
+   * rather than guessing which truck the person meant.
+   */
+  const soleDelivery =
+    res?.deliveries && res.deliveries.length === 1 ? res.deliveries[0] : null
+
+  const eventQ = useQuery({
+    queryKey: ['delivery-event', soleDelivery?.deliveryId],
+    queryFn: () => deliveriesApi.event(soleDelivery!.deliveryId),
+    enabled: !!soleDelivery,
+    staleTime: 15_000,
+  })
+
+  const proposalsQ = useQuery({
+    queryKey: ['delivery-proposals', soleDelivery?.deliveryId],
+    queryFn: () => deliveriesApi.proposals(soleDelivery!.deliveryId),
+    enabled: !!soleDelivery,
+    staleTime: 15_000,
+  })
+
+  /** The gateway's message, or the transport's when there is nothing better. */
+  const messageFrom = (err: unknown): string => {
+    const body = (err as { response?: { data?: { message?: unknown } } })?.response?.data
+        ?.message
+    if (typeof body === 'string' && body.length) return body
+    const msg = (err as { message?: unknown })?.message
+    return typeof msg === 'string' && msg.length
+      ? msg
+      : 'The correction could not be recorded, and the reason did not come back.'
+  }
+
+  const recordCorrection = async (value: unknown, reason: string) => {
+    if (!correcting) return
+    setWriting(true)
+    setWriteError(null)
+    try {
+      await canonicalApi.correctField(id, {
+        path: correcting.path,
+        value,
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
+      })
+      setCorrecting(null)
+      // RE-READ, never patch in place. The correction moves the tie-out, the
+      // bottle-equivalents and every invariant; the gateway recomputes all of
+      // them, and a client that edited its own copy would show a corrected
+      // number beside verdicts that still graded the old one.
+      await q.refetch()
+    } catch (err) {
+      setWriteError(messageFrom(err))
+    } finally {
+      setWriting(false)
+    }
+  }
+
+  /** Run one delivery write, refresh, and show the gateway's words if it refused. */
+  const deliveryWrite = async (fn: () => Promise<unknown>) => {
+    setWriting(true)
+    setDeliveryError(null)
+    try {
+      await fn()
+      await Promise.all([q.refetch(), eventQ.refetch(), proposalsQ.refetch()])
+    } catch (err) {
+      setDeliveryError(messageFrom(err))
+    } finally {
+      setWriting(false)
+    }
+  }
+
+  const tickField = async (path: string) => {
+    setWriteError(null)
+    try {
+      await canonicalApi.verifyField(id, path)
+      await q.refetch()
+    } catch (err) {
+      setWriteError(messageFrom(err))
+    }
+  }
 
   const degraded = useMemo(
     () =>
@@ -229,6 +337,41 @@ export function CanonicalDocumentPage() {
         </p>
       ) : null}
 
+      {/* A write that failed says so ONCE, at the top, in the gateway's words —
+          and stays until the next attempt, because a toast that has faded is
+          indistinguishable from a correction that landed. */}
+      {writeError && (
+        <p
+          data-testid="write-error"
+          role="alert"
+          style={{
+            margin: '0 0 8px',
+            padding: '6px 10px',
+            borderRadius: 8,
+            border: '1px solid rgba(176,54,44,.35)',
+            background: 'rgba(176,54,44,.06)',
+            fontSize: 11.5,
+            color: '#B0362C',
+          }}
+        >
+          {writeError}
+        </p>
+      )}
+
+      {/* ADR 0104 D5 — the log could not be READ. The sheet then offers no
+          correction handles, and this says why rather than letting the absence
+          of the affordance read as "this document cannot be corrected". */}
+      {res.corrections === null && (
+        <p
+          data-testid="corrections-unreadable"
+          style={{ margin: '0 0 8px', fontSize: 11.5, color: '#946612' }}
+        >
+          The correction history could not be read, so corrections are turned off on this
+          screen. Nothing is missing from the document itself — but a field could otherwise
+          be “corrected” twice by two people who each believed they were the first.
+        </p>
+      )}
+
       {/* B on top — the verdict, before anything else. */}
       <VerdictBlock doc={doc} states={states} />
 
@@ -241,6 +384,67 @@ export function CanonicalDocumentPage() {
           onOpenDocument={(other) => navigate(`/documents/${other}`)}
         />
       </div>
+
+      {/* The two gates and the thread, on the ONE delivery this document sits
+          on. A document on several has no single event to agree, so neither is
+          offered — an ambiguous gate is worse than no gate. */}
+      {soleDelivery && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            gap: 10,
+            marginTop: 10,
+          }}
+        >
+          {eventQ.data ? (
+            <DeliveryGates
+              delivery={eventQ.data}
+              busy={writing}
+              error={deliveryError}
+              onAgree={() =>
+                deliveryWrite(() => deliveriesApi.agree(soleDelivery.deliveryId))
+              }
+              onVerify={() =>
+                deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
+              }
+            />
+          ) : (
+            <p data-testid="gates-unavailable" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+              {eventQ.isError
+                ? 'The delivery could not be read, so its gates are not shown. That is not “this delivery has no gates”.'
+                : 'Reading the delivery…'}
+            </p>
+          )}
+
+          <ProposalThread
+            proposals={proposalsQ.isError ? null : (proposalsQ.data ?? [])}
+            failedRead={proposalsQ.isError ? messageFrom(proposalsQ.error) : null}
+            jurisdiction={doc.jurisdiction}
+            currency={doc.layer1.currency.value}
+            selectedLine={selectedLine}
+            busy={writing}
+            error={deliveryError}
+            onPropose={(body) =>
+              deliveryWrite(() =>
+                deliveriesApi.propose(soleDelivery.deliveryId, {
+                  ...(body as ProposalBody),
+                  documentId: doc.documentId,
+                }),
+              )
+            }
+            onCounter={(pid, body) =>
+              deliveryWrite(() =>
+                deliveriesApi.counter(pid, {
+                  ...(body as ProposalBody),
+                  documentId: doc.documentId,
+                }),
+              )
+            }
+            onAccept={(pid) => deliveryWrite(() => deliveriesApi.accept(pid))}
+          />
+        </div>
+      )}
 
       {showDoorTab && (
         <div className="cd-no-print" style={{ display: 'flex', gap: 8, margin: '10px 0 0' }}>
@@ -295,9 +499,36 @@ export function CanonicalDocumentPage() {
               doc={doc}
               selectedLine={selectedLine}
               onSelectLine={(i) => setSelectedLine(i)}
+              corrections={res.corrections}
+              onCorrect={(path, label) => {
+                setWriteError(null)
+                setCorrecting({ path, label })
+              }}
+              onVerify={(path) => void tickField(path)}
             />
           ) : (
-            <DoorFrame doc={doc} />
+            <DoorFrame
+              doc={doc}
+              busy={writing}
+              error={deliveryError}
+              /* The count is a WRITE — unless this document IS a door count, in
+                 which case the frame shows what was counted and correcting it
+                 means recording another count, never editing this one. */
+              onSubmitCount={
+                doc.docType === 'receiving_advice'
+                  ? undefined
+                  : (input) =>
+                      deliveryWrite(() =>
+                        deliveriesApi.recordDoorCount({
+                          ...input,
+                          ...(soleDelivery
+                            ? { deliveryId: soleDelivery.deliveryId }
+                            : { createDelivery: true }),
+                          ...(doc.jurisdiction ? { jurisdiction: doc.jurisdiction } : {}),
+                        }),
+                      )
+              }
+            />
           )}
 
           {/* A's footnote column. Hidden on screen (the hover carries it) and
@@ -387,6 +618,21 @@ export function CanonicalDocumentPage() {
           </section>
         </aside>
       </div>
+
+      {correcting && (
+        <CorrectionDialog
+          path={correcting.path}
+          label={correcting.label}
+          envelope={envelopeAt(doc.layer1, correcting.path)}
+          error={writeError}
+          busy={writing}
+          onCancel={() => {
+            setCorrecting(null)
+            setWriteError(null)
+          }}
+          onSubmit={(value, reason) => void recordCorrection(value, reason)}
+        />
+      )}
     </>,
   )
 }

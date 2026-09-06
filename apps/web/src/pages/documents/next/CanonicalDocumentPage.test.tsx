@@ -9,15 +9,19 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const documentMock = vi.fn()
+const correctMock = vi.fn()
+const verifyMock = vi.fn()
 vi.mock('../../../services/api/canonical', () => ({
   canonicalApi: {
     document: (id: string) => documentMock(id),
     delivery: vi.fn(),
+    correctField: (id: string, body: unknown) => correctMock(id, body),
+    verifyField: (id: string, path: string) => verifyMock(id, path),
   },
 }))
 
@@ -117,6 +121,9 @@ function response(over: Record<string, unknown> = {}) {
     },
     deliveries: [],
     siblings: [],
+    // ADR 0104 D5. `[]` = nobody has corrected anything; `null` = the log could
+    // not be READ, which the page must not render as the same thing.
+    corrections: [],
     original: {
       imageUrl: null,
       reason: 'no original was stored for this document',
@@ -153,6 +160,8 @@ function mount() {
 describe('CanonicalDocumentPage', () => {
   beforeEach(() => {
     documentMock.mockReset()
+    correctMock.mockReset()
+    verifyMock.mockReset()
   })
 
   it('renders the verdict, the sheet and the not-counted words', async () => {
@@ -203,5 +212,133 @@ describe('CanonicalDocumentPage', () => {
     mount()
     await waitFor(() => expect(screen.getByTestId('failed-read')).toBeTruthy())
     expect(screen.getByTestId('spine-failed')).toBeTruthy()
+  })
+
+  // -------------------------------------------------------------------------
+  // ADR 0104 D5, slice 3 — the correction door.
+  // -------------------------------------------------------------------------
+
+  /** Open the popover on line 1's unit price and press "Correct this". */
+  const openCorrectionOnUnitPrice = async () => {
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    const button = await screen.findByTestId('correct-field')
+    fireEvent.mouseDown(button)
+    return screen.findByTestId('correction-dialog')
+  }
+
+  it('opens the correction form on a field and sends path, value and reason', async () => {
+    documentMock.mockResolvedValue(response())
+    correctMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
+    mount()
+    await openCorrectionOnUnitPrice()
+
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '132' } })
+    fireEvent.change(screen.getByTestId('correction-reason'), {
+      target: { value: 'the paper says 132,00' },
+    })
+    fireEvent.click(screen.getByTestId('correction-submit'))
+
+    await waitFor(() => expect(correctMock).toHaveBeenCalledTimes(1))
+    expect(correctMock).toHaveBeenCalledWith('doc-syn', {
+      path: 'lines[0].netPrice',
+      // A NUMBER, not the string the input held: the gateway types this field
+      // and would refuse "132" with a 400.
+      value: 132,
+      reason: 'the paper says 132,00',
+    })
+  })
+
+  it('shows what was there before, and the glyphs the paper printed', async () => {
+    documentMock.mockResolvedValue(response())
+    mount()
+    await openCorrectionOnUnitPrice()
+    const before = screen.getByTestId('correction-before').textContent ?? ''
+    expect(before).toMatch(/Now: 142/)
+    // The provenance trail is the paper's own literal, never our parsed number.
+    expect(before).toMatch(/142,00 \/ KS\(12\)/)
+  })
+
+  it('sends null — not an empty string — for "the document states nothing here"', async () => {
+    documentMock.mockResolvedValue(response())
+    correctMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
+    mount()
+    await openCorrectionOnUnitPrice()
+    fireEvent.click(screen.getByTestId('correction-clear'))
+    fireEvent.click(screen.getByTestId('correction-submit'))
+    await waitFor(() => expect(correctMock).toHaveBeenCalledTimes(1))
+    expect(correctMock.mock.calls[0][1].value).toBeNull()
+  })
+
+  it("shows the GATEWAY's own words when it refuses, not a generic failure", async () => {
+    documentMock.mockResolvedValue(response())
+    correctMock.mockRejectedValue({
+      response: {
+        data: {
+          message:
+            'Another correction to this document landed first. Re-open the document and make the change again — nothing was written.',
+        },
+      },
+    })
+    mount()
+    await openCorrectionOnUnitPrice()
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '132' } })
+    fireEvent.click(screen.getByTestId('correction-submit'))
+    await waitFor(() => expect(screen.getByTestId('correction-error')).toBeTruthy())
+    expect(screen.getByTestId('correction-error').textContent).toMatch(
+      /landed first/,
+    )
+  })
+
+  it('prints the correction history on the field it belongs to', async () => {
+    documentMock.mockResolvedValue(
+      response({
+        corrections: [
+          {
+            revision: 2,
+            kind: 'correction',
+            path: 'lines[0].netPrice',
+            label: 'Unit price, line 1',
+            before: { value: 142, as_printed: '142,00 / KS(12)' },
+            after: { value: 132 },
+            reason: 'the paper says 132,00',
+            correctedBy: 'u1',
+            correctedByName: 'Ayşe',
+            correctedAt: '2026-08-14T09:40:00Z',
+          },
+        ],
+      }),
+    )
+    mount()
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    const line = await screen.findByTestId('provenance-correction')
+    expect(line.textContent).toMatch(/Corrected by Ayşe/)
+    expect(line.textContent).toMatch(/was as printed/)
+    expect(line.textContent).toMatch(/the paper says 132,00/)
+  })
+
+  it('turns corrections OFF and says why when the log could not be read', async () => {
+    documentMock.mockResolvedValue(
+      response({ corrections: null, failedRead: ['document_corrections read failed'] }),
+    )
+    mount()
+    await waitFor(() => expect(screen.getByTestId('corrections-unreadable')).toBeTruthy())
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    // The popover still explains the provenance; it offers no handle to change
+    // a field whose history this screen could not read.
+    expect(screen.queryByTestId('correct-field')).toBeNull()
+  })
+
+  it('ticks a field as verified without opening the correction form', async () => {
+    documentMock.mockResolvedValue(response())
+    verifyMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
+    mount()
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    fireEvent.mouseDown(await screen.findByTestId('verify-field'))
+    await waitFor(() => expect(verifyMock).toHaveBeenCalledWith('doc-syn', 'lines[0].netPrice'))
+    expect(screen.queryByTestId('correction-dialog')).toBeNull()
   })
 })

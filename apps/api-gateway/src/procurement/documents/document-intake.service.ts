@@ -6,7 +6,7 @@ import {
   DocumentExtractorService,
   stripJsonFence,
 } from "./document-extractor.service";
-import { SourceChannel } from "./document-types";
+import { normalizeUom, SourceChannel, toBottles } from "./document-types";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
@@ -102,6 +102,333 @@ export class DocumentIntakeService {
     private readonly extractor: DocumentExtractorService,
     private readonly canonical: CanonicalDocumentService,
   ) {}
+
+  /**
+   * A DOOR COUNT — a document we AUTHOR, not one we read (ADR 0104 D2/D11, S6).
+   *
+   * Every other path through this service reads a document somebody else wrote
+   * and records how confident it is about what it read. This one records what a
+   * person standing at the door SAYS they counted. Nothing is extracted, so:
+   *
+   *   * `extraction_confidence` and `extraction_model` are **NULL, not 0**. A
+   *     zero would be a confidence somebody computed; NULL is "nothing read
+   *     this, so there is no such number".
+   *   * `direction = issued_by_us` (S6). A receiving advice is ours. Reading it
+   *     as a vendor document would put our own count behind the vendor's
+   *     authority in every comparison the delivery makes.
+   *   * `doc_number` stays NULL. Nobody printed a number on it, and the partial
+   *     unique index on (restaurant, provider, type, number) would otherwise
+   *     make a second count of the same vendor a duplicate-key error.
+   *   * `status = 'received'`, never `verified`. A count one person typed has
+   *     not been checked by anyone else, and `verified` is the word this
+   *     product uses for a human standing behind a document.
+   *
+   * A LINE NOBODY COUNTED IS ABSENT, NOT ZERO (ADR 0103 A6). The door screen
+   * submits only the lines somebody actually counted; a line missing from this
+   * document keeps the canonical `received: "not_counted"` it already has. That
+   * is why there is no `notCounted` flag here and why a body with zero lines is
+   * refused — an empty count is not a count, and a truck that arrived empty is a
+   * rejection, which is a different door.
+   *
+   * THE SIGNATURE IS EVIDENCE, AND IT GATES AGREEMENT. `signedBy` is stored in
+   * the `extracted` snapshot because ADR 0103 D3's second route to `AGREED` is
+   * "a door signature where a per-vendor setting says the signed delivery ticket
+   * is final". `DeliveryService.agree` reads it from there, and a count with no
+   * signature simply cannot reach that rule.
+   */
+  async recordDoorCount(input: {
+    restaurantId: string;
+    providerId?: string | null;
+    countedBy: string | null;
+    countedAt?: string | null;
+    lines: {
+      lineNo: number;
+      description?: string | null;
+      vendorSku?: string | null;
+      qty: number;
+      uom: string;
+      packSize?: number | null;
+      vintage?: number | null;
+      formatMl?: number | null;
+      /** The shelf this line is about, when the door knows it (ADR 0103 A1). */
+      inventoryId?: string | null;
+    }[];
+    /** Who signed the vendor's ticket at the door, when anyone did. */
+    signedBy?: string | null;
+    note?: string | null;
+    /** One photograph of the goods, as evidence. */
+    photo?: {
+      bytes: Buffer;
+      filename?: string | null;
+      mimeType?: string | null;
+    } | null;
+  }): Promise<IntakeResult> {
+    if (!input.lines.length)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error:
+          "A door count with no lines is not a count. Submit the lines somebody counted; a line nobody counted is simply absent and stays 'not counted'.",
+      };
+
+    const countedAt = input.countedAt ?? new Date().toISOString();
+    const lines: ParsedLine[] = input.lines.map((l) => {
+      const uom = (normalizeUom(l.uom) ?? "bottle") as ParsedLine["uom"];
+      const packSize = l.packSize && l.packSize >= 1 ? l.packSize : 1;
+      return {
+        lineNo: l.lineNo,
+        vendorSku: l.vendorSku ?? null,
+        description: l.description ?? null,
+        vintage: l.vintage ?? null,
+        formatMl: l.formatMl ?? null,
+        qty: l.qty,
+        uom,
+        packSize,
+        qtyBottles: toBottles(l.qty, uom, packSize),
+        freeGoodsQty: 0,
+        // NO MONEY AT THE DOOR (D11). Not zero — absent. A price of 0.00 on a
+        // receiving advice is a claim that the goods were free.
+        unitPrice: null,
+        lineTotal: null,
+        allowance: null,
+        deposit: null,
+        priceBaseQty: null,
+        priceBaseUom: null,
+      };
+    });
+
+    const parsed: ParsedDocument = applyTieOut({
+      docType: "receiving_advice",
+      docNumber: null,
+      docDate: countedAt.slice(0, 10),
+      deliveredDate: countedAt.slice(0, 10),
+      referencesDocNumber: null,
+      poNumber: null,
+      vendorName: null,
+      vendorAccount: null,
+      // A door count carries no money, so it carries no currency either.
+      currency: null,
+      subtotal: null,
+      freight: null,
+      fuelSurcharge: null,
+      splitCaseFee: null,
+      deliveryFee: null,
+      depositTotal: null,
+      tax: null,
+      otherCharges: null,
+      discountTotal: null,
+      total: null,
+      lines,
+      computedLinesTotal: null,
+      tieOutDelta: null,
+      tiesOut: null,
+      confidence: 0,
+      warnings: [],
+      extractionModel: null,
+    } as unknown as ParsedDocument);
+
+    /**
+     * Content-addressed, INCLUDING the moment it was stated.
+     *
+     * A re-count an hour later is a different document even when every number
+     * is the same — the fact being recorded is "this is what we counted at
+     * 09:41", and hashing only the numbers would make the second count
+     * disappear as a duplicate of the first.
+     */
+    const sha256 = createHash("sha256")
+      .update(
+        JSON.stringify({
+          restaurantId: input.restaurantId,
+          providerId: input.providerId ?? null,
+          countedAt,
+          lines: input.lines,
+        }),
+      )
+      .digest("hex");
+
+    /**
+     * THE SAME COUNT, TWICE, IS ANSWERED — NOT LEAKED (v3.0-TECH-DEBT 2026-09-06,
+     * finding 4).
+     *
+     * `uq_pd_restaurant_sha256` catches this correctly, but a receiver who
+     * pressed the button twice was told `duplicate key value violates unique
+     * constraint "uq_pd_restaurant_sha256"` with a 422 indistinguishable from a
+     * malformed body. The sentence that matters is: this exact count is already
+     * recorded, and here it is. The read is not a substitute for the index —
+     * the index is still what makes it true under a race, and the 23505 below
+     * comes back through this same sentence.
+     */
+    const already = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("sha256", sha256)
+      .maybeSingle();
+    if (already.error)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error: `the door count could not be recorded: the duplicate check failed (${already.error.message}), and a count written without it could silently double a document`,
+      };
+    if (already.data?.id)
+      return {
+        documentId: (already.data as { id: string }).id,
+        parsed,
+        duplicate: true,
+      };
+
+    let storagePath: string | null = null;
+    let storageError: string | undefined;
+    if (input.photo?.bytes?.length) {
+      const stored = await this.persistOriginalBytes(
+        {
+          restaurantId: input.restaurantId,
+          source: "manual",
+          buffer: input.photo.bytes,
+          filename: input.photo.filename ?? "door-count.png",
+          mimeType: input.photo.mimeType ?? null,
+        },
+        sha256,
+        input.photo.bytes,
+      );
+      storagePath = stored.path;
+      if (stored.failure) storageError = stored.failure;
+    }
+
+    const snapshot = {
+      ...(parsed as unknown as Record<string, unknown>),
+      countedAt,
+      countedBy: input.countedBy,
+      note: input.note ?? null,
+      // ADR 0103 D3's second route to AGREED reads this. Absent means nobody
+      // signed, which is a fact about the door, not a missing field.
+      signature: input.signedBy
+        ? { signedBy: input.signedBy, signedAt: countedAt }
+        : null,
+    };
+
+    // Inline literals, never a spread: `check_order_capture_contract.py` can
+    // only read a write whose column names are literal.
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .insert({
+        restaurant_id: input.restaurantId,
+        provider_id: input.providerId ?? null,
+        doc_type: "receiving_advice",
+        direction: "issued_by_us",
+        source_channel: "manual",
+        doc_number: null,
+        doc_date: countedAt.slice(0, 10),
+        references_doc_number: null,
+        storage_path: storagePath,
+        content_type: input.photo?.mimeType ?? null,
+        file_bytes: input.photo?.bytes?.length ?? null,
+        raw_payload: null,
+        extracted: snapshot,
+        // NULL, NOT 0 — see the header. Nothing read this document.
+        extraction_confidence: null,
+        extraction_model: null,
+        currency: null,
+        subtotal: null,
+        total: null,
+        computed_lines_total: null,
+        tie_out_delta: null,
+        ties_out: null,
+        status: "received",
+        source_ref: input.countedBy ? `user:${input.countedBy}` : null,
+        sha256,
+        notes: input.note ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      // The race the pre-check cannot close: two receivers pressing at once.
+      // The index is what makes the guarantee; this turns its 23505 into the
+      // same sentence rather than a constraint name.
+      if (error.code === "23505") {
+        const raced = await this.db
+          .getClient()
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", input.restaurantId)
+          .eq("sha256", sha256)
+          .maybeSingle();
+        if (raced.data?.id)
+          return {
+            documentId: (raced.data as { id: string }).id,
+            parsed,
+            duplicate: true,
+          };
+      }
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error: `the door count could not be recorded: ${error.message}`,
+      };
+    }
+    if (!data)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error:
+          "the door count insert returned no row and no error, so it cannot be reported as recorded",
+      };
+
+    const documentId = (data as { id: string }).id;
+    const lineErr = await this.insertDocumentLines(
+      documentId,
+      input.restaurantId,
+      lines,
+      null,
+    );
+    if (lineErr)
+      return {
+        documentId,
+        parsed,
+        duplicate: false,
+        // The document row exists; the lines do not. Saying "the count failed"
+        // would leave a caller believing nothing was written.
+        error: `the door count document ${documentId} was written but its lines were not: ${lineErr.message}`,
+      };
+
+    // WHICH SHELF EACH COUNTED LINE IS ABOUT (ADR 0103 A1).
+    //
+    // Written here rather than through `ParsedLine`, deliberately: a parsed
+    // document is what a DOCUMENT said, and no document says which of this
+    // restaurant's items a line is. The door knows because a person picked it.
+    // A line with no id keeps NULL and the booking path reports it as not
+    // booked, with the reason — it is never matched by description.
+    for (const l of input.lines) {
+      if (!l.inventoryId) continue;
+      const linked = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({ inventory_id: l.inventoryId })
+        .eq("document_id", documentId)
+        .eq("line_no", l.lineNo);
+      if (linked.error)
+        return {
+          documentId,
+          parsed,
+          duplicate: false,
+          error: `the door count document ${documentId} was written but line ${l.lineNo} could not be linked to item ${l.inventoryId}: ${linked.error.message}. Nothing was booked — booking onto a line whose item is unknown is the failure this refuses.`,
+        };
+    }
+
+    return {
+      documentId,
+      parsed,
+      duplicate: false,
+      ...(storageError ? { storageError } : {}),
+    };
+  }
 
   /**
    * Ingest one document. Never throws — intake sits behind an email webhook and

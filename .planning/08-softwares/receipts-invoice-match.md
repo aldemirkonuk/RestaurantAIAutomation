@@ -188,6 +188,15 @@ dropped, RLS enabled with a `service_role` policy on all six:
 `inventory_transactions.delivery_id` and `inventory_lots.cost_state` are added as
 **columns only** (`:586`, `:603`); nothing in slice 1 writes them and no stock path is touched.
 
+**Both columns gained writers on 2026-09-06** (migration `20260906233000`, ADR 0103 A1/A5).
+`DeliveryStockService.bookAtTheDoor` is now the ONE function that turns a counted line into
+stock — one `apply_stock_movement` per line, keyed `(delivery_id, document_id, line_no)`, with
+no price, so the lot is `provisional` and both rows carry the delivery id.
+`finalise_delivery_cost` posts the agreed price at VERIFIED and flips those lots to `final`
+without moving a bottle. `cost_state`'s default changed from `final` to `provisional`:
+a default cannot make an assertion. `recordDoorReceipt` and `markDelivered` remain as
+endpoints but ask `deliveryHasBookedOrder` before booking, so neither is a second writer.
+
 **Only two `vendor_terms` rows are seeded** (`:363`, `:379`): US-CA alcohol invoice payment
 30 days from delivery, wholesaler-initiated EFT; TR invoice objection window 8 days from
 issue. The Turkish e-İrsaliye response window is deliberately ABSENT — ADR 0103 A8 holds it
@@ -277,3 +286,31 @@ Seams:
 - **Reconciling the two `computeMatch` copies is unscheduled** — no OD row, no agenda item,
   despite the drift in §7.1.
 
+
+## §9 Measured on the sim tenant — 2026-09-06 (slice 3 stop 3)
+
+The vendor lens ran the short-ship path through the delivery doors on Sim Meyhouse against a
+gateway built from `origin/main` `417474e6`. What this software gained, and what it did not:
+
+- **The agreement half of the match is real and auditable.** `AGREED` names the rule that
+  fired (`agreed_rule: both_sides_recorded`) and the page prints it as a sentence — "Agreed
+  06.09 11:55 because both sides were on the record and nothing was left open". Six months
+  later that is answerable, which is the whole point of writing the rule down.
+- **The dispute is a row, not free text.** The restaurant's `SHORT_SHIP` (line 1, qty 10,
+  ₺142 at risk, the count photo as `evidence`) and the vendor's counter (a ₺142,00 credit)
+  are two preserved rows, the second carrying `counters_proposal_id`, the first moved to
+  `countered`. The vendor's position raised the D8 notification; the restaurant's did not,
+  correctly — nobody needs telling what they just typed.
+- **🔴 The match's own finding does not gate the agreement.** A delivery whose count differs
+  from the invoice on a line the gateway had already notified about reached `AGREED` in one
+  call, with no proposal ever filed. See `v3.0-TECH-DEBT.md` (2026-09-06, finding 1).
+- **The credit is still only an amount in a note.** The counter recorded ₺142,00; no
+  `credit_memo` document was issued, nothing entered `credit-ledger.ts`, and the recovery
+  figures this card describes in §3 were untouched by the run. The claim→memo→recovery arc
+  remains unproven end to end on live rows.
+- **Landed cost stayed exactly where it was.** `0` inventory transactions carry these
+  delivery ids and `0` lots moved; every lot still reads `cost_state = final` — which it did
+  before the delivery existed, because the column defaults to `final` and has no writer
+  (finding 2). Nothing here closes the middle of the four-way match automatically yet.
+  **Both halves of that sentence stopped being true on 2026-09-06** — see the A1/A5 stop
+  above; a delivery counted at the door now moves lots, and they land `provisional`.

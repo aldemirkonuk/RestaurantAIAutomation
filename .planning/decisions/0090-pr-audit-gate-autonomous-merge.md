@@ -10,7 +10,10 @@
   modifies itself. That escalation firing here is the intended shape, not a bug.
   The seventh Correction's fix, PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297),
   hit the identical escalation and was merged the identical way, 2026-09-06, as
-  `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec` — see Review trail's final two rows.
+  `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec`. The eighth Correction's fix, PR
+  [#299](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/299), hit it
+  a third time and was merged the same way, 2026-09-06, as
+  `78a8f46fe2617ab26dd75ce70e12a25793563ff1` — see Review trail's final three rows.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** audit, merge-gate, autonomous-deploy, opus, branch-protection, ci,
@@ -486,7 +489,7 @@ contrived shape, not a realistic `gh pr merge` invocation today, named
 rather than engineered around given the "loose regex, known limitation"
 design already stated for this whole hook.
 
-## Correction — 2026-09-03, found by the gate's own SIXTH real audit (final)
+## Correction — 2026-09-03, found by the gate's own SIXTH real audit (final round of the introducing PR's own self-audit — see the seventh and eighth Corrections below for later, differently-sourced fixes)
 
 A closing round, deliberately scoped as one combined correctness+security
 pass rather than three separate angles, explicitly asked to try to defeat
@@ -633,6 +636,46 @@ not re-run — as a fifth data point the same shape as the first four, and
 because re-running it would only prove the OLD code again; the fix cannot
 validate itself until it is on `main`.
 
+## Correction — 2026-09-04, found by PR #291's security audit
+
+Landed concurrently with the seventh Correction above (a different fix, by
+a different session, discovered independently) — both PRs were open at once
+and both cited themselves as "ADR 0090's seventh Correction" in their own
+commit messages before either merged; this section is renumbered eighth to
+resolve that collision, the same rule this repo already applies to a
+colliding OD or ADR number: move the one with fewer citations elsewhere,
+never leave two sections claiming the same ordinal.
+
+Unlike the first six, this correction did not come from a round of the gate
+auditing its own introducing PR — it came from the gate auditing an unrelated
+PR ([PR #291](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/291),
+`fix/deploy-check-path-scoped`, ADR 0097's path-scoped deploy check) whose
+security angle noticed, in passing, that the gap it was about to hit itself
+generalizes: **`_GATE_OWNED_PATHS` covered `.github/workflows/ci.yml` but not
+`.github/workflows/deploy.yml`**, the post-merge production-deploy-verification
+workflow ADR 0097 built. A PR that loosened `check_deployed_sha.py`'s
+`--expect`, dropped a verification stage, or redefined what counts as
+`provenance_verified` would have been evaluated as an ordinary PR and could
+self-merge on three APPROVEs, even though it edits the only thing that proves
+production actually got what merged — the same class of hole `ci.yml` was
+added to close in the fifth Correction, just on the other workflow file. PR
+#291's own report named this explicitly rather than silently working around
+it or bundling the fix into an unrelated PR (which would itself have needed
+this same escalation, for an unrelated reason) — flagged as its own follow-up.
+
+Fixed: `.github/workflows/deploy.yml` added to `_GATE_OWNED_PATHS` in
+`scripts/pr_audit_gate.py`, and to the matching list in
+`.claude/skills/pr-audit-gate/SKILL.md` step 4 (kept in sync per the third
+Correction's own note — they had drifted once before, over `CLAUDE.md`).
+`--self-test` was checked for a case enumerating `_GATE_OWNED_PATHS`'s
+contents; it has none (the escalation tests exercise the generic
+`touches_own_gate` decision against a synthetic reason string, not the tuple
+itself), so no test needed growing on this count alone — it grew to 35
+anyway, via the seventh Correction's merge into this same branch. This PR,
+editing `_GATE_OWNED_PATHS` itself, force-escalates under its own new rule —
+per ADR 0090's design, it is not self-merged; the founder reviews and merges
+it directly, the same path PR #261 and PR #297 both needed.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -647,5 +690,7 @@ validate itself until it is on `main`.
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — round 4's own `workflow_dispatch` fix 403'd on every run (missing `actions: write`, self-caught independently before either report landed) and round 4's own `\n`-exclusion regex fix regressed a real backslash-continuation case; both fixed same day, `--self-test` grown 24 → 29, see fifth Correction above |
 | 2026-09-03 | pr-audit-gate skill, combined correctness+security (fresh Opus subagent, final round) | BLOCK — one finding, in the YAML consuming `wait_upstream`'s return value rather than the Python producing it: a confirmed-red required check reported job SUCCESS having audited nothing; fixed same day. Explicitly stated the parsers/hook have converged after five prior rounds' adversarial testing found nothing new, see sixth Correction above |
 | 2026-09-03 | Aldemir (chat, direct authorization) | PR #261 modifies `_GATE_OWNED_PATHS` itself, so `touches_own_gate` force-escalates it to BLOCK by design — the gate cannot self-clear a PR that changes itself; that is the intended shape, not a bug. Founder authorized completing the merge directly in chat, the escalation path this exact case exists for. Merged via `gh api .../pulls/261/merge`, SHA-pinned to `ce519d4208b5bd27751d8acc572c1b53ca99fc78`, all five required contexts green, `--self-test` 29/29 re-confirmed on `main`'s own copy post-merge. **Status → Merged.** The branch-protection PATCH gap (still needs founder go) is carried forward, not closed by this merge |
+| 2026-09-03 | pr-audit-gate skill, security angle, auditing PR #291 (unrelated PR) | Noted in passing, not a BLOCK on PR #291 itself: `_GATE_OWNED_PATHS` doesn't cover `deploy.yml`, flagged as its own follow-up PR rather than bundled in; fixed 2026-09-04, see eighth Correction above |
 | 2026-09-04 | Live production incidents, not an audit round (PRs #288, #290, #291, #294) | `wait_upstream`'s red branch had no debounce, unlike its green branch — a single poll catching the `CodeQL` check-run's real but transient `neutral` conclusion (self-corrects to `success` ~10s later, confirmed by direct Checks-API capture) was enough to declare upstream red on four separate PRs. Fixed same day: red branch now requires the same failed set on two consecutive polls; `--self-test` grown 29 → 35, see seventh Correction above. Fix PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297) — touches this ADR's own `_GATE_OWNED_PATHS`, needs the founder to merge directly |
 | 2026-09-06 | Aldemir (chat, direct authorization) | PR #297 modifies `_GATE_OWNED_PATHS` itself, same as #261, so `touches_own_gate` force-escalates it to BLOCK by design and `require_pr_audit.py` correctly refused a plain `gh pr merge 297`. Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/297/merge`, SHA-pinned to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646`, all five of `main`'s actual required contexts green (`PR Audit Gate` itself is not one of them); squash commit `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
+| 2026-09-06 | Aldemir (chat, direct authorization) | PR #299 (the eighth Correction's `deploy.yml` fix) modifies `_GATE_OWNED_PATHS` itself, same shape as #261 and #297; `require_pr_audit.py` correctly refused `gh pr merge 299`. The branch needed four separate `git merge origin/main` rebases in ~15 minutes (main was unusually active — a sibling session running the identical #297 escalation concurrently, plus PR #291 itself landing mid-flight) before all five required contexts held green together; each rebase re-resolved real content conflicts in this same ADR file and `decisions/README.md` (PR #297's own "seventh Correction" collided in name with this PR's, resolved by renumbering this one eighth — the same collision rule this repo applies to a duplicated OD or ADR id). Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/299/merge`, SHA-pinned to `5b2ce4bf7b04a58f8e7c1701cddb09f61324b527`, all five of `main`'s actual required contexts green; squash commit `78a8f46fe2617ab26dd75ce70e12a25793563ff1`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |

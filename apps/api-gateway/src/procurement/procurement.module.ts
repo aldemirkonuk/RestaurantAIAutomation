@@ -20,6 +20,10 @@ import { CreditsController } from "./documents/credits.controller";
 import { DeliveriesController } from "./deliveries.controller";
 import { CanonicalDocumentService } from "./canonical/canonical-document.service";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
+import { DocumentCorrectionService } from "./canonical/document-correction.service";
+import { DeliveryService } from "./canonical/delivery.service";
+import { DeliveryStockService } from "./canonical/delivery-stock.service";
+import { DeliveryClockService } from "./canonical/delivery-clock.service";
 
 @Module({
   imports: [
@@ -51,6 +55,16 @@ import { DeliverySpineService } from "./canonical/delivery-spine.service";
     // would have failed at boot with a DI error CI cannot see.
     CanonicalDocumentService,
     DeliverySpineService,
+    // ADR 0104 D12 slice 3 — the correction door. Registered here for the same
+    // reason slice 1's two classes had to be: an unregistered provider is a DI
+    // failure at boot that CI cannot see.
+    DocumentCorrectionService,
+    // ADR 0104 D12 slice 3 stop 2 — the delivery's doors and the durable clock
+    // ladder of ADR 0103 D9/A10. Registered here, like the two above, because
+    // an unregistered provider is a DI failure at boot that CI cannot see.
+    DeliveryService,
+    DeliveryStockService,
+    DeliveryClockService,
   ],
   // Exported for callers that already depend on procurement. The inbound-email
   // path deliberately does NOT call it directly — ProcurementModule imports

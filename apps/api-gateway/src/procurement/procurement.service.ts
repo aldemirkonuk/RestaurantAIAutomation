@@ -9,6 +9,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
   UnprocessableEntityException,
   forwardRef,
 } from "@nestjs/common";
@@ -22,6 +23,7 @@ import { InboundAddressService } from "../common/orchestrator/inbound-address.se
 import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
+import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -1634,7 +1636,28 @@ export class ProcurementService {
       );
     }
 
-    if (order.inventoryId && resolvedQuantity > 0) {
+    // ADR 0103 A5 — ONE BOOKING PATH. The delivery model books stock at the
+    // door, keyed (delivery, document, line). If it has already booked for this
+    // order, this one-shot path must not book the same bottles again; the order
+    // is still marked DELIVERED, because that is what the caller asserted.
+    //
+    // This also bounds the older defect rather than pretending it is gone:
+    // `order-delivered:${orderId}` is keyed per ORDER, so the second truck of a
+    // split shipment finds the key used and books nothing. That is why the
+    // delivery path exists and why this one now yields to it.
+    const deliveryOwns = await deliveryHasBookedOrder(
+      this.databaseService.supabase,
+      orderId,
+    );
+    if (!deliveryOwns.ok)
+      throw new ServiceUnavailableException(deliveryOwns.error);
+
+    if (deliveryOwns.value.booked) {
+      this.logger.log(
+        `markDelivered: order ${orderId} stock is owned by delivery ` +
+          `${deliveryOwns.value.deliveryIds.join(", ")} — not booked again`,
+      );
+    } else if (order.inventoryId && resolvedQuantity > 0) {
       const idempotencyKey = `order-delivered:${orderId}`;
       const { data: existingEvent } = await this.databaseService.supabase
         .from("inventory_events")

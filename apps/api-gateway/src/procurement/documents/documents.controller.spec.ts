@@ -38,11 +38,21 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
     // class carries @UseGuards(JwtAuthGuard), and instantiating that guard's
     // own dependency chain (TokenBlacklistService, etc.) is unrelated to what
     // this test verifies.
+    /**
+     * ONE STUB PER CONSTRUCTOR DEPENDENCY, and the count is load-bearing.
+     * `tsc -p tsconfig.spec.json` is what catches a missing one — `tsconfig.json`
+     * excludes specs, so a branch that only typechecks the app compiles clean
+     * while this file is one argument short. That is exactly how this file went
+     * red on CI after the controller gained the correction door.
+     */
     controller = new DocumentsController(
       mockIntake as any,
       mockDb as any,
-      {} as any,
-      {} as any,
+      {} as any, // CanonicalDocumentService — unused by the routes under test
+      {} as any, // DeliverySpineService
+      {} as any, // DocumentCorrectionService (ADR 0104 D5)
+      {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
+      {} as any, // DeliveryStockService (ADR 0103 A1 — the door's booking half)
     );
   });
 
