@@ -82,7 +82,13 @@ export class DistributorFeedController {
   })
   async declareCode(
     @CurrentUser()
-    user: { userId: string; restaurantId: string; fullName?: string; email?: string },
+    user: {
+      userId: string;
+      restaurantId: string;
+      fullName?: string;
+      name?: string;
+      email?: string;
+    },
     @Param("distributorKey") distributorKey: string,
     @Body() body: { priceCode?: string; priceBasis?: string; evidence?: string },
   ) {
@@ -101,7 +107,19 @@ export class DistributorFeedController {
       // The name AS THE TOKEN CARRIES IT. Never a placeholder: if the session
       // resolves no name the service refuses, because an unsigned attestation
       // is the thing this whole decision exists to avoid.
-      declaredByName: (user.fullName ?? user.email ?? "").trim(),
+      //
+      // `name` IS THE FIELD THE SESSION ACTUALLY HAS, and it was missing here
+      // (2026-09-05, p4bl). `JwtStrategy.validate` returns
+      // `{ userId, email, name, role, restaurantId, … }` and sets no
+      // `fullName` anywhere in this gateway — measured with
+      // `grep -rn fullName apps/api-gateway/src`, which finds only the two
+      // places that READ it. So every statement made before this line changed
+      // was signed with the manager's email address rather than their name,
+      // silently, because the fallback made it look deliberate. `fullName`
+      // stays first in case a future strategy sets it; `name` is what resolves
+      // today; the email is still the last resort, and a session with none of
+      // the three is refused by the service rather than written unsigned.
+      declaredByName: (user.fullName ?? user.name ?? user.email ?? "").trim(),
     });
     return { success: outcome.ok, ...outcome };
   }

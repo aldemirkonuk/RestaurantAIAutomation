@@ -363,6 +363,71 @@ export interface CatalogueAdmissionVM {
   }>;
 }
 
+/**
+ * One manager's statement about one of a sender's price codes (ADR 0126 §7).
+ *
+ * Field-for-field against `PriceCodeMapping` (`distributor-feed/
+ * price-code-mappings.ts`) as `mapRow` hands it out, so a key this page reads
+ * is a key the gateway sends. `withdrawnBy` is an account id and NOT a name:
+ * the table records `declared_by_name` for a statement and holds no equivalent
+ * for a withdrawal, which the panel says rather than printing an id as if it
+ * were a person.
+ */
+export interface PriceCodeStatementVM {
+  id: string;
+  restaurantId: string;
+  distributorKey: string;
+  codeField: string;
+  priceCode: string;
+  priceBasis: string;
+  evidence: string;
+  declaredBy: string;
+  declaredByName: string;
+  declaredAt: string;
+  withdrawnBy: string | null;
+  withdrawnAt: string | null;
+  withdrawnReason: string | null;
+}
+
+/**
+ * Every statement this house holds for ONE sender, live and withdrawn.
+ *
+ * `readFailed` and `unreadable` are two different failures and both are kept:
+ * the first is the GATEWAY saying it could not read the table (it answers 200
+ * with words, never an empty list — `PriceCodeMappingsService.forSender`), the
+ * second is this browser never reaching the gateway at all. Collapsing either
+ * into an empty `rows` would render "we do not know" as "nothing is mapped",
+ * and the second reads as a manager's own omission.
+ */
+export interface PriceCodeStatementsVM {
+  distributorKey: string;
+  rows: PriceCodeStatementVM[];
+  conflicted: string[];
+  live: number;
+  withdrawn: number;
+  readFailed: boolean;
+  /** The gateway's own sentence about this register. Never invented here. */
+  note: string;
+  /** Set only when the request itself failed. Null when the read landed. */
+  unreadable: string | null;
+}
+
+/** What `POST /distributor-feed/codes/:key` answers. It refuses with 200 and a
+ *  sentence rather than a status code, so `ok` is the field that matters. */
+export interface PriceCodeWriteVM {
+  ok: boolean;
+  mappingId: string | null;
+  refusedBecause: string | null;
+}
+
+/** What the withdrawal answers. `rowsAdmitted` is `null`, never 0, when the
+ *  prices that statement admitted could not be counted. */
+export interface PriceCodeWithdrawVM extends PriceCodeWriteVM {
+  rowsAdmitted: number | null;
+  rowsAdmittedUnreadable: string | null;
+  note: string;
+}
+
 export interface HouseGrantVM {
   connectionId: string;
   integrationId: string;
@@ -632,6 +697,76 @@ export function useConnectionsNextData() {
     staleTime: 3_600_000,
   });
 
+  /* read 11 — what this house has said each sender's price codes mean
+     (ADR 0126 §7, the founder's batch-59 call: "Build it on /connections in
+     the distributor row").
+
+     ONE QUERY OVER MANY SENDERS, AND EACH SENDER FAILS ALONE. The route is
+     per distributor (`GET /distributor-feed/codes/:key`), so a query per row
+     would be the obvious build; it is not the one here, because the number of
+     rows is whatever the register measured and a hook cannot call `useQuery` a
+     variable number of times. What it does instead keeps the property that
+     matters: every sender is fetched in its own request inside one queryFn and
+     its own failure is caught and NAMED against that sender, so one distributor
+     being unreadable never blanks another's statements and never renders as
+     "this house has mapped nothing". */
+  const distributorKeys = useMemo(
+    () => (distributorsQ.data?.distributors ?? []).map((d) => d.key).sort(),
+    [distributorsQ.data],
+  );
+
+  const priceCodesQ = useQuery({
+    queryKey: ['connections-next-price-codes', rid, distributorKeys.join('|')],
+    queryFn: async (): Promise<Record<string, PriceCodeStatementsVM>> => {
+      const pairs = await Promise.all(
+        distributorKeys.map(
+          async (key): Promise<[string, PriceCodeStatementsVM]> => {
+            try {
+              const { data } = await apiClient.get<{
+                rows?: PriceCodeStatementVM[];
+                conflicted?: string[];
+                live?: number;
+                withdrawn?: number;
+                readFailed?: boolean;
+                note?: string;
+              }>(`/distributor-feed/codes/${encodeURIComponent(key)}`);
+              return [
+                key,
+                {
+                  distributorKey: key,
+                  rows: data.rows ?? [],
+                  conflicted: data.conflicted ?? [],
+                  live: data.live ?? 0,
+                  withdrawn: data.withdrawn ?? 0,
+                  readFailed: data.readFailed === true,
+                  note: data.note ?? '',
+                  unreadable: null,
+                },
+              ];
+            } catch (e) {
+              return [
+                key,
+                {
+                  distributorKey: key,
+                  rows: [],
+                  conflicted: [],
+                  live: 0,
+                  withdrawn: 0,
+                  readFailed: true,
+                  note: '',
+                  unreadable: readError(e),
+                },
+              ];
+            }
+          },
+        ),
+      );
+      return Object.fromEntries(pairs);
+    },
+    enabled: on && distributorKeys.length > 0,
+    staleTime: 60_000,
+  });
+
   /* ── writes ─────────────────────────────────────────────────────────── */
 
   const invalidate = useCallback(
@@ -696,6 +831,62 @@ export function useConnectionsNextData() {
       });
       return data;
     },
+  });
+
+  /**
+   * A manager states what one of a sender's price codes means (ADR 0126 §7).
+   *
+   * The name on the statement is NOT sent from here and must not be: the
+   * gateway takes it from the session's own token, so a browser cannot sign a
+   * colleague's name to an attestation. If the token resolves no name at all
+   * the write is refused rather than written unsigned, and that refusal comes
+   * back in `refusedBecause` like every other.
+   *
+   * A refusal is HTTP 200 with `ok: false` — the controller returns the
+   * service's outcome rather than throwing — so this never rejects on a refusal
+   * and the caller must read `ok`. That is why the mutation returns the body.
+   */
+  const declarePriceCode = useMutation({
+    mutationFn: async (v: {
+      distributorKey: string;
+      priceCode: string;
+      priceBasis: string;
+      evidence: string;
+    }): Promise<PriceCodeWriteVM> => {
+      const { data } = await apiClient.post<PriceCodeWriteVM>(
+        `/distributor-feed/codes/${encodeURIComponent(v.distributorKey)}`,
+        {
+          priceCode: v.priceCode,
+          priceBasis: v.priceBasis,
+          evidence: v.evidence,
+        },
+      );
+      return data;
+    },
+    onSuccess: () => invalidate('connections-next-price-codes'),
+  });
+
+  /**
+   * A manager withdraws one. It MARKS and never deletes: the rows that
+   * statement admitted keep pointing at it (`ON DELETE RESTRICT`), and the
+   * count of them comes back with the answer — `null`, never 0, when it could
+   * not be counted.
+   */
+  const withdrawPriceCode = useMutation({
+    mutationFn: async (v: {
+      distributorKey: string;
+      mappingId: string;
+      reason: string;
+    }): Promise<PriceCodeWithdrawVM> => {
+      const { data } = await apiClient.post<PriceCodeWithdrawVM>(
+        `/distributor-feed/codes/${encodeURIComponent(
+          v.distributorKey,
+        )}/${encodeURIComponent(v.mappingId)}/withdraw`,
+        { reason: v.reason },
+      );
+      return data;
+    },
+    onSuccess: () => invalidate('connections-next-price-codes'),
   });
 
   const setHouseGrantAccess = useMutation({
@@ -1053,9 +1244,23 @@ export function useConnectionsNextData() {
     mailArchive: toRegister(archiveQ),
     distributors: toRegister(distributorsQ),
     feedLetter: toRegister(letterQ),
+    priceCodes: toRegister(priceCodesQ),
+    /**
+     * The name this session carries, shown beside the statement form so a
+     * manager sees whose name is going on the attestation before they make it.
+     * It is NOT what gets written — the gateway takes the name off the token —
+     * and the panel says so, because a page that displayed one name while the
+     * server recorded another would be the worst possible version of this.
+     */
+    sessionName:
+      (auth?.user as { name?: string; email?: string } | undefined)?.name?.trim() ||
+      (auth?.user as { email?: string } | undefined)?.email?.trim() ||
+      null,
     tally,
     regenerateFeed,
     uploadDistributorFile,
+    declarePriceCode,
+    withdrawPriceCode,
     setHouseGrantAccess,
     setConsent,
     grantSeal,

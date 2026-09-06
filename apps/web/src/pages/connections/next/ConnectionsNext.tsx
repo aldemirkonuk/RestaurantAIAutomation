@@ -850,6 +850,11 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           distributors={d.distributors}
           letter={d.feedLetter}
           upload={d.uploadDistributorFile}
+          priceCodes={d.priceCodes}
+          declareCode={d.declarePriceCode}
+          withdrawCode={d.withdrawPriceCode}
+          canManage={d.isManager}
+          sessionName={d.sessionName}
         />
 
         {/* ══ REGISTER II ═══════════════════════════════════════════════ */}

@@ -266,6 +266,41 @@ the two registers that would actually leak are refused at the gateway as well.
   be written**, which is never counted as admitted. A mapping read that FAILED
   refuses the whole document with the read's reason rather than refusing every
   line as unmapped and blaming the distributor for our own failed read
+- **The price-code register lives in the distributor row** (ADR 0126 §7; the
+  founder, batch 59: *"Build it on /connections in the distributor row"*). Under
+  each distributor: what this house has said that sender's codes mean, and a
+  form to say it. Each live statement prints the code, the meaning, **the
+  evidence the manager had**, and *stated by <name> on <date>* with the code
+  field beside it; each withdrawn one is **kept**, with its reason and its day,
+  and says so. Withdrawing is a ceremony, not a button: it asks for the reason
+  first, and what comes back is the gateway's own sentence about how many prices
+  that statement admitted — a number, or **unknown**, never a reassuring zero
+- **The form refuses three things before it sends anything**, each saying
+  *nothing was sent*: a blank code, a blank meaning (there is no default trade
+  level and there will not be one), and blank evidence. It refuses **nothing the
+  gateway would admit** — the code's shape, a code already live, a session that
+  resolves no name are all the server's judgements, and its sentence is printed
+  verbatim rather than paraphrased
+- **The refused code is a link into the form.** An 832 that came back with
+  `unmappedCodes` prints each one as *State what MSR means*, which fills that
+  sender's form in and focuses it. An upload that named no sender says why there
+  is no link instead of drawing a dead one
+- **Owner and manager only, disabled and never hidden** (ADR 0083). Staff see
+  the register, the form and the withdraw control greyed with the sentence
+  saying the gateway refuses both acts for anyone who is not a manager or an
+  owner. The panel's `canManage` prop **defaults to false**: a missing prop must
+  not read as permission
+- **A failed read of the statements is a failure with its reason**, per sender
+  and never shared: the gateway's own sentence when the gateway could not read
+  the table, this browser's when the request never landed, and in both cases the
+  words *unknown, not none*. One distributor being unreadable never blanks
+  another's
+- **The declared currency sits beside the sender picker.** Three characters, no
+  default and no placeholder, sent as `declaredCurrency`; a half-typed value is
+  refused here and nothing is sent, a blank one is **omitted rather than
+  padded**. Beside it the sentence that an 832 with no `CUR` is the *common*
+  case — the published MSSS sample carries none — and that a file with neither
+  is refused whole rather than read as dollars
 - **The door is open to staff; the price register is not.** The upload route
   itself keeps no role gate — a runner photographs paper at the delivery door,
   and a check there would lose documents as they arrive — so the gate sits on
@@ -522,6 +557,9 @@ manager; a staff member reaches the written refusal.
 | GET | `/integrations/oauth/catalog` | JWT | the SAME route the other three surfaces read (G20) |
 | GET | `/distributor-feed/me` | JWT + **manager/owner** | **new 2026-09-05 (ADR 0126)** — the distributors measured for THIS house's own state, each with its robots rule, its terms clause, the day measured and `connectable: false`. A failed jurisdiction read comes back as `silence`, in words |
 | GET | `/distributor-feed/letter` | JWT + **manager/owner** | **new 2026-09-05** — the invoice-feed request letter the house signs. A READ: nothing on this gateway sends it, and there is no address field |
+| GET | `/distributor-feed/codes/:distributorKey` | JWT + **manager/owner** | **wired 2026-09-05 (batch 59)** — every price-code statement this house holds for one sender, live and withdrawn. Existed since ADR 0126 §7 and had no caller; the panel now reads one per distributor in the register, each failing alone. A failed read answers 200 with `readFailed` and the reason, never an empty list |
+| POST | `/distributor-feed/codes/:distributorKey` | JWT + **manager/owner** | **wired 2026-09-05** — a manager states what a code means. Refuses with **200 and a sentence**, not a status code, so the caller reads `ok`. The name comes off the token and is never sent from the browser — fixed this pass to read the session's `name` (it read `fullName`, which nothing sets, so it recorded the email) |
+| POST | `/distributor-feed/codes/:distributorKey/:mappingId/withdraw` | JWT + **manager/owner** | **wired 2026-09-05** — marks, never deletes. Requires a reason. Answers with how many price rows named that statement, and `null` — rendered as *unknown* — when it could not be counted |
 | POST | `/procurement/documents` | JWT (the store); **manager/owner** for the catalogue half | **not new, and that is the decision.** The 832/810 hand-over uses the door every invoice already uses. New optional fields: `distributorKey` (which sender's price-code statements to read a catalogue against) and `declaredCurrency` (used only when the file states no `CUR`; there is no USD default). The answer gains a `catalog` block with the per-line admission report. Storing stays open to staff; `CatalogIngestService.admit` runs `assertCanManageRestaurant` before it prices anything, and refuses in the report rather than throwing a 403 over a file already stored |
 
 ## 5. Signals
@@ -775,19 +813,45 @@ is unread would see the dash only in that cell.
 ## 13. Roadmap
 
 **Before everything below — the distributor panel's three open ends** (ADR 0126,
-batch 56; the panel itself shipped 2026-09-05). **(a)** There is no control on
+batch 56; the panel itself shipped 2026-09-05). ~~**(a)** There is no control on
 this page for *stating what a price code means*. The routes exist
 (`GET`/`POST /distributor-feed/codes/:distributorKey` and
 `POST …/:mappingId/withdraw`, ADR 0126 §7) and **nothing on any page calls
 them**, so a manager told by the report that `MSR` is unmapped has nowhere here
-to say what it means. That is the largest gap in the loop this pass built, and
-it is named rather than implied to be finished. **(b)** `declaredCurrency` is
-accepted by the door and is **not** offered by the panel, so a catalogue with no
-`CUR` — the published MSSS sample's shape, and therefore the common one — is
-refused whole with no way to answer it from this page. **(c)** The letter's
-brackets are listed but not filled: the house's licence and account number are
-not held anywhere in this product, and whether they should be is a decision, not
-an oversight.
+to say what it means.~~ **CLOSED 2026-09-05 (batch 59)**: the register and its
+form are in the distributor row, the withdrawal is a ceremony that asks for the
+reason first, and a refused code in the ingest report is a link that fills the
+form in. ~~**(b)** `declaredCurrency` is accepted by the door and is **not**
+offered by the panel, so a catalogue with no `CUR` — the published MSSS sample's
+shape, and therefore the common one — is refused whole with no way to answer it
+from this page.~~ **CLOSED 2026-09-05 (batch 59)**: the field sits beside the
+sender picker, three characters, no default, blank omitted rather than padded.
+**(c)** The letter's brackets are listed but not filled: the house's licence and
+account number are not held anywhere in this product, and whether they should be
+is a decision, not an oversight. **STILL OPEN.**
+
+**New, from building (a) and (b)** — two things this pass measured rather than
+assumed, one fixed and one left alone because it is out of this pass's scope:
+
+- **A statement was being signed with the manager's EMAIL, not their name.**
+  `distributor-feed.controller.ts` read `user.fullName`, and `JwtStrategy.validate`
+  sets no such field — it returns `{ userId, email, name, role, restaurantId, … }`.
+  Measured with `grep -rn fullName apps/api-gateway/src`, which finds only the two
+  places that READ it and none that writes it, and proved against pre-fix code by
+  running a probe spec on `git show HEAD:…/distributor-feed.controller.ts`
+  (it asserted `declaredByName === 'ada@example.test'` and passed). Fixed here to
+  `fullName ?? name ?? email`, pinned by `distributor-feed.controller.spec.ts`.
+- **The same line is still wrong in `documents.controller.ts:326`**
+  (`uploadedByName: (user.fullName ?? user.email ?? "").trim() || null`), so the
+  handover block on an admitted price sighting records the uploader's email where
+  it means to record their name. Out of this pass's scope (`procurement/**` was
+  fenced off) and named rather than fixed quietly.
+- **A withdrawal records no NAME.** The table holds `declared_by_name` for a
+  statement and only `withdrawn_by` — an account id — for a withdrawal, so the
+  register can say *when* and *why* a statement was withdrawn but not *by whom* in
+  words. The panel says exactly that rather than printing a uuid as if it were a
+  person. Closing it is a migration plus a controller line, which is a decision
+  (see the founder question in ADR 0126 §7's built note).
 
 0. **The two text-sender flows** (ADR 0121, §9 G-C10/G-C11): host Meta's
    Embedded Signup for *bring your own*, and a registration sheet for
@@ -977,7 +1041,14 @@ that reach this register:
    founder question in ADR 0118 rather than defaulted either way. If the founder
    wants the stronger version it is one call beside the upsert in
    `setHouseGrantAccess`.
-12. **Draw the price-code register** (ADR 0126 §7, answered and built 2026-09-05
+12. ~~**Draw the price-code register**~~ **DONE 2026-09-05 (batch 59)** — it is
+    in the distributor row on this page: the live statements with their evidence
+    and who stated them when, the withdrawn ones kept with their reason, the
+    withdraw ceremony that asks for the reason and reports how many prices the
+    statement admitted (`null` rendered as unknown), and the form with its three
+    refusals. What follows is the note as it stood before it was built, kept
+    because its reasoning is still the reasoning. (ADR 0126 §7, answered and
+    built 2026-09-05
     — *"Manager maps it, recorded on every row"*). The gateway half is done:
     three manager-gated routes, a table whose every CHECK was exercised against
     a real Postgres, and a parser that stamps the statement's id, the manager's
@@ -994,6 +1065,12 @@ that reach this register:
     because no distributor was found to send one (item 11). The register becomes
     reachable the day a house has a file — and the parser it feeds is proved
     against fixtures rather than against any distributor's real bytes.
+
+    **What is still true after building it**: nothing ingests a distributor
+    catalogue on its own, so the register is reachable but unexercised — no row
+    of `distributor_price_code_mappings` exists in production and none was
+    written by this pass. The panel was captured against a stubbed gateway, not
+    against real distributor bytes.
 
 13. **Wire the archive's CHOICE onto this page** (ADR 0118 D16). The row now
     states which archive the house keeps and whose Drive holds it, and the

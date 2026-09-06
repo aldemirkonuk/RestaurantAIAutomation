@@ -263,6 +263,66 @@ a half-withdrawal and a backdated one are refused; deleting a mapping that admit
 **2** rows by join and deletes **none of 3**; and the withdrawn code is mappable again with both
 statements still on the table.
 
+**BUILT ON THE PAGE, 2026-09-05 (the founder, batch 59: _"Build it on /connections in the
+distributor row"_).** The three routes had no caller until this pass; they have one now, and it is
+the distributor row rather than a settings screen, because a statement is about ONE sender's paper
+and the distributor row is the only place this product names senders.
+
+`apps/web/src/pages/connections/next/DistributorFeedPanel.tsx` grew a `PriceCodeRegister` under
+each distributor: the live statements with the code, the meaning, **the evidence** and *stated by
+&lt;name&gt; on &lt;date&gt;*; the withdrawn ones **kept**, with their reason and their day; a
+withdrawal that asks for the reason FIRST and then prints the gateway's own sentence about how many
+prices that statement admitted — a number, or *unknown*, never a zero. The form refuses three
+things before a byte is sent, each saying **nothing was sent**: a blank code, a blank meaning, blank
+evidence. It refuses nothing the gateway would admit — the code's shape, a code already live, a
+session with no name are the server's judgements and its sentence is printed verbatim. The ingest
+report's `unmappedCodes` are now buttons that fill that sender's form in and focus it, which is the
+loop the founder described. Owner and manager only: staff get the whole register **disabled with the
+sentence**, never hidden (ADR 0083), and `canManage` **defaults to false** so a missing prop cannot
+read as permission.
+
+`useConnectionsNextData.ts` gained read 11 and two writes. Read 11 is one query over every
+distributor in the register, each sender fetched in its own request inside the queryFn and **each
+failing alone**, because `useQuery` cannot be called a variable number of times and one
+distributor's unreadable register must not blank another's. Two failures are kept apart: the gateway
+answering `readFailed` with words, and the request never landing.
+
+**The declared currency** now sits beside the sender picker: three characters, no default and no
+placeholder, sent as `declaredCurrency`. A half-typed value is refused in the browser and nothing is
+sent; a blank one is **omitted rather than padded**, because a file that states its own `CUR` is the
+ordinary case and a file with neither is refused whole by the parser in its own words.
+
+**Two defects this pass measured, one fixed.** The controller signed every statement with the
+manager's **email**: it read `user.fullName`, and `JwtStrategy.validate` (`auth/strategies/
+jwt.strategy.ts:55-69`) returns `name` and sets no `fullName` anywhere in the gateway —
+`grep -rn fullName apps/api-gateway/src` finds only the two lines that READ it. Proved against
+pre-fix code by running a probe spec on `git show HEAD:…/distributor-feed.controller.ts`, which
+asserted `declaredByName === "ada@example.test"` and **passed**; fixed to `fullName ?? name ??
+email` and pinned by the new `distributor-feed.controller.spec.ts`. **The identical line is still
+wrong in `procurement/documents/documents.controller.ts:326`** (`uploadedByName`), which this pass
+was fenced out of and names rather than fixes quietly. Second defect, unfixed and a decision: a
+withdrawal records `withdrawn_by` (an account id) and **no name**, so the register can say when and
+why but not by whom in words. The panel says exactly that instead of printing a uuid as a person;
+closing it is a migration plus a controller line.
+
+**Verification, on the tree this note describes.** `npx vitest run src/pages/connections` from
+`apps/web` — **111 passed / 3 files**, of which **25 in 1 file are new here** (measured baseline
+86 / 3 on the same command on the same tree before this pass). `npx jest --runInBand --forceExit
+src/distributor-feed` from `apps/api-gateway` — **101 passed / 7 suites**, of which **7 in 1 new
+suite are new** (baseline 94 / 6). Web `tsc --noEmit`: 0 errors. Gateway `tsc --noEmit` on both
+`tsconfig.json` and `tsconfig.spec.json`: 0 errors. `check_web_reads_gateway_dto_keys`,
+`check_read_errors_not_swallowed`, `check_windowed_figures`, `check_money_states_its_currency`,
+`check_route_exposure`, `check_no_seeded_defaults`, `check_read_columns_exist`,
+`check_queried_tables_exist`, `check_new_tables_are_locked_down`, `check_fk_targets_exist`,
+`check_flag_readby_anchors`, `check_order_capture_contract`, `check_adr_numbers_unique` and
+`check_decision_claims.sh` all **exit 0**; `scripts/check_gateway_boots.sh` answers **PASS**. **No
+migration.** Both grounds captured against a **stubbed** gateway
+(`$SP/shoot-price-codes.mjs` → `$SP/shots-price-codes/`, every `/api/v1/**` request fulfilled in the
+harness so nothing reached :4000): paper `--paper-0` computed `rgb(250, 247, 241)`, charcoal
+`rgb(21, 19, 15)`. **No row was written to any database and no route was called on a live gateway.**
+`eslint` could not be run at all — `eslint-plugin-jsx-a11y` is absent from every checkout on this
+machine, which is a known environment fault, not a clean result.
+
 ## Alternatives rejected
 
 **Mirror the portal with the house's own credentials, as the founder's call describes.** It is the

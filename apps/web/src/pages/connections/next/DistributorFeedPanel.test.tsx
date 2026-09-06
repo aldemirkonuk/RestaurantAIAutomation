@@ -16,12 +16,16 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DistributorFeedPanel } from './DistributorFeedPanel';
 import type {
   CatalogueAdmissionVM,
   DistributorCatalogueVM,
   FeedLetterVM,
+  PriceCodeStatementVM,
+  PriceCodeStatementsVM,
+  PriceCodeWithdrawVM,
+  PriceCodeWriteVM,
 } from './useConnectionsNextData';
 
 const reg = <T,>(data: T | null, over: Partial<Record<string, unknown>> = {}) =>
@@ -417,5 +421,552 @@ describe('handing over a file', () => {
       filename: 'q3.832',
       distributorKey: 'rndc-il',
     });
+  });
+});
+
+/* ── the currency beside the sender (ADR 0126; the founder, batch 59) ────── */
+
+describe('the declared currency', () => {
+  const file = (name = 'q3.832') =>
+    new File(['ISA*00*~ST*832*0001~'], name, { type: 'text/plain' });
+
+  it('has no default, and offers none', () => {
+    render(<DistributorFeedPanel distributors={reg(catalogue)} />);
+    const input = screen.getByLabelText(
+      /Currency, if the file states none/i,
+    ) as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.getAttribute('placeholder')).toBeNull();
+    expect(input.maxLength).toBe(3);
+  });
+
+  it('says an 832 with no CUR is the common case, and that there is no default', () => {
+    render(<DistributorFeedPanel distributors={reg(catalogue)} />);
+    expect(
+      screen.getByText(/states no currency is the common case, not the broken one/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/refused whole rather than read as dollars/i)).toBeInTheDocument();
+  });
+
+  it('sends three characters as declaredCurrency', async () => {
+    const up = uploader({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'price_list' },
+      catalog: admission(),
+    });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByLabelText(/Currency, if the file states none/i), {
+      target: { value: 'try' },
+    });
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file()] },
+    });
+    await waitFor(() => expect(up.mutateAsync).toHaveBeenCalledTimes(1));
+    expect(up.mutateAsync.mock.calls[0][0]).toMatchObject({
+      declaredCurrency: 'TRY',
+    });
+  });
+
+  it('sends NOTHING for it when it is left blank, rather than a blank string', async () => {
+    const up = uploader({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'price_list' },
+      catalog: admission(),
+    });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file()] },
+    });
+    await waitFor(() => expect(up.mutateAsync).toHaveBeenCalledTimes(1));
+    expect(up.mutateAsync.mock.calls[0][0].declaredCurrency).toBeNull();
+  });
+
+  it('refuses a half-typed code and sends nothing at all', async () => {
+    const up = uploader({ documentId: 'doc-1', duplicate: false, document: {} });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByLabelText(/Currency, if the file states none/i), {
+      target: { value: 'TR' },
+    });
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file()] },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/is not an ISO 4217 currency code/i),
+      ).toBeInTheDocument(),
+    );
+    expect(up.mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+/* ── the price-code register in the distributor row (ADR 0126 §7) ────────── */
+
+const KEY = 'southern-glazers-il';
+
+const statement = (
+  over: Partial<PriceCodeStatementVM> = {},
+): PriceCodeStatementVM => ({
+  id: 'm-1',
+  restaurantId: 'r-1',
+  distributorKey: KEY,
+  codeField: 'edi_832_ctp02',
+  priceCode: 'CON',
+  priceBasis: 'the contract price our licence pays',
+  evidence: "page 7 of the SPS MSSS guide our rep emailed on 2026-08-30",
+  declaredBy: 'u-1',
+  declaredByName: 'Ada Manager',
+  declaredAt: '2026-09-01T09:00:00.000Z',
+  withdrawnBy: null,
+  withdrawnAt: null,
+  withdrawnReason: null,
+  ...over,
+});
+
+const codes = (
+  over: Partial<PriceCodeStatementsVM> = {},
+): Record<string, PriceCodeStatementsVM> => ({
+  [KEY]: {
+    distributorKey: KEY,
+    rows: [statement()],
+    conflicted: [],
+    live: 1,
+    withdrawn: 0,
+    readFailed: false,
+    note: '1 live meaning. Any code outside them is still refused.',
+    unreadable: null,
+    ...over,
+  },
+});
+
+function declarer(result: Partial<PriceCodeWriteVM> = {}, throws?: unknown) {
+  const mutateAsync = vi.fn(
+    async (_v: {
+      distributorKey: string;
+      priceCode: string;
+      priceBasis: string;
+      evidence: string;
+    }): Promise<PriceCodeWriteVM> => {
+      if (throws) throw throws;
+      return { ok: true, mappingId: 'm-new', refusedBecause: null, ...result };
+    },
+  );
+  return { mutateAsync, isPending: false };
+}
+
+function withdrawer(result: Partial<PriceCodeWithdrawVM> = {}, throws?: unknown) {
+  const mutateAsync = vi.fn(
+    async (_v: {
+      distributorKey: string;
+      mappingId: string;
+      reason: string;
+    }): Promise<PriceCodeWithdrawVM> => {
+      if (throws) throw throws;
+      return {
+        ok: true,
+        mappingId: 'm-1',
+        refusedBecause: null,
+        rowsAdmitted: 2,
+        rowsAdmittedUnreadable: null,
+        note: '2 price rows name this mapping. None was deleted; each is now marked by the withdrawal.',
+        ...result,
+      };
+    },
+  );
+  return { mutateAsync, isPending: false };
+}
+
+/** The register for SGWS, so a two-distributor panel never matches the wrong form. */
+const sgws = () => within(screen.getByTestId(`cx-df-codes-${KEY}`));
+
+describe('the price-code register — what it shows', () => {
+  it('names each live statement, its evidence, and who stated it when', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        canManage
+      />,
+    );
+    const r = sgws();
+    expect(r.getByText('CON')).toBeInTheDocument();
+    expect(r.getByText(/the contract price our licence pays/)).toBeInTheDocument();
+    expect(r.getByText(/page 7 of the SPS MSSS guide/)).toBeInTheDocument();
+    expect(r.getByText(/Stated by Ada Manager on 2026-09-01/)).toBeInTheDocument();
+  });
+
+  it('keeps a withdrawn statement, with its reason, rather than dropping it', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(
+          codes({
+            rows: [
+              statement({
+                id: 'm-old',
+                withdrawnBy: 'u-1',
+                withdrawnAt: '2026-09-04T10:00:00.000Z',
+                withdrawnReason: 'the rep corrected it to the delivered price',
+              }),
+            ],
+            live: 0,
+            withdrawn: 1,
+            note: 'No code has a live meaning for this sender; 1 withdrawn statement is kept.',
+          }),
+        )}
+        canManage
+      />,
+    );
+    const r = sgws();
+    expect(
+      r.getByText(/withdrawn on 2026-09-04 because the rep corrected it/),
+    ).toBeInTheDocument();
+    expect(r.getByText(/Kept, not deleted/)).toBeInTheDocument();
+  });
+
+  it('a failed read of the list is a FAILURE with its reason, never an empty register', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(
+          codes({
+            rows: [],
+            live: 0,
+            readFailed: true,
+            note: '',
+            unreadable: 'the codes route answered 503',
+          }),
+        )}
+        canManage
+      />,
+    );
+    const r = sgws();
+    expect(
+      r.getByText(/price-code statements could not be read/i),
+    ).toBeInTheDocument();
+    expect(r.getByText(/the codes route answered 503/)).toBeInTheDocument();
+    expect(r.getByText(/unknown, not none/i)).toBeInTheDocument();
+    expect(r.queryByRole('button', { name: /^Withdraw/ })).not.toBeInTheDocument();
+  });
+
+  it("carries the GATEWAY's own sentence when the gateway itself could not read the table", () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(
+          codes({
+            rows: [],
+            live: 0,
+            readFailed: true,
+            note: "This house's price-code mappings could not be read. This is unknown, not none.",
+          }),
+        )}
+        canManage
+      />,
+    );
+    expect(
+      sgws().getByText(/This house's price-code mappings could not be read/),
+    ).toBeInTheDocument();
+  });
+
+  it('says it is reading rather than drawing an empty register', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(null, { loading: true })}
+        canManage
+      />,
+    );
+    expect(
+      sgws().getByText(/Reading this house\u2019s price-code statements/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('the price-code form — its three refusals', () => {
+  const fill = (label: RegExp, value: string) =>
+    fireEvent.change(sgws().getByLabelText(label), { target: { value } });
+
+  const mount = (dec = declarer()) => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        declareCode={dec}
+        canManage
+        sessionName="Ada Manager"
+      />,
+    );
+    return dec;
+  };
+
+  it('refuses a blank code, and sends nothing', async () => {
+    const dec = mount();
+    fill(/What it means here/i, 'contract price');
+    fill(/How you know/i, 'page 7');
+    fireEvent.click(sgws().getByRole('button', { name: /State what this code means/i }));
+    await waitFor(() =>
+      expect(sgws().getByText(/Name the code the sender prints on the line/i)).toBeInTheDocument(),
+    );
+    expect(sgws().getByText(/Nothing was sent\./)).toBeInTheDocument();
+    expect(dec.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('refuses a blank meaning, saying there is no default trade level', async () => {
+    const dec = mount();
+    fill(/^Code$/i, 'CON');
+    fill(/How you know/i, 'page 7');
+    fireEvent.click(sgws().getByRole('button', { name: /State what this code means/i }));
+    await waitFor(() =>
+      expect(
+        sgws().getByText(/There is no default trade level here and there will not be one/i),
+      ).toBeInTheDocument(),
+    );
+    expect(dec.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('refuses blank evidence, naming what evidence looks like', async () => {
+    const dec = mount();
+    fill(/^Code$/i, 'CON');
+    fill(/What it means here/i, 'contract price');
+    fireEvent.click(sgws().getByRole('button', { name: /State what this code means/i }));
+    await waitFor(() =>
+      expect(sgws().getByText(/Say how you know/i)).toBeInTheDocument(),
+    );
+    expect(dec.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('sends the three fields against the right sender when all three are there', async () => {
+    const dec = mount();
+    fill(/^Code$/i, 'msr');
+    fill(/What it means here/i, 'the manufacturer suggested retail');
+    fill(/How you know/i, "our rep's email of 2026-08-30");
+    fireEvent.click(sgws().getByRole('button', { name: /State what this code means/i }));
+    await waitFor(() => expect(dec.mutateAsync).toHaveBeenCalledTimes(1));
+    expect(dec.mutateAsync.mock.calls[0][0]).toEqual({
+      distributorKey: KEY,
+      priceCode: 'MSR',
+      priceBasis: 'the manufacturer suggested retail',
+      evidence: "our rep's email of 2026-08-30",
+    });
+  });
+
+  it("prints the gateway's refusal verbatim rather than paraphrasing it", async () => {
+    const dec = mount(
+      declarer({
+        ok: false,
+        mappingId: null,
+        refusedBecause:
+          'CON already has a live meaning for this sender. Withdraw it first, with a reason.',
+      }),
+    );
+    fill(/^Code$/i, 'CON');
+    fill(/What it means here/i, 'contract price');
+    fill(/How you know/i, 'page 7');
+    fireEvent.click(sgws().getByRole('button', { name: /State what this code means/i }));
+    await waitFor(() =>
+      expect(
+        sgws().getByText(/CON already has a live meaning for this sender/),
+      ).toBeInTheDocument(),
+    );
+    expect(dec.mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows whose name the statement will carry, and says the gateway takes it from the token', () => {
+    mount();
+    const note = sgws().getByText(/never sent from this page/i);
+    expect(note).toHaveTextContent('Ada Manager');
+    expect(note).toHaveTextContent(
+      /refused rather than written unsigned/i,
+    );
+  });
+});
+
+describe('the withdrawal ceremony', () => {
+  const mount = (w = withdrawer()) => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        withdrawCode={w}
+        canManage
+      />,
+    );
+    return w;
+  };
+
+  it('asks for the reason before it will send anything', async () => {
+    const w = mount();
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    await waitFor(() =>
+      expect(sgws().getByText(/Say why it is being withdrawn/i)).toBeInTheDocument(),
+    );
+    expect(w.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('says it marks and never deletes, before it is confirmed', () => {
+    mount();
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    expect(
+      sgws().getByText(/Withdrawing marks; it never deletes/i),
+    ).toBeInTheDocument();
+  });
+
+  it('sends the reason with the mapping id, and reports how many prices it admitted', async () => {
+    const w = mount();
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    fireEvent.change(sgws().getByLabelText(/Why is it being withdrawn/i), {
+      target: { value: 'the rep corrected it to the delivered price' },
+    });
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    await waitFor(() => expect(w.mutateAsync).toHaveBeenCalledTimes(1));
+    expect(w.mutateAsync.mock.calls[0][0]).toEqual({
+      distributorKey: KEY,
+      mappingId: 'm-1',
+      reason: 'the rep corrected it to the delivered price',
+    });
+    expect(
+      await screen.findByText(/None was deleted; each is now marked by the withdrawal/),
+    ).toBeInTheDocument();
+  });
+
+  it('reports an uncountable set of admitted prices as UNKNOWN, never as none', async () => {
+    const w = mount(
+      withdrawer({
+        rowsAdmitted: null,
+        rowsAdmittedUnreadable: 'permission denied',
+        note: 'The prices this mapping admitted could not be counted. That is unknown, not none.',
+      }),
+    );
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    fireEvent.change(sgws().getByLabelText(/Why is it being withdrawn/i), {
+      target: { value: 'wrong trade level' },
+    });
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    await waitFor(() => expect(w.mutateAsync).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(/could not be counted\. That is unknown, not none/),
+    ).toBeInTheDocument();
+  });
+
+  it("prints the gateway's refusal rather than claiming a withdrawal", async () => {
+    mount(
+      withdrawer({
+        ok: false,
+        refusedBecause:
+          'no live mapping of this house has that id. It may already have been withdrawn.',
+      }),
+    );
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    fireEvent.change(sgws().getByLabelText(/Why is it being withdrawn/i), {
+      target: { value: 'wrong trade level' },
+    });
+    fireEvent.click(sgws().getByRole('button', { name: 'Withdraw CON' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no live mapping of this house has that id/),
+      ).toBeInTheDocument(),
+    );
+  });
+});
+
+describe('who may state a price code', () => {
+  it('DISABLES the form and the withdrawal for staff, and never hides them', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        declareCode={declarer()}
+        withdrawCode={withdrawer()}
+        canManage={false}
+      />,
+    );
+    const r = sgws();
+    expect(r.getByLabelText(/^Code$/i)).toBeDisabled();
+    expect(r.getByLabelText(/What it means here/i)).toBeDisabled();
+    expect(r.getByLabelText(/How you know/i)).toBeDisabled();
+    expect(
+      r.getByRole('button', { name: /State what this code means/i }),
+    ).toBeDisabled();
+    expect(r.getByRole('button', { name: 'Withdraw CON' })).toBeDisabled();
+    expect(
+      r.getByText(
+        /the gateway refuses both for anyone who is not a manager or an owner/i,
+      ),
+    ).toBeInTheDocument();
+    expect(r.getByText(/shown to you disabled rather than hidden/i)).toBeInTheDocument();
+  });
+
+  it('a manager gets the same controls live', () => {
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        declareCode={declarer()}
+        withdrawCode={withdrawer()}
+        canManage
+      />,
+    );
+    expect(sgws().getByLabelText(/^Code$/i)).not.toBeDisabled();
+    expect(sgws().getByRole('button', { name: 'Withdraw CON' })).not.toBeDisabled();
+  });
+});
+
+describe('the report walks a manager to the form', () => {
+  const file = () => new File(['ISA*00*~'], 'q3.832', { type: 'text/plain' });
+
+  it('an unmapped code from the report pre-fills that sender’s form', async () => {
+    const up = uploader({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'price_list' },
+      catalog: admission({ admitted: 0, unmappedCodes: ['MSR'], lines: [] }),
+    });
+    render(
+      <DistributorFeedPanel
+        distributors={reg(catalogue)}
+        priceCodes={reg(codes())}
+        upload={up}
+        declareCode={declarer()}
+        canManage
+      />,
+    );
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file()] },
+    });
+    const link = await screen.findByRole('button', { name: 'State what MSR means' });
+    expect((sgws().getByLabelText(/^Code$/i) as HTMLInputElement).value).toBe('');
+    fireEvent.click(link);
+    await waitFor(() =>
+      expect((sgws().getByLabelText(/^Code$/i) as HTMLInputElement).value).toBe('MSR'),
+    );
+  });
+
+  it('says why there is no link when the upload named no sender', async () => {
+    const up = uploader({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'price_list' },
+      catalog: admission({
+        distributorKey: null,
+        admitted: 0,
+        unmappedCodes: ['MSR'],
+        lines: [],
+      }),
+    });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file()] },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/This upload named no sender, so there is no register to state them against/i),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'State what MSR means' }),
+    ).not.toBeInTheDocument();
   });
 });
