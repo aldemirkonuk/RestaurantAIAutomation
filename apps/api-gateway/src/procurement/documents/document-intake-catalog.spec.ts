@@ -226,6 +226,9 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     {} as any,
     {} as any,
     catalogIngest as any,
+    // OrganizationsService — reached only by the deliberate currency
+    // restatement (founder, 2026-09-06), which this file never calls.
+    {} as any,
   );
   const body = (over: Record<string, unknown> = {}) =>
     ({
@@ -317,6 +320,9 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     {} as any,
     {} as any,
     catalogIngest as any,
+    // OrganizationsService — reached only by the deliberate currency
+    // restatement (founder, 2026-09-06), which this file never calls.
+    {} as any,
   );
   const body = () =>
     ({

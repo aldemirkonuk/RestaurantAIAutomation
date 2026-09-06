@@ -42,6 +42,14 @@ import {
   type ProcurementDocumentLine,
 } from '../../../services/api/documents';
 import { getOrder } from '../../../services/api/orders';
+import { useAuth } from '@/contexts/AuthContext';
+// The ONE ISO 4217 list, shared with the sign-up currency step. A second list
+// here is how `TL` becomes a fourth kind of lira.
+import {
+  CURRENCY_CODES,
+  CURRENCY_NOT_RECORDED,
+  currencyLabel,
+} from '@/lib/currency';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import { vendorClause } from '../../../lib/mudavym/vendor';
 import {
@@ -96,8 +104,203 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
     );
   return (
     <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-      off by {doc.tie_out_delta == null ? EM : fmtMoney(Math.abs(doc.tie_out_delta))}
+      off by {doc.tie_out_delta == null ? EM : fmtMoney(Math.abs(doc.tie_out_delta), doc.currency)}
     </span>
+  );
+}
+
+/**
+ * RULE 3 — what money this invoice is in, and the house's deliberate change.
+ *
+ * Founder, 2026-09-06 (batch 63): *"take the houses own currency, but AI needs
+ * to or otherwise house delibaretly chnage it to other currency if the invoice
+ * is other than their default"*.
+ *
+ * WHAT THIS BLOCK SHOWS, IN ORDER
+ *   1. What the money is filed under, and WHERE that came from — the vendor's
+ *      own statement or this house's row. Those two are the whole difference
+ *      between a bill and an assumption, and the page said neither before.
+ *   2. The HOLD, when there is one. `notes` carries the server's sentence,
+ *      which names which currency the file would take, which the model saw and
+ *      where. It is rendered VERBATIM: it contains figures and a location this
+ *      client does not have and could not paraphrase without inventing them.
+ *   3. The control. Managers and owners pick a code; STAFF SEE IT DISABLED with
+ *      the sentence, never hidden — a control that vanishes teaches a person
+ *      the feature does not exist, and the next thing they do is retype the
+ *      invoice somewhere else.
+ *
+ * The picker is `CURRENCY_CODES` — the same ISO 4217 list the sign-up step
+ * offers — so "TL" and "$" cannot be typed in at all. There is no free-text
+ * box, because a `varchar(3)` that accepts three spellings of one currency
+ * holds three currencies.
+ */
+function CurrencyBlock({
+  doc,
+  onChanged,
+}: {
+  doc: ProcurementDocument;
+  onChanged: () => void;
+}) {
+  const { activeRole, user } = useAuth();
+  const role = activeRole ?? user?.role ?? null;
+  const canManage = role === 'owner' || role === 'manager';
+
+  const [choice, setChoice] = useState('');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [moved, setMoved] = useState<string | null>(null);
+
+  const restate = useMutation({
+    mutationFn: () => documentsApi.restateCurrency(doc.id, choice, reason || undefined),
+    onSuccess: (res) => {
+      setError(null);
+      // The SERVER'S sentence, not ours. It names the figures that moved and
+      // this component holds none of them.
+      setMoved(
+        res.lineFailures.length
+          ? `${res.sentence} ${res.lineFailures.length} line(s) could NOT be re-filed: ${res.lineFailures.join('; ')}.`
+          : res.sentence,
+      );
+      setChoice('');
+      setReason('');
+      onChanged();
+    },
+    onError: (e) => {
+      setMoved(null);
+      setError(serverMessage(e, 'The currency was not changed.'));
+    },
+  });
+
+  // The hold and the provenance both live in `notes`, which is where
+  // `document-intake.service.ts` joins every warning. A held document is the
+  // one case where the sentence is load-bearing rather than informative.
+  const held = (doc.notes ?? '')
+    .split('\n')
+    .filter((l) => l.includes('MONEY HELD') || l.includes('money on this document was REFUSED'));
+
+  const filed = doc.currency && /^[A-Z]{3}$/.test(doc.currency) ? doc.currency : null;
+
+  return (
+    <section
+      aria-label="What money this invoice is in"
+      style={{
+        border: '1px solid var(--paper-2, #EAE4D8)',
+        borderRadius: 10,
+        padding: '10px 12px',
+        marginBottom: 14,
+        background: held.length ? 'var(--paper-2, #EAE4D8)' : undefined,
+      }}
+    >
+      <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-3, #7C7365)', margin: 0 }}>
+        this invoice&rsquo;s money
+      </p>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)', margin: '3px 0 0' }}>
+        {filed
+          ? `Filed in ${currencyLabel(filed)}.`
+          : `${CURRENCY_NOT_RECORDED} — nothing on this document is priced.`}
+      </p>
+
+      {held.map((sentence, i) => (
+        <p
+          key={i}
+          role="alert"
+          style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}
+        >
+          {sentence}
+        </p>
+      ))}
+
+      {moved && (
+        <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
+          {moved}
+        </p>
+      )}
+      {error && (
+        <p role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
+          {error}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+          Change it to{' '}
+          <select
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+            disabled={!canManage || restate.isPending}
+            aria-label="Currency this invoice is denominated in"
+            style={{
+              fontSize: 11.5,
+              padding: '3px 6px',
+              borderRadius: 6,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              background: 'var(--paper-0, #FBF8F1)',
+            }}
+          >
+            <option value="">select a currency</option>
+            {CURRENCY_CODES.filter((c) => c !== filed).map((c) => (
+              <option key={c} value={c}>
+                {currencyLabel(c)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          disabled={!canManage || restate.isPending}
+          placeholder="why (optional)"
+          aria-label="Why this invoice's currency is being changed"
+          style={{
+            fontSize: 11.5,
+            padding: '3px 6px',
+            borderRadius: 6,
+            border: '1px solid var(--paper-2, #EAE4D8)',
+            background: 'var(--paper-0, #FBF8F1)',
+            minWidth: 180,
+          }}
+        />
+        <button
+          type="button"
+          className="rc-ink"
+          disabled={!canManage || !choice || restate.isPending}
+          onClick={() => restate.mutate()}
+          style={{
+            fontSize: 11.5,
+            fontWeight: 600,
+            padding: '4px 11px',
+            borderRadius: 7,
+            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+            background: 'transparent',
+            opacity: !canManage || !choice ? 0.55 : 1,
+          }}
+        >
+          {restate.isPending ? 'Restating…' : 'Restate the currency'}
+        </button>
+      </div>
+
+      {/*
+        DISABLED WITH THE SENTENCE, NEVER HIDDEN. The person can see that the
+        act exists, that it is somebody else's, and whose — which is what turns
+        a dead end into an errand.
+      */}
+      {!canManage && (
+        <p style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', margin: '5px 0 0' }}>
+          Restating an invoice&rsquo;s currency re-files its money, so it is a manager&rsquo;s or an
+          owner&rsquo;s decision.{' '}
+          {role
+            ? `You are signed in as ${role} at this house.`
+            : 'This session could not be shown to hold any role at this house.'}{' '}
+          Ask a manager or an owner.
+        </p>
+      )}
+      <p style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '5px 0 0' }}>
+        Nothing is converted: there is no exchange rate in this system. The vendor&rsquo;s own
+        figures stay as they are and only the money they are stated in changes. Who changed it,
+        when, and what it was before are recorded.
+      </p>
+    </section>
   );
 }
 
@@ -580,7 +783,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             {fmtDate(shownDoc.doc_date)}
           </span>
           <h2 style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, margin: '2px 0 0' }}>
-            {shownDoc.total == null ? 'No stated total' : fmtMoney(shownDoc.total)}
+            {shownDoc.total == null ? 'No stated total' : fmtMoney(shownDoc.total, shownDoc.currency)}
             <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-3, #7C7365)', marginLeft: 10 }}>
               <TieOutLine doc={shownTieOut} />
             </span>
@@ -632,8 +835,19 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                 */}
                 Against order {orderQ.data.orderNumber ?? doc.order_id.slice(0, 8)}
                 {vendorClause(orderQ.data)}
+                {/*
+                  THE ORDER'S OWN CURRENCY, WHICH DOES NOT EXIST. Neither
+                  `procurement_orders` nor `procurement_order_items` has a
+                  currency column (measured 2026-09-05,
+                  `procurement/price-currency.ts`'s `agreementCurrencyClaim`),
+                  so `null` is passed deliberately and this figure prints
+                  "(currency not recorded)". Borrowing the DOCUMENT's currency
+                  would state that the order was agreed in the money the vendor
+                  happened to bill in — a claim nobody made, and exactly wrong
+                  on a cross-currency order.
+                */}
                 {typeof orderQ.data.totalCost === 'number'
-                  ? ` · ordered ${fmtMoney(orderQ.data.totalCost)}`
+                  ? ` · ordered ${fmtMoney(orderQ.data.totalCost, null)}`
                   : ''}
               </p>
             ) : orderQ.isError ? (
@@ -652,6 +866,9 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           )}
         </div>
       </header>
+
+      {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
+      <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
 
       {/* the paper beside the lines — the adjudication this page exists for */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
@@ -739,7 +956,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                             {changed && (
                               <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)', marginTop: 2 }}>
                                 <span>
-                                  extracted {was == null ? EM : f.key === 'qty' ? was : fmtMoney(was)}
+                                  extracted {was == null ? EM : f.key === 'qty' ? was : fmtMoney(was, shownDoc.currency)}
                                 </span>{' '}
                                 <button
                                   type="button"
@@ -1084,7 +1301,7 @@ export default function ReceiptsNext() {
                       {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM}
                     </span>
                     <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-                      {fmtDate(d.doc_date)} · {fmtMoney(d.total)} ·{' '}
+                      {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)} ·{' '}
                       {d.ties_out === null ? `tie-out ${EM}` : d.ties_out ? 'ties out' : 'does not tie out'}
                     </span>
                   </button>
@@ -1136,7 +1353,7 @@ export default function ReceiptsNext() {
                         }}
                       >
                         <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                          {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM} · {fmtDate(d.doc_date)} · {fmtMoney(d.total)}
+                          {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM} · {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)}
                         </span>
                       </button>
                     ))}

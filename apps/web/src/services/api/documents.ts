@@ -133,6 +133,38 @@ export const documentsApi = {
   },
 
   /**
+   * RULE 3 — restate what currency this invoice's money is in.
+   *
+   * Founder, 2026-09-06: the house may deliberately change it when the invoice
+   * is other than their default. Managers and owners only; the gateway refuses
+   * anyone else in a sentence, and the page disables the control with that
+   * sentence rather than hiding it.
+   *
+   * The gateway writes the audit row FIRST and does not change the currency if
+   * the log cannot be written, so a resolved promise here means both landed.
+   * `sentence` is what moved, in the server's own words — rendered verbatim
+   * rather than paraphrased, because it names figures this client does not have.
+   */
+  async restateCurrency(
+    id: string,
+    currency: string,
+    reason?: string,
+  ): Promise<{
+    currency: string
+    previousCurrency: string | null
+    sentence: string
+    moneyRefiled: boolean
+    linesRefiled: number
+    lineFailures: string[]
+  }> {
+    const { data } = await apiClient.patch(
+      `/procurement/documents/${id}/currency`,
+      { currency, reason },
+    )
+    return data
+  },
+
+  /**
    * Correct one extracted line by hand (pre-verification only). Returns the
    * updated line and the document's recomputed tie-out, so the caller can
    * show the arithmetic move immediately.

@@ -40,7 +40,6 @@
     "apps/web/src/pages/orders/next/format.ts": 2,
     "apps/web/src/pages/orders/next/price-unit.ts": 12,
     "apps/web/src/pages/providers/next/TwinSheet.tsx": 1,
-    "apps/web/src/pages/receipts/next/rc2-format.ts": 1,
     "apps/web/src/pages/receiving/ReceivingHome.tsx": 1,
     "apps/web/src/pages/receiving/next/rc-format.ts": 2,
     "apps/web/src/pages/recommendations/next/Ribbon.tsx": 1,

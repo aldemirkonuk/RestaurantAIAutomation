@@ -27,6 +27,9 @@ import { createHash } from "node:crypto";
 import { looksLikeEdi832 } from "../../distributor-feed/parse-edi832";
 import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
 import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
+import { OrganizationsService } from "../../organizations/organizations.service";
+import { roleSatisfies } from "../order-approval-gate";
+import { refiledMoney } from "./invoice-currency";
 
 /**
  * `fullName`, `name` and `email` are read for ONE purpose: an admitted class-C
@@ -79,6 +82,11 @@ export class DocumentsController {
     private readonly canonical: CanonicalDocumentService,
     private readonly spine: DeliverySpineService,
     private readonly catalogIngest: CatalogIngestService,
+    // WHO the caller is AT THIS HOUSE, for the deliberate currency change
+    // (founder, 2026-09-06). `OrganizationsModule` is already a
+    // `ProcurementModule` import for the approval gate, so this adds no edge to
+    // the module graph and no `forwardRef`.
+    private readonly organizations: OrganizationsService,
   ) {}
 
   /**
@@ -605,6 +613,222 @@ export class DocumentsController {
         throw new HttpException(msg, HttpStatus.BAD_REQUEST);
       throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+  }
+
+  /**
+   * RULE 3 — the house deliberately changes an invoice's currency.
+   *
+   * Founder, 2026-09-06 (batch 63): *"take the houses own currency, but AI needs
+   * to or otherwise house delibaretly chnage it to other currency if the invoice
+   * is other than their default"*. Rules 1 and 2 (`invoice-currency.ts`) file an
+   * invoice's money under the document's own currency, or the house's, or
+   * WITHHOLD it — refused when neither states one, held when the model saw a
+   * different one. This is the door out of both.
+   *
+   * WHAT IT DOES
+   *   1. Refuses anyone who is not a manager or an owner here, in a sentence
+   *      that names what they are and who can do it. Staff are DISABLED with the
+   *      sentence on the page, never shown a button that fails.
+   *   2. Writes the audit row FIRST — who, when, the previous value, the
+   *      document's status at the time, and what the re-filing is about to
+   *      move. If the log cannot be written the currency is not changed:
+   *      a restatement nobody recorded is exactly what this rule exists to stop.
+   *   3. Re-files the money off `procurement_documents.extracted` — the whole
+   *      parse, kept precisely so a held document does not have to be uploaded
+   *      again — and says what moved.
+   *
+   * NOT SEALED, DELIBERATELY. `scripts/check_money_routes_are_sealed.py` scopes
+   * the seal to `payment-methods`, `billing` and `communications/text/credits`:
+   * routes that change WHAT THE HOUSE IS CHARGED. This changes what a vendor's
+   * bill is denominated in, inside a module where none of the twelve other
+   * routes — including `POST :id/verify`, which is the record a dispute leans on
+   * — redeems a seal. Sealing this one alone would read as a policy while
+   * leaving the other six non-GET routes on this controller open. The gate is role
+   * plus an append-only log, and whether procurement as a whole should be sealed is a founder
+   * question, not a decision to take one route at a time.
+   *
+   * A VERIFIED DOCUMENT MAY STILL BE RESTATED, unlike a line edit
+   * (`PATCH :id/lines/:lineId` refuses anything past review). The two are not
+   * the same act: an edit changes what the paper is claimed to SAY, and a
+   * verified document is the transcription somebody stood behind; this changes
+   * what its figures are DENOMINATED IN, which is a fact about the vendor that
+   * a verification never asserted. The status at the time is written to the log
+   * so a restatement after verification is legible as one.
+   */
+  @Patch(":id/currency")
+  @ApiOperation({
+    summary: "Restate what currency this invoice's money is in",
+    description:
+      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. NOTHING IS CONVERTED: there is no exchange rate in this system, so the vendor's own figures are restored and only their denomination changes.",
+  })
+  async restateCurrency(
+    @Param("id") id: string,
+    @Body() body: { currency?: string; reason?: string },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const next = String(body?.currency ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(next))
+      throw new HttpException(
+        `"${body?.currency ?? ""}" is not an ISO 4217 alpha-3 currency code. A column that accepts "$", "usd" and "USD" holds three currencies where there is one, so this route takes the code and nothing else.`,
+        HttpStatus.BAD_REQUEST,
+      );
+
+    // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" —
+    // a read that failed and a person with no row are indistinguishable at this
+    // layer, and neither may pass (`order-approval-gate.ts`'s header).
+    const role = await this.organizations.resolveRestaurantRole(
+      user.userId,
+      user.restaurantId,
+    );
+    if (!roleSatisfies(role, "manager"))
+      throw new HttpException(
+        `Restating an invoice's currency re-files its money, so it is a manager's or an owner's decision. ` +
+          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed. Ask a manager or an owner to restate it.`,
+        HttpStatus.FORBIDDEN,
+      );
+
+    const { data: doc, error: readError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, restaurant_id, currency, status, extracted, total")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    // A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067): supabase-js resolves
+    // `{ data, error }` and never throws, so without this the outage and the
+    // missing document both become "Not found".
+    if (readError)
+      throw new HttpException(
+        `This document could not be read, so nothing was changed: ${readError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+
+    const previous = (doc as { currency?: string | null }).currency ?? null;
+    if (previous === next)
+      throw new HttpException(
+        `This document is already filed in ${next}, so nothing was changed and nothing was logged. A log of identical rows is not a history.`,
+        HttpStatus.CONFLICT,
+      );
+
+    /*
+     * WHAT THE RE-FILING WILL MOVE, computed but NOT written here.
+     *
+     * `refiledMoney` is pure. The WRITE of `computed_lines_total`,
+     * `tie_out_delta` and `ties_out` belongs to `DocumentIntakeService` — they
+     * are the machine's own proposal about this document and ADR 0059's rule is
+     * that a proposal is written by the thing that proposed it, with a human's
+     * answer appended rather than substituted.
+     * `scripts/check_proposal_preservation.py` names that file as their declared
+     * writer and FAILED this route when it wrote them itself.
+     *
+     * The pure call stays here for one reason only: the audit row has to record
+     * what the change was ABOUT to move, and the log is written BEFORE the
+     * change lands. Reading it twice would let the row describe a re-filing
+     * different from the one that happened.
+     */
+    const preview = refiledMoney((doc as { extracted?: unknown }).extracted);
+    const previousTotal = (doc as { total?: number | null }).total ?? null;
+    const pricedLines = preview
+      ? preview.lines.filter((l) => l.unit_price != null || l.line_total != null)
+          .length
+      : 0;
+
+    // THE LOG FIRST. A restatement nobody recorded is the thing this rule
+    // exists to prevent, so a log that cannot be written stops the change
+    // rather than riding along behind it.
+    const { error: logError } = await this.db
+      .getClient()
+      .from("procurement_document_currency_changes")
+      .insert({
+        document_id: id,
+        restaurant_id: user.restaurantId,
+        previous_currency: previous,
+        new_currency: next,
+        // `public.users.user_id`, which is the id the JWT carries. NOT an
+        // `auth.users` id: the two tables are disjoint in this database.
+        changed_by: user.userId,
+        // The name AS IT IS NOW, stored rather than joined. `name` is the field
+        // the session actually has; `fullName` is set nowhere in this gateway,
+        // and falling back to the email address while calling it a name is the
+        // defect fixed on `uploadedByName` in this same file.
+        changed_by_label:
+          user.name?.trim() || user.email?.trim() || "an unnamed session",
+        changed_by_role: role as string,
+        document_status: (doc as { status?: string | null }).status ?? null,
+        money_refiled: {
+          previous_currency: previous,
+          new_currency: next,
+          previous_total: previousTotal,
+          refiled_document: preview?.document ?? null,
+          refiled_line_count: preview?.lines.length ?? 0,
+          priced_lines: pricedLines,
+          snapshot_readable: preview != null,
+        },
+        reason: body?.reason?.trim() || null,
+      });
+    if (logError)
+      throw new HttpException(
+        `The currency was NOT changed: the change could not be recorded (${logError.message}), and a restatement nobody can see afterwards is worse than one that never happened.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+
+    /*
+     * THE CURRENCY IS THE PERSON'S ANSWER, so this route writes it. One key,
+     * one inline literal — `check_order_capture_contract.py` can only read a
+     * write whose column names are literal.
+     *
+     * It moves on its own, ahead of the figures, so that a document whose
+     * stored reading cannot be parsed is still re-LABELLED without having the
+     * money it already carries erased by a null fallback.
+     */
+    const { error: writeError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .update({ currency: next })
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId);
+    if (writeError)
+      throw new HttpException(
+        `The change was logged but the document could not be written (${writeError.message}), so its currency is UNCHANGED and the log now names a restatement that did not land. Try again.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+
+    /*
+     * THE FIGURES ARE THE MACHINE'S, so the machine's own writer writes them.
+     * `DocumentIntakeService` is the declared writer of `computed_lines_total`,
+     * `tie_out_delta` and `ties_out` (ADR 0059,
+     * `scripts/check_proposal_preservation.py`), and it re-derives the tie-out
+     * through the same `applyTieOut` intake and `editLine` run — so a restated
+     * document's arithmetic cannot disagree with an extracted one's.
+     */
+    let refile: Awaited<
+      ReturnType<DocumentIntakeService["refileMoneyForCurrency"]>
+    >;
+    try {
+      refile = await this.intake.refileMoneyForCurrency(
+        id,
+        user.restaurantId,
+        next,
+      );
+    } catch (err: any) {
+      const msg: string = err?.message ?? "unknown error";
+      throw new HttpException(
+        `The currency is now ${next} and the change is logged, but the figures could not be re-filed (${msg.replace(/^REFILE_(READ|WRITE)_FAILED:/, "")}). The document is labelled and its money is unchanged — restate it again once the write works.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return {
+      id,
+      currency: next,
+      previousCurrency: previous,
+      changedByRole: role,
+      sentence: `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${refile.sentence}`,
+      moneyRefiled: refile.snapshotReadable,
+      linesRefiled: refile.linesRefiled,
+      lineFailures: refile.lineFailures,
+    };
   }
 
   @Post(":id/verify")

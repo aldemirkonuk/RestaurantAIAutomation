@@ -40,6 +40,23 @@ One event, three renderings by role:
 - **Owner**: one number — money that actually came back (recovered credits)
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
+Currency, since 2026-09-06 (founder, batch 63; built on [[receipts]]):
+- **The invoice a delivery is verified against may have NO money on it.** Rules 1 and
+  2 in `apps/api-gateway/src/procurement/documents/invoice-currency.ts` REFUSE an
+  invoice's money when neither the paper nor the house (`restaurants.currency`) states
+  a currency, and HOLD it when the extraction model reports seeing a different one.
+  Both leave `procurement_documents.currency` NULL and every money column null, with
+  the sentence on the document's `notes`. **The quantities are untouched**, so what
+  arrived can still be counted at the door.
+- **What this door does NOT yet do, stated:** `verifyReceipt` takes its
+  `invoiceUnitPrice` and `invoiceCurrency` from what a person KEYS IN
+  (`VerifyReceiptDto`), not from the document row, so a held invoice does not by
+  itself stop a manager typing a price at this screen. The register mirror still
+  refuses a non-ISO currency (`own-paper-sighting.ts:299-316`) and `price_history`
+  still records the gap, so nothing is dollarised — but the hold is not yet a
+  BLOCK on this path. **The founder decided on 2026-09-06 (batch 64) that it should
+  be — price only, with an approve-past — and p4br builds it (§13).**
+
 Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):
 - **A manager's verification note is saved.** It goes to `delivery_notes`, and is
   **appended** to whatever the door already wrote rather than replacing it. It
@@ -243,6 +260,27 @@ the denominator (`:251-258,298-304`). Keep that discipline when touching this pa
 delivery day while the request behind it is rejected.
 
 ## 13. Roadmap
+
+**2026-09-06 — a held invoice and this door.** The founder's currency decision (batch
+63), verbatim:
+
+> "take the houses own currency, but AI needs to or otherwise house delibaretly
+> chnage it to other currency if the invoice is other than their default"
+
+Built on [[receipts]]. **The founder answered the question that lands HERE the same day,
+batch 64, and it is DECIDED:** a held invoice **blocks the PRICE at this door only** —
+never the delivery's stock movement — and, verbatim, *"let them approve if otherwise"*:
+a person may approve past the hold. He also asked for **a default-currency section on
+each vendor's profile**.
+
+**Neither is built by this pass — p4br builds both.** What is true here today, stated so
+the next builder is not misled: `verifyReceipt` still takes `invoiceUnitPrice` and
+`invoiceCurrency` from what a person keys in (`VerifyReceiptDto`), not from the document
+row, so **a held invoice does not yet stop a price being typed at this screen and there
+is no approve-past path**. The register mirror still refuses a non-ISO currency
+(`own-paper-sighting.ts:299-316`) and `price_history` still records the gap, so nothing is
+dollarised in the meantime.
+
 
 1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`
    (which maps to the backend enum and unwraps `.orders`), with a real status —

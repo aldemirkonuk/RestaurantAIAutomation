@@ -111,6 +111,9 @@ describe("DocumentsController.canonicalDocument", () => {
       // The 832 catalogue half (ADR 0126). Nothing on the canonical read path
       // reaches it; a stub would have to pretend otherwise.
       {} as any,
+      // OrganizationsService — reached only by the deliberate currency
+      // restatement (founder, 2026-09-06), which this file never calls.
+      {} as any,
     );
   });
 

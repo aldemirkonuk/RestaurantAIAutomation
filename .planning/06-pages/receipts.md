@@ -43,6 +43,7 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - **Honesty, per [[0063-a-certification-screen-shows-the-thing-being-certified|ADR 0063]]** — every query key carries the active restaurant id (an unresolved restaurant is refused, not given a shared `''` cache bucket); the awaiting-review count renders as a floor (`≥`) at its server window; all three list failures are named individually, and an unanswered uncounted-deliveries query says it is unknown rather than rendering as a caught-up door; a failed detail fetch says the failure in the **server's** words and never claims an empty invoice; document `extraction_confidence` and per-suggestion `confidence` are shown, `—` when unrecorded
 - **The canonical document — this page's second face, behind `mudavym_design_document` (OFF)** (ADR 0104 D12 slice 2, D13). `/documents/:id` renders any incoming document as ONE canonical Mudavym document: B's verdict block first (named exceptions in words and numbers, **never a confidence as a number**), C's delivery spine (cards per document on the event, state ladder `DELIVERED → RECONCILING → AGREED → VERIFIED`, the permanent `UNORDERED` mark; collapsed at ≤ 2 documents and absent when the document sits on no delivery), A's typeset sheet as the selected frame (EN 16931 header order, the four-way `ordered · shipped · received · billed` table where `received` prints the words **"not counted"**, the printed price base as a sub-line, allowances/charges with their reason names, the VAT breakdown, totals). Money is **absent** on a delivery note; the claim block appears **only** on a credit memo. Per-field provenance is a hover (and a footnote column in print); `as printed` says "not kept" rather than inventing a literal. Read-only: no corrections, no claims, no mapping memory — slices 3–4. `?view=door` opens the same component as the door frame with **no money at all** (D11), read-only until slice 5's `receiving_advice` write. Reached from this page by "Open as the canonical document →", which appears only where the gate is on.
 - **Degraded is a state, not a blank** (ADR 0104 D6) — a document with no lines renders NOT EXTRACTED, the original, and the header fields that exist; the verdict block says "nothing was read, so nothing could be compared" rather than "nothing differs", and there is no line table and no totals, because `Lines 0.00` on an unread document is a claim nobody made
+- **An invoice's money names its own currency, and the house may restate it** (founder 2026-09-06, batch 63). Every figure on this page printed a hardcoded `$` until now, including on the two `TRY` invoices production already holds. Three rules, built in `apps/api-gateway/src/procurement/documents/invoice-currency.ts`: **(1)** an 810 with no `CUR` segment is filed under the HOUSE'S OWN `restaurants.currency` — never `USD` — and a house that has stated none, on a file that states none, has its **money refused** in a sentence naming both absences (the quantities stay; the header charges, the total, every line price and the tie-out all go to null). **(2)** the extraction states the currency it SEES with the location it saw it (`currencySeen`), and a sighting that disagrees with the currency the invoice would be filed under **HOLDS** the money under both until a person decides — the model flags, it never decides. **(3)** a manager or owner restates it here: a picker of ISO 4217 codes, an optional reason, an append-only audit row (`procurement_document_currency_changes`) written BEFORE the change lands, and the money re-filed off the stored reading with the server's own sentence saying what moved. **Nothing is converted** — there is no exchange rate in this system. **Staff see the control disabled with the sentence**, never hidden
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
@@ -145,6 +146,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):378 (`procurement/documents`
 | POST | `/procurement/documents/:id/verify` | `ReceiptsPage.tsx:103` → `documents.ts:104` |
 | GET | `/procurement/credits` (+ `/stats`) | `ReceiptsPage.tsx:83,89` → `services/api/credits.ts:51,58` |
 | POST | `/procurement/credits/:id/transition` | `ReceiptsPage.tsx:140` → `credits.ts:71` |
+| PATCH | `/procurement/documents/:id/currency` | `ReceiptsNext.tsx` `CurrencyBlock` -> `documents.ts` `restateCurrency`. Managers and owners only (`OrganizationsService.resolveRestaurantRole` + `roleSatisfies`); 403 in words for anyone else, 400 for anything that is not an ISO 4217 alpha-3, 409 for a change to the currency already filed. Writes the audit row first and does NOT change the currency if the log fails. |
 | POST | `/procurement/documents/:id/extraction` | **No SPA call site** — the extraction door (`documents.controller.ts:351`). Fills a document ADR 0104 D6 stored unread with an extraction produced outside the gateway, because the configured Anthropic key has no credit. 409 once a document has lines or a real extraction. |
 
 ## 5. Signals
@@ -300,6 +302,41 @@ pass — the opposite of the fabricated-zero habit elsewhere in this cluster.
 chase never leaves the building (§10). "Claim → requested" reads as "we asked them".
 
 ## 13. Roadmap
+
+**2026-09-06 — the invoice's money, and who may change it.** The founder, batch 63,
+asked what an 810 with no `CUR` should do and answered verbatim:
+
+> "take the houses own currency, but AI needs to or otherwise house delibaretly
+> chnage it to other currency if the invoice is other than their default"
+
+Built as three rules (see the §1a entry). What it replaced, measured on this tree by
+a probe spec run against `git show HEAD:apps/api-gateway/src/procurement/documents/
+x12/*.ts` and then deleted: a CUR-less 810 came back `currency: "USD"` with
+`total: 528` beside it and **no warning of any kind**, indistinguishable from an
+invoice a vendor had denominated in dollars; and `parseX12` took one argument, so a
+caller that knew the house was in Turkiye had nowhere to say so. Three sibling
+defects were found and closed in the same pass: `x12-credit.ts` pinned the literal
+`"USD"` on an 812 that carries a real `totalCredit` and settles against the 810;
+`x12-ship-notice.ts` did the same on a document with no money at all; and
+`canonical/from-document-rows.ts` read a NULL currency back as `USD`, which would
+have re-dollarised on the canonical face every document rule 1 had just refused.
+
+**2026-09-06, batch 64 — the founder answered all four questions. Decided, not open.**
+
+1. **A held invoice blocks the PRICE at receiving only** — never the stock movement —
+   and, verbatim: *"let them approve if otherwise"*. A person may approve past the hold.
+   The founder also asked for **a default-currency section on each vendor's profile**.
+   **Built by p4br, not here.** What this pass leaves for that builder: `verifyReceipt`
+   still takes `invoiceUnitPrice` / `invoiceCurrency` from what a person keys in
+   (`VerifyReceiptDto`), so the price refusal and its approve-past path do not exist yet.
+2. **Rule 2's evidence is shown only on a disagreement** — as built. The agreeing and
+   unreadable cases are recorded on the document and not surfaced.
+3. **Procurement's three writes will be sealed as a module in a later pass.** Not sealed
+   now, and deliberately not one route at a time.
+4. **Invoices already filed under the `USD` nobody chose are left alone** — as built.
+   Nothing in this pass touches an existing row; rule 3 restates the ones a person
+   disputes, and the audit log says who did.
+
 
 1. **Send the claim.** `→ requested` should draft the vendor email through the same
    approve-then-send path procurement already uses — the guardrail is decided

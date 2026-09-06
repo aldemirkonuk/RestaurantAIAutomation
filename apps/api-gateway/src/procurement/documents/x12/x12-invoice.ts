@@ -1,4 +1,5 @@
 import { normalizeUom, toBottles, Uom } from "../document-types";
+import { applyCurrencyRules } from "../invoice-currency";
 import { applyTieOut, ParsedDocument, ParsedLine } from "../parsed-document";
 import {
   el,
@@ -71,9 +72,27 @@ function productIds(seg: X12Segment): Record<string, string> {
   return out;
 }
 
+/**
+ * What this parser is told about the HOUSE the document arrived at.
+ *
+ * `parse810` is otherwise pure and knows only the file. It has to know one
+ * thing about the house, and exactly one: what currency the house states it
+ * reports in, so an 810 with no `CUR` can be filed under that instead of under
+ * a dollar sign nobody chose (founder, 2026-09-06; `../invoice-currency.ts`).
+ *
+ * OPTIONAL, and the absent case is the honest one rather than a shortcut: a
+ * caller that does not know the house passes nothing, and a file with no `CUR`
+ * then has its money REFUSED. It is never filed as `USD`.
+ */
+export interface X12InvoiceOptions {
+  /** `restaurants.currency`. NULL / absent when the house has never stated one. */
+  houseCurrency?: string | null;
+}
+
 export function parse810(
   tx: X12Transaction,
   _delimiters: X12Delimiters,
+  options: X12InvoiceOptions = {},
 ): ParsedDocument {
   const warnings: string[] = [];
   const segs = tx.segments;
@@ -249,11 +268,17 @@ export function parse810(
     poNumber: el(big, 4) ?? refs.PO ?? null,
     vendorName: el(seller, 2),
     vendorAccount: refs.VN ?? null,
+    // `CUR02` AS THE FILE STATED IT, and nothing else. This read `?? "USD"`
+    // until 2026-09-06: an 810 with no CUR segment filed a Turkish house's
+    // totals as dollars, silently, and the row then looked exactly like an
+    // invoice a vendor had denominated. `applyCurrencyRules` below turns this
+    // into the currency the money is filed under — the house's own when the
+    // file states none, and NOTHING when neither states one.
     currency:
       el(
         segs.find((s) => s.tag === "CUR"),
         2,
-      ) ?? "USD",
+      ) ?? "",
     subtotal: null,
     freight: charges.freight || null,
     fuelSurcharge: charges.fuelSurcharge || null,
@@ -282,5 +307,32 @@ export function parse810(
     warnings,
   };
 
-  return applyTieOut(doc);
+  /*
+   * Rule 1 runs AFTER the tie-out, and the order was MEASURED rather than
+   * reasoned: with `applyCurrencyRules` on the inside,
+   * `invoice-currency.spec.ts`'s "refuses the money" case came back with
+   * `computedLinesTotal: 0`. `applyTieOut` always sets that field — it is not
+   * conditional on a stated total — so a document whose lines had just been
+   * stripped of every price got a confident arithmetic claim that they sum to
+   * nothing. `withholdMoney` nulls all three tie-out fields itself, so running
+   * it last is what makes "the check could not run" survive.
+   *
+   * On the ordinary path — a stated CUR, or a house that has stated its
+   * currency — nothing about the tie-out changes: the money is untouched and
+   * the fields `applyTieOut` computed are carried through by the spread.
+   *
+   * This is also the SAME order the model path runs in
+   * (`document-extractor.service.ts` ties out, then
+   * `document-intake.service.ts` applies the rules), which is what keeps the
+   * two channels from producing different answers about one delivery.
+   *
+   * No `currencySeen` here on purpose: EDI is structured data from a source
+   * system, there is no model reading a page, and inventing an empty sighting
+   * would make "the model saw none" indistinguishable from "no model ran".
+   */
+  return applyCurrencyRules({
+    doc: applyTieOut(doc),
+    houseCurrency: options.houseCurrency,
+    fileField: "CUR02 currency segment",
+  });
 }

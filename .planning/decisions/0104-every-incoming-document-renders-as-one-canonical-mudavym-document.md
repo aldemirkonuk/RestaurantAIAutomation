@@ -261,6 +261,99 @@ founder-locked answer; each names what it changes.
   load-bearing on door capture (ADR 0103 A6); a design that ships it last would have
   measured itself as an invoice-centric three-way match for four slices.
 
+## Amendment 2026-09-06 — an invoice's money names its currency, and the house may restate it (class E)
+
+**Founder, batch 63, verbatim**, asked what an EDI 810 with no `CUR` segment should do
+(`x12-invoice.ts:254-257` read `currency: el(CUR, 2) ?? "USD"`, so a Turkish house's
+invoice with no `CUR` filed its totals as dollars, silently):
+
+> "take the houses own currency, but AI needs to or otherwise house delibaretly chnage
+> it to other currency if the invoice is other than their default"
+
+Filed here rather than under ADR 0117 because 0117 is about a PRICE SIGHTING'S source,
+date and unit, while this is about the **document's own denomination** — the currency
+`procurement_documents.currency` holds, which is this ADR's layer-1 `currency` field
+(D1) and the one BR-5 checks. 0117 Q25 is the sibling decision one level down (what a
+recorded PRICE is in) and is unchanged by this.
+
+**The three rules, and where they live.**
+
+1. **No stated currency takes the HOUSE'S own** (`restaurants.currency`, itself
+   defaultless since `20260905120000_a_house_names_its_money.sql`). A house that has
+   stated none, on a document that states none, has its **money refused**: the header
+   charges, the total, every line's price/allowance/deposit and all three tie-out
+   fields go to `null`, with one sentence naming BOTH absences. The quantities stay —
+   what shipped is real evidence and a delivery note is useful without a price. There
+   is no `USD` anywhere on this path. This is `parse-edi832.ts`'s rule (a default is
+   not an answer, ADR 0083) with the one difference the founder named: an 810 has a
+   house behind it, and a house's stated currency IS an answer where a distributor
+   connection's default is not.
+2. **The model states what it SEES, and it never decides.** The extraction prompt now
+   asks for `currencySeen: {code, asPrinted, where}` — a code, a glyph or a word, with
+   the location on the page — or `null` for "the page shows none", which is a real
+   answer it must give rather than guess. A sighting whose possible codes do not
+   include the currency the document would be filed under **HOLDS** the money: nothing
+   is filed under either, and the sentence names which currency the file would take,
+   which the model saw, and where. A glyph maps to a SET of codes, never one — `$` is
+   seven currencies, and resolving it to `USD` is the move this whole pass deletes — so
+   a sighting can REFUTE a filing currency and can never choose one. A glyph this
+   gateway cannot read is recorded as evidence and is deliberately **not** a hold.
+3. **The house may deliberately change it.** `PATCH /procurement/documents/:id/currency`
+   (managers and owners; staff refused in words and shown the control disabled, never
+   hidden). It writes an append-only row to
+   `procurement_document_currency_changes` (`20260906160000`) naming who, when, the
+   previous value, the document's status at the time and what the re-filing moved —
+   **before** the change lands, so a restatement nobody recorded never happens — then
+   re-files the money off `procurement_documents.extracted`, which is why the full
+   parse is stored whole. **Nothing converts**: there is no exchange rate in this
+   system, and only the denomination moves.
+
+**NOT SEALED, and the reason is a census not a preference.**
+`scripts/check_money_routes_are_sealed.py` scopes the seal to `payment-methods`,
+`billing` and `communications/text/credits` — routes that change what the HOUSE IS
+CHARGED. No procurement route redeems a seal today, `POST :id/verify` included, and
+sealing one route inside an unsealed module reads as a policy while leaving the other
+six non-GET routes on the same controller open. The gate here is role plus the append-only log. Whether
+procurement as a whole should be sealed is a founder question, not a decision to take
+one route at a time.
+
+**Three sibling defects found and closed in the same pass**, each measured on this
+tree: `x12-credit.ts` pinned the literal `"USD"` on an 812 that carries a real
+`totalCredit` (BCD04) and settles against the 810 — a credit in dollars against a lira
+invoice, from our own parser; `x12-ship-notice.ts` did the same on a document that
+states no money at all; and `canonical/from-document-rows.ts:219` read a NULL currency
+back as `USD`, which would have re-dollarised **on this ADR's own canonical face**
+every document rule 1 had just refused.
+
+**The pre-fix behaviour, measured rather than remembered.** A probe spec built from
+`git show HEAD:apps/api-gateway/src/procurement/documents/x12/*.ts`, run, and then
+deleted: a CUR-less 810 came back `currency: "USD"` with `total: 528` beside it and no
+warning of any kind, and `parseX12` took one argument, so a caller that knew the house
+was in Turkiye had nowhere to say so.
+
+**Answered by the founder the same day, batch 64. All four are DECIDED.**
+
+1. A held invoice **blocks the PRICE at receiving only**, never the delivery's stock
+   movement, and — verbatim — *"let them approve if otherwise"*: a person may approve
+   past the hold. Alongside it the founder asked for **a default-currency section on each
+   vendor's profile**. Both are a later builder's (p4br); this pass builds neither, and
+   `verifyReceipt` still takes its price and currency from what a person keys in.
+2. Rule 2's evidence is shown **only on a disagreement** — as built.
+3. Procurement's three writes **will be sealed as a module in a later pass**, not one
+   route at a time. This route stays unsealed until then, as argued above.
+4. Invoices already filed under an unchosen `USD` are **left alone** — as built.
+
+**One correction made after the founder's answers, 2026-09-06 (p4bp follow-up).** The
+first version of rule 3 wrote `computed_lines_total`, `tie_out_delta` and `ties_out` from
+`documents.controller.ts`, and `scripts/check_proposal_preservation.py` failed it: those
+three are the machine's own proposal and ADR 0059 gives their write to the thing that
+proposed them, `DocumentIntakeService`. The re-filing now lives there
+(`refileMoneyForCurrency`), re-deriving the tie-out through the same `applyTieOut` intake
+and `editLine` run; the controller writes only the audit row and the currency, which are
+the person's half. This was not a technicality — a controller computing a tie-out is a
+second implementation of the arithmetic, and the moment the two disagree the screen shows
+one verdict while the review queue sorts on another.
+
 ## Review trail
 
 | Date       | Reviewer                                                                                                                                            | Outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

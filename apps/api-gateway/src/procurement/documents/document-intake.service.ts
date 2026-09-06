@@ -7,6 +7,12 @@ import {
   stripJsonFence,
 } from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
+import {
+  applyCurrencyRules,
+  refiledMoney,
+  refilingSentence,
+  type DocumentMoney,
+} from "./invoice-currency";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
@@ -279,12 +285,24 @@ export class DocumentIntakeService {
     const name = (input.filename || "").toLowerCase();
     const isEdiName = /\.(edi|x12|810|832|856|812|txt|dat)$/.test(name);
 
+    // What this HOUSE says its money is, read once for whichever parser runs.
+    // Founder, 2026-09-06: an 810 with no CUR takes the house's own currency.
+    // A read that FAILS is not an absent currency, and `houseCurrency` says
+    // which of the two it got (ADR 0067).
+    const house = await this.houseCurrency(input.restaurantId);
+
     if (mime.startsWith("text/") || isEdiName || input.text != null) {
       const text = bytes.toString("utf8");
       if (looksLikeEdi832(text)) return this.priceCatalogue(text);
       if (looksLikeX12(text)) {
-        const result = parseX12(text);
-        if (result.documents.length) return result.documents[0];
+        const result = parseX12(text, { houseCurrency: house.code });
+        if (result.documents.length)
+          return house.failure
+            ? {
+                ...result.documents[0],
+                warnings: [...result.documents[0].warnings, house.failure],
+              }
+            : result.documents[0];
         // Recognised as EDI but produced nothing usable — a 997 or an
         // unsupported set. Say so rather than silently returning an empty invoice.
         return this.unreadable(
@@ -301,11 +319,29 @@ export class DocumentIntakeService {
       );
 
     try {
-      return await this.extractor.extract(
+      const extracted = await this.extractor.extract(
         bytes.toString("base64"),
         input.mimeType,
         input.restaurantId,
       );
+      /*
+       * Rules 1 and 2, on the model path (founder, 2026-09-06).
+       *
+       * The SAME function the 810 runs, for the reason `ParsedDocument`'s
+       * header gives: a verdict that depends on the channel makes "we
+       * photographed it" and "they sent it electronically" produce different
+       * answers about one delivery. What differs is only the input — a
+       * photographed invoice has a `currencySeen` because a model read the
+       * page, and an 810 never does.
+       */
+      const ruled = applyCurrencyRules({
+        doc: extracted,
+        houseCurrency: house.code,
+        fileField: "printed currency",
+      });
+      return house.failure
+        ? { ...ruled, warnings: [...ruled.warnings, house.failure] }
+        : ruled;
     } catch (err: any) {
       /**
        * ADR 0104 D6 — "when extraction runs and FAILS, the template degrades to
@@ -334,6 +370,47 @@ export class DocumentIntakeService {
         `The extraction model could not be reached, so the document was stored unread: ${reason}`,
       );
     }
+  }
+
+  /**
+   * What currency this HOUSE says it reports in, and whether we could ask.
+   *
+   * `restaurants.currency` carries no default since
+   * `20260905120000_a_house_names_its_money.sql`, so NULL is a real and common
+   * state: it means the question has not been answered, and every reader must
+   * say "currency not recorded" rather than print a dollar sign.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). supabase-js resolves
+   * `{ data, error }` and never throws, so a dead connection and a house that
+   * has stated nothing arrive here identically unless the error is looked at.
+   * They are not the same: the first must not be allowed to REFUSE an invoice's
+   * money on the strength of an answer nobody actually got. So a failed read
+   * returns `code: null` AND a sentence, and the sentence travels onto the
+   * document's warnings — the refusal that follows then says, in the document's
+   * own notes, that it may be a failure rather than a fact.
+   */
+  private async houseCurrency(
+    restaurantId: string,
+  ): Promise<{ code: string | null; failure: string | null }> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      const failure =
+        `This house's own currency could not be read (${error.message}), so ` +
+        `a document that states none had nothing to fall back to. That is a ` +
+        `FAILED READ, not a house without a currency — re-upload once the ` +
+        `read works, or name the currency on the document.`;
+      this.logger.warn(`houseCurrency: ${failure}`);
+      return { code: null, failure };
+    }
+
+    const code = (data as { currency?: string | null } | null)?.currency ?? null;
+    return { code, failure: null };
   }
 
   /**
@@ -406,7 +483,11 @@ export class DocumentIntakeService {
       poNumber: null,
       vendorName: null,
       vendorAccount: null,
-      currency: "USD",
+      // A document nobody could read states no currency, and it never states
+      // dollars. This was the literal `"USD"` until 2026-09-06 — an unread
+      // file asserting a currency is a claim about a vendor made by a parser
+      // that read nothing at all.
+      currency: "",
       subtotal: null,
       freight: null,
       fuelSurcharge: null,
@@ -504,7 +585,14 @@ export class DocumentIntakeService {
         // that was the defect.
         extraction_model: parsed.extractionModel ?? null,
         event_id: parsed.eventId ?? null,
-        currency: parsed.currency,
+        // NULL, not `''` and never `'USD'`, when the money was refused or held
+        // (founder, 2026-09-06; `invoice-currency.ts`). NULL is the state
+        // `restaurants.currency` and `price_history.currency` already use for
+        // "not recorded" and the one `formatMoney` renders as the sentence
+        // rather than a symbol. An explicit null in the payload overrides the
+        // column's `DEFAULT 'USD'`, which only applies to an OMITTED column —
+        // omitting it here would put the defect straight back.
+        currency: parsed.currency || null,
         subtotal: parsed.subtotal,
         freight: parsed.freight,
         fuel_surcharge: parsed.fuelSurcharge,
@@ -557,7 +645,7 @@ export class DocumentIntakeService {
           extraction_confidence: parsed.confidence,
           extraction_model: parsed.extractionModel ?? null,
           event_id: parsed.eventId ?? null,
-          currency: parsed.currency,
+          currency: parsed.currency || null,
           subtotal: parsed.subtotal,
           freight: parsed.freight,
           fuel_surcharge: parsed.fuelSurcharge,
@@ -930,7 +1018,7 @@ export class DocumentIntakeService {
         // extraction this gateway did not perform must never be attributable to
         // the model it would have used.
         extraction_model: model,
-        currency: parsed.currency,
+        currency: parsed.currency || null,
         subtotal: parsed.subtotal,
         freight: parsed.freight,
         fuel_surcharge: parsed.fuelSurcharge,
@@ -1529,6 +1617,166 @@ export class DocumentIntakeService {
     if (ingested)
       this.logger.log(`document backfill ingested ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * Re-file a document's MONEY after a person has restated its currency.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS LIVES HERE AND NOT ON THE CONTROLLER
+   * ---------------------------------------------------------------------------
+   * `computed_lines_total`, `tie_out_delta` and `ties_out` are the MACHINE'S OWN
+   * PROPOSAL about a document, and ADR 0059's rule is that a proposal is written
+   * by the thing that proposed it — a human's answer is APPENDED, never
+   * substituted. `scripts/check_proposal_preservation.py` names this file as
+   * their declared writer and it FAILED the first version of the currency
+   * restatement, which wrote all three from `documents.controller.ts:820-822`.
+   *
+   * That failure was not a technicality. A controller computing a tie-out is a
+   * second implementation of the arithmetic every other path runs through
+   * `applyTieOut`, and the moment the two disagree the screen shows one verdict
+   * while the review queue sorts on another. The restatement is a HUMAN act
+   * (who, when, previous value — `procurement_document_currency_changes`); the
+   * arithmetic that follows it is the machine's, and it is re-derived here,
+   * through the same `applyTieOut` intake and `editLine` already use.
+   *
+   * ---------------------------------------------------------------------------
+   * WHAT IT DOES, AND WHAT IT DELIBERATELY DOES NOT
+   * ---------------------------------------------------------------------------
+   * It reads the whole parse back off `procurement_documents.extracted` — kept
+   * intact precisely so a document whose money rules 1 or 2 withheld does not
+   * have to be uploaded again — and writes the figures under the currency the
+   * person named. **NOTHING IS CONVERTED.** There is no exchange rate anywhere
+   * in this system and inventing one would be inventing the answer
+   * (`20260905120000_a_house_names_its_money.sql`, rule 3). The vendor's own
+   * numbers go back exactly as the vendor wrote them; only what they are
+   * denominated in has moved.
+   *
+   * It does NOT write `currency`, and it does not write the audit row. Those are
+   * the caller's: the currency is the person's answer and the log is the record
+   * of them giving it, and both must already have landed before this runs.
+   *
+   * `snapshotReadable: false` is returned rather than thrown, and NOTHING is
+   * written in that case. A stored reading this gateway cannot parse leaves a
+   * document labelled and unpriced, which is honest; writing nulls instead would
+   * ERASE figures a document already carried, on an act that was only meant to
+   * re-label them.
+   */
+  async refileMoneyForCurrency(
+    documentId: string,
+    restaurantId: string,
+    currency: string,
+  ): Promise<{
+    snapshotReadable: boolean;
+    sentence: string;
+    document: DocumentMoney | null;
+    lineCount: number;
+    pricedLines: number;
+    linesRefiled: number;
+    lineFailures: string[];
+  }> {
+    const { data: doc, error: readError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, currency, total, extracted")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    // A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). Without this, an outage
+    // and a document with no stored reading both become "could not re-file",
+    // and only one of those is worth re-uploading the paper over.
+    if (readError) throw new Error(`REFILE_READ_FAILED:${readError.message}`);
+    if (!doc) throw new Error("NOT_FOUND");
+
+    const previousTotal = (doc as { total?: number | null }).total ?? null;
+    const refiled = refiledMoney((doc as { extracted?: unknown }).extracted);
+
+    if (!refiled)
+      return {
+        snapshotReadable: false,
+        sentence:
+          `The money could NOT be re-filed: this document's stored reading ` +
+          `(procurement_documents.extracted) is not a parse this gateway can ` +
+          `read, so there are no figures to put back. The currency now says ` +
+          `${currency} and the figures are unchanged — nothing was erased, and ` +
+          `nothing was invented. Upload the document again to price it.`,
+        document: null,
+        lineCount: 0,
+        pricedLines: 0,
+        linesRefiled: 0,
+        lineFailures: [],
+      };
+
+    const pricedLines = refiled.lines.filter(
+      (l) => l.unit_price != null || l.line_total != null,
+    ).length;
+
+    const sentence = refilingSentence({
+      previous: null,
+      next: currency,
+      wasHeld: previousTotal == null,
+      documentTotal: refiled.document.total,
+      lineCount: refiled.lines.length,
+      pricedLines,
+    });
+
+    // Inline literal, never a spread: `check_order_capture_contract.py` can
+    // only read a write whose column names are literal, and a payload it
+    // cannot read is a payload it cannot check for a column the table does
+    // not have.
+    const { error: moneyError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .update({
+        subtotal: refiled.document.subtotal,
+        freight: refiled.document.freight,
+        fuel_surcharge: refiled.document.fuel_surcharge,
+        split_case_fee: refiled.document.split_case_fee,
+        delivery_fee: refiled.document.delivery_fee,
+        deposit_total: refiled.document.deposit_total,
+        tax: refiled.document.tax,
+        other_charges: refiled.document.other_charges,
+        discount_total: refiled.document.discount_total,
+        total: refiled.document.total,
+        computed_lines_total: refiled.document.computed_lines_total,
+        tie_out_delta: refiled.document.tie_out_delta,
+        ties_out: refiled.document.ties_out,
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (moneyError) throw new Error(`REFILE_WRITE_FAILED:${moneyError.message}`);
+
+    // The lines carry their own money and it was withheld with the header's.
+    // Written one at a time and each failure NAMED: a partial re-filing
+    // reported as a success would leave a document priced in the header and
+    // blank in the body, which reads as a vendor who billed a total for
+    // nothing.
+    const lineFailures: string[] = [];
+    for (const l of refiled.lines) {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({
+          unit_price: l.unit_price,
+          line_total: l.line_total,
+          allowance: l.allowance,
+          deposit: l.deposit,
+        })
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId)
+        .eq("line_no", l.line_no);
+      if (error) lineFailures.push(`line ${l.line_no}: ${error.message}`);
+    }
+
+    return {
+      snapshotReadable: true,
+      sentence,
+      document: refiled.document,
+      lineCount: refiled.lines.length,
+      pricedLines,
+      linesRefiled: refiled.lines.length - lineFailures.length,
+      lineFailures,
+    };
   }
 
   /**

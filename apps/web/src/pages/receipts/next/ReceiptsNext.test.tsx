@@ -23,10 +23,13 @@ const api = vi.hoisted(() => ({
   linkLine: vi.fn(() => Promise.resolve()),
   verify: vi.fn(() => Promise.resolve()),
   restaurantId: 'rest-A' as string | null,
+  /** The caller's role at this house, for rule 3's control. */
+  role: 'manager' as 'owner' | 'manager' | 'staff' | null,
+  restateCurrency: vi.fn(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: api.restaurantId, user: null }),
+  useAuth: () => ({ activeRestaurantId: api.restaurantId, activeRole: api.role, user: null }),
   // `useMudavymDesign` reads the CONTEXT OBJECT directly (not the hook), so a
   // mock that exports only `useAuth` makes any gated affordance on this page
   // throw at render. DocView gained one with ADR 0104 slice 2's
@@ -47,6 +50,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       verify: api.verify,
       match: vi.fn(),
       linkLine: api.linkLine,
+      restateCurrency: api.restateCurrency,
     },
   };
 });
@@ -78,6 +82,13 @@ function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
     doc_number: 'INV-88',
     doc_date: '2026-08-28',
     status: 'needs_review',
+    // The document's OWN money, stated. `procurement_documents.currency` has
+    // always been in the payload and this fixture simply never carried it,
+    // which is why every figure this page printed wore a hardcoded dollar sign
+    // (fixed 2026-09-06; `rc2-format.ts`'s `fmtMoney`). A fixture with no
+    // currency now renders "(currency not recorded)", which is the honest
+    // output and is asserted directly below.
+    currency: 'USD',
     total: 412.5,
     freight: null,
     fuel_surcharge: null,
@@ -139,6 +150,17 @@ beforeEach(() => {
     tieOut: { computedLinesTotal: 202.4, tieOutDelta: -210.1, tiesOut: false },
   });
   api.verify.mockClear();
+  api.role = 'manager';
+  api.restateCurrency.mockReset();
+  api.restateCurrency.mockResolvedValue({
+    currency: 'TRY',
+    previousCurrency: null,
+    sentence:
+      'Currency restated from NOT RECORDED (its money was withheld) to TRY. Its stated total of 412.50 is now TRY.',
+    moneyRefiled: true,
+    linesRefiled: 1,
+    lineFailures: [],
+  });
 });
 
 async function openFirstDoc() {
@@ -373,5 +395,85 @@ describe('ReceiptsNext', () => {
     api.editLine.mockClear();
     fireEvent.click(undo);
     await vi.waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }));
+  });
+});
+
+/**
+ * RULE 3, AND THE MONEY THAT NAMES ITS CURRENCY — founder, 2026-09-06.
+ *
+ * The page printed a hardcoded `$` on every figure until this pass, including
+ * on the two TRY invoices production already holds. These pin the three things
+ * that had to become true: money states its currency, a HELD document says so
+ * in the server's own words, and the deliberate change is a manager's act that
+ * staff can see and cannot take.
+ */
+describe('ReceiptsNext — what money this invoice is in', () => {
+  it('prints the DOCUMENT\'s own currency, not a dollar sign', async () => {
+    api.queue = [doc({ currency: 'TRY', total: 412.5 })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(container.textContent).toContain('Filed in TRY - Turkish lira');
+    expect(container.textContent).not.toContain('$412.50');
+  });
+
+  it('says "currency not recorded" rather than assuming one', async () => {
+    api.queue = [doc({ currency: null, total: 412.5 })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(container.textContent).toContain('412.50 (currency not recorded)');
+    expect(container.textContent).toContain('nothing on this document is priced');
+  });
+
+  it('renders the HOLD in the server\'s own words, verbatim', async () => {
+    const held =
+      'MONEY HELD, NOT FILED. This document would be filed under USD, and the model read "\u20BA" at beside the grand total, which is TRY and not USD.';
+    api.queue = [doc({ currency: null, total: null, notes: held })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    // Both currencies AND the location, because the client cannot reconstruct
+    // any of the three.
+    expect(container.textContent).toContain('MONEY HELD, NOT FILED');
+    expect(container.textContent).toContain('beside the grand total');
+  });
+
+  it('restates the currency and shows what the server said moved', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
+      target: { value: 'TRY' },
+    });
+    fireEvent.click(screen.getByText('Restate the currency'));
+    await vi.waitFor(() =>
+      expect(api.restateCurrency).toHaveBeenCalledWith('d1', 'TRY', undefined),
+    );
+    expect(await screen.findByText(/Currency restated from NOT RECORDED/)).toBeTruthy();
+  });
+
+  it('disables the control for staff WITH the sentence, and never hides it', async () => {
+    api.role = 'staff';
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    // Visible, and refused in words that name who can do it.
+    const picker = screen.getByLabelText("Currency this invoice is denominated in");
+    expect((picker as HTMLSelectElement).disabled).toBe(true);
+    expect(container.textContent).toContain('You are signed in as staff at this house');
+    expect(container.textContent).toContain('Ask a manager or an owner');
+    expect(api.restateCurrency).not.toHaveBeenCalled();
+  });
+
+  it('says a failed restatement failed, in the gateway\'s words', async () => {
+    api.restateCurrency.mockRejectedValue({
+      response: { status: 500, data: { message: 'the change could not be recorded' } },
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
+      target: { value: 'EUR' },
+    });
+    fireEvent.click(screen.getByText('Restate the currency'));
+    expect(await screen.findByText(/the change could not be recorded/)).toBeTruthy();
   });
 });

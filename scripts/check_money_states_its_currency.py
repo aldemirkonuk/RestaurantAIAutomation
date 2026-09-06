@@ -73,6 +73,13 @@ ALLOWLIST: dict[str, str] = {
     # panel can be asserted to print the stated one and never a default. The
     # literal is the test's premise, not a page's assumption (2026-09-05, p4bj).
     "apps/web/src/pages/connections/next/DistributorFeedPanel.test.tsx": "a fixture that states the vendor's own currency so the assertion can check the panel prints it",
+    # The same shape one page over. `fmtMoney` stopped hardcoding `$` on
+    # 2026-09-06 (founder's currency decision, rule 1), so the receipts fixture
+    # has to STATE the document's currency for the money assertions to have a
+    # premise at all. The sibling test in the same file uses a TRY document and
+    # asserts the page prints `TRY` and NOT `$412.50` — which is the assertion
+    # this literal exists to make possible (2026-09-06, p4bp).
+    "apps/web/src/pages/receipts/next/ReceiptsNext.test.tsx": "a fixture that states the document's own currency so the assertion can check the page prints the stated one and never a default",
     # The table itself: naming USD is what it is for.
     "apps/web/src/lib/currency.ts": "the ISO 4217 table and the formatter that refuses to assume one",
     "apps/web/src/lib/countries.ts": "the one country table: `currency: 'USD'` there is Ecuador, El Salvador and the United States, which is the fact the table exists to hold",

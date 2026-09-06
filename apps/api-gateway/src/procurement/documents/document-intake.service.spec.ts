@@ -303,3 +303,144 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     });
   });
 });
+
+/**
+ * THE MACHINE'S OWN COLUMNS ARE WRITTEN BY THE MACHINE'S OWN WRITER.
+ *
+ * `computed_lines_total`, `tie_out_delta` and `ties_out` are the extraction's
+ * proposal about a document, and ADR 0059's rule is that a proposal is written
+ * by the thing that proposed it. `scripts/check_proposal_preservation.py`
+ * declares THIS file their writer, and it failed the first version of the
+ * currency restatement, which wrote all three from `documents.controller.ts`.
+ *
+ * The controller spec asserts the DELEGATION. These assert the write itself,
+ * and the one property that made the move worth making: the tie-out is
+ * re-derived through `applyTieOut`, so a restated document's arithmetic cannot
+ * disagree with an extracted one's.
+ */
+describe("DocumentIntakeService.refileMoneyForCurrency", () => {
+  const SNAPSHOT = {
+    docType: "invoice",
+    currency: "",
+    subtotal: 9172,
+    freight: 120,
+    depositTotal: 180,
+    tax: 1834.4,
+    total: 11306.4,
+    // Deliberately WRONG on the snapshot, to prove they are not carried over.
+    computedLinesTotal: 999999,
+    tieOutDelta: 0,
+    tiesOut: true,
+    lines: [
+      {
+        lineNo: 1,
+        qty: 12,
+        uom: "bottle",
+        packSize: 1,
+        qtyBottles: 12,
+        freeGoodsQty: 0,
+        unitPrice: 142,
+        lineTotal: 1704,
+        deposit: 60,
+        allowance: null,
+        priceBaseQty: null,
+        priceBaseUom: null,
+      },
+    ],
+  };
+
+  function build(opts: { doc?: any; readError?: any; writeError?: any } = {}) {
+    const updates: Array<{ table: string; row: any }> = [];
+    const client = {
+      from(table: string) {
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          maybeSingle: async () => ({
+            data:
+              opts.doc === undefined
+                ? {
+                    id: "doc-9",
+                    currency: null,
+                    total: null,
+                    extracted: SNAPSHOT,
+                  }
+                : opts.doc,
+            error: opts.readError ?? null,
+          }),
+          update(row: any) {
+            updates.push({ table, row });
+            const u: any = {};
+            u.eq = () => u;
+            u.then = (res: any) => res({ error: opts.writeError ?? null });
+            return u;
+          },
+        };
+        return q;
+      },
+    };
+    const service = new DocumentIntakeService(
+      { getClient: () => client } as any,
+      { available: () => false, extract: jest.fn() } as any,
+      {} as any,
+    );
+    return { service, updates };
+  }
+
+  it("writes the tie-out columns itself, re-derived and not carried over", async () => {
+    const { service, updates } = build();
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+
+    const doc = updates.find((u) => u.table === "procurement_documents")!;
+    expect(doc.row.total).toBe(11306.4);
+    expect(doc.row.tax).toBe(1834.4);
+    // 1704 goods + 120 freight + 180 deposit + 1834.40 tax = 3838.40 against a
+    // stated 11306.40, so it does NOT tie out — and the snapshot's stale
+    // `computedLinesTotal: 999999` / `tiesOut: true` are gone.
+    expect(doc.row.computed_lines_total).toBe(1704);
+    expect(doc.row.ties_out).toBe(false);
+
+    const line = updates.find(
+      (u) => u.table === "procurement_document_lines",
+    )!;
+    expect(line.row.unit_price).toBe(142);
+    expect(line.row.deposit).toBe(60);
+
+    expect(out.snapshotReadable).toBe(true);
+    expect(out.linesRefiled).toBe(1);
+    // Nothing was converted, and the sentence says so.
+    expect(out.sentence).toContain("no exchange rate");
+  });
+
+  it("writes NOTHING when the stored reading cannot be parsed", async () => {
+    const { service, updates } = build({
+      doc: { id: "doc-9", currency: "USD", total: 400, extracted: { docType: "invoice" } },
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "EUR");
+
+    // The document keeps the figures it already had. Writing nulls here would
+    // ERASE money on an act that was only meant to re-label it.
+    expect(updates).toHaveLength(0);
+    expect(out.snapshotReadable).toBe(false);
+    expect(out.sentence).toContain("nothing was erased");
+  });
+
+  it("tells a failed READ apart from a document with no reading (ADR 0067)", async () => {
+    const { service } = build({ doc: null, readError: { message: "connection reset" } });
+    await expect(
+      service.refileMoneyForCurrency("doc-9", "rest-1", "TRY"),
+    ).rejects.toThrow(/REFILE_READ_FAILED:connection reset/);
+  });
+
+  it("scopes both reads and writes to the tenant", async () => {
+    // The `.eq()` chain is what carries `restaurant_id`; a route that dropped
+    // it would re-file another house's document. Asserted by the write landing
+    // at all through a chain that requires two eq hops before it resolves.
+    const { service, updates } = build();
+    await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+    expect(updates.map((u) => u.table)).toEqual([
+      "procurement_documents",
+      "procurement_document_lines",
+    ]);
+  });
+});
