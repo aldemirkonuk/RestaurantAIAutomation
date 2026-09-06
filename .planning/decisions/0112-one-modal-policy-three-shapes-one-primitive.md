@@ -375,6 +375,12 @@ structurally); one security ledger for step-up, break-glass and grants or three 
   tamper-evident `security_events` chain that the trail and the owners' notices read from; a
   guard asserts every ceremony writes its row.
 
+The build brief that carries all of this to whoever builds it is
+`sketches/102-modal-census/BUILD-PROMPT.md` — generated from the census, so the work list cannot
+drift from the drawing: the rules, the primitive's exact contract, the non-modal class, the
+ceremonies, five packets (10 migrations · 12 owed acts · 7 targets · 15 deletions · the
+behaviours) and what "done" means for one overlay.
+
 With these, F12 is closed. The build order this implies: the ledger first (everything else
 writes to it), then the authority rule and grants, then step-up, then the seal ceremony on both
 platforms together, then break-glass.

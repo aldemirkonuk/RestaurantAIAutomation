@@ -58,6 +58,7 @@ page's ground). Filter by shape and by status.
 - **`census.py`** — the source of truth. Edit here.
 - **`census.json`** — the same data for tools (the page-doc subsections are generated from it).
 - **`build.py`** — the builder.
+- **`BUILD-PROMPT.md`** — the LLM-ready brief for building these overlays: the rules, the primitive's exact contract, the non-modal class, the ceremonies, five work packets generated from the census, and what "done" means. Paste it whole into a fresh session, or hand one packet to one agent.
 - **`research/`** — the research behind the Behaviours section: three angles (A–C), the implementation references (D), the adversary's verdicts (E), the security ceremonies (F) and the lead's own pass over them (G), the deep pass on the assistant's and tool-write ceremonies (H) and its check (I), plus the adversary's brief.
 
 ## What to look for

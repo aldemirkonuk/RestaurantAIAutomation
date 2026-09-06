@@ -437,6 +437,7 @@ page's ground). Filter by shape and by status.
 - **`census.py`** — the source of truth. Edit here.
 - **`census.json`** — the same data for tools (the page-doc subsections are generated from it).
 - **`build.py`** — the builder.
+- **`BUILD-PROMPT.md`** — the LLM-ready brief for building these overlays: the rules, the primitive's exact contract, the non-modal class, the ceremonies, five work packets generated from the census, and what "done" means. Paste it whole into a fresh session, or hand one packet to one agent.
 - **`research/`** — the research behind the Behaviours section: three angles (A–C), the implementation references (D), the adversary's verdicts (E), the security ceremonies (F) and the lead's own pass over them (G), the deep pass on the assistant's and tool-write ceremonies (H) and its check (I), plus the adversary's brief.
 
 ## What to look for
@@ -475,6 +476,298 @@ count once each. Widths and the close-in-words rule come from `components/mudavy
 """
     open(os.path.join(HERE, "README.md"), "w").write(md)
 
+
+# ─────────────────────────────────────────── the build prompt ──
+PROMPT_HEAD = """# Build prompt — the overlays of Mudavym
+
+*Generated from `census.py` by `build.py`. Edit the census or `build.py`, never this file.*
+*Paste the whole file into a fresh Claude Code session at the repo root, or hand one `##`
+packet to one agent. Every number and path below was read from the tree on {date}.*
+
+---
+
+## 0. Who you are, and what you are building
+
+You are building the overlay layer of **Mudavym**, an autonomous restaurant-operations platform
+(a Vite + React SPA in `apps/web`, a NestJS gateway in `apps/api-gateway`, Supabase Postgres, a
+React Native app in `apps/mobile`). An "overlay" is anything that appears over the page: a record's
+detail, a question, a menu, a preview, a toast.
+
+The policy is **locked** — [`.planning/decisions/0112-one-modal-policy-three-shapes-one-primitive.md`](../../decisions/0112-one-modal-policy-three-shapes-one-primitive.md).
+You are not designing it. You are building what it decided, to the founder's bar:
+
+> *"everything we touch, they have must all fully serve to their purpose to their max capacity
+> meaning functionality, endpoints, UI UX, smoothness, and most importantly the design."*
+
+A re-skin of an old modal fails that bar. So does a beautiful surface over a dead endpoint.
+
+**Read before you write anything** (in this order, and do not skip the third):
+
+1. `.planning/decisions/0112-one-modal-policy-three-shapes-one-primitive.md` — the policy, the
+   twelve founder rulings, the security fit per act.
+2. `apps/web/src/components/mudavym/Sheet.tsx` and `sheet.css` — the primitive you are using.
+   Its header comments carry the reasoning; the numbers below are read from it.
+3. `.planning/sketches/102-modal-census/index.html` — **every overlay drawn**, at the primitive's
+   real widths, with its source and the reason for its shape. Open it. Your packet is drawn there.
+4. `.planning/06-pages/<page>.md` §1a, §9, §13 and the `Overlays` subsection — the page you are
+   touching, in the house's own words.
+
+---
+
+## 1. The rules. Break one and the work is rejected
+
+1. **Three shapes, chosen by what the reader must do next.** An object gets a **Sheet** (right,
+   440px; 640 with `wide` for a letter). A question gets a **Panel** (centred, 620px). A choice
+   gets a **Popover** (anchored, 320px). Never by how much content there is, never by which page.
+2. **One primitive.** `components/mudavym/Sheet.tsx` exports `Sheet`, `Panel`, `Popover`. It owns
+   focus (moves in on open, cycles on Tab, returns to the opener on close), Esc, the counted body
+   scroll lock, the scrim, the portal and the ground. **Never hand-roll `fixed inset-0`.** Never
+   add a fourth modal shape.
+3. **The seal is rationed.** A real commitment (approving an order, releasing a payment, writing
+   off stock, recording a count, publishing a week, sending a letter) ends with `HoldToApprove` —
+   the wax. Bulk gets a plain button. **The seal never sits in a Popover**: an approval reached
+   from the bell opens the Panel first.
+4. **The close control is words** (`closeLabel`, default "Close"), never an X. The house never
+   invented a glyph and does not start now.
+5. **AI proposes, a person applies.** A suggestion is a layer on the record, never an
+   already-changed cell. The person's words stay ink; the engine's stay grey, permanently.
+   A draft never looks sent.
+6. **Absence is never health.** No invented zero, no placeholder figure, no cheerful empty state
+   that hides a missing read. Every figure names the rows it summed; every flag names the rule it
+   tripped; when the book holds nothing, the overlay says so in words.
+7. **A page with its flag off renders byte-for-byte as it always has.** Every house branch is
+   gated. `shellOverlays.test.tsx` pins the literal legacy class strings — if you change a legacy
+   branch, that test must fail, and you must stop.
+8. **One chromatic colour** (İznik teal, `--seal`) on paper or Warm Charcoal ink. **No emoji,
+   anywhere** — a guard checks. Tokens only, never a literal hex.
+9. **The house idiom is expansion.** If the reader stays on the list, expand the row in place and
+   show the working; open a surface only when the reader leaves the list behind.
+10. **Ceremony is seconds.** Hold is intent; a device prompt is identity; never stack a third
+    confirmation. The reason field appears only on break-glass.
+
+---
+
+## 2. The primitive, exactly
+
+```tsx
+import {{ Sheet, Panel, Popover }} from '@/components/mudavym';
+
+<Sheet
+  open={{!!row}} onClose={{() => setRow(null)}}
+  label="Order 118"                 // required: an accessible name; an overlay with no name is a room with no sign
+  eyebrow="Vendor answers"          // mono, uppercase, seal-deep — what kind of thing this is
+  title="Öküzgözü 2022"             // Fraunces — the product speaking
+  action={{<button …/>}}              // header-right, left of Close
+  footer={{<span>…</span>}}           // the quiet line under the body
+  wide                              // 640 instead of 440. A LETTER only (sketch 100). A third width needs an ADR.
+  closeLabel="Close"                // words
+  initialFocusRef={{ref}}             // defaults to the first focusable
+  zIndex={{100}}                      // default 100
+>{{children}}</Sheet>
+```
+
+`Popover` additionally takes `anchorRef` (required) and `width` (default 320), and is **non-modal**
+by default. `modal` on a Popover restores the trap, the lock and the dim — the system has **one**
+such exception, `components/team/InviteTeamDialog.tsx` (a form that commits, anchored under its
+button). The studio invite reuses that same component with a second opener; a second *component*
+wanting `modal` is the signal to collapse the policy, and you stop and ask.
+
+**Geometry and motion, from `sheet.css` and `lib/mudavym/motion.ts`:**
+
+| Shape | Width | Enter | Token | ms |
+|---|---|---|---|---|
+| Sheet | 440 (`wide` 640), full-bleed under 640px viewport | `translateX(28px)` → none | `tuck` | 300 |
+| Panel | `min(620px, 100vw − 32px)`, `margin-top: 10vh`, `max-height: 76vh` | `translateY(6px)` → none | `settle` | 320 |
+| Popover | 320, `max-height: 72vh`, placed 10px under the anchor | `translateY(4px)` → none | `ink` | 160 |
+
+`prefers-reduced-motion` renders **no** animation, not a shorter one. The panel's flex is
+`align-items: flex-start` and the body is `flex: 0 1 auto` — both load-bearing: `stretch` made an
+overlay holding one sentence render as 700px of empty paper.
+
+**The ground is a DOM fact.** Tokens live on `.mudavym`, never `:root`, so a portalled node has no
+tokens unless its own root carries `.mudavym` and, on charcoal, `data-ground` on that same element.
+The primitive resolves most-specific-first: an explicit `ground` prop → `MudavymGroundContext` →
+the nearest `.mudavym` ancestor of the opener → the shell store. Each reader returns `null` rather
+than a paper default, because a default there is an absence reported as an answer.
+
+**The shell gate.** `lib/mudavym/shellGround.ts` is a tiny external store `PageGate` claims while a
+`next` tree is mounted. The eight shared shell overlays render the house shape only while it is on.
+Nothing else writes to that store.
+
+**The flag.** Every rebuilt page sits behind `mudavym_design_<page>`, a per-restaurant row in
+`restaurant_feature_flags` read through `lib/mudavym/useMudavymDesign.ts` (`MUDAVYM_PAGES`). The
+dev override is `localStorage['mudavym.design.<page>'] = '1'`. **Adding a slug shifts the readBy
+anchor** — run `python3 scripts/check_flag_readby_anchors.py` after any `MUDAVYM_PAGES` edit.
+
+---
+
+## 3. The non-modal class (decided 2026-09-05, fork F8)
+
+Six surfaces are **not shapes** and do not count against the three. Two constraints bind all six:
+**no scrim and no focus trap; never a form and never the seal.**
+
+- **Peek** — 400px beside the list. Space opens, ↑↓ step rows, Enter promotes it to the Sheet, Esc
+  closes. The list stays live behind it.
+- **Hover card** — 300px on a referenced name; dismissed by moving away; its own menu is
+  open/copy-link only.
+- **Undo toast** — the act fires, the way back is offered for a few seconds.
+- **Bulk bar** — `x` toggles, `⇧` ranges, `⌘A` all, `Esc` clears; a plain button, never wax.
+- **Bottom sheet** — the Sheet's phone form, resting at detents (peek · half · full; the grabber
+  appears only when there is more than one height). Stacked sheets cap at **three**, with a
+  breadcrumb.
+- **The expanded row** — the house idiom; rule 9 above.
+
+**Undo-after applies to a closed list** (fork F10): dismiss an entry, archive a thread, remove a
+shift, a note, and a door count corrected within ten minutes. **Money, sends and ledger rows keep
+the seal before.** Adding to that list is an ADR amendment, never a builder's call.
+
+---
+
+## 4. Authority and the ceremonies (forks F11–F12)
+
+- **The authority rule.** One approval when the approver holds valid authority — an owner, a
+  manager, or a person the owner authorized — and **double approval otherwise**. Separation of
+  duties survives inside it: whoever confirms a vendor's bank detail cannot release the first
+  payment to it.
+- **Every security change is told to every owner** — a bank detail, an authority grant or
+  revocation, a passcode reset, a limit change, a device added. A producer, not a ceremony.
+- **Step-up** before money moves or a config applies when the session's last verification is older
+  than two hours, read from a timestamp the gateway persists per session (Supabase has no
+  `auth_time`; its JWT carries `amr`). A successful seal re-arms the window.
+- **The seal proves who**: a house-owned WebAuthn ceremony — the hold begins, the server mints a
+  single-use challenge encoding `hash(nonce ‖ amount ‖ payee ‖ order ‖ expiry)`, the release calls
+  `navigator.credentials.get` with `userVerification: "required"`, the server verifies and consumes
+  it. Web and mobile ship together. **Never build the mobile seal on `expo-local-authentication`** —
+  a device-local prompt proves nothing to a server.
+- **Break-glass**: owner-only, a written reason, every owner told at the moment, marked in the
+  trail, reviewed within 48 hours by another owner, and the outcome told.
+- **Grants** are rows: grantor, grantee, scope, limit, expiry, revoked-at, with *granted by* visible
+  wherever the authority is used; expiry enforced server-side; grantor ≠ approver enforced in the
+  database. Any owner may revoke any grant.
+- **One tamper-evident `security_events` ledger.** Step-up verifications, break-glass uses and
+  grant checks all write to it; the trail and the owners' notices read from it.
+
+---
+
+## 5. Build order
+
+1. **The ten migrations** — legacy overlays rendering *inside* a house-flagged page today. Eight
+   are on `/inventory`, whose flag turns on the same component (`App.tsx:311`), so a tenant with
+   that flag on already sees them. This is the only packet with a live inconsistency in it.
+2. **The twelve owed acts** — what a rebuilt page cannot yet do that its legacy page could.
+3. **The seven targets** — pages not yet rebuilt whose overlays take their shape when they are.
+4. **The fifteen deletions** — after 1–3 land, so nothing is deleted before its replacement exists.
+5. **The behaviours** — the non-modal class and the ceremonies, each its own ADR-amendment-sized
+   piece of work.
+
+---
+"""
+
+PROMPT_TAIL = """
+---
+
+## {n}. What "done" means for one overlay
+
+Every one of these, for every overlay you touch. A packet with any box unticked is reported as
+unfinished, never as done.
+
+- [ ] **The shape is the one the census gives it**, and the reason still holds. If you believe it
+      is wrong, say so in the report and stop — do not quietly build a different shape.
+- [ ] **On the primitive.** No `fixed inset-0`, no private Esc handler, no second focus effect, no
+      hand-rolled scrim. The close control is words.
+- [ ] **The endpoint is real and exercised.** Name the route and the controller `file:line` in the
+      report. A surface over a route that does not exist is the failure this house calls hollow.
+- [ ] **Four states, honestly**: empty, loading, error, permission-denied. The error says what did
+      not happen in words the operator can act on ("The entry was not saved. It is unchanged."),
+      never a toast that implies a write that did not land.
+- [ ] **Provenance where a figure appears.** The rows it summed, the date it was read, who wrote it.
+- [ ] **Motion is a house token** (`tuck` · `settle` · `ink`); reduced motion renders none.
+- [ ] **Both grounds.** Paper and charcoal, checked, not assumed — the portal carries the ground.
+- [ ] **Keyboard.** Tab cycles inside; Esc closes; focus returns to the opener; the anchored
+      surfaces are reachable without a mouse.
+- [ ] **Tests.** The overlay's own spec plus a regression that fails against the pre-fix code —
+      prove it by running the test against a copy (`git show HEAD:path > /tmp/x`), **never by
+      stashing or resetting the shared worktree**.
+- [ ] **Flag off is byte-identical.** `shellOverlays.test.tsx` and the page's own legacy render.
+- [ ] **The page doc is updated in the same session** — §1a features, §9 gaps, the Motions table,
+      and the `Overlays` subsection via `python3 .planning/sketches/102-modal-census/build.py --docs`
+      after editing `census.py`. Work that is not documented did not happen.
+
+## {n2}. Verify, then report
+
+```bash
+cd apps/web && pnpm run typecheck && pnpm run lint && pnpm run test:run -- <your spec path>
+cd ../api-gateway && pnpm run typecheck && pnpm run test -- <your spec path>
+python3 scripts/check_flag_readby_anchors.py      # after any MUDAVYM_PAGES edit
+python3 scripts/check_citation_pairing.py && python3 scripts/check_adr_numbers_unique.py
+```
+
+Run **both** tsconfigs (the app config and `tsconfig.spec.json`) before you claim green, and paste
+**your own** measured counts — never a number you did not watch print. Screenshot the overlay on
+both grounds and say which theme each shot is.
+
+**Report honestly.** If you narrowed scope, skipped a check, or could not verify something, say so
+in the first three lines. A partial result reported as complete is the one unrecoverable failure
+here.
+
+## {n3}. When you hit a fork
+
+Some of these packets will raise a question only the founder can answer (a shape that does not fit,
+an act with no home, a ceremony that would slow a floor down). **Ask it the moment you find it**,
+with the options and their costs and your recommendation — do not default it, do not batch it to
+the end, and do not stop the rest of the work while you wait. Then record the answer in ADR 0112
+and in `census.py`, and rebuild.
+
+## {n4}. Never
+
+- Never `git add -A` or `git commit -a` — several sessions drive this repo at once; commit with
+  explicit paths.
+- Never `git stash` — the stash is repo-global across every worktree.
+- Never edit a generated file (`index.html`, `census.json`, `README.md`, a page doc's `Overlays`
+  table). Edit `census.py` or `build.py` and rebuild.
+- Never delete a legacy modal before the act it carries exists somewhere else.
+- Never invent a figure, a zero, or a success message for a write that did not land.
+"""
+
+def packet_lines(status):
+    out = []
+    for pg in C.PAGES:
+        rows = [o for o in pg["overlays"] if o["status"] == status]
+        if not rows: continue
+        out.append(f"\n**`{pg['route']}`**" + (f" — flag `{pg['flag']}`" if pg["flag"] else "") + "\n")
+        for o in rows:
+            shape = (o["shape"] or "—") + (" · wide" if o["wide"] else "") + (" · modal" if o["modal"] else "") + (" · seal" if o["seal"] else "")
+            note = (o["why"] if o["status"] in DRAWN else (o["went"] or "")).replace("<b>", "**").replace("</b>", "**")
+            out.append(f"- **{o['name']}** — {shape}. {note}\n  `{o['source']}`")
+    return "\n".join(out)
+
+def write_build_prompt():
+    c, _ = counts()
+    body = [PROMPT_HEAD.format(date=C.META["date"])]
+    packs = [
+        ("Packet 1 — the ten migrations", "migrate",
+         "These render legacy markup inside a house-flagged page **today**. Move each onto the primitive, "
+         "shape as given, copy and behaviour preserved word for word unless the census says otherwise. "
+         "`/inventory` is the urgent one: its flag turns on the same component, so a tenant with it on sees these now."),
+        ("Packet 2 — the twelve owed acts", "owed",
+         "A rebuilt page cannot do something its legacy page could. Build the act, not a shell: the endpoint, the four "
+         "states, the provenance, the ceremony. Several need a gateway route that does not exist yet — say so and build it."),
+        ("Packet 3 — the seven targets", "target",
+         "Pages not yet rebuilt. Do not rebuild the page to do these; take the shape when the page's own rebuild happens, "
+         "and leave the drawing as the contract."),
+        ("Packet 4 — the fifteen deletions", "delete",
+         "Files nobody imports, or whose act now lives somewhere built. Before deleting: grep the basename across "
+         "`apps/web/src` to confirm nothing imports it, and state in the commit what the act does now instead."),
+        ("Packet 5 — the behaviours", "pattern",
+         "The non-modal class and the ceremonies, drawn in the sketch. Each is a piece of foundation work, not a page "
+         "change: build it once in `components/mudavym`, prove it with its own spec, then adopt it page by page."),
+    ]
+    for i, (title, status, blurb) in enumerate(packs, start=6):
+        body.append(f"\n## {i}. {title}\n\n{blurb}\n{packet_lines(status)}\n")
+    n = 6 + len(packs)
+    body.append(PROMPT_TAIL.format(n=n, n2=n + 1, n3=n + 2, n4=n + 3))
+    open(os.path.join(HERE, "BUILD-PROMPT.md"), "w").write("\n".join(body))
+
 MARK = "<!-- sketch-102-overlays -->"
 def doc_section(doc, pages):
     lines = [f"### Overlays, 2026-09-05 (sketch 102 · ADR 0112)", "", MARK,
@@ -512,7 +805,7 @@ def apply_docs():
         open(path, "w").write(s); print("  inserted into", doc)
 
 if __name__ == "__main__":
-    write_json(); write_index(); write_readme()
+    write_json(); write_index(); write_readme(); write_build_prompt()
     c, shapes = counts(); print("counts:", dict(c), "drawn shapes:", dict(shapes))
     if "--artifact" in sys.argv: write_artifact(sys.argv[sys.argv.index("--artifact") + 1]); print("artifact written")
     if "--docs" in sys.argv: apply_docs()
