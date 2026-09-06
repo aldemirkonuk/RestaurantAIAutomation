@@ -37,6 +37,7 @@ export {
   type OverlayShape,
 } from './Sheet';
 export { Stub, type StubProps } from './Stub';
+export { Denied, Refused, type DeniedProps, type RefusedProps } from './Denied';
 export {
   SheetStackProvider,
   useSheetStack,

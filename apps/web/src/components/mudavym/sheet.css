@@ -870,3 +870,55 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
+
+/* ============================================================
+   Permission-denied, and what did not happen
+   ============================================================
+   Ink and a rule, never a second colour: the house has exactly one chromatic
+   colour and it is the seal (ADR 0042). A refusal earns its attention from
+   the words and the rule, and the seal is reserved for what was actually bound.
+*/
+.mdv-denied {
+  padding: 9px 12px 10px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.mdv-denied__head {
+  display: block;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 3px;
+}
+.mdv-denied__body {
+  margin: 0;
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+.mdv-denied__grant {
+  margin: 5px 0 0;
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* The server's own sentence, and the one thing to do. Both step back from the
+   headline, which is the clause that answers the reader's real question. */
+.mdv-refused__because {
+  margin: 4px 0 0 !important;
+  font-size: 11.5px !important;
+  color: var(--ink-2) !important;
+}
+.mdv-refused__next {
+  margin: 4px 0 0 !important;
+  font-size: 11.5px !important;
+  color: var(--ink-3) !important;
+}

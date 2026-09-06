@@ -63,6 +63,7 @@ import {
 } from '../../lib/mudavym/shellGround';
 import { ink, settle, tuck, useReducedMotion, animate, type MotionToken } from '../../lib/mudavym/motion';
 import { useSheetStack } from './SheetStack';
+import { Denied, type DeniedProps } from './Denied';
 import './sheet.css';
 
 /* ── Fraunces ─────────────────────────────────────────────────────────────
@@ -387,6 +388,15 @@ export interface OverlayProps {
    * nearest. `Sheet` only; ignored on the desktop form.
    */
   detents?: readonly Detent[];
+  /**
+   * The reader may look at this and may not change it — ADR 0112's authority
+   * rule, drawn (finder B, D24: none of the sixty live rows draws this state).
+   *
+   * Given, the action row is replaced by the sentence naming who can grant it.
+   * The body is untouched: looking is exactly what is still allowed, and hiding
+   * the record would answer a different question from the one being asked.
+   */
+  denied?: Pick<DeniedProps, 'who' | 'grant' | 'verb'>;
   /** Stack order. Default 100. */
   zIndex?: number;
   /** Element to focus on open. Defaults to the first focusable in the panel. */
@@ -491,6 +501,7 @@ function OverlayRoot({
   wide,
   dirty = false,
   onTear,
+  denied,
   spine,
   detents = DETENTS,
   scrim,
@@ -915,6 +926,7 @@ function OverlayRoot({
       data-modal={modal ? 'true' : undefined}
       data-scrim={dimmed ? 'on' : 'off'}
       data-dirty={dirty ? 'true' : undefined}
+      data-denied={denied ? 'true' : undefined}
       data-form={bottom ? 'bottom' : undefined}
       data-detent={bottom ? detent : undefined}
       style={{ zIndex }}
@@ -986,7 +998,16 @@ function OverlayRoot({
             {weightNote}
           </p>
         ) : null}
-        {footer ? <div className="mdv-ovl__foot">{footer}</div> : null}
+        {/* The action row, or the reason there is not one. Never both: an
+            authority the reader does not hold beside a control they cannot use
+            is the shape that makes people believe the software is broken. */}
+        {denied ? (
+          <div className="mdv-ovl__foot">
+            <Denied {...denied} />
+          </div>
+        ) : footer ? (
+          <div className="mdv-ovl__foot">{footer}</div>
+        ) : null}
       </div>
     </div>,
     document.body,
