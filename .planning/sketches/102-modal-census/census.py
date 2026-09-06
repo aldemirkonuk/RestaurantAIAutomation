@@ -27,7 +27,8 @@ def P(route, slug, doc, verdict, overlays, rebuilt=True, flag=None, alias=None):
 # ─────────────────────────────────────────── the shell ──
 P("shell", "shell", None,
   "Nine overlays render over every page. Eight wear the house shape while a rebuilt page is on "
-  "screen and their legacy markup otherwise (lib/mudavym/shellGround.ts). Two of them now exist twice.",
+  "screen and their legacy markup otherwise (lib/mudavym/shellGround.ts). The bell and the user menu "
+  "existed twice; HouseHeader's survive and Header.tsx's house branch is deleted (F6, 2026-09-05).",
   rebuilt=True, overlays=[
   O("Command palette", "built", "panel", title="Command palette",
     source="components/command/CommandPalette.tsx:260",
@@ -468,12 +469,12 @@ P("/notifications", "notifications", "notifications.md",
 
 # ─────────────────────────────────────────── recommendations ──
 P("/recommendations", "recommendations", "recommendations.md",
-  "The docket dismisses inline and schedules through a route. The old assignee picker is rebuilt as the popover drawn here (F4 rule, 2026-09-05 — confirm).",
+  "The docket dismisses inline and schedules through a route. The old assignee picker is rebuilt as the popover drawn here — the fifth F4 act, confirmed by the founder 2026-09-06.",
   flag="mudavym_design_recommendations", overlays=[
   O("Who takes this?", "owed", "popover", eyebrow="Assign", title="Who takes this?", fork="F4",
     source="pages/Recommendations.tsx:980 — not on the rebuilt docket",
     body=[["item","Mehmet Kaya","bar",True],["item","Elif Şahin","floor"],["item","Nobody — clear it"]],
-    why="A choice from a short list, anchored to the entry's control. Built by the F4 rule of 2026-09-05 (every legacy act gets rebuilt to its full purpose) — this fifth act was not on the option list, so it is stated here for the founder to confirm."),
+    why="A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's."),
 ])
 
 # ─────────────────────────────────────────── settings ──
@@ -776,7 +777,7 @@ ANSWERS = {
   "F5": "The owed sheet on /orders is the manual entry.",
   "F7": "The KPI row expands in place; no overlay.",
   "F3": "A 640 sheet on /inventory, not a route.",
-  "F4": "All of them get built, to their full purpose — functionality, endpoints, UI/UX, smoothness and above all the design (the founder's bar, 2026-09-05). Pause/resume the AI becomes a control on the responses sheet; a person's own one-tap action, an auction lot and certifications are drawn as owed sheets; assign-a-recommendation follows the same rule and awaits an explicit yes.",
+  "F4": "All five get built, to their full purpose — functionality, endpoints, UI/UX, smoothness and above all the design (the founder's bar, 2026-09-05). Pause/resume the AI becomes a control on the responses sheet; a person's own one-tap action, an auction lot and certifications are drawn as owed sheets; assigning a recommendation to a person is the fifth, confirmed 2026-09-06.",
   "F6": "HouseHeader's bell and user menu survive; Header.tsx's house branch is deleted, its legacy branch stays byte-identical.",
   "F8": "Name the class now — six non-modal surfaces, two constraints (no scrim, no focus trap; never a form, never the seal).",
   "F9": "Yes to both — detents on the phone, stacking capped at three with a breadcrumb.",

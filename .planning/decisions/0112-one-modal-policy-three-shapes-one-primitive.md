@@ -221,8 +221,8 @@ two bells · F7 the figure behind a dashboard number) are stated in full in the 
   meaning functionality, endpoints, UI UX, smoothness, and most importantly the design."* So:
   pause/resume the AI on a thread becomes a control on the responses sheet; a person's own
   one-tap action, an auction lot (a fourth start of the carry sheet) and certifications on file
-  are owed sheets, drawn in sketch 102; assign-a-recommendation follows the same rule but was not
-  on the option list — awaiting an explicit yes.
+  are owed sheets, drawn in sketch 102; assigning a recommendation to a person follows the same rule
+  and was confirmed on 2026-09-06 — all five acts are built, none is deleted.
 - **F6 — `HouseHeader`'s `HouseBell` and `HouseUserMenu` survive.** `Header.tsx`'s house branch
   (lines 147 and 351) is deleted; its legacy branch stays byte-identical.
 - All seven forks are answered. Migration order: the ten `migrate` rows first (they render legacy

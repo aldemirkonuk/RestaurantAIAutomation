@@ -13,7 +13,7 @@
    "doc": null,
    "rebuilt": true,
    "flag": null,
-   "verdict": "Nine overlays render over every page. Eight wear the house shape while a rebuilt page is on screen and their legacy markup otherwise (lib/mudavym/shellGround.ts). Two of them now exist twice.",
+   "verdict": "Nine overlays render over every page. Eight wear the house shape while a rebuilt page is on screen and their legacy markup otherwise (lib/mudavym/shellGround.ts). The bell and the user menu existed twice; HouseHeader's survive and Header.tsx's house branch is deleted (F6, 2026-09-05).",
    "overlays": [
     {
      "name": "Command palette",
@@ -3096,7 +3096,7 @@
    "doc": "recommendations.md",
    "rebuilt": true,
    "flag": "mudavym_design_recommendations",
-   "verdict": "The docket dismisses inline and schedules through a route. The old assignee picker is rebuilt as the popover drawn here (F4 rule, 2026-09-05 — confirm).",
+   "verdict": "The docket dismisses inline and schedules through a route. The old assignee picker is rebuilt as the popover drawn here — the fifth F4 act, confirmed by the founder 2026-09-06.",
    "overlays": [
     {
      "name": "Who takes this?",
@@ -3127,7 +3127,7 @@
       ]
      ],
      "footer": null,
-     "why": "A choice from a short list, anchored to the entry's control. Built by the F4 rule of 2026-09-05 (every legacy act gets rebuilt to its full purpose) — this fifth act was not on the option list, so it is stated here for the founder to confirm.",
+     "why": "A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's.",
      "source": "pages/Recommendations.tsx:980 — not on the rebuilt docket",
      "acts": null,
      "went": null,
