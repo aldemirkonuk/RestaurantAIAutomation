@@ -1,3 +1,43 @@
+/**
+ * "Carry this bottle" — one bottle entering the book.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102 row "Carry this bottle") ────────
+ * SHAPE: `Sheet`. One bottle entering the book is one object, opened from the
+ * register it is entering, so it arrives from the right and the list stays
+ * visible behind it. Three ways to START — search the library, read a label,
+ * read a whole menu — and ONE sheet, because they are three doors into the same
+ * act, not three acts. That is the census's own sentence for this row.
+ *
+ * No seal. Adding a bottle is additive and correctable by counting; ADR 0112
+ * rations the wax to acts that take something away or send something out.
+ *
+ * The house branch is a single 440 column, not the legacy two-pane: the search
+ * results and the configuration are two STEPS of one act, and showing both at
+ * once is what made this file need 4xl. Picking a wine moves to its fields;
+ * "Choose a different bottle" goes back, keeping the search.
+ *
+ * THE THREE COST OUTCOMES, which this file already got right and the house
+ * branch states out loud rather than implying:
+ *
+ *     a sample      → a deliberate 0 with provenance 'sample', excluded from WAC
+ *     a number      → the cost the house paid
+ *     left blank    → the key is OMITTED, so the API writes NULL and no
+ *                     provenance — "nobody has told us what this cost"
+ *
+ * Sending 0 for the third is what produced `0.0 / 'manual'` on the lens run: an
+ * invented price wearing a provenance that says a human supplied it. The sheet
+ * says which of the three is in force, in a sentence, under the field.
+ *
+ * The shared library's reference price stays a REFERENCE and is never
+ * pre-filled — it is offered under the field as something to take deliberately,
+ * exactly as the legacy branch decided.
+ *
+ * Endpoint: the caller's `onAddWine` → `createInventoryItem` →
+ * `POST /inventory/:restaurantId/items`
+ * (apps/api-gateway/src/inventory/inventory.controller.ts:54).
+ *
+ * The legacy branch below is frozen and renders byte-for-byte as it shipped.
+ */
 import { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,6 +73,9 @@ import {
   type SaleType,
 } from "../../utils/volumeUtils";
 import { useRestaurantSettingsStore } from "../../stores/restaurantSettingsStore";
+import { Sheet } from "../mudavym/Sheet";
+import { useMudavymShell } from "../../lib/mudavym/shellGround";
+import "./inventory-mudavym.css";
 
 type TabType = "search" | "photo";
 
@@ -91,7 +134,12 @@ export function AddWineToInventoryModal({
   const [selectedStorageLocationId, setSelectedStorageLocationId] = useState<
     string | undefined
   >(undefined);
-  const { locations: storageLocations } = useStorageLocations();
+  const {
+    locations: storageLocations,
+    locationsLoading,
+    locationsUnavailable,
+  } = useStorageLocations();
+  const shell = useMudavymShell();
 
   const [bottleSizeMl, setBottleSizeMl] = useState<number>(750);
   const [customBottleSizeInput, setCustomBottleSizeInput] = useState("");
@@ -242,6 +290,439 @@ export function AddWineToInventoryModal({
   };
 
   if (!isOpen) return null;
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    const starts = (
+      <>
+        <span className="mdv-head">
+          <span>Three ways to start</span>
+        </span>
+        <div className="mdv-seg">
+          <button
+            type="button"
+            className="mdv-seg__opt"
+            aria-pressed={activeTab === "search"}
+            onClick={() => setActiveTab("search")}
+          >
+            Search the library
+          </button>
+          <button
+            type="button"
+            className="mdv-seg__opt"
+            onClick={() => setShowPhotoModal(true)}
+          >
+            Read a label
+          </button>
+          <button
+            type="button"
+            className="mdv-seg__opt"
+            onClick={() => setShowScannerFlow(true)}
+          >
+            Read a menu
+          </button>
+        </div>
+      </>
+    );
+
+    const costSays = isSample
+      ? "Recorded as a deliberate zero with provenance “sample”, and excluded from average cost."
+      : costPerBottle === null
+        ? "Left blank: this bottle is recorded with NO cost and no provenance — “nobody has told us what this cost”, which is a real answer and not a zero."
+        : "Recorded as the cost this house paid, with provenance “manual”.";
+
+    return (
+      <Sheet
+        open={isOpen}
+        onClose={handleClose}
+        label="Carry this bottle. Adding it writes an inventory row against the wine you choose. Leaving writes nothing."
+        eyebrow="The register"
+        title={selectedWine ? selectedWine.name : "Carry this bottle"}
+        zIndex={110}
+        footer={
+          <span>
+            {selectedWine
+              ? `${quantity} bottle${quantity !== 1 ? "s" : ""} · reorder under ${threshold}`
+              : "Nothing is written until you add a bottle."}
+          </span>
+        }
+      >
+        <div className="mdv-form">
+          {!selectedWine ? (
+            <>
+              <p className="mdv-contract">
+                One bottle entering the book. Find it in the library, read its label, or read a
+                whole menu — all three end here. Leaving writes nothing.
+              </p>
+
+              {starts}
+
+              <div>
+                <label className="mdv-label" htmlFor="mdv-carry-search">
+                  Search the Master Wine Library
+                </label>
+                <input
+                  id="mdv-carry-search"
+                  className="mdv-input"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Name, producer, region, grape…"
+                />
+                <span className="mdv-prov">
+                  {filteredWines.length} of the first 200 library rows match
+                  {searchQuery ? ` “${searchQuery}”` : " — type to narrow it"}
+                </span>
+              </div>
+
+              {filteredWines.length === 0 ? (
+                <p className="mdv-quiet">
+                  {searchQuery
+                    ? `Nothing in the library matches “${searchQuery}”. Read the label instead and the house will carry it as a provisional entry.`
+                    : "The library returned no rows. That is either an empty library or a read that did not answer — the register beneath this sheet says which."}
+                </p>
+              ) : (
+                <div className="mdv-picks mdv-scroll">
+                  {filteredWines.slice(0, 60).map((wine) => (
+                    <button
+                      key={wine.id}
+                      type="button"
+                      className="mdv-pick"
+                      onClick={() => handleSelectWine(wine)}
+                    >
+                      <span style={{ minWidth: 0 }}>
+                        <span className="mdv-pick__label">{wine.displayName || wine.name}</span>
+                        <span className="mdv-pick__sub">
+                          {[wine.producer, wine.vintage ?? "NV", wine.region, wine.type]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="mdv-contract">
+                Adding this writes one inventory row against{" "}
+                {detectedWine ? "the wine the label reader found" : "this library wine"}. Leaving
+                writes nothing.
+              </p>
+
+              {detectedWine && (
+                <div className="mdv-panelbox">
+                  <p className="mdv-alert__head">The label reader</p>
+                  <span className="mdv-grey">
+                    This bottle came from a photograph, not from the library. Carrying it creates a
+                    provisional library entry, marked as one.
+                  </span>
+                </div>
+              )}
+
+              <div className="mdv-actions">
+                <span className="mdv-tally">
+                  {[selectedWine.producer, selectedWine.vintage ?? "NV", selectedWine.region]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                <button
+                  type="button"
+                  className="mdv-btn"
+                  onClick={() => {
+                    setSelectedWine(null);
+                    setDetectedWine(null);
+                  }}
+                >
+                  Choose a different bottle
+                </button>
+              </div>
+
+              <div className="mdv-pair">
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-carry-qty">
+                    Bottles
+                  </label>
+                  <input
+                    id="mdv-carry-qty"
+                    className="mdv-input"
+                    type="number"
+                    min={1}
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+                  />
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-carry-threshold">
+                    Reorder under
+                  </label>
+                  <input
+                    id="mdv-carry-threshold"
+                    className="mdv-input"
+                    type="number"
+                    min={0}
+                    value={threshold}
+                    onChange={(e) => setThreshold(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mdv-label" htmlFor="mdv-carry-cost">
+                  Cost a bottle
+                </label>
+                <input
+                  id="mdv-carry-cost"
+                  className="mdv-input"
+                  inputMode="decimal"
+                  disabled={isSample}
+                  value={costPerBottle === null ? "" : String(costPerBottle)}
+                  placeholder="leave blank if nobody has said"
+                  onChange={(e) =>
+                    setCostPerBottle(e.target.value.trim() === "" ? null : Number(e.target.value))
+                  }
+                />
+                <p className="mdv-hintline">{costSays}</p>
+                {!isSample && selectedWine.price ? (
+                  <button
+                    type="button"
+                    className="mdv-link"
+                    onClick={() => setCostPerBottle(selectedWine.price)}
+                  >
+                    The library&rsquo;s reference price is {selectedWine.price} — take it as this
+                    house&rsquo;s cost
+                  </button>
+                ) : null}
+                <div className="mdv-seg" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="mdv-seg__opt"
+                    aria-pressed={isSample}
+                    onClick={() => {
+                      const next = !isSample;
+                      setIsSample(next);
+                      if (next) setCostPerBottle(null);
+                    }}
+                  >
+                    Free sample
+                  </button>
+                </div>
+              </div>
+
+              <div className="mdv-pair">
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-carry-bottle">
+                    Bottle size
+                  </label>
+                  <select
+                    id="mdv-carry-bottle"
+                    className="mdv-select"
+                    value={isCustomBottleSize ? "custom" : String(bottleSizeMl)}
+                    onChange={(e) => {
+                      if (e.target.value === "custom") {
+                        setIsCustomBottleSize(true);
+                        return;
+                      }
+                      setIsCustomBottleSize(false);
+                      setBottleSizeMl(Number(e.target.value));
+                    }}
+                  >
+                    {COMMON_BOTTLE_SIZES.map((size) => (
+                      <option key={size.ml} value={size.ml}>
+                        {formatVolume(size.ml, measurementUnit)} · {size.label}
+                      </option>
+                    ))}
+                    <option value="custom">Another size…</option>
+                  </select>
+                  {isCustomBottleSize && (
+                    <>
+                      <input
+                        className="mdv-input"
+                        style={{ marginTop: 6 }}
+                        value={customBottleSizeInput}
+                        onChange={(e) => {
+                          setCustomBottleSizeInput(e.target.value);
+                          const parsed = parseVolumeInput(e.target.value);
+                          if (parsed && isValidBottleSize(parsed.ml)) setBottleSizeMl(parsed.ml);
+                        }}
+                        placeholder="e.g. 500ml"
+                      />
+                      {customBottleParsed && !isValidBottleSize(customBottleParsed.ml) && (
+                        <p className="mdv-hintline">
+                          That is not a bottle size this house can record. Nothing has changed.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-carry-saletype">
+                    Sold as
+                  </label>
+                  <select
+                    id="mdv-carry-saletype"
+                    className="mdv-select"
+                    value={saleType}
+                    onChange={(e) => setSaleType(e.target.value as SaleType)}
+                  >
+                    <option value="bottle">The bottle</option>
+                    <option value="glass">The glass</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+              </div>
+
+              {showGlassFields && (
+                <div className="mdv-pair">
+                  <div>
+                    <label className="mdv-label" htmlFor="mdv-carry-pour">
+                      A pour
+                    </label>
+                    <select
+                      id="mdv-carry-pour"
+                      className="mdv-select"
+                      value={isCustomPourSize ? "custom" : String(pourSizeMl)}
+                      onChange={(e) => {
+                        if (e.target.value === "custom") {
+                          setIsCustomPourSize(true);
+                          return;
+                        }
+                        setIsCustomPourSize(false);
+                        setPourSizeMl(Number(e.target.value));
+                      }}
+                    >
+                      {COMMON_POUR_SIZES.map((size) => (
+                        <option key={size.ml} value={size.ml}>
+                          {formatVolume(size.ml, measurementUnit)} · {size.label}
+                        </option>
+                      ))}
+                      <option value="custom">Another pour…</option>
+                    </select>
+                    {isCustomPourSize && (
+                      <>
+                        <input
+                          className="mdv-input"
+                          style={{ marginTop: 6 }}
+                          value={customPourSizeInput}
+                          onChange={(e) => {
+                            setCustomPourSizeInput(e.target.value);
+                            const parsed = parseVolumeInput(e.target.value);
+                            if (parsed && isValidPourSize(parsed.ml)) setPourSizeMl(parsed.ml);
+                          }}
+                          placeholder="e.g. 125ml"
+                        />
+                        {customPourParsed && !isValidPourSize(customPourParsed.ml) && (
+                          <p className="mdv-hintline">
+                            That is not a pour this house can record. Nothing has changed.
+                          </p>
+                        )}
+                      </>
+                    )}
+                    <p className="mdv-hintline">
+                      {glassesPerBottle} glass{glassesPerBottle !== 1 ? "es" : ""} a bottle, from
+                      the two figures above.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mdv-label" htmlFor="mdv-carry-glassprice">
+                      Menu price a glass
+                    </label>
+                    <input
+                      id="mdv-carry-glassprice"
+                      className="mdv-input"
+                      inputMode="decimal"
+                      value={menuPriceGlass || ""}
+                      onChange={(e) => setMenuPriceGlass(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mdv-label" htmlFor="mdv-carry-zone">
+                  Zone
+                </label>
+                {locationsLoading ? (
+                  <p className="mdv-hintline">Reading this house&rsquo;s zones…</p>
+                ) : locationsUnavailable ? (
+                  <p className="mdv-hintline">
+                    The zones could not be read, so none can be offered here. The bottle can still
+                    be carried and placed later — an unplaced bottle is a real state.
+                  </p>
+                ) : (
+                  <select
+                    id="mdv-carry-zone"
+                    className="mdv-select"
+                    value={selectedStorageLocationId ?? ""}
+                    onChange={(e) =>
+                      setSelectedStorageLocationId(e.target.value || undefined)
+                    }
+                  >
+                    <option value="">Not placed yet</option>
+                    {storageLocations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="mdv-actions">
+                <span className="mdv-tally">
+                  {quantity} bottle{quantity !== 1 ? "s" : ""}
+                </span>
+                <button type="button" className="mdv-btn" onClick={handleClose}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="mdv-btn mdv-btn--seal"
+                  onClick={handleAddToInventory}
+                >
+                  Carry {quantity} bottle{quantity !== 1 ? "s" : ""}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* The other two starts keep their own surfaces; they are separate census
+            rows and are not re-skinned here. */}
+        {typeof document !== "undefined" &&
+          showPhotoModal &&
+          createPortal(
+            <AddWineModal
+              isOpen={showPhotoModal}
+              onClose={() => setShowPhotoModal(false)}
+              onSave={(result) => handlePhotoWineDetected(result)}
+              zIndex={160}
+            />,
+            document.body,
+          )}
+        {typeof document !== "undefined" &&
+          showScannerFlow &&
+          createPortal(
+            <MenuScannerFlow
+              isOpen={showScannerFlow}
+              onClose={() => setShowScannerFlow(false)}
+              onWinesAdded={(_wines, result) => {
+                if (!result) return;
+                toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`, {
+                  description:
+                    result.provisional.length > 0
+                      ? `${result.provisional.map((r) => r.wineName).join(", ")} — added to the Master Wine Library as provisional entries.`
+                      : undefined,
+                });
+                queryClient.invalidateQueries({ queryKey: ["inventory"] });
+              }}
+            />,
+            document.body,
+          )}
+      </Sheet>
+    );
+  }
 
   return (
     <>
