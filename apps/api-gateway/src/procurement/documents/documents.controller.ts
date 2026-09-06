@@ -20,9 +20,15 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
-import { ApplyExtractionDto, UploadDocumentDto } from "./dto/documents.dto";
+import {
+  ApplyExtractionDto,
+  CorrectFieldDto,
+  UploadDocumentDto,
+  VerifyFieldDto,
+} from "./dto/documents.dto";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
+import { DocumentCorrectionService } from "../canonical/document-correction.service";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
@@ -53,6 +59,7 @@ export class DocumentsController {
     private readonly db: DatabaseService,
     private readonly canonical: CanonicalDocumentService,
     private readonly spine: DeliverySpineService,
+    private readonly corrections: DocumentCorrectionService,
   ) {}
 
   /**
@@ -113,7 +120,7 @@ export class DocumentsController {
       throw new HttpException(built.error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    const [{ data: row, error: rowErr }, spine] = await Promise.all([
+    const [{ data: row, error: rowErr }, spine, log] = await Promise.all([
       this.db
         .getClient()
         .from("procurement_documents")
@@ -133,11 +140,13 @@ export class DocumentsController {
         .eq("restaurant_id", user.restaurantId)
         .maybeSingle(),
       this.spine.forDocument(user.restaurantId, id),
+      this.corrections.correctionLog(user.restaurantId, id),
     ]);
 
     const failedRead: string[] = [];
     if (rowErr) failedRead.push(`document metadata: ${rowErr.message}`);
     if (!spine.ok) failedRead.push(spine.error);
+    if (!log.ok) failedRead.push(log.error);
 
     /**
      * When the metadata read FAILED there is no `storage_path` to sign — and
@@ -173,6 +182,14 @@ export class DocumentsController {
       // page then collapses the spine and shows the sheet alone.
       deliveries,
       siblings,
+      /**
+       * ADR 0104 D5. NULL means the log could not be read and `failedRead` says
+       * so; `[]` means the reads succeeded and nobody has corrected or verified
+       * a field on this document. Collapsing the two would let a broken query
+       * render as "this document has never been touched", which is the sentence
+       * a vendor dispute gets argued from.
+       */
+      corrections: log.ok ? log.value : null,
       original: {
         ...original,
         contentType: (row?.content_type as string) ?? null,
@@ -196,6 +213,66 @@ export class DocumentsController {
       ...(built.notes?.length ? { notes: built.notes } : {}),
       ...(failedRead.length ? { failedRead } : {}),
     };
+  }
+
+  /**
+   * Correct one layer-1 field (ADR 0104 D5).
+   *
+   * NOT AN EDIT. Layer 1 is append-only: this writes revision n+1 carrying the
+   * whole corrected document and an audit row saying who changed what, from
+   * what, to what and why. Both tables refuse UPDATE and DELETE by trigger, so
+   * a correction can be superseded but never rewritten.
+   *
+   * Class-level `@UseGuards(JwtAuthGuard)` covers it; `restaurantId` comes from
+   * the token and scopes the document read, so another tenant's id is a 404.
+   */
+  @Post(":id/corrections")
+  @ApiOperation({
+    summary: "Correct one field of the canonical document (ADR 0104 D5)",
+    description:
+      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written.",
+  })
+  async correctField(
+    @Param("id") id: string,
+    @Body() body: CorrectFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const result = await this.corrections.correct(
+      user.restaurantId,
+      id,
+      user.userId,
+      { path: body.path, value: body.value ?? null, reason: body.reason },
+    );
+    if (!result.ok) throw new HttpException(result.error, result.status);
+    return result.value;
+  }
+
+  /**
+   * The per-field `verified_by` tick (ADR 0104 D5).
+   *
+   * A human standing behind a value they did NOT change. The field's `source`
+   * stays whatever it was — an extracted number that a manager confirmed is
+   * still an extracted number, now with a name against it.
+   */
+  @Post(":id/fields/verify")
+  @ApiOperation({
+    summary: "Tick one field as verified by a human (ADR 0104 D5)",
+    description:
+      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged.",
+  })
+  async verifyFieldTick(
+    @Param("id") id: string,
+    @Body() body: VerifyFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const result = await this.corrections.verifyField(
+      user.restaurantId,
+      id,
+      user.userId,
+      { path: body.path },
+    );
+    if (!result.ok) throw new HttpException(result.error, result.status);
+    return result.value;
   }
 
   @Post()

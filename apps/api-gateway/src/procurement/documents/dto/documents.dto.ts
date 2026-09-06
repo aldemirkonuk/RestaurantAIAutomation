@@ -93,3 +93,56 @@ export class ApplyExtractionDto {
 
 /** Exported so the CHECK-constraint vocabulary has exactly one definition. */
 export const ALL_SOURCE_CHANNELS = SOURCE_CHANNELS;
+
+/**
+ * The correction door's body (ADR 0104 D5, slice 3).
+ *
+ * `value` IS DELIBERATELY UNTYPED HERE and validated in
+ * `DocumentCorrectionService` against the field's declared type in
+ * `correctable-paths.ts`. class-validator cannot express "a number for BT-129,
+ * text for BT-153, and null for either when the paper printed nothing" without
+ * duplicating that registry — and two registries drift.
+ *
+ * `null` is a real, reachable value: "the document states nothing here" is the
+ * correction an extraction that invented a figure needs.
+ */
+export class CorrectFieldDto {
+  @ApiProperty({
+    description:
+      "The layer-1 field to correct: a field name (`documentNumber`, `seller.name`, `totals.taxInclusiveAmount`) or `lines[n].field` with a zero-based line index. A path outside the closed list in correctable-paths.ts is refused with 400 — this is never a generic object path.",
+    example: "lines[0].quantity",
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  path!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The corrected value, typed by the field (number or text), or null to record that the document states nothing there.",
+  })
+  @IsOptional()
+  value?: unknown;
+
+  @ApiPropertyOptional({
+    description:
+      "Why, in the corrector's words. Recorded on the append-only correction row — a log of changes with no reasons is a change history, not evidence.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
+/** The per-field `verified_by` tick (ADR 0104 D5). */
+export class VerifyFieldDto {
+  @ApiProperty({
+    description:
+      "The layer-1 field a human is standing behind. The field's `source` does NOT change — an extracted value that a person confirmed is still an extracted value.",
+    example: "totals.taxInclusiveAmount",
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  path!: string;
+}
