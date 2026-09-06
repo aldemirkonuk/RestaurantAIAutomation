@@ -18,7 +18,10 @@ import {
   carryFractionFor,
   forwardSum,
   horizonFitsShelfLife,
+  commodityAlertSentence,
   isCadenceRefusal,
+  moneyState,
+  percentPerMonthToFraction,
   valueBacktest,
   valueClause,
   type CadenceBacktest,
@@ -233,7 +236,8 @@ describe("pass-through attenuates the benefit and never the cost", () => {
     // If the cost scaled with the pass-through too, this would be exactly f/2.
     expect(h).toBeLessThan(f / 2);
     // And the cost is identical in both.
-    expect(half.carryFraction).toBeCloseTo(full.carryFraction, 12);
+    expect(full.carryFraction).not.toBeNull();
+    expect(half.carryFraction).toBeCloseTo(full.carryFraction as number, 12);
   });
 
   it("states the break-even pass-through even when everything else is withheld", () => {
@@ -284,7 +288,21 @@ describe("money is withheld by name, never defaulted", () => {
     ).toBe("no_attention_cost");
   });
 
-  it("prices a fire once every parameter is stated", () => {
+  it("refuses the carrying cost BEFORE it looks at the pass-through", () => {
+    // The founder's gate, batch 59. Without it there is no cost side at all.
+    const v = valueBacktest(r(), { ...NO_HOUSE, carryPerPeriod: null });
+    expect(v.withheld).toBe("no_carrying_cost_typed");
+    expect(v.carryFraction).toBeNull();
+    // Not zero, anywhere. Zero would price holding three months as free.
+    expect(v.breakEvenPassThrough).toBeNull();
+    expect(v.moneyPerFire).toBeNull();
+  });
+
+  it("never prints a saving that is not positive", () => {
+    // Everything IS stated here and the honest answer is that buying ahead on
+    // this window loses money. The old shape printed "cost about 25.85 USD" as
+    // if that were a finding; it is a saving of nothing, and the sentence now
+    // says the line is not worth the interruption instead.
     const v = valueBacktest(r(), {
       ...NO_HOUSE,
       passThrough: 1,
@@ -292,13 +310,15 @@ describe("money is withheld by name, never defaulted", () => {
       currency: "USD",
       attentionPerFire: 8,
     });
-    expect(v.withheld).toBeNull();
     expect(v.carryFraction).toBeCloseTo(0.03, 12);
     expect(v.netFractionPerFire).toBeCloseTo(-0.0178459, 6);
     expect(v.lossRate).toBeCloseTo(0.75, 12);
-    expect(v.moneyPerFire).toBeCloseTo(-25.8459469, 6);
-    expect(v.moneyPerYear).toBeCloseTo(-103.3837878, 6);
-    expect(valueClause(v)).toContain("cost about 25.85 USD");
+    expect(v.withheld).toBe("below_spend_floor");
+    expect(v.moneyPerFire).toBeNull();
+    expect(v.moneyPerYear).toBeNull();
+    // No spend is large enough when the net itself is negative.
+    expect(v.minimumPeriodSpend).toBeNull();
+    expect(valueClause(v)).not.toMatch(/[0-9]+\.[0-9]{2} USD/);
   });
 
   it("says nothing fired rather than pricing an empty set", () => {
@@ -338,5 +358,132 @@ describe("the two guards a horizon needs", () => {
     expect(f?.moves[0]).toBeCloseTo(0.1, 12);
     expect(f?.moves[1]).toBeCloseTo(0.21, 12);
     expect(f?.sum).toBeCloseTo(0.31, 12);
+  });
+});
+
+describe("percent per month is converted in exactly one place", () => {
+  it("0.75 percent a month is the fraction 0.0075, not 0.75 and not 75", () => {
+    // The column stores a PERCENT and this model takes a FRACTION. The two
+    // differ by a hundred, and the wrong one understates the carrying cost into
+    // invisibility — the direction that makes the alert look profitable.
+    expect(percentPerMonthToFraction(0.75)).toBeCloseTo(0.0075, 12);
+    expect(percentPerMonthToFraction(25)).toBeCloseTo(0.25, 12);
+    expect(percentPerMonthToFraction(0.01)).toBeCloseTo(0.0001, 12);
+  });
+
+  it("an untyped carrying cost stays untyped, and never becomes zero", () => {
+    expect(percentPerMonthToFraction(null)).toBeNull();
+    expect(percentPerMonthToFraction(Number.NaN)).toBeNull();
+  });
+});
+
+describe("the alert sentence has three money states and only three", () => {
+  // Thirteen flat periods then a sustained climb: a series on which buying
+  // ahead genuinely paid, so the STATED form has something to state.
+  const RISING = [
+    100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 105, 112,
+    120, 129, 139,
+  ];
+  const run = () => {
+    const out = backtestCadence(RISING, {
+      firesPerYear: 12,
+      periodGrain: "month",
+      horizon: 2,
+      historyFloor: 14,
+    });
+    if (isCadenceRefusal(out)) throw new Error(out.reason);
+    return out as CadenceBacktest;
+  };
+  const HOUSE = {
+    // 0.5 % a month, as a person would type it on the settings page.
+    carryPerPeriod: percentPerMonthToFraction(0.5),
+    passThrough: 1,
+    periodSpend: 1000,
+    currency: "TRY",
+    attentionPerFire: 8,
+    shelfLifeDays: 180,
+    daysPerPeriod: 30,
+  };
+  const FACTS = {
+    seriesLabel: "Shell eggs, national wholesale",
+    issuer: "USDA Agricultural Marketing Service",
+    issuedOn: "4 September 2026",
+    unit: "cents a dozen",
+    tradeLevel: "graded loose, white, Large, FOB",
+    latest: "48.0",
+    baseline: "35.3",
+    move: 0.36,
+    itemLabel: "Eggs, large, 15-dozen case",
+    shelfLifeDays: 180,
+    firesPerYear: 2,
+    realisedFiresPerYear: 2.27,
+  };
+
+  it("STATED — the house typed a carrying cost and a person typed a shelf life", () => {
+    const v = valueBacktest(run(), HOUSE);
+    expect(moneyState(v)).toBe("stated");
+    expect(v.carryFraction).toBeCloseTo(0.015, 12);
+    expect(v.netFractionPerFire).toBeCloseTo(0.2070238, 6);
+    expect(v.moneyPerFire).toBeCloseTo(199.0238095, 6);
+    expect(v.minimumPeriodSpend).toBeCloseTo(38.6428982, 6);
+    const clause = valueClause(v);
+    expect(clause).toContain("saved about 199.02 TRY");
+    expect(clause).not.toMatch(/UNMEASURED/);
+  });
+
+  it("UNMEASURED — no carrying cost typed, and the sentence says which number is missing", () => {
+    const v = valueBacktest(run(), { ...HOUSE, carryPerPeriod: null });
+    expect(moneyState(v)).toBe("unmeasured");
+    expect(v.withheld).toBe("no_carrying_cost_typed");
+    const clause = valueClause(v);
+    expect(clause).toContain("UNMEASURED");
+    expect(clause).toContain("what holding stock costs it");
+    // The one thing it must never do: print a number nobody stated.
+    expect(clause).not.toMatch(/TRY/);
+    expect(clause).not.toMatch(/[0-9]+\.[0-9]{2}/);
+  });
+
+  it("UNMEASURED — no shelf life typed is a DIFFERENT sentence from no carrying cost", () => {
+    const noShelf = valueBacktest(run(), { ...HOUSE, shelfLifeDays: null });
+    const noCarry = valueBacktest(run(), { ...HOUSE, carryPerPeriod: null });
+    expect(moneyState(noShelf)).toBe("unmeasured");
+    expect(valueClause(noShelf)).toContain("shelf life");
+    expect(valueClause(noShelf)).not.toEqual(valueClause(noCarry));
+  });
+
+  it("TOO SMALL — everything is known and the answer is the spend floor", () => {
+    const v = valueBacktest(run(), { ...HOUSE, periodSpend: 30 });
+    expect(moneyState(v)).toBe("too_small");
+    expect(v.withheld).toBe("below_spend_floor");
+    expect(v.minimumPeriodSpend).toBeCloseTo(38.6428982, 6);
+    const clause = valueClause(v);
+    // The floor itself is printed as the reason, which is what makes this a
+    // finding rather than a silence.
+    expect(clause).toContain("above about 39");
+    expect(clause).toContain("8 TRY it costs to read");
+    expect(v.moneyPerFire).toBeNull();
+  });
+
+  it("the whole sentence carries the issuer, the trade level and the realised rate", () => {
+    const stated = commodityAlertSentence(FACTS, valueBacktest(run(), HOUSE));
+    expect(stated).toContain("USDA Agricultural Marketing Service");
+    expect(stated).toContain("graded loose, white, Large, FOB");
+    expect(stated).toContain("cents a dozen");
+    expect(stated).toContain("36% above its twelve-observation median");
+    expect(stated).toContain("hold it 180 days");
+    // The budget AND the rate it actually delivered. Out of sample they differ,
+    // so printing the budget alone would promise a frequency the data refuses.
+    expect(stated).toContain("about 2 times a year");
+    expect(stated).toContain("actually fired about 2.3 times a year");
+    expect(stated).toContain("saved about 199.02 TRY");
+  });
+
+  it("the same sentence withholds the money and keeps every other fact", () => {
+    const v = valueBacktest(run(), { ...HOUSE, carryPerPeriod: null });
+    const out = commodityAlertSentence(FACTS, v);
+    expect(out).toContain("USDA Agricultural Marketing Service");
+    expect(out).toContain("Eggs, large, 15-dozen case");
+    expect(out).toContain("UNMEASURED");
+    expect(out).not.toMatch(/saved about/);
   });
 });

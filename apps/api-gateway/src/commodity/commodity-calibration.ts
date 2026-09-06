@@ -48,6 +48,47 @@ import {
 export const BUDGETS = [4, 2, 1] as const;
 export type Budget = (typeof BUDGETS)[number];
 
+/**
+ * THE DEFAULT, and it is the founder's own answer to the plan's §12 Q5.
+ *
+ * 2026-09-05, batch 59, verbatim: *"Twice a year, and the house types its
+ * carrying cost."*
+ *
+ * It is a default the admin still has to accept — the proposal shows all three
+ * budgets and the arm route takes whichever hash comes back — but the screen
+ * says which one was chosen for them and why, because a default nobody can see
+ * being applied is the thing this whole register exists to refuse.
+ */
+export const DEFAULT_BUDGET: Budget = 2;
+
+/**
+ * Why the other two were rejected, in the words the admin reads beside them.
+ *
+ * Kept here rather than in a document, because the rejected alternative is the
+ * half of a decision that gets lost first. Every figure is from the quant pass
+ * recorded in the plan's §9f: 440 recorded FAO months, walk-forward, K = 12,
+ * three months of cover.
+ */
+export const BUDGET_RATIONALE: Record<number, string> = {
+  4: "Rejected as the default. Quarterly earns the most only when holding stock is nearly free: at 0.25 % a month it is the best of the three, at 0.75 % it is the only one that loses money, and it falls fastest of the three as the carrying cost rises. It is offered because a house with cheap storage should be able to choose it.",
+  2: "The default (the founder, 2026-09-05). Across carrying costs from 0.25 % to 1 % a month it wins or comes within a small margin of winning in every case, and it is never the worst of the three. Measured on 440 months of the FAO index: a fire is followed by a higher index three months later 65.8 % of the time against a 54.4 % benchmark.",
+  1: "Rejected as the default, and the right choice for a house with expensive storage. It is the most robust setting — the only one still ahead at 1 % a month — but it leaves value unclaimed wherever the alert genuinely works, and a house that hears from a series once a year will not remember what the series is.",
+};
+
+/**
+ * The budget that was NOT offered at all, and why it is named rather than
+ * simply absent.
+ *
+ * The founder asked for weekly or fortnightly. Neither is on this list because
+ * FAO and ONS publish monthly and a rule cannot speak more often than its
+ * series does; at twelve fires on twelve chances the quantile lands on the
+ * minimum observed move, which on the FAO history is a fall, so no threshold
+ * exists at all. An absent option that was asked for must be explained, or the
+ * screen is reporting a limit as a preference.
+ */
+export const CADENCE_NOT_ON_OFFER =
+  "Weekly and fortnightly are not offered: these series publish monthly, and a rule cannot fire more often than its series speaks. At twelve fires a year on a monthly series the threshold collapses to the smallest move the series has ever made, which is not a threshold.";
+
 export interface CalibrationProposal {
   seriesKey: string;
   /** The budget these numbers were derived for. */
@@ -62,6 +103,17 @@ export interface CalibrationProposal {
   observations: number;
   /** sha256 over every field above. The thing the arming write carries back. */
   proposalHash: string;
+  /**
+   * Whether this is the budget the founder chose as the default (twice a year).
+   *
+   * Deliberately NOT part of `proposalHash`. The hash exists to prove the
+   * NUMBERS on the screen are the numbers being armed; which of three budgets
+   * carries a recommendation is presentation, and folding it into the hash
+   * would make a change of wording refuse an arming.
+   */
+  isDefaultBudget: boolean;
+  /** Why this budget was chosen or rejected as the default, in words. */
+  budgetRationale: string;
   /**
    * What the sentence on the screen says, in the operator's own terms. It
    * states the BUDGET they chose and the percentage it produced, over the
@@ -196,32 +248,52 @@ export function proposeCalibration(
     windowNObs: derived.nObs,
   };
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+  const isDefaultBudget = firesPerYear === DEFAULT_BUDGET;
   return {
     ...core,
     observations: points.length,
     proposalHash: hashProposal(core),
+    isDefaultBudget,
+    budgetRationale:
+      BUDGET_RATIONALE[firesPerYear] ??
+      "This budget is not one of the three the register offers, so nothing is recorded about why it was or was not chosen.",
     // The sentence the admin reads BEFORE the act, and the same words that
     // travel into the notification later. It states the budget, the percentage
     // that budget produced, the baseline it is measured against, and the window
     // it was read off. It claims nothing about whether a fire will be right.
     sentence:
-      `You asked to hear about ${seriesKey} about ${firesPerYear === 1 ? "once" : `${firesPerYear} times`} a year. ` +
+      `${isDefaultBudget ? "This is the budget Mudavym proposes: t" : "T"}his house would hear about ${seriesKey} about ${firesPerYear === 1 ? "once" : `${firesPerYear} times`} a year. ` +
       `On this series' own history that is a rise of ${pct(derived.riseThreshold)} above its ${k}-observation median, ` +
       `read off ${derived.nObs} evaluated ${periodGrain}s between ${windowFrom} and ${windowTo}. ` +
       `A single-${periodGrain} move above ${pct(derived.stepGuard)} — this series' own 99th percentile — is refused and named rather than dropped. ` +
-      `How often it will be RIGHT is not stated, because nothing here can measure that yet.`,
+      `${BUDGET_RATIONALE[firesPerYear] ?? ""} ` +
+      `How often it will be RIGHT for THIS house is not stated, because nothing here can measure that yet.`,
   };
 }
 
-/** Every budget's proposal, so the admin sees the choice rather than one number. */
+/**
+ * Every budget's proposal, so the admin sees the choice rather than one number.
+ *
+ * The default is marked and the rejected ones carry their reason, which is the
+ * whole difference between offering a decision and announcing one. A screen
+ * that showed only the recommended budget would be making the founder's call
+ * look like the only call there was.
+ */
 export function proposeAllBudgets(
   seriesKey: string,
   periodGrain: string,
   points: CalibrationPoint[],
   k: number = DEFAULT_BASELINE_K,
-): Array<{ firesPerYear: number; outcome: CalibrationOutcome }> {
+): Array<{
+  firesPerYear: number;
+  isDefault: boolean;
+  rationale: string;
+  outcome: CalibrationOutcome;
+}> {
   return BUDGETS.map((firesPerYear) => ({
     firesPerYear,
+    isDefault: firesPerYear === DEFAULT_BUDGET,
+    rationale: BUDGET_RATIONALE[firesPerYear] ?? "",
     outcome: proposeCalibration(seriesKey, periodGrain, points, firesPerYear, k),
   }));
 }

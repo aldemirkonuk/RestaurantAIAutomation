@@ -111,6 +111,7 @@ export const SECTION_IDS = [
   // Appended, never inserted, for the same reason `cellar` was: an id's
   // position is not its identity, but a bookmark is, and `?tab=` is the id.
   'currency',
+  'carrying-cost',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -169,6 +170,15 @@ export const SECTIONS: SectionSpec[] = [
   // until this register there was no control anywhere that could change it.
   { id: 'currency', label: 'Currency', title: 'Reporting currency', kind: 'restaurant', group: 'house', order: 5,
     description: 'The money this house states its own totals in. Nothing is ever converted.' },
+  // Its own register for the same reason the currency has one: it is a fact
+  // about the HOUSE that decides whether a money figure may be printed at all.
+  // The founder, 2026-09-05 batch 59, answering the commodity plan's Q5: "Twice
+  // a year, and the house types its carrying cost." Measured over 440 recorded
+  // FAO months, the whole gain from buying ahead on a commodity alert is spent
+  // by a carrying cost of about one percent a month, and nothing in this
+  // product had ever asked a house for that number.
+  { id: 'carrying-cost', label: 'Carrying cost', title: 'What holding stock costs', kind: 'restaurant', group: 'house', order: 6,
+    description: 'What a month of holding stock costs this house, as a percent of its value. Until it is stated, no alert here prints a saving.' },
 ];
 
 /**

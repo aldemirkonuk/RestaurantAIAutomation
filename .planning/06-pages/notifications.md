@@ -58,6 +58,19 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
   a publisher printed and never what this house will pay, and it is never placed
   beside or averaged with a vendor quote (`commodity-signals-plan.md` phase 0,
   2026-09-05)
+- **The alert's money clause has exactly three states** (2026-09-06, the founder's
+  batch-59 answer to the plan's Q5: *"Twice a year, and the house types its carrying
+  cost."*). `stated` — a saving in the house's own currency, and ONLY when the house
+  typed a carrying cost (`/settings?tab=carrying-cost`) AND a person typed a shelf
+  life for the item; `unmeasured` — the word UNMEASURED and which of the two numbers
+  is missing, never a figure nobody stated; `too_small` — everything is known and the
+  line is too small to repay an interruption, with the measured spend floor printed as
+  the reason. The third is not an absence and does not share a sentence with the
+  second (`cadence-value.ts`, `valueClause`/`moneyState`)
+- **Every fire names the budget AND the rate it actually delivered.** Out of sample a
+  once-a-year budget fired 1.62 times a year and a twice-a-year budget 2.27, so the
+  sentence prints both. Printing the budget alone would promise a frequency the data
+  refuses
 - A house with **no exposure mapped** sees the series and a sentence saying none
   of these numbers is about anything it buys yet. Nothing proposes a mapping:
   a mapping is a person's assertion and is never inferred
@@ -79,6 +92,10 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
   line because the licence requires the source to be named (2026-09-05)
 - A series read **over a credential** says when THIS deployment does not hold
   one, and calls it a missing setting rather than a publisher refusing us
+- The **shell-egg index** no longer says it is waiting on a download: a person
+  brought the report on 2026-09-05 and the register holds that day. It still
+  says the source is not fetched, because a one-off read is not a cadence
+  (2026-09-05)
 
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
@@ -92,10 +109,6 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   `inbound-responder.service.ts:1287`) and pending one-tap actions with **no
   author** (`createSystemAction` inserts no `user_id`,
   `one-tap-actions.service.ts:366-382`). Dashed edge, "nothing was sent", a human
-- The **shell-egg index** no longer says it is waiting on a download: a person
-  brought the report on 2026-09-05 and the register holds that day. It still
-  says the source is not fetched, because a one-off read is not a cadence
-  (2026-09-05)
   control beside it — hold-to-approve to record, plain *Undo* to cancel.
 - **Custom one-tap actions now persist** — `POST /one-tap-actions` through the
   guarded gateway module, creator stamped from the token. Closes §13.2 and the

@@ -178,10 +178,21 @@ export type CadenceOutcome = CadenceBacktest | CadenceRefusal;
 export interface CarryingCostParams {
   /**
    * Fraction of the goods' own value given up per period held: cost of the
-   * cash, the space, and the shrink that is not outright spoilage. A house
-   * that has not stated one has not stated one; there is no default here.
+   * cash, the space, and the shrink that is not outright spoilage.
+   *
+   * `null` means NOBODY HAS TYPED ONE, and that is the state of every house
+   * today. Nullable rather than defaulted because the founder's answer to the
+   * plan's §12 Q5 was *"Twice a year, and the house types its carrying cost"*
+   * (2026-09-05, batch 59), and because the measurement behind that answer is
+   * exactly why a default would be dangerous: between 0.5 % and 1 % a month
+   * the recommendation flips from "worth having on six series" to "worth
+   * having on one". A number invented here would decide that for a house that
+   * never chose.
+   *
+   * The house's own figure is `restaurants.carrying_cost_percent_per_month`,
+   * which is a PERCENT. `percentPerMonthToFraction` is the only conversion.
    */
-  carryPerPeriod: number;
+  carryPerPeriod: number | null;
   /**
    * The fraction of a move in THIS series that reaches THIS house's invoice.
    * `null` means nobody has measured it, which is the honest common case and
@@ -213,8 +224,12 @@ export interface CadenceValuation {
    * Carrying cost of buying H periods ahead, as a fraction of one period's
    * spend: `carryPerPeriod × H(H+1)/2`. The unit bought for period t+w sits for
    * w periods, so the holding is triangular and not `carry × H`.
+   *
+   * `null` when the house has typed no carrying cost. NOT zero: zero would
+   * price holding three months of stock as free, which is the single
+   * assumption that makes every fire look like a win.
    */
-  carryFraction: number;
+  carryFraction: number | null;
   /** Mean net, in units of one period's spend, before attention. Pass-through applied. */
   netFractionPerFire: number | null;
   /** Share of fires whose net was negative. The false-alarm RATE, priced. */
@@ -231,8 +246,16 @@ export interface CadenceValuation {
   moneyPerFire: number | null;
   moneyPerYear: number | null;
   currency: string | null;
+  /**
+   * The smallest one-period spend at which a fire repays the attention it
+   * costs: `attentionPerFire / netFractionPerFire`. Null when the net is not
+   * positive — no spend is large enough then — or when an input is missing.
+   */
+  minimumPeriodSpend: number | null;
   /** Why money is null, in words, when it is. Never a silent zero. */
   withheld:
+    | "no_carrying_cost_typed"
+    | "below_spend_floor"
     | "pass_through_unset"
     | "no_house_spend"
     | "no_currency"
@@ -275,6 +298,21 @@ export function carryFractionFor(
   horizon: number,
 ): number {
   return carryPerPeriod * ((horizon * (horizon + 1)) / 2);
+}
+
+/**
+ * `0.75` percent a month becomes the fraction `0.0075`.
+ *
+ * The ONE conversion between the column and this model, in one place, because
+ * the two spellings differ by a hundred and the wrong one understates every
+ * carrying cost into invisibility — the direction that makes the alert look
+ * profitable. The migration's own CHECK refuses both mistakes
+ * (`>= 0.01 AND <= 25.000` percent), so a value that reaches here is already
+ * known to be a percent and not a fraction.
+ */
+export function percentPerMonthToFraction(percent: number | null): number | null {
+  if (percent === null || !Number.isFinite(percent)) return null;
+  return percent / 100;
 }
 
 function mean(xs: number[]): number | null {
@@ -499,15 +537,24 @@ export function valueBacktest(
   params: CarryingCostParams,
 ): CadenceValuation {
   const H = backtest.horizon;
-  const carryFraction = carryFractionFor(params.carryPerPeriod, H);
+  // A house that has typed nothing has a carrying cost of NOTHING, not of zero:
+  // zero would price holding stock as free and make every fire look like a win.
+  const carryFraction =
+    params.carryPerPeriod === null
+      ? null
+      : carryFractionFor(params.carryPerPeriod, H);
   const gross = backtest.meanGrossFraction;
 
   // Break-even pass-through: the φ at which φ·gross = carry. Undefined when the
   // series did not rise on average after a fire, and that is reported as null
   // rather than as an infinity or a zero — a house cannot break even on a
-  // signal whose average outcome is a fall, at any pass-through.
+  // signal whose average outcome is a fall, at any pass-through. Undefined too
+  // when no carrying cost is typed, because the break-even IS a statement about
+  // the carrying cost.
   const breakEvenPassThrough =
-    gross === null || gross <= 0 ? null : carryFraction / gross;
+    gross === null || gross <= 0 || carryFraction === null
+      ? null
+      : carryFraction / gross;
 
   const base: CadenceValuation = {
     horizon: H,
@@ -518,6 +565,7 @@ export function valueBacktest(
     breakEvenPassThrough,
     moneyPerFire: null,
     moneyPerYear: null,
+    minimumPeriodSpend: null,
     currency: params.currency,
     withheld: null,
     withheldDetail: null,
@@ -545,6 +593,19 @@ export function valueBacktest(
       ...base,
       withheld: "does_not_keep_long_enough",
       withheldDetail: `Buying ${H} period${H === 1 ? "" : "s"} ahead means holding this item for up to ${H * params.daysPerPeriod} days and a person typed a shelf life of ${params.shelfLifeDays}. The gain is real and the goods would not survive to collect it.`,
+    };
+  }
+
+  // THE FOUNDER'S OWN GATE. Batch 59: *"Twice a year, and the house types its
+  // carrying cost."* Checked after the shelf life and before everything else,
+  // because without it there is no cost side at all and the alert would price
+  // holding three months of stock as free.
+  if (carryFraction === null) {
+    return {
+      ...base,
+      withheld: "no_carrying_cost_typed",
+      withheldDetail:
+        "Nobody at this house has typed what holding stock costs it, so the saving is unmeasured. Buying ahead ties up cash, space and shelf life, and a figure that left those out would be an invented profit. It is one number, on the settings page, and it is a percent a month.",
     };
   }
 
@@ -599,39 +660,164 @@ export function valueBacktest(
   }
 
   const net = withPhi.netFractionPerFire as number;
+  // THE SPEND FLOOR. Measured in the quant pass (plan §9f): at 8 units of
+  // attention a fire, an item the house spends 168 to 450 a month on is the
+  // smallest that can repay being interrupted about, and on weaker parameters
+  // the floor runs into the thousands. A rule that fires about a herb is not
+  // wrong, it is merely never worth reading — and no condition in the plan's
+  // nine could see that, because every one of them asks about the SERIES.
+  const minimumPeriodSpend = net > 0 ? params.attentionPerFire / net : null;
   const moneyPerFire = net * params.periodSpend - params.attentionPerFire;
+
+  if (moneyPerFire <= 0) {
+    return {
+      ...withPhi,
+      minimumPeriodSpend,
+      withheld: "below_spend_floor",
+      withheldDetail:
+        minimumPeriodSpend === null
+          ? `Buying ahead on this signal loses money at this house's own carrying cost whatever it spends on the item, so no size of line would repay the interruption. Nothing is claimed as a saving.`
+          : `This house spends about ${params.periodSpend.toFixed(0)} ${params.currency} a period on this item, and a fire only repays the ${params.attentionPerFire.toFixed(0)} ${params.currency} it costs to read above about ${minimumPeriodSpend.toFixed(0)}. The saving is real and smaller than the reading.`,
+    };
+  }
+
   return {
     ...withPhi,
     moneyPerFire,
     moneyPerYear: moneyPerFire * backtest.firesPerYearRealised,
+    minimumPeriodSpend,
     withheld: null,
     withheldDetail: null,
   };
 }
 
 /**
- * The clause the alert sentence carries about money — in both of its forms.
+ * Which of the three things the alert may say about money.
  *
- * §9e sets the shape: with `pass_through_basis` unset, *"the money clause is
- * simply absent"*. It is not absent here; what replaces it is the statement of
- * what is not known plus the break-even, which is strictly more useful than
- * silence and claims strictly less than a figure.
+ * The founder's answer to the plan's §12 Q5, 2026-09-05 batch 59, is the whole
+ * reason there are three and not two: *"Twice a year, and the house types its
+ * carrying cost."* A saving may be printed only when the house typed a carrying
+ * cost AND a person typed a shelf life for the item; anything else is
+ * `unmeasured`, and the sentence names which input is missing rather than
+ * falling silent about the money. `too_small` is its own state because it is
+ * not an absence — everything is known, and the answer is that the item is not
+ * worth an interruption.
+ */
+export type MoneyState = "stated" | "unmeasured" | "too_small";
+
+export function moneyState(v: CadenceValuation): MoneyState {
+  if (v.withheld === null && v.moneyPerFire !== null && v.currency) return "stated";
+  if (v.withheld === "below_spend_floor") return "too_small";
+  return "unmeasured";
+}
+
+/**
+ * The clause the alert sentence carries about money — in its three forms.
+ *
+ * §9e set the shape as two: with `pass_through_basis` unset, *"the money clause
+ * is simply absent"*. It is not absent here, and there are three rather than
+ * two. What replaces a figure is the statement of what is not known plus the
+ * break-even where one exists — strictly more useful than silence and strictly
+ * less of a claim than a number. And a line too small to be worth reading about
+ * gets its own sentence, because telling a manager "unmeasured" when the truth
+ * is "measured, and not worth your time" is a different lie.
+ *
+ * The word `unmeasured` appears verbatim in the second form on purpose: it is
+ * the word the founder's own instruction uses, and it is what a manager should
+ * be able to search the screen for.
  */
 export function valueClause(v: CadenceValuation): string {
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
-  if (v.moneyPerFire !== null && v.currency) {
-    const sign = v.moneyPerFire >= 0 ? "save" : "cost";
+  const cover = `${v.horizon} period${v.horizon === 1 ? "" : "s"} of cover`;
+
+  if (moneyState(v) === "stated") {
+    const money = v.moneyPerFire as number;
     return (
-      `On this series' own recorded history, buying ${v.horizon} period${v.horizon === 1 ? "" : "s"} of cover on a fire like this one would have ` +
-      `${sign} about ${Math.abs(v.moneyPerFire).toFixed(2)} ${v.currency} on average, after the cost of holding the goods and of reading this. ` +
+      `On this series' own recorded history, buying ${cover} on a fire like this one would have ` +
+      `saved about ${money.toFixed(2)} ${v.currency} on average, after what holding the goods costs this house and what reading this costs. ` +
       `It went the wrong way on ${v.lossRate === null ? "an unmeasured share" : pct(v.lossRate)} of past fires.`
     );
   }
-  if (v.withheld === "pass_through_unset" && v.breakEvenPassThrough !== null) {
+
+  if (moneyState(v) === "too_small") {
+    return `The saving here is unmeasured for a reason that is measured: ${v.withheldDetail ?? "this line is too small to repay the interruption."}`;
+  }
+
+  if (v.withheld === "no_carrying_cost_typed") {
     return (
-      `This house has never measured how much of a move in this series reaches its own invoice, so no saving is given. ` +
-      `What can be said: buying ${v.horizon} period${v.horizon === 1 ? "" : "s"} of cover pays only if more than ${pct(v.breakEvenPassThrough)} of this series' move reaches your price. Below that it loses money.`
+      `The saving is UNMEASURED: nobody at this house has typed what holding stock costs it, and buying ${cover} ties up cash, space and shelf life. ` +
+      `It is one number on the settings page — a percent a month — and until it is there no figure for the saving will be shown, because the figure would be invented.`
     );
   }
-  return v.withheldDetail ?? "No figure for the saving is given.";
+  if (
+    v.withheld === "no_shelf_life_typed" ||
+    v.withheld === "does_not_keep_long_enough"
+  ) {
+    return `The saving is UNMEASURED: ${v.withheldDetail ?? "this item's shelf life is not known."}`;
+  }
+  if (v.withheld === "pass_through_unset" && v.breakEvenPassThrough !== null) {
+    return (
+      `The saving is UNMEASURED: this house has never measured how much of a move in this series reaches its own invoice. ` +
+      `What can be said is the break-even — buying ${cover} pays only if more than ${pct(v.breakEvenPassThrough)} of this series' move reaches your price. Below that it loses money.`
+    );
+  }
+  return `The saving is UNMEASURED: ${v.withheldDetail ?? "no figure for it can be given."}`;
+}
+
+/** The facts §9e requires on the face of every fire, none of them optional. */
+export interface AlertSentenceFacts {
+  /** The series in the words its publisher uses. */
+  seriesLabel: string;
+  /** Who published it, and when they say they published it. */
+  issuer: string;
+  issuedOn: string;
+  /** How the issuer states the number, and at which trade level. */
+  unit: string;
+  tradeLevel: string;
+  /** The current value and the baseline it is measured against, in that unit. */
+  latest: string;
+  baseline: string;
+  /** `m`, as a fraction. Printed as a percentage. */
+  move: number;
+  /** The house's own item this series is mapped to, in the house's words. */
+  itemLabel: string;
+  /** The person-typed shelf life of that item, in days. Null when untyped. */
+  shelfLifeDays: number | null;
+  /** The budget the house chose, and the rate the rule actually delivered. */
+  firesPerYear: number;
+  realisedFiresPerYear: number | null;
+}
+
+/**
+ * The whole sentence a fire carries, money clause included.
+ *
+ * Every element §9e requires is a REQUIRED field above rather than an optional
+ * one, so a caller cannot produce a sentence missing its issuer or its trade
+ * level — the two things that stop a wholesale number being read as a retail
+ * one, which on eggs differed by 6.3x on the same day.
+ *
+ * The realised rate is printed beside the chosen budget because the quant pass
+ * measured that they differ: out of sample a once-a-year budget fired 1.62
+ * times a year and a twice-a-year budget 2.27. Printing the budget alone would
+ * be promising a frequency the data refuses.
+ */
+export function commodityAlertSentence(
+  facts: AlertSentenceFacts,
+  v: CadenceValuation,
+): string {
+  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
+  const shelf =
+    facts.shelfLifeDays === null
+      ? "Nobody has typed how long this house can hold it, so nothing here says to buy ahead."
+      : `A person typed that this house can hold it ${facts.shelfLifeDays} days.`;
+  const rate =
+    facts.realisedFiresPerYear === null
+      ? `You asked to hear about this series about ${facts.firesPerYear === 1 ? "once" : `${facts.firesPerYear} times`} a year.`
+      : `You asked to hear about this series about ${facts.firesPerYear === 1 ? "once" : `${facts.firesPerYear} times`} a year; on its own history that setting has actually fired about ${facts.realisedFiresPerYear.toFixed(1)} times a year.`;
+  return (
+    `${facts.seriesLabel} is ${pct(facts.move)} above its twelve-observation median: ${facts.latest} against a median of ${facts.baseline}. ` +
+    `${facts.issuer}, issued ${facts.issuedOn}, ${facts.unit}, ${facts.tradeLevel}. ` +
+    `You mapped this series to ${facts.itemLabel}. ${shelf} ` +
+    `${valueClause(v)} ${rate}`
+  );
 }

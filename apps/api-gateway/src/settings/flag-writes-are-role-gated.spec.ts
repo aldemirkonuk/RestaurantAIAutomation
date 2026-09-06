@@ -74,6 +74,9 @@ function controller(opts: {
       // The currency register, added 2026-09-05. Not exercised here — this file
       // owns the FLAG gate — so it is a bare double rather than a live service.
       {} as never,
+      // The carrying-cost register, added 2026-09-06 (founder batch 59). Not
+      // exercised here; a bare double so this file keeps owning one gate.
+      {} as never,
     ),
     update,
   };

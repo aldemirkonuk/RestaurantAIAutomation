@@ -36,6 +36,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SERIES, type SeriesEntry } from "./commodity.registry";
 import {
+  CADENCE_NOT_ON_OFFER,
+  DEFAULT_BUDGET,
   hashProposal,
   isRefusal,
   proposeAllBudgets,
@@ -132,7 +134,23 @@ export class CommodityAdminService {
     mayBeArmed: boolean;
     mayNotBeArmedBecause: string | null;
     observations: number | null;
-    budgets: Array<{ firesPerYear: number; outcome: CalibrationOutcome }> | null;
+    budgets: Array<{
+      firesPerYear: number;
+      isDefault: boolean;
+      rationale: string;
+      outcome: CalibrationOutcome;
+    }> | null;
+    /**
+     * The budget the founder chose (twice a year, 2026-09-05 batch 59). Carried
+     * on every answer, including the ones that propose nothing, so the screen
+     * never has to infer the recommendation from the list.
+     */
+    defaultBudget: number;
+    /**
+     * Why weekly and fortnightly are not in the list. An option that was asked
+     * for and is missing must be explained, or an absence reads as a choice.
+     */
+    cadenceNotOnOffer: string;
     note: string | null;
   }> {
     const entry = SERIES[seriesKey] ?? null;
@@ -145,6 +163,8 @@ export class CommodityAdminService {
         mayNotBeArmedBecause: `"${seriesKey}" is not a series this register knows. Nothing is proposed rather than calibrating a key nobody declared.`,
         observations: null,
         budgets: null,
+        defaultBudget: DEFAULT_BUDGET,
+        cadenceNotOnOffer: CADENCE_NOT_ON_OFFER,
         note: null,
       };
     }
@@ -166,6 +186,8 @@ export class CommodityAdminService {
         mayNotBeArmedBecause,
         observations: null,
         budgets: null,
+        defaultBudget: DEFAULT_BUDGET,
+        cadenceNotOnOffer: CADENCE_NOT_ON_OFFER,
         note: "The series register could not be read, so no proposal was computed. This is unknown, not a series with no history.",
       };
     }
@@ -178,6 +200,8 @@ export class CommodityAdminService {
         mayNotBeArmedBecause,
         observations: 0,
         budgets: null,
+        defaultBudget: DEFAULT_BUDGET,
+        cadenceNotOnOffer: CADENCE_NOT_ON_OFFER,
         note: "This series is declared in the registry and has no row in the register yet, so it has no history to calibrate. Nothing is claimed about where its threshold would fall.",
       };
     }
@@ -192,6 +216,8 @@ export class CommodityAdminService {
         mayNotBeArmedBecause,
         observations: null,
         budgets: null,
+        defaultBudget: DEFAULT_BUDGET,
+        cadenceNotOnOffer: CADENCE_NOT_ON_OFFER,
         note: "This series' observations could not be read, so no proposal was computed. This is unknown, not an empty history.",
       };
     }
@@ -204,6 +230,8 @@ export class CommodityAdminService {
       mayNotBeArmedBecause,
       observations: pts.length,
       budgets: proposeAllBudgets(seriesKey, entry.periodGrain, pts),
+      defaultBudget: DEFAULT_BUDGET,
+      cadenceNotOnOffer: CADENCE_NOT_ON_OFFER,
       note: null,
     };
   }

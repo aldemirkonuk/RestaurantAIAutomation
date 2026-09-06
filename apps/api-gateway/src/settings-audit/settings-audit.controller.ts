@@ -16,12 +16,26 @@ import {
   type SettingsRegister,
 } from "./settings-audit.service";
 
+/**
+ * The registers `?register=` may filter to. It must hold EVERY member of
+ * `SettingsRegister`, because a value this list omits is refused with a 400
+ * naming the ones it does hold — so an omission reads to a caller as "that
+ * register does not exist" when rows for it are being written all the same.
+ *
+ * `currency` was missing here from the day that register was added
+ * (2026-09-05): `PUT /settings/currency` wrote `register: "currency"` rows and
+ * `GET /settings-audit?register=currency` answered 400. Found and corrected
+ * 2026-09-06 while adding `carrying-cost`; the type is the source of truth and
+ * this list is now checked against it in the spec.
+ */
 const REGISTERS: SettingsRegister[] = [
   "features",
   "vendor-terms",
   "thresholds",
   "notifications",
   "preferences",
+  "currency",
+  "carrying-cost",
 ];
 
 /**
