@@ -173,6 +173,32 @@ Registry Table D domain buckets beyond the generator write-set remain **out of s
 
 ---
 
+## Real-venue behaviour profiles (`datasets/sim/venues/`)
+
+A sim tenant is only as honest as the venue it imitates, so each archetype can be backed by a
+researched profile of a **real** venue built from public sources only, with every price, hour
+and capacity figure traced to a URL and a read date, and anything unpublished recorded as
+`null` rather than filled in. `meyhouse-palo-alto/` was the first. **`vanilla-antalya-kaleici/`
+(added 2026-09-05) is the second and the first non-US one:** Vanilla Restaurant, Hesapçı Sk.
+No:33 in Antalya's Kaleiçi old town — a British-chef bistro since 2007 that Turkish listings
+file under *Bar & Pub* with *Egzotik Kokteyller* as a cuisine type, so it exercises the
+cocktail-and-spirits half of a beverage program that the wine-shaped Meyhouse profile does not.
+It carries **284 published menu rows in ₺ (TRY)** — 46 alcoholic cocktails, 78 spirit rows
+(including rakı in five sizes per brand), 37 wines, 6 beers, 48 non-alcoholic lines and 69 food
+rows — lifted verbatim from the venue's own machine-readable menu payload rather than OCR'd,
+plus Google's measured 7-day × 18-hour popular-times histogram, the venue's own reservation
+grid, and `Europe/Istanbul` as the tenant timezone. What it deliberately lacks is as important:
+**no seat, table or cover count is published anywhere for this venue** (Cvent, whose purpose is
+publishing venue capacity, shows a dash for every field), so unlike Meyhouse this profile
+derives **no** covers-per-service estimate at all; 21 of the 284 rows — the venue's whole
+by-the-bottle spirits offer plus four wines — are published with an empty price and carry
+`price: null`; and the venue's own site publishes **seven mutually contradictory opening-hour
+ranges**, four of them on its own pages and two of those varying by display language, which
+`operating_hours._conflicts` records in full rather than resolving silently. Read
+`datasets/sim/venues/vanilla-antalya-kaleici/SOURCES.md` before trusting any single field.
+
+---
+
 ## Auth / secrets
 
 - Reuse Supabase Auth REST password grant pattern from `prod_jwt` in `conftest_prod.py` (session-scoped JWT; never function-scoped for multi-wave suites).
