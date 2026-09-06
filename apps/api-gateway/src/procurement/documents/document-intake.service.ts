@@ -150,6 +150,8 @@ export class DocumentIntakeService {
       packSize?: number | null;
       vintage?: number | null;
       formatMl?: number | null;
+      /** The shelf this line is about, when the door knows it (ADR 0103 A1). */
+      inventoryId?: string | null;
     }[];
     /** Who signed the vendor's ticket at the door, when anyone did. */
     signedBy?: string | null;
@@ -395,6 +397,30 @@ export class DocumentIntakeService {
         // would leave a caller believing nothing was written.
         error: `the door count document ${documentId} was written but its lines were not: ${lineErr.message}`,
       };
+
+    // WHICH SHELF EACH COUNTED LINE IS ABOUT (ADR 0103 A1).
+    //
+    // Written here rather than through `ParsedLine`, deliberately: a parsed
+    // document is what a DOCUMENT said, and no document says which of this
+    // restaurant's items a line is. The door knows because a person picked it.
+    // A line with no id keeps NULL and the booking path reports it as not
+    // booked, with the reason — it is never matched by description.
+    for (const l of input.lines) {
+      if (!l.inventoryId) continue;
+      const linked = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({ inventory_id: l.inventoryId })
+        .eq("document_id", documentId)
+        .eq("line_no", l.lineNo);
+      if (linked.error)
+        return {
+          documentId,
+          parsed,
+          duplicate: false,
+          error: `the door count document ${documentId} was written but line ${l.lineNo} could not be linked to item ${l.inventoryId}: ${linked.error.message}. Nothing was booked — booking onto a line whose item is unknown is the failure this refuses.`,
+        };
+    }
 
     return {
       documentId,

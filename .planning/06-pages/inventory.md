@@ -38,6 +38,7 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 - Attention rail surfacing low stock first
 - Spot counts with an offline-safe outbox (counts queue and sync when back online)
 - Receiving verification as a pinned task, not a popup — verify a delivery against its documents
+- **Provisional cost is a first-class state (ADR 0103 A1, built 2026-09-06).** A lot booked at the door before its invoice was agreed reads `cost_state = provisional`: it is pourable and it is not a settled cost. A delivery stuck in RECONCILING is therefore on the shelf and absent from cost figures — which is the behaviour A1 asks for, not a gap.
 - Cellar map view of storage zones
 - Scan a menu/wine list photo to add wines
 - Add and remove wines; manage storage locations

@@ -30,6 +30,7 @@ import { CanonicalDocumentService } from "../canonical/canonical-document.servic
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
 import { DeliveryService } from "../canonical/delivery.service";
+import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 
 type AuthedUser = { userId: string; restaurantId: string };
@@ -63,6 +64,7 @@ export class DocumentsController {
     private readonly spine: DeliverySpineService,
     private readonly corrections: DocumentCorrectionService,
     private readonly deliveries: DeliveryService,
+    private readonly deliveryStock: DeliveryStockService,
   ) {}
 
   /**
@@ -367,6 +369,7 @@ export class DocumentsController {
 
     let delivery: unknown = null;
     let differsOnLines: number | null = null;
+    let deliveryId: string | null = null;
     if (body.deliveryId) {
       const linked = await this.deliveries.linkDocument(
         user.restaurantId,
@@ -382,6 +385,7 @@ export class DocumentsController {
           linked.status,
         );
       delivery = linked.value.delivery;
+      deliveryId = body.deliveryId;
     } else if (body.createDelivery) {
       const created = await this.deliveries.create(
         user.restaurantId,
@@ -401,12 +405,46 @@ export class DocumentsController {
         );
       delivery = created.value.delivery;
       differsOnLines = created.value.differsOnLines;
+      deliveryId = created.value.delivery.id;
+    }
+
+    /**
+     * STOCK IS BOOKED AT THE DOOR (ADR 0103 A1 / A5).
+     *
+     * The bottles are on the shelf and the staff can pour them; what nobody has
+     * yet is a price, so the lots are `cost_state = provisional` and carry NO
+     * unit cost — absent, never zero. Verification settles the cost later.
+     *
+     * A count with no delivery books nothing, and that is not a silent skip:
+     * `booking` is null and the caller can see that the count was recorded as a
+     * document without becoming stock. A line that names no item comes back in
+     * `booking.notBooked` with its reason rather than being guessed onto a
+     * shelf by its description.
+     */
+    let booking: unknown = null;
+    if (deliveryId) {
+      const booked = await this.deliveryStock.bookAtTheDoor(
+        user.restaurantId,
+        deliveryId,
+        result.documentId,
+        user.userId,
+      );
+      if (!booked.ok)
+        throw new HttpException(
+          `The door count was recorded as ${result.documentId} and attached to delivery ${deliveryId}, but the stock was not booked: ${booked.error}`,
+          booked.status,
+        );
+      booking = booked.value;
     }
 
     return {
       documentId: result.documentId,
       document: result.parsed,
       delivery,
+      // NULL = the count is a document and nothing more: no delivery, so no
+      // stock. Never an empty booking receipt, which would read as "booked
+      // nothing" (ADR 0103 A6).
+      booking,
       // NULL = no comparison was possible (no order, or the read failed).
       // 0 = compared, and nothing differed. The two are never the same answer.
       differsOnLines,

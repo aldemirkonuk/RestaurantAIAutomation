@@ -4,6 +4,7 @@ import { NotificationsService } from "../../notifications/notifications.service"
 import { DeliveryClockService } from "./delivery-clock.service";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
+import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -16,16 +17,18 @@ import { matchLines, MatchableLine } from "../documents/line-matcher";
  * contradiction becomes a proposal row, and two human gates — AGREED and
  * VERIFIED — are separate and stay separate.
  *
- * NO STOCK PATH IS TOUCHED, AND THAT IS MEASURED, NOT ASSUMED. ADR 0103 A1 says
- * on-hand moves at DELIVERED with the lot marked `cost_state = provisional` and
- * cost posts at VERIFIED. `inventory_lots.cost_state` and
- * `inventory_transactions.delivery_id` were added as columns in slice 1 and, read
- * across `apps/api-gateway/src` and `services/` on this tree, still have ZERO
- * writers. So `verify()` does NOT set `cost_state = final`: it would be the only
- * writer of that column, marking lots final that nothing ever marked provisional
- * — a cost state asserted about a booking this code never made. Consolidating
- * `recordDoorReceipt` and `markDelivered` onto the delivery (A5) is its own stop
- * and is named here rather than half-done.
+ * STOCK AND COST NOW MOVE HERE — A5's consolidation stop (2026-09-06). A1 says
+ * on-hand moves at DELIVERED from the door count with the lot marked
+ * `cost_state = provisional`, and cost posts at VERIFIED. Both halves live in
+ * `DeliveryStockService`, which is the ONE function that turns a counted line
+ * into stock; `verify()` calls its second half and `propose()`'s WRONG_VENUE
+ * rejection calls its reversal. Nothing in this file touches a lot directly.
+ *
+ * The previous build recorded, correctly, that `verify()` must not set
+ * `cost_state = final` while nothing ever set it provisional — a cost state
+ * asserted about a booking this code never made. That premise is now false in
+ * the only way that makes finalising honest: the door books, and it books
+ * provisional.
  *
  * THE TWO GATES, AND WHY THEY ARE TWO (D1, D6).
  *   AGREED    is about the DOCUMENT: both sides' positions are on the record.
@@ -129,6 +132,7 @@ export class DeliveryService {
     private readonly db: DatabaseService,
     private readonly clocks: DeliveryClockService,
     private readonly notifications: NotificationsService,
+    private readonly stock: DeliveryStockService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -566,7 +570,22 @@ export class DeliveryService {
           error: `the proposal was recorded but the delivery could not be moved to ${nextState}: ${upd.error.message}`,
         };
       delivery = upd.data as unknown as DeliveryRow;
-      if (nextState === "REJECTED") await this.clocks.cancelFor(deliveryId);
+      if (nextState === "REJECTED") {
+        await this.clocks.cancelFor(deliveryId);
+        // D1's exit: a rejected delivery gives back whatever the door booked.
+        // A reversal is a MOVEMENT, not a deletion — the ledger keeps both the
+        // arrival and the return, because "these bottles were here" is true.
+        const back = await this.stock.reverse(
+          restaurantId,
+          deliveryId,
+          userId,
+          `rejected: ${input.reason}`,
+        );
+        if (!back.ok)
+          this.logger.error(
+            `delivery ${deliveryId} was rejected but its stock was not returned: ${back.error}`,
+          );
+      }
     }
 
     // D8 — "the vendor proposed …". Only for the vendor's side: the restaurant
@@ -866,7 +885,8 @@ export class DeliveryService {
     WriteResult<{
       delivery: DeliveryRow;
       alreadyVerified: boolean;
-      stockUntouched: string;
+      cost: CostReceipt | null;
+      costNote: string;
     }>
   > {
     if (!userId)
@@ -883,16 +903,20 @@ export class DeliveryService {
       return { ok: false, status: 404, error: "Delivery not found" };
     const delivery = found.value;
 
-    const stockUntouched =
-      "Nothing was posted to inventory or cost. On this build the door path is " +
-      "still the only writer of stock, and `inventory_lots.cost_state` has no " +
-      "writer at all — so verification records the human assertion and nothing " +
-      "else (ADR 0103 A1/A5, consolidation is a later stop).";
-
+    // A RE-VERIFY IS NOT A SECOND VERIFICATION. The stamp that exists is the
+    // one returned; the cost is not re-posted, because `finalise_delivery_cost`
+    // has already settled these lots and a second pass would write a
+    // revaluation row for a correction nobody made.
     if (delivery.verified_at)
       return {
         ok: true,
-        value: { delivery, alreadyVerified: true, stockUntouched },
+        value: {
+          delivery,
+          alreadyVerified: true,
+          cost: null,
+          costNote:
+            "This delivery was already verified; its cost was posted then and is not posted twice.",
+        },
       };
 
     if (delivery.state !== "AGREED")
@@ -926,12 +950,50 @@ export class DeliveryService {
       };
 
     await this.clocks.cancelFor(deliveryId);
+
+    // ADR 0103 A1, the second half: the goods were already on the shelf from
+    // the door count, PROVISIONALLY costed. Verification is where the agreed
+    // price becomes the lot's cost. The quantity is not touched — money moves,
+    // bottles do not.
+    //
+    // A COST FAILURE DOES NOT UN-VERIFY THE DELIVERY. A named person asserted
+    // receipt and that assertion is durable; the lots simply stay provisional,
+    // the sentence says so, and posting is safe to retry. Reporting the
+    // verification as failed would send them to press it again on a delivery
+    // that is already verified.
+    const cost = await this.stock.finaliseAtVerified(
+      restaurantId,
+      deliveryId,
+      userId,
+    );
+    if (!cost.ok) {
+      this.logger.error(
+        `delivery ${deliveryId} verified but its cost did not post: ${cost.error}`,
+      );
+      return {
+        ok: true,
+        value: {
+          delivery: upd.data as unknown as DeliveryRow,
+          alreadyVerified: false,
+          cost: null,
+          costNote: cost.error,
+        },
+      };
+    }
+
+    const note = cost.value.finalised.length
+      ? `Cost posted for ${cost.value.finalised.length} item(s); ${cost.value.stillProvisional.length} left provisional because no agreed price reaches them.`
+      : cost.value.stillProvisional.length
+        ? `No cost was posted: ${cost.value.stillProvisional.length} item(s) have no agreed price on the record, so their lots stay provisional rather than becoming a final cost nobody agreed.`
+        : "This delivery booked no stock at the door, so there was no cost to settle.";
+
     return {
       ok: true,
       value: {
         delivery: upd.data as unknown as DeliveryRow,
         alreadyVerified: false,
-        stockUntouched,
+        cost: cost.value,
+        costNote: note,
       },
     };
   }

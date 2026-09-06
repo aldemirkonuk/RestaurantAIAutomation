@@ -188,6 +188,15 @@ dropped, RLS enabled with a `service_role` policy on all six:
 `inventory_transactions.delivery_id` and `inventory_lots.cost_state` are added as
 **columns only** (`:586`, `:603`); nothing in slice 1 writes them and no stock path is touched.
 
+**Both columns gained writers on 2026-09-06** (migration `20260906233000`, ADR 0103 A1/A5).
+`DeliveryStockService.bookAtTheDoor` is now the ONE function that turns a counted line into
+stock — one `apply_stock_movement` per line, keyed `(delivery_id, document_id, line_no)`, with
+no price, so the lot is `provisional` and both rows carry the delivery id.
+`finalise_delivery_cost` posts the agreed price at VERIFIED and flips those lots to `final`
+without moving a bottle. `cost_state`'s default changed from `final` to `provisional`:
+a default cannot make an assertion. `recordDoorReceipt` and `markDelivered` remain as
+endpoints but ask `deliveryHasBookedOrder` before booking, so neither is a second writer.
+
 **Only two `vendor_terms` rows are seeded** (`:363`, `:379`): US-CA alcohol invoice payment
 30 days from delivery, wholesaler-initiated EFT; TR invoice objection window 8 days from
 issue. The Turkish e-İrsaliye response window is deliberately ABSENT — ADR 0103 A8 holds it
@@ -303,3 +312,5 @@ gateway built from `origin/main` `417474e6`. What this software gained, and what
   delivery ids and `0` lots moved; every lot still reads `cost_state = final` — which it did
   before the delivery existed, because the column defaults to `final` and has no writer
   (finding 2). Nothing here closes the middle of the four-way match automatically yet.
+  **Both halves of that sentence stopped being true on 2026-09-06** — see the A1/A5 stop
+  above; a delivery counted at the door now moves lots, and they land `provisional`.
