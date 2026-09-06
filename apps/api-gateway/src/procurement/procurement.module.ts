@@ -33,12 +33,15 @@ import { SealModule } from "../common/seal/seal.module";
 import { DeliveriesController } from "./deliveries.controller";
 import { CanonicalDocumentService } from "./canonical/canonical-document.service";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
+import { DocumentCorrectionService } from "./canonical/document-correction.service";
 // The 832 catalogue half of the document door (ADR 0126, batch 56). Not
 // circular: DistributorFeedModule imports Database, Config, Auth and
 // Organizations, and nothing in that graph imports procurement — so no
 // forwardRef, and Nest resolves it at build time rather than injecting
 // `undefined` at runtime.
 import { DistributorFeedModule } from "../distributor-feed/distributor-feed.module";
+import { DeliveryService } from "./canonical/delivery.service";
+import { DeliveryClockService } from "./canonical/delivery-clock.service";
 
 /**
  * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
@@ -89,6 +92,15 @@ import { DistributorFeedModule } from "../distributor-feed/distributor-feed.modu
     // would have failed at boot with a DI error CI cannot see.
     CanonicalDocumentService,
     DeliverySpineService,
+    // ADR 0104 D12 slice 3 — the correction door. Registered here for the same
+    // reason slice 1's two classes had to be: an unregistered provider is a DI
+    // failure at boot that CI cannot see.
+    DocumentCorrectionService,
+    // ADR 0104 D12 slice 3 stop 2 — the delivery's doors and the durable clock
+    // ladder of ADR 0103 D9/A10. Registered here, like the two above, because
+    // an unregistered provider is a DI failure at boot that CI cannot see.
+    DeliveryService,
+    DeliveryClockService,
   ],
   // Exported for callers that already depend on procurement. The inbound-email
   // path deliberately does NOT call it directly — ProcurementModule imports

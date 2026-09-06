@@ -20,9 +20,15 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
-import { ApplyExtractionDto, UploadDocumentDto } from "./dto/documents.dto";
+import {
+  ApplyExtractionDto,
+  CorrectFieldDto,
+  UploadDocumentDto,
+  VerifyFieldDto,
+} from "./dto/documents.dto";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
+import { DocumentCorrectionService } from "../canonical/document-correction.service";
 import { createHash } from "node:crypto";
 import { looksLikeEdi832 } from "../../distributor-feed/parse-edi832";
 import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
@@ -30,6 +36,8 @@ import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.serv
 import { OrganizationsService } from "../../organizations/organizations.service";
 import { roleSatisfies } from "../order-approval-gate";
 import { documentMoneyState, refiledMoney } from "./invoice-currency";
+import { DeliveryService } from "../canonical/delivery.service";
+import { DoorCountDto } from "../dto/deliveries.dto";
 
 /**
  * `fullName`, `name` and `email` are read for ONE purpose: an admitted class-C
@@ -81,12 +89,14 @@ export class DocumentsController {
     private readonly db: DatabaseService,
     private readonly canonical: CanonicalDocumentService,
     private readonly spine: DeliverySpineService,
+    private readonly corrections: DocumentCorrectionService,
     private readonly catalogIngest: CatalogIngestService,
     // WHO the caller is AT THIS HOUSE, for the deliberate currency change
     // (founder, 2026-09-06). `OrganizationsModule` is already a
     // `ProcurementModule` import for the approval gate, so this adds no edge to
     // the module graph and no `forwardRef`.
     private readonly organizations: OrganizationsService,
+    private readonly deliveries: DeliveryService,
   ) {}
 
   /**
@@ -147,7 +157,7 @@ export class DocumentsController {
       throw new HttpException(built.error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    const [{ data: row, error: rowErr }, spine] = await Promise.all([
+    const [{ data: row, error: rowErr }, spine, log] = await Promise.all([
       this.db
         .getClient()
         .from("procurement_documents")
@@ -167,11 +177,13 @@ export class DocumentsController {
         .eq("restaurant_id", user.restaurantId)
         .maybeSingle(),
       this.spine.forDocument(user.restaurantId, id),
+      this.corrections.correctionLog(user.restaurantId, id),
     ]);
 
     const failedRead: string[] = [];
     if (rowErr) failedRead.push(`document metadata: ${rowErr.message}`);
     if (!spine.ok) failedRead.push(spine.error);
+    if (!log.ok) failedRead.push(log.error);
 
     /**
      * When the metadata read FAILED there is no `storage_path` to sign — and
@@ -207,6 +219,14 @@ export class DocumentsController {
       // page then collapses the spine and shows the sheet alone.
       deliveries,
       siblings,
+      /**
+       * ADR 0104 D5. NULL means the log could not be read and `failedRead` says
+       * so; `[]` means the reads succeeded and nobody has corrected or verified
+       * a field on this document. Collapsing the two would let a broken query
+       * render as "this document has never been touched", which is the sentence
+       * a vendor dispute gets argued from.
+       */
+      corrections: log.ok ? log.value : null,
       original: {
         ...original,
         contentType: (row?.content_type as string) ?? null,
@@ -229,6 +249,187 @@ export class DocumentsController {
       // a schema lag, a partial failure. Absent when there is nothing to say.
       ...(built.notes?.length ? { notes: built.notes } : {}),
       ...(failedRead.length ? { failedRead } : {}),
+    };
+  }
+
+  /**
+   * Correct one layer-1 field (ADR 0104 D5).
+   *
+   * NOT AN EDIT. Layer 1 is append-only: this writes revision n+1 carrying the
+   * whole corrected document and an audit row saying who changed what, from
+   * what, to what and why. Both tables refuse UPDATE and DELETE by trigger, so
+   * a correction can be superseded but never rewritten.
+   *
+   * Class-level `@UseGuards(JwtAuthGuard)` covers it; `restaurantId` comes from
+   * the token and scopes the document read, so another tenant's id is a 404.
+   */
+  @Post(":id/corrections")
+  @ApiOperation({
+    summary: "Correct one field of the canonical document (ADR 0104 D5)",
+    description:
+      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written.",
+  })
+  async correctField(
+    @Param("id") id: string,
+    @Body() body: CorrectFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const result = await this.corrections.correct(
+      user.restaurantId,
+      id,
+      user.userId,
+      { path: body.path, value: body.value ?? null, reason: body.reason },
+    );
+    if (!result.ok) throw new HttpException(result.error, result.status);
+    return result.value;
+  }
+
+  /**
+   * The per-field `verified_by` tick (ADR 0104 D5).
+   *
+   * A human standing behind a value they did NOT change. The field's `source`
+   * stays whatever it was — an extracted number that a manager confirmed is
+   * still an extracted number, now with a name against it.
+   */
+  @Post(":id/fields/verify")
+  @ApiOperation({
+    summary: "Tick one field as verified by a human (ADR 0104 D5)",
+    description:
+      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged.",
+  })
+  async verifyFieldTick(
+    @Param("id") id: string,
+    @Body() body: VerifyFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const result = await this.corrections.verifyField(
+      user.restaurantId,
+      id,
+      user.userId,
+      { path: body.path },
+    );
+    if (!result.ok) throw new HttpException(result.error, result.status);
+    return result.value;
+  }
+
+  /**
+   * THE DOOR COUNT — a document we AUTHOR (ADR 0104 D2/D11, ADR 0103 A6).
+   *
+   * `POST /procurement/documents` reads a document somebody else wrote. This one
+   * records what a person at the door SAYS they counted: `doc_type
+   * receiving_advice`, `source manual`, `direction issued_by_us`, explicit lines,
+   * an optional photograph as evidence, and no extraction at all — so
+   * `extraction_confidence` is NULL rather than 0.
+   *
+   * WHY IT IS ITS OWN ROUTE AND NOT A BRANCH INSIDE THE UPLOAD DOOR. The upload
+   * door's whole contract is "here are bytes, tell me what they say". A count
+   * has no bytes to read and nothing to be confident about; folding it in would
+   * have made `contentBase64` optional on a route whose only job is to receive
+   * it, and every reader would then have to work out which kind of document a
+   * given request was. The two doors are different sentences, so they are
+   * different routes.
+   *
+   * A LINE NOBODY COUNTED IS ABSENT, NOT ZERO. There is no `notCounted` flag:
+   * the lines somebody counted are submitted and the rest keep the canonical
+   * `not counted` they already carry (ADR 0103 A6).
+   */
+  @Post("door-count")
+  @ApiOperation({
+    summary:
+      "Record a door count as a receiving_advice document (ADR 0104 D11)",
+    description:
+      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
+  })
+  async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
+    let photo: {
+      bytes: Buffer;
+      filename: string | null;
+      mimeType: string | null;
+    } | null = null;
+    if (body.photoBase64) {
+      let bytes: Buffer;
+      try {
+        bytes = Buffer.from(body.photoBase64, "base64");
+      } catch {
+        throw new HttpException(
+          "photoBase64 is not valid base64",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (!bytes.length)
+        throw new HttpException(
+          "photoBase64 decoded to no bytes. Send a photograph or send none — an empty one is a failed upload wearing the shape of evidence.",
+          HttpStatus.BAD_REQUEST,
+        );
+      photo = {
+        bytes,
+        filename: body.photoFilename ?? null,
+        mimeType: body.photoMimeType ?? null,
+      };
+    }
+
+    const result = await this.intake.recordDoorCount({
+      restaurantId: user.restaurantId,
+      providerId: body.providerId ?? null,
+      countedBy: user.userId,
+      countedAt: body.countedAt ?? null,
+      lines: body.lines,
+      signedBy: body.signedBy ?? null,
+      note: body.note ?? null,
+      photo,
+    });
+    if (result.error || !result.documentId)
+      throw new HttpException(
+        result.error ?? "the door count could not be recorded",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+
+    let delivery: unknown = null;
+    let differsOnLines: number | null = null;
+    if (body.deliveryId) {
+      const linked = await this.deliveries.linkDocument(
+        user.restaurantId,
+        body.deliveryId,
+        result.documentId,
+        "door_count",
+      );
+      if (!linked.ok)
+        throw new HttpException(
+          // The COUNT landed. Saying "the door count failed" would send a
+          // receiver to type it again on top of a document that already exists.
+          `The door count was recorded as ${result.documentId} but could not be attached to delivery ${body.deliveryId}: ${linked.error}`,
+          linked.status,
+        );
+      delivery = linked.value.delivery;
+    } else if (body.createDelivery) {
+      const created = await this.deliveries.create(
+        user.restaurantId,
+        user.userId,
+        {
+          orderId: body.orderId ?? null,
+          providerId: body.providerId ?? null,
+          jurisdiction: body.jurisdiction ?? null,
+          deliveredAt: body.countedAt ?? null,
+          documents: [{ documentId: result.documentId, role: "door_count" }],
+        },
+      );
+      if (!created.ok)
+        throw new HttpException(
+          `The door count was recorded as ${result.documentId} but the delivery could not be created: ${created.error}`,
+          created.status,
+        );
+      delivery = created.value.delivery;
+      differsOnLines = created.value.differsOnLines;
+    }
+
+    return {
+      documentId: result.documentId,
+      document: result.parsed,
+      delivery,
+      // NULL = no comparison was possible (no order, or the read failed).
+      // 0 = compared, and nothing differed. The two are never the same answer.
+      differsOnLines,
+      ...(result.storageError ? { storageError: result.storageError } : {}),
     };
   }
 

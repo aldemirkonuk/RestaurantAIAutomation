@@ -215,3 +215,95 @@ export function showsMoney(docType: string): boolean {
 export function showsClaimBlock(docType: string): boolean {
   return docType === 'credit_memo'
 }
+
+/**
+ * A date AND a time, in the document's own convention — for the correction log.
+ *
+ * ADR 0104 D5's example sentence is "Corrected by Ayşe 14.08 09:40": a Turkish
+ * document says `14.08 09:40`, a Californian one `Aug 14, 09:40`. The Turkish
+ * form is written out for the same reason `fmtDate` writes it out — a shape that
+ * changes with the runtime's ICU data is not a transcription of anything.
+ *
+ * The time is rendered in the READER's zone, deliberately: "when did Ayşe
+ * change this" is a question about the person at the keyboard, not about the
+ * document's jurisdiction.
+ */
+export function fmtStamp(
+  iso: string | null | undefined,
+  jurisdiction?: string | null,
+  currency?: string | null,
+): string {
+  if (!iso) return EM
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return EM
+  const p = (n: number) => String(n).padStart(2, '0')
+  const clock = `${p(d.getHours())}:${p(d.getMinutes())}`
+  const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
+  if (turkish) return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${clock}`
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${clock}`
+}
+
+/**
+ * "Corrected by Ayşe 14.08 09:40, was “142,00”" — ADR 0104 D5's own sentence.
+ *
+ * WHAT `was` SHOWS. The envelope's `as_printed` when the paper carried one, and
+ * otherwise the value we had concluded. The two are labelled differently on
+ * purpose: "was as printed “142,00”" is a statement about the document, "was
+ * 142" is a statement about our reading of it, and a screen that renders them
+ * identically turns the provenance trail into a second copy of our own answer.
+ *
+ * A NAME WE DO NOT HOLD IS "someone", never a user id. A uuid on this line
+ * tells a manager nothing and looks like a defect.
+ */
+export function correctionSentence(
+  entry: {
+    kind: 'correction' | 'verification'
+    correctedByName: string | null
+    correctedAt: string
+    before: { value?: unknown; as_printed?: string | null } | null
+  },
+  jurisdiction?: string | null,
+  currency?: string | null,
+): string {
+  const who = entry.correctedByName ?? 'someone'
+  const when = fmtStamp(entry.correctedAt, jurisdiction, currency)
+  if (entry.kind === 'verification') return `Verified by ${who} ${when}`
+  const printed = entry.before?.as_printed
+  if (printed != null) return `Corrected by ${who} ${when}, was as printed “${printed}”`
+  const had = entry.before?.value
+  if (had === null || had === undefined)
+    return `Corrected by ${who} ${when}, and nothing was there before`
+  return `Corrected by ${who} ${when}, was “${String(had)}”`
+}
+
+/**
+ * Read ONE envelope out of layer 1 by its path. Read-only, and only for display.
+ *
+ * The gateway owns the closed list of what may be CORRECTED
+ * (`correctable-paths.ts`); this exists so the correction dialog can show what
+ * the field says now. It walks only the three shapes layer 1 has — a header
+ * field, a `seller.x` / `buyer.x` / `totals.x` field, and `lines[n].field` — and
+ * returns null for anything else. It never writes, so there is no path here on
+ * which `__proto__` reaches an assignment.
+ */
+export function envelopeAt(
+  layer1: unknown,
+  path: string,
+): { value?: unknown; as_printed?: string | null } | null {
+  const root = layer1 as Record<string, unknown> | null
+  if (!root) return null
+  const line = /^lines\[(\d+)\]\.([A-Za-z]+)$/.exec(path)
+  if (line) {
+    const rows = root.lines as Record<string, unknown>[] | undefined
+    const row = rows?.[Number(line[1])]
+    return (row?.[line[2]] as { value?: unknown } | undefined) ?? null
+  }
+  const nested = /^([A-Za-z]+)\.([A-Za-z]+)$/.exec(path)
+  if (nested) {
+    if (!['seller', 'buyer', 'totals'].includes(nested[1])) return null
+    const group = root[nested[1]] as Record<string, unknown> | undefined
+    return (group?.[nested[2]] as { value?: unknown } | undefined) ?? null
+  }
+  if (!/^[A-Za-z]+$/.test(path)) return null
+  return (root[path] as { value?: unknown } | undefined) ?? null
+}

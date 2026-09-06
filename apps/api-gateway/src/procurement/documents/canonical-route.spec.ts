@@ -41,6 +41,7 @@ describe("DocumentsController.canonicalDocument", () => {
   const mockDb = { getClient: jest.fn(() => mockChain) };
   const canonical = { buildFromDocumentId: jest.fn() };
   const spine = { forDocument: jest.fn() };
+  const corrections = { correctionLog: jest.fn() };
 
   const user = { userId: "u1", restaurantId: "rest-1" };
 
@@ -102,17 +103,25 @@ describe("DocumentsController.canonicalDocument", () => {
       value: CANONICAL,
     });
     spine.forDocument.mockResolvedValue({ ok: true, value: [] });
+    // ADR 0104 D5, slice 3. `[]` is a real answer — nobody has corrected this
+    // document — and is deliberately not the same as the log read failing.
+    corrections.correctionLog.mockResolvedValue({ ok: true, value: [] });
 
     controller = new DocumentsController(
       {} as any,
       mockDb as any,
       canonical as any,
       spine as any,
+      corrections as any,
       // The 832 catalogue half (ADR 0126). Nothing on the canonical read path
       // reaches it; a stub would have to pretend otherwise.
       {} as any,
       // OrganizationsService — reached only by the deliberate currency
       // restatement (founder, 2026-09-06), which this file never calls.
+      {} as any,
+      // DeliveryService — the door-count route's other half. Stubbed rather
+      // than omitted because `tsc -p tsconfig.spec.json` counts the arguments
+      // and `tsconfig.json` does not look at this file at all.
       {} as any,
     );
   });

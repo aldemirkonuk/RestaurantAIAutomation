@@ -345,6 +345,11 @@ describe("price base and printed literals — read back", () => {
         data: { id: "rest-syn", name: "SYNTHETIC Meyhane" },
         error: null,
       }),
+      // ADR 0104 D5, slice 3: the builder now replays the correction log. An
+      // uncorrected document reads both of these as EMPTY — a real answer,
+      // distinct from the read failing, which the service turns into ok:false.
+      document_corrections: () => ({ data: [], error: null }),
+      document_revisions: () => ({ data: [], error: null }),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
