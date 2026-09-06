@@ -182,17 +182,20 @@ export function AutoLocatePreviewModal({
             </>
           ) : (
             <>
-              <label className="mdv-pick" style={{ cursor: 'pointer' }}>
-                <span>
-                  <span className="mdv-pick__label">Include wines that already have a zone</span>
+              <div className="mdv-pick">
+                <span style={{ minWidth: 0 }}>
+                  <label className="mdv-pick__label" htmlFor="mdv-include-assigned">
+                    Include wines that already have a zone
+                  </label>
                   <span className="mdv-pick__sub">Ticking this reassigns them.</span>
                 </span>
                 <input
+                  id="mdv-include-assigned"
                   type="checkbox"
                   checked={includeAssigned}
                   onChange={(e) => onToggleIncludeAssigned(e.target.checked)}
                 />
-              </label>
+              </div>
 
               {rows.length === 0 ? (
                 <p className="mdv-quiet">

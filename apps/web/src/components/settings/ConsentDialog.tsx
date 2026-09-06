@@ -148,11 +148,15 @@ export function ConsentDialog({ open, copy, onCancel, onConfirm }: ConsentDialog
             </div>
 
             {/* The tick is the assertion. Focus lands here, not on the grant. */}
-            <label className="mdv-pick" style={{ alignItems: 'flex-start' }}>
+            <div className="mdv-pick" style={{ alignItems: 'flex-start' }}>
               <span style={{ minWidth: 0 }}>
-                <span className="mdv-pick__label" style={{ whiteSpace: 'normal' }}>
+                <label
+                  className="mdv-pick__label"
+                  htmlFor="mdv-consent-ack"
+                  style={{ whiteSpace: 'normal' }}
+                >
                   {copy.acknowledgement}
-                </span>
+                </label>
                 <span className="mdv-pick__sub">
                   <Link to="/privacy" className="mdv-link" onClick={(e) => e.stopPropagation()}>
                     Read the privacy notice
@@ -160,12 +164,13 @@ export function ConsentDialog({ open, copy, onCancel, onConfirm }: ConsentDialog
                 </span>
               </span>
               <input
+                id="mdv-consent-ack"
                 ref={ackRef}
                 type="checkbox"
                 checked={acknowledged}
                 onChange={(e) => setAcknowledged(e.target.checked)}
               />
-            </label>
+            </div>
 
             <div className="mdv-actions">
               <span className="mdv-tally">
