@@ -8,6 +8,8 @@
  * real resolver against a mocked schema.
  */
 
+import { readFileSync } from "fs";
+import { join } from "path";
 import { DatabaseService } from "../database/database.service";
 import { BottleFactsService } from "./bottle-facts";
 import { perBottleDuty } from "./duty";
@@ -279,8 +281,8 @@ describe("the house alias never carries a strength", () => {
     // strength of the same wine from another house. The migration asserts on
     // every replay that `beverage_identities` has no abv column; this asserts
     // that the resolver would not read one if it appeared.
-    const src = require("fs").readFileSync(
-      require("path").join(__dirname, "bottle-facts.ts"),
+    const src = readFileSync(
+      join(__dirname, "bottle-facts.ts"),
       "utf8",
     ) as string;
     const identityRead = src.slice(src.indexOf('from("beverage_identities")'));
@@ -289,8 +291,8 @@ describe("the house alias never carries a strength", () => {
   });
 
   it("never reads the library's defaulted size column", async () => {
-    const src = require("fs").readFileSync(
-      require("path").join(__dirname, "bottle-facts.ts"),
+    const src = readFileSync(
+      join(__dirname, "bottle-facts.ts"),
       "utf8",
     ) as string;
     const selects = src.match(/\.select\("[^"]+"\)/g) ?? [];

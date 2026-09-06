@@ -128,7 +128,7 @@ export function parseUsdaShellEgg(
   const refusals: ObservationRefusal[] = [];
   const select = opts.select ?? NATIONAL_CAGED_LARGE;
   const lines = payload
-    .replace(/^﻿/, "")
+    .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
     .filter((l) => l.trim() !== "");
 
@@ -284,7 +284,7 @@ export function neighbouringFigures(
   payload: string,
   select: EggRowSelector = NATIONAL_CAGED_LARGE,
 ): { previous: number | null; lastYear: number | null; volume: number | null } {
-  const lines = payload.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  const lines = payload.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
   if (lines.length < 2) return { previous: null, lastYear: null, volume: null };
   const header = lines[0].split("\t").map((h) => h.trim());
   const at = (n: string) => header.indexOf(n);

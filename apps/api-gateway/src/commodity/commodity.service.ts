@@ -48,7 +48,7 @@ import { BottleFactsService } from "./bottle-facts";
  * `supabase/migrations/`.
  */
 const SERIES_COLUMNS =
-  "id, series_key, issuer, issuer_jurisdiction, series_title, source_url, value_kind, unit, base_period, currency, price_basis, cadence, max_age_days, licence, attribution, redistribution, admission, rise_threshold, step_guard, threshold_window_from, threshold_window_to, threshold_window_n_obs, threshold_computed_at, armed, armed_by_label, armed_at, armed_proposal_hash, armed_note, withheld_reason, silent, measured_on";
+  "id, series_key, issuer, issuer_jurisdiction, series_title, source_url, value_kind, unit, base_period, currency, price_basis, cadence, max_age_days, licence, attribution, redistribution, admission, access_key_required, key_env_var, robots_reading, user_agent, request_budget_per_day, licence_url, rise_threshold, step_guard, threshold_window_from, threshold_window_to, threshold_window_n_obs, threshold_computed_at, armed, armed_by_label, armed_at, armed_proposal_hash, armed_note, withheld_reason, silent, measured_on";
 
 const OBSERVATION_COLUMNS =
   "id, series_id, period_start, period_grain, value, issued_at, issued_at_basis, fetched_at, vintage, source_ref, content_hash";
