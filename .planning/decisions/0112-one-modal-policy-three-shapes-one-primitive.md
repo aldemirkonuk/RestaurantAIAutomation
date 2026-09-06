@@ -385,3 +385,84 @@ With these, F12 is closed. The build order this implies: the ledger first (every
 writes to it), then the authority rule and grants, then step-up, then the seal ceremony on both
 platforms together, then break-glass.
 
+## Sketch 103 applied to the primitive (2026-09-06)
+
+The founder reviewed the ten-sketch overlay-experience canvas in Claude Design on 2026-09-06
+and **accepted it as the experience layer** (`sketches/103-overlay-experience/`, `winner:
+accepted`; his comments on 1b and 1c are applied in the file). That acceptance is the decision
+evidence for this section. Nothing here adds a shape, a second chromatic colour or a glyph —
+the policy above is unchanged. What changes is what the reader can DO inside the three shapes,
+and it is built in `apps/web/src/components/mudavym/`.
+
+The measurement it was built against is finder B's pass over the census
+(§2.0 invariants, D1–D27) and finder C's usage/coverage measurement. Five defects it names
+were uniform across all sixty live rows, which is why they are fixed once, here, rather than
+sixty times.
+
+**The prop surface, and every default.** Additive only — every existing prop and default is
+untouched, so a page written against the old primitive still compiles and still behaves the
+same, with the one deliberate exception marked ⚠.
+
+| Prop | Where | Default | What it does |
+|---|---|---|---|
+| `label` | all three | *(required, unchanged)* | **Now always the accessible name.** It was discarded whenever `title` was set, and all sixty live rows carry a title, so the required prop reached no ear on any of them (D1). It is the contract sentence: what it asks · what sealing or saving writes · what leaving costs. |
+| `contract` | all three | `undefined` | The same sentence, rendered in the header and wired to `aria-describedby`. Absent ⇒ **no** `aria-describedby` at all: an absence shown as one, never a description invented from the title (ADR 0020). |
+| ⚠ `scrim` | all three | **`false` for Sheet**, `true` for Panel, unchanged for Popover | 1a. A sheet takes width, never light; a question dims the page. **This changes what a Sheet looks like** — it is the one behavioural default this pass altered, and it is the point of 1a. It is PAINT only: focus still moves in and returns, Tab still cycles, Esc still works, the body still locks, the scrim element still catches the click. |
+| `layout` | Sheet | `'overlay'` | 1a's other half. While a Sheet is open the primitive sets `data-sheet-open="overlay\|compress"` and `--sheet-width` (440px, 640px when `wide`) on every `.mudavym` **page** root; the page's own CSS decides whether its list gives up columns. No page is edited by this pass, and a page with no rule renders as before. |
+| `dirty` | Sheet, Panel | `false` | 1b and 1d. Esc and an outside click stop destroying work. |
+| `onTear` | Sheet, Panel | `undefined` | Fired at the gesture with `'esc' \| 'outside'`, before the surface is gone, so the caller can put the stub on the row in the same frame. |
+| `denied` | Sheet, Panel | `undefined` | `{ who, grant?, verb? }` — replaces the action row with the authority rule's own sentence. |
+| `spine` | Sheet | `title` when it is a string, else `label` | 1c. The word this level puts on the spine. |
+| `detents` | Sheet | `['peek','half','full']` | F9's phone form. The grabber is drawn only when there is more than one. |
+| `boundSummary` | `HoldToApprove` | `undefined` | 1d. What the seal bound, read back under the wax. |
+| `onSealed` | `HoldToApprove` | `undefined` | `({ summary, challenge })` — the receipt the ledger line is written from, carrying the same words the reader can see. |
+
+**What was built, and the defect each answers.**
+
+1. **Announced (1e) — D1.** `aria-label` is always `label`; `aria-labelledby` is gone. The
+   visible contract line is `contract`, wired to `aria-describedby`. A dev-time warning fires,
+   once per distinct label and only while the surface is open, when `label` is fewer than four
+   words — four is the floor at which a sentence can carry three clauses.
+2. **The Pass (1a) — D2.** `scrim`, defaulting off for a Sheet, plus the page-root hooks above.
+3. **The Stub (1b) — D3.** A dirty Sheet leaves on `tuck` and calls `onTear`;
+   `components/mudavym/Stub.tsx` renders "Held here · unwritten" with Resume and Discard.
+   Discard is **undo-after** (F10): `onDiscard` fires at the click and "Put it back" stands for
+   ten seconds — and the undo is drawn only when the caller passed `onRestore`, because a button
+   that cannot restore anything is an absence reported as health.
+4. **Weight (1d) — D3, D17.** A dirty Panel does not lift on a stray click: it leans (`settle`,
+   6px) and says what it is holding in a polite live region, because a lean is a movement and a
+   movement reaches no screen reader. Only Close, or Escape said twice within six seconds,
+   leaves. `HoldToApprove` gains the read-back — the census draws a failure line on four of sixty
+   rows and nothing at all on success.
+5. **The Spindle (1c) + F9 — D4.** `components/mudavym/SheetStack.tsx`, mounted by `PageGate`.
+   The top sheet draws the named spine ("Order 118 › Öküzgözü › Answers") with "Depth 3 of 3";
+   every level before the last is a control that closes back to it. A fourth level opens no
+   fourth sheet and is not a silent no-op: *"Three sheets are open. Close one to open this."*
+   lands on the paper the reader is looking at, in an assertive live region. Under 640px the same
+   three levels are detented bottom sheets with one breadcrumb; a **tap** on the grabber cycles
+   the detents, because drag-only fails WCAG 2.2 SC 2.5.7 on the one form where every reader is
+   using a thumb.
+   The provider is mounted by `PageGate` and nowhere else: depth is a fact about a PAGE, not
+   about the document, and a Sheet mounted outside a page is uncapped and unspined exactly as
+   before.
+6. **Permission-denied, and one wording for "why not" — D24, D25, D23.**
+   `components/mudavym/Denied.tsx` carries F11–F12's authority rule verbatim in shape: *"You can
+   see this, but only an owner or a manager may change it. Ask <name> to grant it."* The optional
+   grant line says F12's third amendment out loud — every owner is told when a grant is made,
+   because a grant is a security change. `Refused` is the one wording for what did not happen:
+   the thing, the verb, **"It is unchanged"**, then the server's own sentence, then the one thing
+   to do.
+7. **The policy is now a guard.** `housePolicy.test.ts` reads the primitive family's own source
+   and holds it to the seven rules — close in words, no glyph, no emoji, one chromatic colour,
+   colour from tokens, motion from a token and never a number, reduced motion renders none. It
+   was proven able to fail against a deliberately broken copy of the tree.
+
+**Fork left open (recorded, not decided).** Sketch 1a says the list keeps its pulse behind a
+scrim-less sheet, which can be read as "an outside click should act on the list, not close the
+sheet". This pass kept the existing behaviour — an outside click closes a clean sheet and tears
+a dirty one — because changing it would alter every one of the sixty live rows for a reading
+the canvas does not state. See `OPEN-DECISIONS.md`.
+
+**Not built by this pass, deliberately:** no page's overlay was edited (packets 1 and 2 own
+those), so the sixty live rows still pass title-shaped labels and none yet passes `contract`,
+`dirty` or `denied`. The dev warning is what will surface each of them as its page is touched.

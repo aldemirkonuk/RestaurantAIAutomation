@@ -79,4 +79,17 @@ links: []
   (`orders`, `receiving`, `notifications`, `calendar`, `promotions`, `recommendations`), so
   links to the software layer are **path-qualified**: `[[08-softwares/orders|Orders]]`.
 
+- **The overlay contract is ADR 0112's, not the page's** *(added 2026-09-06)*. Sketch 102
+  inserts an `### Overlays` subsection into a page note (marker `<!-- sketch-102-overlays -->`,
+  generated from `census.py` — edit the census, never the table). Since sketch 103 was accepted
+  on 2026-09-06, that subsection records four things per overlay that the page owns and the
+  primitive cannot infer: the **contract sentence** (`label`, and `contract` when it is drawn —
+  what it asks · what sealing or saving writes · what leaving costs), whether the surface can be
+  **`dirty`** (and therefore tears to a stub or leans), who is named in **`denied`** when the
+  reader may look but not change, and what the seal **binds** (`boundSummary`). Everything else
+  about an overlay — shape, scrim, motion, close-in-words, the cap, the phone form — is the
+  primitive's and is not restated here.
+  See [[../decisions/0112-one-modal-policy-three-shapes-one-primitive|ADR 0112]] §"Sketch 103
+  applied to the primitive" and `apps/web/src/components/mudavym/MOTIONS.md`.
+
 Index: [[PAGES-MAP]] (Dataview over `type: page`).
