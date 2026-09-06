@@ -97,6 +97,10 @@ export function parse812(
           qtyBottles: toBottles(qty, resolved, 1),
           freeGoodsQty: 0,
           unitPrice: real(el(seg, 4)),
+          // No separate price basis exists in an 812 line; the price is per
+          // IT103's unit. Absent, not unread.
+          priceBaseQty: null,
+          priceBaseUom: null,
           lineTotal: null,
           allowance: null,
           deposit: null,

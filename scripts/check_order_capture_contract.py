@@ -479,7 +479,12 @@ MIN_TABLES_WITH_COLUMNS = 150
 # `providers.service.ts:1202` the same. In every one the key set is genuinely
 # not in the file, and inventing one would report a wrong column name
 # confidently, which is the failure this whole guard exists to prevent.
-UNREADABLE_WRITE_CEILING = 13
+# Lowered from 13 on 2026-09-04 (ADR 0104 slice 2): `document-intake.service.ts`'s
+# `procurement_documents` insert carried an inline
+# `parsed as unknown as Record<string, unknown>` cast, whose comma split the
+# payload parser and made the WHOLE write invisible to this guard. The cast is
+# hoisted to a const; the write is checkable again. Shrink-only, per the header.
+UNREADABLE_WRITE_CEILING = 12
 
 # KNOWN_BAD_COLUMNS — the shrink-only debt ratchet.
 #

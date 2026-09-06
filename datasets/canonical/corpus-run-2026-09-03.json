@@ -1,0 +1,32 @@
+{
+  "corpus_is_empty": true,
+  "counts": {
+    "procurement_document_lines": 0,
+    "procurement_documents": 0,
+    "vendor_attachments_objects": 0
+  },
+  "documents": [],
+  "documents_read": 0,
+  "headline": "0 documents read \u2014 the corpus is empty; the invariants are proven on 9 labelled synthetic fixtures only",
+  "intake_statistics": {
+    "bytes_max": null,
+    "bytes_median": null,
+    "bytes_min": null,
+    "content_types": {},
+    "doc_types": {},
+    "documents": 0,
+    "duplicate_sha256_documents": 0,
+    "duplicate_sha256_groups": 0,
+    "page_count": "not recorded in procurement_documents; needs the stored object",
+    "sha256_present": 0,
+    "sha256_present_share": null,
+    "source_channels": {},
+    "statuses": {}
+  },
+  "named_failures": [],
+  "per_invariant": {},
+  "project_ref": "exzueerziesmczwlhomd.supabase.co",
+  "run_date": "2026-09-03",
+  "synthetic_fixture_count": 9,
+  "wrote_to_database": false
+}

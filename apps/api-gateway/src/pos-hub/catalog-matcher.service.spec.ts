@@ -329,3 +329,83 @@ describe("CatalogMatcherService review queue", () => {
     ).toBe("rejected");
   });
 });
+
+/**
+ * Approval must produce a mapping that can actually deplete (POS lens defect 2).
+ *
+ * Measured on the Sim Meyhouse lens run: approving 107 proposals produced 107
+ * mappings with `sale_unit`/`sale_volume_ml` null, so the very next sale of an
+ * approved item queued again as `no_sale_volume` (ADR 0011 fails closed). Two
+ * invisible queues stood between an approval and one bottle moving. The owner
+ * answers "what does one sale remove?" in the same tap that confirms identity.
+ */
+describe("CatalogMatcherService.approveProposal — the unit travels with the approval", () => {
+  const pending = (id: string, ext: string, name: string): Row => ({
+    id,
+    restaurant_id: RESTAURANT_ID,
+    source: "simpos",
+    external_item_id: ext,
+    item_name: name,
+    candidate_inventory_id: "inv-1",
+    candidate_master_wine_id: "mw-1",
+    status: "pending",
+  });
+
+  it("writes the sale unit and volume the approver chose", async () => {
+    const { service, upsertItemMapping } = makeService([], [], {
+      pos_catalog_match_proposals: [
+        pending("prop-u1", "ext-u1", "Opus One BTG"),
+      ],
+    });
+
+    await service.approveProposal(RESTAURANT_ID, "prop-u1", {
+      sale_unit: "glass",
+      sale_volume_ml: 150,
+    });
+
+    expect(upsertItemMapping).toHaveBeenCalledWith(
+      RESTAURANT_ID,
+      expect.objectContaining({
+        inventory_id: "inv-1",
+        sale_unit: "glass",
+        sale_volume_ml: 150,
+      }),
+    );
+  });
+
+  it("passes null rather than a guess when the approver did not answer", async () => {
+    const { service, upsertItemMapping } = makeService([], [], {
+      pos_catalog_match_proposals: [pending("prop-u2", "ext-u2", "Opus One")],
+    });
+
+    await service.approveProposal(RESTAURANT_ID, "prop-u2");
+
+    const mapping = upsertItemMapping.mock.calls[0][1];
+    expect(mapping.sale_unit).toBeNull();
+    expect(mapping.sale_volume_ml).toBeNull();
+  });
+
+  it("approves many proposals in ONE request, reporting per-entry ok/error", async () => {
+    // The lens approved 107 one at a time and 7 POSTs were rejected 429 by the
+    // 100-request/60s default limit (rate-limit.guard.ts:28). One request for
+    // the whole queue is the structural fix; a lowered threshold is not.
+    const { service, upsertItemMapping } = makeService([], [], {
+      pos_catalog_match_proposals: [
+        pending("prop-b1", "ext-b1", "Akakies"),
+        pending("prop-b2", "ext-b2", "Efe Black"),
+      ],
+    });
+
+    const result = await service.approveProposalsBatch(RESTAURANT_ID, [
+      { proposal_id: "prop-b1", sale_unit: "bottle", sale_volume_ml: 750 },
+      { proposal_id: "prop-b2", sale_unit: "glass", sale_volume_ml: 150 },
+      { proposal_id: "prop-missing" },
+    ]);
+
+    expect(upsertItemMapping).toHaveBeenCalledTimes(2);
+    expect(result.approved).toBe(2);
+    expect(result.failed).toBe(1);
+    expect(result.results[2].ok).toBe(false);
+    expect(result.results[2].error).toMatch(/not found/i);
+  });
+});
