@@ -106,6 +106,8 @@ interface Fixture {
   /** The house's WhatsApp and SMS senders (ADR 0121). */
   textSenders: Reg;
   ical: Reg;
+  /** The day-book pushed OUT to Google (ADR 0111 direction 1). */
+  calendarPush: Reg;
   mcp: Reg;
   mcpRuntime: Reg;
   houseGrants: Reg;
@@ -114,6 +116,7 @@ interface Fixture {
   catalog: Reg;
   tally: Tally;
   regenerateFeed: unknown;
+  disconnectCalendarPush: unknown;
   setHouseGrantAccess: unknown;
   setConsent: unknown;
   /** Mints the one-time seal when a re-consent hold begins. */
@@ -137,6 +140,48 @@ const setHouseGrantAccess = { mutate: vi.fn(), isPending: false };
 const setConsent = { mutate: vi.fn(), isPending: false };
 const probeServer = { mutate: vi.fn(), isPending: false };
 const regenerateFeed = { mutate: vi.fn(), isPending: false };
+const disconnectCalendarPush = { mutate: vi.fn(), isPending: false };
+
+/**
+ * A house that has connected and pushed everything. The DEFAULT is the healthy
+ * case on purpose: every test below that asserts an honest refusal starts from
+ * this and takes something away, so a refusal that stopped being drawn would
+ * show up as a diff against a working row rather than against a blank.
+ */
+function push(over: Record<string, unknown> = {}) {
+  return {
+    available: true,
+    unavailableReason: null,
+    armed: true,
+    connected: true,
+    ownerUserId: 'u1',
+    ownerName: 'Deniz',
+    accountEmail: null,
+    houseStopped: false,
+    reconnectRequired: false,
+    reconnectReason: null,
+    calendar: {
+      providerCalendarId: 'mudavym-cal-1@group.calendar.google.com',
+      summary: 'Mudavym \u2014 Sim Meyhouse',
+      timeZone: 'America/Los_Angeles',
+      createdAt: '2026-09-06T09:00:00.000Z',
+    },
+    entries: 19,
+    pushed: 19,
+    unpushed: 0,
+    pendingDeletes: 0,
+    sentence:
+      '19 of 19 entries pushed into "Mudavym \u2014 Sim Meyhouse". Every entry this house holds has a copy.',
+    lastOutcome: {
+      verb: 'create',
+      outcome: 'delivered',
+      detail: 'Written to Mudavym \u2014 Sim Meyhouse as Google event abc.',
+      attemptedAt: '2026-09-06T10:00:00.000Z',
+    },
+    error: null,
+    ...over,
+  };
+}
 
 function base(): Fixture {
   return {
@@ -233,6 +278,7 @@ function base(): Fixture {
       myConsent: { consent: null, readable: true, reason: null },
     }),
     ical: reg({ token: 'abc123' }),
+    calendarPush: reg(push()),
     mcp: reg([]),
     mcpRuntime: reg({
       secretStorage: { configured: true, reason: null },
@@ -252,6 +298,7 @@ function base(): Fixture {
       houseHasLetGoOf: 0,
     },
     regenerateFeed,
+    disconnectCalendarPush,
     setHouseGrantAccess,
     setConsent,
     // Resolves a token by default, so a test that completes the gesture without
@@ -1625,5 +1672,204 @@ describe("the house's own copy of its vendor mail", () => {
     // It must NOT have fallen through to "Never asked", which would tell a
     // manager an outage is a fact about their restaurant.
     expect(screen.queryByText('Never asked')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The day-book pushed OUT to Google — ADR 0111 §5, direction 1.
+ *
+ * Every assertion here is about the same thing: the row must not be readable as
+ * more reassuring than the facts behind it. A connected account with nothing
+ * copied, a grant a manager has let go of, a token that needs reconsenting and
+ * a deployment with the push switched off all mean "this house's entries are
+ * NOT in Google", and each one has to say so on its own face rather than
+ * showing "Connected" and leaving the reader to find out.
+ */
+describe('the day-book pushed to Google', () => {
+  it('names the account it writes into and the calendar it made', () => {
+    render(<ConnectionsNext />);
+    expect(screen.getByText('Push the day-book to Google')).toBeInTheDocument();
+    // Whose account. The Google ADDRESS is never read by this scope, so the row
+    // names the person who consented — and says so rather than leaving a blank.
+    expect(screen.getByText(/Deniz's Google account/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/The Google address is never read, so it is not shown/i),
+    ).toBeInTheDocument();
+    // Which calendar, by the id every write is addressed to.
+    expect(
+      screen.getByText(/mudavym-cal-1@group\.calendar\.google\.com/),
+    ).toBeInTheDocument();
+  });
+
+  it('carries the honest line about deletions on the face of the row', () => {
+    render(<ConnectionsNext />);
+    expect(
+      screen.getByText(/a copy deleted inside Google comes back on the next push/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Delete the entry in Mudavym to remove it from Google/i),
+    ).toBeInTheDocument();
+  });
+
+  it('says what the grant cannot do, not only what it can', () => {
+    render(<ConnectionsNext />);
+    expect(
+      screen.getByText(/Cannot see your personal or shared calendars/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Cannot read anything back, not even what it wrote/i),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the GATEWAY sentence and the counts, never a health word', () => {
+    const d = base();
+    d.calendarPush = reg(
+      push({
+        entries: 40,
+        pushed: 0,
+        unpushed: 40,
+        sentence:
+          '0 of 40 entries pushed into "Mudavym — Sim Meyhouse". Nothing has reached Google — read the last outcome below for why, and do not read this as being in sync.',
+        lastOutcome: {
+          verb: 'create',
+          outcome: 'refused',
+          detail: 'Google refused with 403 (insufficientPermissions): Request had insufficient authentication scopes.',
+          attemptedAt: '2026-09-06T10:00:00.000Z',
+        },
+      }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    // The chip carries the count, not the word "Connected".
+    expect(screen.getByText('0 of 40 pushed')).toBeInTheDocument();
+    expect(screen.getByText(/do not read this as being in sync/i)).toBeInTheDocument();
+    expect(screen.getByText(/insufficientPermissions/)).toBeInTheDocument();
+  });
+
+  it('never draws an unread count as a zero', () => {
+    const d = base();
+    d.calendarPush = reg(
+      push({
+        entries: null,
+        pushed: null,
+        unpushed: null,
+        error:
+          'The push register could not be counted, so no figure is given here rather than a zero that would read as health.',
+        sentence:
+          'The push register could not be counted, so no figure is given here rather than a zero that would read as health.',
+      }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('Count unread')).toBeInTheDocument();
+    expect(screen.queryByText('0 of 0 pushed')).not.toBeInTheDocument();
+  });
+
+  it('says the register could not be read at all, rather than showing nothing', () => {
+    const d = base();
+    d.calendarPush = reg(null, { error: 'connection reset' });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(/The day-book's Google connection could not be read\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/connection reset/)).toBeInTheDocument();
+  });
+
+  it('shows a grant the house has let go of as let go, not as connected', () => {
+    const d = base();
+    d.calendarPush = reg(push({ houseStopped: true }));
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.getByText('House let go')).toBeInTheDocument();
+    expect(screen.queryByText('19 of 19 pushed')).not.toBeInTheDocument();
+  });
+
+  it('shows an expired grant as needing a reconnect, with the reason', () => {
+    const d = base();
+    d.calendarPush = reg(
+      push({
+        reconnectRequired: true,
+        reconnectReason: 'invalid_grant: Token has been expired or revoked.',
+      }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.getByText('Needs reconnecting')).toBeInTheDocument();
+    expect(screen.getByText(/Token has been expired or revoked/)).toBeInTheDocument();
+  });
+
+  it('shows a deployment with the push switched off as switched off', () => {
+    const d = base();
+    d.calendarPush = reg(push({ armed: false }));
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.getByText('Switched off')).toBeInTheDocument();
+  });
+
+  it('offers the EXISTING authorize flow when nothing is connected', () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, hash: '' },
+    });
+
+    const d = base();
+    d.calendarPush = reg(
+      push({ connected: false, calendar: null, ownerName: null, entries: 19, pushed: 0 }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('Not connected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Connect a Google account/i }));
+    // The consent screen every other grant uses, so the scope list and the five
+    // data-handling answers come from the gateway rather than from this page.
+    expect(assign).toHaveBeenCalledWith('/authorize/google_calendar?returnPath=/connections');
+
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('refuses to offer a connection the deployment cannot make, and says why', () => {
+    const d = base();
+    d.calendarPush = reg(
+      push({
+        connected: false,
+        available: false,
+        calendar: null,
+        ownerName: null,
+        unavailableReason: 'Google OAuth is not configured on this deployment.',
+        entries: null,
+        pushed: null,
+      }),
+    );
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('Not offered here')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: /Cannot connect here/i });
+    expect(button).toBeDisabled();
+    expect(
+      screen.getByText(/Google OAuth is not configured on this deployment\./i),
+    ).toBeInTheDocument();
+  });
+
+  it('disconnects through the same door every other grant uses', () => {
+    render(<ConnectionsNext />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Disconnect Google Calendar/i }),
+    );
+    expect(disconnectCalendarPush.mutate).toHaveBeenCalled();
+  });
+
+  it('says what disconnecting does NOT undo', () => {
+    render(<ConnectionsNext />);
+    expect(
+      screen.getByText(/disconnecting does not unsend them/i),
+    ).toBeInTheDocument();
   });
 });
