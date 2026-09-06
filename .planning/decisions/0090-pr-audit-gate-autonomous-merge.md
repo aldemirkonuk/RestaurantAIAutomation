@@ -7,8 +7,10 @@
   authorization in chat**, not the automated skill/hook path: this PR touches the
   gate's own owned paths (`_GATE_OWNED_PATHS`), so `touches_own_gate` force-escalates
   it to BLOCK by the gate's own design — the system cannot self-clear a PR that
-  modifies itself. That escalation firing here is the intended shape, not a bug;
-  see Review trail's final row.
+  modifies itself. That escalation firing here is the intended shape, not a bug.
+  The seventh Correction's fix, PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297),
+  hit the identical escalation and was merged the identical way, 2026-09-06, as
+  `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec` — see Review trail's final two rows.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** audit, merge-gate, autonomous-deploy, opus, branch-protection, ci,
@@ -606,6 +608,21 @@ regardless of what the audit angles conclude — it needs the founder to
 merge it directly, the same escalation path PR #261 needed and the sixth
 Correction's Review-trail row above records.
 
+**Merged 2026-09-06, same mechanism as PR #261.** `require_pr_audit.py`
+correctly blocked a plain `gh pr merge 297` (no PASS marker exists for this
+PR, by design — it never can, since `touches_own_gate` forces BLOCK
+regardless of verdict). Founder authorized completing the merge directly in
+this chat session; done via `gh api repos/.../pulls/297/merge`, SHA-pinned
+to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646` (the head after resolving
+main's concurrent merges of #290 and #291 into this branch), squash-merged
+to `main` as `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec` — all five of
+`main`'s actual required contexts green first (`CI Complete`, the beverage
+identity/guest-merge/schema-parity checks); `PR Audit Gate` itself stayed
+red throughout, as expected, since it is not one of those five required
+contexts and audits from `main`'s pre-fix copy by design. `--self-test`
+35/35 re-confirmed on the merged tree before merging, matching the count
+`CLAIMS.jsonl`'s new entry pins.
+
 **Addendum, same day:** a **fifth** live instance, on PR #297 itself, before
 the fix above had even merged — `wait_upstream`'s own "Checkout the TRUSTED
 base commit" step (by design, see the top of this file: a PR cannot rewrite
@@ -672,3 +689,4 @@ it directly, the same path PR #261 and PR #297 both needed.
 | 2026-09-03 | Aldemir (chat, direct authorization) | PR #261 modifies `_GATE_OWNED_PATHS` itself, so `touches_own_gate` force-escalates it to BLOCK by design — the gate cannot self-clear a PR that changes itself; that is the intended shape, not a bug. Founder authorized completing the merge directly in chat, the escalation path this exact case exists for. Merged via `gh api .../pulls/261/merge`, SHA-pinned to `ce519d4208b5bd27751d8acc572c1b53ca99fc78`, all five required contexts green, `--self-test` 29/29 re-confirmed on `main`'s own copy post-merge. **Status → Merged.** The branch-protection PATCH gap (still needs founder go) is carried forward, not closed by this merge |
 | 2026-09-03 | pr-audit-gate skill, security angle, auditing PR #291 (unrelated PR) | Noted in passing, not a BLOCK on PR #291 itself: `_GATE_OWNED_PATHS` doesn't cover `deploy.yml`, flagged as its own follow-up PR rather than bundled in; fixed 2026-09-04, see eighth Correction above |
 | 2026-09-04 | Live production incidents, not an audit round (PRs #288, #290, #291, #294) | `wait_upstream`'s red branch had no debounce, unlike its green branch — a single poll catching the `CodeQL` check-run's real but transient `neutral` conclusion (self-corrects to `success` ~10s later, confirmed by direct Checks-API capture) was enough to declare upstream red on four separate PRs. Fixed same day: red branch now requires the same failed set on two consecutive polls; `--self-test` grown 29 → 35, see seventh Correction above. Fix PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297) — touches this ADR's own `_GATE_OWNED_PATHS`, needs the founder to merge directly |
+| 2026-09-06 | Aldemir (chat, direct authorization) | PR #297 modifies `_GATE_OWNED_PATHS` itself, same as #261, so `touches_own_gate` force-escalates it to BLOCK by design and `require_pr_audit.py` correctly refused a plain `gh pr merge 297`. Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/297/merge`, SHA-pinned to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646`, all five of `main`'s actual required contexts green (`PR Audit Gate` itself is not one of them); squash commit `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
