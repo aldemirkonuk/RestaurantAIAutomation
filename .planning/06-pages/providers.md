@@ -435,14 +435,29 @@ same shape.
 quoted in full in §1a. Built as B1 of the invoice-currency pass; ADR 0104 carries the
 dated amendment.
 
-**One assumption is STATED, not decided, and the founder should confirm it.** The
-precedence an invoice is filed under is: the file's own currency, then the currency of the
-ORDER it is matched to, then the HOUSE's currency — and the house's rung is reached only
-when the invoice has no matched order, or when that order named no currency (the sentence
-says which). **The vendor's usual currency never files anything by itself.** That reading
-follows the founder's *"we won't use that as the invoice"* plus *"we will use the currency
-from where we order it"*, but the founder did not say what happens to an invoice with no
-matched order at all, and the house's currency as the last rung is our inference.
+**2026-09-06, batch 66 — DECIDED, in the founder's own words.** Four questions were put
+and four were answered:
+
+> **"Keep: house currency for an unmatched invoice"**
+> **"Add the prompt panel"**
+> **"Keep it open on every invoice"**
+> **"Two screens, for now"**
+
+The first two are this page's. The precedence an invoice is filed under is: the file's own
+currency, then the currency of the ORDER it is matched to, then the HOUSE's currency — and
+the house's rung is reached when the invoice has no matched order **or** when the order it
+is matched to names no currency (the sentence says which of the two held). **The vendor's
+usual currency never files anything by itself.** That reading followed the founder's *"we
+won't use that as the invoice"* plus *"we will use the currency from where we order it"*,
+and until batch 66 the last rung was our inference and was marked as one. It is now the
+founder's own call: an unmatched invoice takes the house's currency rather than being
+refused.
+
+**"Add the prompt panel"** answers the cost p4br disclosed: with no vendor profiles filled
+in, every new order records no currency, which makes the order rung inert and the whole
+chain fall back to the house exactly as before. The panel — *"N of your M vendors have
+stated a usual currency"* — is being built by **p4bu**, not by the invoice-currency pass,
+and is not in the tree as of this line.
 
 **A second, narrower thing was decided in code and is flagged as a fork.** ADR 0117 Q31
 (2026-09-05) set the agreement line's currency to default from *"the vendor's terms or the

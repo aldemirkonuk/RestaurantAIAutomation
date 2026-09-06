@@ -1,3 +1,5 @@
+import { isIso4217 } from "../common/iso-4217";
+
 /**
  * The house's own paper, turned into a price sighting.
  *
@@ -298,7 +300,12 @@ export function decideOwnPaperSighting(
   // visible in the log and a wrong currency is invisible in the ladder.
   const currencyRaw =
     typeof input.currency === "string" ? input.currency.trim().toUpperCase() : "";
-  if (!/^[A-Z]{3}$/.test(currencyRaw)) {
+  // MEMBERSHIP, NOT SHAPE (2026-09-06). This asked `/^[A-Z]{3}$/`, so a
+  // well-formed non-currency — `ZZZ` — was admitted into
+  // `vendor_price_observations.currency`, which is the register every price
+  // READER joins on. A denomination that does not exist in the ladder is worse
+  // than a refused sighting for the same reason a USD one is.
+  if (!isIso4217(currencyRaw)) {
     return {
       write: false,
       reason:

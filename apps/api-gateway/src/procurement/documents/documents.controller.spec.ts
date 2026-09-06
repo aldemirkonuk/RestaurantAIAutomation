@@ -171,6 +171,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       /** What `DocumentIntakeService.refileMoneyForCurrency` answers. */
       refile?: any;
       refileThrows?: Error;
+      /** What `DocumentIntakeService.planRefileForCurrency` answers. */
+      plan?: any;
+      planThrows?: Error;
     } = {},
   ) {
     const refileCalls: Array<[string, string, string]> = [];
@@ -215,6 +218,28 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
      * audit row and the currency.
      */
     const intake = {
+      /*
+       * READ-ONLY, and it decides WHICH reading the re-filing will use — the
+       * document's current rows, or the snapshot a hold withheld. The route
+       * asks it before writing the audit row, because the row records what the
+       * re-filing was about to move and where those figures came from.
+       */
+      planRefileForCurrency: async () => {
+        if (opts.planThrows) throw opts.planThrows;
+        return (
+          opts.plan ?? {
+            plan: {
+              source: "current_rows",
+              sourceSaid:
+                "the figures on the document as it stands now, corrections included",
+              document: { total: 11306.4 },
+              lines: [{ line_no: 1, unit_price: 142, line_total: 1704 }],
+            },
+            previousTotal: null,
+            previousCurrency: null,
+          }
+        );
+      },
       refileMoneyForCurrency: async (
         documentId: string,
         restaurantId: string,
@@ -225,6 +250,7 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
         return (
           opts.refile ?? {
             snapshotReadable: true,
+            source: "current_rows",
             sentence: 'Its stated total of 11306.40 is now TRY.',
             document: { total: 11306.4 },
             lineCount: 1,
@@ -243,7 +269,22 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       {} as any, // DeliverySpineService
       {} as any, // DocumentCorrectionService (ADR 0104 D5)
       {} as any, // CatalogIngestService (ADR 0126)
-      { resolveRestaurantRole: async () => roleToReturn } as any,
+      /*
+       * BOTH methods, because the route now uses both and they answer
+       * DIFFERENT questions: `assertCanManageRestaurant` is the GATE (one
+       * implementation of "may this person manage this house", shared with
+       * settings and mcp-connections), and `resolveRestaurantRole` supplies the
+       * role the AUDIT ROW records. The double derives the assert from the
+       * resolve exactly as `OrganizationsService` does, so a test cannot pass
+       * against a gate the real service would fail.
+       */
+      {
+        resolveRestaurantRole: async () => roleToReturn,
+        assertCanManageRestaurant: async () => {
+          if (roleToReturn !== "owner" && roleToReturn !== "manager")
+            throw new Error("Only managers and owners can restate an invoice's currency");
+        },
+      } as any,
       {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
     );
     return { controller, inserts, updates, refileCalls };
@@ -299,6 +340,53 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       await expect(
         controller.restateCurrency("doc-9", { currency: bad as any }, user),
       ).rejects.toMatchObject({ status: 400 });
+  });
+
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06). This route asked `/^[A-Z]{3}$/`, so
+   * `PATCH :id/currency` with `ZZZ` re-filed an invoice's whole money under a
+   * denomination that does not exist AND wrote an append-only row saying a
+   * manager had decided it. Nothing may be written on the way to this refusal.
+   */
+  it("refuses a well-formed code that names no currency, and writes NOTHING", async () => {
+    for (const fake of ["ZZZ", "XTS", "XTT"]) {
+      const { controller, inserts, updates } = harness();
+      await expect(
+        controller.restateCurrency("doc-9", { currency: fake }, user),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(inserts).toHaveLength(0);
+      expect(updates).toHaveLength(0);
+      await controller
+        .restateCurrency("doc-9", { currency: fake }, user)
+        .catch((e) => {
+          expect(e.message).toContain(`${fake} is not a currency`);
+        });
+    }
+  });
+
+  it("records WHICH reading the re-filing used on the audit row", async () => {
+    // BLOCKER 2's other half. Without this the log cannot afterwards tell a
+    // re-filing from a revert of somebody's correction.
+    const { controller, inserts } = harness();
+    await controller.restateCurrency("doc-9", { currency: "TRY" }, user);
+    const row = inserts.find(
+      (i) => i.table === "procurement_document_currency_changes",
+    )!.row;
+    expect(row.money_refiled.source).toBe("current_rows");
+    expect(row.money_refiled.source_said).toContain("as it stands now");
+  });
+
+  it("names a failed read of the FIGURES instead of changing the currency anyway", async () => {
+    // A failed line read that arrived as "no lines" would look exactly like a
+    // held document and would revert every correction. It must stop the act.
+    const { controller, inserts, updates } = harness({
+      planThrows: new Error("REFILE_READ_FAILED:connection reset"),
+    });
+    await expect(
+      controller.restateCurrency("doc-9", { currency: "TRY" }, user),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(0);
   });
 
   it("writes the audit row with who, when, the previous value and the status", async () => {

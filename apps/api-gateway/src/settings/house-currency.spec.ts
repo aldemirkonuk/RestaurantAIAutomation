@@ -249,10 +249,35 @@ describe("HouseCurrencyService.write — explicit, validated, audited", () => {
     }
   });
 
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06). `ZZZ` and the ISO-reserved test codes
+   * pass `^[A-Z]{3}$` — the database's own CHECK and, until today, this
+   * service's whole gate. `restaurants.currency` is the rung
+   * `invoice-currency.ts` files an unmarked invoice's money under, so a code
+   * naming no money here denominates a vendor's paper.
+   */
+  it("refuses a well-formed code that is not a currency, and writes NOTHING", async () => {
+    for (const fake of ["ZZZ", "XTS", "XTT", "ABC", "QQQ"]) {
+      const { svc, calls, audit } = service(HOUSE_NULL);
+      await expect(svc.write(REST, fake, USER)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(calls.updates).toHaveLength(0);
+      expect(audit.filed).toHaveLength(0);
+    }
+  });
+
+  it("the refusal NAMES the code it refused", async () => {
+    const { svc } = service(HOUSE_NULL);
+    await expect(svc.write(REST, "ZZZ", USER)).rejects.toThrow(
+      /ZZZ is not a currency/,
+    );
+  });
+
   it("the refusal is the sentence the page prints", async () => {
     const { svc } = service(HOUSE_NULL);
     await expect(svc.write(REST, "usd", USER)).rejects.toThrow(
-      /ISO 4217 alpha-3 code in capitals/,
+      /is not a currency/,
     );
   });
 

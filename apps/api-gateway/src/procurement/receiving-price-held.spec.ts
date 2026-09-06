@@ -1,3 +1,4 @@
+import { DocumentsController } from "./documents/documents.controller";
 import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
@@ -380,5 +381,196 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, receipt(true)),
     ).resolves.toBeDefined();
+  });
+
+  /* =========================================================================
+   * WHAT HAPPENS TODAY WHEN NO DOCUMENT IS LINKED — measured, not changed.
+   *
+   * Found by the Sonnet audit of `6c0933d3`. `heldInvoiceForOrder`
+   * (`procurement.service.ts:2303`) is gated solely on
+   * `procurement_document_links` returning rows: zero rows and zero error is
+   * indistinguishable from "no invoice exists", so the refusal never fires —
+   * while `hasInvoice` (`procurement.service.ts:4989`) depends only on the DESK
+   * typing an invoice quantity, and `recordPriceHistory`
+   * (`procurement.service.ts:5192`) fires on `match && hasInvoice`.
+   *
+   * So a typed price reaches `price_history` with no cross-check against a
+   * document that exists but has not been linked yet. THIS TEST DOES NOT ASSERT
+   * THAT IT SHOULD. It pins exactly what the row looks like today, so that
+   * whichever way the founder decides (refuse a typed price with no currency,
+   * refuse only against an unlinked held document, or leave it), the change is
+   * visible as a change. Written up in `.planning/06-pages/receiving.md` §13.
+   * ====================================================================== */
+  it("PINS TODAY'S BEHAVIOUR: no linked document, a typed price with no currency reaches price_history as currency null", async () => {
+    const { db, calls } = makeDb({ documents: [] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, receipt(true)),
+    ).resolves.toBeDefined();
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    const row = calls.priceHistoryInserts[0];
+    expect(row.price).toBe(40);
+    // NOT USD, and not the house's currency: the column records the absence.
+    expect(row.currency).toBeNull();
+    expect(String(row.notes)).toContain("Currency not recorded");
+  });
+
+  it("PINS TODAY'S BEHAVIOUR: a hand-typed currency is written as given, with no document cross-check", async () => {
+    const { db, calls } = makeDb({ documents: [] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        ...receipt(true),
+        invoiceCurrency: "USD",
+      } as any),
+    ).resolves.toBeDefined();
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    // Taken from the receipt form. `invoiceCurrencyClaim` says outright that
+    // `procurement_documents.currency` is not read by this path.
+    expect(calls.priceHistoryInserts[0].currency).toBe("USD");
+  });
+
+  it("a hand-typed currency that names no currency is REFUSED into the column, not stored", async () => {
+    // The one part of this path that IS now checked: membership. `ZZZ` used to
+    // pass `/^[A-Z]{3}$/` and reach the price ladder as a real denomination.
+    const { db, calls } = makeDb({ documents: [] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        ...receipt(true),
+        invoiceCurrency: "ZZZ",
+      } as any),
+    ).resolves.toBeDefined();
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.priceHistoryInserts[0].currency).toBeNull();
+    expect(String(calls.priceHistoryInserts[0].notes)).toContain("ZZZ");
+  });
+});
+
+/* ===========================================================================
+ * THE ACT THAT CLEARS THE REFUSAL, END TO END.
+ *
+ * The audit of `6c0933d3` found this true only by inspection: `documentMoneyState`
+ * reads `currency IS NULL` as "not priced" and `PATCH :id/currency` writes a
+ * non-null currency, so the hold lifts — but no test chained the two. These do,
+ * against the REAL controller and the REAL service, sharing one mutable
+ * document row so that what the restatement writes is what the door reads.
+ * ======================================================================== */
+describe("restating or confirming a currency clears the receiving refusal", () => {
+  const SESSION = {
+    userId: USER,
+    restaurantId: REST,
+    name: "Ada Manager",
+    email: "ada@example.test",
+  } as any;
+
+  /** A controller whose writes land on `doc`, so the door sees them. */
+  function currencyController(doc: Row) {
+    const client = {
+      from(table: string) {
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          maybeSingle: async () => ({
+            data:
+              table === "procurement_documents"
+                ? { ...doc, restaurant_id: REST, status: "needs_review", total: doc.total ?? null }
+                : null,
+            error: null,
+          }),
+          order: async () => ({ data: [], error: null }),
+          insert: async () => ({ error: null }),
+          update(row: Row) {
+            // THE WRITE THE DOOR WILL READ. One shared object, so the chain is
+            // a real one rather than two fixtures that happen to agree.
+            if (table === "procurement_documents") Object.assign(doc, row);
+            const u: any = {};
+            u.eq = () => u;
+            u.then = (res: any) => res({ error: null });
+            return u;
+          },
+        };
+        return q;
+      },
+    };
+    const intake = {
+      planRefileForCurrency: async () => ({
+        plan: null,
+        previousTotal: null,
+        previousCurrency: doc.currency ?? null,
+      }),
+      refileMoneyForCurrency: async () => ({
+        snapshotReadable: false,
+        source: null,
+        sentence: "The money could NOT be re-filed: nothing was erased.",
+        document: null,
+        lineCount: 0,
+        pricedLines: 0,
+        linesRefiled: 0,
+        lineFailures: [],
+      }),
+    };
+    return new DocumentsController(
+      intake as any,
+      { getClient: () => client } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {
+        resolveRestaurantRole: async () => "manager",
+        assertCanManageRestaurant: async () => undefined,
+      } as any,
+      {} as any,
+    );
+  }
+
+  it("a RESTATEMENT from NOT RECORDED lifts the hold, and the door then accepts the price", async () => {
+    const doc = HELD_DOC() as Row;
+
+    // Before: the door refuses.
+    const before = makeDb({ documents: [doc] });
+    const err = await service(before.db)
+      .verifyReceipt(REST, ORDER, USER, receipt(true))
+      .catch((e) => e);
+    expect(err?.status).toBe(409);
+    expect(before.calls.priceHistoryInserts).toHaveLength(0);
+
+    // The manager names the currency on the receipts screen.
+    const out: any = await currencyController(doc).restateCurrency(
+      "doc-held",
+      { currency: "EUR" },
+      SESSION,
+    );
+    expect(out.kind).toBe("restated");
+    expect(doc.currency).toBe("EUR");
+
+    // After: the same receipt, the same order, the price accepted.
+    const after = makeDb({ documents: [doc] });
+    await expect(
+      service(after.db).verifyReceipt(REST, ORDER, USER, receipt(true)),
+    ).resolves.toBeDefined();
+    expect(after.calls.orderUpdates.length).toBeGreaterThan(0);
+  });
+
+  it("a CONFIRMATION of the currency a document already carries is logged as one, and the door keeps accepting", async () => {
+    // `previous === next`, which the route classifies as `confirmed` rather
+    // than refusing as a no-op — the founder's *"let them approve if
+    // otherwise"*, and batch 66's *"Keep it open on every invoice"*.
+    const doc = SETTLED_DOC() as Row;
+
+    const out: any = await currencyController(doc).restateCurrency(
+      "doc-ok",
+      { currency: "EUR" },
+      SESSION,
+    );
+    expect(out.kind).toBe("confirmed");
+    expect(out.sentence).toContain("CONFIRMED");
+    expect(doc.currency).toBe("EUR");
+
+    const after = makeDb({ documents: [doc] });
+    await expect(
+      service(after.db).verifyReceipt(REST, ORDER, USER, receipt(true)),
+    ).resolves.toBeDefined();
+    expect(after.calls.orderUpdates.length).toBeGreaterThan(0);
   });
 });

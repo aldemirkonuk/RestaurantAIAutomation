@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsIn,
   IsString,
   Matches,
   MinLength,
@@ -9,6 +10,7 @@ import {
   Min,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { ISO_4217_CODES } from "../../common/iso-4217";
 
 export class RegisterRestaurantDto {
   @IsString() name: string;
@@ -41,15 +43,25 @@ export class RegisterRestaurantDto {
    *
    * The form defaults it from the address's country and shows it as a stated
    * default the manager confirms or changes (ADR 0083: the page says what it
-   * will record). Validation is shape only — three capitals. A hardcoded ISO
-   * 4217 membership list in the gateway would be a second table to rot, and the
-   * codes a manager can pick come from one table in the form
-   * (`apps/web/src/lib/currency.ts`), never free text.
+   * will record).
+   *
+   * VALIDATION IS SHAPE AND MEMBERSHIP. It used to be shape only, and this
+   * comment argued that "a hardcoded ISO 4217 membership list in the gateway
+   * would be a second table to rot" while the codes a manager can pick come
+   * from the form. The form is not the only caller of an HTTP route: `ZZZ`
+   * passed three-capitals and became a house's reporting currency, which
+   * `invoice-currency.ts` then files an unmarked invoice's money under. The
+   * list is `common/iso-4217.ts` and `iso-4217.spec.ts` fails if it ever
+   * differs from the form's own table by a single code, so the copy cannot rot
+   * quietly.
    */
   @IsOptional()
   @IsString()
   @Matches(/^[A-Z]{3}$/, {
     message: "currency must be an ISO 4217 alpha-3 code in capitals, e.g. TRY.",
+  })
+  @IsIn(ISO_4217_CODES as string[], {
+    message: "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
   })
   currency?: string;
 

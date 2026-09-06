@@ -52,6 +52,23 @@ describe("readVendorCurrency — what a person typed", () => {
       if (!r.ok) expect(r.because).toContain("ISO 4217");
     }
   });
+
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06). Every code below passes
+   * `/^[A-Z]{3}$/`, which is what this function asked on the day it was
+   * written, so a manager could state that a vendor "usually invoices in ZZZ"
+   * and have it pre-filled on every order sheet for them.
+   */
+  it("REFUSES a well-formed code that names no currency, and names it back", () => {
+    for (const fake of ["ZZZ", "XTS", "XTT", "ABC"]) {
+      const r = readVendorCurrency(fake);
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.because).toContain(`${fake} is not a currency`);
+        expect(r.because).toContain("Nothing was changed");
+      }
+    }
+  });
 });
 
 describe("vendorCurrencySentence — the profile says what it is FOR", () => {
@@ -59,6 +76,16 @@ describe("vendorCurrencySentence — the profile says what it is FOR", () => {
     const s = vendorCurrencySentence({ code: null, vendorName: "Bir Dagitim" });
     expect(s).toContain("has not stated a usual currency");
     expect(s).toContain("Nothing is assumed in its place");
+  });
+
+  it("NAMES a stored value that is not a currency, rather than calling it absent", () => {
+    // Rows can hold one: `ZZZ` was writable here until 2026-09-06. Saying the
+    // field is empty about a field that plainly reads ZZZ sends a manager
+    // looking for something that is not there.
+    const s = vendorCurrencySentence({ code: "ZZZ", vendorName: "Bir Dagitim" });
+    expect(s).toContain("recorded as ZZZ");
+    expect(s).toContain("does not name a currency");
+    expect(s).not.toContain("has not stated a usual currency");
   });
 
   it("a stated currency prints the person and the date, and what it never does", () => {

@@ -197,10 +197,17 @@ export interface ParsedDocument {
    * to say the full reading stayed in `procurement_documents.extracted` — but
    * `document-intake.service.ts` writes `extracted` from the SAME object it
    * writes the money columns from, and by then `withholdMoney` had nulled both.
-   * So a held invoice's figures were gone, and `refiledMoney` restored a
+   * So a held invoice's figures were gone, and the restatement restored a
    * document of nulls while `refilingSentence` announced that the money "was
    * held and is now filed". A restatement that reports a re-filing it did not
    * perform is worse than one that refuses, because the manager stops looking.
+   *
+   * IT IS THE FALLBACK, NOT THE SOURCE (corrected 2026-09-06). `planRefile`
+   * reads a restatement's figures off the document's CURRENT rows — which is
+   * what `editLine` writes — and reaches for this field only when there is no
+   * money on them at all, which is exactly the state a hold leaves. Reading it
+   * first, as the first version did, reverted every hand correction made
+   * between intake and the restatement.
    *
    * Nothing here is ever READ as money. It is the un-denominated reading, held
    * aside until a person says what currency it is in; every consumer of this

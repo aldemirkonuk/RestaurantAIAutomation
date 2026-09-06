@@ -13,6 +13,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
+import { currencyCode } from "../common/iso-4217";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -1283,10 +1284,10 @@ export class ProcurementService {
       // happens — a confirmed suggestion and a silent one are different things,
       // and `restaurants.currency` is what the second one looks like after
       // seven months.
-      currency:
-        typeof dto.currency === "string" && /^[A-Z]{3}$/.test(dto.currency.trim().toUpperCase())
-          ? dto.currency.trim().toUpperCase()
-          : null,
+      // MEMBERSHIP, NOT SHAPE (2026-09-06): `/^[A-Z]{3}$/` admitted `ZZZ` onto
+      // an agreement line, which the invoice-versus-agreement check then reads
+      // as the money the vendor agreed to.
+      currency: currencyCode(dto.currency),
       // ADR 0119 Q3: the money outside the price of the wine, named rather than
       // folded into `final_unit_price`. Three EXPLICIT keys for the same reason
       // the pair above is two — the capture guard reads this literal without
@@ -2133,11 +2134,10 @@ export class ProcurementService {
         stated: readStatedPriceUnit(row),
         finalUnitPrice: Number.isFinite(price) ? price : null,
         fees: readAgreementFees(row),
-        // Read, never defaulted. A three-letter code or nothing.
-        currency:
-          typeof row.currency === "string" && /^[A-Z]{3}$/.test(row.currency)
-            ? row.currency
-            : null,
+        // Read, never defaulted. A currency or nothing — membership, not
+        // shape, so a row holding `ZZZ` reads as "no currency stated" rather
+        // than as money.
+        currency: currencyCode(row.currency),
       };
     } catch (e: any) {
       this.logger.warn(
@@ -2352,15 +2352,14 @@ export class ProcurementService {
   }
 
   /**
-   * An ISO 4217 alpha-3 as stated, or null. The same shape the database CHECK
-   * enforces, and the same rule the agreement line already applies: `"$"`,
-   * `"usd "` and `"US Dollars"` are three ways of nearly saying a currency and
-   * a `varchar(3)` that takes all of them holds three where there is one.
+   * A CURRENCY as stated, or null. Membership, not shape: `"$"`, `"usd "` and
+   * `"US Dollars"` are three ways of nearly saying a currency, and `"ZZZ"` is a
+   * fourth — the only one the old `/^[A-Z]{3}$/` here could not tell from a
+   * real one. The database CHECK is still the shape; `common/iso-4217.ts` is
+   * the list.
    */
   private readStatedCurrency(value: string | null | undefined): string | null {
-    if (typeof value !== "string") return null;
-    const code = value.trim().toUpperCase();
-    return /^[A-Z]{3}$/.test(code) ? code : null;
+    return currencyCode(value);
   }
 
   /**

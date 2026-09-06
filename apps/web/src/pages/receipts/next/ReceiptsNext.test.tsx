@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
@@ -135,6 +135,23 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The same wrapper, entered at a URL. `?doc=<id>` is the link the receiving
+ * workspace hands a manager when it refuses a unit price, so the query string
+ * is a real entry point and not decoration.
+ */
+function wrapperAt(entry: string) {
+  return function Wrapped({ children }: { children: ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    lastQc = qc;
+    return (
+      <MemoryRouter initialEntries={[entry]}>
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    );
+  };
+}
+
 beforeEach(() => {
   api.queue = [doc({})];
   api.verified = [];
@@ -175,8 +192,8 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
-    await vi.waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }));
-    await vi.waitFor(() => expect(container.textContent).toContain('off by $210.10'));
+    await waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }));
+    await waitFor(() => expect(container.textContent).toContain('off by $210.10'));
   });
 
   it('locks the lines of a verified document, with the reason in words', async () => {
@@ -197,7 +214,7 @@ describe('ReceiptsNext', () => {
     expect(screen.getByText(/does not accept charges or touch stock/)).toBeInTheDocument();
     const handle = screen.getByRole('button', { name: /Swipe up to confirm/ });
     fireEvent.keyDown(handle, { key: ' ' });
-    await vi.waitFor(() => expect(api.verify).toHaveBeenCalledWith('d1'), { timeout: 3000 });
+    await waitFor(() => expect(api.verify).toHaveBeenCalledWith('d1'), { timeout: 3000 });
   });
 
   it('deliveries without paperwork share the surface', async () => {
@@ -212,7 +229,7 @@ describe('ReceiptsNext', () => {
   it('a null tie-out is untestable, never a pass or a fail', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await vi.waitFor(() => expect(container.textContent).toContain('tie-out —'));
+    await waitFor(() => expect(container.textContent).toContain('tie-out —'));
     await openFirstDoc();
     expect(container.textContent).toContain('no stated total to test against');
   });
@@ -280,7 +297,7 @@ describe('ReceiptsNext', () => {
   it('every list query key carries the active restaurant id', async () => {
     render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await vi.waitFor(() => expect(lastQc.getQueryCache().getAll().length).toBeGreaterThan(2));
+    await waitFor(() => expect(lastQc.getQueryCache().getAll().length).toBeGreaterThan(2));
     const keys = lastQc.getQueryCache().getAll().map((q) => q.queryKey as unknown[]);
     for (const name of ['queue', 'verified', 'unverified-deliveries']) {
       const k = keys.find((key) => key[0] === 'receipts-next' && key[1] === name);
@@ -304,7 +321,7 @@ describe('ReceiptsNext', () => {
   it('a full queue window renders as a floor, not a total', async () => {
     api.queue = Array.from({ length: 100 }, (_, i) => doc({ id: `d${i}`, doc_number: `INV-${i}` }));
     const { container } = render(<ReceiptsNext />, { wrapper });
-    await vi.waitFor(() => expect(container.textContent).toContain('≥100 awaiting review'));
+    await waitFor(() => expect(container.textContent).toContain('≥100 awaiting review'));
   });
 
   it('a failed detail fetch says the failure, and never claims an empty invoice', async () => {
@@ -315,7 +332,7 @@ describe('ReceiptsNext', () => {
     fireEvent.click(
       await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? '')),
     );
-    await vi.waitFor(() => expect(container.textContent).toContain('documents backend is down'));
+    await waitFor(() => expect(container.textContent).toContain('documents backend is down'));
     expect(container.textContent).toContain('unknown, not empty');
     expect(container.textContent).not.toContain('No lines were extracted');
   });
@@ -324,7 +341,7 @@ describe('ReceiptsNext', () => {
     api.unverifiedFails = new Error('receiving endpoint 500');
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(container.textContent).toContain('the deliveries counted at the door'),
     );
   });
@@ -354,11 +371,11 @@ describe('ReceiptsNext', () => {
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    await vi.waitFor(() => expect(container.textContent).toContain('paired → Albariño'));
+    await waitFor(() => expect(container.textContent).toContain('paired → Albariño'));
     expect(container.textContent).toContain('order line #ol-abcde');
     expect(container.textContent).toContain('confidence 97%');
     fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
-    await vi.waitFor(() => expect(api.linkLine).toHaveBeenCalledWith('d1', 'l1', null));
+    await waitFor(() => expect(api.linkLine).toHaveBeenCalledWith('d1', 'l1', null));
   });
 
   it('an unpaired line says "not paired", not a bare dash', async () => {
@@ -389,12 +406,12 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
-    await vi.waitFor(() => expect(api.editLine).toHaveBeenCalled());
+    await waitFor(() => expect(api.editLine).toHaveBeenCalled());
     expect(await screen.findByText(/extracted 12/)).toBeInTheDocument();
     const undo = screen.getByRole('button', { name: /Undo quantity on line 1/ });
     api.editLine.mockClear();
     fireEvent.click(undo);
-    await vi.waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }));
+    await waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }));
   });
 });
 
@@ -446,7 +463,7 @@ describe('ReceiptsNext — what money this invoice is in', () => {
       target: { value: 'TRY' },
     });
     fireEvent.click(screen.getByText('Restate the currency'));
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(api.restateCurrency).toHaveBeenCalledWith('d1', 'TRY', undefined),
     );
     expect(await screen.findByText(/Currency restated from NOT RECORDED/)).toBeTruthy();
@@ -475,5 +492,45 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     });
     fireEvent.click(screen.getByText('Restate the currency'));
     expect(await screen.findByText(/the change could not be recorded/)).toBeTruthy();
+  });
+});
+
+
+/**
+ * THE DEEP LINK — `?doc=<id>`.
+ *
+ * [[receiving]] refuses a keyed-in unit price for an invoice whose money is
+ * held and links here so the manager can restate or confirm the currency
+ * (founder, 2026-09-06 batch 64; batch 66's *"Two screens, for now"* is what
+ * keeps the act on this page rather than inside the receiving workspace). The
+ * audit of `6c0933d3` found the behaviour correct by inspection and untested:
+ * a link that lands on the queue without opening the document names an act the
+ * reader then has to go and find.
+ */
+describe('ReceiptsNext — ?doc=<id> opens that document', () => {
+  it('opens the document named in the query string, without a click', async () => {
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=d1') });
+    // The line editor is only rendered for an OPEN document, so finding it is
+    // the assertion that the deep link selected one.
+    expect(await screen.findByLabelText('Quantity, line 1')).toBeTruthy();
+  });
+
+  it('lands on the queue, opening nothing, when the id names no document here', async () => {
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=not-a-document') });
+    // The queue still renders; nothing is opened, and nothing throws.
+    await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? ''));
+    expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
+  });
+
+  it('does not fight a person who then opens a different row', async () => {
+    // Seeded ONCE from the URL: re-selecting from the query string on every
+    // render would take the choice back off the reader.
+    api.queue = [doc({}), doc({ id: 'd2', doc_number: 'INV-99' })];
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=d1') });
+    await screen.findByLabelText('Quantity, line 1');
+    fireEvent.click(
+      await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-99/.test(el.textContent ?? '')),
+    );
+    await waitFor(() => expect(screen.getAllByText(/INV-99/).length).toBeGreaterThan(0));
   });
 });

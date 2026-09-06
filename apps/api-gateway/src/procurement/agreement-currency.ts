@@ -1,3 +1,5 @@
+import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
+
 /**
  * What money an agreement line is in, and where that default came from.
  *
@@ -35,8 +37,17 @@
  * that two figures in different currencies are comparable.
  */
 
-/** ISO 4217 alpha-3. The same shape the database CHECK enforces. */
-const ISO_4217_ALPHA3 = /^[A-Z]{3}$/;
+/**
+ * IS THIS A CURRENCY? Membership, not shape.
+ *
+ * The database CHECK is still `^[A-Z]{3}$` and stays that way — SQL holds no
+ * currency table and one written into a constraint could not be corrected
+ * without a migration. The list lives in `common/iso-4217.ts` and this is the
+ * layer that enforces it, so a value this module accepts is BOTH a value the
+ * database accepts and a value that names money. Until 2026-09-06 only the
+ * first was true, and `"ZZZ"` could be offered as an order's currency.
+ */
+const isCurrency = isIso4217;
 
 export type AgreementCurrencyBasis =
   | "vendor_usual"
@@ -92,7 +103,24 @@ export interface AgreementCurrencyInputs {
 function normalise(code: string | null | undefined): string | null {
   if (typeof code !== "string") return null;
   const upper = code.trim().toUpperCase();
-  return ISO_4217_ALPHA3.test(upper) ? upper : null;
+  return isCurrency(upper) ? upper : null;
+}
+
+/**
+ * A value that was RECORDED but does not name a currency, or `null`.
+ *
+ * The distinction `normalise` alone cannot carry, and it matters on every
+ * sentence below: "this vendor has stated no usual currency" and "this vendor's
+ * usual currency is recorded as ZZZ, which is not one" send a person to two
+ * different places, and only the second is true when the column holds junk. A
+ * refusal that flattens into an absence is the same fault as an absence
+ * reported as health, one field over.
+ */
+function refusedCode(code: string | null | undefined): string | null {
+  if (typeof code !== "string") return null;
+  const upper = code.trim().toUpperCase();
+  if (upper === "" || isCurrency(upper)) return null;
+  return upper;
 }
 
 /**
@@ -158,14 +186,37 @@ export function agreementCurrencyDefault(
     };
   }
 
+  /*
+   * A REFUSED CODE IS NAMED, NEVER FLATTENED INTO AN ABSENCE. If the vendor's
+   * profile, their last invoice or this house's own row holds a value that is
+   * not a currency — `ZZZ` was admissible everywhere in this gateway until
+   * 2026-09-06 — then "no currency can be worked out" is true, but "nobody has
+   * stated one" is not, and a manager sent looking for an empty field will not
+   * find one.
+   */
+  const refused = [
+    refusedCode(inputs.vendorUsualCurrency)
+      ? `this vendor's profile records ${refusedCode(inputs.vendorUsualCurrency)}`
+      : null,
+    refusedCode(inputs.vendorPaperCurrency)
+      ? `their last invoice records ${refusedCode(inputs.vendorPaperCurrency)}`
+      : null,
+    refusedCode(inputs.houseCurrency)
+      ? `this house records ${refusedCode(inputs.houseCurrency)}`
+      : null,
+  ].filter(Boolean);
+
   return {
     code: null,
     basis: null,
     sentence:
       "No currency can be worked out: no invoice from this vendor states one " +
-      "and this house has not recorded the money it reports in. Choose one, or " +
-      "leave it and every amount on this line will read as “currency not " +
-      "recorded”.",
+      "and this house has not recorded the money it reports in. " +
+      (refused.length
+        ? `${refused.join(", and ")} — ${refused.length === 1 ? "which is not a currency this system knows, so it is not offered" : "none of which is a currency this system knows, so none is offered"}. `
+        : "") +
+      "Choose one, or leave it and every amount on this line will read as " +
+      "“currency not recorded”.",
   };
 }
 
@@ -265,13 +316,20 @@ export function orderCurrencyOffer(
     alsoKnown.house ? `this house reports in ${alsoKnown.house}` : null,
   ].filter(Boolean);
 
+  // What the profile HOLDS, when it holds something that is not a currency.
+  // Saying "has not stated a usual currency" about a profile reading `ZZZ`
+  // would send a manager to a field that is already filled in.
+  const refused = refusedCode(inputs.vendorUsualCurrency);
+
   return {
     code: null,
     basis: null,
     sentence:
-      `${who} has not stated a usual currency, so nothing is pre-filled here — ` +
-      `choosing for them is how a currency nobody agreed to ends up on an ` +
-      `invoice. ` +
+      (refused
+        ? `${who}'s profile records ${refused}, which does not name a currency — ${notACurrencyBecause(refused)} Nothing is pre-filled here. `
+        : `${who} has not stated a usual currency, so nothing is pre-filled here — ` +
+          `choosing for them is how a currency nobody agreed to ends up on an ` +
+          `invoice. `) +
       (evidence.length
         ? `For what it is worth: ${evidence.join(", and ")}. Either is available in the list. `
         : "") +

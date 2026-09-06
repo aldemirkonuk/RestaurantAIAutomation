@@ -85,6 +85,22 @@ CREATE TABLE IF NOT EXISTS public.procurement_document_currency_changes (
   new_currency CHARACTER VARYING(3) NOT NULL
     CHECK (new_currency ~ '^[A-Z]{3}$'),
 
+  -- BOTH CHECKS ABOVE ARE SHAPE, AND THAT IS DELIBERATE (added 2026-09-06).
+  -- Three capitals is not a currency: 'ZZZ' passes, and so do ISO's own
+  -- reserved test codes 'XTS' and 'XTT', which this migration's own DO block
+  -- below inserts. MEMBERSHIP is enforced in the service layer --
+  -- `apps/api-gateway/src/common/iso-4217.ts`, called by every route that
+  -- writes a currency anywhere in this gateway -- and NOT here, for one reason:
+  -- the list of the world's currencies changes (a country redenominates, a new
+  -- code is published), and a list frozen inside a CHECK constraint can only be
+  -- corrected by another migration, on a table that is APPEND-ONLY and holds
+  -- rows nobody may rewrite. A code list in SQL would therefore start refusing
+  -- real money on the day ISO adds a code, with a deploy as the only remedy.
+  -- The shape check stays because it is what makes the column and the service
+  -- agree about the COLUMN: a value the service accepts is a value this table
+  -- accepts. `iso-4217.spec.ts` is what keeps the service's list honest, by
+  -- failing if it ever differs from `apps/web/src/lib/currency.ts` by one code.
+
   -- WHO, three ways, because one of them decays.
   --
   -- `changed_by` references `public.users(user_id)`. NOT `auth.users`: the two

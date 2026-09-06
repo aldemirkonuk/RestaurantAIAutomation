@@ -375,6 +375,29 @@ have re-dollarised on the canonical face every document rule 1 had just refused.
    Nothing in this pass touches an existing row; rule 3 restates the ones a person
    disputes, and the audit log says who did.
 
+**2026-09-06, batch 66 — the four follow-up questions, answered verbatim.**
+
+> **"Keep: house currency for an unmatched invoice"**
+> **"Add the prompt panel"**
+> **"Keep it open on every invoice"**
+> **"Two screens, for now"**
+
+1. **The house's currency stays the last rung** for an invoice matched to no order. It was
+   marked as an assumption in this file, in [[providers]] §13 and in ADR 0104 until this
+   answer; it is now the founder's own call and those markings are replaced. An unmatched
+   invoice is filed under the house's stated currency rather than refused.
+2. **The prompt panel is to be built** — *"N of your M vendors have stated a usual
+   currency"* — because with no vendor profiles filled in the order rung is inert and the
+   chain silently falls back to the house exactly as before. It belongs to **p4bu** and is
+   not in the tree as of this line.
+3. **Confirmation stays open on EVERY invoice**, held or not. A manager may certify a
+   currency before a dispute; the cost — rows that record nothing but somebody clicking —
+   is accepted.
+4. **Clearing a held price stays two screens.** [[receiving]] refuses and links to
+   `/receipts?doc=<id>`, which opens that document (pinned by a router test in
+   `ReceiptsNext.test.tsx`); the manager decides here and goes back. *"For now"* is the
+   founder's own hedge and is recorded as one.
+
 
 1. **Send the claim.** `→ requested` should draft the vendor email through the same
    approve-then-send path procurement already uses — the guardrail is decided

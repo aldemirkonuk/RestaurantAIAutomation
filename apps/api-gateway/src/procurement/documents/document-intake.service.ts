@@ -9,9 +9,11 @@ import {
 import { normalizeUom, SourceChannel, toBottles } from "./document-types";
 import {
   applyCurrencyRules,
-  refiledMoney,
+  planRefile,
   refilingSentence,
   type DocumentMoney,
+  type RefilePlan,
+  type RefileSource,
 } from "./invoice-currency";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
@@ -1965,6 +1967,92 @@ export class DocumentIntakeService {
   }
 
   /**
+   * WHAT a currency restatement would put back, and from WHERE — read only,
+   * nothing written.
+   *
+   * Exists because `documents.controller.ts` writes the append-only audit row
+   * BEFORE the change lands, and that row has to record what the re-filing was
+   * about to move and which reading it came from. Computing it here rather than
+   * on the controller keeps one implementation of the question; the controller
+   * would otherwise have to read the line table itself and decide the same
+   * thing a second way.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). `supabase-js` resolves
+   * `{ data, error }` and never throws, so without the explicit `error` checks
+   * an outage would arrive here as "this document has no lines" — which is
+   * precisely the state that selects the withheld snapshot, and would therefore
+   * turn a database blip into a silent revert of a manager's corrections.
+   */
+  async planRefileForCurrency(
+    documentId: string,
+    restaurantId: string,
+  ): Promise<{
+    plan: RefilePlan | null;
+    previousTotal: number | null;
+    previousCurrency: string | null;
+  }> {
+    const client = this.db.getClient();
+
+    const { data: doc, error: readError } = await client
+      .from("procurement_documents")
+      .select(
+        "id, currency, extracted, subtotal, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total, total",
+      )
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (readError) throw new Error(`REFILE_READ_FAILED:${readError.message}`);
+    if (!doc) throw new Error("NOT_FOUND");
+
+    /*
+     * THE LINES AS THEY STAND, which is the whole of BLOCKER 2.
+     *
+     * The previous version re-derived every figure from
+     * `procurement_documents.extracted` — the parse as it was at INTAKE, which
+     * `editLine` never updates. A manager who corrected a line's price and then
+     * restated the currency had their correction silently overwritten with the
+     * original AI reading. These rows are what `editLine` writes, so they are
+     * what a re-filing carries across.
+     *
+     * `line_kind` and `price_base_qty` have no columns on this table, so the
+     * tie-out recompute sees exactly what `editLine`'s own recompute sees. The
+     * two paths agree by construction.
+     */
+    const { data: lines, error: linesError } = await client
+      .from("procurement_document_lines")
+      .select("line_no, qty, uom, pack_size, unit_price, line_total, allowance, deposit")
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .order("line_no", { ascending: true });
+    if (linesError) throw new Error(`REFILE_READ_FAILED:${linesError.message}`);
+
+    const row = doc as Record<string, unknown>;
+    return {
+      plan: planRefile({
+        row: {
+          subtotal: row.subtotal,
+          freight: row.freight,
+          fuel_surcharge: row.fuel_surcharge,
+          split_case_fee: row.split_case_fee,
+          delivery_fee: row.delivery_fee,
+          deposit_total: row.deposit_total,
+          tax: row.tax,
+          other_charges: row.other_charges,
+          discount_total: row.discount_total,
+          total: row.total,
+        },
+        lines: lines ?? [],
+        extracted: row.extracted,
+      }),
+      previousTotal: typeof row.total === "number" ? row.total : null,
+      previousCurrency:
+        typeof row.currency === "string" && row.currency.trim() !== ""
+          ? row.currency
+          : null,
+    };
+  }
+
+  /**
    * Re-file a document's MONEY after a person has restated its currency.
    *
    * ---------------------------------------------------------------------------
@@ -1986,26 +2074,32 @@ export class DocumentIntakeService {
    * through the same `applyTieOut` intake and `editLine` already use.
    *
    * ---------------------------------------------------------------------------
-   * WHAT IT DOES, AND WHAT IT DELIBERATELY DOES NOT
+   * WHERE THE FIGURES COME FROM — CORRECTED 2026-09-06
    * ---------------------------------------------------------------------------
-   * It reads the whole parse back off `procurement_documents.extracted` — kept
-   * intact precisely so a document whose money rules 1 or 2 withheld does not
-   * have to be uploaded again — and writes the figures under the currency the
-   * person named. **NOTHING IS CONVERTED.** There is no exchange rate anywhere
-   * in this system and inventing one would be inventing the answer
-   * (`20260905120000_a_house_names_its_money.sql`, rule 3). The vendor's own
-   * numbers go back exactly as the vendor wrote them; only what they are
-   * denominated in has moved.
+   * From the document AS IT STANDS: its money columns and its current lines.
+   * Every amount is carried across exactly as it is, corrections included.
+   * **NOTHING IS CONVERTED.** There is no exchange rate anywhere in this system
+   * and inventing one would be inventing the answer
+   * (`20260905120000_a_house_names_its_money.sql`, rule 3). Only what the
+   * figures are denominated in has moved.
+   *
+   * The withheld snapshot (`extracted.moneyWithheld`) is used ONLY for a
+   * document whose money is not on the row at all — the exact state
+   * `withholdMoney` leaves, header and lines and tie-out all null. That was
+   * this method's only source until today, and it was wrong: `extracted` is
+   * written at intake and `editLine` never touches it, so restating the
+   * currency of a hand-corrected document put the original AI reading back and
+   * announced it as a re-filing. `planRefile`'s header carries the proof.
    *
    * It does NOT write `currency`, and it does not write the audit row. Those are
    * the caller's: the currency is the person's answer and the log is the record
    * of them giving it, and both must already have landed before this runs.
    *
    * `snapshotReadable: false` is returned rather than thrown, and NOTHING is
-   * written in that case. A stored reading this gateway cannot parse leaves a
-   * document labelled and unpriced, which is honest; writing nulls instead would
-   * ERASE figures a document already carried, on an act that was only meant to
-   * re-label them.
+   * written in that case. A document with no figures on its rows and no
+   * recoverable reading is left labelled and unpriced, which is honest; writing
+   * nulls instead would ERASE figures a document already carried, on an act
+   * that was only meant to re-label them.
    */
   async refileMoneyForCurrency(
     documentId: string,
@@ -2013,6 +2107,8 @@ export class DocumentIntakeService {
     currency: string,
   ): Promise<{
     snapshotReadable: boolean;
+    /** Which reading the figures came from, or `null` when nothing was written. */
+    source: RefileSource | null;
     sentence: string;
     document: DocumentMoney | null;
     lineCount: number;
@@ -2020,31 +2116,21 @@ export class DocumentIntakeService {
     linesRefiled: number;
     lineFailures: string[];
   }> {
-    const { data: doc, error: readError } = await this.db
-      .getClient()
-      .from("procurement_documents")
-      .select("id, currency, total, extracted")
-      .eq("id", documentId)
-      .eq("restaurant_id", restaurantId)
-      .maybeSingle();
-    // A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). Without this, an outage
-    // and a document with no stored reading both become "could not re-file",
-    // and only one of those is worth re-uploading the paper over.
-    if (readError) throw new Error(`REFILE_READ_FAILED:${readError.message}`);
-    if (!doc) throw new Error("NOT_FOUND");
+    const { plan, previousTotal } = await this.planRefileForCurrency(
+      documentId,
+      restaurantId,
+    );
 
-    const previousTotal = (doc as { total?: number | null }).total ?? null;
-    const refiled = refiledMoney((doc as { extracted?: unknown }).extracted);
-
-    if (!refiled)
+    if (!plan)
       return {
         snapshotReadable: false,
+        source: null,
         sentence:
-          `The money could NOT be re-filed: this document's stored reading ` +
-          `(procurement_documents.extracted) is not a parse this gateway can ` +
-          `read, so there are no figures to put back. The currency now says ` +
-          `${currency} and the figures are unchanged — nothing was erased, and ` +
-          `nothing was invented. Upload the document again to price it.`,
+          `The money could NOT be re-filed: this document carries no figures ` +
+          `on its own rows and no withheld reading to recover, so there is ` +
+          `nothing to put back. The currency now says ${currency} and the ` +
+          `figures are unchanged — nothing was erased, and nothing was ` +
+          `invented. Upload the document again to price it.`,
         document: null,
         lineCount: 0,
         pricedLines: 0,
@@ -2052,18 +2138,23 @@ export class DocumentIntakeService {
         lineFailures: [],
       };
 
-    const pricedLines = refiled.lines.filter(
+    const pricedLines = plan.lines.filter(
       (l) => l.unit_price != null || l.line_total != null,
     ).length;
 
-    const sentence = refilingSentence({
-      previous: null,
-      next: currency,
-      wasHeld: previousTotal == null,
-      documentTotal: refiled.document.total,
-      lineCount: refiled.lines.length,
-      pricedLines,
-    });
+    const sentence =
+      refilingSentence({
+        previous: null,
+        next: currency,
+        // "Held" is now a fact about WHICH reading was used, not a guess from
+        // the total being null. A document whose total was never stated but
+        // whose lines are priced is not held, and used to be described as if
+        // it were.
+        wasHeld: plan.source === "withheld_snapshot",
+        documentTotal: plan.document.total,
+        lineCount: plan.lines.length,
+        pricedLines,
+      }) + ` The figures came from ${plan.sourceSaid}.`;
 
     // Inline literal, never a spread: `check_order_capture_contract.py` can
     // only read a write whose column names are literal, and a payload it
@@ -2073,19 +2164,19 @@ export class DocumentIntakeService {
       .getClient()
       .from("procurement_documents")
       .update({
-        subtotal: refiled.document.subtotal,
-        freight: refiled.document.freight,
-        fuel_surcharge: refiled.document.fuel_surcharge,
-        split_case_fee: refiled.document.split_case_fee,
-        delivery_fee: refiled.document.delivery_fee,
-        deposit_total: refiled.document.deposit_total,
-        tax: refiled.document.tax,
-        other_charges: refiled.document.other_charges,
-        discount_total: refiled.document.discount_total,
-        total: refiled.document.total,
-        computed_lines_total: refiled.document.computed_lines_total,
-        tie_out_delta: refiled.document.tie_out_delta,
-        ties_out: refiled.document.ties_out,
+        subtotal: plan.document.subtotal,
+        freight: plan.document.freight,
+        fuel_surcharge: plan.document.fuel_surcharge,
+        split_case_fee: plan.document.split_case_fee,
+        delivery_fee: plan.document.delivery_fee,
+        deposit_total: plan.document.deposit_total,
+        tax: plan.document.tax,
+        other_charges: plan.document.other_charges,
+        discount_total: plan.document.discount_total,
+        total: plan.document.total,
+        computed_lines_total: plan.document.computed_lines_total,
+        tie_out_delta: plan.document.tie_out_delta,
+        ties_out: plan.document.ties_out,
       })
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId);
@@ -2097,7 +2188,7 @@ export class DocumentIntakeService {
     // blank in the body, which reads as a vendor who billed a total for
     // nothing.
     const lineFailures: string[] = [];
-    for (const l of refiled.lines) {
+    for (const l of plan.lines) {
       const { error } = await this.db
         .getClient()
         .from("procurement_document_lines")
@@ -2113,13 +2204,19 @@ export class DocumentIntakeService {
       if (error) lineFailures.push(`line ${l.line_no}: ${error.message}`);
     }
 
+    // `previousTotal` is read but deliberately not compared: a restatement that
+    // changes no figure is still a restatement, and "the total is the same"
+    // says nothing about the twelve lines under it.
+    void previousTotal;
+
     return {
       snapshotReadable: true,
+      source: plan.source,
       sentence,
-      document: refiled.document,
-      lineCount: refiled.lines.length,
+      document: plan.document,
+      lineCount: plan.lines.length,
       pricedLines,
-      linesRefiled: refiled.lines.length - lineFailures.length,
+      linesRefiled: plan.lines.length - lineFailures.length,
       lineFailures,
     };
   }

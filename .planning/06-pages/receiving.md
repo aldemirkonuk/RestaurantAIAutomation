@@ -334,6 +334,53 @@ filing chain only for a document whose intake NAMED an order (`IntakeInput.order
 document linked to an order LATER — by the auto-matcher or by a person on [[receipts]] —
 was already filed by then, and re-filing it is the restatement act, not intake.
 
+**2026-09-06, batch 66 — the two answers that land here, verbatim.**
+
+> **"Keep it open on every invoice"**
+> **"Two screens, for now"**
+
+The first: a manager may CONFIRM the currency of any invoice, not only a held one. The
+cost, stated — a control anyone can press on any document produces log rows that record
+nothing but somebody clicking — is accepted; the benefit is that a house can certify a
+currency before a dispute, and that the receiving refusal has one act that clears it
+whatever state the document is in.
+
+The second: clearing a held price stays TWO screens. This door refuses the price and
+links out to `/receipts?doc=<id>`; the manager decides there and comes back. Putting the
+currency control inside the receiving workspace would let a manager clear a hold without
+ever looking at the paper, which is the one thing the hold exists to make them do. *"For
+now"* is the founder's own hedge and it is recorded as one: if two page loads in the
+middle of a delivery prove painful, the control can be embedded with the document image
+beside it.
+
+**2026-09-06 — AN OPEN QUESTION, MEASURED, NOT CHANGED: a receipt whose order has no
+LINKED document accepts a typed price with no cross-check.**
+
+Found by the Sonnet audit of `6c0933d3` and reproduced here as a shipped test
+(`receiving-price-held.spec.ts`, "what happens today when NO document is linked").
+
+`heldInvoiceForOrder` (`apps/api-gateway/src/procurement/procurement.service.ts:2303`) is
+gated solely on `procurement_document_links` returning rows for the order. Zero rows and
+zero error is indistinguishable from "no invoice exists", so it returns `null` and the
+refusal never fires. Meanwhile `hasInvoice`
+(`procurement.service.ts:4989`, `invoiceQuantity != null`) depends only on the DESK typing
+an invoice-quantity field, and `recordPriceHistory` (`procurement.service.ts:5192`) fires
+on `match && hasInvoice`. So a desk that types a price against an order with an UNLINKED
+held invoice writes a real `price_history` row: `currency: null` when they typed none, and
+whatever three-letter code they DID type when they typed one — `invoiceCurrencyClaim`
+(`price-currency.ts`) says outright that `procurement_documents.currency` "is not read by
+this path".
+
+The register mirror is not fooled: `vendor_price_observations` refuses a sighting with an
+unstated currency, so only `price_history` is reachable this way.
+
+**This behaviour is UNCHANGED and the change is a founder's call, not a builder's.**
+Refusing a typed price that names no currency would stop a desk recording what it actually
+paid, on a table whose whole design admits `currency: null` as an honest answer; refusing
+it only when an unlinked held document exists would make the guard depend on a link nobody
+made. The test above pins exactly what happens today so that whichever way it is decided,
+the change is visible as one.
+
 
 1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`
    (which maps to the backend enum and unwraps `.orders`), with a real status —

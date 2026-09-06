@@ -3,8 +3,9 @@ import {
   currencyAgreement,
   documentMoneyState,
   filingCurrency,
+  orderDisagreement,
+  planRefile,
   receivingPriceRefusal,
-  refiledMoney,
   refilingSentence,
   seenCodes,
   withholdMoney,
@@ -106,6 +107,71 @@ function extracted(over: Partial<ParsedDocument> = {}): ParsedDocument {
     warnings: [],
     ...over,
   };
+}
+
+/**
+ * The money columns of the `procurement_documents` ROW, as they stand — which
+ * is where a restatement reads from now. Distinct from `extracted()` on
+ * purpose: the two diverge the moment anybody corrects a line, and BLOCKER 2
+ * was that only the second one was read.
+ */
+function moneyRow(over: Record<string, unknown> = {}) {
+  return {
+    subtotal: 9172,
+    freight: 120,
+    fuel_surcharge: null,
+    split_case_fee: null,
+    delivery_fee: null,
+    deposit_total: 180,
+    tax: 1834.4,
+    other_charges: null,
+    discount_total: null,
+    total: 11306.4,
+    ...over,
+  };
+}
+
+/** Every money column null — exactly what a hold leaves on the row. */
+function heldRow() {
+  return {
+    subtotal: null,
+    freight: null,
+    fuel_surcharge: null,
+    split_case_fee: null,
+    delivery_fee: null,
+    deposit_total: null,
+    tax: null,
+    other_charges: null,
+    discount_total: null,
+    total: null,
+  };
+}
+
+/** The lines as `procurement_document_lines` holds them. */
+function lineRows(over: Record<string, unknown> = {}) {
+  return [
+    {
+      line_no: 1,
+      qty: 12,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: 142,
+      line_total: 1704,
+      allowance: null,
+      deposit: 60,
+      ...over,
+    },
+  ];
+}
+
+/** The same lines with their money stripped, as a hold leaves them. */
+function heldLineRows() {
+  return lineRows({
+    unit_price: null,
+    line_total: null,
+    allowance: null,
+    deposit: null,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -318,37 +384,182 @@ describe("rule 2: the model reads the invoice's money and a disagreement holds i
 });
 
 // ---------------------------------------------------------------------------
+// BLOCKER 1 — a currency code has to NAME a currency.
+//
+// Every gate in this module asked `/^[A-Z]{3}$/` and called it ISO 4217, which
+// is a shape and not a list. Proved pre-fix against `git show HEAD:` in a probe
+// spec, deleted after it ran: `filingCurrency({ fileStated: "ZZZ", … })`
+// returned `{ kind: "file", code: "ZZZ" }` and filed the invoice's whole total
+// under it, silently, with no hold and no warning.
+// ---------------------------------------------------------------------------
+describe("a well-formed code that is not a currency is not money", () => {
+  it("filingCurrency REFUSES a fake file currency and falls through", () => {
+    const filed = filingCurrency({
+      fileStated: "ZZZ",
+      houseStated: "TRY",
+      fileField: "CUR02",
+    });
+    // It does NOT become the filing currency. The house's real one answers.
+    expect(filed).toEqual({
+      kind: "house",
+      code: "TRY",
+      from: expect.stringContaining("restaurants.currency"),
+    });
+  });
+
+  it("refuses when EVERY rung is a fake code, and quotes each one", () => {
+    const filed = filingCurrency({
+      fileStated: "ZZZ",
+      orderStated: "XTS",
+      hasMatchedOrder: true,
+      houseStated: "ABC",
+      fileField: "CUR02",
+    });
+    expect(filed.kind).toBe("none");
+    if (filed.kind !== "none") return;
+    expect(filed.because).toContain('"ZZZ"');
+    expect(filed.because).toContain('"XTS"');
+    expect(filed.because).toContain('"ABC"');
+    // And it says WHY they failed, which is not the same as "wrong shape".
+    expect(filed.because).toContain("three letters but names no currency");
+  });
+
+  it("still says 'not an ISO 4217 alpha-3 code' for the wrong SHAPE", () => {
+    const filed = filingCurrency({
+      fileStated: "TL",
+      houseStated: null,
+      fileField: "CUR02",
+    });
+    expect(filed.kind).toBe("none");
+    if (filed.kind !== "none") return;
+    expect(filed.because).toContain("not an ISO 4217 alpha-3 code");
+  });
+
+  it("applyCurrencyRules withholds the money rather than filing it under a fake", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({ currency: "ZZZ" }),
+      houseCurrency: null,
+      fileField: "CUR02",
+    });
+    expect(doc.currency).toBe("");
+    expect(doc.total).toBeNull();
+    expect(doc.moneyHeld).toContain("ZZZ");
+  });
+
+  it("seenCodes does not believe a model that answers a fake code", () => {
+    // It used to return `["ZZZ"]`, which then DISAGREED with every real filing
+    // currency and held the money over a code that does not exist.
+    expect(
+      seenCodes({ code: "ZZZ", asPrinted: "ZZZ", where: "the total" }),
+    ).toBeNull();
+    // The glyph path still works when the model's own code is unusable.
+    expect(
+      seenCodes({ code: "ZZZ", asPrinted: "₺", where: "the total" }),
+    ).toEqual(["TRY"]);
+  });
+
+  it("a fake sighting is EVIDENCE, never a hold", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({
+        currency: "",
+        currencySeen: { code: "ZZZ", asPrinted: "ZZZ", where: "the total" },
+      }),
+      houseCurrency: "TRY",
+      fileField: "printed currency",
+    });
+    // Filed under the house's real currency; the unreadable sighting is a
+    // warning, not a reason to hold an invoice.
+    expect(doc.currency).toBe("TRY");
+    expect(doc.total).toBe(11306.4);
+    expect(doc.moneyHeld).toBeUndefined();
+  });
+
+  it("orderDisagreement never holds a document over a fake code", () => {
+    expect(
+      orderDisagreement({
+        fileStated: "ZZZ",
+        orderStated: "TRY",
+        fileField: "CUR02",
+      }),
+    ).toBeNull();
+    expect(
+      orderDisagreement({
+        fileStated: "TRY",
+        orderStated: "ZZZ",
+        fileField: "CUR02",
+      }),
+    ).toBeNull();
+  });
+
+  it("documentMoneyState refuses a row filed under a fake, and SAYS what is there", () => {
+    // Rows can hold one: `ZZZ` was writable everywhere in this module until
+    // 2026-09-06. "The currency is not recorded" would be false about this row.
+    const state = documentMoneyState({ currency: "ZZZ" });
+    expect(state.priced).toBe(false);
+    if (state.priced) return;
+    expect(state.reason).toContain("ZZZ");
+    expect(state.reason).toContain("names no currency");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // RULE 3 — the deliberate change puts the money back.
 // ---------------------------------------------------------------------------
 describe("rule 3: a deliberate change re-files the money and says what moved", () => {
-  it("restores the withheld figures off the stored reading", () => {
+  it("restores the withheld figures when the ROW carries none", () => {
+    // What the intake actually stores for a held document: the row's money
+    // columns and its lines are null, and the reading survives on
+    // `extracted.moneyWithheld`.
     const held = withholdMoney(extracted(), "held for the test");
     expect(held.total).toBeNull();
+    expect(held.moneyWithheld?.total).toBe(11306.4);
 
-    // The SNAPSHOT is the un-withheld parse — what
-    // `procurement_documents.extracted` holds.
-    const refiled = refiledMoney(extracted());
-    expect(refiled).not.toBeNull();
-    expect(refiled!.document.total).toBe(11306.4);
-    expect(refiled!.document.tax).toBe(1834.4);
-    expect(refiled!.lines[0].unit_price).toBe(142);
-    expect(refiled!.lines[0].deposit).toBe(60);
+    const plan = planRefile({
+      row: heldRow(),
+      lines: heldLineRows(),
+      extracted: held,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.source).toBe("withheld_snapshot");
+    expect(plan!.document.total).toBe(11306.4);
+    expect(plan!.document.tax).toBe(1834.4);
+    expect(plan!.lines[0].unit_price).toBe(142);
+    expect(plan!.lines[0].deposit).toBe(60);
   });
 
   it("recomputes the tie-out rather than carrying a stale one over", () => {
-    const refiled = refiledMoney(
-      extracted({ computedLinesTotal: 999999, tiesOut: true }),
-    );
+    // The row's own tie-out columns are not even an input here — they describe
+    // the figures BEFORE the re-filing, and one of the two sources has none.
+    const plan = planRefile({
+      row: moneyRow(),
+      lines: lineRows(),
+      extracted: null,
+    });
     // 1704 goods + 120 freight + 180 deposit + 1834.40 tax = 3838.40 against a
-    // stated 11306.40, so it does NOT tie out — and the stale `true` is gone.
-    expect(refiled!.document.computed_lines_total).toBe(1704);
-    expect(refiled!.document.ties_out).toBe(false);
+    // stated 11306.40, so it does NOT tie out.
+    expect(plan!.document.computed_lines_total).toBe(1704);
+    expect(plan!.document.ties_out).toBe(false);
   });
 
-  it("returns null rather than zeroes when the stored reading is unusable", () => {
-    expect(refiledMoney(null)).toBeNull();
-    expect(refiledMoney("not a parse")).toBeNull();
-    expect(refiledMoney({ docType: "invoice" })).toBeNull();
+  it("returns null rather than zeroes when there is nothing to put back", () => {
+    expect(
+      planRefile({ row: heldRow(), lines: heldLineRows(), extracted: null }),
+    ).toBeNull();
+    expect(
+      planRefile({
+        row: heldRow(),
+        lines: heldLineRows(),
+        extracted: "not a parse",
+      }),
+    ).toBeNull();
+    expect(
+      planRefile({
+        row: heldRow(),
+        lines: heldLineRows(),
+        extracted: { docType: "invoice" },
+      }),
+    ).toBeNull();
+    expect(planRefile({ row: null, lines: null, extracted: null })).toBeNull();
   });
 
   it("says what moved, and says nothing was converted", () => {
@@ -528,7 +739,7 @@ describe("moneyWithheld: a hold keeps what it strips", () => {
     });
   });
 
-  it("refiledMoney puts back what the hold took, not the nulls it wrote", () => {
+  it("planRefile puts back what the hold took, not the nulls it wrote", () => {
     // The snapshot as `procurement_documents.extracted` actually stores it: the
     // ruled document, money already stripped. Before `moneyWithheld` existed
     // this came back all-null while the sentence announced a re-filing.
@@ -541,19 +752,149 @@ describe("moneyWithheld: a hold keeps what it strips", () => {
     });
     expect(stored.total).toBeNull();
 
-    const refiled = refiledMoney(stored);
-    expect(refiled).not.toBeNull();
-    expect(refiled!.document.total).toBe(11306.4);
-    expect(refiled!.document.tax).toBe(1834.4);
-    expect(refiled!.lines[0].unit_price).toBe(142);
+    const plan = planRefile({
+      row: heldRow(),
+      lines: heldLineRows(),
+      extracted: stored,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.source).toBe("withheld_snapshot");
+    expect(plan!.document.total).toBe(11306.4);
+    expect(plan!.document.tax).toBe(1834.4);
+    expect(plan!.lines[0].unit_price).toBe(142);
     // The tie-out is re-derived over the RESTORED figures, not over the nulls.
-    expect(refiled!.document.computed_lines_total).not.toBeNull();
+    expect(plan!.document.computed_lines_total).not.toBeNull();
   });
 
-  it("a document that was never held still re-files from its own fields", () => {
-    const refiled = refiledMoney(extracted({ currency: "TRY" }));
-    expect(refiled!.document.total).toBe(11306.4);
-    expect(refiled!.lines[0].unit_price).toBe(142);
+  it("a document that was never held re-files from the figures on its own rows", () => {
+    const plan = planRefile({
+      row: moneyRow(),
+      lines: lineRows(),
+      extracted: extracted({ currency: "TRY" }),
+    });
+    expect(plan!.source).toBe("current_rows");
+    expect(plan!.document.total).toBe(11306.4);
+    expect(plan!.lines[0].unit_price).toBe(142);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BLOCKER 2 — a restatement re-files from the CURRENT lines, never from the
+// stale extraction.
+//
+// `procurement_documents.extracted` is written only at intake and `editLine`
+// never touches it, so re-deriving from it silently reverted a hand-corrected
+// price and announced the revert as a re-filing. Proved pre-fix against
+// `git show HEAD:` in a probe spec, deleted after it ran.
+// ---------------------------------------------------------------------------
+describe("a restatement never reverts a hand-corrected line", () => {
+  /** What the row and the lines look like after a manager fixed a price. */
+  const corrected = {
+    row: moneyRow({ total: 11800.4, subtotal: 9666 }),
+    lines: lineRows({ unit_price: 194, line_total: 2328 }),
+    /** The parse as it was at INTAKE — the OCR'd 142, now stale. */
+    extracted: extracted(),
+  };
+
+  it("keeps the edited amount instead of the extraction's", () => {
+    const plan = planRefile(corrected);
+    expect(plan!.source).toBe("current_rows");
+    expect(plan!.lines[0].unit_price).toBe(194);
+    expect(plan!.lines[0].line_total).toBe(2328);
+    expect(plan!.document.total).toBe(11800.4);
+    // The stale figure is nowhere in the plan.
+    expect(plan!.lines[0].unit_price).not.toBe(142);
+  });
+
+  it("recomputes the tie-out FROM the edited figures", () => {
+    const plan = planRefile(corrected);
+    // 2328 goods, not 1704: the arithmetic describes the row as it stands.
+    expect(plan!.document.computed_lines_total).toBe(2328);
+    expect(plan!.document.tie_out_delta).toBe(
+      Math.round((11800.4 - (2328 + 120 + 180 + 1834.4)) * 100) / 100,
+    );
+  });
+
+  it("prefers the current rows even when `moneyWithheld` is also present", () => {
+    // A document held once, restated, then edited: both readings exist and the
+    // row's is the true one. Reading the snapshot first would undo the edit.
+    const stale = withholdMoney(extracted(), "held earlier");
+    const plan = planRefile({ ...corrected, extracted: stale });
+    expect(plan!.source).toBe("current_rows");
+    expect(plan!.lines[0].unit_price).toBe(194);
+  });
+
+  it("reaches for the snapshot only when the row carries no money at all", () => {
+    const held = withholdMoney(extracted(), "held for the test");
+    const plan = planRefile({
+      row: heldRow(),
+      lines: heldLineRows(),
+      extracted: held,
+    });
+    expect(plan!.source).toBe("withheld_snapshot");
+    expect(plan!.lines[0].unit_price).toBe(142);
+  });
+
+  it("counts a line-only price as money on the row", () => {
+    // A document whose header states nothing but whose lines are priced is NOT
+    // held, and must not be re-filed from a snapshot.
+    const plan = planRefile({
+      row: heldRow(),
+      lines: lineRows(),
+      extracted: withholdMoney(extracted(), "held earlier"),
+    });
+    expect(plan!.source).toBe("current_rows");
+    expect(plan!.lines[0].unit_price).toBe(142);
+    expect(plan!.document.total).toBeNull();
+    // No stated total is an UNTESTABLE tie-out, never a failed one.
+    expect(plan!.document.ties_out).toBeNull();
+    expect(plan!.document.computed_lines_total).toBe(1704);
+  });
+
+  it("says which reading it used, in words", () => {
+    expect(planRefile(corrected)!.sourceSaid).toContain("as it stands now");
+    expect(
+      planRefile({
+        row: heldRow(),
+        lines: heldLineRows(),
+        extracted: withholdMoney(extracted(), "held"),
+      })!.sourceSaid,
+    ).toContain("moneyWithheld");
+  });
+
+  it("writes to the lines that EXIST, not to the ones the snapshot remembers", () => {
+    // A line deleted since intake has no row to write to; resurrecting it from
+    // the snapshot would write a price against a line_no nobody holds.
+    const held = withholdMoney(
+      extracted({
+        lines: [
+          ...extracted().lines,
+          { ...extracted().lines[0], lineNo: 2, unitPrice: 99, lineTotal: 99 },
+        ],
+      }),
+      "held",
+    );
+    const plan = planRefile({
+      row: heldRow(),
+      lines: heldLineRows(),
+      extracted: held,
+    });
+    expect(plan!.lines).toHaveLength(1);
+    expect(plan!.lines[0].line_no).toBe(1);
+  });
+
+  it("reads a numeric that arrived as a string, rather than erasing it", () => {
+    // Postgres `numeric` reaches this gateway as a number or a string depending
+    // on the path. A string silently becoming null here would erase a real
+    // price on a restatement — the same defect through a different door.
+    const plan = planRefile({
+      row: moneyRow({ total: "11800.40" }),
+      lines: lineRows({ unit_price: "194.0000", line_total: "2328.00" }),
+      extracted: null,
+    });
+    expect(plan!.source).toBe("current_rows");
+    expect(plan!.document.total).toBe(11800.4);
+    expect(plan!.lines[0].unit_price).toBe(194);
   });
 });
 

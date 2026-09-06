@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from "@nestjs/common";
+import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
 import { DatabaseService } from "../database/database.service";
 import { SettingsAuditService } from "../settings-audit/settings-audit.service";
 
@@ -42,12 +43,22 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  *      The DEFAULT the page offers is computed in the browser from
  *      `lib/countries.ts` and shown as a sentence BEFORE it is recorded (ADR
  *      0083); it reaches this service only once a person has accepted it.
- *   2. **Shape checked here, vocabulary checked in the browser.** The gateway
- *      validates exactly what the migration's CHECK allows — `^[A-Z]{3}$` — so
- *      a value this route accepts is a value the database will accept, and the
- *      two can never disagree. The closed list of codes a manager may pick from
- *      is `CURRENCY_CODES` (`apps/web/src/lib/currency.ts`), which is narrower;
- *      duplicating that list here would be a second table of the same fact.
+ *   2. **Membership checked here, not just shape.** CORRECTED 2026-09-06. This
+ *      rule used to read "shape checked here, vocabulary checked in the
+ *      browser", and argued that duplicating the code list in the gateway would
+ *      be a second table of the same fact. The argument was wrong in the one
+ *      way that mattered: a browser is not a validator. `PUT /settings/currency`
+ *      is an HTTP route, the shape check admitted `ZZZ`, and `restaurants
+ *      .currency` is the rung `invoice-currency.ts` files an invoice's money
+ *      under when the paper states none — so a house could be denominated in a
+ *      currency that does not exist and every figure on every screen would
+ *      inherit it. The list now lives in `common/iso-4217.ts` and
+ *      `iso-4217.spec.ts` fails if it ever differs from
+ *      `apps/web/src/lib/currency.ts` by a single code, so the copy cannot
+ *      become a second table. The migration's CHECK stays `^[A-Z]{3}$` — a
+ *      value this route accepts is still a value the database accepts — and
+ *      membership is enforced in this service, where a list can be corrected
+ *      without a migration.
  *   3. **Audited, or the caller is told it was not.** Every accepted write files
  *      a `system_audit_log` row naming the actor and both codes, and the receipt
  *      travels back on the readout as `audited` / `auditReason` — an audit row
@@ -64,7 +75,12 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  * spec behind it.
  */
 
-/** Exactly what `restaurants_currency_check` allows. One source, one shape. */
+/**
+ * The SHAPE `restaurants_currency_check` allows. Kept exported and kept true —
+ * it is what the database will admit — but it is no longer the whole gate:
+ * `isIso4217` decides whether a well-formed code names any money. Three
+ * capitals is a shape, and `ZZZ` passes it.
+ */
 export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
 
 /** The action string this service files. Also in `SETTINGS_AUDIT_ACTIONS`. */
@@ -153,9 +169,23 @@ export class HouseCurrencyService {
     code: unknown,
     actorUserId: string,
   ): Promise<HouseCurrencyReadout> {
-    if (typeof code !== "string" || !CURRENCY_CODE_PATTERN.test(code)) {
+    // MEMBERSHIP, NOT SHAPE. `CURRENCY_CODE_PATTERN` is what the database will
+    // take; `isIso4217` is whether the code names money. Both are asked, and
+    // the refusal quotes what was sent — a house's reporting currency is the
+    // rung an invoice with no stated currency is filed under, so a fake code
+    // here denominates a vendor's paper.
+    //
+    // BOTH are asked, and the shape one is not redundant: `isIso4217` folds
+    // case and whitespace, so it would admit `" try "`, and this method writes
+    // the string it was GIVEN — which the database's own CHECK would then
+    // refuse. The pattern keeps the write exact; membership keeps it money.
+    if (
+      typeof code !== "string" ||
+      !CURRENCY_CODE_PATTERN.test(code) ||
+      !isIso4217(code)
+    ) {
       throw new BadRequestException(
-        'A currency is an ISO 4217 alpha-3 code in capitals — "TRY", "GBP", "USD". Nothing was recorded.',
+        `${notACurrencyBecause(code)} Nothing was recorded.`,
       );
     }
 

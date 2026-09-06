@@ -319,18 +319,48 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
  * disagree with an extracted one's.
  */
 describe("DocumentIntakeService.refileMoneyForCurrency", () => {
-  const SNAPSHOT = {
+  /** One line's money as it was READ at intake. */
+  const KEPT_LINES = [
+    {
+      lineNo: 1,
+      unitPrice: 142,
+      lineTotal: 1704,
+      allowance: null,
+      deposit: 60,
+    },
+  ];
+
+  /**
+   * `procurement_documents.extracted` for a HELD document, as the intake
+   * actually stores it: the top-level money already nulled by `withholdMoney`,
+   * and the figures it stripped kept on `moneyWithheld`.
+   */
+  const HELD_SNAPSHOT = {
     docType: "invoice",
     currency: "",
-    subtotal: 9172,
-    freight: 120,
-    depositTotal: 180,
-    tax: 1834.4,
-    total: 11306.4,
+    subtotal: null,
+    freight: null,
+    depositTotal: null,
+    tax: null,
+    total: null,
     // Deliberately WRONG on the snapshot, to prove they are not carried over.
     computedLinesTotal: 999999,
     tieOutDelta: 0,
     tiesOut: true,
+    moneyHeld: "held for the test",
+    moneyWithheld: {
+      subtotal: 9172,
+      freight: 120,
+      fuelSurcharge: null,
+      splitCaseFee: null,
+      deliveryFee: null,
+      depositTotal: 180,
+      tax: 1834.4,
+      otherCharges: null,
+      discountTotal: null,
+      total: 11306.4,
+      lines: KEPT_LINES,
+    },
     lines: [
       {
         lineNo: 1,
@@ -339,9 +369,9 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
         packSize: 1,
         qtyBottles: 12,
         freeGoodsQty: 0,
-        unitPrice: 142,
-        lineTotal: 1704,
-        deposit: 60,
+        unitPrice: null,
+        lineTotal: null,
+        deposit: null,
         allowance: null,
         priceBaseQty: null,
         priceBaseUom: null,
@@ -349,23 +379,60 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
     ],
   };
 
-  function build(opts: { doc?: any; readError?: any; writeError?: any } = {}) {
+  /** The document row's money columns, as a HOLD leaves them. */
+  const HELD_ROW = {
+    id: "doc-9",
+    currency: null,
+    subtotal: null,
+    freight: null,
+    fuel_surcharge: null,
+    split_case_fee: null,
+    delivery_fee: null,
+    deposit_total: null,
+    tax: null,
+    other_charges: null,
+    discount_total: null,
+    total: null,
+    extracted: HELD_SNAPSHOT,
+  };
+
+  /** The line rows, as a HOLD leaves them: quantities kept, money gone. */
+  const HELD_LINE_ROWS = [
+    {
+      line_no: 1,
+      qty: 12,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: null,
+      line_total: null,
+      allowance: null,
+      deposit: null,
+    },
+  ];
+
+  function build(
+    opts: {
+      doc?: any;
+      lines?: any;
+      readError?: any;
+      linesError?: any;
+      writeError?: any;
+    } = {},
+  ) {
     const updates: Array<{ table: string; row: any }> = [];
     const client = {
       from(table: string) {
         const q: any = {
           select: () => q,
           eq: () => q,
+          // The LINE read. `planRefileForCurrency` orders by `line_no`, and the
+          // chain resolves here rather than on `maybeSingle`.
+          order: async () => ({
+            data: opts.lines === undefined ? HELD_LINE_ROWS : opts.lines,
+            error: opts.linesError ?? null,
+          }),
           maybeSingle: async () => ({
-            data:
-              opts.doc === undefined
-                ? {
-                    id: "doc-9",
-                    currency: null,
-                    total: null,
-                    extracted: SNAPSHOT,
-                  }
-                : opts.doc,
+            data: opts.doc === undefined ? HELD_ROW : opts.doc,
             error: opts.readError ?? null,
           }),
           update(row: any) {
@@ -407,14 +474,68 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
     expect(line.row.deposit).toBe(60);
 
     expect(out.snapshotReadable).toBe(true);
+    expect(out.source).toBe("withheld_snapshot");
     expect(out.linesRefiled).toBe(1);
     // Nothing was converted, and the sentence says so.
     expect(out.sentence).toContain("no exchange rate");
+    // And it names where the figures came from.
+    expect(out.sentence).toContain("moneyWithheld");
   });
 
-  it("writes NOTHING when the stored reading cannot be parsed", async () => {
+  /*
+   * BLOCKER 2, at the layer that writes.
+   *
+   * `procurement_documents.extracted` is written only at intake; `editLine`
+   * writes `procurement_document_lines` and the document's tie-out columns and
+   * never touches it. The previous version of this method re-derived every
+   * figure from `extracted`, so a corrected price was silently replaced by the
+   * original AI reading and the response announced a re-filing.
+   */
+  it("keeps a hand-corrected line's price instead of the stale extraction's", async () => {
     const { service, updates } = build({
-      doc: { id: "doc-9", currency: "USD", total: 400, extracted: { docType: "invoice" } },
+      doc: {
+        ...HELD_ROW,
+        currency: "USD",
+        subtotal: 9666,
+        freight: 120,
+        deposit_total: 180,
+        tax: 1834.4,
+        total: 11930.4,
+        // The stale reading still says 142. It must not win.
+        extracted: HELD_SNAPSHOT,
+      },
+      lines: [
+        {
+          line_no: 1,
+          qty: 12,
+          uom: "bottle",
+          pack_size: 1,
+          unit_price: 194,
+          line_total: 2328,
+          allowance: null,
+          deposit: 60,
+        },
+      ],
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+
+    const line = updates.find(
+      (u) => u.table === "procurement_document_lines",
+    )!;
+    expect(line.row.unit_price).toBe(194);
+    expect(line.row.unit_price).not.toBe(142);
+
+    const doc = updates.find((u) => u.table === "procurement_documents")!;
+    expect(doc.row.total).toBe(11930.4);
+    // The tie-out is recomputed FROM the corrected figures.
+    expect(doc.row.computed_lines_total).toBe(2328);
+    expect(out.source).toBe("current_rows");
+    expect(out.sentence).toContain("as it stands now");
+  });
+
+  it("writes NOTHING when there is nothing to put back", async () => {
+    const { service, updates } = build({
+      doc: { ...HELD_ROW, extracted: { docType: "invoice" } },
     });
     const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "EUR");
 
@@ -422,6 +543,7 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
     // ERASE money on an act that was only meant to re-label it.
     expect(updates).toHaveLength(0);
     expect(out.snapshotReadable).toBe(false);
+    expect(out.source).toBeNull();
     expect(out.sentence).toContain("nothing was erased");
   });
 
@@ -430,6 +552,23 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
     await expect(
       service.refileMoneyForCurrency("doc-9", "rest-1", "TRY"),
     ).rejects.toThrow(/REFILE_READ_FAILED:connection reset/);
+  });
+
+  it("tells a failed LINE read apart from a document with no lines", async () => {
+    /*
+     * The most dangerous read in this method. A failed line read that came back
+     * as `[]` would look exactly like a held document — no money on any line —
+     * and would therefore select the withheld snapshot and REVERT every
+     * correction, on a database blip, silently. `supabase-js` resolves
+     * `{ data, error }` and never throws, so the check has to be explicit.
+     */
+    const { service, updates } = build({
+      linesError: { message: "connection reset" },
+    });
+    await expect(
+      service.refileMoneyForCurrency("doc-9", "rest-1", "TRY"),
+    ).rejects.toThrow(/REFILE_READ_FAILED:connection reset/);
+    expect(updates).toHaveLength(0);
   });
 
   it("scopes both reads and writes to the tenant", async () => {

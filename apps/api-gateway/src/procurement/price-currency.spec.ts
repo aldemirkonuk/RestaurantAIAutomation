@@ -72,7 +72,27 @@ describe("priceCurrency", () => {
     // NOT stored, and NOT silently dropped.
     expect(r.code).toBeNull();
     expect(r.reason).toContain('"$"');
-    expect(r.reason).toContain("ISO 4217");
+    expect(r.reason).toContain("not a currency");
+  });
+
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06). `priceCurrency` asked `/^[A-Z]{3}$/`
+   * and called the answer ISO 4217, so `ZZZ` was written to
+   * `price_history.currency` as real money — and the four-way match then
+   * compared a figure in it against a figure in a real currency.
+   */
+  it("refuses a well-formed code that names no currency, and names it", () => {
+    for (const fake of ["ZZZ", "XTS", "ABC"]) {
+      const r = priceCurrency({
+        kind: "stated",
+        code: fake,
+        from: "the invoice for order 1",
+      });
+      expect(r.code).toBeNull();
+      expect(r.reason).toContain(fake);
+      expect(r.reason).toContain("is not a currency");
+      expect(r.note).toContain(fake);
+    }
   });
 
   it("records nothing for an unstated currency, and never USD", () => {
@@ -139,6 +159,22 @@ describe("the price register refuses a sighting with no currency", () => {
     for (const bad of ["$", "usd dollars", "TL", "US$", ""]) {
       const d = decideOwnPaperSighting({ ...base, currency: bad });
       expect(d.write).toBe(false);
+    }
+  });
+
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06). Every code below passes
+   * `/^[A-Z]{3}$/`, which is what this path asked until today, so `ZZZ` was
+   * written into `vendor_price_observations.currency` — the register every
+   * price reader joins on. A denomination that does not exist in the ladder is
+   * invisible in exactly the way a wrong USD is.
+   */
+  it("refuses a well-formed code that names no currency", () => {
+    for (const fake of ["ZZZ", "XTS", "XTT", "QQQ"]) {
+      const d = decideOwnPaperSighting({ ...base, currency: fake });
+      expect(d.write).toBe(false);
+      if (d.write) return;
+      expect(d.reason).toContain(fake);
     }
   });
 
@@ -482,6 +518,33 @@ describe("agreementCurrencyDefault — the sheet's stated default", () => {
       agreementCurrencyDefault({ vendorPaperCurrency: " try ", houseCurrency: null })
         .code,
     ).toBe("TRY");
+  });
+
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06). `ZZZ` passes `/^[A-Z]{3}$/`, so it was
+   * offered on the sheet as a default and written onto agreement lines.
+   */
+  it("refuses a well-formed non-currency from any rung", () => {
+    expect(
+      agreementCurrencyDefault({
+        vendorUsualCurrency: "ZZZ",
+        vendorPaperCurrency: "XTS",
+        houseCurrency: "ABC",
+      }).code,
+    ).toBeNull();
+  });
+
+  it("NAMES a refused code rather than reporting it as an absence", () => {
+    // "Nobody has stated one" is false about a profile that plainly holds ZZZ,
+    // and it sends a manager to an empty field that is not empty.
+    const d = agreementCurrencyDefault({
+      vendorUsualCurrency: "ZZZ",
+      vendorPaperCurrency: null,
+      houseCurrency: null,
+    });
+    expect(d.code).toBeNull();
+    expect(d.sentence).toContain("ZZZ");
+    expect(d.sentence).toContain("not a currency this system knows");
   });
 });
 

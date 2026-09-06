@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -13,6 +14,7 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
+import { ISO_4217_CODES } from "../../common/iso-4217";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
 import { PRICE_UOM_TYPES } from "../agreed-price";
@@ -120,6 +122,12 @@ export class CreateOrderDto {
   @IsString()
   @Matches(/^[A-Z]{3}$/, {
     message: "currency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+  })
+  // Membership as well as shape (2026-09-06): three capitals is not a
+  // currency, and `ZZZ` on an agreement line is a denomination the
+  // invoice-versus-agreement check would compare a vendor's real money against.
+  @IsIn(ISO_4217_CODES as string[], {
+    message: "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
   })
   @IsOptional()
   currency?: string;
@@ -458,6 +466,12 @@ export class VerifyReceiptDto {
   @Matches(/^[A-Z]{3}$/, {
     message:
       "invoiceCurrency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+  })
+  // Membership as well as shape (2026-09-06). This value reaches
+  // `price_history.currency` and the price register; a code naming no money
+  // there is a wrong denomination in the ladder that nobody can see.
+  @IsIn(ISO_4217_CODES as string[], {
+    message: "$value is three letters but names no currency, so nothing was recorded. Send a code this product knows — the currency picker lists them.",
   })
   @IsOptional()
   invoiceCurrency?: string;

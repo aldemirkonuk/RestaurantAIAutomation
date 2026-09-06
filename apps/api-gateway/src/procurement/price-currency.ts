@@ -1,3 +1,5 @@
+import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
+
 /**
  * What money a recorded price is in, and how that is KNOWN.
  *
@@ -33,8 +35,13 @@
  * the same claim becomes a refusal — two tables, one rule, two honest outcomes.
  */
 
-/** ISO 4217 alpha-3, as published by SIX Financial Information for ISO. */
-const ISO_4217_ALPHA3 = /^[A-Z]{3}$/;
+/**
+ * IS THIS A CURRENCY? Membership, not shape. Until 2026-09-06 this file asked
+ * `/^[A-Z]{3}$/` and called the answer ISO 4217, so `"ZZZ"` was written to
+ * `price_history.currency` as real money. The list is in
+ * `common/iso-4217.ts`, mirrored against the web's own picker by a spec.
+ */
+const isCurrency = isIso4217;
 
 export type PriceCurrencyClaim =
   | {
@@ -65,11 +72,16 @@ export interface PriceCurrencyResolution {
 /**
  * Turn a claim into the value written to `price_history.currency`.
  *
- * A `stated` claim whose code is not an ISO 4217 alpha-3 is NOT written as-is
- * and NOT silently dropped: it comes back as `null` with a sentence naming the
+ * A `stated` claim whose code does not NAME A CURRENCY is NOT written as-is and
+ * NOT silently dropped: it comes back as `null` with a sentence naming the
  * value it refused. `"$"`, `"usd "`, `"US Dollars"` and `"TL"` are four ways of
  * nearly saying a currency, and a column that accepts all four holds four
  * currencies where there is one.
+ *
+ * `"ZZZ"` is the fifth way, and it used to be admitted: the check here was
+ * `/^[A-Z]{3}$/`, which is a shape and not a list, so a well-formed code naming
+ * no money reached `price_history.currency`, the price ladder and the four-way
+ * match as a real denomination (measured against `356ffdfa`, 2026-09-06).
  */
 export function priceCurrency(claim: PriceCurrencyClaim): PriceCurrencyResolution {
   if (claim.kind === "unstated") {
@@ -85,15 +97,15 @@ export function priceCurrency(claim: PriceCurrencyClaim): PriceCurrencyResolutio
   }
 
   const code = claim.code.trim().toUpperCase();
-  if (!ISO_4217_ALPHA3.test(code)) {
+  if (!isCurrency(code)) {
     return {
       code: null,
       reason:
         `Currency not recorded: ${claim.from} states ` +
-        `${JSON.stringify(claim.code)}, which is not an ISO 4217 alpha-3 code. ` +
-        `Refused rather than stored: a column holding "$", "usd" and "USD" ` +
-        `holds three currencies where there is one.`,
-      note: `Currency as printed was ${JSON.stringify(claim.code)}, not a code.`,
+        `${JSON.stringify(claim.code)}. ${notACurrencyBecause(claim.code)} ` +
+        `Refused rather than stored: the figure is kept as an observation, but ` +
+        `nothing may read it as money until a currency names it.`,
+      note: `Currency as printed was ${JSON.stringify(claim.code)}, not a currency.`,
     };
   }
 

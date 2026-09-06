@@ -34,8 +34,8 @@ import { looksLikeEdi832 } from "../../distributor-feed/parse-edi832";
 import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
 import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
 import { OrganizationsService } from "../../organizations/organizations.service";
-import { roleSatisfies } from "../order-approval-gate";
-import { documentMoneyState, refiledMoney } from "./invoice-currency";
+import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
+import { documentMoneyState } from "./invoice-currency";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 
@@ -937,26 +937,57 @@ export class DocumentsController {
     @Body() body: { currency?: string; reason?: string },
     @CurrentUser() user: AuthedUser,
   ) {
+    /*
+     * MEMBERSHIP, NOT SHAPE. This route used to ask `/^[A-Z]{3}$/`, so
+     * `PATCH :id/currency` with `"ZZZ"` re-filed a whole invoice's money under
+     * a denomination that does not exist — and wrote an append-only audit row
+     * saying a manager had decided it. `common/iso-4217.ts` holds the list and
+     * is mirrored against the web's own picker by a spec.
+     */
     const next = String(body?.currency ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(next))
+    if (!isIso4217(next))
       throw new HttpException(
-        `"${body?.currency ?? ""}" is not an ISO 4217 alpha-3 currency code. A column that accepts "$", "usd" and "USD" holds three currencies where there is one, so this route takes the code and nothing else.`,
+        `${notACurrencyBecause(body?.currency)} Nothing was changed: this route re-files an invoice's money under the code it is given, and money cannot be denominated in something that is not a currency.`,
         HttpStatus.BAD_REQUEST,
       );
 
     // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" —
     // a read that failed and a person with no row are indistinguishable at this
     // layer, and neither may pass (`order-approval-gate.ts`'s header).
+    //
+    // Read for the AUDIT ROW, which records what the actor was. The GATE below
+    // is `assertCanManageRestaurant`, the same helper `settings.controller.ts`
+    // and `mcp-connections` call.
     const role = await this.organizations.resolveRestaurantRole(
       user.userId,
       user.restaurantId,
     );
-    if (!roleSatisfies(role, "manager"))
+    /*
+     * ONE IMPLEMENTATION OF "MAY THIS PERSON MANAGE THIS HOUSE".
+     *
+     * This route used to build its own gate from `resolveRestaurantRole` plus
+     * `roleSatisfies(role, "manager")`. Functionally identical to
+     * `assertCanManageRestaurant` — both refuse staff and both refuse a null
+     * role — but a second copy of the rule is exactly the drift
+     * `organizations.service.ts:143` warns about in writing ("Lifted rather
+     * than copied... how the settings page and the gate that enforces it drift
+     * apart"). The decision is now the shared helper's; only the SENTENCE is
+     * this route's, because "Only managers and owners can …" does not say what
+     * the caller is, that nothing was written, or what to do next.
+     */
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "restate an invoice's currency",
+      );
+    } catch {
       throw new HttpException(
         `Restating an invoice's currency re-files its money, so it is a manager's or an owner's decision. ` +
           `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed. Ask a manager or an owner to restate it.`,
         HttpStatus.FORBIDDEN,
       );
+    }
 
     const { data: doc, error: readError } = await this.db
       .getClient()
@@ -1007,21 +1038,50 @@ export class DocumentsController {
     /*
      * WHAT THE RE-FILING WILL MOVE, computed but NOT written here.
      *
-     * `refiledMoney` is pure. The WRITE of `computed_lines_total`,
-     * `tie_out_delta` and `ties_out` belongs to `DocumentIntakeService` — they
-     * are the machine's own proposal about this document and ADR 0059's rule is
-     * that a proposal is written by the thing that proposed it, with a human's
-     * answer appended rather than substituted.
-     * `scripts/check_proposal_preservation.py` names that file as their declared
-     * writer and FAILED this route when it wrote them itself.
+     * The WRITE of `computed_lines_total`, `tie_out_delta` and `ties_out`
+     * belongs to `DocumentIntakeService` — they are the machine's own proposal
+     * about this document and ADR 0059's rule is that a proposal is written by
+     * the thing that proposed it, with a human's answer appended rather than
+     * substituted. `scripts/check_proposal_preservation.py` names that file as
+     * their declared writer and FAILED this route when it wrote them itself.
      *
-     * The pure call stays here for one reason only: the audit row has to record
-     * what the change was ABOUT to move, and the log is written BEFORE the
-     * change lands. Reading it twice would let the row describe a re-filing
-     * different from the one that happened.
+     * `planRefileForCurrency` is READ-ONLY and lives on the intake service for
+     * the same reason: it reads the document's CURRENT lines and decides which
+     * reading a re-filing will use, and a second copy of that decision here is
+     * how the log comes to describe a re-filing different from the one that
+     * happens. The log is written BEFORE the change lands, so it has to be
+     * asked first.
+     *
+     * IT NAMES ITS SOURCE, and that is BLOCKER 2's other half. Until 2026-09-06
+     * this preview read `procurement_documents.extracted` — the parse as it was
+     * at intake, which `editLine` never updates — so a hand-corrected line was
+     * reverted by a restatement and the audit row recorded the reverted figures
+     * as though they were the document's. `source` on the row now says whether
+     * the figures came from the document as it stands or from the reading a
+     * hold had withheld.
      */
-    const preview = refiledMoney((doc as { extracted?: unknown }).extracted);
-    const previousTotal = (doc as { total?: number | null }).total ?? null;
+    let preview: Awaited<
+      ReturnType<DocumentIntakeService["planRefileForCurrency"]>
+    >["plan"];
+    let previousTotal: number | null;
+    try {
+      const planned = await this.intake.planRefileForCurrency(
+        id,
+        user.restaurantId,
+      );
+      preview = planned.plan;
+      previousTotal = planned.previousTotal;
+    } catch (err: any) {
+      // A FAILED READ IS NEVER AN EMPTY ONE. Without this the outage would be
+      // logged as "this document has nothing to re-file" and the currency would
+      // change anyway, on a row saying no money moved.
+      throw new HttpException(
+        `This document's figures could not be read, so nothing was changed: ${String(
+          err?.message ?? "unknown error",
+        ).replace(/^REFILE_READ_FAILED:/, "")}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
     const pricedLines = preview
       ? preview.lines.filter((l) => l.unit_price != null || l.line_total != null)
           .length
@@ -1061,6 +1121,13 @@ export class DocumentsController {
           refiled_line_count: preview?.lines.length ?? 0,
           priced_lines: pricedLines,
           snapshot_readable: preview != null,
+          // WHICH READING THESE FIGURES CAME FROM. `current_rows` means the
+          // document as it stands, corrections included; `withheld_snapshot`
+          // means the reading a hold had stripped and kept. A row that does
+          // not say cannot be used afterwards to tell a re-filing from a
+          // revert, which is exactly what went wrong here.
+          source: preview?.source ?? null,
+          source_said: preview?.sourceSaid ?? null,
         },
         reason: body?.reason?.trim() || null,
       });
