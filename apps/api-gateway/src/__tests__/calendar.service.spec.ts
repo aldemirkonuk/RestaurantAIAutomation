@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException } from "@nestjs/common";
 import { CalendarService } from "../calendar/calendar.service";
+import { CalendarPushService } from "../calendar/push/calendar-push.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import {
@@ -41,12 +42,26 @@ describe("CalendarService", () => {
     createEvent: jest.fn().mockResolvedValue({ id: "event-123" }),
   };
 
+  const mockPushService = jest.fn().mockResolvedValue({
+    outcome: "not_connected",
+    detail: "no grant in this test",
+    providerEventId: null,
+    restored: false,
+  });
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CalendarService,
         { provide: DatabaseService, useValue: mockDatabaseService },
         { provide: EventsService, useValue: mockEventsService },
+        {
+          // ADR 0111 direction 1. Stubbed to "not connected" so this file goes
+          // on specifying the calendar and not the push; the push's own
+          // behaviour is in calendar/push/*.spec.ts.
+          provide: CalendarPushService,
+          useValue: { push: mockPushService },
+        },
       ],
     }).compile();
 

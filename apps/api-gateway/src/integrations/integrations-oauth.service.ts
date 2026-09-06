@@ -531,6 +531,14 @@ export class IntegrationsOauthService {
           token_expires_at: expiresAt,
           updated_at: new Date().toISOString(),
           revoked_at: null,
+          // A successful consent IS the reconnect. Cleared here rather than by
+          // whatever noticed the failure, because this is the only place that
+          // knows a fresh grant just landed (ADR 0111 direction 1: "token
+          // expired -> the connection row says reconnect"). Leaving the flag
+          // set on a reconnected grant would make the register go on asking for
+          // something the person had already done.
+          reconnect_required_at: null,
+          reconnect_reason: null,
         },
         { onConflict: "user_id,integration_id" },
       );
@@ -997,23 +1005,43 @@ export class IntegrationsOauthService {
 
     const refreshToken = this.crypto.tryDecrypt(data.refresh_token_encrypted);
     if (!refreshToken) {
+      await this.markReconnectRequired(
+        String(data.id),
+        "There is no refresh token stored against this grant, so it cannot be renewed without the person consenting again.",
+      );
       throw new BadRequestException(
         `${definition.label} needs to be reconnected.`,
       );
     }
 
     const { clientId, clientSecret } = this.credentialsFor(definition.provider);
-    const refreshed = await this.postToken(
-      definition.provider,
-      new URLSearchParams({
-        refresh_token: refreshToken,
-        client_id: clientId!,
-        client_secret: clientSecret!,
-        grant_type: "refresh_token",
-      }),
-    );
+    let refreshed: TokenResponse;
+    try {
+      refreshed = await this.postToken(
+        definition.provider,
+        new URLSearchParams({
+          refresh_token: refreshToken,
+          client_id: clientId!,
+          client_secret: clientSecret!,
+          grant_type: "refresh_token",
+        }),
+      );
+    } catch (err) {
+      // `postToken` throws on a non-2xx, carrying the provider's own
+      // error_description. Before this, that sentence reached a log and the
+      // grant row went on looking exactly as it had — so a person whose consent
+      // Google had expired saw a healthy row and no reason to reconnect.
+      await this.markReconnectRequired(String(data.id), (err as Error).message);
+      throw err;
+    }
 
     if (!refreshed.access_token) {
+      await this.markReconnectRequired(
+        String(data.id),
+        refreshed.error_description ??
+          refreshed.error ??
+          "The provider answered the refresh without an access token and without saying why.",
+      );
       throw new BadRequestException(
         `${definition.label} needs to be reconnected.`,
       );
@@ -1034,6 +1062,33 @@ export class IntegrationsOauthService {
       .eq("id", data.id);
 
     return refreshed.access_token;
+  }
+
+  /**
+   * Record on the GRANT ITSELF that a refresh failed (ADR 0111 direction 1).
+   *
+   * Set only when a renewal was actually attempted and actually failed — never
+   * from `token_expires_at` passing, which happens on every healthy grant
+   * between refreshes. A best-effort write: it must never turn a token failure
+   * into a second, different failure for the caller, so the update's own error
+   * is logged and swallowed here and nowhere else.
+   */
+  private async markReconnectRequired(connectionId: string, reason: string) {
+    const { error } = await this.db.client
+      .from("integration_oauth_connections")
+      .update({
+        reconnect_required_at: new Date().toISOString(),
+        reconnect_reason: reason.slice(0, 2000),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", connectionId);
+
+    if (error) {
+      this.logger.error(
+        `A grant needs reconnecting and the row could not be marked: ${error.message}. ` +
+          `The grant is ${connectionId} and the provider's reason was: ${reason}`,
+      );
+    }
   }
 
   /** Housekeeping for the state table; safe to call from a cron. */

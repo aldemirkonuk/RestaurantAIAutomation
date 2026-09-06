@@ -47,6 +47,7 @@ import type { WeatherWindow } from "../weather/weather.service";
 import { GetWeatherQueryDto } from "../weather/dto/weather.dto";
 import { DayRecordService } from "./day-record.service";
 import type { DayRecordWindow } from "./day-record.service";
+import { CalendarPushService } from "./push/calendar-push.service";
 
 @ApiTags("calendar")
 @Controller("calendar")
@@ -59,6 +60,7 @@ export class CalendarController {
     private readonly reminders: CalendarRemindersService,
     private readonly weather: WeatherService,
     private readonly dayRecord: DayRecordService,
+    private readonly push: CalendarPushService,
   ) {}
 
   // ==========================================================================
@@ -836,5 +838,45 @@ export class CalendarController {
       user.restaurantId,
     );
     return this.icalTokenResponse(token, req);
+  }
+
+  // ==========================================================================
+  // THE DAY-BOOK, PUSHED OUT (ADR 0111 §5, direction 1)
+  // ==========================================================================
+
+  /**
+   * What this house's push to Google actually is — `/connections` Register I.
+   *
+   * Scoped to the restaurant on the token, so no house can read another's
+   * push. It carries counts and a sentence rather than a health word: an empty
+   * mapping table on a connected house reads "0 of N pushed", never "in sync".
+   *
+   * NOTHING HERE WRITES. There is no "push everything now" control, and that
+   * is a decision rather than an omission: a push is a write to a system other
+   * people read (ADR 0111 §4 puts it in the same class as sending mail), so
+   * the ways it can start are a person editing an entry and the hourly sweep —
+   * both of which a manager can end by stopping the house using the grant.
+   */
+  @Get("push")
+  @ApiOperation({ summary: "How much of this house's day-book is in Google" })
+  @ApiResponse({ status: 200, description: "Push status for this restaurant" })
+  async pushStatus(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.push.status(user.restaurantId);
+    } catch (error) {
+      // Never an empty status object: a failed read must not be renderable as
+      // a house with nothing connected.
+      this.logger.error({
+        message: "Push status could not be read",
+        restaurantId: user.restaurantId,
+        error: (error as Error).message,
+      });
+      throw new HttpException(
+        `The push register could not be read: ${(error as Error).message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
