@@ -231,13 +231,6 @@ A rebuilt page cannot do something its legacy page could. Build the act, not a s
 - **Is this the bottle?** — panel. A question the reader must answer before anything is written.
   `components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')`
 
-**`/providers`** — flag `mudavym_design_providers`
-
-- **A new vendor** — sheet. The vendor being added is one object; the old page split it across three modals.
-  `components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161`
-- **A vendor you already have?** — panel. A question with two answers before a write.
-  `components/providers/VendorMatchModal.tsx:108`
-
 **`/communications`** — flag `mudavym_design_communications`
 
 - **The house's reply, drafted** — panel · seal. A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).

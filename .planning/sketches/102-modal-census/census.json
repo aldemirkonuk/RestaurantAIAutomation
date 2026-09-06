@@ -1925,7 +1925,7 @@
     },
     {
      "name": "A new vendor",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -2001,15 +2001,15 @@
       ]
      ],
      "footer": "Terms are written on the vendor's row afterwards, each with its provenance.",
-     "why": "The vendor being added is one object; the old page split it across three modals.",
-     "source": "components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161",
+     "why": "The vendor being added is one object; the old page split it across three modals. BUILT 2026-09-06 (packet 2): both doors in one sheet, the legacy field set entire, and the delivery days and the address written as SEPARATE acts that are reported separately — a terms failure never presents as a failed create.",
+     "source": "BUILT 2026-09-06 as pages/providers/next/NewVendorSheet.tsx (was AddProviderModal.tsx:361 + :629 and VendorSearchModal.tsx:161)",
      "acts": null,
      "went": null,
      "fork": null
     },
     {
      "name": "A vendor you already have?",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -2042,8 +2042,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question with two answers before a write.",
-     "source": "components/providers/VendorMatchModal.tsx:108",
+     "why": "A question with two answers before a write. BUILT 2026-09-06: it refuses the save while unanswered, never merges two records, and its confidence figure names WHICH similarity it measured rather than printing a bare percentage.",
+     "source": "BUILT 2026-09-06 as pages/providers/next/VendorTwinPanel.tsx (was components/providers/VendorMatchModal.tsx:108)",
      "acts": null,
      "went": null,
      "fork": null

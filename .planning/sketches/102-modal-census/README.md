@@ -40,9 +40,9 @@ page's ground). Filter by shape and by status.
 | | |
 |---|---|
 | Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 34 |
+| Built on the primitive | 36 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 9 |
+| Owed — an act the rebuilt page does not yet offer | 7 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
@@ -142,8 +142,8 @@ page's ground). Filter by shape and by status.
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Add wine (unified chooser) | — | Delete | Dead code. Delete. | `components/wines/AddWineUnifiedModal.tsx:53 — nobody imports it` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Wine research queue | — | Delete | Dead code. Delete. | `components/wines/WineResearchQueue.tsx:225 — nobody imports it` |
 | `/providers` | The vendor's twin | sheet | Built | One vendor, opened from the list you can still see. | `pages/providers/next/TwinSheet.tsx:68` |
-| `/providers` | A new vendor | sheet | Owed | The vendor being added is one object; the old page split it across three modals. | `components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161` |
-| `/providers` | A vendor you already have? | panel | Owed | A question with two answers before a write. | `components/providers/VendorMatchModal.tsx:108` |
+| `/providers` | A new vendor | sheet | Built | The vendor being added is one object; the old page split it across three modals. BUILT 2026-09-06 (packet 2): both doors in one sheet, the legacy field set entire, and the delivery days and the address written as SEPARATE acts that are reported separately — a terms failure never presents as a failed create. | `BUILT 2026-09-06 as pages/providers/next/NewVendorSheet.tsx (was AddProviderModal.tsx:361 + :629 and VendorSearchModal.tsx:161)` |
+| `/providers` | A vendor you already have? | panel | Built | A question with two answers before a write. BUILT 2026-09-06: it refuses the save while unanswered, never merges two records, and its confidence figure names WHICH similarity it measured rather than printing a bare percentage. | `BUILT 2026-09-06 as pages/providers/next/VendorTwinPanel.tsx (was components/providers/VendorMatchModal.tsx:108)` |
 | `/providers` | Edit provider | — | Retires | The twin sheet's edit half; terms on the row. | `components/providers/EditProviderModal.tsx:678` |
 | `/providers` | Send message | — | Retires | The composer (letters); the text sender is ADR 0121. | `components/providers/SendMessageSlideOver.tsx:319` |
 | `/providers` | Provider card | — | Retires | The twin sheet. | `pages/Providers.tsx:1355` |

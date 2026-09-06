@@ -58,6 +58,44 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
   (stated by the house · on the vendor record · inferred with the receipt count and
   confidence · unknown with the reason), editable in place. A value the gateway cannot tell
   apart from its column default is rendered as UNKNOWN with that reason, never as a term
+- **A new vendor is a SHEET on the rebuilt page, and its duplicate check a PANEL**
+  (built 2026-09-06, packet 2 of the overlay layer; census 102 · ADR 0112).
+  `pages/providers/next/NewVendorSheet.tsx` and `VendorTwinPanel.tsx`, opened by
+  *Add a vendor* in the masthead. Until they landed the rebuilt page could read the
+  book and open one vendor's twin, and could not add one — the legacy page split the
+  act across THREE modals (`VendorSearchModal.tsx:161` search the catalogue,
+  `AddProviderModal.tsx:361` a vendor of your own, `:629` invent a business type).
+  The vendor being added is one object however it was found, so it is one sheet.
+  - **Two doors, one object.** From the catalogue: `searchVendorCatalogue` →
+    `addProviderFromCatalogue` (`POST /providers { catalogue_vendor_id }`), one press
+    and nothing typed twice. Or a vendor of your own: `POST /providers` with the
+    legacy field set entire — name, both contact names, phone, email, website,
+    address, account number, type, specialties, payment terms, minimum order, notes.
+  - **The delivery days and the address are separate acts, and are reported
+    separately.** `PUT /vendor-terms/:providerId` is the only place in the schema
+    that can hold delivery days with a person's name attached, and coordinates live
+    in `provider_locations`, not on the provider row — a vendor added without one is
+    permanently unpinnable. Both are decoupled from the create exactly as
+    `pages/Providers.tsx:518-573` decoupled them: the vendor is already saved, and a
+    terms failure must never present as *failed to add vendor*. That silence is how
+    the original delivery-days defect stayed invisible for a year.
+  - **Payment terms are not defaulted.** Empty means unstated. Seeding *Net 30* would
+    refill the column default migration `20260903170000_a_default_is_not_an_answer.sql`
+    dropped, from the browser.
+  - **Four states on the catalogue search**, and the fourth is the one that matters: a
+    catalogue that could not be READ says so. An empty list drawn for a thrown request
+    tells a person the vendor is not in the catalogue when nobody looked.
+  - **The duplicate question refuses the save while it is unanswered** and never merges
+    anything — orders, invoices and letters all point at one `provider_id`. It reads
+    the same `useDuplicateVendorCheck` both legacy forms used, so the two can never
+    disagree about what a duplicate is. Its confidence figure NAMES WHAT IT MEASURED
+    (the hook takes `max(name, address)`, which are different claims); the legacy card
+    printed a bare percentage.
+  - **The rating stays with the person.** It goes to `providerRatings` in user
+    preferences, where the legacy page kept it (`pages/Providers.tsx:289-292`) — it is
+    an opinion, not a fact about the vendor, and it never belonged on the row.
+  - Proved by `NewVendor.test.tsx` (17 assertions). The pre-packet `ProvidersNext.tsx`
+    contains zero references to the act.
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
@@ -78,6 +116,7 @@ this list is the note-side index (ADR 0044 §2).
 |---|---|---|
 | `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — now the house `Sheet`'s `tuck` (spring 380/32, 300ms, 28px travel); the hand-rolled `settle`/24px variant is retired (ADR 0112) |
 | `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
+| `pv-newvendor-tuck` | The vendor composer opens | *Add a vendor* opens the house `Sheet` on `tuck`; the duplicate question opens over it on `settle` at z-index 140. Neither adds a motion of its own, and `prefers-reduced-motion` renders none |
 
 Deliberate non-motions: no card stagger (a roster is a reference, not an
 arrival), no count tallies, instant sheet close. **The Terms section adds no
@@ -174,8 +213,8 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
 | `/providers` | The vendor's twin | sheet | Built | One vendor, opened from the list you can still see. | `pages/providers/next/TwinSheet.tsx:68` |
-| `/providers` | A new vendor | sheet | Owed | The vendor being added is one object; the old page split it across three modals. | `components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161` |
-| `/providers` | A vendor you already have? | panel | Owed | A question with two answers before a write. | `components/providers/VendorMatchModal.tsx:108` |
+| `/providers` | A new vendor | sheet | Built | The vendor being added is one object; the old page split it across three modals. BUILT 2026-09-06 (packet 2): both doors in one sheet, the legacy field set entire, and the delivery days and the address written as SEPARATE acts that are reported separately — a terms failure never presents as a failed create. | `BUILT 2026-09-06 as pages/providers/next/NewVendorSheet.tsx (was AddProviderModal.tsx:361 + :629 and VendorSearchModal.tsx:161)` |
+| `/providers` | A vendor you already have? | panel | Built | A question with two answers before a write. BUILT 2026-09-06: it refuses the save while unanswered, never merges two records, and its confidence figure names WHICH similarity it measured rather than printing a bare percentage. | `BUILT 2026-09-06 as pages/providers/next/VendorTwinPanel.tsx (was components/providers/VendorMatchModal.tsx:108)` |
 | `/providers` | Edit provider | — | Retires | The twin sheet's edit half; terms on the row. | `components/providers/EditProviderModal.tsx:678` |
 | `/providers` | Send message | — | Retires | The composer (letters); the text sender is ADR 0121. | `components/providers/SendMessageSlideOver.tsx:319` |
 | `/providers` | Provider card | — | Retires | The twin sheet. | `pages/Providers.tsx:1355` |
@@ -204,7 +243,13 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
 - Locations CRUD `/providers/:id/locations[/:locationId]` (`providers.ts:456-498`)
 - `GET /orders` via `useOrders` (`Providers.tsx:28`)
 - Catalogue: `GET /vendor-catalogue/search` (`services/api/vendors.ts:74`) and add-from-
-  catalogue `POST /providers` (`vendors.ts:121,131`) via `VendorSearchModal`
+  catalogue `POST /providers` (`vendors.ts:121,131`) via `VendorSearchModal` and, since
+  2026-09-06, `pages/providers/next/NewVendorSheet.tsx` — the rebuilt page's own composer,
+  which also calls `POST /providers`, `PUT /vendor-terms/:providerId` and
+  `POST /providers/:id/locations` as three separately-reported acts
+- Duplicate check: `GET /vendor-catalogue/match` and `POST /providers/match`
+  (`hooks/useDuplicateVendorCheck.ts`) — read by the composer, answered by
+  `pages/providers/next/VendorTwinPanel.tsx`
 - Discover: `GET /distributors/search`, `/distributors/facets`, `/distributors/:id`
   (`services/api/distributors.ts:158-173`; ENDPOINTS.md:210-216)
 - Terms (redesign only): `GET /vendor-terms` and `PUT /vendor-terms/:providerId`
