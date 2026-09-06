@@ -48,6 +48,15 @@ USAGE
         --url https://gateway.example.com \
         --expect "$MERGED_SHA" \
         [--timeout-seconds 600] [--poll-seconds 10]
+
+`--expect` is deliberately just "the sha you expect to be running" — this
+script has no opinion on how a caller picked it. `deploy.yml`'s automated
+audit does NOT pass the raw merged sha: Railway only rebuilds api-gateway
+when a push touches that service's own watched paths, so it resolves the
+expected sha through `scripts/resolve_watched_commit.py` first (see that
+script's header) and passes the RESULT here. A manual rollback check (see the
+rollback-guide job) passes the human-chosen rollback target directly instead
+— there, "the sha you expect" really is the raw sha someone typed.
 """
 
 from __future__ import annotations
