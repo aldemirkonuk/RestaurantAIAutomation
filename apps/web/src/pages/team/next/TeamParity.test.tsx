@@ -214,9 +214,14 @@ describe('the desk can schedule', () => {
     render(<TeamNext />, { wrapper });
     const adds = await screen.findAllByRole('button', { name: /Add a shift for Ada Lovelace/ });
     fireEvent.click(adds[0]);
-    // The overlay's accessible name is its Fraunces title when it has one —
-    // `label` is only the fallback (Sheet.tsx: aria-labelledby wins).
-    expect(await screen.findByRole('dialog', { name: 'Add a shift' })).toBeInTheDocument();
+    // The overlay's accessible name is ALWAYS its `label` (sketch 103 · 1e,
+    // 2026-09-06). It used to be the Fraunces title whenever one existed, which
+    // discarded the required `label` on every live row — finder B, D1. Here the
+    // title reads "Add a shift" and the label reads "Add shift"; the ear now
+    // gets the label. (The label is still a title rather than a contract
+    // sentence — the primitive warns about that in dev; rewriting it belongs to
+    // the page, not to the primitive.)
+    expect(await screen.findByRole('dialog', { name: 'Add shift' })).toBeInTheDocument();
     expect(screen.getByText('Open shift — nobody assigned')).toBeInTheDocument();
   });
 

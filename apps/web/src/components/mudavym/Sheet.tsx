@@ -133,13 +133,64 @@ function focusables(root: HTMLElement): HTMLElement[] {
   );
 }
 
+/* ── the label check ──────────────────────────────────────────────────────
+   `label` is the contract sentence (what it asks · what it writes · what
+   leaving costs). Four words is the floor at which a sentence can carry three
+   clauses; below it the caller has passed a title. Dev only — this is a nudge
+   at the person writing the surface, never a runtime behaviour. */
+const LABEL_MIN_WORDS = 4;
+const warned = new Set<string>();
+
+/** Exported for the test; resets the once-per-label memo. */
+export function resetLabelWarnings(): void {
+  warned.clear();
+}
+
+function warnIfLabelIsATitle(label: string): void {
+  if (!import.meta.env?.DEV) return;
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= LABEL_MIN_WORDS) return;
+  if (warned.has(label)) return;
+  warned.add(label);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[mudavym overlay] label "${label}" reads like a title (${words.length} ` +
+      `word${words.length === 1 ? '' : 's'}). The label IS the accessible name and ` +
+      'should be the contract sentence: what it asks, what sealing or saving ' +
+      'writes, what leaving costs. Put the heading in `title` instead.',
+  );
+}
+
 export type OverlayShape = 'sheet' | 'panel' | 'popover';
 
 export interface OverlayProps {
   open: boolean;
   onClose: () => void;
-  /** Accessible name. Required — an overlay with no name is a room with no sign. */
+  /**
+   * The accessible name, ALWAYS — sketch 103 · 1e, "Announced".
+   *
+   * It is the contract sentence, not a heading: *what it asks, what sealing or
+   * saving writes, what leaving costs.* "This asks one thing: confirm the 10
+   * bottles that arrived. Sealing writes the count to the book. Leaving writes
+   * nothing."
+   *
+   * Until 2026-09-06 this prop was discarded whenever `title` was set
+   * (`aria-label={title ? undefined : label}`), and every one of the sixty live
+   * rows carries a title — so the *required* prop reached no ear on any of
+   * them, and the requirement made a builder believe the room had a sign
+   * (finder B, D1). The name is now the label on every surface and the title is
+   * only what the eye reads.
+   */
   label: string;
+  /**
+   * The contract sentence as the reader SEES it — rendered in the header and
+   * wired to `aria-describedby`, so the eye and the ear get the same thing.
+   *
+   * Optional and never fabricated: a surface that does not state its contract
+   * gets no `aria-describedby` at all rather than a description invented from
+   * its title. An absence is shown as one (ADR 0020).
+   */
+  contract?: ReactNode;
   /** Mono eyebrow above the title (what kind of thing this is). */
   eyebrow?: ReactNode;
   /** Fraunces title (the product speaking). */
@@ -255,6 +306,7 @@ function OverlayRoot({
   open,
   onClose,
   label,
+  contract,
   eyebrow,
   title,
   action,
@@ -278,6 +330,7 @@ function OverlayRoot({
   const shell = useMudavymShell();
   const reduced = useReducedMotion();
   const titleId = useId();
+  const contractId = useId();
   const modal = modalProp ?? shape !== 'popover';
   const withClose = showClose ?? modal;
   const pos = useAnchoredPosition(shape === 'popover' && open, anchorRef, width);
@@ -306,6 +359,15 @@ function OverlayRoot({
   useEffect(() => {
     if (open) ensureFraunces();
   }, [open]);
+
+  /* A label that reads like a title is the defect this pass fixed, arriving
+     again through the caller. Dev only, once per distinct label, and only while
+     the surface is actually open — a warning nobody can trip is a warning that
+     lies about coverage. */
+  useEffect(() => {
+    if (!open) return;
+    warnIfLabelIsATitle(label);
+  }, [open, label]);
 
   /* Remember the opener BEFORE focus moves inside, restore it on close. */
   useLayoutEffect(() => {
@@ -391,24 +453,34 @@ function OverlayRoot({
   if (!open || typeof document === 'undefined') return null;
 
   const head =
-    eyebrow || title || action || withClose ? (
+    eyebrow || title || action || withClose || contract ? (
       <div className="mdv-ovl__head">
-        <div>
-          {eyebrow ? <span className="mdv-ovl__eyebrow">{eyebrow}</span> : null}
-          {title ? (
-            <h2 className="mdv-ovl__title" id={titleId}>
-              {title}
-            </h2>
-          ) : null}
+        <div className="mdv-ovl__headrow">
+          <div>
+            {eyebrow ? <span className="mdv-ovl__eyebrow">{eyebrow}</span> : null}
+            {title ? (
+              <h2 className="mdv-ovl__title" id={titleId}>
+                {title}
+              </h2>
+            ) : null}
+          </div>
+          <div className="mdv-ovl__headside">
+            {action}
+            {withClose ? (
+              <button type="button" className="mdv-ovl__close" onClick={onClose}>
+                {closeLabel}
+              </button>
+            ) : null}
+          </div>
         </div>
-        <div className="mdv-ovl__headside">
-          {action}
-          {withClose ? (
-            <button type="button" className="mdv-ovl__close" onClick={onClose}>
-              {closeLabel}
-            </button>
-          ) : null}
-        </div>
+        {/* The contract, visible. Same sentence the ear gets, in the mono
+            eyebrow's voice so it reads as the surface's own terms rather than
+            as body copy. */}
+        {contract ? (
+          <p className="mdv-ovl__contract" id={contractId}>
+            {contract}
+          </p>
+        ) : null}
       </div>
     ) : null;
 
@@ -434,8 +506,11 @@ function OverlayRoot({
         className={`mdv-ovl__panel${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal={modal ? true : undefined}
-        aria-label={title ? undefined : label}
-        aria-labelledby={title ? titleId : undefined}
+        // ALWAYS the label — see the prop's note. `titleId` still exists so the
+        // visible heading has a stable id for a caller that wants to point at
+        // it; the NAME is never taken from it.
+        aria-label={label}
+        aria-describedby={contract ? contractId : undefined}
         data-motion={reduced ? 'none' : TOKEN_NAME[shape]}
         tabIndex={-1}
         onKeyDown={onKeyDown}

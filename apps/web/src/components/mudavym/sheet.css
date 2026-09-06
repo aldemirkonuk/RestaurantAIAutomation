@@ -156,14 +156,36 @@
 }
 
 /* ── header ──────────────────────────────────────────────────────────────── */
+/* A column since 2026-09-06: the row it always was, and under it the contract
+   sentence (sketch 103 · 1e). The padding and the rule are unchanged, so a page
+   that measured its own body inset against this header still lines up. */
 .mdv-ovl__head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 16px 11px;
+  border-bottom: 1px solid var(--paper-2);
+  flex: none;
+}
+.mdv-ovl__headrow {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 11px;
-  border-bottom: 1px solid var(--paper-2);
-  flex: none;
+}
+
+/* The contract, in the eyebrow's voice but sentence case and readable: this is
+   the one line the reader must be able to READ, not scan. It is the same string
+   the screen reader gets from `aria-describedby`, never a second wording. */
+.mdv-ovl__contract {
+  margin: 0;
+  font-family: var(--mdv-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+  color: var(--ink-2);
+  border-left: 2px solid var(--seal-ring);
+  padding-left: 9px;
 }
 .mdv-ovl__eyebrow {
   display: block;

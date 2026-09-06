@@ -21,7 +21,7 @@ vi.mock('../../lib/mudavym/motion', async (orig) => {
   return { ...actual, animate: vi.fn(actual.animate) };
 });
 
-import { Panel, Popover, Sheet } from './Sheet';
+import { Panel, Popover, Sheet, resetLabelWarnings } from './Sheet';
 import { animate } from '../../lib/mudavym/motion';
 import {
   claimMudavymShell,
@@ -299,5 +299,80 @@ describe('the wide sheet', () => {
       </Panel>,
     );
     expect(document.querySelector('.mdv-ovl--panel')).not.toHaveAttribute('data-wide');
+  });
+});
+
+/**
+ * Announced — sketch 103 · 1e, accepted by the founder on 2026-09-06.
+ *
+ * These four assertions fail against the pre-fix file (`git show
+ * HEAD:…/Sheet.tsx`, measured 2026-09-06): it set
+ * `aria-label={title ? undefined : label}` + `aria-labelledby={titleId}`, so on
+ * every one of the sixty live rows — all of which carry a title — the REQUIRED
+ * `label` reached no ear, and no `aria-describedby` existed anywhere in the
+ * primitive (finder B, D1).
+ */
+describe('the contract sentence', () => {
+  const CONTRACT =
+    'This asks one thing: confirm the 10 bottles that arrived. ' +
+    'Sealing writes the count to the book. Leaving writes nothing.';
+
+  beforeEach(() => resetLabelWarnings());
+
+  it('names the dialog with the label even when a title is on the paper', () => {
+    render(
+      <Panel open onClose={() => {}} label={CONTRACT} title="Delivery 119">
+        <button type="button">body</button>
+      </Panel>,
+    );
+    // The heading is still visible…
+    expect(screen.getByRole('heading', { name: 'Delivery 119' })).toBeInTheDocument();
+    // …and it is NOT the name.
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(CONTRACT);
+  });
+
+  it('renders the contract in the header and describes the dialog with it', () => {
+    render(
+      <Panel open onClose={() => {}} label={CONTRACT} title="Delivery 119" contract={CONTRACT}>
+        <button type="button">body</button>
+      </Panel>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const line = dialog.querySelector('.mdv-ovl__contract') as HTMLElement;
+    expect(line).not.toBeNull();
+    expect(line).toHaveTextContent(CONTRACT);
+    expect(dialog.getAttribute('aria-describedby')).toBe(line.id);
+    expect(dialog).toHaveAccessibleDescription(CONTRACT);
+  });
+
+  it('describes nothing when no contract was given — an absence, not an invented one', () => {
+    render(
+      <Panel open onClose={() => {}} label={CONTRACT} title="Delivery 119">
+        <button type="button">body</button>
+      </Panel>,
+    );
+    expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-describedby');
+    expect(document.querySelector('.mdv-ovl__contract')).toBeNull();
+  });
+
+  it('warns in dev when the label reads like a title, and stays quiet for a contract', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { unmount } = render(
+      <Panel open onClose={() => {}} label="Ask" title="Ask the book">
+        <button type="button">body</button>
+      </Panel>,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('reads like a title');
+    unmount();
+
+    warn.mockClear();
+    render(
+      <Panel open onClose={() => {}} label={CONTRACT} title="Delivery 119">
+        <button type="button">body</button>
+      </Panel>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
