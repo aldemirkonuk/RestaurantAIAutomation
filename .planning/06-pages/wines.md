@@ -212,6 +212,8 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
   hatched on every expanded row**, because `restaurant_inventory` is keyed on
   `master_wine_id` (OD-113) and neither figure exists for a keg
 
+- Curation queue: a house's provisional bottle identity is promoted into the library by Mudavym alone; nothing a house does writes to `master_wine_library` (ADR 0124 Q3)
+- Two ways a bottle enters the register: search the recorded LWIN file and confirm a row, or nominate one by hand (which is provisional and curated) (ADR 0124 Q4)
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_cellar`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -1906,3 +1908,58 @@ distinct UPCs do exactly that.
 **Founder questions this opened:** whether to take the LWIN database (it is
 **CC BY 4.0**, free, 200,000+ wines — the only real first fill available for
 wine), and who confirms a candidate. Both are in ADR 0124 §Founder-only questions.
+
+### 13.y Curation: a provisional identity becomes a library entry (ADR 0124 Q3, 2026-09-05)
+
+The founder's words that opened this (batch 48): *"maybe the /menu is editable,
+but masterwinelibrary parts /wines not at all."* This page's library stays
+exactly that — nothing a house does writes to it.
+
+What a house CAN do is assert a **provisional** bottle identity beside the
+library (`beverage_identities`, ADR 0124), which enters a curation queue.
+Mudavym promotes it, and only then does a shared `master_wine_library` row come
+into existence — created by the curation path with `source = 'identity_curation'`,
+`primary_type` and `country` written as the literal `unknown` rather than
+guessed (the library already carries `unknown` as a primary_type on 59 rows,
+measured 2026-09-05).
+
+**Who curates:** not a role on this page. `identity-curation.controller.ts` is
+gated by the `X-Admin-Key` service credential (ADR 0099) with no class-level
+guard, because `RolesGuard` knows only owner/manager/staff — all three roles
+*within* a house — and inventing a fourth to hold a curation queue would be a
+permission system built as a side effect.
+
+**Promoting onto another venue's provisional row is refused**, enforcing ADR
+0130's rule from this side too: it would move the identity from one provisional
+state into another and call the result official.
+
+### 13.z Two ways in: the LWIN file, and a hand nomination (ADR 0124 Q4, 2026-09-05)
+
+The founder: **"LWIN search + hand nominations."** *"Two ways in; nothing
+invented."*
+
+**The LWIN file is RECORDED, not fetched** (batch 43): a person downloads it and
+points `LWIN_FILE_PATH` at it, refreshed on the stated cadence. Probed
+2026-09-05 with an identifying UA, the LWIN page (147,184 bytes) carries **no
+`.csv`/`.xlsx`/`.zip` link** and three guessed paths returned **404** — Liv-ex
+serves it through a form. So until the file is placed, `GET
+/vendor-intel/identity/lwin/search` answers `available: false` and names the
+path, the CC BY 4.0 licence and where to get it. It never returns an empty hit
+list, because "no wine matched" and "there is no file" are different answers.
+
+**Nothing invented.** The committed fixture is synthetic, named so, in a
+`99xxxxx` block: no row claiming to be Liv-ex's is in this repo. Confirming a
+row takes the wine from the file and the **format from the house** — an LWIN-7
+carries no vintage, size or pack, and none is guessed. Such an identity stands
+as `source`, not provisional, and skips the curation queue.
+
+**A hand nomination** (`POST /vendor-intel/identity/nominate`) is the second
+way, and it IS provisional per Q3 — the response says so, so a house is told at
+the moment it nominates.
+
+**What a sweep would read:** `GET /vendor-intel/identity/sweep-subjects` counts
+identities standing `library` or `source`; provisional ones are excluded,
+because a house's own unconfirmed name is not a subject to go fetching prices
+for. Zero is a real zero with its reason; a failed count is null, not 0. This is
+the answer to ADR 0117 Q28.
+
