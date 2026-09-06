@@ -226,20 +226,10 @@ A rebuilt page cannot do something its legacy page could. Build the act, not a s
 - **Carry this bottle · an auction lot** — sheet. The same sheet, a fourth start: an auction bottle is still one bottle entering the book.
   `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet`
 
-**`/communications`** — flag `mudavym_design_communications`
-
-- **The house's reply, drafted** — panel · seal. A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).
-  `components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)`
-
 **`/calendar`** — flag `mudavym_design_calendar`
 
 - **A note from this meeting?** — panel. A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders).
   `pages/calendar/MeetingMemoPrompt.tsx:109`
-
-**`/notifications`** — flag `mudavym_design_notifications`
-
-- **Approve from the bell** — panel · seal. The bell is a menu; a commitment needs a room that cannot be dismissed by accident.
-  `ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built`
 
 **`/recommendations`** — flag `mudavym_design_recommendations`
 

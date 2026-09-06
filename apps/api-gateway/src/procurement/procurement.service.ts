@@ -107,6 +107,8 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import {
   ORDER_CANCEL_ACT,
   ORDER_SEAL_ACT,
+  ORDER_SEND_DRAFT_ACT,
+  draftSealArgs,
   orderCancelSealArgs,
   orderSealArgs,
 } from "./order-seal";
@@ -5521,6 +5523,108 @@ export class ProcurementService {
   // =========================================================================
   // PHASE 32: DRAFT MANAGEMENT
   // =========================================================================
+
+  /**
+   * Mint the seal a drafted reply's SEND has to carry back.
+   *
+   * ADR 0118 and packet 2 (2026-09-06). Minted when the hold BEGINS, over the
+   * LETTER — the words, the recipient and the copies — because that is what the
+   * person read before they pressed. See `draftSealArgs` for why the order's
+   * total is deliberately not in it.
+   *
+   * A pending draft is confirmed to EXIST first, so a manager is never handed a
+   * seal for a letter that has already gone or was discarded — the same rule
+   * `issueOrderSealChallenge` follows.
+   */
+  async issueDraftSendSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    letter: { body: string; to?: string | null; cc?: string[] | null },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), " +
+          "so nothing can be sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+
+    const { data: pending, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .maybeSingle();
+
+    if (error) {
+      // The draft could not be CHECKED, which is not the same as there being
+      // none. Refusing with the reason beats issuing a seal over nothing.
+      throw new InternalServerErrorException(
+        `Whether a draft is waiting on this order could not be read (${error.message}), so no seal was issued and nothing was sent.`,
+      );
+    }
+    if (!pending) {
+      throw new NotFoundException(
+        "There is no draft waiting on this order, so there is nothing to seal. It may already have been sent or discarded.",
+      );
+    }
+
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_DRAFT_ACT,
+      args: draftSealArgs({ body: letter.body, to: letter.to, cc: letter.cc }),
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Send the drafted reply behind a REDEEMED seal.
+   *
+   * Wraps `approveDraft` rather than replacing it. The unsealed route still
+   * exists because the legacy desk calls it, and breaking a live send path is
+   * not this packet's to do — but the house panel goes through here, and the
+   * gap is filed for the founder rather than papered over.
+   *
+   * The seal is spent BEFORE the send, so a refused seal means nothing left the
+   * building; and it is spent over the letter as EDITED, so a paragraph changed
+   * between the hold and the release is refused by the args hash rather than
+   * quietly posted.
+   */
+  async sendDraftedReply(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    dto: ApproveDraftDto,
+    letter: { body: string; to?: string | null },
+    challenge: string | null | undefined,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be checked (the seal service is not wired into procurement), " +
+          "so nothing was sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_DRAFT_ACT,
+      args: draftSealArgs({ body: letter.body, to: letter.to, cc: dto.ccEmails }),
+      challenge,
+    });
+
+    return this.approveDraft(restaurantId, orderId, dto);
+  }
 
   async approveDraft(
     restaurantId: string,

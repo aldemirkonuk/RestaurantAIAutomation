@@ -96,6 +96,33 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   with "add to the book" inline, a house template picker, a body, and a merge
   picker that inserts **the engine's whole sentence with a provenance chip**
   (rule key · window · computed-at). Send queues the letter; it never claims a send
+- **The house's reply, drafted — a PANEL with the seal** (built 2026-09-06, packet 2
+  of the overlay layer; census 102 · ADR 0112 · ADR 0118).
+  `pages/communications/next/DraftedReplyPanel.tsx`, opened from *The house has
+  written* above the ledger. Until it landed the page could COUNT drafts waiting —
+  `glance.draftsPending` — and open none; the act lived on `/orders`
+  (`components/orders/DraftEmailApprovalPanel.tsx:130`).
+  - **TWO NEW GATEWAY ROUTES, because nothing could seal a SEND.** The legacy panel
+    posted `POST orders/:id/approve-draft`: one click, and mail left the building on
+    an unsealed request. Now `POST /procurement/orders/:id/draft-seal-challenge`
+    mints when the hold BEGINS and `POST /procurement/orders/:id/send-drafted-reply`
+    spends it (both `procurement.controller.ts`; the act is `ORDER_SEND_DRAFT_ACT`
+    in `procurement/order-seal.ts`, spec `draft-send-seal.spec.ts`, 13 assertions).
+  - **The seal is over the LETTER, not the order**: the words normalised, the
+    recipient, and the copies sorted (`draftSealArgs`). A paragraph edited between
+    the hold and the release is refused by the args hash rather than posted; a
+    trailing newline the textarea added is not a change. A seal minted to approve an
+    order's MONEY cannot be spent to send its MAIL — `send_draft` is its own act for
+    the same reason `cancel` is.
+  - **The list and the strip's figure come from the same read**, so they cannot
+    disagree; a figure over an empty column is how a page starts lying quietly.
+  - **A draft never looks sent**: the engine's words are grey until a person edits
+    them, and nothing about opening the panel changes a draft. Each engine flag
+    names the rule it tripped.
+  - **The older unsealed route still exists and the legacy desk still calls it.**
+    That is FILED (§9), not papered over: this packet does not break a live send
+    path, and deleting the legacy panel is packet 4's business.
+  - Proved by `DraftedReply.test.tsx` (18 assertions).
 - **The house letter library** (flag ON): house-owned templates under five vendor
   purposes, each showing its declared merge fields, who last edited it and when it
   was last used, plus a "start from something the house noticed" flow that opens
@@ -219,6 +246,7 @@ Canonical source with curves: `apps/web/src/pages/communications/next/MOTIONS.md
 | `cm-ink` | Ink micro-state | row and rail-button hover/focus — one paper step, nothing translates |
 | `cmp-pick` | Picker ink | a recipient, a template or an engine sentence taking hover/focus inside the composer — `ink`, 160ms; the same paper step as a page row |
 | `mdv-sheet-tuck` | The sheet arrives | the composer and the letter library sliding in from the right — `tuck`, 300ms spring; owned by `components/mudavym/Sheet.tsx` (ADR 0112) |
+| `cm-draft-settle` | The drafted reply opens | *Read it* on a waiting draft — the house `Panel` on `settle`, 320ms. The panel adds no motion of its own; the hold inside it is `pour` → `stamp`, and `prefers-reduced-motion` renders none of the three |
 
 Deliberate non-motions: glance figures never tally; draft chips never pulse (a
 draft drawing attention to itself starts to look like activity — prc-02); the
@@ -370,7 +398,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 |---|---|---|---|---|---|
 | `/communications` | A letter from the house | sheet · wide · seal | Built | A letter is prose; 440 minus padding is ~46 characters — the one wide case ADR 0112 anticipated. | `pages/communications/next/Compose/ComposeSheet.tsx:209` |
 | `/communications` | Templates | sheet · wide | Built | The library is one object; a template is edited in place inside it. | `pages/communications/next/TemplateSheet.tsx:132` |
-| `/communications` | The house's reply, drafted | panel · seal | Owed | A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118). | `components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)` |
+| `/communications` | The house's reply, drafted | panel · seal | Built | A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118). BUILT 2026-09-06 (packet 2) WITH TWO NEW GATEWAY ROUTES: POST orders/:id/draft-seal-challenge mints over the LETTER when the hold begins, and POST orders/:id/send-drafted-reply spends it. `send_draft` is its own seal act, so a seal minted to approve an order's money cannot send its mail, and a paragraph edited after the hold is refused rather than posted. | `BUILT 2026-09-06 as pages/communications/next/DraftedReplyPanel.tsx (was components/orders/DraftEmailApprovalPanel.tsx:130, on /orders)` |
 | `/communications` | Gmail template builder | — | Retires | The composer and the template library (ADR 0118 retires both builders). | `components/documents/GmailTemplateBuilder.tsx:852` |
 | `/communications` | SMS template builder | — | Retires | The house's text sender (ADR 0121, research). | `components/documents/SMSTemplateBuilder.tsx:423` |
 | `/communications` | Select report type | — | Retires | 'Start from something the house noticed'. | `components/communications/ReportTypeModal.tsx:122` |
@@ -419,6 +447,10 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):495 (`reports`), :180
 | GET | `/conversations/threads`, `/conversations/thread/:id`, `/conversations/stats/overview` | `ClassifiedConversationList` → `hooks/queries/useConversationQueries.ts:194,209,225` |
 | POST | `/conversations/:id/summarize` | `useRegenerateSummary` → `useConversationQueries.ts:240` |
 | GET | `/procurement/conversations/history` | `useProcurementConversationHistory` (Communications.tsx:28) → `useConversationQueries.ts:284` |
+
+| POST | `/procurement/orders/:id/draft-seal-challenge` | **NEW 2026-09-06** (packet 2) — `pages/communications/next/DraftedReplyPanel.tsx`, at the moment the hold begins. Mints over the letter, the recipient and the copies; 404 when no draft is waiting |
+| POST | `/procurement/orders/:id/send-drafted-reply` | **NEW 2026-09-06** (packet 2) — the same panel, carrying the seal in `X-Seal-Challenge`. Redeems, then calls the same `approveDraft` service the older unsealed route calls |
+| POST | `/procurement/orders/:id/discard-draft` | the same panel's *Throw the draft away* |
 
 **Behind the flag (ADR 0118), all JWT-guarded and tenant-scoped from the signed token:**
 

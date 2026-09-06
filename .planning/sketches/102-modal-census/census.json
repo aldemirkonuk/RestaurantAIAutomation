@@ -2261,7 +2261,7 @@
     },
     {
      "name": "The house's reply, drafted",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -2304,8 +2304,8 @@
       ]
      ],
      "footer": "A draft never looks sent (prc-02).",
-     "why": "A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).",
-     "source": "components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)",
+     "why": "A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118). BUILT 2026-09-06 (packet 2) WITH TWO NEW GATEWAY ROUTES: POST orders/:id/draft-seal-challenge mints over the LETTER when the hold begins, and POST orders/:id/send-drafted-reply spends it. `send_draft` is its own seal act, so a seal minted to approve an order's money cannot send its mail, and a paragraph edited after the hold is refused rather than posted.",
+     "source": "BUILT 2026-09-06 as pages/communications/next/DraftedReplyPanel.tsx (was components/orders/DraftEmailApprovalPanel.tsx:130, on /orders)",
      "acts": null,
      "went": null,
      "fork": null
@@ -2994,7 +2994,7 @@
    "overlays": [
     {
      "name": "Approve from the bell",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -3025,8 +3025,8 @@
       ]
      ],
      "footer": "The seal never sits in a popover; the bell hands off to this panel.",
-     "why": "The bell is a menu; a commitment needs a room that cannot be dismissed by accident.",
-     "source": "ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built",
+     "why": "The bell is a menu; a commitment needs a room that cannot be dismissed by accident. BUILT 2026-09-06 (packet 2): the popover CLOSES first, the panel reads GET /procurement/orders/:id fresh rather than trusting the notice, and the seal is the house's one implementation (SealedApproveDie). A settled order is told so and offered no hold. No producer writes an order id onto a notification today, so the control is rare rather than decorative — notifications.md §9.",
+     "source": "BUILT 2026-09-06 as components/notifications/ApproveFromBellPanel.tsx, handed off from HouseBell.tsx (ADR 0112, founder answer 2026-09-04)",
      "acts": null,
      "went": null,
      "fork": null

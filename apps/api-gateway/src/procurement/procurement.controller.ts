@@ -630,6 +630,90 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Begin the hold on a drafted reply. Returns a one-time seal, once.
+   *
+   * NEW ROUTE (packet 2 of the overlay layer, 2026-09-06; ADR 0118). The only
+   * approval of a drafted reply was `POST orders/:id/approve-draft`, which
+   * sends a letter to a vendor on an unsealed request. Nothing reaches a vendor
+   * without a person's hold, so the hold now mints a seal over THE LETTER — the
+   * words, the recipient and the copies as the person read them — and
+   * `send-drafted-reply` below spends it.
+   *
+   * The letter travels in the BODY because it is what the seal is over, and the
+   * body is what the person edited in the panel; the seal itself comes back in
+   * a header on the send, the way every other seal in this house travels.
+   */
+  @Post("orders/:id/draft-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Mint the one-time seal a drafted reply's send has to carry back",
+    description:
+      "Bound to this actor, this order, the act `send_draft`, and the LETTER as it stands — its words normalised, its recipient and its copies. A seal minted to approve an order's money cannot be spent to send its mail, and a seal minted over one paragraph cannot be spent after the paragraph changes. 404 when no draft is waiting; 500 (never a seal) when whether one is waiting could not be read.",
+  })
+  @ApiResponse({ status: 201, description: "`challenge`, `expiresAt` and `act`" })
+  @ApiResponse({ status: 404, description: "No draft is waiting on this order" })
+  async issueDraftSendSeal(
+    @Param("id") orderId: string,
+    @Body() body: { content?: string; to?: string | null; ccEmails?: string[] },
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueDraftSendSeal(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      { body: body?.content ?? "", to: body?.to ?? null, cc: body?.ccEmails ?? [] },
+    );
+  }
+
+  /**
+   * Send the drafted reply, behind a redeemed seal.
+   *
+   * NEW ROUTE (packet 2, 2026-09-06). It wraps `approveDraft` rather than
+   * replacing it: `POST orders/:id/approve-draft` is still called by the legacy
+   * desk, and breaking a live send path is not this packet's to do. The house
+   * panel goes through here, and the fact that the older route still sends mail
+   * unsealed is FILED for the founder rather than papered over.
+   */
+  @Post("orders/:id/send-drafted-reply")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Send the house's drafted reply behind a redeemed seal (ADR 0118)",
+  })
+  @ApiResponse({ status: 200, description: "The letter was sent" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, already spent, issued to somebody else, issued for a different order or act, or issued before the letter changed. The body's `message` is the whole sentence and the panel renders it verbatim.",
+  })
+  async sendDraftedReply(
+    @Param("id") orderId: string,
+    @Body() dto: ApproveDraftDto & { to?: string | null },
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    try {
+      return await this.procurementService.sendDraftedReply(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        dto,
+        { body: dto?.modifiedContent ?? "", to: dto?.to ?? null },
+        challenge,
+      );
+    } catch (error: any) {
+      // Every deliberate refusal keeps its status and its sentence. Flattening
+      // a 403 from the seal into a 500 would tell a manager the gateway broke
+      // when in fact it refused, which are different things to do next about.
+      if (error instanceof HttpException) throw error;
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || "Failed to send the drafted reply",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post("orders/:id/generate-ai-reply")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({

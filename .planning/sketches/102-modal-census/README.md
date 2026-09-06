@@ -40,9 +40,9 @@ page's ground). Filter by shape and by status.
 | | |
 |---|---|
 | Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 37 |
+| Built on the primitive | 39 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 6 |
+| Owed — an act the rebuilt page does not yet offer | 4 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
@@ -150,7 +150,7 @@ page's ground). Filter by shape and by status.
 | `/providers` | Add provider type | — | Retires | A field inside the new-vendor sheet. | `components/providers/AddProviderModal.tsx:629` |
 | `/communications` | A letter from the house | sheet · wide · seal | Built | A letter is prose; 440 minus padding is ~46 characters — the one wide case ADR 0112 anticipated. | `pages/communications/next/Compose/ComposeSheet.tsx:209` |
 | `/communications` | Templates | sheet · wide | Built | The library is one object; a template is edited in place inside it. | `pages/communications/next/TemplateSheet.tsx:132` |
-| `/communications` | The house's reply, drafted | panel · seal | Owed | A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118). | `components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)` |
+| `/communications` | The house's reply, drafted | panel · seal | Built | A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118). BUILT 2026-09-06 (packet 2) WITH TWO NEW GATEWAY ROUTES: POST orders/:id/draft-seal-challenge mints over the LETTER when the hold begins, and POST orders/:id/send-drafted-reply spends it. `send_draft` is its own seal act, so a seal minted to approve an order's money cannot send its mail, and a paragraph edited after the hold is refused rather than posted. | `BUILT 2026-09-06 as pages/communications/next/DraftedReplyPanel.tsx (was components/orders/DraftEmailApprovalPanel.tsx:130, on /orders)` |
 | `/communications` | Gmail template builder | — | Retires | The composer and the template library (ADR 0118 retires both builders). | `components/documents/GmailTemplateBuilder.tsx:852` |
 | `/communications` | SMS template builder | — | Retires | The house's text sender (ADR 0121, research). | `components/documents/SMSTemplateBuilder.tsx:423` |
 | `/communications` | Select report type | — | Retires | 'Start from something the house noticed'. | `components/communications/ReportTypeModal.tsx:122` |
@@ -176,7 +176,7 @@ page's ground). Filter by shape and by status.
 | `/reports` | Choose KPI metric · Add KPI card | — | Delete | Dead code. Delete. | `components/reports/organisms/KPISection.tsx:148 and :217 — nobody imports it` |
 | `/reports` | Preview overlay | — | Delete | Dead code. Delete. | `components/reports/preview/PreviewOverlay.tsx:73 — nobody imports it` |
 | `/documents-reports` | Document preview | — | Retires | The reading pane. | `pages/DocumentsPage.tsx:985` |
-| `/notifications` | Approve from the bell | panel · seal | Owed | The bell is a menu; a commitment needs a room that cannot be dismissed by accident. | `ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built` |
+| `/notifications` | Approve from the bell | panel · seal | Built | The bell is a menu; a commitment needs a room that cannot be dismissed by accident. BUILT 2026-09-06 (packet 2): the popover CLOSES first, the panel reads GET /procurement/orders/:id fresh rather than trusting the notice, and the seal is the house's one implementation (SealedApproveDie). A settled order is told so and offered no hold. No producer writes an order id onto a notification today, so the control is rare rather than decorative — notifications.md §9. | `BUILT 2026-09-06 as components/notifications/ApproveFromBellPanel.tsx, handed off from HouseBell.tsx (ADR 0112, founder answer 2026-09-04)` |
 | `/notifications` | Notification detail | — | Retires | The row expands in place (`.nt-expand`); a sealed act opens the panel above. | `pages/Notifications.tsx:1513` |
 | `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is built as **A one-tap action of your own** on / (decided 2026-09-05, F4). | `pages/Notifications.tsx:1705` |
 | `/notifications` | Add vendor deadline | — | Delete | Cutoffs live in vendor terms (ADR 0116). Delete. | `components/notifications/VendorDeadlineSettings.tsx:184 — nobody imports it` |
