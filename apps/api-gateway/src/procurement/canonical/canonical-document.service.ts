@@ -4,7 +4,18 @@ import { normalizeUom, Uom } from "../documents/document-types";
 import { ParsedDocument } from "../documents/parsed-document";
 import { parsedFromDocumentRows } from "./from-document-rows";
 import { canonicalFromParsedDocument } from "./from-parsed-document";
-import { CanonicalDocument, ResolvedLine, Source } from "./canonical-types";
+import {
+  CanonicalDocument,
+  FieldEnvelope,
+  ResolvedLine,
+  Source,
+} from "./canonical-types";
+import { runInvariants } from "./canonical-invariants";
+import {
+  CORRECTABLE_PATHS,
+  replayOnParsed,
+  splitPath,
+} from "./correctable-paths";
 
 /**
  * CanonicalDocumentService — build the canonical object for a stored document,
@@ -34,6 +45,24 @@ import { CanonicalDocument, ResolvedLine, Source } from "./canonical-types";
 export type ReadResult<T> =
   | { ok: true; value: T; notes?: string[] }
   | { ok: false; error: string };
+
+/**
+ * Grade the object AGAIN, after the corrected envelopes have landed on it.
+ *
+ * `reconciliation_v1` is kept rather than recomputed: it is not an invariant —
+ * it is the tie-out grade `canonicalFromParsedDocument` folds in from the
+ * ParsedDocument, and that document already carried every correction when the
+ * mapper ran. Re-deriving it here would be a SECOND implementation of the
+ * tie-out, which is exactly the divergence that made the corpus runner and the
+ * route disagree about a deposit line on 2026-09-05.
+ */
+function withRegradedVerdicts(doc: CanonicalDocument): CanonicalDocument {
+  const kept = doc.layer3.verdicts.filter((v) => v.id === "reconciliation_v1");
+  return {
+    ...doc,
+    layer3: { ...doc.layer3, verdicts: [...runInvariants(doc), ...kept] },
+  };
+}
 
 /**
  * "This database does not have that column", in the TWO codes PostgREST uses
@@ -272,53 +301,194 @@ export class CanonicalDocumentService {
     }
     const lineRows = (lineRead.data ?? []) as unknown as LineRow[];
 
-    const parsed = this.toParsedDocument(row, lineRows);
+    let parsed = this.toParsedDocument(row, lineRows);
+
+    /**
+     * The corrections a human has appended (ADR 0104 D5).
+     *
+     * Applied HERE, before the mapper runs, and not as a cosmetic overlay
+     * afterwards. A quantity corrected from 12 to 10 has to move the
+     * bottle-equivalent, the tie-out and every EN 16931 invariant that reads
+     * them; an overlay would leave layer 3 grading numbers the page no longer
+     * shows and reporting "ties out" about figures nobody is looking at.
+     */
+    const history = await this.readCorrections(documentId);
+    if (!history.ok) return history;
+    for (const c of history.value.entries) {
+      if (c.kind === "correction")
+        parsed = replayOnParsed(
+          parsed,
+          c.template,
+          c.line,
+          c.envelope?.value ?? null,
+        );
+    }
 
     const resolved = await this.resolveLines(restaurantId, lineRows);
     if (!resolved.ok) return resolved;
+    // Layer 2 is read from the LINE ROWS, which a correction does not touch, so
+    // the two fields a correction can move there are re-derived from the
+    // corrected parse rather than left at the stored value.
+    for (const rl of resolved.value) {
+      const line = parsed.lines[rl.lineIndex];
+      if (!line) continue;
+      rl.canonicalUom = normalizeUom(line.uom);
+      rl.qtyBottles = line.qtyBottles;
+      rl.vintage = line.vintage ?? null;
+    }
 
     const parties = await this.resolveParties(restaurantId, row.provider_id);
     if (!parties.ok) return parties;
 
+    const mapped = canonicalFromParsedDocument(parsed, {
+      documentId: row.id,
+      restaurantId: row.restaurant_id,
+      revision: history.value.revision,
+      source: this.sourceForChannel(row.source_channel),
+      direction:
+        row.direction === "issued_by_us" ? "issued_by_us" : "issued_by_vendor",
+      jurisdiction:
+        row.jurisdiction === "TR" ||
+        row.jurisdiction === "US-CA" ||
+        row.jurisdiction === "unknown"
+          ? row.jurisdiction
+          : null,
+      providerId: row.provider_id,
+      // BG-4 / BG-7. The provider row wins over the transcription when one
+      // resolved; `parsed.vendorName` (from the `extracted` snapshot) is the
+      // fallback and is genuinely `extracted`, so the mapper keeps its glyphs.
+      ...(parties.value.sellerName
+        ? {
+            seller: {
+              name: parties.value.sellerName,
+              source: "human_entered" as const,
+            },
+          }
+        : {}),
+      ...(parties.value.buyerName
+        ? {
+            buyer: {
+              name: parties.value.buyerName,
+              source: "human_entered" as const,
+            },
+          }
+        : {}),
+      resolvedLines: resolved.value,
+    });
+
+    /**
+     * The corrected ENVELOPES land last, over the mapped ones.
+     *
+     * The replay above put the corrected VALUE through the mapper so everything
+     * derived from it follows; this puts back what the mapper cannot know — that
+     * the value is `human_corrected`, who ticked it, and the glyphs the paper
+     * carried when the correction was made. Without it the sheet would print a
+     * human's figure with an extraction's provenance, which is the masquerade
+     * ADR 0104 D1 exists to prevent, read in the other direction.
+     */
+    for (const c of history.value.entries) {
+      if (!c.envelope) continue;
+      CORRECTABLE_PATHS[c.template]?.write(mapped.layer1, c.line, c.envelope);
+    }
+
     return {
       ok: true,
       ...(notes.length ? { notes } : {}),
-      value: canonicalFromParsedDocument(parsed, {
-        documentId: row.id,
-        restaurantId: row.restaurant_id,
-        source: this.sourceForChannel(row.source_channel),
-        direction:
-          row.direction === "issued_by_us"
-            ? "issued_by_us"
-            : "issued_by_vendor",
-        jurisdiction:
-          row.jurisdiction === "TR" ||
-          row.jurisdiction === "US-CA" ||
-          row.jurisdiction === "unknown"
-            ? row.jurisdiction
-            : null,
-        providerId: row.provider_id,
-        // BG-4 / BG-7. The provider row wins over the transcription when one
-        // resolved; `parsed.vendorName` (from the `extracted` snapshot) is the
-        // fallback and is genuinely `extracted`, so the mapper keeps its glyphs.
-        ...(parties.value.sellerName
-          ? {
-              seller: {
-                name: parties.value.sellerName,
-                source: "human_entered" as const,
-              },
-            }
-          : {}),
-        ...(parties.value.buyerName
-          ? {
-              buyer: {
-                name: parties.value.buyerName,
-                source: "human_entered" as const,
-              },
-            }
-          : {}),
-        resolvedLines: resolved.value,
-      }),
+      value:
+        history.value.entries.length > 0
+          ? // The invariants graded the object BEFORE the envelopes landed, and
+            // the envelopes only carry provenance — but re-running them is what
+            // makes that a measured claim rather than an assumed one.
+            withRegradedVerdicts(mapped)
+          : mapped,
+    };
+  }
+
+  /**
+   * Every correction on a document, oldest first, plus the revision number.
+   *
+   * A FAILED READ RETURNS `{ok:false}` AND NOTHING ELSE. Falling back to "no
+   * corrections" would serve the uncorrected document as though it were current
+   * — a number a human has already fixed, rendered as the truth, with no sign
+   * that anything went wrong. That is this repository's absence-as-health fault
+   * in the one place where it costs a vendor argument.
+   *
+   * `revision` is the highest `document_revisions.revision`, or 1 when none has
+   * been written — the mapper's own default, and the honest one: a document
+   * nobody has corrected is at its first revision.
+   */
+  private async readCorrections(documentId: string): Promise<
+    ReadResult<{
+      revision: number;
+      entries: {
+        template: string;
+        line: number | null;
+        kind: "correction" | "verification";
+        envelope: FieldEnvelope<unknown> | null;
+      }[];
+    }>
+  > {
+    const [corrections, revisions] = await Promise.all([
+      this.db
+        .getClient()
+        .from("document_corrections")
+        .select("revision, kind, field_path, after")
+        .eq("document_id", documentId)
+        .order("revision", { ascending: true }),
+      this.db
+        .getClient()
+        .from("document_revisions")
+        .select("revision")
+        .eq("document_id", documentId)
+        .order("revision", { ascending: false })
+        .limit(1),
+    ]);
+
+    if (corrections.error)
+      return {
+        ok: false,
+        error: `document_corrections read failed for ${documentId}: ${corrections.error.message}`,
+      };
+    if (revisions.error)
+      return {
+        ok: false,
+        error: `document_revisions read failed for ${documentId}: ${revisions.error.message}`,
+      };
+
+    const revisionRows = (revisions.data ?? []) as { revision: number }[];
+    const rows = (corrections.data ?? []) as unknown as {
+      revision: number;
+      kind: string | null;
+      field_path: string;
+      after: unknown;
+    }[];
+
+    const entries = rows.flatMap((r) => {
+      const split = splitPath(r.field_path);
+      // A path this build no longer recognises is SKIPPED and logged, never
+      // guessed at. The alternative — walking the dotted path generically — is
+      // how a renamed field silently starts writing somewhere else.
+      if (!split || !CORRECTABLE_PATHS[split.template]) {
+        this.logger.warn(
+          `document ${documentId}: correction on unknown field path \`${r.field_path}\` was skipped`,
+        );
+        return [];
+      }
+      return [
+        {
+          template: split.template,
+          line: split.line,
+          kind: (r.kind === "verification" ? "verification" : "correction") as
+            | "correction"
+            | "verification",
+          envelope: (r.after as FieldEnvelope<unknown> | null) ?? null,
+        },
+      ];
+    });
+
+    return {
+      ok: true,
+      value: { revision: revisionRows[0]?.revision ?? 1, entries },
     };
   }
 
@@ -407,12 +577,16 @@ export class CanonicalDocumentService {
    * two revisions of the same document written at the same instant are two
    * different claims about the same paper, and one of them must be re-based.
    */
-  async persistRevision(
-    documentId: string,
-    canonical: CanonicalDocument,
-    source: Source,
-    userId?: string | null,
-  ): Promise<ReadResult<{ revision: number; id: string }>> {
+  /**
+   * The revision number the next append will carry: the highest written, plus
+   * one, and 1 when nothing has been written.
+   *
+   * Public because a caller that stamps the revision INTO the document — the
+   * correction door writes it onto the corrected field's envelope — has to know
+   * the number before the row exists, and two callers computing it separately is
+   * how an envelope ends up claiming a revision the row does not have.
+   */
+  async nextRevision(documentId: string): Promise<ReadResult<number>> {
     const latest = await this.db
       .getClient()
       .from("document_revisions")
@@ -421,14 +595,29 @@ export class CanonicalDocumentService {
       .order("revision", { ascending: false })
       .limit(1);
 
-    if (latest.error) {
+    if (latest.error)
       return {
         ok: false,
         error: `document_revisions read failed for ${documentId}: ${latest.error.message}`,
       };
-    }
     const rows = (latest.data ?? []) as { revision: number }[];
-    const nextRevision = (rows[0]?.revision ?? 0) + 1;
+    return { ok: true, value: (rows[0]?.revision ?? 0) + 1 };
+  }
+
+  async persistRevision(
+    documentId: string,
+    canonical: CanonicalDocument,
+    source: Source,
+    userId?: string | null,
+    /** The number the caller already stamped into the document, when it did. */
+    revision?: number,
+  ): Promise<ReadResult<{ revision: number; id: string }>> {
+    let nextRevision = revision;
+    if (nextRevision == null) {
+      const next = await this.nextRevision(documentId);
+      if (!next.ok) return next;
+      nextRevision = next.value;
+    }
 
     const insert = await this.db
       .getClient()

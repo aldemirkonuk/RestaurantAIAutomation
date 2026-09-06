@@ -1,6 +1,11 @@
 /** The canonical document's sections (ADR 0104 D2: one component, conditional sections). */
 
-export { CanonicalSheet, type CanonicalSheetProps } from './CanonicalSheet'
+export {
+  CanonicalSheet,
+  type CanonicalSheetProps,
+  type CorrectionWiring,
+} from './CanonicalSheet'
+export { CorrectionDialog, type CorrectionDialogProps } from './CorrectionDialog'
 export {
   VerdictBlock,
   exceptionSentences,
