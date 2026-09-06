@@ -1052,6 +1052,45 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> This note is the cellar's. `PAGES-MAP.md` routes `/wines` here and `census.py` files
+> `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks`
+> against this same note, so there is no `cellar.md` to write and none is created
+> (CLAUDE.md §4, retire-to-write).
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| Carry these bottles (from a menu scan) | sheet **440, not wide** | "The reader found {n} bottles on this menu. Carrying writes a register row for each one you tick. Leaving writes nothing." | *empty* "The reader found nothing on this menu" · *error* "No bottles were carried. Your register is unchanged." · *denied* names who may carry bottles | plain — a bulk carry, no wax | full detent | `tuck` 300 | **built** — packet 1 `70e7b26b`, corrected to 440 by `964cbb13`. Its footer carries the model line for a migrated row: the surface says what the code behind it did not do |
+| Is this the bottle? | panel 620 | "Confirm what the reader read before anything is written. Confirming carries the bottle; leaving writes nothing and keeps the photo." | *error* "The bottle was not carried. Nothing was written to the library or the register." | plain | half detent | `settle` 320 | **built** — packet 2 `87e4d062`. **The census's cleanest overlay**: it is a question, it precedes a write, its "Fix a field" answer is the third option most confirmations lack, and it carries per-field confidence in words rather than a number |
+| Photograph the label | panel 620 on the desk; **full-bleed camera plus a peek-detent control sheet under 640 px** | "Take one photo of the label. The photo is read and shown back to you before anything is written. Leaving writes nothing." | *error* "The camera could not be opened. No photo was taken." | none | **the exception** — see below | `settle` 320 on the desk; the camera route has no entrance | target |
+
+**The camera is not an overlay at all on a phone.** A 620 px panel capped at 76 vh wrapped around a
+live viewfinder is roughly a 200 px viewfinder on the device where the flow exists because the
+operator is holding a bottle. Making the phone case a **route** costs nothing, touches no shape
+policy and needs no ADR amendment; making it a fourth geometry does. Decided: **a route on a phone,
+the panel on the desk.** Rejected: naming a fourth geometry as "the panel's phone form" (a real ADR
+amendment for one surface) and shipping the 200 px viewfinder.
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| The reading stand opens | `cl-stand-settle` `settle` 320 on `0fr to 1fr` | keep | — | no change |
+| A different bottle is chosen while the stand is open | `cl-leaf-turn` `turn` 420, opacity 0.2 to 1 plus 4 px | keep — **this open-versus-switch pair is the single most useful distinction in the corpus and the house now copies it**: `/documents-reports`, `/documents/:id` and `/recommendations` are all being corrected to it | — | no change, promoted |
+| Parent-card figures | `cl-tally` `tally` 840; an em dash renders `null` and returns before the rAF loop | keep | — | no change |
+| Register rows | **no tally** — figures of record about one bottle | keep; the parent-versus-register split is the right line | — | no change |
+| Send a purchase order | `pour` 620 to `stamp` 360 — the only ceremony on the page | keep. A real PO to a vendor: the server redeems the seal | — | no change |
+| A live stock event | `cl-live-ink` — the background steps to `--seal-tint` and back on `ink` 160, **nothing translates**, once, no repeat | keep — **and this is the form `/inventory` gets**, which today blanket-invalidates three query trees instead | (a) the row travels to its new sort position — moves a row under a reader; (b) a badge that persists — the reader has been told; the page goes quiet again | no change, promoted |
+| The expanded wine-register row | **no height animation** — a real table row, browser reflow | keep, **and record it as the second of the house's two approved exceptions to the canonical row expand** (the other is `/team`). The measured reason — seven cards behind a height animation is a compositor stall per open — stands as written and was not re-profiled here | adopt `settle` `0fr to 1fr` for consistency | no change, recorded |
+| The column menu opens | **no entrance** — "160 ms of fade is 160 ms of a menu that is there but not yet legible" | keep, **and record it as the one approved exception to ADR 0112's Popover `ink` 160**. As it stands it is a page-local deviation from a Locked decision, which is the shape the house forbids | (a) `ink` 160 like every other Popover; (b) 80 ms — half of nothing is still something | no change, recorded |
+| The series graph | does not draw itself | keep | — | no change |
+| Retire a cocktail | the die pressed dry, in place, on `ink` | keep | — | no change |
+| The menu scanner's framer-motion | legacy, code-split, **disclosed** at `pages/cellar/next/WineRegister.tsx:40-55` and `cellar/next/MOTIONS.md:16-20` | keep the disclosure; packet 1 narrowed it further so the wrapper's own framer-motion is legacy-branch-only and survives on the house path solely because `MenuScannerTab` imports it | undisclosed use anywhere | no change |
+| **`SeriesPanel.tsx` — a live violation of a Locked ADR** | a hand-rolled `role="dialog"` (`pages/cellar/next/SeriesPanel.tsx:288-291`) with **an X glyph inside its close button** (`:307-309`, `<X size={13} aria-hidden />` under `aria-label="Close the record"`), **no Esc handler, no focus trap and no body scroll lock** | **migrate it onto the house `Panel`.** ADR 0112 and BUILD-PROMPT rule 4 both say the close control is words, never an X; a rule about accessible names would be vacuous, since nobody names a button "X", so it binds the glyph. And `role="dialog"` on a surface with none of the behavioural contract that role implies is worse than no role | (a) change only the glyph — leaves the missing Esc, trap and scroll lock; (b) drop the `role` — then a screen-reader user loses the announcement the panel does deserve | owed to **packet 3**. It is in no census row (it is not a `Sheet`, `Panel` or `Popover` and not a `fixed inset-0`), it has no test, and neither finder mentioned it |
+| Reduced motion | 1 CSS mention; the rest is primitive-inherited | keep, and extend to the arriving-surface cross-fade | — | owed to **packet 3** |
+| Test coverage | seven test files, **zero** references to `HoldToApprove`, `role="dialog"`, `SeriesPanel` or `BottleLeaf` | a test for the PO seal at least — it is a real purchase order to a vendor | leave it | owed to a page pass (see §9) |
+
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records
 in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
@@ -1628,6 +1667,17 @@ means the answers table could not be read — never `false`, which would suppres
 the onboarding step for every house on a database missing the migration.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/cellar/next/SeriesPanel.tsx:288-291,307-309` — a hand-rolled `role="dialog"` with an **X glyph** in its close button, no Esc handler, no focus trap and no body scroll lock. It violates a Locked ADR on a rebuilt page, is in no census row, and has no test. Migrate onto the house `Panel`. **packet 3**
+2. "Photograph the label" becomes a **route** under 640 px (full-bleed camera, controls on a peek-detent sheet); the 620 px panel stays for the desk. A 620 panel capped at 76 vh is a ~200 px viewfinder on the device the flow exists for. *target*
+3. `pages/cellar/next/BottleLeaf.tsx:314` — the page's only ceremony is a real purchase order to a vendor and seven test files reference it zero times. *page pass*
 
 1. **Make Reorder create an order, or stop saying it did.** Either `POST
    /procurement/orders` here, or change the alert to "Draft prepared — review it on

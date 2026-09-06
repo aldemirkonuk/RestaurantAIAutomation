@@ -728,6 +728,38 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| Ask the book | panel 620 | "Search what the engine has already said. Nothing here is generated and nothing is written." | *empty*, the corpus's model: "The book holds no sentence about '{term}' for this house — nothing is invented to fill the gap (ADR 0020)" · *loading* "Reading the register of insights…" · *error* **"The register of insights could not be read. This is not an empty book."** · *denied* n/a — reading | none, nothing is written | half detent | **instant, always** — see the table below | **built** — `pages/reports/next/AskTheBook.tsx:94`; the error state's separation from empty is owed to a page pass |
+
+**One ask surface, not two.** `Ask the book` here and `Ask the day-book` on `/calendar` are panels;
+the same act at object scope was drawn as a sheet. Decided: **one shape, the panel, with the object
+named in the eyebrow** ("ORDER 118"). The answer cites rows by id, and the citation is the checking
+mechanism — looking past the surface at the record is not. Rejected: making all three sheets, which
+is coherent but costs the palette's shape and makes "a question gets a panel" false for the house's
+most-used question.
+
+**This page's empty state is the template for the corpus** and its one gap is that it does not
+distinguish *the book holds nothing* from *the book could not be read*. That distinction is now a
+house rule in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Opening line | `{ easing: settle.easing, ms: 420 }` — `pages/reports/next/ReportsNext.tsx:139` | `settle` **320**. Delete the literal | mint an eighth token at the house curve and 420 ms, and move all five opening lines onto it — a literal repeated four times is how the next divergence starts, and a masthead does not earn a token | owed to **packet 3** |
+| Enter Arrange | `rp-rule` `settle` 320 — the twelve-column ruling fades up | keep. **The best structural idea in the set**: the grid *is* the promise that a cutting lands square | (a) an always-on grid — then arranging has no state; (b) snap lines on drag only — arrives too late to promise anything | no change |
+| Drag or keyboard-hold a cutting | `rp-lift` `tuck` 300 shadow; **no tween between grid positions** | keep. The refusal is correct and is promoted: a tween would put a moving cutting somewhere the live announcement says it is not | (a) transition the transforms; (b) FLIP — the same objection | no change |
+| "Show the working" | `rp-working` **`turn` 420** on `0fr to 1fr` | keep — **and this is the house's canonical answer for the act.** `/receiving` and `/orders` already agree; `/recommendations` and `/profile` are being corrected to it | `settle` 320 — the answer two other pages give | no change, promoted |
+| The command palette opens on this page | the house `Panel` `settle` 320 | **instant, always** — the palette, Ask AI, Recently viewed and Keyboard shortcuts never animate on entry, whatever the motion setting, because they are opened hundreds of times a day | (a) keep 320 — pays 320 ms on the most-used surface in the app; (b) make it conditional on *how* it was opened — then the same trigger gives two different products depending on mouse or keyboard, and a phone with a Bluetooth keyboard is undefined | owed to **packet 3** |
+| Charts | `isAnimationActive={false}` everywhere | keep | (a) draw the line — makes a projection look like something happening; (b) animate actuals only — then the dashed forecast is the only still thing, which reads as broken | no change |
+| Ruled off | `<Seal pressed color="var(--paper-2)" />` — dry, static | keep | — | no change |
+| Loading | `rp-sheen` 1.9 s infinite, `cubic-bezier(.45,0,.55,1)` — `pages/reports/next/reports-next.css:391` — deliberately identical to the dashboard's | **two cycles, then still, then the wait in words**, on both pages together. 3.8 s is under SC **2.2.2 (Level A)**'s five-second trigger, so the criterion is met with no control | (a) keep the infinite loop; (b) rely on the `prefers-reduced-motion` exemption at `reports-next.css:414-421` — that is a 2.3.3 **AAA** technique and 2.2.2 wants a mechanism, not an OS preference. All three research passes marked this page clean | owed to **packet 3** |
+| The two disclosed sheens as a documented exception | `reports/next/MOTIONS.md` flags `rp-sheen` in-doc as "not a `motion.ts` token" | keep the disclosure — **it is the one row in the corpus where a page's own doc admits a divergence instead of silently drifting**, and it is the model. The motion guard allow-lists both sheens by file and line, with the ADR that approved them | remove the exception; or write a guard that goes red on it, which is how a guard gets disabled in a week | no change, and it constrains the guard |
+| Reduced motion | CSS media query at `reports-next.css:414-421` | keep, and extend to the arriving-surface cross-fade decided house-wide | — | owed to **packet 3** |
+
 ## 2. Entry
 
 In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
@@ -1126,6 +1158,18 @@ about it, with a visible line back to the data.
    controls override it locally; everywhere else the house tokens lose.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/reports/next/ReportsNext.tsx:139` — delete `{ easing: settle.easing, ms: 420 }`, use the `settle` token (320). **packet 3**
+2. `pages/reports/next/reports-next.css:391` — bound `rp-sheen` at two cycles, with the dashboard's, then still, then the wait in words. SC 2.2.2 Level A. **packet 3**
+3. `pages/reports/next/AskTheBook.tsx:94` — the empty state must separate *the book holds nothing* from *the book could not be read*. *page pass*
+4. The `rp-sheen` disclosure is the model for a documented exception, and the motion guard must allow-list it and the dashboard's twin **by file and line with the ADR that approved them** — a guard that goes red on an approved exception gets disabled in a week. **packet 3**
 
 1. ~~**Disable the AI Command Palette until it queries the engine.**~~ **Done**
    before this note was written; recorded 2026-09-02 (§10). It queries

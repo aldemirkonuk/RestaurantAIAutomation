@@ -280,6 +280,54 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> **This note carries two routes.** The generated block above covers `/documents-reports` **and**
+> `/documents/:id` (the canonical document), because `census.py` files `/documents/:id` here.
+> `PAGES-MAP.md` maps `/documents/:id` to `[[receipts]]` instead — the two disagree, and this note
+> wins, because it is where the census's own generated subsection already lands. The
+> correction is filed for the PAGES-MAP owner in
+> [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md). This also settles the
+> "there is no page note for `/document`" finding: there is, and it is this one.
+
+Neither route carries a live overlay. `/documents-reports` has one legacy preview that retires into
+the reading pane; `/documents/:id` has none — `CanonicalSheet` is a page section, not a portal.
+
+| Owed surface | Route | Shape | Contract sentence | Status |
+|---|---|---|---|---|
+| Permission-denied on a report a reader may not open | `/documents-reports` | the shared `Denied` block, in place in the reading pane | "You can see this drawer, but only an owner may open this report. Ask {name} to grant it." | primitive **built** (packet 0); wiring owed to **packet 4** |
+| "Could not be read" separated from "holds nothing" | both | the reading pane's own empty and error states | the corpus's best empty state is on `/reports`, and its one gap is exactly this conflation | owed to a page pass |
+
+## 1c. Motions decided (2026-09-06)
+
+### `/documents-reports` — the Sorting Office
+
+| Act | Today | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| A report is chosen and the reading pane fills | `settle` 320, keyed per report so switching **re-settles** | **first open `settle` 320; switching to a different report `turn` 420.** This is the house's open-versus-switch rule, and `/wines` is where it was first drawn correctly (`cl-stand-settle` to open, `cl-leaf-turn` when a different bottle is chosen while the stand is open) | (a) keep the re-settle — the same act answered two ways on two pages; (b) `turn` for both — opening a stand and turning a leaf are not the same act | owed to **packet 3** |
+| Drawer row hover | `ink` 160 | keep | — | no change |
+| Register link hover | `ink` 160, colour deepening toward the seal | keep | — | no change |
+| Counts | never tally | keep — counts of record | — | no change |
+| A waiting drawer answers | content swaps with no entrance | keep | — | no change |
+| Error and retry | `ink` on the control, a sentence for the failure | keep | — | no change |
+| Reduced motion | CSS media query at `DocumentsReportsNext.tsx:416` | keep | — | no change |
+
+### `/documents/:id` — the canonical document
+
+> Measured: `pages/documents/next/canonical-document.css` carries **no `transition`, no
+> `@keyframes`, no `animation`** across its 114 lines, there is no `MOTIONS.md` for the directory,
+> and there is **no reduced-motion handling of any kind**. It is the only rebuilt page with neither
+> motion nor a motion record.
+
+| Act | Today | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| **Reduced motion** | none | **add the guard first, before any motion lands.** This page is perfectly compliant today by being still; adding three motions without a guard would be a net accessibility regression, and both recommendations for this page omitted it | add the motions first and the guard later — the ordering is the whole point | owed to **packet 3**, and it gates the three rows below |
+| Page load | nothing | `settle` 320 on the head block only, 6 px — the same one opening gesture every other rebuilt page has | (a) nothing — then this is the only rebuilt page whose masthead does not arrive; (b) `turn` on the whole document — a document you navigated to is not a page you turned | owed to **packet 3**, after the guard |
+| Tab switch (`pages/documents/next/CanonicalDocumentPage.tsx:449-471`) | instant | `turn` 420 on the pane, opacity plus 5 px — a document's sections are leaves, and this is `/wines`' leaf and `/settings`' register | (a) `settle` 320 — a section of the same document is not a new row; (b) an indicator travel only — a good addition, not a replacement | owed to **packet 3**, after the guard |
+| Line arithmetic and the tie-out | nothing | build `sig-09`: extensions written left to right on a clip over 190 ms, the em dash never moving, rules drawn right to left on `settle` 220 with the second stroke at +90 ms, and **no second stroke until the price is provable**; the provable total on `tally` | (a) a total plus a warning chip — this is the page whose whole job is provenance; (b) animate every figure — then the unknown looks like the known | owed to a page pass, after the guard |
+| Print, back, refetch, the error banner | instant; a label change; `role="alert"` with no motion | keep all four. The refetch's label-only change is the house's anti-spinner rule, and the error banner is a fact, not an event | a spinner (waiting would look like progress); a shake; a slide-in | no change |
+| A `MOTIONS.md` for `pages/documents/next/` | does not exist | **write one when the first motion lands** — every other rebuilt page has a motion record, or a file saying why it has none. Silence reads as absence-reported-as-health | leave it — the guard in ADR 0133 is written to go red on exactly this | owed to **packet 3** |
+
 ## 2. Entry
 
 - Sidebar "Documents & Reports" (`components/layout/Sidebar.tsx:126`); command
@@ -476,6 +524,20 @@ is findable months later — reports, invoices, receipts, vendor correspondence.
    the reports list still has no loading or error branch.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/documents-reports/next/DocumentsReportsNext.tsx` — first open `settle` 320, switching to a different report `turn` 420 (the open-versus-switch rule). **packet 3**
+2. `pages/documents/next/canonical-document.css` — **the reduced-motion guard first**, before any motion lands on `/documents/:id`. The page has none of either today. **packet 3**
+3. `pages/documents/next/CanonicalDocumentPage.tsx:449-471` — then the head's `settle` 320 and the tab switch's `turn` 420. **packet 3**
+4. `pages/documents/next/MOTIONS.md` — write one. It is the only rebuilt page with neither motion nor a motion record, and silence reads as absence-reported-as-health. **packet 3**
+5. `sig-09` — extensions on a 190 ms clip, rules on `settle` 220 with the second stroke at +90 ms, and no second stroke until the price is provable. *page pass*
+6. `PAGES-MAP.md` routes `/documents/:id` to `[[receipts]]`; `census.py` files it here, which is where its generated overlay block already lands. One of the two must move. *PAGES-MAP owner*
 
 1. **Report rendering, or retire the archive tab.** Blocked on the same founder
    decision as communications.md item 1: nothing defines what a report artifact is.

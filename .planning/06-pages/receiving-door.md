@@ -68,6 +68,35 @@ Deliberate non-motions: no spinner theatre around the offline queue (queued is
 SAVED, and says so), no shake on refusal, no first-paint tick, no celebration on
 done — the pressed seal at rest is the done state.
 
+### Overlays decided (2026-09-06)
+
+> The census draws **no overlay** here and the verdict holds: the door is six points on one page,
+> and its sealed step is a page-local `Panel` (`pages/receiving/next/DoorNext.tsx:697`), not a
+> portal. What the door is owed is not a new shape but three surfaces the ceremonies decided and
+> nothing draws.
+
+| Owed surface | Shape | Contract sentence | Four states, denied included | Ceremony | Phone form | Status |
+|---|---|---|---|---|---|---|
+| **"We did not accept it"** — the door cannot refuse a delivery | a fourth question on the door itself, in place | "Say the delivery was refused. Sealing writes nothing into the book and tells the vendor it was turned away. Leaving records nothing." | *error* "The refusal was not recorded. The book still shows this delivery as expected and the vendor has not been told." · *denied* names who may refuse a delivery | **sealed.** It is a ledger consequence and a send in one — the mechanical rule's first clause | the bottom sheet's full detent | owed to **packet 4** — finder B's highest-consequence omission in the census, and there is no act for it anywhere in the 120 rows |
+| The ten-minute correction after a door count | an in-place form on the door's own record, with the deadline printed and counting | "Correct the count you sealed. The book keeps both figures." | *denied* names who may correct a sealed count | plain — undo-after is on F10's closed list and a door count within ten minutes is on it | in place | owed to **packet 4** |
+| Permission-denied on the seal | the shared `Denied` block, inside the surface the act lives in | "You can see this, but only a manager may seal a door count. Ask {name} to grant it." | — | — | in place | primitive **built** (packet 0); wiring owed to **packet 4** |
+
+## 1c. Motions decided (2026-09-06)
+
+> This is the one page with a gesture rule of its own, and it is the right one. `Today` is measured
+> on `feat/mudavym-design-p4`.
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Header entrance | `settle` 320 (`door.head.settle`) | keep | — | no change |
+| The boxes figure retargets | `tally` 840, never on first paint | keep | (a) instant — loses that a stepper tap moved it; (b) `tuck` — a count is not an object under a finger | no change |
+| The match line restates | `ink` 160 crossfade; the delta is carried in **words** | keep | (a) a number tween 14 to 15 — the delta is a fact, not a journey; (b) colour only — the words carry it | no change |
+| Rows open and close | `settle` 320 | keep | — | no change |
+| **Hold to seal** | `pour` 620 with **`forgiveAt = 0.6`** — past 60 % the remaining fill runs out on `settle` and it commits — `pages/receiving/next/DoorSeal.tsx:54` | keep, **and promote `forgiveAt` into `HoldToApprove` as an opt-in prop, default off, conditioned on the act and never on the viewport** | (a) no forgiveness, which is the shell control's behaviour — a gloved hand at 12 % battery loses the write; (b) forgiveness everywhere — an owner approving EUR 1,860 must not be forgiven a slip; (c) "on at any phone width, off for money", which was the recommendation — the two collide the moment an owner approves EUR 1,860 **on a phone**, which is the normal case for an owner | owed to **packet 5** |
+| The offline queue is waiting | no spinner; the copy says "saved on this phone, will send when you're back inside" | keep the copy, and **the queue's breath is a bounded state change, not a loop.** It states its deadline, its ceiling and who carries the risk | (a) the demo's 2.2 s opacity loop for as long as a write is queued — unbounded moving content in parallel with other content, and the operator *can* interact during it, so SC **2.2.2 (Level A)** has no preload exception here; (b) nothing at all — then queued and sent look identical, which is absence reported as health; (c) a spinner — promises a duration nobody can honour | owed to **packet 5** |
+| Refusal | stated in place, no shake | keep | (a) a shake — the field never shakes at a person holding plates; (b) a toast — missable at a dock | no change |
+| Reduced motion | hook, four call sites | keep | — | no change |
+
 ## 2. Entry
 
 From `/receiving` (staff view rows) — the only inbound edge
@@ -218,6 +247,20 @@ question the receiver cannot answer, and its "unverified" state is derived from 
 rather than faked into a column (`receiving.service.ts:36-42`).
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/receiving/next/DoorNext.tsx` — **"We did not accept it"**, a sealed fourth question at the door. Nothing enters the book and the vendor is told. The highest-consequence door act has no surface anywhere in the 120 census rows. **packet 4**
+2. `pages/receiving/next/DoorNext.tsx` — the ten-minute correction after a sealed count, in place, deadline printed and counting (F10). **packet 4**
+3. `components/mudavym/HoldToApprove.tsx` — promote `forgiveAt` (from `pages/receiving/next/DoorSeal.tsx:54`, 0.6) as an opt-in prop, default off, **conditioned on the act, never on the viewport**. **packet 5**
+4. `pages/receiving/next/DoorNext.tsx:470` — the `Loader2` spinner goes; a label change and a sentence replace it (the anti-spinner rule). *page pass*
+5. The offline queue's breath becomes a bounded state change, not an unbounded 2.2 s loop (SC 2.2.2), and states its deadline, its ceiling and who carries the risk. **packet 5**
+6. No test asserts `DoorSeal`'s tokens or its 0.6 forgiveness threshold; the door shares its parent's two test files with no door-specific assertions. *page pass*
 
 1. **Unblock the entrance.** Nothing here needs building; [[receiving]] §13.1 needs
    fixing. Until then this screen ships and is unusable. *Blocker: [[receiving]]'s staff

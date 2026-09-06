@@ -220,6 +220,38 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> The generated table above is the census's own. This one is the **decision**.
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| The vendor's twin | sheet 440, scrim off | "Everything the house has learned about this vendor. Editing a term writes it to the vendor's row with your name on it. Leaving writes nothing." | *empty* "The book holds nothing about this vendor yet" · *loading* named read · *error* "The term was not saved. The vendor's row still says {old value}." · *denied* "You can see this, but only an owner or a manager may change a vendor's terms. Ask {name}." | plain per-term save. **The bank detail is the exception** — see below | half detent | `tuck` 300, 28 px | **built** — `pages/providers/next/TwinSheet.tsx:69` |
+| A new vendor | sheet 440 | "Add one vendor to the book. Adding writes the vendor; terms are written afterwards, each with its own provenance. Leaving writes nothing." | *error* "The vendor was not added. The book is unchanged." · *denied* names who may add a vendor | plain | full detent | `tuck` 300 | **built** — packet 2 `32d9ce9f` |
+| A vendor you already have? | panel 620 | "This looks like a vendor already in the book. Choosing one writes nothing yet; it decides which row the next write lands on." | *error* **"The book could not be searched for duplicates — this is not proof there are none."** This refusal matters more than the body: a duplicate check that fails must never render as "no duplicates found", on the write path, at the moment a second vendor row is about to be created | plain | half detent | `settle` 320 | **built** — packet 2 `32d9ce9f` |
+
+**The bank detail has a ceremony and no field.** Changing a vendor's bank detail is the
+highest-fraud act in the system; behaviour row B19 draws the ceremony and **no surface in the
+census lets anyone enter one**. It belongs inside the twin, as a field group, so the surface that
+*shows* the detail is the surface that *confirms* it: on change the sheet renders the held state
+inline — the first payment to the new detail waits 24 hours and is released by someone with valid
+authority who is not the confirmer, every owner is told, and the call-back line names **the number
+on file, not the number in the letter**. Add the related-rows line while it is open: "Two other
+vendors in this book share this IBAN." Owed to **packet 4**.
+
+## 1c. Motions decided (2026-09-06)
+
+> Deliberately the quietest page in the product. Two motions, and one of them is recorded wrongly.
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Bucket card opens the twin sheet | `providers/next/MOTIONS.md` declares `pv-sheet-settle` = `settle` 320 / 24 px, and eight lines later says the terms register "arrives and leaves with the sheet's `tuck`". The code gives it the primitive's `tuck` — `TwinSheet.tsx:69` renders the house `Sheet`, and `components/mudavym/Sheet.tsx:198` fixes `sheet` to `tuck` | **fix the record: it is `tuck` 300 / 28 px.** The doc was written for the pre-ADR-0112 hand-rolled `TwinSheet` and was not updated when it moved onto the shared primitive | (a) keep two names for one motion — that is how this drift started; (b) genuinely make it `settle` — a vendor record is a record, and records arrive from the right | owed to **packet 3** (a doc fix, no code change) |
+| Card hover | `ink` 160, border to seal ring, ground one paper step | keep | — | no change |
+| Open-order counts | no `tally` — "counts of record" | keep. **The rule this page states and the house adopts: a figure that arrives tallies; a count of record does not** | (a) tally — these counts do not change while you look; (b) `ink` recolour — no state to recolour | no change |
+| Terms editor opens | replaces the buttons **in place**, no height transition | keep — **and this becomes a house rule**: a form that grows under the cursor moves the control the reader was about to press. It is the strongest anti-motion argument in the corpus | (a) `settle` grow — moves the target; (b) a sheet — too heavy for three fields | no change, promoted |
+| Price spur on dwell (`prc-09`) | not built | build it **only with a focus path and a tap path.** A 600 ms dwell gate is a hover-only affordance: on a touch device it never fires, on a keyboard it never fires | (a) build the 600 ms dwell alone — desk-only polish on a page whose whole argument is restraint; (b) an always-visible link — `/vendor-prices` already ships and nothing links to it, so a link is the cheaper fix and it is the runner-up | owed to a page pass |
+| Reduced motion | CSS media query, 2 mentions | keep | — | no change |
+
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with
 `?tab=discover` (`App.tsx:271-274`). PAGE_MAP records an outbound edge providers→orders
@@ -430,6 +462,18 @@ the vendor has been silent. That is the mildest form of the §44.2 shape, but it
 same shape.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/providers/next/MOTIONS.md` — the twin sheet's entrance is the primitive's `tuck` 300 / 28 px (`components/mudavym/Sheet.tsx:198`), not the `settle` 320 / 24 px the file declares; the same file contradicts itself eight lines later. **packet 3**
+2. `pages/providers/next/TwinSheet.tsx:69` — the bank-detail field group, with the 24-hour held state rendered inline on change and the call-back line naming the number on file. The highest-fraud act in the system has a drawn ceremony and no surface. **packet 4**
+3. `prc-09`'s 600 ms dwell spur ships only with a focus path and a tap path; as specified it fires for neither touch nor keyboard. *page pass*
+4. This page has three test files and none covers its overlay or motion behaviour. *page pass*
 
 **2026-09-06 — the vendor states its usual currency (batch 65).** The founder's words are
 quoted in full in §1a. Built as B1 of the invoice-currency pass; ADR 0104 carries the

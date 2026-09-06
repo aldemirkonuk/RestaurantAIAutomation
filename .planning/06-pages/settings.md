@@ -823,6 +823,42 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| Add a location | sheet 440 | "Write one new location. Adding writes it and puts it in the branch switcher. Leaving writes nothing." | *error* "The location was not added. Your houses are unchanged." · *denied* "You can see this, but only an owner may add a house. Ask {name}." · **the `quiet` line is rewritten**: "Nothing is written until you add it," not "Not added" — `alert` means a refusal that happened, `quiet` means a standing fact | plain | full detent | `tuck` 300 | **built** — `components/locations/AddLocationDialog.tsx:185` |
+| New chain | sheet 440 | "Name a chain and choose which houses sit under it. Creating writes the chain and moves those houses. Leaving writes nothing." | *error* "The chain was not created. Every house is where it was." | plain | full detent | `tuck` 300 | **built** |
+| Edit location | sheet 440 | "One location's record. Saving writes it; **moving it between chains changes the branch switcher for everyone**. Leaving writes nothing." | *error* "The location was not saved. Its record is unchanged." | plain | full detent | `tuck` 300 | **built** |
+| Add to {chain} | panel 620 | "Which existing houses move into this chain. Adding moves them; leaving moves none." | *error* "No house was moved." | plain | half detent | `settle` 320 | **built** |
+| Share this with the engine? | panel 620 | "Turn on the reading of sales. Turning it on lets the engine read sale lines by item and hour; guest names, card details and staff pay never leave. Leaving it off changes nothing." | *error* "The permission was not changed. The engine still cannot read sales." | **asserted, not sealed** — decided 2026-09-04 — **and added to the owners'-notice list**: switching on what leaves the house is nearer "a device added to the house" than a preference. The notice is a producer, not a ceremony | half detent | `settle` 320 | **built** behind the flag — packet 1 `182d883f` — **and unreachable.** Its only opener is mounted solely by the legacy settings page; the rebuilt page renders the four consents as records with no switches, because nothing in any runtime branches on them. See fork F13 |
+| Carry your vendors to the new location? | panel 620 | "{House} has no vendors. Carrying copies the ticked vendors onto it; skipping writes nothing and this is not asked again." | *error* "The vendors were not carried. {House}'s book is still empty." | plain | half detent | `settle` 320 | **built** — packet 1 `760d3134` |
+
+**Two rows here change what other people see** — Edit location and Add to chain both move the
+branch switcher for everyone — and both must say so in the contract sentence.
+
+**Chips are the only control on three of these rows.** The claim that `.mdv-chip` fails SC 2.5.8
+Target Size at about 21 px **does not hold**: `components/mudavym/sheet.css:441-454` sets 11 px
+font, 3 px vertical padding and a 1 px border and **no `line-height`**, so the chip inherits
+Tailwind 3.4 preflight's unitless `1.5` through `button { line-height: inherit }`, which recomputes
+against the chip's own 11 px to 16.5 px, giving 16.5 + 6 + 2 = **24.5 px — it passes.** What is
+decided instead: **set `line-height` explicitly on `.mdv-chip`**, because a 24 px minimum that
+depends on a framework's preflight is a pass the house does not control; and **measure the Spacing
+exception between adjacent chips**, which nobody has. Owed to **packet 3**.
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Register change | `st-register-turn` `turn` 420, 5 px | keep — a register is a leaf of the book, and this is the same act as `/wines`' leaf and `/documents/:id`'s tab | (a) `settle`; (b) instant — there are 14 registers and the reader needs to know the pane changed | no change |
+| Disclosures | `settle` 320 on `0fr to 1fr` plus the chevron | keep | — | no change |
+| **Toggle thumb** | `ink` 160 over 18 px of travel — `pages/settings/next/SectionKit.tsx:107` (`.st-thumb`) driven by `pages/settings/next/SettingsNext.tsx:83` (`.st-ink, .st-ink * { transition: … transform 160ms … }`) | **keep `ink` 160.** The reported contradiction with `tuck`'s docstring is **withdrawn**, on three measured grounds. (1) `tuck`'s condition is "objects that move **under a finger**" and this thumb **snaps after a discrete click** — no finger tracks it, so the condition is not met and there is no contradiction to fix. (2) `tuck` is the sampled 380/32 spring at about 0.93 % overshoot; on 18 px of travel that is roughly 0.17 px — invisible, bought at 300 ms instead of 160. (3) The selector is `.st-ink *`, so the swap would move **every** border, background, colour and transform transition in every settings control to a 300 ms spring unless a separate `.st-thumb` rule were written first | change it to `tuck` 300 — the recommendation, killed above. What is true is that `motion.ts:109`'s docstring **over-claims**: it names toggle thumbs unconditionally when the condition it states is "under a finger". The docstring is corrected, not the page | **docstring fix owed to packet 3**; the page does not change |
+| Hold to allow the assistant to send | `pour` 620 to `stamp` 360 — the page's only wax | keep. It is a config apply that the server redeems | — | no change |
+| Revoke, remove, disconnect, regenerate | two-click armed, no wax | keep — **revoking must always be the cheap direction**, and this becomes a house rule | (a) wax on revoke — makes undoing a mistake expensive; (b) a plain single click — too cheap for a credential | no change, promoted |
+| A successful save | **nothing animates** | keep. A motion fired on click would be a confirmation the server has not yet given | a tick on click | no change |
+| Contents list | no stagger | keep | — | no change |
+| Reduced motion | 2 CSS mentions | keep, and extend to the arriving-surface cross-fade | — | owed to **packet 3** |
+
 ## 2. Entry
 
 In-degree 4 ([PAGE_MAP](../foundation/PAGE_MAP.md):141): from `/help`, `/privacy`,
@@ -1347,6 +1383,19 @@ that flipping something changed something.
    empty list with no comment; the rebuilt page says both possibilities.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `lib/mudavym/motion.ts:109` — the `tuck` docstring names toggle thumbs unconditionally while the condition it states is "objects that move under a finger". This page's thumb snaps after a discrete click. Correct the docstring, not the page. **packet 3**
+2. `components/mudavym/sheet.css:441-454` — set `line-height` explicitly on `.mdv-chip`. It currently reaches 24.5 px only by inheriting Tailwind preflight's unitless 1.5, and a SC 2.5.8 pass the house does not control is not a pass. **packet 3**
+3. Measure the SC 2.5.8 **Spacing** exception between adjacent `.mdv-chip`s — nobody has. **packet 3**
+4. "Add a location"'s `quiet` uses a refusal label for a standing fact; `alert` means a refusal that happened, `quiet` means a standing fact. *page pass*
+5. **Fork F13 (open):** the consent panel is built behind the flag and unreachable — its only opener is mounted solely by the legacy page, and the rebuilt page renders the four consents as records with no switches because nothing branches on them. Either something reads a consent and the control comes back, or the act is a deletion. *founder*
 
 > **Added 2026-09-04 by the collapse.**
 > - **Retire the four collapsed registers' code** — `ServicesSection.tsx`,

@@ -785,6 +785,34 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| Who takes this? | popover 320 | "Hand this entry to someone. Choosing writes the assignment and tells them; nothing else changes." | *empty* "Nobody else is on the roster for this house" · *error* "The entry was not assigned. It is still nobody's." · *denied* names who may assign | plain — an assignment redeems no seal | anchored; must flip above its anchor near the fold | `ink` 160 | **built** — packet 2 `e0fb3a98` |
+
+**The missing half is self-assignment.** The drawing lists *other people* plus "Nobody — clear it".
+Decided: ***Take it myself* is the first item**, and the entry's row carries who holds it. On a
+two-manager house that is the whole benefit. The popover must be reachable by Tab from the row, and
+it must flip above its anchor — the primitive always places at `r.bottom + 10` and clamps only on
+x (`components/mudavym/Sheet.tsx:232-241`), so a docket entry near the fold renders its popover
+off-screen. That flip is a primitive fix owed to **packet 3**, not a page fix.
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| The working opens | `rc-work-settle` **`settle` 320** | **`turn` 420.** "Show the working" is one named act and three pages already answer it with `turn` 420 — `/reports` (`rp-working`), `/receiving` (`receiving.draft.turn`) and `/orders` (`orders.draft.turn`) | keep `settle` 320 on the grounds that it is the row-expand token — that argument confuses *the row expanding* with *the working being revealed*. On `/orders` those are the same 320 ms because the working IS the row body; here the working is a separate panel | owed to **packet 3** |
+| Leaf change | `turn` 420, 5 px rise | keep | — | no change |
+| The docket re-lays out (ribbon, register, month) | `rc-docket-tuck` `tuck` 300, opacity 0.55 to 1 plus 4 px | keep — **and the three-way rejection written in that file (FLIP, stagger, whole-docket) is the best-argued motion decision in the repo** and stays as written | — | no change |
+| Hold to rule off | `pour` 620 to `stamp` 360 — the page's only wax | keep | — | no change |
+| Act, dismiss, snooze, pin, assign, bulk | plain controls, the die pressed dry | keep | — | no change |
+| Dismissal, goal and day sheets | **appear instantly, no motion** — "a panel that moves while a person is deciding what to silence is asking them to hurry" | keep, **and promote it to a house rule**: a surface that captures a *standing* instruction (never show me this again; judge my house against this number; exclude this day from every average) appears instantly. A surface that captures a *one-off* answer gets `settle` 320 | (a) `Panel` `settle` 320 like every other ask — these are not asks, they are standing instructions; (b) `turn` — slower still, same objection | no change, promoted |
+| An entry leaves | at once, with an undo line for 8 s | keep | (a) collapse `1fr to 0fr` — implies a reversibility the row does not have; (b) travel to Dismissed — the row is not the same row after a re-read | no change |
+| Day marks | painted at height, never grow | keep | — | no change |
+| Raw CSS numbers that happen to equal the token values | `pages/recommendations/next/rec-next.css:364-382` hard-codes them rather than importing | **either import the tokens or disclose the copy the way `/reports` discloses `rp-sheen`.** A hand-copied number that is currently correct is a number nothing will keep correct | leave it — it is the exact shape the motion guard exists to catch | owed to **packet 3** |
+| Reduced motion | CSS media query at `rec-next.css:378-381` | keep | — | no change |
+
 ## 2. Entry
 
 **Not in the sidebar.** Entries are:
@@ -1213,6 +1241,19 @@ that control disabled with the reason, and marks the two other absences — no a
 execution, no first-fired timestamp — in the same way.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/recommendations/next/rec-next.css` — `rc-work-settle` becomes `turn` 420. "Show the working" is one act and three pages already answer it that way. **packet 3**
+2. `pages/recommendations/next/rec-next.css:364-382` — import the tokens or disclose the copy the way `/reports` discloses `rp-sheen`. A hand-copied number that is correct today is a number nothing keeps correct. **packet 3**
+3. The assignee popover gains *Take it myself* as its first item, and the entry's row carries who holds it. *page pass*
+4. `components/mudavym/Sheet.tsx:232-241` — the popover never flips above its anchor, so a docket entry near the fold renders its menu off-screen. **packet 3**, a primitive fix
+5. Seven test files and **zero** `HoldToApprove` references, despite `pages/recommendations/next/Entry.tsx:1200`. *page pass*
 
 1. ~~**Replace all six raw `fetch` calls with `apiClient`.**~~ **Done** in `58113e26`
    (2026-08-26) for the legacy page; the Mudavym build never had them (§10).

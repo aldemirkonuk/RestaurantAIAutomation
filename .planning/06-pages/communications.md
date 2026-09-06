@@ -383,6 +383,36 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| A letter from the house | sheet **wide** 640, **seal** | "Write one letter. The seal sends it from the house's own address; the Mudavym disclaimer is appended and cannot be removed. Leaving keeps a draft on the thread." | *error*, drawn and kept verbatim: "The letter was not sent. Nothing was queued and nothing left the house." · *denied* "You can see this, but only an owner or a manager may write from the house. Ask {name}." | **the seal, before.** A send is on the seal-before side; there is no undo after | full detent, the hold pinned above the keyboard, `repositionInputs` on | `tuck` 300 | **built** — `pages/communications/next/Compose/ComposeSheet.tsx:209` |
+| Templates | sheet **wide** 640 | "The house's letters, and the writing of one. Saving writes the template; using one opens the composer and sends nothing." | *error* "The template was not saved. The library is unchanged." | plain | full detent | `tuck` 300 | **built** — `TemplateSheet.tsx:132`. **`wide` is contested**: `Sheet.tsx:161-174` reserves 640 for a letter, and a template library is not one. See the fork in ADR 0133 |
+| The house's reply, drafted | panel 620, **seal**, **grey** | "The house drafted a reply to {vendor}. The seal sends it as written; editing first makes it yours. Leaving sends nothing and keeps the draft on the thread." | *error*, drawn: "The reply was not sent. The vendor has heard nothing and the draft is still on the thread." · *denied* names who may send from the house | the seal, before. **No step-up** — no money, no config apply | half detent; `Tab` takes the grey draft, `Cmd+Enter` arms the hold | `settle` 320 | **built** — packet 2 `752c1314` |
+
+**The drafted reply is where the census and the founder's sketches disagree most sharply, and the
+sketches win.** The engine's sentences are **grey**, the person's are ink, and taking the draft does
+not turn it black — it records who took it, at what time, from what. The indicator is *authorship*,
+not a pre-accept state, so it persists after the person takes the words. Per-paragraph "Take it /
+Keep mine" at three granularities (a paragraph, the body, the whole letter); the provenance footer
+names the vendor letter it answered and the price row it quoted; then one hold. Rejected: the
+composer sheet pre-filled (the act is *dispose of a proposal*, which is a question) and an
+undo-after window (F10's list is money, sends and ledger rows).
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Ledger row expand | `settle` 320 with a **4 px drop plus fade** (`cm-row-settle`) — the only page in the product whose row "settles open" with a translate rather than a grid-rows expand | **the house row expand: `settle` 320 on `grid-template-rows: 0fr to 1fr`, chevron on the same token, no drop.** A 4 px translate on a row that is also growing is two motions for one act | (a) keep the drop — nine pages already answer this act one way; (b) drop the expand and keep the fade — loses the fact that the row grew | owed to **packet 3** |
+| Composer and library arrive | `Sheet` `tuck` 300 | keep | — | no change |
+| Recipient and template picks | `ink` 160 | keep | — | no change |
+| Send | a plain button; `HoldToApprove` exists at `Compose/ComposeSheet.tsx:459` gated on `ceremony === 'seal'` (the Mudavym subdomain, not provisioned) | **keep the gate, and the plain branch stays a plain button.** The two branches differ in whether a counter-party proof exists, and the sentence carries that; a second stamp on the plain branch would make the wax stand against a smaller stamp rather than against nothing | (a) the dry emboss on the plain branch — the recommendation, refused with the ration rule; (b) wax on both — spends the ceremony on a letter the house cannot prove it sent | no change |
+| Undo window on a sent letter | a **number** re-read from `dispatchAt` once a second; no bar | **keep the number.** The house rule this settles: a machine's countdown drains un-eased (`/orders`' draft, which sends itself); **a grace the reader may spend ticks as a number** (a letter the reader already committed). Two pages, two acts, one rule — the cross-page defect resolves as a distinction, not as a mistake | (a) copy `/orders`' un-eased drain — the recommendation; it treats a grace and a machine's countdown as one act, and the two pages' stated reasons are about different things (a send versus a draft); (b) no window at all — loses the cheapest real save the product can offer | no change, rule now written |
+| Queued chip, draft chip | never pulses | keep | (a) a pulse — reads as "already going"; (b) a colour cycle — the same problem, slower | no change |
+| Refusal | in place, in words | keep | — | no change |
+| Reduced motion | CSS media query at `CommunicationsNext.tsx:331`, disabling `.cm-row` and `[style*="cm-settle"]` | keep, and re-point it at the new grid-rows expand when the row expand changes | — | owed to **packet 3** |
+
 ## 2. Entry
 
 - Sidebar (`components/layout/Sidebar.tsx:120`); command palette
@@ -803,6 +833,16 @@ lands, this route is open.
 4. `GmailTemplateBuilder.tsx:1349,1417,1464` previews mail branded "WineOps AI" (§7).
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/communications/next/CommunicationsNext.tsx:267,322` — `cm-row-settle` drops its 4 px translate and becomes the house `grid-template-rows: 0fr to 1fr` on `settle` 320; the reduced-motion selector at `:331` follows. **packet 3**
+2. The drafted reply's grey must survive the merge — the indicator is authorship, not a pre-accept state. *page pass*
 
 0. **The text sender's transport, and what stands between it and a message**
    (ADR 0121 addendum, 2026-09-05). The provider abstraction now exists —

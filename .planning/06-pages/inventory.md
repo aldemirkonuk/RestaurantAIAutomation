@@ -140,6 +140,60 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> **Read this first.** `apps/web/src/App.tsx:311` routes this page as
+> `<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />`
+> — **the same component on both branches**, with the comment "Flag off, `legacy` renders the page
+> with no wrapper and no class: byte-for-byte what shipped." Every edit inside
+> `pages/inventory/command/**` reaches a flag-off tenant. That is BUILD-PROMPT rule 7 and ADR 0042's
+> byte-for-byte promise, and it is the constraint neither finder named.
+>
+> **Decided, and already executed by packet 1:** the eight overlays are gated **inside the
+> component** on `useMudavymShell()` / `useMudavymDesign('inventory')` — see
+> `pages/inventory/command/SpotCountPanel.tsx:148,299` and `RowExpansion.tsx:72` on
+> `feat/overlays-packet-1`. Nothing renders differently with the flag off.
+
+| Overlay | Shape | Contract sentence | Denied state | Ceremony | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| Carry this bottle | sheet 440, scrim off | "Bring one bottle into the book. Carrying writes an inventory row at the cost you state. Leaving writes nothing." | names who may carry a bottle | plain | full detent | `tuck` 300 | **built** — packet 1 `cc7620c2` |
+| Carry this bottle, an auction lot | sheet 440 | "Bring an auction lot into the book. Carrying writes the row at hammer plus premium, and the ledger keeps both figures. Leaving writes nothing." | as above | plain | full detent | `tuck` 300 | **built** — packet 2 `e0fb3a98` |
+| Place 14 bottles by their zones? | panel 620, **per-row ticks** | "The house proposes a zone for 14 bottles. Placing writes each bottle's zone; the three it could not match stay where they are. Leaving writes nothing." | names who may place stock | plain die, no wax — it is a bulk write | half detent | `settle` 320 | **built** — packet 1 `c1a508f9`. Three granularities (a row, all rows for a zone, all), and "Skipped: 3" must **name the three** |
+| A delivery without an order | sheet **wide** 640 | "Record stock that arrived with no purchase order. Recording writes a receipt and moves the stock. Leaving writes nothing." | names who may record a delivery | plain | full detent | `tuck` 300 | **built** — packet 1 `dcbea64d`. `wide` is contested here too: the justification is "lines read as a table", a content-volume argument the ADR forbids |
+| POS buttons and stock | sheet 440, **scrim off** | "Say what each POS button pours, so a sale can move stock. Each answer writes one mapping. Leaving writes the ones you already answered." | names who may map a POS button | plain | full detent | `tuck` 300 | **built** — packet 1 `2c625614`. **This is the row that made 1a necessary**: its census reason is "the register still visible beneath", and before packet 0 the sheet painted a scrim over exactly that register |
+| Write off 6 bottles? | panel 620, **seal** | "Take {n} bottles off the book. The seal writes a ledger correction that cannot be un-written — only corrected again. Leaving writes nothing." | **the common case here.** "You can see this, but only an owner or a manager may write off stock. Ask {name} to grant it," with the bottle and the count attached | **layered:** a per-role daily limit crossed brings the manager's four digits at the point of action with the manager's name on the line; then the hold; then nothing else. **Not step-up** — a write-off is not money leaving | the one panel that must become a bottom sheet; half detent, hold pinned above the keyboard | `settle` 320 to `stamp` 360 | **built** — packet 1 `89bf53de` |
+| The zones | sheet 440 | "The zones this house keeps. Editing writes the zone list; a zone holding bottles cannot be removed. Leaving writes nothing." | names who may edit zones | plain | full detent | `tuck` 300 | **built** — packet 1 `904baca6` |
+| Spot count | sheet 440, **seal** | "Count one bottle against the book. The seal writes a correction; the book keeps both figures. Leaving writes nothing." | names who may correct the book | the hold; on a phone the swipe and the stamp | half detent, the number field takes focus on open | `tuck` 300 to `stamp` 360 | **built** — packet 1 `f0ae0385` |
+
+**The spot count was specified twice and one specification had to yield.** Finder A drew it as an
+in-place pencil-mark-then-seal inside `SpotCountPanel.tsx`; finder B drew it as a house `Sheet` with
+presence, four states and the ten-minute correction. **B's wins**, and packet 1 built it: one
+surface, one architecture, and the house's primitive rather than a page-local one. A's underlying
+finding survives and is the reason the sheet exists — the legacy panel called `onCommitted()` and
+`onClose()` immediately while the real commit landed later, which is absence reported as health.
+Three things the drawing lacked and the build carries: **presence** ("{name} is counting rack B on
+her phone, started 14:01"), **the four states of the record** (written on this phone, sent,
+recorded, read by a manager) each stating the queue's deadline and who carries the risk, and **the
+ten-minute correction** offered after the seal with the countdown printed.
+
+## 1c. Motions decided (2026-09-06)
+
+> §1b above records this page's motion as "deliberately none". That is true on this branch and
+> stops being true when `feat/overlays-packet-1` merges: four house tokens (`tuck`, `settle`, `pour`,
+> `stamp`) arrive with its overlays, gated inside the component, and reduced motion renders none of
+> them. That note is packet 1's to update; what follows decides the rest.
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Reduced motion | **none anywhere in `pages/inventory/command/**`** — no hook, no media query (full-directory grep, zero hits) | **add the guard, ungated.** It is the one change on this page that is safe with the flag off, because it only ever *removes* motion: a flag-off tenant who has asked their OS for less motion cannot see a difference they did not ask for | wait for the token migration — leaves the only page with live unconditional animation and no way to suppress it | owed to **packet 3** |
+| The overlays' own motion | none before packet 1 | `tuck` 300 for the sheets, `settle` 320 for the panels, `pour` 620 to `stamp` 360 for the two seals — all inherited from the primitive, all gated inside the component, and **reduced motion renders none of them** | re-declaring tokens on the page — `/team`'s inherit-only pattern is the model | **built** — packet 1 |
+| Hover and focus micro-states | Tailwind `transition-colors` / `-shadow` / `-transform`, 150 ms `cubic-bezier(0.4,0,0.2,1)` — `pages/inventory/command/InventoryCommandPage.tsx:1221,1346`, `pages/inventory/command/CellarMapView.tsx:137`, `pages/inventory/command/bits.tsx:202` | **dropped from this pass.** Not "no", but "not now, and not as a one-line swap": byte-identical-off means it cannot be an edit to the element's utility class, it must be a `.mudavym`-scoped rule that beats a Tailwind utility's specificity, added to a page with **no page CSS file** | (a) swap the four Tailwind utilities for the `ink` token, described as a one-line change — the cost claim is false; (b) leave it forever — the page the house runs on all day is then the only rebuilt route whose micro-states are on Material's curve under a house header running the house curve at 160 ms | owed to a page pass, **after** the reduced-motion guard |
+| Row expand (the dropdown) | Tailwind `transition-transform` on the chevron only; the panel has no transition | **dropped from this pass**, same reason. It is cosmetic, it carries all of the byte-identical risk and none of the accessibility benefit | `settle` 320 on `0fr to 1fr` — the recommendation; it also contradicts the same finder's own decision to limit this page to the token swap "and only that" | owed to a page pass |
+| A stock event arrives while a row is being read | `lib/websocket.tsx:489-491` blanket-invalidates `inventory`, `dashboard` **and** `wines`, so one bottle moving anywhere refetches the row under the reader | the `sys-08` rail: hold the deltas, `new: N` counting on `tally` 840, **apply on an explicit act — click, key, scroll, blur — never on idle.** The applied row flashes once on `ink` 160 and nothing translates, which is what `/wines`' `cl-live-ink` already does correctly | (a) apply immediately — the live defect; (b) apply immediately with a highlight — worse than no highlight on a row you were mid-sentence in; (c) apply after 4 s of no movement — a person reading a line is not moving | owed to **packet 5** |
+| Loading | `animate-spin` at `SpotCountPanel.tsx:263,297` | **the house never draws a spinner**, and these two are the migration that rule owes. A label change plus a sentence replaces them | keep them and write the rule anyway — a new rule that two live components violate on the day it lands | owed to a page pass |
+| Case split across zones (`sig-24`) | not built | build it when the page is next opened: block parts 8 px on `settle` 320, counts moving both directions on `tally` | (a) two numbers change — witnessed beats announced; (b) a modal — a split is not a question | owed to a page pass |
+| `ReceiptDepth.tsx` | states its own divergence in a comment (`:6-10`): "deliberately NOT the `.mudavym` tokens: the founder kept this card idiom" | keep the divergence and keep the disclosure — a **disclosed** exception is the shape the house wants | silently migrating it | no change |
+
 ## 2. Entry
 
 In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):143): from `/` and `/get-started`.
@@ -317,6 +371,19 @@ keep it true — count what drifted, verify what arrived.
    feature shipped, which reads as a broken column rather than a pending job.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/inventory/command/**` — **add the reduced-motion guard, ungated.** Zero hooks and zero media queries in the whole directory today; it is the one change on this page that is safe with the flag off, because it only removes motion. **packet 3**
+2. `pages/inventory/command/SpotCountPanel.tsx:263,297` — the two `animate-spin` loaders go; the house never draws a spinner. *page pass*
+3. `lib/websocket.tsx:489-491` — the `sys-08` rail (shared with `/` and `/notifications`). **packet 5**
+4. The `ink` token swap and the `settle` row expand are **deliberately deferred**: `App.tsx:311` renders the same component on both branches, so both need `.mudavym`-scoped CSS that beats a Tailwind utility on a page with no page CSS file, and they carry all of the byte-identical risk with none of the accessibility benefit. *page pass*
+5. `sig-24`'s case split (block parts 8 px on `settle` 320, counts both ways on `tally`). *page pass*
 
 1. **Fix the insights rail's auth** — move `ContextualInsights` off raw `fetch` onto
    `apiClient` (which stamps the bearer token, `services/api/client.ts:62`). One-line

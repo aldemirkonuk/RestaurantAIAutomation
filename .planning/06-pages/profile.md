@@ -1016,6 +1016,46 @@ Live on `:4000`, `DELETE /payment-methods/<uuid>` and `PATCH /payment-methods/<u
 with no seal header both answer 403 carrying the whole refusal sentence; neither wrote
 anything, because an absent seal is refused before the instrument is read.
 
+### Overlays decided (2026-09-06)
+
+> **This page has no row in the overlay census at all** — measured: the census's 23 route keys do
+> not include `/profile`, and one of the two finders built its whole per-row analysis on that file
+> without noticing. The page nonetheless carries real ceremonies: `HoldToApprove` at
+> `pages/profile/next/ProfileNext.tsx:412` and twice inside `pages/profile/next/PaymentRegister.tsx`,
+> plus the shared `StripeCardPanel` mounted **inline** rather than in a portal. The absence is a
+> census coverage gap, not a page without overlays; it is filed for the census owner in
+> [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+
+| Surface | Shape today | Contract sentence | Four states, denied included | Ceremony | Status |
+|---|---|---|---|---|---|
+| The card-on-file add flow | **in-page expansion, not a portal** — `PaymentRegister.tsx:511-512` | "Put a card on file. Saving stores it with the payment provider; the house never sees the number. Leaving stores nothing." | *error*, present and explicit (`StripeCardPanel.tsx:453,470`) · *denied* owed | the hold, where the gateway redeems a seal | keep the shape — it is not a modal and does not pretend to be; **denied state owed to packet 4** |
+| Delete account, card on file, charge-first, remove | inline `HoldToApprove` | each states what the seal binds, using packet 0's `boundSummary` read-back | *denied* owed | the hold; wax exactly where the gateway redeems, plus the one act that is irreversible with no server to ask | **built**; `boundSummary` wiring owed to a page pass |
+| **How this house knows it is you** — step-up enrolment | owed: a **sheet** on this page | "The devices and passkeys this house will accept for you. Adding one is told to every owner. Leaving adds none." | all four, denied included | plain to enrol; adding a device is on the security-change list | owed to **packet 4** — the two-hour step-up assumes a passcode or a passkey exists and **nothing enrols one** |
+| A census row for this page | owed | — | — | — | owed to the census owner |
+
+**A remembered four-digit manager passcode is a cognitive function test** under WCAG 2.2 SC **3.3.8
+Accessible Authentication (Minimum), Level AA** — the criterion's own definition names memorisation
+and transcription explicitly, and none of the sketch 102 research files names it. Decided: **the
+manager's own passkey on their own phone is a peer path, and the passcode field accepts paste from
+a password manager.** The house is building the WebAuthn ceremony anyway, so the marginal cost is a
+second button; the four digits stay the fast path and nothing about the pass-side ceremony changes
+for the common case. This page is where enrolment lives.
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Opening line | `settle` **320**, the token — `pages/profile/next/ProfileNext.tsx:220-227` | keep. This page and `/notifications` are the two that already do it right | — | no change |
+| A connection row expands | `pf-expand` `settle` 320 on `0fr to 1fr` | keep for the row | — | no change |
+| **"Show the working" on the session row** | the same `pf-expand` `settle` 320 | **`turn` 420.** The row expanding and the working being revealed are two acts; three pages already answer the second with `turn` | keep them the same token for simplicity — then this page and `/recommendations` are the two exceptions to a rule three pages state | owed to **packet 3** |
+| The four holds (delete account, card on file, charge-first, remove) | `pour` 620 to `stamp` 360, wax only where the gateway **redeems** a seal | keep — **and this page's own sentence becomes the house's ration rule**: the seal appears exactly where the server redeems one, plus the one act that is irreversible here and has no server to ask | (a) ration by taste, which is what most pages do; (b) wax on Reconcile — it changes nothing we chose; (c) the *counter-party* rule (`/reports`) or the *consequence* rule (`/team`) as the house rule — both are true statements about their own pages and neither survives being applied to the other's | no change, promoted |
+| The Stripe iframe fields | Stripe's own transitions, tuned to match `pf-ink` | keep, **and record it as the one place the house matches rather than drives** | re-skin them — the house does not own that frame | no change, recorded |
+| Check the server (up to 8 s) | a **label change only** | keep — **and this becomes the house's anti-spinner rule**: the house never draws a spinner; it changes the label and writes a sentence. The two live `animate-spin` sites on `/inventory` and one on the door are the migration this rule owes, and they are named rather than left to be discovered | (a) a spinner — would make waiting look like progress; (b) a skeleton — then "in flight" and "failed" look alike again; (c) write the rule without naming the three live violations — a new rule that live code breaks on the day it lands | no change, promoted |
+| Revoke an MCP server | the chip changes, the row stays | keep — a grant that once existed must not look like one that never did | the row leaves | no change |
+| Plan and figures | no tally | keep | — | no change |
+| Reduced motion | 2 mentions, with `HoldToApprove`'s own swap documented at `profile/next/MOTIONS.md:83` | keep, and extend to the arriving-surface cross-fade | — | owed to **packet 3** |
+| Test coverage | `ProfileNext.test.tsx` has **zero** `HoldToApprove` references, and `PaymentRegister.tsx` — two ceremonies, "Charge this first" and "Removed" — has no test file at all | a test per ceremony. A ceremony with no test is a ceremony whose absence CI reports as health | leave it | owed to a page pass (see §9) |
+
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).
 
@@ -1424,6 +1464,20 @@ credentials, which restaurants you belong to, and the exit.
    — the line now says "Mudavym account" (§7). The rebuild says the same.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. A **step-up enrolment sheet** on this page — "How this house knows it is you": devices, passkey enrolment, TOTP and the manager's four digits. The two-hour step-up assumes a credential exists and nothing enrols one. **packet 4**
+2. The manager's four digits gain a second, non-recall path — the manager's own passkey as a peer, and the field accepts paste from a password manager. WCAG 2.2 SC 3.3.8, Level AA. **packet 4**
+3. `pages/profile/next/ProfileNext.tsx` — the session row's "Show the working" moves from `settle` 320 to `turn` 420. **packet 3**
+4. The four holds carry packet 0's `boundSummary` read-back — the census draws failure on four of sixty rows and success on none. *page pass*
+5. `pages/profile/next/PaymentRegister.tsx` carries two ceremonies ("Charge this first", "Removed") and has **no test file at all**; `ProfileNext.test.tsx` has zero `HoldToApprove` references. *page pass*
+6. This page has **no row in the overlay census** despite live ceremonies. *census owner*
 
 > **Added 2026-09-05 by the crew text (ADR 0121).**
 > 0. **Show the person who would be texting them** (§9 G-TXT-P1), and split

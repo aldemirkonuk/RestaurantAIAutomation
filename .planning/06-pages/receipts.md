@@ -136,6 +136,30 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> The census draws **no overlay** on `/receipts` and the verdict holds: editable-and-confirmable in
+> one step wants no dialog, and `SwipeToConfirm` is inline. Nothing here is re-shaped. What this
+> page owes is a **gesture**, not a surface — see §1c.
+
+| Owed surface | Shape | Contract sentence | Why | Status |
+|---|---|---|---|---|
+| Permission-denied on the confirm | the shared `Denied` block, in place beside the swipe | "You can see this, but only an owner or a manager may confirm a receipt. Ask {name} to grant it." | 0 of 120 census rows draw permission-denied; a hidden confirm control on a queue a staff member is working is the same fault under a different name | primitive **built** (packet 0); wiring owed to **packet 4** |
+| The claim on a queued item | the row itself carries "Take it" / who holds it, and *Unassigned* as a filter | — | two managers confirming the same receipt from two screens is the same failure as two staff counting one rack: invisibility, not concurrency. It is cheaper than presence (no live channel) and it works on a queue rather than a record | owed to a page pass |
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| **Swipe up to confirm** | `TRAVEL = 96` px, commit at `p >= 1`, **no resistance curve, and no seal on completion** — `pages/receipts/next/SwipeToConfirm.tsx:19`; a grep for `Seal` or `stamp` across `pages/receipts/next/*.tsx` returns one hit and it is a comment about localStorage cache stamps | **Travel stays 96 px.** Add: the resistance curve `p(1 - 0.22p)`, a ghost seal fading up during the drag, the `stamp` 360 landing, and the `tuck` 300 retreat with "Released at N % — nothing confirmed." **Plus a single-pointer, non-dragging alternative** — a plain Confirm that arms and confirms, the `HoldToApprove` keyboard shape moved to pointer | (a) rebuild at 150 px travel with commit at 68 %, as specified — **68 % of 150 px is 102 px of absolute thumb travel, more than today's full 96 px commit**: an easier-sounding threshold that is a longer gesture, on a one-handed phone at the pass, and the opposite of "ceremony is seconds"; (b) replace it with `HoldToApprove` — the founder asked for the swipe by name; (c) ship as-is — it is the founder's named gesture missing the founder's named payoff, and it fails SC **2.5.7 Dragging Movements (Level AA)** today with a keyboard path and **no pointer alternative** | owed to **packet 5**; the 2.5.7 half is not optional |
+| The document panel settles | `settle` 320 | keep | — | no change |
+| Queue row hover | `ink` 160 | keep | — | no change |
+| The tie-out changes after an edit | **a text swap, never animated** | keep, **and the rule is promoted house-wide: arithmetic that corrects itself does not tween.** A figure that moves smoothly implies a continuity a correction does not have | (a) `tally` down to the new figure; (b) strike-through then swap — worth it only when the *old* value must stay readable | no change, promoted |
+| A verified document leaves the queue | `setSelectedId(null)` plus `setLane('verified')` — the document you were reading blinks out | **the sentence is the fix: "Filed under Verified."** The 460 ms FLIP with a drawn trail is refused | (a) build `sig-07`'s travel — its own reduced-motion path is "the card is removed and the lane count changes", which is exactly the behaviour it calls the defect; if that is acceptable for a reduced-motion reader it is acceptable for everyone, and the travel is decoration; (b) collapse in place — loses where it went, which the sentence supplies | owed to a page pass |
+| A credit settles | not built | build `sig-10`: Outstanding, Recovered and written-off are equal on every frame, three `tally` runs off **one clock**, a single rule at 380 ms | (a) confetti — money leaving a kitchen is not a win; (b) one figure updates — the other two then silently disagree | owed to a page pass |
+| Dispute opens its reason strip | not built | `turn` 420 on `0fr to 1fr` — the "show the working" token | `settle` — the strip is a document's reasoning, not a row's body | owed to a page pass |
+| Reduced motion | CSS media query at `ReceiptsNext.tsx:1172` plus the hook at `SwipeToConfirm.tsx:30` | keep | — | no change |
+
 ## 2. Entry
 
 - Sidebar "Receipts & Credits" (`components/layout/Sidebar.tsx:132`).
@@ -333,6 +357,19 @@ pass — the opposite of the fabricated-zero habit elsewhere in this cluster.
 chase never leaves the building (§10). "Claim → requested" reads as "we asked them".
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/receipts/next/SwipeToConfirm.tsx:19` — `TRAVEL` **stays 96**; add the resistance curve `p(1 - 0.22p)`, the ghost seal during the drag, the `stamp` 360 landing and the `tuck` 300 retreat with "Released at N % — nothing confirmed." **packet 5**
+2. `pages/receipts/next/SwipeToConfirm.tsx` — a **single-pointer, non-dragging alternative**. The control fails WCAG 2.2 SC 2.5.7 (Level AA) in production today: a keyboard path exists, a pointer alternative does not. **packet 5**, not optional
+3. Verification files the document with the sentence "Filed under Verified." rather than a 460 ms FLIP. *page pass*
+4. `sig-10` — Outstanding, Recovered and written-off equal on every frame, three `tally` runs off one clock. *page pass*
+5. `SwipeToConfirm`'s `pour`/`tuck` ceremony is untested. *page pass*
 
 **2026-09-06 — the invoice's money, and who may change it.** The founder, batch 63,
 asked what an 810 with no `CUR` should do and answered verbatim:

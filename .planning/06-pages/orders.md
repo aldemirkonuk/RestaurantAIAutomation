@@ -203,6 +203,47 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> The table above is generated from `census.py`. This one is the **decision** — finder B's
+> per-row spec judged against the adversary's verdicts and against what packets 0-2 built.
+> Contract, shapes and the authority rule are
+> [ADR 0112](../decisions/0112-one-modal-policy-three-shapes-one-primitive.md); the cross-page
+> rules are [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| What was agreed | panel 620, scrim on | "Write down what was agreed, and say what unit the price is in. Saving writes the agreement to the vendor's row. Leaving writes nothing." | *empty* n/a · *loading* "Reading the vendor's row…" · *error* "The agreement was not written. The vendor's row is unchanged." · *denied* "You can see this, but only an owner or a manager may write an agreement. Ask {name}." | plain primary; `Cmd+Enter` fires it | half detent | `settle` 320 | **built** — `pages/orders/next/AgreementSheet.tsx:356` |
+| Make this order repeat | panel 620 | "Set this order to repeat. Saving creates a recurrence that will *draft* future orders — it never sends one. Leaving writes nothing." | *error* "The recurrence was not set. This order still happens once." · *denied* as above | plain primary | half detent | `settle` 320 | **built** — `RecurrenceSheet.tsx:222` |
+| Vendor answers | sheet **wide** 640, **seal** | "Read what the vendor said, and answer. Holding to reject writes the rejection and tells the vendor; reading writes nothing." | *error* "The rejection was not sent. The order is still open and the vendor has not been told." · *denied* names who may answer a vendor | **the hold comes off; a required reason stays.** A rejection is a send that redeems no seal and destroys nothing, so it takes a plain control with a mandatory reason (fork 6). The pause/resume switch is the head's `action` slot only if it is read as a mode; otherwise it belongs on the thread it governs | full detent; `up`/`down` steps answers and stepping does not re-animate | `tuck` 300, 28 px | **built**, spec corrected — `ResponsesSheet.tsx:353` |
+| A new order | sheet 440 | "Write an order line by line. Saving keeps a draft; nothing reaches the vendor until it is approved and sealed. Leaving discards the draft." | *empty* the register's own · *loading* named read · *error* "The draft was not saved. Nothing was written and nothing was sent." · *denied* names who may open the order book | **none** — a draft is not a commitment. The policy check (the vendor's cutoff and the 10 %-over-agreement rule, ADR 0116) runs **while the line is typed**, naming the rule at the line | full detent, the search is the peek | `tuck` 300 | **built** — packet 2 `11a788c3` |
+| Add a vendor first | panel 620 | "An order needs someone to send it to, and the book has none. Choosing takes you to the vendor book; leaving keeps your lines." | *error* "The vendor book could not be read — this is not proof that you have no vendors." | plain buttons | half detent | `settle` 320 | **built** — packet 2 `11a788c3` |
+
+Two things carry across every row here. **SC 3.3.7 Redundant Entry** bites on "A new order": the
+guard panel sends the reader to the vendor book and back, so the lines typed must survive the trip
+— which is what packet 0's `dirty`/`onTear`/`Stub` is for, not a nicety. And the census files
+"Vendor answers" as `seal: false` while its body draws a hold — **the flag and the drawing must be
+made to agree, because a guard reads the flag**; under this page's decision the hold goes and the
+flag stays false (census correction, listed in ADR 0133 for the census owner).
+
+## 1c. Motions decided (2026-09-06)
+
+> `Today` is measured on `feat/mudavym-design-p4`. This page carries the most complete motion map
+> in the repo; only the deltas are listed as changes.
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Row expand + chevron | `settle` 320 on `grid-template-rows: 0fr to 1fr` and on the chevron, one token — `pages/orders/next/LedgerRow.tsx:277,289-290` | keep. **This is the house's canonical row expand** and eight other pages are held to it | (a) `turn` 420 — the body is the row's own working, not a new document; (b) height in px — `0fr to 1fr` is the only interruptible form | no change |
+| Station counts change | `tally` 840, never on first paint, never from an em dash | keep | (a) `ink` recolour only — loses that a count moved; (b) odometer — implies a meter | no change |
+| Approve one | `pour` 620 to `stamp` 360, seal minted at hold start | keep, and add the consequence-scaled press on the same terms as the dashboard (no depth variation when the threshold is unknown, and the label says so) | (a) a swipe — a vertical swipe on a row is the same gesture as scrolling the list; (b) click plus a dialog — the whole reason the die exists | owed to **packet 5** |
+| Approve fourteen | `orders.bulk.emboss` — one dry impression, `stamp` at about one third amplitude, scale 0.94 to 1 | keep, **and name it what it is: the plural rendering of the wax, not a lesser ceremony.** It appears only where the wax would have appeared, many times over, so it cannot dilute the ration | (a) fourteen seals — the rationing argument; (b) a counter ticking to 14 — a progress bar over a completed act; (c) promoting it to a general second ceremony for every non-wax act — then the wax stands against a smaller stamp instead of against nothing | no change, **but BUILD-PROMPT rule 3 ("Bulk gets a plain button") is false today and must be amended to name this** |
+| Reject | the same die, the same `stamp`, with a sentence saying no seal is redeemed | **the wax comes off and the hold comes off.** A plain control with a **required** reason. Under the mechanical ration rule the server redeems nothing for a rejection, and it destroys nothing | (a) keep the wax — fails the ration rule on its own terms; (b) the dry emboss — a second stamp for an act whose honesty already lives in the required reason | owed to **packet 3** |
+| Draft reveal | `turn` 420 | keep | (a) `settle` — the letter is a document, not a row's working; (b) a sheet — the thread belongs under the draft | no change |
+| Auto-send countdown | `linear`, duration equals the milliseconds remaining (`orders.draft.drain`) | keep. The house rule this settles: **a machine's countdown drains un-eased; a grace the reader may spend ticks as a number.** This window is a machine's — the draft sends itself | (a) an eased drain — lies about how much time is left; (b) a number only — loses peripheral legibility; (c) copy `/communications`' ticking number — that window is a grace on an act the reader already committed, which is a different act | no change, rule now written |
+| Composer opens | `Panel` `settle` 320 | keep | — | no change |
+| Answers arrive, stepping between them | `Sheet` `tuck` 300; the dot widens 6 to 16 px on `settle`, colour on `ink`; **no horizontal slide** | keep, and the refusal is promoted to a house rule: stepping siblings inside an open surface does not re-animate the surface | (a) a carousel slide — implies pages of one letter; (b) a cross-fade — implies the same document in a new state | no change |
+| Offline queue | none on this page | none — it belongs to `/receiving` | — | no change |
+
 ## 2. Entry
 
 In-degree 4 ([PAGE_MAP](../foundation/PAGE_MAP.md):140): from `/`, `/inventory`,
@@ -649,6 +690,18 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
    restaurant look the same.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/orders/next/ResponsesSheet.tsx:353` and `pages/orders/next/LedgerRow.tsx` — reject loses the wax **and** the hold; the reason becomes a required field. **packet 3**
+2. `components/mudavym/HoldToApprove.tsx` — the consequence-scaled press on approve, on the dashboard's terms. **packet 5**
+3. `.planning/sketches/102-modal-census/BUILD-PROMPT.md` rule 3 says "Bulk gets a plain button" and the shipped bulk bar is a dry emboss — amend the rule to name it as the plural rendering of the wax. *census owner*
+4. `census.py` — "Vendor answers" draws a `hold` and carries `seal: false`; the flag and the drawing must agree, because a guard reads the flag. *census owner*
 
 1. **Delete the `add-from-order` call** (`Orders.tsx:686`) — or, if a separate booking
    step is genuinely wanted, build the endpoint. Leaving a permanently-404ing write with

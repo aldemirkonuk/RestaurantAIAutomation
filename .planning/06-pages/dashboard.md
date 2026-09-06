@@ -248,6 +248,46 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> The table above is generated from `census.py`. This one is the **decision** — finder B's
+> per-row spec judged against the adversary's verdicts and against what packets 0-2 built after
+> the finders read the tree. House contract, shapes and the authority rule are
+> [ADR 0112](../decisions/0112-one-modal-policy-three-shapes-one-primitive.md); the cross-page
+> rules are [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| A one-tap action of your own | sheet 440, scrim off (packet 0's new default) | "Write one act you want on your rail. Saving puts the tile there; it does not run it, and any write it later makes still asks for the seal. Leaving writes nothing." | *empty* n/a (a new object) · *loading* the dry run reads "Working out what this would do today…" · *error* "The action was not put on the rail. Your rail is unchanged." · *denied* "You can see this, but only an owner or a manager may put an action on the rail. Ask {name} to grant it." (`Denied`, packet 0) | **none.** Saving a definition is not a commitment; the seal sits on the act's own write, later | half detent, the trigger chips at peek, `repositionInputs` on | `tuck` 300, 28 px | **built** — packet 2 `0dce57ba` |
+
+Three additions finder B made to this row and the adversary kept: (a) **the dry run** — the sheet
+states what the action *would do today*, computed now, because an action with no dry run is a
+promise; (b) **the authorship mark** — `one-tap-actions.service.ts` already distinguishes a
+house-raised action from a person's, and the rail mixes both; (c) **the permission state at write
+time**, not at run time. Rejected: a **panel** (what is written is a six-field object that will be
+edited again) and **the palette with one argument** (a threshold and a schedule are two, which the
+census's own cap forbids).
+
+## 1c. Motions decided (2026-09-06)
+
+> One motion answers one act, and every page answers with the same motion
+> ([ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md)). `Today` is measured on
+> `feat/mudavym-design-p4`. Owner packets: **packet 3** is the motion pass, **packet 4** the states
+> owed, **packet 5** the gestures.
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Opening line, once on mount | `{ easing: settle.easing, ms: 420 }` — `pages/dashboard/next/DashboardNext.tsx:68` | `settle` **320**, opacity 0 to 1 + 6 px rise. Delete the literal | (a) keep 420 and mint an eighth token — a masthead does not earn a token two pages already answer at 320 (`NotificationsNext.tsx:190-197`, `ProfileNext.tsx:220-227`); (b) no entrance — the serif line is the house speaking once | owed to **packet 3** |
+| Month grid first paint | `cal-arrive`, house curve at **420** with a 16 ms delay decaying x0.94 — `pages/dashboard/next/SalesCalendar.tsx:75` | `settle` **320** per cell; the 16 ms x 0.94 delay decay is unchanged. The stagger's identity is its decay, not its per-cell duration | (a) rename it "`turn` 420" — `turn`'s curve is `cubic-bezier(0.32,0.72,0,1)` and this runs the house curve, so the rename would silently change the shape (adversary, against finder A); (b) uniform 34 ms interval — 35 cells x 34 ms is 1.19 s of arrival | owed to **packet 3** |
+| KPI figures arrive | `tally` 840 off `springs.tally.samples`; an em dash never counts | keep exactly. `tally` is `motion.ts:129`, spring 120/26, overdamped, settles at 852 ms | (a) odometer roll — implies a meter that has been running; (b) instant — a figure that arrives is the house's stated tally trigger | no change |
+| Day cell opens the day detail | `settle` 320 on `grid-template-rows: 0fr to 1fr`, chevron on the same token | keep — this is the house's canonical row expand, and nine pages agree | (a) a sheet — the month must stay visible; (b) `turn` — the day was already on screen | no change |
+| Scrub the day | un-eased live `pointermove`, no interpolation between samples | keep, **and add the ghost read-out**: a mono label tracks the needle showing the sample's own day, appearing at 0 ms and gone on pointer-up. No easing anywhere in the path | (a) ease between samples — fabricates data; (b) snap with `tuck` — implies the value moved | owed to a page pass |
+| Approve, from "Waiting on you" | `HoldToApprove` `pour` 620 to `stamp` 360 | keep, and add **consequence-scaled press**: depth `1.5 + 2.5 x weight` px over 70 ms, weight taken from the house's own approval threshold (ADR 0116). **When the threshold is not known client-side, there is no depth variation and the label says the amount is not weighed** | (a) uniform depth — the same POST for a EUR 212 and a EUR 1,860 order; (b) a full-depth or a shallow fallback when the threshold is unknown — an invented figure either way, at the door, on a phone with no signal | owed to **packet 5** |
+| The one-tap "die" arm (`note_close_control`, ADR 0127) | `pour` to `stamp` landing **over no seal at all** | **a plain button.** The wax appears where a server redeems a seal, plus an irreversible act with no server to ask; a written note redeems nothing and destroys nothing, so it takes neither the wax nor a second stamp | (a) keep the die — the file already records the cost, and the two arms are visually identical at rest; (b) the dry emboss — promoting it to a second ceremony makes the wax stand against a smaller stamp rather than against nothing, and rationing collapses the other way | owed to **packet 3** |
+| Loading | `skel-sheen` / `dn-sheen`, `cubic-bezier(.45,0,.55,1)` **1.9 s infinite** — `pages/dashboard/next/dashboard-next.css:44` | **two cycles, then still, then the wait in words.** 3.8 s is under SC 2.2.2's five-second trigger, so the criterion is met with no control at all, and the still skeleton plus a sentence is the house's own anti-spinner idiom | (a) keep the infinite loop — SC **2.2.2 Pause, Stop, Hide is Level A**, it applies to content that starts automatically, runs past five seconds and sits in parallel with interactive content, and its preload exception needs "interaction cannot occur", which is false here (the header, the rail and the other tiles are live); (b) rely on `prefers-reduced-motion` — that is a 2.3.3 **AAA** technique, and 2.2.2 wants a mechanism, not an OS preference | owed to **packet 3** |
+| A live figure changes under a reader | `lib/websocket.tsx:489-491` blanket-invalidates `inventory`, `dashboard` and `wines` | the `sys-08` rail: hold the deltas behind a fixed rail reading `new: N`, `N` counting on `tally` 840, and **apply on an explicit act only — click, key, scroll or blur, never on idle.** The applied row flashes once on `ink` 160 and nothing translates | (a) apply immediately — the measured defect; (b) apply after 4 s of no movement, as the demo specifies — a person reading a line is definitionally not moving, so the heuristic fires into the fault it was written to prevent | owed to **packet 5** |
+| Error, empty, offline | no page-specific motion | leave still | a shake, a toast — refusals are sentences | no change |
+
 ## 2. Entry
 
 Most-linked page after `/login` — in-degree 5 ([PAGE_MAP](../foundation/PAGE_MAP.md):139):
@@ -577,6 +617,21 @@ the two or three actions worth doing before service, each of which actually happ
    identically.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/dashboard/next/DashboardNext.tsx:68` — delete `{ easing: settle.easing, ms: 420 }`, use the `settle` token (320). **packet 3**
+2. `pages/dashboard/next/SalesCalendar.tsx:75` — same literal on the month stagger; `settle` (320), the 16 ms x 0.94 delay decay unchanged. **packet 3**
+3. `pages/dashboard/next/dashboard-next.css:44` — bound `dn-sheen` at two cycles (3.8 s), then still, then the wait in words. SC 2.2.2 Level A. **packet 3**
+4. `pages/dashboard/next/OneTapPanel.tsx` — the un-sealed `die` arm of `note_close_control` (ADR 0127) loses the `stamp` it lands over no seal; a plain button. **packet 3**
+5. `components/mudavym/HoldToApprove.tsx` — optional `weight?: number`, depth `1.5 + 2.5 x weight` px over 70 ms from ADR 0116's threshold, and **no depth variation with the label saying so when the threshold is unknown**. **packet 5**
+6. `lib/websocket.tsx:489-491` — the `sys-08` rail: hold the deltas, `new: N` on `tally` 840, apply on an explicit act, one `ink` 160 flash, nothing translates. **packet 5**
+7. The day tape gains the ghost read-out (mono label on the needle, 0 ms in, gone on pointer-up). *page pass*
 
 1. **Point One-Tap at the server module it already has** — swap `handleApprove`/
    `handleReject` onto `executeOneTapAction` (`services/api/dashboard.ts:183`) and the

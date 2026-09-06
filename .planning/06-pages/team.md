@@ -333,6 +333,54 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> Twelve live rows, the most of any page. Contract sentences below; the four states, the ceremony
+> and the phone form follow the house contract in
+> [ADR 0112](../decisions/0112-one-modal-policy-three-shapes-one-primitive.md) unless a row says
+> otherwise.
+
+| Overlay | Shape | Contract sentence | Denied state | Ceremony | Motion | Status |
+|---|---|---|---|---|---|---|
+| People | sheet 440 | "The roster. Opening a person shows their record; nothing here writes." | *error* "The roster could not be read. This is not an empty house." · *denied* n/a — reading | none | `tuck` 300 | **built** |
+| On the roster | sheet 440 | "One person's record. Keeping writes it; removing takes them off the roster and off future weeks. Leaving writes nothing." | "You can see this, but only an owner or a manager may change the roster. Ask {name}." | plain; removal gets an undo toast (F10) | `tuck` 300 | **built** |
+| Edit this shift | sheet 440 | "One shift. Keeping writes it to the week; removing takes it off. Leaving writes nothing." | as above | plain plus undo toast | `tuck` 300 | **built** |
+| Publish this week | panel 620, **seal** | "Publish {dates} to the whole crew. The seal publishes it and everyone is told; leaving publishes nothing." | names who may publish | the seal — it destroys work the crew already read | `settle` 320 | **built** |
+| Copy last week | panel 620, **seal** | "Copy last week into {dates}. The seal **replaces** everything already on that week. Leaving replaces nothing." | names who may replace a week | the seal, by the ration rule's second clause | `settle` 320 | **built** |
+| A note to the crew | sheet 440 | "One note to the crew, in the app and by push. Sending delivers it; leaving sends nothing." | names who may write to the crew | plain — a send that redeems nothing | `tuck` 300 | **built** |
+| Time off | sheet 440 | "Requests waiting on you. Approving writes the leave onto the week; denying tells the person and needs a reason. Leaving decides nothing." | names who may decide leave | plain, and **the denial's reason is required** | `tuck` 300 | **built**, reason enforcement owed to a page pass |
+| Export the week | popover 320 | "Take the week off the screen. Nothing is written." | n/a | plain | `ink` 160 | **built** |
+| Shift actions | popover 320 | "This shift's own acts. Each one writes as soon as you choose it; a removal can be undone for a few seconds." | names who may change a shift | **"Offer cover" moves out of the popover.** The popover offers, a panel sends — exactly the bell's shape | `ink` 160 | **built**, correction owed to a page pass |
+| What changed here | sheet 440 | "Everything that has happened to this record, and who did it. Nothing here writes." | n/a | — | `tuck` 300 | **built**; must also read the `security_events` chain (step-ups, grant checks, break-glass uses touching this record) |
+| Invite a team member | popover **modal** 320 | "Mint one single-use code that lets someone join this house as {role}. Generating creates the code and **tells every owner**; leaving mints nothing." | names who may invite | plain, plus a `quiet` line: "Every owner is told when a code is minted, and again when it is used" | `ink` 160 | **built**, the owners'-notice line owed to **packet 4** |
+| Certifications on file | sheet 440 | "One person's certificates. Putting one on file writes two dates; the schedule reads the second one. Leaving writes nothing." | names who may file a certificate | plain | `tuck` 300 | **built** — packet 2 `e0fb3a98` |
+
+**Row "Shift actions" is a send inside a popover, and the ratified rule forbids it.** Its body item
+is "Offer cover" and its own refusal reads "The cover offer did not send. Nobody was asked." A cover
+offer reaches a person's phone; the founder's ratified rule of 2026-09-04 is that the seal never
+appears inside an anchored popover and a one-click approval opens the panel first. Decided: **the
+popover offers, the panel sends.** One extra surface on one row, and the ratified rule stays
+literally true. Neither finder caught this; it is the adversary's find.
+
+**The grant has no surface at all.** An authority grant is the authority the other seals rest on,
+and nothing in the 120 rows creates, reads or revokes one. Owed: a **sheet** on this page, opened
+from the roster row — "What {name} may do" — listing scope, limit, expiry and who granted it, with
+granting *and* revoking both sealed and both told to every owner. Owed to **packet 4**; it is the
+head of the build order (ledger, then grants, then step-up, then seal, then break-glass).
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Control, chip and row hover | `ink` 160 (`pages/team/next/team-next.css`) | keep | — | no change |
+| Sheet, Panel, Popover | the primitive's tokens, not re-declared (`team/next/MOTIONS.md:11`) | keep — **this is the correct pattern and the house's model**: a page that declares no motion of its own is a page that cannot drift | — | no change |
+| Row expand | **refused** — "a table whose rows change height under the cursor is a table you lose your place in" | keep the refusal, **and record it as one of the house's two approved exceptions to the canonical row expand** (the other is `/wines`' wine register). Nine pages do the opposite, so a silence here reads to the next builder as an oversight | (a) adopt `settle` `0fr to 1fr` — would reflow the week grid; (b) a sheet for every row — already the case | recorded here; the house rule is in ADR 0133 |
+| Re-publish, copy-week | `pour` 620 to `stamp` 360 — the two acts that DELETE before they write | keep. Under the mechanical ration rule these redeem no seal but are irreversible with no server to ask, which is the rule's second clause | (a) wax on first publish too — a first publish destroys nothing; (b) a plain confirm on all three — loses the destructive-versus-constructive distinction | no change |
+| Drag a person into a shift (`sig-27`, the shift tide) | not built | build it **only with a single-pointer, non-dragging alternative.** WCAG 2.2 SC **2.5.7 Dragging Movements (Level AA)** requires that all functionality using a drag be achievable by a single pointer without dragging; a keyboard path is not one | (a) build the drag alone — a new Level AA failure, deliberately added; (b) FLIP the chip only — says a person moved, not that coverage changed; (c) a count badge — the numbers are already there and nobody reads them | owed to a page pass |
+| A call-out opens a gap (`acc-09`) | not built | same condition — a non-dragging pointer path, or it does not ship | (a) a row recolour — a hole is spatial; (b) a toast — missable | owed to a page pass |
+| "Sent" / "assigned" | words change in place, **no toast** | keep | a toast — missable, and the house does not use them for state | no change |
+| Reduced motion | 2 CSS mentions | keep | — | no change |
+
 ## 2. Entry
 
 - Sidebar "Team" (`components/layout/Sidebar.tsx:114`); command palette `g t`
@@ -659,6 +707,20 @@ The boundary to defend: TIER-MAP:104-105 — Floor Checker scenarios (S05/S07/S1
 sales-ingest based, which is the permitted kind. Keep them apart.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/team/next/WeekGrid.tsx:424` — "Offer cover" is a send inside an anchored popover, which the ratified rule of 2026-09-04 forbids. The popover offers; a panel sends. *page pass*
+2. A **grant sheet** on this page, from the roster row — "What {name} may do": scope, limit, expiry, who granted it, granting and revoking both sealed and both told to every owner. Nothing in the census creates, reads or revokes a grant. **packet 4**, and it is the head of the build order
+3. `components/team/InviteTeamDialog.tsx:199` — an invite grants authority and says nothing about it; add the contract sentence and the `quiet` owners'-notice line. **packet 4**
+4. `pages/team/next/TeamRecord.tsx:273` — the trail sheet must read the `security_events` chain (step-ups, grant checks, break-glass uses touching this record). **packet 4**
+5. `pages/team/next/TeamOverlays.tsx:640` — the time-off denial's reason becomes required, not optional metadata. *page pass*
+6. `sig-27` (the shift tide) and `acc-09` (the call-out gap) ship only with a single-pointer non-dragging alternative — WCAG 2.2 SC 2.5.7, Level AA. *page pass*
 
 0. **The crew text's transport** — ADR 0121. The states, the consents and the
    receipts exist; the send does not. **Updated 2026-09-05 (ADR 0121 addendum):**

@@ -823,6 +823,45 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| Approve from the bell | panel 620, **seal** | "Approve this order without leaving the page you were on. The seal approves it and tells the vendor's thread. Leaving approves nothing." | *loading* "Reading order {n}…" · *error* "The order was not approved. It is still waiting, and the vendor has not been told." · *denied* "You can see this, but only an owner or a manager may approve an order. Ask {name} to grant it." | the hold. **No step-up** — an order approval is not money moving; that is the separate release. The manager's four digits only if the approver is staff acting under a grant | half detent, hold pinned | `settle` 320 to `stamp` 360 | **built** — packet 2 `752c1314` |
+
+**This is the ratified rule made flesh** (founder, 2026-09-04): the bell never carries the seal; a
+one-click approval opens the panel first. Three things the census drawing lacked and the decision
+requires. **(a) Provenance** — this is the only surface in the system reached with the ledger left
+behind entirely, so it is the only place the provenance can appear: "Summed from 2 lines on order
+118, read 14:02. The agreed price is {vendor}'s, written 2 Sept by {name}." **(b) The authority
+line** — who is approving, under whose authority, and whether one approval suffices: "{name},
+owner — one approval suffices (the authority rule)". Without it the authority rule is invisible at
+the one moment it applies. **(c) What rejection is** — *Reject, with a reason* as a peer of the
+hold, saying which of the two it is; a denial changes status and claws nothing back. Rejected:
+approving on the tap in the bell (the census's own rejected behaviour, and against the ratified
+rule) and navigating to `/orders` (the reader was interrupted mid-task and the whole value is not
+leaving).
+
+**And the claim.** Every waiting item on this page carries *Take it* / who holds it, with
+*Unassigned* as a filter and the assignment history landing on the same trail as the act. Two
+managers approving one order from two bells is the same failure as two staff counting one rack.
+Owed to a page pass.
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Opening line | `settle` **320**, the token — `pages/notifications/next/NotificationsNext.tsx:190-197` | keep. **This page and `/profile` are the two that already do it right**, and the other three are being corrected to them | — | no change |
+| A line expands, and the chevron | `settle` 320, one token for both — `NotificationsNext.tsx:147,156` | keep | — | no change |
+| Rail counts, "Showing N of…" | `tally` 840 | keep | — | no change |
+| Rail cell bars | **never animate** — they are counts of rows on screen, an estimate | keep. **The sharpest tally rule in the corpus and now a house rule: a figure that is *read* tallies; a figure that is *estimated* does not.** `/providers`' "counts of record" is the same rule from the other side | animate them for consistency — consistency of motion over honesty of claim | no change, promoted |
+| A line moves band | **redrawn, never travels** | keep. The reasoning — an optimistic update and a re-read may not be the same row — is correct and reusable, and it is why `/inventory`'s live rail must not translate either | (a) FLIP between bands — a convincing animation of a false claim is worse than no animation; (b) fade out and in — the same claim, softer | no change |
+| Rule off, reopen, archive | plain controls, **no wax** since 2026-09-03 | keep. Filing is not commitment, and under the mechanical ration rule none of the three redeems a seal or is irreversible | (a) restore the seal; (b) a dry emboss on delete — the dry emboss is not a general second ceremony | no change |
+| Day strip | the house `DayStrip`, `ink` only | keep | — | no change |
+| `turn` | **unused, on purpose** — the page says so | keep the refusal and keep it stated. A page that records what it refuses is a page the next builder cannot drift | — | no change |
+| The 10 s poll brings new lines | nothing re-enters, no stagger | keep the stillness, **and add the `sys-08` rail**: hold the deltas behind a rail reading `new: N`, apply on an explicit act, the applied line flashing once on `ink` 160 and nothing translating. This page polls at 10 s and its reader is mid-line at 1 am | (a) a new-item highlight — motion asserting recency about a row whose recency is already printed on it; (b) apply after 4 s of idle — a person reading a line is not moving | owed to **packet 5** |
+| Reduced motion | hook at `NotificationsNext.tsx:97` plus 4 CSS mentions | keep | — | no change |
+
 ## 2. Entry
 
 - Sidebar with unread badge (`Sidebar.tsx:144,410`).
@@ -1244,6 +1283,17 @@ modal now writes to the gateway; an empty inbox after a failed fetch is impossib
 next to it and in the footer.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. The 10 s poll gains the `sys-08` rail — hold the deltas, apply on an explicit act, never on idle. This page's reader is mid-line at 1 am. **packet 5**
+2. The bell panel gains its provenance line, its authority line and *Reject, with a reason* as a peer of the hold. Packet 2 built the panel; these three are not in it. *page pass*
+3. Every waiting item carries *Take it* / who holds it, with *Unassigned* as a filter and the assignment history on the same trail as the act. *page pass*
 
 1. ~~**Branch on `error`**~~ (`Notifications.tsx:157`) — **done on the rebuilt surface
    2026-09-02** (`notifications/next/useNotificationsNextData.ts`). Still open on the

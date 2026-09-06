@@ -663,6 +663,37 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+| Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
+|---|---|---|---|---|---|---|---|
+| The entry | sheet 440, scrim off | "One entry in the day-book. Keeping it writes the entry; removing it takes it off the book. Leaving writes nothing." | ***the model refusal in the whole census***, drawn and kept verbatim: "Not saved — The gateway refused the dates: 'Ends' is before 'Starts'. The entry is unchanged." · *denied* "You can see this, but only an owner or a manager may change the day-book. Ask {name}." | delete keeps the seal — see §1c | half detent | `tuck` 300, 28 px | **built** — `pages/calendar/next/EventSheet.tsx:230` |
+| A note from this meeting? | panel 620 | "The meeting has ended. Saving files a note under this vendor; Later asks again tomorrow; Skip writes nothing and does not ask again." | *error* "The note was not saved. Nothing was filed." | plain. **Its three answers are right and rare** — most products offer two and silently treat dismissal as "never" | half detent | `settle` 320 | **built** — packet 2 `e0fb3a98` |
+| Ask the day-book | panel 620 | "Ask the day-book in words. It proposes; nothing moves until you hold. Leaving does nothing." | *error* "The day-book could not be read. Nothing was proposed and nothing moved." | the hold, on the proposal | half detent | **instant** — it opens from the keyboard and is one of the four always-instant surfaces | target |
+
+**Row 70's `alert` wording is the pattern the other 56 live rows copy** — the thing, the verb that
+did not happen, and "It is unchanged", then the server's own sentence. Packet 0's `Refused`
+component is that pattern made reusable. **"Ask the day-book" must carry the count** the drawing
+lacks: "It would change one entry and draft one letter." A proposal that does not state its blast
+radius is asking for a signature on a blank page.
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Opening line | `{ easing: settle.easing, ms: 420 }` — `pages/calendar/next/CalendarNext.tsx:212` | `settle` **320**. Delete the literal | mint an eighth token — see `/reports` | owed to **packet 3** |
+| Magnification change (Month, Week, Day, Agenda) | `cn-turn` `turn` 420, 8 px | keep — the canonical use of `turn` | (a) a horizontal slide — implies adjacent pages; (b) a cross-fade — implies the same view with new data | no change |
+| The day ledger opens | `settle` 320 on `0fr to 1fr` | keep | — | no change |
+| The event sheet arrives | the primitive's `tuck` 300, 28 px | keep | — | no change |
+| Drag or resize a block | **un-eased live `pointermove`**; `transition: none` while the finger is down | keep | (a) ease between 15-minute snaps — would draw a time the operator never chose; (b) a magnetic snap with `tuck` during the drag — the same objection | no change |
+| Drop | `cn-drop-tuck` `tuck` 300 into the committed top and height | keep — the founder's own reading: it follows the finger and tucks into place with the weight of a real object | — | no change |
+| **Delete an entry** | `pour` 620 to `stamp` 360 | **keep the wax.** Under the mechanical ration rule's second clause — an act that is irreversible in this house and has no server to ask — a deleted day-book entry qualifies today, because nothing puts it back | (a) demote it to a dry emboss on the grounds that deleting commits nothing to another party — that is the *counter-party* rule, which is one of the three rules being retired, and applying the mechanical rule while demoting this act is inconsistent with keeping `/team`'s two destructive acts sealed by the same clause; (b) a plain button — too cheap for something with no undo | no change; **the founder's fork is whether a day-book entry instead joins F10's undo-after list, in which case it drops to a plain control** |
+| Month change | instant, no slide, no stagger | keep | copy the dashboard's `cal-arrive` stagger — the dashboard earns it because each cell carries an arriving figure; a schedule does not | no change |
+| Weather and covers | drawn, never animated | keep — "a forecast does not arrive" | — | no change |
+| Reminder run counts | never tally | keep — counts of record | — | no change |
+| Import style | `TimeGrid.tsx:21` imports the token from `'../../../lib/mudavym/motion'` while the rest of the page uses the `@/lib/mudavym` barrel | make it one import path. Not a behavioural bug; it is the kind of inconsistency the motion guard should be able to see | leave it | owed to **packet 3** |
+| Reduced motion | 4 CSS mentions, with the intent documented in `calendar/next/MOTIONS.md:45` | keep, and extend to the arriving-surface cross-fade | — | owed to **packet 3** |
+
 ## 2. Entry
 
 - Sidebar "Calendar" (`components/layout/Sidebar.tsx:108`).
@@ -1167,6 +1198,18 @@ doing the work of a missing *model*. Only the second kind needed the em dash. Th
 kind should not survive another pass.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/calendar/next/CalendarNext.tsx:212` — delete `{ easing: settle.easing, ms: 420 }`, use the `settle` token (320). **packet 3**
+2. `pages/calendar/next/TimeGrid.tsx:21` imports the token by relative path while the rest of the page uses the `@/lib/mudavym` barrel; one import path. **packet 3**
+3. "Ask the day-book" must state its blast radius — "It would change one entry and draft one letter" — before the hold. *target*
+4. **Founder fork:** the entry's delete keeps the wax under the ration rule's second clause. If a day-book entry instead joins F10's undo-after list it becomes reversible and drops to a plain control. See ADR 0133.
 
 1. ~~**Move reminders server-side.**~~ — **done 2026-09-03**
    ([ADR 0109](../decisions/0109-a-reminder-is-the-houses-job-not-the-browsers.md)); see §1b

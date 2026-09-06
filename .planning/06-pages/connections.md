@@ -514,6 +514,40 @@ and **1 of 65** profile cases fails; the second new profile case pins copy that 
 existed and is a guard against the port dropping it, which is stated rather than counted as
 a proof.
 
+### Overlays decided (2026-09-06)
+
+> **This page has no row in the overlay census** — measured: the census's 23 route keys do not
+> include `/connections`, and the finder that built its per-row analysis from that file did not
+> notice. The page carries real ceremonies all the same: `HoldToApprove` at
+> `pages/connections/next/AttachmentRow.tsx:181` and `pages/connections/next/HouseServerControls.tsx:332`,
+> and the shared `StripeCardPanel` mounted **inline** (`ConnectionsNext.tsx:1021`). The absence is a
+> census coverage gap; it is filed for the census owner in
+> [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+>
+> (A second correction, for the record: a research pass reported that no `06-pages` note existed
+> for this route. It does — this file — and it was measured against a different branch.)
+
+| Surface | Shape today | Contract sentence | Four states, denied included | Ceremony | Status |
+|---|---|---|---|---|---|
+| Charge-first, remove, re-consent, revoke a server, card on file | inline `HoldToApprove`, no portal | each names what the seal binds, via packet 0's `boundSummary` | *error* present; ***denied* owed** — a credential revoke a staff member cannot perform must say who can, never hide the control | the hold; **revoking stays the cheap direction** | **built**; `boundSummary` and `Denied` wiring owed to **packet 4** |
+| The security ledger this page's acts write to | owed: a **page**, not an overlay — the reader stays on a list and expands a row to see the chain link | — | all four | — | owed to **packet 4**. One tamper-evident `security_events` chain exists in the decision and renders nowhere |
+| The owners' notice | owed: a bell entry that **cannot be dismissed unread**, plus a row on `/notifications` | — | all four | — | owed to **packet 4** |
+| The break-glass review | owed: a **panel** opened from the owner's notice — "Was this justified?" — two answers and a note, plain buttons | "Record whether this use of break-glass was justified. Recording writes a judgement told to every owner; it moves nothing." | all four | plain — recording a judgement commits nothing that moves | owed to **packet 4**. Without it the 48-hour rule has no place to happen and will be reported as satisfied by its own absence |
+| A census row for this page | owed | — | — | — | owed to the census owner |
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Control hover | `cx-btn-hover` `ink` 160 — `pages/connections/next/connections-next.css:291` | keep the motion; **fix the source.** The file hard-codes `ink`'s numbers as a comment-annotated raw value rather than importing the token — a number that is currently correct and that nothing will keep correct | leave it — it is exactly what the motion guard exists to catch, and the guard cannot tell a correct copy from a stale one | owed to **packet 3** |
+| The five holds | `pour` 620 to `tuck` 300 to `stamp` 360, inherited from `HoldToApprove` | keep. **620 ms is the hold for every act in the house**, and that is now written down rather than left as a coincidence of `HoldToApprove.tsx:72` reading `pour.ms` | a longer hold on the heavier acts — the weight belongs in *identity* (the step-up, the biometric), not in gesture length; two hold lengths split the muscle memory | no change, promoted |
+| Register anchors | the browser's `scrollIntoView`, `smooth` unless reduced | keep — inventing a token for it would imply the page had opinions about a scroll it does not drive | a token | no change |
+| Ledger counts | **no tally** — "a number that may be unknown must not perform" | keep | tally | no change |
+| Seven registers resolving | **no per-register settle** — it would be seven staggered arrivals, and animating them in gives a failure the same entrance as a success | keep — **this is a house-level rule** and it is the strongest argument in the corpus for the reduced-motion policy that follows from it | stagger them | no change, promoted |
+| The refused write line | no animation | keep | — | no change |
+| Reduced motion | `connections-next.css:437` sets `transition: none`, plus 4 more mentions | keep, and extend to the arriving-surface cross-fade | — | owed to **packet 3** |
+| Test coverage | three test files, **zero** `HoldToApprove` references, despite two real revoke and seal ceremonies | a test per ceremony — one of them is a credential revoke | leave it | owed to a page pass (see §9) |
+
 ## 2. Entry
 
 Sidebar, after Settings, in the bottom group
@@ -820,6 +854,21 @@ a reader who looks only at "0 may call a tool" while the model-context register
 is unread would see the dash only in that cell.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/connections/next/connections-next.css:291` — import the `ink` token instead of hard-coding its numbers as an annotated raw value. **packet 3**
+2. The **security ledger** renders nowhere: one tamper-evident `security_events` chain exists in the decision and has no surface. A page (not an overlay), with the chain link behind an expanded row. **packet 4**
+3. The **owners' notice** — a bell entry that cannot be dismissed unread, plus a row on `/notifications`. **packet 4**
+4. The **break-glass review** panel — "Was this justified?", two answers and a note, plain buttons, the outcome told to all owners. Without it the 48-hour rule has no place to happen and will be reported as satisfied by its own absence. **packet 4**
+5. `Denied` wired to the five revoke and seal ceremonies (`AttachmentRow.tsx:181`, `HouseServerControls.tsx:332`). **packet 4**
+6. Three test files, **zero** `HoldToApprove` references, one of the untested acts being a credential revoke. *page pass*
+7. This page has **no row in the overlay census** despite live ceremonies. *census owner*
 
 **Before everything below — the distributor panel's three open ends** (ADR 0126,
 batch 56; the panel itself shipped 2026-09-05). ~~**(a)** There is no control on

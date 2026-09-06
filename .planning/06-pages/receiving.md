@@ -165,6 +165,35 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Overlays decided (2026-09-06)
+
+> The census draws **no overlay** on this route, and that verdict is confirmed: the door's sealed
+> step is a panel-shaped section inside the page, not a portal (`pages/receiving/next/DoorNext.tsx:697`
+> declares a page-local `Panel` — one of two components in the codebase that share the primitive's
+> name without being it). Nothing here is re-shaped.
+
+Two surfaces are nonetheless **owed** to this route by
+[ADR 0112](../decisions/0112-one-modal-policy-three-shapes-one-primitive.md)'s authority rule and
+by [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md):
+
+| Owed surface | Shape | Contract sentence | Why it is owed | Status |
+|---|---|---|---|---|
+| Permission-denied, when a staff member reaches a sealed act on this page | the shared `Denied` block inside the surface the act lives in — **never a hidden control** | "You can see this, but only an owner or a manager may send a credit request. Ask {name} to grant it." | **0 of 120 census rows draw permission-denied** (counted). Under the authority rule every sealed act on this page is one a staff member cannot do, so on the day the rule ships this route has a state it has never drawn | primitive **built** (packet 0, `Denied.tsx`); the page's own wiring is owed to **packet 4** |
+| One wording for what did not happen | the shared `Refused` block | the thing, the verb that did not happen, "It is unchanged", then the server's own sentence, then the one thing to do | the census carries three vocabularies for "why not" across the corpus | primitive **built** (packet 0, `Refused`); wiring owed to **packet 4** |
+
+## 1c. Motions decided (2026-09-06)
+
+| Act | Today (`file:line`) | Decided | Rejected, and why it loses | Status |
+|---|---|---|---|---|
+| Queue row expand + chevron | `settle` 320 on `grid-template-rows: 0fr to 1fr`, chevron on the same token — `pages/receiving/next/RcManagerQueue.tsx:339,350-351` | keep — identical to `/orders`, which is the point | (a) `turn` 420; (b) height in px — as on `/orders` | no change |
+| Lane select | `ink` 160 plus a 2 px underline | keep | (a) a travelling indicator (`nav-03`, two nested curves on one 320 ms) — worth adopting only if the three lanes ever become tabs proper; (b) a fill — too heavy for three lanes | no change |
+| At-risk and recovered figures | `tally` 840 via `RcTally`, never on first paint | keep | — | no change |
+| Send a credit request | `pour` 620 to `stamp` 360 on the real `open` to `requested` transition | keep — the server redeems the seal, so the mechanical ration rule puts the wax here | — | no change |
+| The working | `turn` 420 | keep — one of the three pages that already answer "show the working" correctly | (a) `settle` 320 — the answer `/recommendations` and `/profile` give, and the one being corrected | no change |
+| A dropped door receipt | `turn` 420 travel to `stamp` at reduced amplitude (scale 0.97 to 1) into a pin that **stays** | keep. **This is the best motion in the repo** and it is the model for the rule it embodies: a motion may assert an absence, and an absence asserted must not be dismissible | (a) a toast — dismissible, therefore missable, and the defect it answers is that `doorOutbox.ts` reports `{sent, failed}` and the watcher discards it; (b) a badge decrement only — that is the defect | no change |
+| Staff hand-off | navigates immediately, no transition | keep — "a porter next to a double-parked truck is not an audience" | any entrance | no change |
+| Empty, error | words, no motion | keep | a shake — refusals are sentences | no change |
+
 ## 2. Entry
 
 **No inbound in-app link.** Not in the sidebar (`components/layout/Sidebar.tsx:58-184`),
@@ -301,6 +330,15 @@ the denominator (`:251-258,298-304`). Keep that discipline when touching this pa
 delivery day while the request behind it is rejected.
 
 ## 13. Roadmap
+
+### Motions and overlays — the rows this pass owes (2026-09-06)
+
+From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
+states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
+The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+these are the rows.
+
+1. `pages/receiving/next/RcCreditDrafts.tsx:178` — wire packet 0's `Denied` and `Refused` to the credit-request seal. **packet 4**
 
 **2026-09-06 — a held invoice and this door.** The founder's currency decision (batch
 63), verbatim:
