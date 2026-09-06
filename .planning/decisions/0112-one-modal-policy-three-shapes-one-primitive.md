@@ -359,6 +359,23 @@ section, it does not reopen the rulings.
 (TOTP now with the house's own passkey seal on web, mobile when a real WebAuthn library ships —
 or wait); the break-glass review (a stated window, who reviews when all owners were only told,
 and whether the outcome is told); grants (any owner may revoke, and grantor ≠ approver enforced
-structurally); one security ledger for step-up, break-glass and grants or three tables. Answers
-are recorded below when given.
+structurally); one security ledger for step-up, break-glass and grants or three tables.
+
+**Founder answers (2026-09-05, night):**
+
+- **Everything at once, web and mobile.** The two-hour step-up and the house's passkey seal ship
+  together on web and in the mobile app; the seal waits for a real WebAuthn library on mobile
+  (react-native-passkeys or equivalent) rather than shipping on web first. Nothing ships on a
+  device-local prompt.
+- **Break-glass is reviewed within 48 hours by any other owner, and the outcome is told to all
+  owners.** The reviewer marks it justified or a concern; a single-owner house records its own
+  note within the window. The window is this ADR's number.
+- **Any owner may revoke any grant.** Every revocation is told to the owners as a security change.
+- **One security ledger.** Step-up verifications, break-glass uses and grant checks write to one
+  tamper-evident `security_events` chain that the trail and the owners' notices read from; a
+  guard asserts every ceremony writes its row.
+
+With these, F12 is closed. The build order this implies: the ledger first (everything else
+writes to it), then the authority rule and grants, then step-up, then the seal ceremony on both
+platforms together, then break-glass.
 
