@@ -68,7 +68,7 @@ graph TD
 ```
 
 **This team never traverses to a decision.** The founder holds OD-07
-(`OD-07, OPEN-DECISIONS.md:32`). What this team holds is the obligation to make the drift visible —
+(`OD-07, OPEN-DECISIONS.md:33`). What this team holds is the obligation to make the drift visible —
 which is why node D produces an escalation rather than a nudge.
 
 ## Decision rights

@@ -64,7 +64,7 @@ escalates_to: "[[decision-office-charter]]"   # OD-19 / OD-20 / INTEL-F4 are fou
 
 | Skill (`.claude/skills/…`) | Tier | Trigger | Doneability | Past instance | Status |
 |---|---|---|---|---|---|
-| `security-checklist-12c` | T2 | Weekly, and before any board refresh | All fifteen items re-read; each carries a reading or is named `unmeasured`; a metric whose value moved since last run must name what re-measured it | The unguarded-endpoint denominator has been stated four ways — 86 ([[README]]/OD-19 as written) → 103 (`intelligence.md:211-216`, summing module headers) → 94 (row-by-row) → 40 (`OPEN-DECISIONS.md:33`, 2026-08-26). Nobody was reconciling; each number was published as fact | NEW |
+| `security-checklist-12c` | T2 | Weekly, and before any board refresh | All fifteen items re-read; each carries a reading or is named `unmeasured`; a metric whose value moved since last run must name what re-measured it | The unguarded-endpoint denominator has been stated four ways — 86 ([[README]]/OD-19 as written) → 103 (`intelligence.md:211-216`, summing module headers) → 94 (row-by-row) → 40 (`OPEN-DECISIONS.md:34`, 2026-08-26). Nobody was reconciling; each number was published as fact | NEW |
 
 Consumed, owned elsewhere: `endpoint-guard-census` and `route-classification-pass`
 ([[access-control-tenant-isolation-agent-stack]]); `webhook-signature-audit` and
@@ -121,7 +121,7 @@ candidates only. Gap rows, stated rather than assumed away:
   `check_schema_parity.sh` and four more, wired into `ci.yml`. Proven here, never pointed
   at guards.
 - **PARTIAL — the numbers themselves, and they have drifted since the charter.** The
-  charter's 94 baseline was recounted to 40 in OD-19 (`OPEN-DECISIONS.md:33`,
+  charter's 94 baseline was recounted to 40 in OD-19 (`OPEN-DECISIONS.md:34`,
   2026-08-26), and `foundation/README.md` §2.3 records five holes closed in PRs #31/#32
   (analytics spend, the `simpos` confused deputy, the `pos-hub` approval gate, Toast's
   unset-secret path, a JWT secret fallback). **Reconciling that against the boards is

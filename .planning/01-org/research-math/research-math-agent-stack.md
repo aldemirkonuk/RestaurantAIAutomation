@@ -65,7 +65,7 @@ alone), and it may not add a velocity metric to the board, ever
 
 | Skill (`.claude/skills/…`) | Tier | Trigger | Doneability | Past instance | Status |
 |---|---|---|---|---|---|
-| `applied-ai-seam-audit` | T2 | Monthly, and any new charter or OD row naming an owner for work an RM team owns | Same job **and** same metric in two units → a merge proposal filed at the named unit (never a duplicate); else the word "clean" | OD-29 (`decisions/OPEN-DECISIONS.md:37`) — RM-1 and `aio-model-routing` share a mandate and the NF-A cost metric, found by hand cross-reading; and the TECH-F3 / OD-21 id collision (`OPEN-DECISIONS.md:147`) reconciled after the fact | NEW |
+| `applied-ai-seam-audit` | T2 | Monthly, and any new charter or OD row naming an owner for work an RM team owns | Same job **and** same metric in two units → a merge proposal filed at the named unit (never a duplicate); else the word "clean" | OD-29 (`decisions/OPEN-DECISIONS.md:38`) — RM-1 and `aio-model-routing` share a mandate and the NF-A cost metric, found by hand cross-reading; and the TECH-F3 / OD-21 id collision (`OPEN-DECISIONS.md:148`) reconciled after the fact | NEW |
 | `metric-set-publish` | T2 | Weekly board refresh | Four rows, each measured or "not measured"; verified printed beside `base_agent.py:144`; zero roll-ups | This department's own baselines were re-derived by hand twice — the 2026-08-24 generation, then the 2026-08-25 corrections carried in-line at `research-math-charter.md:159,189-196` | NEW |
 
 `skill-create` and `department-agenda-sync` are listed as candidates in

@@ -23,7 +23,7 @@
   [[0108-a-register-is-the-houses-own-books-first]], [[0016-ledgers-must-express-unknown]],
   [[0030-pos-mapping-inventory-integrity]], [[0051-rebuilt-pages-show-live-data-only]],
   [[0072-schema-parity-sees-what-it-claims]], [[0076-a-repoint-names-the-referencing-column]],
-  OD-113 in `OPEN-DECISIONS.md:68`,
+  OD-113 in `OPEN-DECISIONS.md:69`,
   `supabase/migrations/20260903171000_the_house_item_is_the_ledgers_key.sql`,
   `scripts/check_house_item_invariants.py`,
   `.planning/06-pages/wines.md` §13, `.planning/06-pages/inventory.md` §13

@@ -119,7 +119,7 @@ Gap rows:
 - **EXISTS — the blocker list.** Nine `authModel: "partner_agreement"` entries, verified by
   grep at the nine lines cited in the card; the Tier-2 sequencing at
   `pos-provider.registry.ts:10`; the 5-provider Türkiye set at `:268-322`.
-- **EXISTS — OD-07 as a live, documented fork** (`OPEN-DECISIONS.md:32`), unblocked by a
+- **EXISTS — OD-07 as a live, documented fork** (`OPEN-DECISIONS.md:33`), unblocked by a
   founder call after guest-MVP scope exists (FUTURES §7.5). **This stack does not touch it.**
 - **NEW — everything else, plainly.** The agent, all three skills, the `memory/` layer, every
   nf_a emission, and the function itself: zero outreach, zero agreements, zero recorded

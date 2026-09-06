@@ -65,7 +65,7 @@ reassigns a cited ID: OD-23 was silently rewritten under **51** citing documents
 clerk's remedy is a new ID plus a recorded supersession, never an in-place rewrite.
 (2) It never fills a fork's outcome — the two live routings below are what that costs:
 
-- **OD-25** (`OPEN-DECISIONS.md:35`) — which department owns the weekly skill-health job.
+- **OD-25** (`OPEN-DECISIONS.md:36`) — which department owns the weekly skill-health job.
   Two foundation documents name two owners; the 2026-08-24 call fixed the *principle* and
   not the department (`:131`). The clerk records both citations, the founder picks. **Open.**
 - **TECH-F3** ([[FORK-REGISTRY]]`:64,200,649`) — the evaluation seam, **26 citations across

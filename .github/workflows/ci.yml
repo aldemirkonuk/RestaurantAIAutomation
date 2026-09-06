@@ -600,7 +600,7 @@ jobs:
           echo "::notice::If the fork was MERGED into another, the fix belongs in the register, never in the citing document: write '**Absorbs OD-43 (merged 2026-08-27)**' in the absorbing row. Dated audits are snapshots — do not edit them to make a guard pass, and do not exempt them."
           echo "::notice::RESOLVES TWO WAYS means an id both owns a row and is declared absorbed into another. Delete whichever half is stale; a reference to it currently resolves two ways."
           echo "::notice::UNGRADED means a task type records only call_level_v0 — 'the HTTP request returned 200'. Grade it, or add it to EXEMPT with the reason. On 2026-08-27 six of the gateway's seven task types were in that state."
-          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:55)."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:56)."
           echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
