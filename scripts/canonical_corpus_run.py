@@ -133,14 +133,10 @@ def count_rows(base: str, key: str, table: str) -> int:
     return int(total)
 
 
-def list_bucket_objects(base: str, key: str, bucket: str) -> int | None:
-    """Objects in a storage bucket, or None when the listing itself failed.
-
-    None is returned rather than 0 on purpose: 'the bucket is empty' and 'we
-    could not list the bucket' must not print the same number.
-    """
+def _list_prefix(base: str, key: str, bucket: str, prefix: str) -> list[dict] | None:
+    """One page of a storage listing under `prefix`, or None when it failed."""
     url = f"{base}/storage/v1/object/list/{bucket}"
-    payload = json.dumps({"prefix": "", "limit": 1000, "offset": 0}).encode()
+    payload = json.dumps({"prefix": prefix, "limit": 1000, "offset": 0}).encode()
     req = urllib.request.Request(url, data=payload, method="POST")
     req.add_header("apikey", key)
     req.add_header("Authorization", f"Bearer {key}")
@@ -148,9 +144,58 @@ def list_bucket_objects(base: str, key: str, bucket: str) -> int | None:
     try:
         with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
             items = json.loads(resp.read().decode("utf-8") or "[]")
-            return len(items) if isinstance(items, list) else None
+            return items if isinstance(items, list) else None
     except Exception:
         return None
+
+
+def list_bucket_objects(
+    base: str, key: str, bucket: str, max_depth: int = 6
+) -> int | None:
+    """Objects in a storage bucket, or None when the listing itself failed.
+
+    None is returned rather than 0 on purpose: 'the bucket is empty' and 'we
+    could not list the bucket' must not print the same number.
+
+    RECURSIVE, AND THAT IS THE WHOLE POINT. Supabase's list API is a DIRECTORY
+    listing: at the root it returns one FOLDER PLACEHOLDER per top-level prefix,
+    not the files underneath. This function used to count that top-level page,
+    so a bucket holding three PDFs under one restaurant folder reported
+    "1 objects" -- and the 2026-09-04 corpus report published that number, which
+    is what produced finding 8's premise that "either two uploads never
+    persisted their bytes or the signed-URL step fails". Measured 2026-09-05
+    with the service role: 5 documents, 5 objects, all five signable and
+    fetchable; the top-level page still returns exactly 1 entry. A counter that
+    reports a folder count as an object count is this repository's
+    absence-as-health fault inside the measuring instrument itself.
+
+    A folder is told from a file by `metadata`: real objects carry a metadata
+    object (size, mimetype); placeholders carry `null`.
+    """
+    seen = 0
+    stack: list[tuple[str, int]] = [("", 0)]
+    failed = False
+    while stack:
+        prefix, depth = stack.pop()
+        items = _list_prefix(base, key, bucket, prefix)
+        if items is None:
+            failed = True
+            continue
+        for item in items:
+            name = item.get("name")
+            if not name:
+                continue
+            full = f"{prefix}{name}"
+            if item.get("metadata") is None:
+                # A folder placeholder. Descend, unless we have gone too deep --
+                # depth is bounded so a pathological bucket cannot hang the run.
+                if depth < max_depth:
+                    stack.append((f"{full}/", depth + 1))
+            else:
+                seen += 1
+    # A listing that failed anywhere returns None rather than a partial count:
+    # a number that silently omits a subtree is worse than no number.
+    return None if failed else seen
 
 
 def fetch_all(base: str, key: str, table: str, columns: str, page: int = 1000) -> list[dict]:
@@ -171,18 +216,51 @@ def fetch_all(base: str, key: str, table: str, columns: str, page: int = 1000) -
         offset += page
 
 
+# `extracted` IS LOAD-BEARING, not decoration. `procurement_documents` has no
+# vendor-name, delivered-date, VAT-breakdown or line-kind column, so the intake
+# snapshot is the only place those four exist. Without it in this list the CLI's
+# mapping — the SAME `parsedFromDocumentRows` the route calls — has nothing to
+# read them from, and the report names `vat_breakdown_present` as failing on a
+# document whose page renders the VAT row, and grades a classified deposit line
+# as goods. Measured 2026-09-05 on b1e02edf and 5c7d4801.
 DOC_COLUMNS = (
     "id,restaurant_id,provider_id,doc_type,source_channel,doc_number,doc_date,"
     "references_doc_number,currency,subtotal,freight,fuel_surcharge,split_case_fee,"
     "delivery_fee,deposit_total,tax,other_charges,discount_total,total,"
     "computed_lines_total,tie_out_delta,ties_out,extraction_confidence,"
-    "extraction_model,sha256,content_type,file_bytes,storage_path,status,created_at"
+    "extraction_model,sha256,content_type,file_bytes,storage_path,status,created_at,"
+    "extracted"
 )
 LINE_COLUMNS = (
     "id,document_id,line_no,vendor_sku,description,vintage,format_ml,qty,uom,"
     "pack_size,qty_bottles,free_goods_qty,unit_price,line_total,allowance,deposit,"
     "order_line_id,match_method,match_confidence"
 )
+
+# Migration 20260904120000 (ADR 0104 slice 2). Asked for separately so a database
+# that has not applied it yet is told apart from a document that printed no price
+# base: PostgREST answers an unknown column with 42703, and the retry below
+# records WHICH of the two the report is describing.
+DOC_COLUMNS_NEW = ",printed"
+LINE_COLUMNS_NEW = ",price_base_qty,price_base_uom,printed"
+
+
+def fetch_all_tolerating_schema_lag(
+    base: str, key: str, table: str, columns: str, extra: str
+) -> tuple[list[dict], bool]:
+    """Rows, plus whether the new columns had to be dropped to read them.
+
+    A schema lag is a FINDING, not a silent fallback: without the flag the
+    report cannot tell "the paper printed no price base" from "this database
+    cannot hold one yet", which is the same absence-as-health confusion the
+    headline rule exists to prevent.
+    """
+    try:
+        return fetch_all(base, key, table, columns + extra), False
+    except RuntimeError as exc:
+        if "42703" not in str(exc) and "does not exist" not in str(exc):
+            raise
+        return fetch_all(base, key, table, columns), True
 
 
 def run_cli(corpus: list[dict]) -> dict:
@@ -235,7 +313,23 @@ EMPTY_HEADLINE = (
 )
 
 
+def _under_root(path: Path) -> str:
+    """`path` relative to the repo when it is inside it, else the path itself.
+
+    NOT `relative_to` unguarded. A relative `--out` (or one outside the repo)
+    made that raise -- AFTER the JSON had already been written and BEFORE the
+    Markdown was, so the run exited non-zero having left half a report on disk
+    and printed a traceback instead of a headline. Measured 2026-09-05 with
+    `--out datasets/canonical/after-pr-306`.
+    """
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
+    out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"corpus-run-{today}.json"
     md_path = out_dir / f"CORPUS-RUN-{today}.md"
@@ -254,6 +348,17 @@ def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
         f"- `{BUCKET}` bucket: {payload['counts']['vendor_attachments_objects']} objects",
         "",
     ]
+
+    if payload.get("price_base_columns_missing"):
+        lines += [
+            "> **Schema lag, named.** This database has not applied migration",
+            "> `20260904120000`, so `price_base_qty`, `price_base_uom` and the",
+            "> `printed` literals could not be read. Every BT-149/BT-150 and every",
+            "> `as printed` below is absent BECAUSE IT COULD NOT BE STORED — not",
+            "> because the document printed none. The two are different findings and",
+            "> this run is the first kind.",
+            "",
+        ]
 
     if docs_read == 0:
         lines += [
@@ -330,17 +435,18 @@ def write_report(out_dir: Path, today: str, payload: dict) -> tuple[Path, Path]:
         f"- bytes: min {stats['bytes_min']}, median {stats['bytes_median']}, max {stats['bytes_max']}",
         f"- page count: {stats['page_count']}",
         "",
-        f"Machine-readable: `{json_path.relative_to(ROOT)}`",
+        f"Machine-readable: `{_under_root(json_path)}`",
         "",
     ]
     md_path.write_text("\n".join(lines))
     return json_path, md_path
 
 
-# A two-document synthetic corpus in the shape PostgREST returns: one that ties
-# out and one that does not. It exists so `--self-test` can prove the runner can
-# NAME a failure -- which the real corpus, being empty, cannot prove at all.
-# Every value here is invented.
+# A three-document synthetic corpus in the shape PostgREST returns: one that
+# ties out, one whose deposit is printed BOTH as a line and as a subtotal, and
+# one that does not tie. It exists so `--self-test` can prove the runner can
+# NAME a failure -- and, since 2026-09-05, that it does NOT name the two that
+# are correct. Every value here is invented.
 SELF_TEST_CORPUS = [
     {
         "document": {
@@ -364,6 +470,69 @@ SELF_TEST_CORPUS = [
                 "line_no": 2, "qty": "6", "uom": "bottle", "pack_size": 1,
                 "qty_bottles": "6", "free_goods_qty": "0",
                 "unit_price": "22.0000", "line_total": "132.00",
+            },
+        ],
+    },
+    {
+        # A deposit printed TWICE -- as line 4 AND as a "Depozito 180,00"
+        # subtotal row -- so the stated subtotal of 9352 CONTAINS it. Measured
+        # on b1e02edf 2026-09-05: the runner named `total_with_vat` (expected
+        # 11366.4, found 11186.4), `deposits_coded_and_excluded` ("Line 4 reads
+        # as a deposit but is billed as a goods line") and
+        # `vat_breakdown_present` -- the last two only because the CLI had a
+        # second mapping that never opened `extracted`. This entry is the
+        # self-test's proof that BOTH are fixed: it must be named by NOTHING.
+        "document": {
+            "id": "synthetic-deposit-stated-twice",
+            "restaurant_id": "synthetic-restaurant",
+            "doc_type": "invoice",
+            "source_channel": "email",
+            "jurisdiction": "TR",
+            "currency": "TRY",
+            "subtotal": "9352.00",
+            "deposit_total": "180.00",
+            "tax": "1834.40",
+            "total": "11186.40",
+            "extraction_confidence": "0.800",
+            # The four facts with no column of their own.
+            "extracted": {
+                "vendorName": "SYNTHETIC Uzum Bagcilik A.S.",
+                "deliveredDate": "2026-08-12",
+                "taxBreakdown": [
+                    {"rate": 20, "taxableBase": 9172, "amount": 1834.40, "category": "S"}
+                ],
+                "lines": [
+                    {"lineNo": 1, "lineKind": "goods"},
+                    {"lineNo": 2, "lineKind": "goods"},
+                    {"lineNo": 3, "lineKind": "goods"},
+                    {"lineNo": 4, "lineKind": "deposit"},
+                ],
+            },
+        },
+        "lines": [
+            {
+                "line_no": 1, "description": "SYNTHETIC Okuzgozu", "qty": "1",
+                "uom": "bottle", "pack_size": 1, "qty_bottles": "1",
+                "free_goods_qty": "0", "unit_price": "142.0000",
+                "line_total": "142.00",
+            },
+            {
+                "line_no": 2, "description": "SYNTHETIC Kalecik Karasi", "qty": "24",
+                "uom": "bottle", "pack_size": 1, "qty_bottles": "24",
+                "free_goods_qty": "0", "unit_price": "310.0000",
+                "line_total": "7440.00",
+            },
+            {
+                "line_no": 3, "description": "SYNTHETIC Narince", "qty": "6",
+                "uom": "bottle", "pack_size": 1, "qty_bottles": "6",
+                "free_goods_qty": "0", "unit_price": "265.0000",
+                "line_total": "1590.00",
+            },
+            {
+                "line_no": 4, "description": "Depozito - iade edilebilir kasa",
+                "qty": "2", "uom": "each", "pack_size": 1, "qty_bottles": "0",
+                "free_goods_qty": "0", "unit_price": "90.0000",
+                "line_total": "180.00",
             },
         ],
     },
@@ -398,8 +567,8 @@ def self_test() -> int:
         return 2
     failures = out["named_failures"]
     named = {f["document_id"] for f in failures}
-    if out["documents_read"] != 2:
-        print(f"SELF-TEST FAILED: read {out['documents_read']} of 2", file=sys.stderr)
+    if out["documents_read"] != 3:
+        print(f"SELF-TEST FAILED: read {out['documents_read']} of 3", file=sys.stderr)
         return 2
     if "synthetic-does-not-tie" not in named:
         print(
@@ -408,10 +577,24 @@ def self_test() -> int:
             file=sys.stderr,
         )
         return 2
-    if "synthetic-ties-out" in named:
-        print("SELF-TEST FAILED: a document that ties out was named as failing", file=sys.stderr)
-        return 2
-    print(f"self-test ok — 2 documents read, {len(failures)} named failure(s), all on the broken one:")
+    for clean_id in ("synthetic-ties-out", "synthetic-deposit-stated-twice"):
+        if clean_id in named:
+            print(
+                f"SELF-TEST FAILED: {clean_id} was named as failing. "
+                + (
+                    "A deposit printed as a line AND as a subtotal is ONE charge; "
+                    "naming it means the CLI is not reading `extracted` back, or "
+                    "BT-106 is carrying the deposit line."
+                    if clean_id == "synthetic-deposit-stated-twice"
+                    else "It ties out."
+                ),
+                file=sys.stderr,
+            )
+            for f in failures:
+                if f["document_id"] == clean_id:
+                    print(f"  {f['invariant']}: {f['explanation']}", file=sys.stderr)
+            return 2
+    print(f"self-test ok — 3 documents read, {len(failures)} named failure(s), all on the broken one:")
     for f in failures:
         print(f"  {f['document_id']} · {f['invariant']} · expected {f['expected']}, found {f['found']}")
     return 0
@@ -456,8 +639,21 @@ def main() -> int:
             f"{BUCKET} objects={'could not list' if objects is None else objects}"
         )
 
-        documents = fetch_all(base, key, "procurement_documents", DOC_COLUMNS) if doc_count else []
-        lines_rows = fetch_all(base, key, "procurement_document_lines", LINE_COLUMNS) if line_count else []
+        documents, doc_lag = (
+            fetch_all_tolerating_schema_lag(
+                base, key, "procurement_documents", DOC_COLUMNS, DOC_COLUMNS_NEW
+            )
+            if doc_count
+            else ([], False)
+        )
+        lines_rows, line_lag = (
+            fetch_all_tolerating_schema_lag(
+                base, key, "procurement_document_lines", LINE_COLUMNS, LINE_COLUMNS_NEW
+            )
+            if line_count
+            else ([], False)
+        )
+        schema_lag = doc_lag or line_lag
     except RuntimeError as exc:
         # A failed read is a failed read. It never becomes an empty corpus.
         print(f"CANNOT RUN: {exc}", file=sys.stderr)
@@ -477,9 +673,26 @@ def main() -> int:
         except RuntimeError as exc:
             print(f"CANNOT RUN: {exc}", file=sys.stderr)
             return 2
+        # "0 failures" is NOT the headline when nothing could be tested.
+        #
+        # Measured 2026-09-04: three real documents were read and the headline
+        # said "0 named invariant failure(s)" -- while ELEVEN of the fourteen
+        # invariants were untestable on every one of them, because extraction
+        # had failed and there were no lines to check. That reads as a clean
+        # run and is the absence-as-health fault this script's own docstring
+        # exists to refuse. The untestable share now rides in the headline.
+        per_inv = cli_out["per_invariant"]
+        all_untestable = sum(
+            1
+            for c in per_inv.values()
+            if c.get("holds", 0) == 0 and c.get("fails", 0) == 0 and c.get("untestable", 0)
+        )
+        lines_read = sum(len(e["lines"]) for e in corpus)
         headline = (
             f"{cli_out['documents_read']} documents read; "
-            f"{len(cli_out['named_failures'])} named invariant failure(s)"
+            f"{len(cli_out['named_failures'])} named invariant failure(s); "
+            f"{all_untestable} of {len(per_inv)} invariants UNTESTABLE on every "
+            f"document ({lines_read} lines extracted in total)"
         )
     else:
         cli_out = {"documents_read": 0, "per_invariant": {}, "named_failures": [], "documents": []}
@@ -504,12 +717,17 @@ def main() -> int:
         "named_failures": cli_out["named_failures"],
         "documents": cli_out["documents"],
         "intake_statistics": intake_statistics(documents),
+        # True = this database predates migration 20260904120000, so every
+        # BT-149/BT-150 and every printed literal in this report is absent
+        # BECAUSE IT COULD NOT BE STORED. Never conflate that with a document
+        # that printed no price base.
+        "price_base_columns_missing": schema_lag,
         "wrote_to_database": False,
     }
 
     json_path, md_path = write_report(Path(args.out), today, payload)
     print(headline)
-    print(f"wrote {json_path.relative_to(ROOT)} and {md_path.relative_to(ROOT)}")
+    print(f"wrote {_under_root(json_path)} and {_under_root(md_path)}")
     return 0
 
 

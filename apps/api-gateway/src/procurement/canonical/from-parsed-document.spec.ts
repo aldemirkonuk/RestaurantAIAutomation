@@ -1,7 +1,12 @@
 import { ConfigService } from "@nestjs/config";
 import { DocumentExtractorService } from "../documents/document-extractor.service";
-import { runInvariants, summarise } from "./canonical-invariants";
+import {
+  asPrintedNotMutated,
+  runInvariants,
+  summarise,
+} from "./canonical-invariants";
 import { canonicalFromParsedDocument } from "./from-parsed-document";
+import { applyTieOut, ParsedDocument } from "../documents/parsed-document";
 
 /**
  * The mapper, tested against a REAL-SHAPED ParsedDocument rather than a
@@ -77,10 +82,17 @@ describe("canonicalFromParsedDocument", () => {
     }
   });
 
-  it("carries the document's extraction confidence onto the fields", () => {
-    expect(canonical.layer1.lines[0].quantity.confidence).toBe(
-      parsed.confidence,
-    );
+  it("leaves per-field confidence NULL rather than restating a document heuristic", () => {
+    // ADR 0104 D1: `confidence` is null when the source has no per-field notion
+    // of one. The extractor's number is `0.8 − 0.1 × warnings` — a
+    // DOCUMENT-level heuristic about how many things looked odd overall. Copying
+    // it onto every field would render as though the model had graded each
+    // number individually, which is the fabrication D1 exists to prevent.
+    expect(canonical.layer1.lines[0].quantity.confidence).toBeNull();
+    expect(canonical.layer1.documentNumber.confidence).toBeNull();
+    expect(canonical.layer1.totals.amountDue.confidence).toBeNull();
+    // The document-level heuristic still exists, where it always did.
+    expect(parsed.confidence).toBeGreaterThan(0);
   });
 
   it("preserves as_printed for the values the parser kept as text", () => {
@@ -199,5 +211,332 @@ describe("canonicalFromParsedDocument", () => {
     });
     expect(edi.layer1.documentNumber.source).toBe("edi");
     expect(canonical.layer1.documentNumber.source).toBe("extracted");
+  });
+});
+
+/**
+ * Gaps 2 and 3 of the slice-1 tech-debt list, at the mapper.
+ */
+
+const RAW_TR_CASE_PRICED = {
+  docType: "invoice",
+  docNumber: "SYN2026000000456",
+  docDate: "2026-08-30",
+  currency: "TRY",
+  total: 142,
+  printed: { total: "142,00" },
+  lines: [
+    {
+      description: "SYNTHETIC Öküzgözü 2022",
+      qty: 1,
+      // The prompt asks for the seven canonical unit literals, not the vendor's
+      // own words — `KS` and `şişe` survive in `printed`, where they belong.
+      uom: "case",
+      packSize: 12,
+      unitPrice: 142,
+      lineTotal: 142,
+      priceBaseQty: 12,
+      priceBaseUom: "bottle",
+      printed: {
+        qty: "1 KS",
+        unitPrice: "142,00 / KS(12)",
+        lineTotal: "142,00",
+      },
+    },
+  ],
+};
+
+describe("canonicalFromParsedDocument — BT-149/BT-150 from a real extraction", () => {
+  const trParsed = svc.normalize(JSON.stringify(RAW_TR_CASE_PRICED), "test");
+  const tr = canonicalFromParsedDocument(trParsed, {
+    documentId: "doc-tr",
+    restaurantId: "rest-1",
+  });
+
+  it("populates BT-149 and BT-150 from what the document printed", () => {
+    expect(tr.layer1.lines[0].priceBaseQuantity.value).toBe(12);
+    expect(tr.layer1.lines[0].priceBaseUnit.value).toBe("bottle");
+  });
+
+  it("still writes a base of 1 in the invoiced unit when none was printed", () => {
+    // The pre-existing behaviour, now stated rather than assumed: `unitPrice` is
+    // per invoiced unit unless the paper said otherwise.
+    expect(canonical.layer1.lines[1].priceBaseQuantity.value).toBe(1);
+    expect(canonical.layer1.lines[1].priceBaseUnit.value).toBe("case");
+  });
+
+  it("makes the line arithmetic hold across the case/bottle boundary", () => {
+    const lineResults = runInvariants(tr).filter(
+      (r) => r.id === "line_net_amount",
+    );
+    expect(lineResults.map((r) => r.holds)).toEqual([true]);
+    expect(lineResults[0].expected).toBe(142);
+  });
+});
+
+describe("canonicalFromParsedDocument — as_printed on numbers", () => {
+  const trParsed = svc.normalize(JSON.stringify(RAW_TR_CASE_PRICED), "test");
+  const tr = canonicalFromParsedDocument(trParsed, {
+    documentId: "doc-tr",
+    restaurantId: "rest-1",
+  });
+
+  it("threads the printed money and quantity literals into the envelopes", () => {
+    expect(tr.layer1.lines[0].netPrice.as_printed).toBe("142,00 / KS(12)");
+    expect(tr.layer1.lines[0].netAmount.as_printed).toBe("142,00");
+    expect(tr.layer1.lines[0].quantity.as_printed).toBe("1 KS");
+    expect(tr.layer1.totals.taxInclusiveAmount.as_printed).toBe("142,00");
+  });
+
+  it("never reformats them — the Turkish grouping survives untouched", () => {
+    expect(tr.layer1.lines[0].netAmount.as_printed).not.toContain(".0");
+    expect(tr.layer1.lines[0].netAmount.value).toBe(142);
+    expect(asPrintedNotMutated(tr)[0].holds).toBe(true);
+  });
+
+  it("keeps as_printed NULL when the parse kept no literal, never an empty string", () => {
+    // Null means "we did not keep it"; "" would read as "the paper was blank".
+    expect(canonical.layer1.lines[0].netAmount.as_printed).toBeNull();
+  });
+});
+
+/**
+ * The first render against real documents, closed (findings 2–7 of
+ * `v3.0-TECH-DEBT.md`, 2026-09-04). Every value SYNTHETIC.
+ */
+describe("canonicalFromParsedDocument — the parties (finding 2)", () => {
+  it("carries the extraction's vendorName into BG-4 as EXTRACTED", () => {
+    expect(canonical.layer1.seller.name.value).toBe("SYNTHETIC Glazers");
+    expect(canonical.layer1.seller.name.source).toBe("extracted");
+    // Read off the page, so the glyphs are kept.
+    expect(canonical.layer1.seller.name.as_printed).toBe("SYNTHETIC Glazers");
+  });
+
+  it("prefers a resolved provider, and does NOT let it claim it was printed", () => {
+    const withProvider = canonicalFromParsedDocument(parsed, {
+      documentId: "d",
+      restaurantId: "r",
+      seller: {
+        name: "SYNTHETIC Glazers Wine & Spirits",
+        source: "human_entered",
+      },
+      buyer: { name: "SYNTHETIC Meyhane", source: "human_entered" },
+    });
+    expect(withProvider.layer1.seller.name.value).toBe(
+      "SYNTHETIC Glazers Wine & Spirits",
+    );
+    expect(withProvider.layer1.seller.name.source).toBe("human_entered");
+    // The document never printed this name, so there is no literal to show.
+    expect(withProvider.layer1.seller.name.as_printed).toBeNull();
+    expect(withProvider.layer1.buyer.name.value).toBe("SYNTHETIC Meyhane");
+    expect(withProvider.layer1.buyer.name.source).toBe("human_entered");
+  });
+
+  it("leaves BOTH parties null only when neither the page nor our records name one", () => {
+    const anonymous = canonicalFromParsedDocument(
+      { ...parsed, vendorName: null },
+      { documentId: "d", restaurantId: "r" },
+    );
+    expect(anonymous.layer1.seller.name.value).toBeNull();
+    expect(anonymous.layer1.buyer.name.value).toBeNull();
+  });
+});
+
+describe("canonicalFromParsedDocument — BT-72 and BG-23 (findings 3, 4)", () => {
+  const withDates = canonicalFromParsedDocument(
+    {
+      ...parsed,
+      deliveredDate: "2026-08-12",
+      taxBreakdown: [
+        { rate: 20, taxableBase: 1056, amount: 211.2, category: "S" },
+      ],
+      tax: 211.2,
+    },
+    { documentId: "d", restaurantId: "r" },
+  );
+
+  it("maps a printed delivery date onto BG-13 / BT-72", () => {
+    expect(withDates.layer1.actualDeliveryDate.value).toBe("2026-08-12");
+    expect(withDates.layer1.actualDeliveryDate.as_printed).toBe("2026-08-12");
+  });
+
+  it("maps the printed rate onto BG-23, so the VAT rules stop being untestable", () => {
+    expect(withDates.layer1.vatBreakdown).toHaveLength(1);
+    expect(withDates.layer1.vatBreakdown[0].rate.value).toBe(20);
+    expect(withDates.layer1.vatBreakdown[0].taxableAmount.value).toBe(1056);
+    expect(withDates.layer1.vatBreakdown[0].taxAmount.value).toBe(211.2);
+
+    const present = withDates.layer3.verdicts.find(
+      (v) => v.id === "vat_breakdown_present",
+    );
+    expect(present?.holds).toBe(true);
+    const matches = withDates.layer3.verdicts.find(
+      (v) => v.id === "vat_total_matches_breakdown",
+    );
+    expect(matches?.holds).toBe(true);
+  });
+
+  it("still leaves BG-23 empty when the page printed no rate", () => {
+    expect(canonical.layer1.vatBreakdown).toEqual([]);
+  });
+});
+
+describe("canonicalFromParsedDocument — the totals ladder (finding 5)", () => {
+  it("sums BG-20/BG-21 into BT-107/BT-108 instead of leaving a hole under them", () => {
+    // The parse carries freight 48 and nothing else, so the ladder is
+    // 1056 − 0 + 48 = 1104 — and "Charges —" beneath "Freight + 48" is gone.
+    expect(canonical.layer1.totals.chargesTotal.value).toBe(48);
+    expect(canonical.layer1.totals.chargesTotal.source).toBe("computed");
+    expect(canonical.layer1.totals.allowancesTotal.value).toBe(0);
+    expect(canonical.layer1.totals.taxExclusiveAmount.value).toBe(1104);
+  });
+
+  it("refuses to grade its own arithmetic: a COMPUTED BT-109 is untestable", () => {
+    // BR-CO-13 is `BT-109 = BT-106 − BT-107 + BT-108`, which is the formula
+    // that produced the number. Reporting `true` there would be a rule that
+    // can never fail — a green tick proving nothing.
+    const withoutVat = canonical.layer3.verdicts.find(
+      (v) => v.id === "total_without_vat",
+    );
+    expect(withoutVat?.holds).toBeNull();
+    expect(withoutVat?.explanation).toMatch(/prove nothing/);
+  });
+
+  it("leaves BT-109 null when there is no BT-106 to build it on", () => {
+    const noLines = canonicalFromParsedDocument(
+      { ...parsed, subtotal: null, computedLinesTotal: null },
+      { documentId: "d", restaurantId: "r" },
+    );
+    expect(noLines.layer1.totals.taxExclusiveAmount.value).toBeNull();
+  });
+});
+
+describe("canonicalFromParsedDocument — deposits (findings 6, 7)", () => {
+  const TR_DEPOSIT: ParsedDocument = {
+    docType: "invoice",
+    currency: "TRY",
+    subtotal: 1704,
+    depositTotal: 180,
+    total: 1884,
+    lines: [
+      {
+        lineNo: 1,
+        description: "SYNTHETIC Okuzgozu",
+        qty: 12,
+        uom: "bottle",
+        packSize: 1,
+        qtyBottles: 12,
+        freeGoodsQty: 0,
+        unitPrice: 142,
+        lineTotal: 1704,
+        priceBaseQty: null,
+        priceBaseUom: null,
+      },
+      {
+        lineNo: 2,
+        description: "SYNTHETIC Depozito (kasa)",
+        qty: 2,
+        uom: "each",
+        packSize: 1,
+        qtyBottles: 0,
+        freeGoodsQty: 0,
+        unitPrice: 90,
+        lineTotal: 180,
+        // The paper printed the deposit as this line AND as a subtotal row.
+        // The transcription of 2026-09-04 recorded both on the line too.
+        deposit: 180,
+        lineKind: "deposit",
+        priceBaseQty: null,
+        priceBaseUom: null,
+      },
+    ],
+    computedLinesTotal: null,
+    tieOutDelta: null,
+    tiesOut: null,
+    confidence: 0.8,
+    warnings: [],
+  };
+
+  const depositDoc = canonicalFromParsedDocument(applyTieOut(TR_DEPOSIT), {
+    documentId: "d",
+    restaurantId: "r",
+  });
+
+  it("codes the deposit UNCL7161 and carries it as a BG-21 charge", () => {
+    const deposit = depositDoc.layer1.allowancesCharges.find(
+      (ac) => ac.reasonCode.value === "7161",
+    );
+    expect(deposit).toBeDefined();
+    expect(deposit?.isCharge.value).toBe(true);
+    expect(deposit?.amount.value).toBe(180);
+    expect(deposit?.reason.value).toBe("Returnable container / deposit");
+  });
+
+  it("keeps the deposit line OUT of BT-106 goods, and counts it once", () => {
+    expect(depositDoc.layer1.totals.linesNetTotal.value).toBe(1704);
+    expect(depositDoc.layer1.totals.chargesTotal.value).toBe(180);
+    expect(depositDoc.layer1.totals.taxExclusiveAmount.value).toBe(1884);
+  });
+
+  it("holds `deposits_coded_and_excluded` on the document that used to fail it", () => {
+    const results = depositDoc.layer3.verdicts.filter(
+      (v) => v.id === "deposits_coded_and_excluded",
+    );
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.holds === true)).toBe(true);
+  });
+
+  it("does not add a line's own deposit when the line IS the deposit", () => {
+    // Expected 360 against a stated 180 — the named failure of 2026-09-04.
+    const line = depositDoc.layer1.lines[1];
+    expect(line.lineKind?.value).toBe("deposit");
+    expect(line.allowancesCharges).toEqual([]);
+    const nets = depositDoc.layer3.verdicts.filter(
+      (v) => v.id === "line_net_amount",
+    );
+    expect(nets.every((n) => n.holds !== false)).toBe(true);
+  });
+
+  it("DOES add it when it is a deposit charged ON a goods line", () => {
+    const perLine = canonicalFromParsedDocument(
+      applyTieOut({
+        ...TR_DEPOSIT,
+        depositTotal: null,
+        subtotal: 1764,
+        total: 1764,
+        lines: [
+          {
+            ...TR_DEPOSIT.lines[0],
+            // 12 × 142 = 1704, plus a 60 crate charge on the same line.
+            deposit: 60,
+            lineTotal: 1764,
+            lineKind: "goods" as const,
+          },
+        ],
+      }),
+      { documentId: "d", restaurantId: "r" },
+    );
+    const line = perLine.layer1.lines[0];
+    expect(line.allowancesCharges).toHaveLength(1);
+    expect(line.allowancesCharges[0].amount.value).toBe(60);
+    expect(line.allowancesCharges[0].reasonCode.value).toBe("7161");
+    const net = perLine.layer3.verdicts.find((v) => v.id === "line_net_amount");
+    expect(net?.holds).toBe(true);
+  });
+
+  it("names a deposit whose line and subtotal disagree, rather than picking one", () => {
+    const mismatch = canonicalFromParsedDocument(
+      applyTieOut({ ...TR_DEPOSIT, depositTotal: 200 }),
+      { documentId: "d", restaurantId: "r" },
+    );
+    const disagreement = mismatch.layer3.verdicts.find(
+      (v) =>
+        v.id === "deposits_coded_and_excluded" &&
+        v.path === "allowancesCharges",
+    );
+    expect(disagreement?.holds).toBe(false);
+    expect(disagreement?.explanation).toMatch(
+      /only one of them is being carried/,
+    );
   });
 });

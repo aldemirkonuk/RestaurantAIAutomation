@@ -26,9 +26,11 @@ import {
   CREDIT_MEMO_WITH_REFERENCE,
   DELIVERY_NOTE_NO_MONEY,
   DEPOSIT_AS_GOODS_LINE,
+  DEPOSIT_LINE_CODED_AND_EXCLUDED,
   FREE_GOODS_BILLED_ANYWAY,
   FREE_GOODS_INVOICE,
   LINES_DO_NOT_TIE,
+  TR_CASE_PRICED_INVOICE,
   TR_WINE_INVOICE,
 } from "./__fixtures__/synthetic-documents";
 
@@ -134,6 +136,44 @@ describe("VAT breakdown", () => {
     const rows = vatCategoryTaxAmount(TR_WINE_INVOICE);
     expect(rows[0].holds).toBe(true);
     expect(rows[0].expected).toBe(732);
+  });
+
+  /**
+   * A BASE CANNOT BE RECONCILED AGAINST A CLASSIFICATION NOBODY MADE.
+   *
+   * BT-151/BT-152 are per-line and the extraction contract asks for neither, so
+   * `from-parsed-document` sets both null on every line an extracted document
+   * has. The filter then matched nothing, the sum came out 0.00, and this rule
+   * reported "covers lines worth 0.00 but states a taxable base of 9.172,00" —
+   * OUR gap presented as the document's error. Measured 2026-09-05 the moment
+   * the corpus runner began reading `taxBreakdown` back.
+   */
+  it("is UNTESTABLE, not failing, when no line carries a VAT category or rate", () => {
+    const unclassified = {
+      ...TR_WINE_INVOICE,
+      layer1: {
+        ...TR_WINE_INVOICE.layer1,
+        lines: TR_WINE_INVOICE.layer1.lines.map((l) => ({
+          ...l,
+          vatCategory: { ...l.vatCategory, value: null },
+          vatRate: { ...l.vatRate, value: null },
+        })),
+        // The document-level deposit charge loses its category too — an
+        // extracted document has neither, on lines OR on charges.
+        allowancesCharges: TR_WINE_INVOICE.layer1.allowancesCharges.map(
+          (ac) => ({
+            ...ac,
+            vatCategory: { ...ac.vatCategory!, value: null },
+            vatRate: { ...ac.vatRate!, value: null },
+          }),
+        ),
+      },
+    };
+    const r = vatCategoryTaxableBase(unclassified)[0];
+    expect(r.holds).toBeNull();
+    expect(r.explanation).toMatch(/no line or charge on this document/);
+    // and never a quiet pass: the sentence says whose gap it is
+    expect(r.explanation).toMatch(/OUR gap/);
   });
 
   it("catches a category whose base does not cover its lines", () => {
@@ -380,5 +420,88 @@ describe("the shape of every result", () => {
     };
     expect(priceBaseQuantity(zeroBase)[0].holds).toBe(false);
     expect(lineNetAmount(zeroBase)[0].holds).toBe(false);
+  });
+});
+
+/**
+ * BT-149 with the quantity in a DIFFERENT unit from the price base — the
+ * `1 ks × 12 şişe` case ADR 0104 D1 names, and the one the mapper could not
+ * produce until BT-149/BT-150 round-tripped through `ParsedDocument`.
+ */
+describe("line net amount across a case quantity and a bottle price base", () => {
+  it("holds on the TR 1 ks × 12 şişe invoice", () => {
+    const [first] = lineNetAmount(TR_CASE_PRICED_INVOICE);
+    expect(first.expected).toBe(142);
+    expect(first.holds).toBe(true);
+  });
+
+  it("passes every rule on that invoice, and tests something while doing it", () => {
+    const results = runInvariants(TR_CASE_PRICED_INVOICE);
+    expect(failures(results)).toEqual([]);
+    expect(summarise(results).holds).toBeGreaterThanOrEqual(8);
+  });
+
+  it("refuses rather than guessing when layer 2 has no pack size to convert with", () => {
+    // 1 ÷ 12 × 142 = 11,83 is the confident wrong answer available here. The
+    // invariant must report UNTESTABLE instead — a wrong "fails" would send a
+    // bookkeeper to argue a line that is in fact correct.
+    const noPack = {
+      ...TR_CASE_PRICED_INVOICE,
+      layer2: { providerId: null, lines: [] },
+    };
+    const [first] = lineNetAmount(noPack);
+    expect(first.holds).toBeNull();
+    expect(first.explanation).toMatch(/pack size/i);
+  });
+
+  it("keeps the Turkish price basis as printed, untouched", () => {
+    expect(TR_CASE_PRICED_INVOICE.layer1.lines[0].netPrice.as_printed).toBe(
+      "142,00 / KS(12)",
+    );
+    const printed = asPrintedNotMutated(TR_CASE_PRICED_INVOICE);
+    expect(printed[0].holds).toBe(true);
+  });
+});
+
+/**
+ * The deposit pair (findings 6 and 7 of `v3.0-TECH-DEBT.md`, 2026-09-04).
+ *
+ * SYNTHETIC 9 and SYNTHETIC 9b are the same paper read two ways, and the pair
+ * is what makes this rule evidence rather than decoration: without 9b, "the
+ * deposit rule holds" would only ever have been proven by documents that carry
+ * no deposit at all.
+ */
+describe("a deposit LINE, coded and excluded (findings 6, 7)", () => {
+  it("holds once the line is classified and a coded BG-21 charge carries it", () => {
+    const results = depositsAreCodedAndExcluded(
+      DEPOSIT_LINE_CODED_AND_EXCLUDED,
+    );
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.holds === true)).toBe(true);
+  });
+
+  it("still fails the identical document when nobody classified the row", () => {
+    const results = depositsAreCodedAndExcluded(DEPOSIT_AS_GOODS_LINE);
+    expect(failures(results).length).toBeGreaterThan(0);
+    expect(failures(results)[0].explanation).toMatch(/inflate beverage cost/);
+  });
+
+  it("leaves BT-106 to the GOODS lines once the deposit is carried elsewhere", () => {
+    // 264.00 of wine, not 265.20 — the CRV row is a BG-21 charge now.
+    const results = documentLinesTotal(DEPOSIT_LINE_CODED_AND_EXCLUDED);
+    expect(results[0].holds).toBe(true);
+    expect(results[0].explanation).toMatch(
+      /deposit\/fee line\(s\) are carried as document-level charges/,
+    );
+  });
+
+  it("counts the deposit line inside BT-106 when it was never classified", () => {
+    // The unclassified fixture still ties: the paper folded the CRV into its
+    // own subtotal, and that arithmetic is internally consistent. It is
+    // `deposits_coded_and_excluded` that names the problem, not this rule —
+    // one defect must not light up two unrelated red lamps.
+    const results = documentLinesTotal(DEPOSIT_AS_GOODS_LINE);
+    expect(results[0].holds).toBe(true);
+    expect(results[0].explanation).not.toMatch(/deposit\/fee line/);
   });
 });

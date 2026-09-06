@@ -14,6 +14,19 @@ import {
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
+/**
+ * Notification reads are scoped to the restaurant on the VERIFIED token, not to
+ * a query parameter (Antalya night). Every read below therefore takes a request
+ * — a call without one is a call that could not be scoped, and the controller
+ * refuses it rather than returning every tenant's notifications.
+ */
+// Same tenant these fixtures already used, so these tests keep asserting that
+// the value reaches the service. That the TOKEN wins over a contradicting
+// query parameter is asserted in notifications-are-tenant-scoped.spec.ts.
+const REQ = {
+  user: { userId: "user-123", restaurantId: "restaurant-456" },
+} as any;
+
 describe("NotificationsController", () => {
   let controller: NotificationsController;
   let notificationsService: NotificationsService;
@@ -94,7 +107,7 @@ describe("NotificationsController", () => {
         expectedResponse,
       );
 
-      const result = await controller.getNotifications(mockQuery);
+      const result = await controller.getNotifications(mockQuery, REQ);
 
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.getNotifications).toHaveBeenCalledWith({
@@ -124,7 +137,7 @@ describe("NotificationsController", () => {
         hasMore: false,
       });
 
-      await controller.getNotifications(queryWithFilters);
+      await controller.getNotifications(queryWithFilters, REQ);
 
       expect(mockNotificationsService.getNotifications).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -139,7 +152,7 @@ describe("NotificationsController", () => {
         new Error("Database error"),
       );
 
-      await expect(controller.getNotifications(mockQuery)).rejects.toThrow(
+      await expect(controller.getNotifications(mockQuery, REQ)).rejects.toThrow(
         new HttpException("Database error", HttpStatus.INTERNAL_SERVER_ERROR),
       );
     });
@@ -169,7 +182,7 @@ describe("NotificationsController", () => {
         expectedResponse,
       );
 
-      const result = await controller.getUnreadNotifications(mockQuery);
+      const result = await controller.getUnreadNotifications(mockQuery, REQ);
 
       expect(result).toEqual(expectedResponse);
       expect(
@@ -187,7 +200,7 @@ describe("NotificationsController", () => {
       );
 
       await expect(
-        controller.getUnreadNotifications(mockQuery),
+        controller.getUnreadNotifications(mockQuery, REQ),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -201,7 +214,7 @@ describe("NotificationsController", () => {
     it("should return unread count", async () => {
       mockNotificationsService.getUnreadCount.mockResolvedValue(5);
 
-      const result = await controller.getUnreadCount(mockQuery);
+      const result = await controller.getUnreadCount(mockQuery, REQ);
 
       expect(result).toEqual({ count: 5 });
       expect(mockNotificationsService.getUnreadCount).toHaveBeenCalledWith({
@@ -213,7 +226,7 @@ describe("NotificationsController", () => {
     it("should return zero when no unread notifications", async () => {
       mockNotificationsService.getUnreadCount.mockResolvedValue(0);
 
-      const result = await controller.getUnreadCount(mockQuery);
+      const result = await controller.getUnreadCount(mockQuery, REQ);
 
       expect(result).toEqual({ count: 0 });
     });
