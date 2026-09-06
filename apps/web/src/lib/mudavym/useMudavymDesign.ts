@@ -58,6 +58,22 @@ export const MUDAVYM_PAGES = [
   // default like every other page here; the gate's `legacy` branch redirects
   // to /receipts, which is this view's other face.
   'document',
+  // ADR 0133 (2026-09-06), the pages not yet rebuilt — ADR 0131 Stream G.
+  // Authenticated routes only: a public page has no house, so it reads
+  // `lib/mudavym/publicDesign.ts` instead of this list.
+  'get_started',
+  'promotions',
+  'vendor_prices',
+  'recommendations_catalog',
+  'logs',
+  'help',
+  'admin',
+  'admin_health',
+  'authorize_integration',
+  // A NEW route like `connections`: `/ask`, where the house answers as
+  // Mudavym (ADR 0133 §Decision 2–3). OFF means the surface does not exist
+  // here; the gate's `legacy` branch is a redirect, not an old design.
+  'ask',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

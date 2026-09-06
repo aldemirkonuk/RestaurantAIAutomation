@@ -74,6 +74,23 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   connections: 'Connections',
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
+  // ADR 0133 (2026-09-06), the pages not yet rebuilt. Sidebar names where an
+  // entry exists (Sidebar.tsx:122 Promotions · :168 Logs · :217 Help & Support
+  // · :657 Admin Panel); otherwise the name the page's own head prints today
+  // (GetStarted.tsx:356 · VendorPriceCompare.tsx:430 · InsightCatalog.tsx:283
+  // · AdminHealth.tsx:108 · AuthorizeIntegration.tsx). `/ask` prints the name
+  // the founder chose for the house's own voice — "Mudavym" (ADR 0133 §3).
+  get_started: 'Get started',
+  promotions: 'Promotions',
+  vendor_prices: 'Vendor prices',
+  recommendations_catalog: 'Insight catalog',
+  logs: 'Logs',
+  help: 'Help & Support',
+  admin: 'Admin Panel',
+  admin_health: 'Agent Health',
+  // Named for completeness; the consent page never renders chrome — see NO_CHROME.
+  authorize_integration: 'Authorize',
+  ask: 'Mudavym',
 };
 
 /**
@@ -85,7 +102,14 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
  * taps that comment removes. It also forces the charcoal ground
  * (`DoorNext.tsx:380`), which is the one surface a header would have to fight.
  */
-export const NO_CHROME: ReadonlySet<MudavymPage> = new Set<MudavymPage>(['receiving_door']);
+export const NO_CHROME: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
+  'receiving_door',
+  // `/authorize/:integrationId` is routed outside `DashboardLayout` for the
+  // same reason: "a decision point on the way to an external provider, so
+  // sidebar navigation and page tips would only offer ways to wander off
+  // mid-grant" (App.tsx). A bell and a house switch are exactly that.
+  'authorize_integration',
+]);
 
 /** The name to print for `page`, given the route actually open. */
 export function pageNameFor(page: MudavymPage, pathname?: string | null): string {
