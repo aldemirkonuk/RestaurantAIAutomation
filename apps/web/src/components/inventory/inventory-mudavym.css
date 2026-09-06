@@ -32,6 +32,24 @@
    nothing outside an overlay body.
 */
 
+/* ── the contract, in one sentence ───────────────────────────────────────── */
+/* What this overlay asks, what sealing writes, and what leaving costs — said
+   once, at the top, in the same words the `label` prop carries to the ear
+   (sketch 103 `1e`, "Announced"). It is a paragraph and not a heading because
+   the heading is the act; this is the promise attached to it.
+
+   The primitive today names a titled overlay by its TITLE (`aria-labelledby`)
+   and drops `label`, so this paragraph is how the contract reaches a sighted
+   reader now. Packet 0 makes `label` the accessible name in every case, and
+   then the eye and the ear get the same sentence with no change here. */
+.mdv-contract {
+  margin: 0;
+  font-family: var(--mdv-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
 /* ── a consequence, before the seal ──────────────────────────────────────── */
 /* Identical to the declaration in `components/locations/locations-mudavym.css`.
    It belongs in `components/mudavym/sheet.css`, where both callers would share

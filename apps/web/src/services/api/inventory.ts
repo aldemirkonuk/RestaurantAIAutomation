@@ -226,6 +226,27 @@ export async function recordPour(
  * client-generated as count:{inventoryId}:{clientCountId} so a retry over a
  * flaky connection cannot double-apply the same count.
  */
+/**
+ * What the count actually recorded, as the gateway returns it.
+ *
+ * ADR 0078 already sends this back on every spot count
+ * (`inventory/stock-count-result.ts:36`), and the client threw it away: the
+ * response was typed `{ item }`, so `count` was dropped before any caller
+ * could see it and the UI said "Count recorded" with no evidence for the
+ * claim. `varianceQty: 0` with a null `transactionId` is a RESULT — "counted,
+ * and the books were right" — not missing data, which is exactly the
+ * distinction ADR 0020 asks a surface to be able to draw.
+ */
+export interface SpotCountRecord {
+  countId: string | null;
+  expectedQty: number | null;
+  countedQty: number | null;
+  varianceQty: number | null;
+  transactionId: string | null;
+  countedAt: string | null;
+  replayed: boolean;
+}
+
 export async function recordSpotCount(
   itemId: string,
   body: {
@@ -236,7 +257,7 @@ export async function recordSpotCount(
     performedBy?: string | null;
   },
   restaurantId?: string
-): Promise<{ item: InventoryItem | null }> {
+): Promise<{ item: InventoryItem | null; count?: SpotCountRecord | null }> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
@@ -246,10 +267,10 @@ export async function recordSpotCount(
       ? crypto.randomUUID()
       : `${Date.now()}:${Math.random().toString(36).slice(2, 8)}`);
 
-  const response = await apiClient.post<{ item: InventoryItem | null }>(
-    `${INVENTORY_PATH}/${id}/item/${itemId}/count`,
-    { ...body, clientCountId }
-  );
+  const response = await apiClient.post<{
+    item: InventoryItem | null;
+    count?: SpotCountRecord | null;
+  }>(`${INVENTORY_PATH}/${id}/item/${itemId}/count`, { ...body, clientCountId });
   return response.data;
 }
 

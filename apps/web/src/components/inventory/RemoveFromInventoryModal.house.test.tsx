@@ -108,7 +108,7 @@ describe('flag on — the house panel', () => {
     expect(document.querySelector(`[class="${LEGACY_CARD}"]`)).toBeNull()
   })
 
-  it('the accessible name is the contract sentence, not a noun', () => {
+  it('states its contract — what it asks, what sealing writes, what leaving costs', () => {
     wrap(
       <RemoveFromInventoryModal
         isOpen
@@ -117,10 +117,15 @@ describe('flag on — the house panel', () => {
         onRemoved={() => {}}
       />,
     )
-    // 6 live + 0 shadow
+    // The heading is the ask; 6 live + 0 shadow.
+    expect(screen.getByRole('heading', { name: 'Write off 6 bottles?' })).toBeTruthy()
+    // The contract is on the paper, in one sentence.
     expect(
-      screen.getByRole('heading', { name: 'Write off 6 bottles?' }),
+      screen.getByText(
+        /Holding the seal reconciles the stock to zero on the ledger and retires the row\. Leaving writes nothing\./,
+      ),
     ).toBeTruthy()
+    // And carried on `label`, which packet 0 makes the dialog's accessible name.
     expect(
       document.querySelector('[aria-label*="This writes to the ledger"]'),
     ).not.toBeNull()

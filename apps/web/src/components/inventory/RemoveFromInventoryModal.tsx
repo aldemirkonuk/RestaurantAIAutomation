@@ -229,6 +229,15 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
         }
       >
         <div className="mdv-form">
+          {/* The contract, before anything else on the paper. */}
+          <p className="mdv-contract">
+            {phase === 'sealed'
+              ? 'This is what was written. The rows below are gone from the book; the wines are not.'
+              : `This asks one thing: whether ${
+                  rows.length === 1 ? 'this wine' : 'these wines'
+                } leave the book. Holding the seal reconciles the stock to zero on the ledger and retires the row. Leaving writes nothing.`}
+          </p>
+
           {phase === 'sealed' && bound ? (
             <>
               <div className="mdv-panelbox">
