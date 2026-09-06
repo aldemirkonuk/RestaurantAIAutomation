@@ -103,6 +103,64 @@ function lockBodyScroll(): () => void {
   };
 }
 
+/* ── the page gives up width, not light ───────────────────────────────────
+   Sketch 103 · 1a, "The Pass": on a floor at service the operator is not
+   reading, they are watching, and a scrim takes the whole page away to show one
+   record. So a Sheet paints no scrim by default and instead tells the page it
+   is there: `data-sheet-open` and `--sheet-width` land on every `.mudavym` page
+   root (never on the overlay's own root) for the page's own CSS to answer with
+   a compressed list.
+
+   Counted, like the scroll lock, and last-opened wins the width — two sheets
+   are the spindle (1c), and the page compresses to whichever one is on top. */
+type SheetLayout = 'overlay' | 'compress';
+interface OpenSheet {
+  id: symbol;
+  layout: SheetLayout;
+  width: number;
+}
+const openSheets: OpenSheet[] = [];
+
+function pageRoots(): HTMLElement[] {
+  if (typeof document === 'undefined') return [];
+  return Array.from(document.querySelectorAll<HTMLElement>('.mudavym')).filter(
+    (el) => !el.classList.contains('mdv-ovl') && !el.closest('.mdv-ovl'),
+  );
+}
+
+function paintSheetWidth(): void {
+  const top = openSheets[openSheets.length - 1];
+  for (const root of pageRoots()) {
+    if (!top) {
+      root.removeAttribute('data-sheet-open');
+      root.style.removeProperty('--sheet-width');
+      continue;
+    }
+    root.setAttribute('data-sheet-open', top.layout);
+    root.style.setProperty('--sheet-width', `${top.width}px`);
+  }
+}
+
+function markSheetOpen(layout: SheetLayout, width: number): () => void {
+  const entry: OpenSheet = { id: Symbol('mdv-sheet'), layout, width };
+  openSheets.push(entry);
+  paintSheetWidth();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const i = openSheets.findIndex((e) => e.id === entry.id);
+    if (i >= 0) openSheets.splice(i, 1);
+    paintSheetWidth();
+  };
+}
+
+/** Test seam: forget every open sheet (a test that unmounts mid-render). */
+export function resetSheetWidth(): void {
+  openSheets.length = 0;
+  paintSheetWidth();
+}
+
 const FOCUSABLE = [
   'a[href]',
   'area[href]',
@@ -223,6 +281,32 @@ export interface OverlayProps {
    * by increments: there are two widths, and a third needs an ADR.
    */
   wide?: boolean;
+  /**
+   * Paint the scrim — sketch 103 · 1a, "The Pass".
+   *
+   * **Default `false` for a Sheet** (changed 2026-09-06) and `true` for a
+   * Panel; a Popover is unchanged (transparent unless `modal`). A sheet is one
+   * record arriving beside a list that is still moving; a panel is a question,
+   * and a question dims the page because nothing else matters until it is
+   * answered.
+   *
+   * This is PAINT, not modality. Focus still moves in and returns, Esc still
+   * works, the body still locks, and the page behind is still inert to the
+   * pointer wherever the census row is modal — the scrim element is there, it
+   * is simply not dark. Turning the light back on is `scrim`.
+   */
+  scrim?: boolean;
+  /**
+   * What the page should do with the width a Sheet takes — 1a's other half.
+   *
+   * The primitive never edits the page: while a Sheet is open it sets
+   * `data-sheet-open="overlay|compress"` and `--sheet-width` on every
+   * `.mudavym` page root, and the page's own CSS decides whether its list gives
+   * up columns. `compress` is the sheet SAYING it is willing to be laid beside
+   * the list; a page that has written no rule for it renders exactly as before.
+   * See `components/mudavym/MOTIONS.md`.
+   */
+  layout?: SheetLayout;
   /** Stack order. Default 100. */
   zIndex?: number;
   /** Element to focus on open. Defaults to the first focusable in the panel. */
@@ -318,6 +402,8 @@ function OverlayRoot({
   className,
   bodyClassName,
   wide,
+  scrim,
+  layout = 'overlay',
   zIndex = 100,
   initialFocusRef,
   anchorRef,
@@ -333,6 +419,9 @@ function OverlayRoot({
   const contractId = useId();
   const modal = modalProp ?? shape !== 'popover';
   const withClose = showClose ?? modal;
+  /* A sheet takes width, never light (1a); a question dims the page. A popover
+     keeps the behaviour it already had — transparent unless it is `modal`. */
+  const dimmed = scrim ?? (shape === 'panel' || (shape === 'popover' && modal));
   const pos = useAnchoredPosition(shape === 'popover' && open, anchorRef, width);
 
   /* The ground, resolved once per open, most-specific first. `ground` prop >
@@ -399,6 +488,13 @@ function OverlayRoot({
     if (!open || !modal) return;
     return lockBodyScroll();
   }, [open, modal]);
+
+  /* Tell the page a sheet is beside it. Sheets only: a Panel is over the page,
+     not next to it, and a Popover belongs to a control that has not moved. */
+  useEffect(() => {
+    if (!open || shape !== 'sheet') return;
+    return markSheetOpen(layout, wide ? 640 : 440);
+  }, [open, shape, layout, wide]);
 
   /* Enter motion. `animate()` collapses to the end state under reduced motion;
      we skip it entirely so nothing is scheduled at all. */
@@ -493,6 +589,7 @@ function OverlayRoot({
       // would silently do nothing, so it is not carried there at all.
       data-wide={shape === 'sheet' && wide ? 'true' : undefined}
       data-modal={modal ? 'true' : undefined}
+      data-scrim={dimmed ? 'on' : 'off'}
       style={{ zIndex }}
     >
       <button

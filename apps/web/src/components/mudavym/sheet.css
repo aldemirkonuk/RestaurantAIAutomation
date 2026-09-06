@@ -79,17 +79,33 @@
   appearance: none;
 }
 
-/* A popover does not dim the page — it only needs to catch the click that
-   dismisses it, which is what the header's own `fixed inset-0` catcher does
-   today (Header.tsx:143-146). Same behaviour, one implementation.
-   `data-modal` puts the dim back for the one anchored surface that is a form
-   rather than a picker — see the `modal` prop's note in Sheet.tsx. */
-.mdv-ovl--popover .mdv-ovl__scrim {
+/* Who dims, and who does not — `data-scrim` is resolved once in the component
+   (`scrim` prop > the shape's own default) so the CSS never re-derives it.
+
+   A Sheet is `off` by default since 2026-09-06 (sketch 103 · 1a): the sheet
+   takes width, never light, and the list behind it keeps its pulse. A Panel is
+   `on` — a question dims the page, because nothing else matters until it is
+   answered. A Popover is `off` unless it is `modal`, which is exactly the
+   behaviour it already had (Header.tsx:143-146's own `fixed inset-0` catcher,
+   one implementation).
+
+   The element is still there and still catches the click either way: this is
+   paint, not modality. */
+.mdv-ovl[data-scrim='off'] .mdv-ovl__scrim {
   background: transparent;
 }
-.mdv-ovl--popover[data-modal='true'] .mdv-ovl__scrim {
-  background: var(--mdv-scrim);
-}
+
+/* ── the page gives up columns, not light (1a) ────────────────────────────
+   The primitive sets `data-sheet-open` and `--sheet-width` on the page's own
+   `.mudavym` root while a Sheet is open; the page answers. Nothing here styles
+   a page — a page that has written no rule renders exactly as it did. The
+   house's own default, for a page that opts in with `layout="compress"`:
+
+     .mudavym[data-sheet-open='compress'] .my-list {
+       padding-right: var(--sheet-width);
+     }
+
+   `--sheet-width` is 440px, or 640px for a `wide` sheet. */
 
 /* ── the panel, all shapes ───────────────────────────────────────────────── */
 .mdv-ovl__panel {

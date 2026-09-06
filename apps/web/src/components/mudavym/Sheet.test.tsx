@@ -21,7 +21,7 @@ vi.mock('../../lib/mudavym/motion', async (orig) => {
   return { ...actual, animate: vi.fn(actual.animate) };
 });
 
-import { Panel, Popover, Sheet, resetLabelWarnings } from './Sheet';
+import { Panel, Popover, Sheet, resetLabelWarnings, resetSheetWidth } from './Sheet';
 import { animate } from '../../lib/mudavym/motion';
 import {
   claimMudavymShell,
@@ -374,5 +374,132 @@ describe('the contract sentence', () => {
     );
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+/**
+ * The Pass — sketch 103 · 1a, accepted 2026-09-06.
+ *
+ * Against the pre-fix file every one of these fails: `data-scrim` did not
+ * exist, so a Sheet dimmed the page exactly as a Panel did, and nothing on the
+ * page was ever told a sheet had opened.
+ */
+describe('a sheet takes width, never light', () => {
+  beforeEach(() => {
+    resetLabelWarnings();
+    resetSheetWidth();
+  });
+
+  it('paints no scrim for a Sheet and paints one for a Panel', () => {
+    const { unmount } = render(
+      <div className="mudavym">
+        <Sheet open onClose={() => {}} label="The sheet takes width, never light">
+          <button type="button">body</button>
+        </Sheet>
+      </div>,
+    );
+    expect(document.querySelector('.mdv-ovl--sheet')).toHaveAttribute('data-scrim', 'off');
+    unmount();
+
+    render(
+      <div className="mudavym">
+        <Panel open onClose={() => {}} label="A question dims the page behind it">
+          <button type="button">body</button>
+        </Panel>
+      </div>,
+    );
+    expect(document.querySelector('.mdv-ovl--panel')).toHaveAttribute('data-scrim', 'on');
+  });
+
+  it('still moves focus in, still closes on Esc, and still locks the body', () => {
+    // 1a changes the PAINT. Everything the primitive exists for is unchanged.
+    function H() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div className="mudavym">
+          <button type="button" onClick={() => setOpen(true)}>
+            opener
+          </button>
+          <Sheet open={open} onClose={() => setOpen(false)} label="This asks nothing and writes nothing">
+            <button type="button">inside</button>
+          </Sheet>
+        </div>
+      );
+    }
+    render(<H />);
+    const opener = screen.getByRole('button', { name: 'opener' });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it('turns the light back on when the caller asks for it', () => {
+    render(
+      <div className="mudavym">
+        <Sheet open onClose={() => {}} label="This one wants the page taken away" scrim>
+          <button type="button">body</button>
+        </Sheet>
+      </div>,
+    );
+    expect(document.querySelector('.mdv-ovl--sheet')).toHaveAttribute('data-scrim', 'on');
+  });
+
+  it('tells the page a sheet is beside it, and takes it back on close', () => {
+    function H() {
+      const [open, setOpen] = useState(true);
+      return (
+        <div className="mudavym" data-testid="page">
+          <button type="button" onClick={() => setOpen(false)}>
+            leave
+          </button>
+          <Sheet
+            open={open}
+            onClose={() => setOpen(false)}
+            label="This asks nothing and writes nothing"
+            layout="compress"
+          >
+            <button type="button">body</button>
+          </Sheet>
+        </div>
+      );
+    }
+    render(<H />);
+    const page = screen.getByTestId('page');
+    expect(page).toHaveAttribute('data-sheet-open', 'compress');
+    expect(page.style.getPropertyValue('--sheet-width')).toBe('440px');
+
+    fireEvent.click(screen.getByRole('button', { name: 'leave' }));
+    expect(page.hasAttribute('data-sheet-open')).toBe(false);
+    expect(page.style.getPropertyValue('--sheet-width')).toBe('');
+  });
+
+  it('gives a wide sheet its own width, and never marks the overlay root itself', () => {
+    render(
+      <div className="mudavym" data-testid="page">
+        <Sheet open onClose={() => {}} label="A letter is prose read back as prose" wide>
+          <button type="button">body</button>
+        </Sheet>
+      </div>,
+    );
+    expect(screen.getByTestId('page').style.getPropertyValue('--sheet-width')).toBe('640px');
+    // The overlay root is a `.mudavym` too — it must never be mistaken for the
+    // page and told about itself.
+    expect(document.querySelector('.mdv-ovl')).not.toHaveAttribute('data-sheet-open');
+  });
+
+  it('says nothing to the page for a Panel or a Popover', () => {
+    render(
+      <div className="mudavym" data-testid="page">
+        <Panel open onClose={() => {}} label="A question dims the page behind it">
+          <button type="button">body</button>
+        </Panel>
+      </div>,
+    );
+    expect(screen.getByTestId('page')).not.toHaveAttribute('data-sheet-open');
   });
 });
