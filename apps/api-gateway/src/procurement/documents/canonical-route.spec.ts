@@ -117,6 +117,8 @@ describe("DocumentsController.canonicalDocument", () => {
       // than omitted because `tsc -p tsconfig.spec.json` counts the arguments
       // and `tsconfig.json` does not look at this file at all.
       {} as any,
+      // DeliveryStockService — the half that books stock at the door (A1).
+      {} as any,
     );
   });
 
