@@ -119,6 +119,10 @@ describe("DocumentsController.canonicalDocument", () => {
       // OrganizationsService — reached only by the deliberate currency
       // restatement (founder, 2026-09-06), which this file never calls.
       {} as any,
+      // DeliveryService — the door-count route's other half. Stubbed rather
+      // than omitted because `tsc -p tsconfig.spec.json` counts the arguments
+      // and `tsconfig.json` does not look at this file at all.
+      {} as any,
     );
   });
 

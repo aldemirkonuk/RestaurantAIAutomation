@@ -57,6 +57,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       // OrganizationsService — only the currency restatement reaches it, and
       // the block below builds its own controller with a real double.
       {} as any,
+      {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
     );
   });
 
@@ -243,6 +244,7 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       {} as any, // DocumentCorrectionService (ADR 0104 D5)
       {} as any, // CatalogIngestService (ADR 0126)
       { resolveRestaurantRole: async () => roleToReturn } as any,
+      {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
     );
     return { controller, inserts, updates, refileCalls };
   }

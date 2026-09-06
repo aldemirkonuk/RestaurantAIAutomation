@@ -232,6 +232,10 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     // OrganizationsService — reached only by the deliberate currency
     // restatement (founder, 2026-09-06), which this file never calls.
     {} as any,
+    // DeliveryService (ADR 0103) — the door-count route's other half, off this
+    // path too. `tsc -p tsconfig.spec.json` counts the arguments; `tsconfig.json`
+    // never looks at this file.
+    {} as any,
   );
   const body = (over: Record<string, unknown> = {}) =>
     ({
@@ -328,6 +332,10 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     catalogIngest as any,
     // OrganizationsService — reached only by the deliberate currency
     // restatement (founder, 2026-09-06), which this file never calls.
+    {} as any,
+    // DeliveryService (ADR 0103) — the door-count route's other half, off this
+    // path too. `tsc -p tsconfig.spec.json` counts the arguments; `tsconfig.json`
+    // never looks at this file.
     {} as any,
   );
   const body = () =>
