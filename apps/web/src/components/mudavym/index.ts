@@ -36,3 +36,4 @@ export {
   type PopoverProps,
   type OverlayShape,
 } from './Sheet';
+export { Stub, type StubProps } from './Stub';

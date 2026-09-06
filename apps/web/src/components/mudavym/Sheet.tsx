@@ -307,6 +307,27 @@ export interface OverlayProps {
    * See `components/mudavym/MOTIONS.md`.
    */
   layout?: SheetLayout;
+  /**
+   * The surface is holding words nobody has written yet — sketch 103 · 1b and
+   * 1d, accepted 2026-09-06.
+   *
+   * With `dirty` set, Esc and a click outside stop destroying work:
+   *   · a **Sheet** TEARS — it leaves on `tuck` and calls `onTear`, and the
+   *     caller puts a `<Stub>` on the row holding the draft (1b);
+   *   · a **Panel** LEANS — the paper has weight, so a stray click cannot lift
+   *     it; only Close, or Esc said twice, leaves (1d).
+   *
+   * The caller owns the draft. The primitive owns the ceremony.
+   */
+  dirty?: boolean;
+  /**
+   * The surface left with unwritten words in it, and why.
+   *
+   * Fired at the gesture, before the surface is off the screen, so the caller
+   * can put the stub on the row in the same frame. `onClose` still fires — a
+   * tear is a close, said honestly.
+   */
+  onTear?: (reason: 'esc' | 'outside') => void;
   /** Stack order. Default 100. */
   zIndex?: number;
   /** Element to focus on open. Defaults to the first focusable in the panel. */
@@ -402,6 +423,8 @@ function OverlayRoot({
   className,
   bodyClassName,
   wide,
+  dirty = false,
+  onTear,
   scrim,
   layout = 'overlay',
   zIndex = 100,
@@ -505,6 +528,60 @@ function OverlayRoot({
     animate(panel, ENTER[shape], TOKEN[shape]);
   }, [open, reduced, shape]);
 
+  /* ── the tear (1b) ──────────────────────────────────────────────────────
+     A dirty Sheet does not vanish when you press Esc: it leaves on `tuck`, the
+     one exit motion this system has, because a tear is something happening TO
+     the paper rather than a detour ending. `onTear` fires at the gesture so the
+     caller can put the stub on the row in the same frame; `onClose` follows
+     when the motion has run. Reduced motion skips straight to the close. */
+  const tearing = useRef(false);
+  const tearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (tearTimer.current) clearTimeout(tearTimer.current);
+    },
+    [],
+  );
+
+  const tear = useCallback(
+    (reason: 'esc' | 'outside') => {
+      if (tearing.current) return;
+      tearing.current = true;
+      onTear?.(reason);
+      const panel = panelRef.current;
+      if (reduced || !panel) {
+        tearing.current = false;
+        onClose();
+        return;
+      }
+      animate(
+        panel,
+        [
+          { transform: 'none', opacity: 1 },
+          { transform: 'translateX(28px)', opacity: 0 },
+        ],
+        tuck,
+      );
+      tearTimer.current = setTimeout(() => {
+        tearing.current = false;
+        onClose();
+      }, tuck.ms);
+    },
+    [onClose, onTear, reduced],
+  );
+
+  /** What a leave gesture means on this surface, right now. */
+  const leave = useCallback(
+    (reason: 'esc' | 'outside') => {
+      if (dirty && shape === 'sheet') {
+        tear(reason);
+        return;
+      }
+      onClose();
+    },
+    [dirty, shape, tear, onClose],
+  );
+
   /* Esc closes, from anywhere — an overlay whose Esc only works while focus is
      inside is an overlay you can get stuck behind. */
   useEffect(() => {
@@ -512,12 +589,12 @@ function OverlayRoot({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        leave('esc');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, leave]);
 
   /* Tab cycles inside a modal shape. A popover does not trap: it is attached to
      a control on the page, and tabbing off it should leave it. */
@@ -590,13 +667,14 @@ function OverlayRoot({
       data-wide={shape === 'sheet' && wide ? 'true' : undefined}
       data-modal={modal ? 'true' : undefined}
       data-scrim={dimmed ? 'on' : 'off'}
+      data-dirty={dirty ? 'true' : undefined}
       style={{ zIndex }}
     >
       <button
         type="button"
         aria-label={`Close ${label}`}
         className="mdv-ovl__scrim"
-        onClick={onClose}
+        onClick={() => leave('outside')}
       />
       <div
         ref={panelRef}
