@@ -5258,8 +5258,8 @@
       ],
       [
        "fact",
-       "Second person",
-       "Hasan Demir (manager) · 14:09"
+       "Authority",
+       "Ayşe · owner — one approval suffices (the authority rule)"
       ],
       [
        "fact",
@@ -5303,7 +5303,7 @@
       [
        "alert",
        "Held",
-       "The first payment to the new detail waits 24 hours and needs a second person. Whoever confirms the detail cannot release that payment."
+       "The first payment to the new detail waits 24 hours and is released by someone with valid authority who is not the confirmer. Every owner has been told of the change."
       ],
       [
        "quiet",

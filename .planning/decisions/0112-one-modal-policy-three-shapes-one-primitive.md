@@ -279,7 +279,7 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   role, break-glass with a reason, recall windows, tamper-evident audit, device trust) whose
   output is a catalogue with a fit per act, to be decided act by act.
 
-### F12 — the security ceremonies (2026-09-05, Proposed; decided act by act)
+### F12 — the security ceremonies (2026-09-05, decided act by act the same evening)
 
 Research `sketches/102-modal-census/research/F-security-ceremonies.md` (24 ceremonies, sourced)
 and the lead's own adversarial pass `G-security-adversary.md` (3 rejected: a retired ledger
@@ -300,4 +300,26 @@ scheduling page 403s and is not cited). Six are drawn in sketch 102. The proposa
 
 Kept from the research's own fights: no blanket delay on every new vendor (they are known
 distributors); no mandatory comment on every second approval; no out-of-band call per payment.
+
+**Founder rulings on F12 (2026-09-05, evening).** Every ceremony in the table above was adopted,
+with three amendments, verbatim where it matters:
+
+1. *"make sure the customer part is adapted to the high paced operating environment"* — every
+   ceremony is measured in seconds at the point of action; nothing becomes a chain.
+2. *"for 2 person seal → if it needs two person to go along, change it to one man approval if
+   the authority is valid — owner/manager or authorized personnel (owner can give access),
+   otherwise double approval is needed."* The two-person rule of F11 becomes the **authority
+   rule**: one approval when the approver holds valid authority — an owner, a manager, or a person
+   the owner has authorized — and double approval otherwise. Separation of duties survives inside
+   it: whoever confirms a vendor's bank detail cannot release the first payment to it.
+3. *"check for any security changes"* — a security change is always told to every owner: a bank
+   detail, an authority grant or revocation, a passcode reset, a limit change, a device added to
+   the house. A producer, not a ceremony.
+
+Also decided: a door count may be corrected within ten minutes as undo-after (an explicit
+addition to F10's closed list — the list is now dismiss, archive, a removed shift, a note, a door
+count within ten minutes); publishing a week stays sealed. And *"research more, dig deep and then
+understand more of these"* on the assistant's and tool-write ceremonies (step-up, break-glass,
+the passkey-backed seal) — a deeper pass is running as `research/H-…`; its output amends this
+section, it does not reopen the rulings.
 
