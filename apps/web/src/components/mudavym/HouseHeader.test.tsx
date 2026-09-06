@@ -74,6 +74,12 @@ const HOUSE_B = { id: 'rest-B', name: 'Sim Karaköy', city: 'İstanbul', chain_i
 
 const MINUTE = 60_000;
 
+// Since 545269dc (#313, merged here in ce6e63fb) the stacker folds an instant
+// low-stock burst ONLY with another burst about the SAME wine set
+// (`lib/notificationStack.ts` `lowStockWineSetKey`): a row with no wines in
+// its metadata never folds into anything. The bell's fold test below needs two
+// rows that fold, so every row this helper builds names the same two wines,
+// exactly as `pages/notifications/next/nt-book.test.ts` does.
 function lowStock(id: string, title: string, agoMs: number) {
   const iso = new Date(Date.now() - agoMs).toISOString();
   return {
@@ -85,7 +91,7 @@ function lowStock(id: string, title: string, agoMs: number) {
     message: 'x',
     status: 'unread',
     priority: 'high',
-    metadata: {},
+    metadata: { mode: 'instant', wines: [{ wineId: 'w1' }, { wineId: 'w2' }] },
     timestamp: iso,
     createdAt: iso,
   };
