@@ -9,7 +9,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
 const api = vi.hoisted(() => ({
@@ -27,6 +27,11 @@ const api = vi.hoisted(() => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: api.restaurantId, user: null }),
+  // `useMudavymDesign` reads the CONTEXT OBJECT directly (not the hook), so a
+  // mock that exports only `useAuth` makes any gated affordance on this page
+  // throw at render. DocView gained one with ADR 0104 slice 2's
+  // "Open as the canonical document" link.
+  AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 
 vi.mock('../../../services/api/documents', async (importOriginal) => {

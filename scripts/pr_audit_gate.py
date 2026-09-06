@@ -183,11 +183,65 @@ _FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
 _SELF_CHECK_NAME = "PR Audit Gate"
 
 
+def _classify_poll(names: list[str], by_name: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
+    """Pure classification of one poll's raw `gh pr checks` states into
+    (missing, pending, failed) -- extracted (Correction, seventh round) so
+    --self-test exercises this exact code, not a hand-retyped mirror of it
+    (the gap the mirror in run_self_test had until this round: it agreed
+    with this function by construction, not by sharing it)."""
+    missing = [c for c in names if c not in by_name]  # not yet reported at all -- keep waiting, not failed
+    reported = {c: by_name[c] for c in names if c in by_name}
+    pending = [c for c in reported if reported[c] in ("PENDING", "IN_PROGRESS", "QUEUED")]
+    # ALLOW-LIST, matching _verdict_of()'s fix and for the same reason:
+    # a deny-list of "bad" states misses whatever GitHub's actual
+    # vocabulary contains that this list didn't name (TIMED_OUT,
+    # ACTION_REQUIRED, STARTUP_FAILURE, NEUTRAL, STALE are all real
+    # check-run conclusions that were previously neither pending nor
+    # failed here, so they fell through to "green" by default — found
+    # by the gate's own third audit, correctness angle). Only an
+    # explicit SUCCESS is green; anything REPORTED, not pending, and
+    # not SUCCESS is failed, whatever GitHub calls it -- a check that
+    # simply hasn't reported yet belongs in `missing`, not here.
+    failed = [c for c in reported if c not in pending and reported[c] != "SUCCESS"]
+    return missing, pending, failed
+
+
+def _confirmed_red(failed: list[str], prev_failed: frozenset[str]) -> tuple[bool, frozenset[str]]:
+    """CORRECTED 2026-09-04, seventh round -- see ADR 0090's seventh
+    Correction. CONFIRMED live on FOUR PRs (#288, #290, #291, #294): a
+    SINGLE poll seeing a non-pending, non-SUCCESS state for the `CodeQL`
+    aggregate code-scanning check-run (app github-advanced-security,
+    distinct from the `Analyze Code (python/javascript)` matrix jobs that
+    feed it) was enough for the old inline `if failed:` to declare upstream
+    red 28-125s before that same check finished SUCCESS on its own --
+    every one of the four cleared on `gh run rerun --failed` with no
+    change, which is what a transient misread predicts and a genuine
+    failure would not. The green branch a few lines below has required the
+    identical check SET on two CONSECUTIVE polls since this function was
+    first written, for exactly this reason (a check not yet scheduled is
+    invisible, not missing) -- the red branch had no equivalent protection
+    against a transient/racy single read. This applies the same discipline
+    to it: only the SAME non-empty failed set on two consecutive polls may
+    confirm red. A failure that clears, or that changes shape between
+    polls, is reported but not yet trusted; a failure that persists is
+    still caught within one extra poll, and a failure that never
+    stabilizes still times out red via the deadline path below -- the
+    fail-closed property this must not regress.
+
+    Returns (should_declare_red, new_prev_failed) -- `new_prev_failed` is
+    what the NEXT poll should compare against."""
+    failed_set = frozenset(failed)
+    if not failed_set:
+        return False, frozenset()
+    return failed_set == prev_failed, failed_set
+
+
 def wait_upstream(pr_number: str) -> int:
     required = _required_contexts()  # None => fallback mode, not "nothing required"
     deadline = time.monotonic() + MAX_WAIT_SECONDS
     prev_total = -1
     stable = False
+    prev_failed: frozenset[str] = frozenset()  # see _confirmed_red's Correction comment
 
     while True:
         checks = _gh_json(["gh", "pr", "checks", pr_number, "--json", "name,state"])
@@ -199,22 +253,12 @@ def wait_upstream(pr_number: str) -> int:
             names = [n for n in by_name
                      if not n.startswith(_FALLBACK_IGNORE_PREFIXES) and n != _SELF_CHECK_NAME]
 
-        missing = [c for c in names if c not in by_name]  # not yet reported at all -- keep waiting, not failed
+        missing, pending, failed = _classify_poll(names, by_name)
         reported = {c: by_name[c] for c in names if c in by_name}
-        pending = [c for c in reported if reported[c] in ("PENDING", "IN_PROGRESS", "QUEUED")]
-        # ALLOW-LIST, matching _verdict_of()'s fix and for the same reason:
-        # a deny-list of "bad" states misses whatever GitHub's actual
-        # vocabulary contains that this list didn't name (TIMED_OUT,
-        # ACTION_REQUIRED, STARTUP_FAILURE, NEUTRAL, STALE are all real
-        # check-run conclusions that were previously neither pending nor
-        # failed here, so they fell through to "green" by default — found
-        # by the gate's own third audit, correctness angle). Only an
-        # explicit SUCCESS is green; anything REPORTED, not pending, and
-        # not SUCCESS is failed, whatever GitHub calls it -- a check that
-        # simply hasn't reported yet belongs in `missing`, not here.
-        failed = [c for c in reported if c not in pending and reported[c] != "SUCCESS"]
 
-        if failed:
+        red_confirmed, prev_failed = _confirmed_red(failed, prev_failed)
+
+        if red_confirmed:
             # Exit 1, not 0 (CORRECTED, sixth audit round -- round 4 argued
             # this case was "legitimate, known-good, nothing to say" and left
             # it at exit 0, distinct from the timeout case it fixed to exit
@@ -233,11 +277,22 @@ def wait_upstream(pr_number: str) -> int:
             # these return values rather than in the Python itself. Every
             # non-SUCCESS path here now agrees: don't merge, and don't let
             # the JOB look like it had something to say when it didn't.
-            print(f"Upstream red: {failed}")
+            print(f"Upstream red: {failed} (confirmed: same failing set on two consecutive polls)")
             _write_github_output("status", "upstream_red")
             return 1
 
-        if not missing and not pending and names:
+        if failed:
+            # Seen, not yet confirmed -- see _confirmed_red's Correction
+            # comment. Log the raw state(s) so a future incident is
+            # diagnosable from THIS run's own log, not from forensic Checks-
+            # API archaeology after the fact (what finding this one took).
+            print(f"NOTE: poll saw non-pending, non-SUCCESS state(s) for "
+                  f"{ {c: reported[c] for c in failed} } -- not yet confirmed "
+                  f"(need the same set on the next poll too) before declaring red.",
+                  file=sys.stderr)
+            stable = False
+            prev_total = len(checks)
+        elif not missing and not pending and names:
             if required is not None:
                 print(f"Upstream green: all {len(names)} required contexts succeeded ({names}).")
                 _write_github_output("status", "upstream_green")
@@ -271,7 +326,7 @@ def wait_upstream(pr_number: str) -> int:
             # reads it, but the JOB itself must not report success for a
             # run that never audited anything, timeout or confirmed-red
             # alike.
-            print(f"Timed out after {MAX_WAIT_SECONDS}s waiting on: {missing + pending} "
+            print(f"Timed out after {MAX_WAIT_SECONDS}s waiting on: {missing + pending + failed} "
                   "-- never confirmed either way, not the same as a confirmed failure.")
             _write_github_output("status", "upstream_red")
             return 1
@@ -413,6 +468,15 @@ def _run_audit_inner(pr_number: str) -> int:
                                        # PR removing that trigger would break the merge step
                                        # with no escalation forcing a human to notice (found by
                                        # the gate's own FIFTH audit, correctness angle's note 1).
+        ".github/workflows/deploy.yml",  # the post-merge production-deploy-verification
+                                           # workflow ADR 0097 built. Without this, a PR that
+                                           # loosens check_deployed_sha.py's --expect, drops a
+                                           # stage, or redefines provenance_verified would be
+                                           # evaluated as an ordinary PR and could self-merge on
+                                           # three APPROVEs -- even though it edits the only thing
+                                           # that verifies production got what main says it got
+                                           # (found by PR #291's security audit, 2026-09-03; see
+                                           # ADR 0090's eighth Correction).
     )
     # CONFIRMED live (gate's own third audit, security angle): the returncode
     # here was unchecked -- a failed `gh` call yields empty stdout exactly
@@ -800,21 +864,45 @@ def run_self_test() -> int:
     check("quoted ref is caught (round 5 gap)",
           bool(DIRECT_PUSH_PATTERN_FOR_TEST.search("git push origin 'main'")), True)
 
-    # wait_upstream's state classifier, exercised directly (see wait_upstream body)
-    def classify(names, by_name):
-        missing = [c for c in names if c not in by_name]
-        reported = {c: by_name[c] for c in names if c in by_name}
-        pending = [c for c in reported if reported[c] in ("PENDING", "IN_PROGRESS", "QUEUED")]
-        failed = [c for c in reported if c not in pending and reported[c] != "SUCCESS"]
-        return missing, pending, failed
-
+    # wait_upstream's state classifier -- calls _classify_poll directly (not
+    # a hand-retyped mirror of it: Correction, seventh round) so this test
+    # exercises the exact function wait_upstream runs.
     names = ["A", "B", "C"]
-    m, p, f = classify(names, {"A": "SUCCESS", "B": "SUCCESS"})
+    m, p, f = _classify_poll(names, {"A": "SUCCESS", "B": "SUCCESS"})
     check("not-yet-reported check is 'missing', not 'failed'", (m, f), (["C"], []))
-    m, p, f = classify(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "NEUTRAL"})
+    m, p, f = _classify_poll(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "NEUTRAL"})
     check("unlisted terminal state (NEUTRAL) is 'failed', not silently green", f, ["C"])
-    m, p, f = classify(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "SUCCESS"})
+    m, p, f = _classify_poll(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "SUCCESS"})
     check("all SUCCESS -> nothing missing or failed", (m, f), ([], []))
+
+    # _confirmed_red's two-consecutive-poll debounce (Correction, seventh
+    # round): reproduces the exact CodeQL incident confirmed live on PRs
+    # #288, #290, #291, #294 -- a check reporting a state this classifier
+    # treats as "failed" (whether that's a genuinely unrecognized transient
+    # status or, per _classify_poll's own comment, any terminal-but-unlisted
+    # conclusion) on poll 1, then SUCCESS on poll 2, must NOT return red.
+    red, prev = _confirmed_red(["CodeQL"], frozenset())
+    check("single unconfirmed poll does not declare red (the exact bug)", red, False)
+    red, prev = _confirmed_red([], prev)  # poll 2: CodeQL now reports SUCCESS, drops out of `failed`
+    check("clearing on the very next poll never confirms red", red, False)
+    check("...and the tracked failed-set resets to empty, not stuck", prev, frozenset())
+
+    # Fail-closed property this debounce must NOT regress: a check that
+    # stays failed across 2 IDENTICAL polls still correctly returns red.
+    red, prev = _confirmed_red(["CodeQL"], frozenset())
+    check("first poll of a real failure does not confirm yet either", red, False)
+    red, prev = _confirmed_red(["CodeQL"], prev)
+    check("SAME failing set on the very next poll DOES confirm red", red, True)
+
+    # A failing set that changes shape between polls (different check, or a
+    # member added/dropped) is not the same confirmed failure -- it needs
+    # its own two consecutive matches, not credit from an unrelated one.
+    red, prev = _confirmed_red(["CodeQL"], frozenset())
+    red, prev = _confirmed_red(["Build All Packages"], prev)
+    check("a DIFFERENT failing check on the next poll does not confirm the first one", red, False)
+    red, prev = _confirmed_red(["CodeQL", "Build All Packages"], frozenset())
+    red, prev = _confirmed_red(["CodeQL"], prev)
+    check("a shrinking failed set (one check recovered) does not confirm either", red, False)
 
     # Escalation logic (round 4): touches_own_gate and a still-truncated diff
     # must both force BLOCK even when every angle/adversary leaned PASS --
@@ -838,7 +926,7 @@ def run_self_test() -> int:
         for line in failures:
             print(f"SELF-TEST FAILED: {line}")
         return 1
-    print("SELF-TEST OK — 29 invariants held.")
+    print("SELF-TEST OK — 35 invariants held.")
     return 0
 
 

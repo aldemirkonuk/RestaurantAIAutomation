@@ -76,7 +76,7 @@ generating labour. The metric counts silent successes, not eventual ones.
 Secondary: `procurement.unguarded_money_moving_routes` — **0 across the `recurring-orders`
 cluster**, which is the only sub-module this charter ever counted into it. The six routes
 were closed on 2026-08-25 by a class-level guard
-(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`), landed under OD-20 (`OPEN-DECISIONS.md:119`);
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`), landed under OD-20 (`OPEN-DECISIONS.md:120`);
 [[ENDPOINTS]]:464-473 marks all six ✅. The **team-wide** value is no longer withheld: the
 E0 auth census merged 2026-09-01 (`ECOSYSTEM-PLAN.md:83`, method at
 [[ECOSYSTEM-E0-MEASUREMENTS]] §2) and measured **468 route handlers, 444 authenticated, 23
@@ -117,7 +117,7 @@ team.
 *automatically*, and until 2026-08-25 every one of them was reachable unauthenticated.
 A class-level `@UseGuards(JwtAuthGuard)` now covers all six
 (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
-OD-20 (`OPEN-DECISIONS.md:119`)). Checked route by route: no `@Public()` anywhere in the
+OD-20 (`OPEN-DECISIONS.md:120`)). Checked route by route: no `@Public()` anywhere in the
 file, no per-route `@UseGuards` displacing the class one, and the class is declared and
 registered exactly once (`procurement.module.ts:34`). The guard authenticates and then
 asserts tenant match in the same pass

@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Logger,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -20,7 +21,18 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
-import { UploadDocumentDto } from "./dto/documents.dto";
+import {
+  ApplyExtractionDto,
+  CorrectFieldDto,
+  UploadDocumentDto,
+  VerifyFieldDto,
+} from "./dto/documents.dto";
+import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { DeliverySpineService } from "../canonical/delivery-spine.service";
+import { DocumentCorrectionService } from "../canonical/document-correction.service";
+import { DeliveryService } from "../canonical/delivery.service";
+import { DeliveryStockService } from "../canonical/delivery-stock.service";
+import { DoorCountDto } from "../dto/deliveries.dto";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
@@ -46,10 +58,427 @@ type AuthedUser = { userId: string; restaurantId: string };
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/documents")
 export class DocumentsController {
+  private readonly logger = new Logger(DocumentsController.name);
+
   constructor(
     private readonly intake: DocumentIntakeService,
     private readonly db: DatabaseService,
+    private readonly canonical: CanonicalDocumentService,
+    private readonly spine: DeliverySpineService,
+    private readonly corrections: DocumentCorrectionService,
+    private readonly deliveries: DeliveryService,
+    private readonly deliveryStock: DeliveryStockService,
   ) {}
+
+  /**
+   * Sign the stored original for viewing, or say why it could not be signed.
+   *
+   * Shared by `GET :id` and `GET :id/canonical` so the two panes cannot drift:
+   * the canonical page's `OriginalPane` and the receipts page's `PaperPane`
+   * show the same object through the same one-hour link. `null` with a reason
+   * beats `null` alone — "no file was stored" and "the file exists and could
+   * not be signed" send a manager to two different places.
+   */
+  private async signOriginal(
+    storagePath: string | null,
+  ): Promise<{ imageUrl: string | null; reason: string | null }> {
+    if (!storagePath)
+      return {
+        imageUrl: null,
+        reason: "no original was stored for this document",
+      };
+    try {
+      const { data: signed, error } = await this.db
+        .getClient()
+        .storage.from("vendor-attachments")
+        .createSignedUrl(storagePath, 3600);
+      if (error || !signed?.signedUrl)
+        return {
+          imageUrl: null,
+          reason: `the stored original could not be signed: ${error?.message ?? "no URL returned"}`,
+        };
+      return { imageUrl: signed.signedUrl, reason: null };
+    } catch (err) {
+      return {
+        imageUrl: null,
+        reason: `the stored original could not be signed: ${err?.message ?? "unknown error"}`,
+      };
+    }
+  }
+
+  @Get(":id/canonical")
+  @ApiOperation({
+    summary: "One document as the canonical Mudavym document (ADR 0104)",
+    description:
+      "The three-layer canonical object, the delivery spine it sits on, the other documents on those deliveries, and a one-hour signed link to the original. READ-ONLY: no corrections, no claims, no writes of any kind. " +
+      "A read that FAILED is reported in `failedRead` and the affected field is null — never an empty array, which would render as 'this document is on no delivery' (ADR 0067). `deliveries: []` is a real answer and means exactly that.",
+  })
+  async canonicalDocument(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const built = await this.canonical.buildFromDocumentId(
+      user.restaurantId,
+      id,
+    );
+    if (!built.ok) {
+      // "not found" is a 404; anything else is a read that broke.
+      if (built.error.includes("not found"))
+        throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+      throw new HttpException(built.error, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    const [{ data: row, error: rowErr }, spine, log] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_documents")
+        /**
+         * NO `filename` COLUMN. `procurement_documents` has never had one — the
+         * web client's `ProcurementDocument.filename` is a field the API shapes,
+         * not a column — and naming it here made PostgREST answer 42703 for the
+         * WHOLE select, which then reported a stored original as "no original
+         * was stored" (measured 2026-09-04, before this line was corrected).
+         * The name comes off the end of `storage_path`, which is where intake
+         * put it.
+         */
+        .select(
+          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at",
+        )
+        .eq("id", id)
+        .eq("restaurant_id", user.restaurantId)
+        .maybeSingle(),
+      this.spine.forDocument(user.restaurantId, id),
+      this.corrections.correctionLog(user.restaurantId, id),
+    ]);
+
+    const failedRead: string[] = [];
+    if (rowErr) failedRead.push(`document metadata: ${rowErr.message}`);
+    if (!spine.ok) failedRead.push(spine.error);
+    if (!log.ok) failedRead.push(log.error);
+
+    /**
+     * When the metadata read FAILED there is no `storage_path` to sign — and
+     * "we could not read where the file is" is not "there is no file". Saying
+     * the second would send someone to look for paper that is sitting in the
+     * bucket, so the two answers are kept apart here.
+     */
+    const original = rowErr
+      ? {
+          imageUrl: null,
+          reason:
+            "the document's stored-file metadata could not be read, so this screen cannot say whether an original exists",
+        }
+      : await this.signOriginal((row?.storage_path as string) ?? null);
+    const storagePath = (row?.storage_path as string) ?? null;
+
+    const deliveries = spine.ok ? spine.value : null;
+    const siblings = deliveries
+      ? Array.from(
+          new Map(
+            deliveries
+              .flatMap((d) => d.documents)
+              .filter((d) => d.documentId !== id)
+              .map((d) => [d.documentId, d]),
+          ).values(),
+        )
+      : null;
+
+    return {
+      canonical: built.value,
+      // NULL means the read failed and `failedRead` says so. An empty array
+      // means the reads succeeded and this document is on no delivery — the
+      // page then collapses the spine and shows the sheet alone.
+      deliveries,
+      siblings,
+      /**
+       * ADR 0104 D5. NULL means the log could not be read and `failedRead` says
+       * so; `[]` means the reads succeeded and nobody has corrected or verified
+       * a field on this document. Collapsing the two would let a broken query
+       * render as "this document has never been touched", which is the sentence
+       * a vendor dispute gets argued from.
+       */
+      corrections: log.ok ? log.value : null,
+      original: {
+        ...original,
+        contentType: (row?.content_type as string) ?? null,
+        // The last path segment intake wrote, not a column.
+        filename: storagePath ? (storagePath.split("/").pop() ?? null) : null,
+        // Page count is not derivable from any column we hold; it needs the
+        // object itself. Stated as unknown rather than defaulted to 1.
+        pages: null,
+      },
+      intake: {
+        status: (row?.status as string) ?? null,
+        verdict: (row?.intake_verdict as string) ?? null,
+        reason: (row?.intake_reason as string) ?? null,
+        sourceChannel: (row?.source_channel as string) ?? null,
+        extractionModel: (row?.extraction_model as string) ?? null,
+        sha256: (row?.sha256 as string) ?? null,
+        createdAt: (row?.created_at as string) ?? null,
+      },
+      // Things that are true about this READ rather than about the document:
+      // a schema lag, a partial failure. Absent when there is nothing to say.
+      ...(built.notes?.length ? { notes: built.notes } : {}),
+      ...(failedRead.length ? { failedRead } : {}),
+    };
+  }
+
+  /**
+   * Correct one layer-1 field (ADR 0104 D5).
+   *
+   * NOT AN EDIT. Layer 1 is append-only: this writes revision n+1 carrying the
+   * whole corrected document and an audit row saying who changed what, from
+   * what, to what and why. Both tables refuse UPDATE and DELETE by trigger, so
+   * a correction can be superseded but never rewritten.
+   *
+   * Class-level `@UseGuards(JwtAuthGuard)` covers it; `restaurantId` comes from
+   * the token and scopes the document read, so another tenant's id is a 404.
+   */
+  @Post(":id/corrections")
+  @ApiOperation({
+    summary: "Correct one field of the canonical document (ADR 0104 D5)",
+    description:
+      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written.",
+  })
+  async correctField(
+    @Param("id") id: string,
+    @Body() body: CorrectFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const result = await this.corrections.correct(
+      user.restaurantId,
+      id,
+      user.userId,
+      { path: body.path, value: body.value ?? null, reason: body.reason },
+    );
+    if (!result.ok) throw new HttpException(result.error, result.status);
+    return result.value;
+  }
+
+  /**
+   * The per-field `verified_by` tick (ADR 0104 D5).
+   *
+   * A human standing behind a value they did NOT change. The field's `source`
+   * stays whatever it was — an extracted number that a manager confirmed is
+   * still an extracted number, now with a name against it.
+   */
+  @Post(":id/fields/verify")
+  @ApiOperation({
+    summary: "Tick one field as verified by a human (ADR 0104 D5)",
+    description:
+      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged.",
+  })
+  async verifyFieldTick(
+    @Param("id") id: string,
+    @Body() body: VerifyFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const result = await this.corrections.verifyField(
+      user.restaurantId,
+      id,
+      user.userId,
+      { path: body.path },
+    );
+    if (!result.ok) throw new HttpException(result.error, result.status);
+    return result.value;
+  }
+
+  /**
+   * THE DOOR COUNT — a document we AUTHOR (ADR 0104 D2/D11, ADR 0103 A6).
+   *
+   * `POST /procurement/documents` reads a document somebody else wrote. This one
+   * records what a person at the door SAYS they counted: `doc_type
+   * receiving_advice`, `source manual`, `direction issued_by_us`, explicit lines,
+   * an optional photograph as evidence, and no extraction at all — so
+   * `extraction_confidence` is NULL rather than 0.
+   *
+   * WHY IT IS ITS OWN ROUTE AND NOT A BRANCH INSIDE THE UPLOAD DOOR. The upload
+   * door's whole contract is "here are bytes, tell me what they say". A count
+   * has no bytes to read and nothing to be confident about; folding it in would
+   * have made `contentBase64` optional on a route whose only job is to receive
+   * it, and every reader would then have to work out which kind of document a
+   * given request was. The two doors are different sentences, so they are
+   * different routes.
+   *
+   * A LINE NOBODY COUNTED IS ABSENT, NOT ZERO. There is no `notCounted` flag:
+   * the lines somebody counted are submitted and the rest keep the canonical
+   * `not counted` they already carry (ADR 0103 A6).
+   */
+  @Post("door-count")
+  @ApiOperation({
+    summary:
+      "Record a door count as a receiving_advice document (ADR 0104 D11)",
+    description:
+      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
+  })
+  async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
+    let photo: {
+      bytes: Buffer;
+      filename: string | null;
+      mimeType: string | null;
+    } | null = null;
+    if (body.photoBase64) {
+      let bytes: Buffer;
+      try {
+        bytes = Buffer.from(body.photoBase64, "base64");
+      } catch {
+        throw new HttpException(
+          "photoBase64 is not valid base64",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (!bytes.length)
+        throw new HttpException(
+          "photoBase64 decoded to no bytes. Send a photograph or send none — an empty one is a failed upload wearing the shape of evidence.",
+          HttpStatus.BAD_REQUEST,
+        );
+      photo = {
+        bytes,
+        filename: body.photoFilename ?? null,
+        mimeType: body.photoMimeType ?? null,
+      };
+    }
+
+    const result = await this.intake.recordDoorCount({
+      restaurantId: user.restaurantId,
+      providerId: body.providerId ?? null,
+      countedBy: user.userId,
+      countedAt: body.countedAt ?? null,
+      lines: body.lines,
+      signedBy: body.signedBy ?? null,
+      note: body.note ?? null,
+      photo,
+    });
+    /**
+     * THE SAME COUNT TWICE IS A CONFLICT, AND IT NAMES THE DOCUMENT.
+     *
+     * 409, not 422. 422 says "I understood the request and cannot process this
+     * content" — but the content is fine; it is the SECOND request for a state
+     * that already exists, which is what 409 is for, and it lets a caller tell
+     * "you already recorded this" from "your body is wrong" without parsing
+     * prose. The document id travels in the message and in `documentId`, so the
+     * receiver is taken to the count rather than told to type it again.
+     */
+    if (result.duplicate && result.documentId)
+      throw new HttpException(
+        `This count was already recorded as document ${result.documentId}. A re-count at a different moment is a different document — change the time it was counted, or open the one that exists.`,
+        HttpStatus.CONFLICT,
+      );
+    if (result.error || !result.documentId)
+      throw new HttpException(
+        result.error ?? "the door count could not be recorded",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+
+    let delivery: unknown = null;
+    let differsOnLines: number | null = null;
+    let deliveryId: string | null = null;
+    if (body.deliveryId) {
+      const linked = await this.deliveries.linkDocument(
+        user.restaurantId,
+        body.deliveryId,
+        result.documentId,
+        "door_count",
+      );
+      if (!linked.ok)
+        throw new HttpException(
+          // The COUNT landed. Saying "the door count failed" would send a
+          // receiver to type it again on top of a document that already exists.
+          `The door count was recorded as ${result.documentId} but could not be attached to delivery ${body.deliveryId}: ${linked.error}`,
+          linked.status,
+        );
+      delivery = linked.value.delivery;
+      deliveryId = body.deliveryId;
+    } else if (body.createDelivery) {
+      const created = await this.deliveries.create(
+        user.restaurantId,
+        user.userId,
+        {
+          orderId: body.orderId ?? null,
+          providerId: body.providerId ?? null,
+          jurisdiction: body.jurisdiction ?? null,
+          deliveredAt: body.countedAt ?? null,
+          documents: [{ documentId: result.documentId, role: "door_count" }],
+        },
+      );
+      if (!created.ok)
+        throw new HttpException(
+          `The door count was recorded as ${result.documentId} but the delivery could not be created: ${created.error}`,
+          created.status,
+        );
+      delivery = created.value.delivery;
+      differsOnLines = created.value.differsOnLines;
+      deliveryId = created.value.delivery.id;
+    }
+
+    /**
+     * STOCK IS BOOKED AT THE DOOR (ADR 0103 A1 / A5).
+     *
+     * The bottles are on the shelf and the staff can pour them; what nobody has
+     * yet is a price, so the lots are `cost_state = provisional` and carry NO
+     * unit cost — absent, never zero. Verification settles the cost later.
+     *
+     * A count with no delivery books nothing, and that is not a silent skip:
+     * `booking` is null and the caller can see that the count was recorded as a
+     * document without becoming stock. A line that names no item comes back in
+     * `booking.notBooked` with its reason rather than being guessed onto a
+     * shelf by its description.
+     */
+    let booking: unknown = null;
+    if (deliveryId) {
+      const booked = await this.deliveryStock.bookAtTheDoor(
+        user.restaurantId,
+        deliveryId,
+        result.documentId,
+        user.userId,
+      );
+      /**
+       * A FAILED BOOKING DOES NOT FAIL THE COUNT — AND IS NOT HIDDEN EITHER.
+       *
+       * Measured live on 2026-09-06 against a database that did not yet carry
+       * this stop's migration: the booking read failed, the endpoint answered
+       * 500, and the response carried no `deliveryId` — although the count AND
+       * the delivery were both already durable. The receiver's only move is to
+       * press the button again, which then 409s on the content hash. The door's
+       * whole promise is that one tap in a stairwell succeeds.
+       *
+       * So the count is 201 with the ids, and the booking's failure travels in
+       * the receipt: `failed: true`, `bottlesMoved: 0`, and the reason in words.
+       * That is the opposite of a silent success — a caller reading `booking`
+       * at all sees the failure, and one ignoring it sees zero bottles moved,
+       * never a number that did not happen.
+       */
+      booking = booked.ok
+        ? booked.value
+        : {
+            failed: true,
+            deliveryId,
+            documentId: result.documentId,
+            booked: [],
+            notBooked: [],
+            bottlesMoved: 0,
+            error: booked.error,
+          };
+      if (!booked.ok)
+        this.logger.error(
+          `door count ${result.documentId} was recorded and attached to delivery ${deliveryId} but booked no stock: ${booked.error}`,
+        );
+    }
+
+    return {
+      documentId: result.documentId,
+      document: result.parsed,
+      delivery,
+      // NULL = the count is a document and nothing more: no delivery, so no
+      // stock. Never an empty booking receipt, which would read as "booked
+      // nothing" (ADR 0103 A6).
+      booking,
+      // NULL = no comparison was possible (no order, or the read failed).
+      // 0 = compared, and nothing differed. The two are never the same answer.
+      differsOnLines,
+      ...(result.storageError ? { storageError: result.storageError } : {}),
+    };
+  }
 
   @Post()
   @ApiOperation({
@@ -186,23 +615,74 @@ export class DocumentsController {
     // a URL, so it needs a short-lived signed URL to be viewable at all.
     // Best-effort: a signing failure must not take down the rest of the
     // document, since the extraction and match evidence do not depend on it.
-    let imageUrl: string | null = null;
-    if (doc.storage_path) {
-      try {
-        const { data: signed } = await this.db
-          .getClient()
-          .storage.from("vendor-attachments")
-          .createSignedUrl(doc.storage_path, 3600);
-        imageUrl = signed?.signedUrl ?? null;
-      } catch {
-        /* best-effort — a missing object just yields no image */
-      }
-    }
+    // Shared with `GET :id/canonical` so the two panes cannot drift.
+    //
+    // AND THE REASON TRAVELS WITH IT. This destructured `imageUrl` alone and
+    // dropped `reason` on the floor, so "no file was ever stored", "the path is
+    // there and signing failed" and "the bucket is unreachable" all reached the
+    // screen as the same `null` — the canonical route has carried the reason
+    // since slice 2 and this one had not (ADR 0067).
+    const { imageUrl, reason: imageUrlReason } = await this.signOriginal(
+      doc.storage_path ?? null,
+    );
 
     return {
-      document: { ...doc, imageUrl },
+      document: { ...doc, imageUrl, imageUrlReason },
       lines: lines ?? [],
       links: links ?? [],
+    };
+  }
+
+  /**
+   * The extraction door. Class-level `@UseGuards(JwtAuthGuard)` covers it, and
+   * `restaurantId` comes from the token exactly as it does on every sibling
+   * route — the id in the path is scoped by it, never trusted on its own.
+   */
+  @Post(":id/extraction")
+  @ApiOperation({
+    summary: "Apply an extraction produced outside this gateway",
+    description:
+      "Fills a document that was stored UNREAD (ADR 0104 D6) with an extraction someone else performed — today, a Claude Code session reading the PDF, because the configured Anthropic key has no credit. The body is the same JSON DocumentExtractorService asks a model for, and it goes through the same `normalize` (validation, tie-out, warnings) that a model's answer does; `model` is recorded verbatim in extraction_model so the row says who read the page. " +
+      "409 if the document already has lines or a non-degraded extraction: this door FILLS an unread document and never overwrites a read one, because overwriting would silently discard a manager's corrections. 422 if the body is not the contract's JSON, or carries no lines. Writes no stock, cost or orders — the gateway's own extractor remains the product path.",
+  })
+  async applyExtraction(
+    @Param("id") id: string,
+    @Body() body: ApplyExtractionDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    let applied: Awaited<
+      ReturnType<DocumentIntakeService["applyExternalExtraction"]>
+    >;
+    try {
+      applied = await this.intake.applyExternalExtraction(
+        user.restaurantId,
+        id,
+        body.rawText,
+        body.model,
+        user.userId,
+      );
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to apply the extraction";
+      if (msg === "NOT_FOUND")
+        throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+      if (msg.startsWith("ALREADY_READ:"))
+        throw new HttpException(msg.slice(13), HttpStatus.CONFLICT);
+      if (msg.startsWith("UNPARSABLE:"))
+        throw new HttpException(msg.slice(11), HttpStatus.UNPROCESSABLE_ENTITY);
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // The document as `GET :id` returns it, read back through that route's own
+    // code rather than reassembled here — the two shapes cannot drift if there
+    // is only one of them.
+    const detail = await this.detail(id, user);
+    return {
+      ...detail,
+      warnings: applied.warnings,
+      tieOut: applied.tieOut,
+      // Never omitted when it failed: a document whose lines landed and whose
+      // revision did not is a different thing from one where both did.
+      revision: applied.revision,
     };
   }
 
@@ -290,7 +770,10 @@ export class DocumentsController {
     } catch (error) {
       const msg: string = error?.message ?? "Failed to edit line";
       if (msg === "NOT_FOUND")
-        throw new HttpException("Document or line not found", HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          "Document or line not found",
+          HttpStatus.NOT_FOUND,
+        );
       if (msg.startsWith("NOT_EDITABLE:"))
         throw new HttpException(
           `Only a document awaiting review can be edited — this one is ${msg.slice(13)}.`,

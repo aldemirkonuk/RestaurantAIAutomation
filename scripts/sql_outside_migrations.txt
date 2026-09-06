@@ -10,6 +10,7 @@ Supabase_SQL_Files/SQL_editor5.sql
 Supabase_SQL_Files/SQL_editor6_sku_additions.sql
 Supabase_SQL_Files/supabase_sql_file_v1.sql
 Supabase_SQL_Files/supabase_sql_file_v2.sql
+datasets/library/repair-2026-09-05.sql
 scripts/fix_uuid_migration.sql
 scripts/init_database_local.sql
 services/database/migrations_archive/000_migration_tracker.sql
@@ -133,3 +134,7 @@ supabase/migrations_archive/20260729120000_inventory_sample_cost_provenance.sql
 supabase/migrations_archive/20260730120000_integration_oauth_connections.sql
 supabase/migrations_archive/20260731164610_capture_ghost_tables.sql
 supabase/migrations_archive/20260803224738_drop_duplicate_indexes.sql
+supabase/tests/20260903160000_canonical_document_and_delivery_test.sql
+supabase/tests/20260905231500_document_correction_reason_and_kind_test.sql
+supabase/tests/20260905232000_delivery_agreement_and_timers_test.sql
+supabase/tests/20260906233000_stock_at_the_door_cost_at_verified_test.sql
