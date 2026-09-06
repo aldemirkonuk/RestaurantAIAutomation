@@ -5,7 +5,9 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
+import { ConfigService } from "@nestjs/config";
 import { GoalsService } from "./goals.service";
+import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
@@ -322,6 +324,13 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
         { provide: RecommendationActionsService, useValue: {} },
         { provide: TableAnalyticsService, useValue: {} },
         { provide: GoalsService, useValue: goals },
+        // ADR 0120 Q4: the controller now also carries the scenario-request
+        // store and one platform-admin route. Nothing in this file calls
+        // either; they are provided so the module compiles — and ConfigService
+        // with them, because `ServiceKeyGuard` injects it and Nest builds every
+        // route guard when the module is created, not when a route is hit.
+        { provide: GoalScenarioRequestsService, useValue: {} },
+        { provide: ConfigService, useValue: { get: () => undefined } },
         { provide: ConsultantsService, useValue: {} },
         { provide: InsightGeneratorService, useValue: {} },
         { provide: InsightSchedulerService, useValue: {} },

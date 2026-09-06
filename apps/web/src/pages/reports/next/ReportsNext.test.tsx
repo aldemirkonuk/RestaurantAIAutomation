@@ -125,6 +125,18 @@ const deskStub = {
   place: vi.fn(),
   /** The book of scenarios (ADR 0120). Replaced per-case below. */
   scenarios: { book: undefined, loading: false, failure: null } as unknown,
+  /**
+   * Asking Mudavym for a scenario the book does not carry (ADR 0120 Q4).
+   * `note` and `error` are set per-case: the page must print the GATEWAY's
+   * confirmation and only after it accepted, never one of its own on submit.
+   */
+  scenarioRequest: {
+    send: vi.fn(),
+    busy: false,
+    note: null as string | null,
+    error: null as string | null,
+    reset: vi.fn(),
+  },
 };
 
 /**
@@ -428,6 +440,9 @@ beforeEach(() => {
   deskStub.asking = null;
   deskStub.proposal = null;
   deskStub.scenarios = { book: SCENARIO_BOOK, loading: false, failure: null };
+  deskStub.scenarioRequest.busy = false;
+  deskStub.scenarioRequest.note = null;
+  deskStub.scenarioRequest.error = null;
   hook.current = base();
 });
 
@@ -1317,6 +1332,78 @@ describe('ReportsNext — the book of scenarios', () => {
       within(goals).getByText(/The book of scenarios could not be read/),
     ).toBeInTheDocument();
     expect(within(goals).getByLabelText('Measure')).toBeInTheDocument();
+  });
+
+  /* ── ADR 0120 Q4: "Not yet; request a scenario instead." ──────────────── */
+
+  it('says the catalogue is Mudavym’s, and offers to carry the request', () => {
+    const goals = openTheForm();
+    expect(
+      within(goals).getByText(
+        /The book is Mudavym’s: every scenario on it carries an operator source you can check, so a house cannot add one/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(goals).getByRole('button', { name: /Ask for a scenario/ })).toBeInTheDocument();
+  });
+
+  it('sends the words, and claims nothing until the gateway confirms', () => {
+    const goals = openTheForm();
+    fireEvent.click(within(goals).getByRole('button', { name: /Ask for a scenario/ }));
+    fireEvent.change(
+      within(goals).getByLabelText('What should we be able to hold you to'),
+      { target: { value: '  hold pour cost under a number we set  ' } },
+    );
+    fireEvent.click(within(goals).getByRole('button', { name: 'Send it to Mudavym' }));
+
+    expect(deskStub.scenarioRequest.send).toHaveBeenCalledWith(
+      '  hold pour cost under a number we set  ',
+    );
+    // Nothing confirmed: the desk has not reported an accepted write, so the
+    // page must not print one (ADR 0020 — a page may not claim a write it has
+    // not seen land).
+    expect(within(goals).queryByTestId('rp-scenario-request-note')).toBeNull();
+  });
+
+  it('will not send an empty request', () => {
+    const goals = openTheForm();
+    fireEvent.click(within(goals).getByRole('button', { name: /Ask for a scenario/ }));
+    fireEvent.change(
+      within(goals).getByLabelText('What should we be able to hold you to'),
+      { target: { value: '   ' } },
+    );
+    expect(
+      (within(goals).getByRole('button', { name: 'Send it to Mudavym' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it('prints the gateway’s own confirmation once it accepted', () => {
+    deskStub.scenarioRequest.note =
+      'Mudavym has it, in your words. The catalogue is ours to write, so nothing was added to it.';
+    const goals = openTheForm();
+    expect(within(goals).getByTestId('rp-scenario-request-note')).toHaveTextContent(
+      /nothing was added to it/,
+    );
+  });
+
+  it('says why a request did not go through, rather than closing as if it had', () => {
+    deskStub.scenarioRequest.error = 'Your request did not go through: permission denied';
+    const goals = openTheForm();
+    fireEvent.click(within(goals).getByRole('button', { name: /Ask for a scenario/ }));
+    expect(within(goals).getByTestId('rp-scenario-request-error')).toHaveTextContent(
+      /permission denied/,
+    );
+    expect(within(goals).queryByTestId('rp-scenario-request-note')).toBeNull();
+  });
+
+  it('still offers the request when the book itself could not be read', () => {
+    deskStub.scenarios = {
+      book: undefined,
+      loading: false,
+      failure: 'The book of scenarios could not be read, so only the measure list below is offered.',
+    };
+    const goals = openTheForm();
+    expect(within(goals).getByRole('button', { name: /Ask for a scenario/ })).toBeInTheDocument();
   });
 });
 

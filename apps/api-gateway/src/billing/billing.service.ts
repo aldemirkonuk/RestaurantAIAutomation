@@ -616,6 +616,82 @@ export class BillingService {
   }
 
   /**
+   * Ask the provider what a seal actually produced (ADR 0121 addendum, the
+   * reconcile half).
+   *
+   * FOUR OUTCOMES, AND `readable: false` IS THE IMPORTANT ONE. "The provider
+   * says there is no such charge" and "the provider could not be asked" are
+   * different facts, and a reconcile that confused them would VOID an intent —
+   * throwing away the record of a charge that may well exist — because a
+   * network was down.
+   *
+   * A note the caller must not lose: an empty answer here is not proof. Stripe's
+   * search index is eventually consistent, so `PurchaseIntentReconciler` ages an
+   * empty result against the attempt time before it will act on it.
+   */
+  async findChargeForSeal(sealId: string): Promise<{
+    readable: boolean;
+    succeeded: boolean;
+    paymentIntentId: string | null;
+    status: string | null;
+    words: string;
+  }> {
+    if (!this.config.connected()) {
+      return {
+        readable: false,
+        succeeded: false,
+        paymentIntentId: null,
+        status: null,
+        words: `No payment provider is connected in this deployment, so nothing could be asked about this purchase: ${
+          this.config.state().reason ?? "STRIPE_SECRET_KEY is not set."
+        }`,
+      };
+    }
+
+    let found;
+    try {
+      found = await this.stripe.findChargeBySeal(sealId);
+    } catch (error) {
+      const said = (error as Error)?.message ?? "the provider gave no reason";
+      this.logger.error(`findChargeForSeal failed: ${said}`);
+      return {
+        readable: false,
+        succeeded: false,
+        paymentIntentId: null,
+        status: null,
+        words: `The provider could not be asked about this purchase: ${said}.`,
+      };
+    }
+
+    if (found.length === 0) {
+      return {
+        readable: true,
+        succeeded: false,
+        paymentIntentId: null,
+        status: null,
+        words:
+          "The provider reports no charge carrying this seal. Its search index runs behind, so this is only meaningful once the attempt is old enough.",
+      };
+    }
+
+    // Prefer a succeeded one if the search returned several. A seal produces at
+    // most one charge through this product — the idempotency key sees to that —
+    // so more than one here means something outside this product also charged,
+    // and the succeeded one is the one that matters to the house.
+    const succeeded = found.find((p) => p.status === "succeeded");
+    const chosen = succeeded ?? found[0];
+    return {
+      readable: true,
+      succeeded: Boolean(succeeded),
+      paymentIntentId: chosen.id,
+      status: chosen.status ?? null,
+      words: succeeded
+        ? `The provider confirms ${chosen.id} succeeded.`
+        : `The provider holds ${chosen.id} with status "${chosen.status ?? "unknown"}"; no money moved.`,
+    };
+  }
+
+  /**
    * The instrument this house is charged on: its default, or its only one.
    *
    * Reads the MIRROR rather than asking the provider, because the register is

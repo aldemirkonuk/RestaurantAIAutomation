@@ -34,9 +34,21 @@
  *     automatic device, process, or means to access the Website for any
  *     purpose" AND, separately, "your account is personal to you and agree not
  *     to provide any other person with access to this Website or portions of it
- *     using your username, password, or other security information" — so
- *     handing this product a portal login is itself the breach, before any
- *     request is made.
+ *     using your username, password, or other security information".
+ *
+ *     **CORRECTED 2026-09-05 (ADR 0126, the three-angle research).** Those
+ *     Terms define "Website" in their own first paragraph as
+ *     `southernglazers.com`. The buyer portal is `shop.sgproof.com` — a
+ *     different host on a different platform — and **its own terms have not
+ *     been read by anyone**: the host publishes `Visit-time: 0400-0845` and the
+ *     window was shut on both passes. This register, this file's own
+ *     house-facing sentence and ADR 0126 all applied the corporate site's terms
+ *     to the portal, which is an unread document cited as if it had been read —
+ *     this repository's own named cardinal fault. The corporate clause still
+ *     governs `southernglazers.com`; what governs the portal is unknown, and
+ *     the entry below now says so. It does not become permission: an unread
+ *     term is not a permissive one, and a Proof account almost certainly
+ *     carries its own portal terms plus a signed customer application.
  *   - `shop.sgproof.com/robots.txt` allows browsing but publishes
  *     `Crawl-delay: 10`, `Request-rate: 1/10` and `Visit-time: 0400-0845`. The
  *     research pass honoured it: the window was closed at 12:18 UTC and no page
@@ -177,6 +189,38 @@ export const DISTRIBUTOR_FEED_CONNECTION = Object.freeze({
   landsInTable: "vendor_price_observations" as const,
   landsInSourceType: "api_catalog" as const,
   landsInTrustTier: 3 as const,
+
+  /**
+   * THE TWO WAYS IN, and there are exactly two (ADR 0126, batch 56).
+   *
+   * `offerable: false` above says no connection can be declared. That is not
+   * the same as saying a house can do nothing, and a panel that stopped at the
+   * refusal would be telling a house it has no route when it has two. Both of
+   * these run on a file a PERSON obtained. Neither holds a credential, reaches
+   * a network or asks a distributor for anything this product could take
+   * itself.
+   */
+  waysIn: Object.freeze([
+    Object.freeze({
+      id: "upload" as const,
+      label: "Hand over a file you already have",
+      /** Live: the route named here accepts it today. */
+      built: true,
+      how: "An EDI 810 invoice or an EDI 832 price catalogue your distributor or your rep already sent you, uploaded through the same door your invoices go through. An 810 is read as an invoice. An 832 is read as a price list, and its lines are priced only under the codes a manager of this house has already stated the meaning of — every other line comes back refused, by name, with the code that refused it.",
+      route: "POST /procurement/documents",
+      needs:
+        "The file itself, and the sender named. For an 832, at least one price-code statement for that sender — without one, every line is refused as unmapped and the report says which codes to state.",
+    }),
+    Object.freeze({
+      id: "letter" as const,
+      label: "Ask your Sales Consultant for an invoice feed",
+      built: true,
+      how: "A letter the house signs on its own letterhead, addressed to its Sales Consultant, asking for an EDI 810 invoice feed or an order-guide equivalent for its own account. Southern Glazer's first: it is the one of the three Illinois distributors with a documented EDI programme. Mudavym is named in it as the software that would receive the file, and Mudavym does not send it — there is no route that could.",
+      route: "GET /distributor-feed/letter",
+      needs:
+        "The house's licence number, its account number and its consultant's name. Those are brackets in the letter; this product does not hold them and will not guess them.",
+    }),
+  ]),
 });
 
 export const DISTRIBUTORS: Record<string, DistributorEntry> = {
@@ -220,7 +264,7 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
       robots:
         "shop.sgproof.com/robots.txt (HTTP 200, 791 bytes) allows all but cart/checkout/my-account, and publishes 'Crawl-delay: 10', 'Request-rate: 1/10' and 'Visit-time: 0400-0845'. The research pass honoured the visit window and fetched no page on that host: the request would have been made at 12:18 UTC.",
       terms:
-        "southernglazers.com Terms of Use: you may not 'use any robot, spider, or other automatic device, process, or means to access the Website for any purpose, including monitoring or copying any of the material on the Website', and 'your account is personal to you and agree not to provide any other person with access to this Website or portions of it using your username, password, or other security information'.",
+        "The SG Proof portal's OWN terms of use have not been read: shop.sgproof.com publishes 'Visit-time: 0400-0845' and the window was shut on both passes, so nothing on that host was fetched. What HAS been read is southernglazers.com's Terms of Use, which define 'Website' in their own first paragraph as southernglazers.com — a different host from the portal. Those terms say you may not 'use any robot, spider, or other automatic device, process, or means to access the Website for any purpose, including monitoring or copying any of the material on the Website', and that 'your account is personal to you and agree not to provide any other person with access to this Website or portions of it using your username, password, or other security information'. Read them as governing the corporate site, which is where they say they apply. The portal's position is UNKNOWN, and an unread term is not a permissive one.",
       measuredOn: "2026-09-05",
       evidence: [
         "https://shop.sgproof.com/robots.txt",
@@ -231,7 +275,7 @@ export const DISTRIBUTORS: Record<string, DistributorEntry> = {
       ],
     },
     availability:
-      "Southern Glazer's does run an EDI programme, and what it sends a customer is orders, shipments and invoices — 850, 856 and 810 on two independent trading-partner pages, with no 832 price catalogue among them. So the number this house pays reaches it as an invoice, which this house already records. Reading the Proof portal instead is forbidden twice over: by the terms' ban on automated access, and by their ban on giving anyone else your credentials.",
+      "Southern Glazer's does run an EDI programme, and what it sends a customer is orders, shipments and invoices — 850, 856 and 810 on two independent trading-partner pages, with no 832 price catalogue among them. So the number this house pays reaches it as an invoice, which this house already records. This is the distributor to ask first for an invoice feed, and the letter on this page is addressed to it. Reading the Proof portal instead is not something this product will do: the corporate terms forbid an automated reader on southernglazers.com and forbid giving anyone else your credentials, and the portal's own terms are unread rather than permissive.",
     unbuilt: {
       reason:
         "No 832 price/sales catalogue is documented for Southern Glazer's by either EDI provider whose trading-partner page was read; Restaurant365 lists it as Multi-Invoice with the Order Guides column blank. An EDI 810 feed is the house's own paper (ADR 0117 class A) and is already covered by the invoice path, not by a new connection.",

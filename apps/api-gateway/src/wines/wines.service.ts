@@ -30,6 +30,15 @@ interface WineRow {
   producer_story?: string | null;
   tasting_notes?: string | null;
   bottle_size_ml?: number | null;
+  /**
+   * Alcohol by volume, as a percentage, TYPED BY A PERSON
+   * (20260906120000_a_strength_is_stated_by_a_person.sql). Nullable and
+   * normally null: no default and no inference from a category, because this
+   * is the multiplicand in a duty figure on a row every house that stocks the
+   * bottle reads. `null` means nobody has stated one; `0` is a person stating
+   * a de-alcoholised product and is a different answer.
+   */
+  abv_percent?: number | string | null;
   created_at?: string | null;
   updated_at?: string | null;
   // Plan §1: derived full descriptive name ("2016 Gravner Ribolla
@@ -113,6 +122,14 @@ export class WinesService {
       tastingNotes: row.tasting_notes ?? undefined,
       bottleSizeMl,
       bottleSizeOz,
+      // Carried through as a NUMBER or as null, never coerced to 0: `Number(null)`
+      // is 0 and a zero here is a real, stateable strength (a de-alcoholised
+      // wine). Postgres returns NUMERIC as a string over PostgREST, so the
+      // conversion is explicit rather than implicit.
+      abvPercent:
+        row.abv_percent === null || row.abv_percent === undefined
+          ? undefined
+          : Number(row.abv_percent),
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
       // Carried, not dropped. `unknown` is a real classifier verdict and is
@@ -505,7 +522,7 @@ export class WinesService {
         // display_name added (plan §1): this is the search/autocomplete
         // list, exactly where the "same wine, different vintage, reads
         // identical" complaint was visible.
-        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
+        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
       )
       .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
       .limit(query.limit || 10);

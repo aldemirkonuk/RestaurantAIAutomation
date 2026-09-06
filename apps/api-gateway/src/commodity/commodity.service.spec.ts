@@ -12,6 +12,10 @@ import { CommodityService } from "./commodity.service";
 import { CommodityFetchService, parserFor } from "./commodity-fetch.service";
 import { DatabaseService } from "../database/database.service";
 import { SERIES, fetchableSeries } from "./commodity.registry";
+import {
+  BottleFactsService,
+  type ResolvedBottleFacts,
+} from "./bottle-facts";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -80,6 +84,22 @@ function makeDb(handler: Handler): DatabaseService {
   return { client } as unknown as DatabaseService;
 }
 
+/**
+ * The bottle-facts resolver, stubbed to "nothing stated" -- which is the real
+ * state of every bottle in this product until somebody types a strength and a
+ * size. Its own contract is tested in `bottle-facts.spec.ts`.
+ */
+function stubBottles(over: Partial<ResolvedBottleFacts> = {}): BottleFactsService {
+  return {
+    forHouseItem: async (): Promise<ResolvedBottleFacts> => ({
+      facts: { sizeMl: null, sizeSource: null, abvPercent: null, abvSource: null },
+      refusal: null,
+      detail: null,
+      ...over,
+    }),
+  } as unknown as BottleFactsService;
+}
+
 const HOUSE = "rest-1";
 const FAO_KEY = "fao.food_price_index.all";
 
@@ -91,6 +111,7 @@ describe("which series answer for a house", () => {
           ? { data: [{ state_province: null, country: "Atlantis" }] }
           : { data: [] },
       ),
+      stubBottles(),
     );
     const r = await svc.forHouse(HOUSE);
     expect(r.jurisdiction).toBeNull();
@@ -108,6 +129,7 @@ describe("which series answer for a house", () => {
           ? { data: [{ state_province: "England", country: "United Kingdom" }] }
           : { data: [] },
       ),
+      stubBottles(),
     );
     const r = await svc.forHouse(HOUSE);
     expect(r.jurisdiction).toBe("GB-ENG");
@@ -126,6 +148,7 @@ describe("which series answer for a house", () => {
           ? { data: [{ state_province: null, country: "United Kingdom" }] }
           : { data: [] },
       ),
+      stubBottles(),
     );
     expect((await svc.forHouse(HOUSE)).jurisdiction).toBe("GB");
   });
@@ -140,6 +163,7 @@ describe("the four silences, told apart", () => {
         }
         return { error: { message: "permission denied" } };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.note).toMatch(/unknown, not absent/);
@@ -156,6 +180,7 @@ describe("the four silences, told apart", () => {
         if (ctx.table === "commodity_index_observations") return { data: [], count: 0 };
         return { data: [] };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.latest).toBeNull();
@@ -171,6 +196,7 @@ describe("the four silences, told apart", () => {
         }
         return { data: [] }; // no series rows written
       }),
+      stubBottles(),
     );
     const egg = (await svc.forHouse(HOUSE)).series.find(
       (s) => s.seriesKey === "usda_ams.shell_egg_index.national",
@@ -204,6 +230,7 @@ describe("the four silences, told apart", () => {
         }
         return { data: [] };
       }),
+      stubBottles(),
     );
     const r = await svc.forHouse(HOUSE);
     expect(r.noExposureRecorded).toBe(true);
@@ -223,6 +250,7 @@ describe("the four silences, told apart", () => {
         if (ctx.table === "commodity_index_observations") return { data: [], count: 0 };
         return { error: { message: "relation does not exist" } };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.note).toMatch(/unknown, not "none"/);
@@ -255,6 +283,7 @@ describe("staleness is judged on the OBSERVATION'S period", () => {
         }
         return { data: [] };
       }),
+      stubBottles(),
     );
     const line = (await svc.forHouse(HOUSE)).series[0];
     expect(line.stale).toBe(true);
@@ -264,11 +293,12 @@ describe("staleness is judged on the OBSERVATION'S period", () => {
 
 describe("the status route", () => {
   it("reports the fetch OFF and names the flag", () => {
-    const svc = new CommodityService(makeDb(() => ({ data: [] })));
+    const svc = new CommodityService(makeDb(() => ({ data: [] })),
+      stubBottles(),);
     const s = svc.status();
     expect(s.fetchArmed).toBe(false);
     expect(s.flag).toBe("COMMODITY_INDEX_FETCH_ENABLED");
-    expect(s.series).toHaveLength(6);
+    expect(s.series).toHaveLength(8);
   });
 });
 
@@ -300,9 +330,43 @@ describe("the fetch service, driven with the RECORDED fixtures and no network", 
     // reader being pointed at a host whose robots.txt returns 403.
     const egg = SERIES["usda_ams.shell_egg_index.national"];
     expect(parserFor(egg)).not.toBeNull();
+    // The file landed on 2026-09-05, so the parser has seen real bytes — and
+    // the series is STILL upload_only. A one-off human read is not a cadence,
+    // and the host's robots.txt still returns 403.
+    expect(egg.awaitingHumanDownload).toBe(false);
     expect(egg.admission).toBe("upload_only");
-    expect(egg.awaitingHumanDownload).toBe(true);
+    expect(egg.withheld?.reason).toMatch(/one-off/i);
     expect(fetchableSeries().map((s) => s.seriesKey)).not.toContain(egg.seriesKey);
+  });
+
+  it("routes both TÜİK dataflows to the SDMX parser and reads them with the recorded bytes", async () => {
+    const tt01 = SERIES["tuik.tufe_tt01.food_and_non_alcoholic_beverages"];
+    expect(parserFor(tt01)).not.toBeNull();
+    const svc = new CommodityFetchService(makeDb(() => ({ data: [] })));
+    const outcome = await svc.runOne(
+      tt01,
+      async () =>
+        readFileSync(
+          join(__dirname, "__fixtures__", "tuik-tt01-cpi-food-2026-09-05.sample.csv"),
+          "utf8",
+        ),
+      new Date("2026-09-05T00:00:00Z"),
+      false,
+    );
+    expect(outcome.admission.admitted).toBe(true);
+    expect(outcome.observationsParsed).toBe(8);
+    expect(outcome.written).toBe(0);
+  });
+
+  it("REFUSES to read a credentialled source when this environment holds no key", async () => {
+    // No test ever goes outbound, and this one proves the refusal happens
+    // BEFORE anything is read: the default reader is used, and it stops at the
+    // token holder.
+    const svc = new CommodityFetchService(makeDb(() => ({ data: [] })));
+    expect(svc.tuikConfigured()).toBe(
+      typeof process.env.TUIK_SDMX_API_KEY === "string" &&
+        process.env.TUIK_SDMX_API_KEY.trim() !== "",
+    );
   });
 
   it("declares no parser for a rate: a rate is brought, never scraped", () => {

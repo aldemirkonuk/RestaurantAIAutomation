@@ -1,3 +1,4 @@
+import { NOT_CONTRIBUTED_ONLY } from "../price-register/visibility";
 import { ObservationRow, priceBelowAverage } from "./price-below-average";
 import { VendorComparisonService } from "./vendor-comparison.service";
 
@@ -186,9 +187,27 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
   it("reads market rows and this tenant's own, and no other tenant's", async () => {
     const { service, calls } = makeService([]);
     await service.belowTrailingAverage({ restaurantId: "rest-1" });
-    expect(calls.or).toEqual(["restaurant_id.is.null,restaurant_id.eq.rest-1"]);
+    // Both clauses, in this order, and nothing else. The scope now comes from
+    // `scopePriceRegisterRead` (ADR 0117 addendum) rather than being spelled
+    // here, and the third visibility state is excluded FIRST -- before any
+    // scope has had a chance to widen the read.
+    expect(calls.or).toEqual([
+      NOT_CONTRIBUTED_ONLY,
+      "restaurant_id.is.null,restaurant_id.eq.rest-1",
+    ]);
     // Outlier-ness is the consensus pass's verdict; this sweep obeys it.
     expect(calls.eq).toContainEqual(["is_outlier", false]);
+  });
+
+  it("never returns a row contributed under a floor, whoever it belongs to", async () => {
+    // The state has no row in it and no read may return one (ADR 0117
+    // addendum). Asserted on the PREDICATE rather than on rows, because a
+    // fixture with no contributed row would pass whether or not the clause
+    // was applied.
+    const { service, calls } = makeService([]);
+    await service.belowTrailingAverage({ restaurantId: "rest-1" });
+    expect(calls.or[0]).toBe(NOT_CONTRIBUTED_ONLY);
+    expect(NOT_CONTRIBUTED_ONLY).toContain("visibility.neq.contributed_aggregate_only");
   });
 
   it("throws when the register cannot be read, instead of returning an empty box", async () => {

@@ -1,7 +1,7 @@
 # 0120 — A goal is chosen from a book of scenarios; a model is chosen by the task
 
-- **Status:** Proposed — the founder settled two of its four open questions on 2026-09-04 (Haiku standardised on the undated alias; `days_of_inventory` funded first, taking the catalogue to **10 servable / 11 unserved of 21**). The remaining two are still open.
-- **Date:** 2026-09-04 (amended the same day: citation audit, Haiku alias, `days_of_inventory`)
+- **Status:** Locked 2026-09-06 — the founder locked it (batch 60) with all four questions answered and built (days of inventory; the `consult` class; a request path, no house-authored scenarios; routing by task class). Supersede, do not amend. (Was: Proposed — all four open questions are now settled. Two on 2026-09-04 (Haiku standardised on the undated alias; `days_of_inventory` funded first, taking the cat …)
+- **Date:** 2026-09-04 (amended the same day: citation audit, Haiku alias, `days_of_inventory`; amended 2026-09-05: the `consult` class and the scenario request)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** goals, scenarios, benchmarks, operator ranges, model routing, task class, metering, neural_footprint_event, sonnet, haiku, reports, recommendations
 - **Links:** [[0020-honesty-first]] · [[0051-absence-is-not-zero]] · [[0113-the-assistant-proposes-the-seal-applies]] · `apps/api-gateway/src/analytics/goal-scenarios.ts` · `apps/api-gateway/src/common/model-client/model-routing.ts` · `.planning/06-pages/reports.md` §13 · `.planning/06-pages/recommendations.md` §13
@@ -165,7 +165,9 @@ predates the field" and a null means "we recorded that we do not know".
   it said. The two `compose` calls cost twice as much per token (Sonnet 5
   $2.00/$10.00 vs Haiku 4.5 $1.00/$5.00); both are small (400 and 1024 max
   output tokens) but a `core` house is on a $5 credit that does not reset.
-- **Deliberately not done:** `ConsultantsService` keeps Opus and is not routed —
+- **Deliberately not done** *(superseded 2026-09-05 by the amendment below: the
+  founder answered "fourth class: consult", and the call is now routed — at the
+  same Opus model)*: `ConsultantsService` keeps Opus and is not routed —
   the founder's decision does not cover deep analysis, and silently changing the
   model on the most expensive call in the gateway is not a decision to take in
   passing. The `lookup` and `help` classes are declared with no call site today;
@@ -233,7 +235,9 @@ than a transcription. What is pinned is the part that can be wrong.
    under **OD-04**, which is open because *"no place in the repo says which model
    does which job"* — rewriting them here would answer that decision as a side
    effect of a naming fix.
-2. **The consultant's Opus call.** Fourth class, or fold it into `compose`?
+2. ~~**The consultant's Opus call.** Fourth class, or fold it into `compose`?~~
+   **DECIDED 2026-09-05: *"Fourth class: consult."*** Built — see the amendment
+   below. The rejected path was folding it into `compose`.
 3. ~~**Which of the twelve gaps to close first.**~~ **DECIDED 2026-09-04:
    `days_of_inventory`**, and it is built. It is the seventh
    `SUPPORTED_METRICS` entry — label *Days of stock*, unit `days` (a unit the
@@ -249,12 +253,89 @@ than a transcription. What is pinned is the part that can be wrong.
    writing a goal that can never be read. Eleven gaps remain; `prime_cost_pct`
    and `labour_cost_pct` still need a labour feed that exists nowhere in this
    gateway.
-4. **Whether a house may add its own scenario.** The catalogue is ours today. A
-   tenant-authored scenario is a different object (it would need a metric key it
-   cannot invent) and needs its own decision.
+4. ~~**Whether a house may add its own scenario.**~~ **DECIDED 2026-09-05:
+   *"Not yet; request a scenario instead."*** Built — see the amendment below.
+   The rejected path was a tenant-authored scenario row.
+
+### Amendment, 2026-09-05 — the fourth class, and the request
+
+Two founder calls of 2026-09-05 (batch 52), each recorded with the path it
+rejected.
+
+**Q2 — *"Fourth class: consult."*** `ConsultantsService` is no longer the one
+model site in the gateway with no class. `TASK_CLASSES` gains `consult`,
+`MODEL_FOR_CLASS.consult` is `claude-opus-4-8` and `CLASS_ENV_VAR.consult` is
+`MODEL_FOR_CONSULT`; the call resolves through `resolveModel` with
+`ANALYTICS_CONSULTANT_MODEL` still outranking the class as the site variable,
+and the NF row now carries `task_class`, `model_routed_by` and `asked_by`
+(read from the token by the controller, `null` when no user is named).
+
+**The model does not move.** `claude-opus-4-8` is the literal default
+`consultants.service.ts` has always carried, and the spec asserts it: naming a
+class must not swap the model on the most expensive call in the gateway, which
+is exactly what the first draft refused to do in passing.
+
+*Rejected: fold it into `compose`.* It fails on both halves of what the fold
+would mean. `MODEL_FOR_COMPOSE`, set for an incident, would have moved the
+consultant too — one env var silently reaching a 4096-token adaptive-thinking
+pass over a full evidence pack. And one `task_class` would have covered both a
+400-token cutting spec and that pass, so "what does composing cost" would have
+been unanswerable from the ledger rows. Both are pinned by tests
+(`model-routing.spec.ts`, `consultant-routing.spec.ts`).
+
+`lookup` and `help` still have no call site; `consult` now has one, so three of
+the four classes are live.
+
+**Q4 — *"Not yet; request a scenario instead."*** A house may say what it wants
+to be held to, in words. `public.goal_scenario_request` (migration
+`20260906090000`) stores four facts and no state: the house, the person, the
+words, the time. `POST /analytics/goal-scenarios/requests/:restaurantId` is a
+plain authenticated write with the actor read from the token — deliberately NOT
+sealed, because a request moves no money and sends nothing, and teaching the
+hold-to-approve gesture to mean "I typed a sentence" devalues it where it
+matters (ADR 0113). `GET /analytics/goal-scenarios/requests` is the founder's,
+gated by `ServiceKeyGuard` (ADR 0099, the pattern the both-arms experiment
+report uses), cross-tenant by construction and therefore reachable by no user
+token.
+
+**The catalogue stays one truth.** Nothing reads this table into
+`goalScenarioBook()`; there is no join and no "custom scenarios" section. The
+reason is the same one that made the book defensible: every row on it carries an
+operator source a reader can check, and a row a house typed could carry none —
+it cannot invent a metric key, and a range it wrote itself would be a number
+with no source sitting exactly where a sourced one belongs. The picker on
+`/reports` says so in the sentence above the control ("The book is Mudavym's …
+so a house cannot add one") rather than leaving it to be discovered.
+
+Three shapes were chosen against the repo's convention, each for a reason:
+
+1. **No status column.** Nothing in this build would ever write one, so every
+   row would read `new` forever — indistinguishable from a queue nobody has
+   opened. A request is answered by an ADR and a funded metric.
+2. **`requested_by` is NOT NULL and `ON DELETE RESTRICT`**, where the repo's
+   actor columns are nullable and `SET NULL`. That convention is right for a
+   record of an ACT; this row is a person's WORDS, and a null author would
+   render as "nobody asked". Cost, stated: deleting a user with an outstanding
+   request is refused (SQLSTATE 23001, restrict_violation — measured on PGlite; the first text said 23503, the code for a missing referent, corrected by audit adb8de250209ceb96). Nothing in the gateway or the orchestrator
+   deletes a `public.users` row today.
+3. **A failed read throws.** `listAll` returns an error with its reason rather
+   than `[]`, because on this surface an empty list reads as "no house has asked
+   for anything", i.e. as evidence the catalogue already covers the field.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-04 | — | Created (Proposed) |
+| 2026-09-05 | Aldemir (founder) | Q2 and Q4 answered — the `consult` class and the scenario request, both built (batch 52) |
+
+
+## Founder answers, 2026-09-06 (batch 60)
+
+**"Lock it."** Status moved to Locked above. **"No, not for now"** on a house seeing its own scenario requests back: a request is sent and acknowledged; the answer is the scenario appearing in the book; a list with no state reads like a queue nobody answers. Rejected: a plain list of what they sent.
+
+## Review trail, continued (parent, 2026-09-06)
+
+| Date | Who | What |
+|---|---|---|
+| 2026-09-06 | Claude (parent) | The numbers 78bd177a's message pointed at "the ADR's review trail" for, which this trail did not carry until now (audit adb8de250209ceb96 called it a BLOCKER, rightly): on an archive of that commit's index, `npx jest src/analytics src/common/model-client` 473 passed / 36 suites; `cd apps/web && npx vitest run src/pages/reports` 89 passed / 3 files; gateway tsc (tsconfig.json and tsconfig.spec.json) 0 errors; web tsc 0 errors; check_gateway_boots PASS; PGlite `p4bh-scenario-request.mjs` applied with its own assertions, nine shape cases (no/null/ghost author refused 23502/23503, empty and 2001-char refused 23514, 2000 accepted), author deletion refused 23001, house cascade 2 to 0 rows, RLS true, anon/authenticated grants 0. **Correction:** that message listed check_read_columns_exist under "Measured" while the archive run printed FAIL (4 unresolvable reads over the ceiling of 2 — the name lookup's two template-literal selects); the parent read the guard lines and committed anyway; fixed in 9d13bd01 (literal columns; guard PASS; jest goal-scenario-requests.spec.ts 14 passed). |

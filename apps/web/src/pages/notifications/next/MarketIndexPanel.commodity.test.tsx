@@ -98,6 +98,12 @@ function fao(over: Record<string, unknown> = {}) {
     effectiveFrom: null,
     duty: null,
     armedBy: null,
+    accessKeyRequired: false,
+    keyEnvVar: null,
+    keyConfiguredHere: null,
+    robotsReading: null,
+    requestBudgetPerDay: null,
+    licenceUrl: null,
     ...over,
   };
 }
@@ -226,6 +232,7 @@ describe('the section makes no claim about what this house will pay', () => {
             {
               id: 'e1',
               houseItemId: 'i1',
+              duty: null,
               passThrough: null,
               passThroughBasis: 'unset',
               lagDays: null,
@@ -462,5 +469,259 @@ describe('an armed series says who armed it and on which numbers', () => {
     mockCommodity.current = { ...COMMODITY_READY, series: [fao()] };
     render(<MarketIndexPanel />);
     expect(screen.queryByText(/Armed for alerting/)).toBeNull();
+  });
+});
+
+
+describe('the per-bottle duty line, beside the rate series', () => {
+  function exposure(over: Record<string, unknown> = {}) {
+    return {
+      id: 'e1',
+      houseItemId: 'i1',
+      duty: null,
+      passThrough: null,
+      passThroughBasis: 'unset',
+      lagDays: null,
+      lagBasis: 'unset',
+      note: null,
+      ...over,
+    };
+  }
+
+  function rate(exposures: Array<Record<string, unknown>>) {
+    return fao({
+      seriesKey: 'hmrc.alcohol_duty.spirits_and_wine_8_5_to_22',
+      issuer: 'HM Revenue & Customs',
+      seriesTitle: 'Alcohol Duty rates, wine and spirits 8.5% to 22% ABV',
+      valueKind: 'rate',
+      unit: 'GBP per litre of pure alcohol',
+      basePeriod: null,
+      currency: 'GBP',
+      statute: 'Finance (No. 2) Act 2023, Part 2',
+      effectiveFrom: '2026-02-01',
+      duty: { supported: true, sentence: 'A per-bottle duty is size x strength x rate.' },
+      exposures,
+    });
+  }
+
+  it('PRINTS the figure when both facts are stated, and calls it a duty', () => {
+    // A number beside a bottle reads as what the house pays for it unless the
+    // line says otherwise.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            duty: {
+              derived: true,
+              amount: 9.19,
+              currency: 'GBP',
+              basis:
+                'HM Revenue & Customs, GBP per litre of pure alcohol, in force from 2026-02-01: 30.62 GBP per litre of pure alcohol, on 750 ml at 40%. Duty only; no VAT, no margin, no price.',
+            },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/GBP 9\.19/)).toBeTruthy();
+    expect(screen.getByText(/per bottle on a mapped item/)).toBeTruthy();
+    expect(screen.getByText(/Duty only; no VAT, no margin, no price/)).toBeTruthy();
+  });
+
+  it('prints a duty of ZERO as a figure, never as an absence', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            duty: { derived: true, amount: 0, currency: 'GBP', basis: 'the 0-1.2% band is GBP 0.00.' },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    // `getAllByText`, not `getByText`: this fixture's own basis sentence also
+    // says "GBP 0.00", so the figure and its working both match. Both are meant
+    // to be there -- the point is that a zero DUTY is printed as a figure and
+    // not swallowed as an absence.
+    expect(screen.getAllByText(/GBP 0\.00/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/per bottle on a mapped item/)).toBeTruthy();
+  });
+
+  it('prints the REFUSAL when nobody has stated a strength', () => {
+    // An empty space is not something a person can act on; a sentence naming
+    // the missing fact is.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            duty: {
+              derived: false,
+              reason: 'no_strength',
+              detail:
+                "HM Revenue & Customs publishes this rate per litre of PURE ALCOHOL, so this bottle's strength is required and nobody has stated one.",
+            },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/No per-bottle figure for a mapped item/)).toBeTruthy();
+    expect(screen.getByText(/nobody has stated one/)).toBeTruthy();
+  });
+
+  it('prints the REFUSAL when the size is unstated or ambiguous', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        rate([
+          exposure({
+            id: 'e2',
+            duty: {
+              derived: false,
+              reason: 'size_ambiguous',
+              detail:
+                'This bottle is registered in more than one size and this house has not said which it buys, so no duty is computed.',
+            },
+          }),
+        ]),
+      ],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/registered in more than one size/)).toBeTruthy();
+  });
+
+  it('draws no duty line at all on an index series', () => {
+    // An index number is not a tax, and computing one from it would be
+    // inventing a liability.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [fao({ exposures: [exposure()] })],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/per bottle on a mapped item/)).toBeNull();
+    expect(screen.queryByText(/No per-bottle figure/)).toBeNull();
+  });
+});
+
+
+describe('TÜİK: the line Türkiye did not have, and its licence travels with it', () => {
+  function tuik(over: Record<string, unknown> = {}) {
+    return fao({
+      seriesKey: 'tuik.tufe_tt01.food_and_non_alcoholic_beverages',
+      issuer: 'Türkiye İstatistik Kurumu (Turkish Statistical Institute)',
+      issuerJurisdiction: 'TR',
+      seriesTitle:
+        'Tüketici fiyat endeksi (TÜFE), 01 Gıda ve alkolsüz içecekler — Consumer price index, 01 Food and non-alcoholic beverages',
+      basePeriod: '2025=100',
+      licence:
+        'İnternet sitemizden, yayınlarımızdan veya veri tabanlarımızdan elde edilen verilerin, kaynak gösterilmek suretiyle herhangi bir izine gerek duymaksızın yeniden kullanımı mümkündür.',
+      attribution:
+        "Source: Turkish Statistical Institute (TÜİK), Consumer Price Index. Re-used under TÜİK's legal notice, which permits re-use provided the source is cited.",
+      redistribution: 'attribution_required',
+      accessKeyRequired: true,
+      keyEnvVar: 'TUIK_SDMX_API_KEY',
+      keyConfiguredHere: true,
+      robotsReading: 'nsiws.tuik.gov.tr/robots.txt returned HTTP 401',
+      requestBudgetPerDay: 24,
+      licenceUrl: 'https://www.tuik.gov.tr/Kurumsal/Yasal_Uyari',
+      latest: {
+        periodStart: '2026-08-01',
+        periodGrain: 'month',
+        value: 134.31,
+        issuedAt: '2026-09-05T00:00:00.000Z',
+        issuedAtBasis: 'fetch_date',
+        fetchedAt: '2026-09-05T00:00:00.000Z',
+        vintage: null,
+      },
+      observationCount: 260,
+      ...over,
+    });
+  }
+
+  it('draws beside FAO and ONS, with its own value, base and period', () => {
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      jurisdiction: 'TR-07',
+      series: [fao(), ons(), tuik()],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText('FAO Food Price Index')).toBeTruthy();
+    expect(screen.getByText(/Tüketici fiyat endeksi/)).toBeTruthy();
+    expect(screen.getByText('134.31')).toBeTruthy();
+    expect(
+      screen.getByText(/Index, base year = 100 · base 2025=100 · August 2026/),
+    ).toBeTruthy();
+  });
+
+  it('carries the ATTRIBUTION with the number, because TÜİK requires the source cited', () => {
+    mockCommodity.current = { ...COMMODITY_READY, series: [tuik()] };
+    render(<MarketIndexPanel />);
+    expect(
+      screen.getByText(/Re-used under TÜİK’s legal notice|Re-used under TÜİK's legal notice/),
+    ).toBeTruthy();
+  });
+
+  it('says "read on", not "issued": the payload states no publication date', () => {
+    // YAYIM_DONEMI is the release ROUND, not the day of publication, and
+    // reading it as one would invent a date the issuer never gave.
+    mockCommodity.current = { ...COMMODITY_READY, series: [tuik()] };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/read on Sep 5, 2026/)).toBeTruthy();
+    expect(screen.queryByText(/issued Sep 5, 2026/)).toBeNull();
+  });
+
+  it('says when the DEPLOYMENT holds no key, and calls it a missing setting', () => {
+    // "The publisher refused us" and "this environment was never given the key"
+    // are different facts, and only the second is fixable in a dashboard.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [tuik({ keyConfiguredHere: false, latest: null, observationCount: null })],
+    };
+    render(<MarketIndexPanel />);
+    expect(screen.getByText(/TUIK_SDMX_API_KEY is not set here/)).toBeTruthy();
+    expect(screen.getByText(/not a publisher refusing us/)).toBeTruthy();
+  });
+
+  it('draws nothing about a key on a keyless series', () => {
+    mockCommodity.current = { ...COMMODITY_READY, series: [fao()] };
+    render(<MarketIndexPanel />);
+    expect(screen.queryByText(/is not set here/)).toBeNull();
+  });
+
+  it('shows TT09 as CODES and never names a beverage', () => {
+    // The founder: "TT09 as well, codes unnamed for now". The labels are
+    // unread, and guessing which subclass is wine would invent a fact.
+    mockCommodity.current = {
+      ...COMMODITY_READY,
+      series: [
+        tuik({
+          seriesKey: 'tuik.tufe_tt09.beverage_subclasses',
+          seriesTitle:
+            'Tüketici fiyat endeksi (TÜFE), harcama gruplarına göre — COICOP-2018 subclasses 02110 / 02121 / 02130',
+          silent: {
+            reason:
+              "TÜİK's codelist endpoint answers 401, so the labels for COICOP-2018 02110, 02121 and 02130 have never been read.",
+            measuredOn: '2026-09-05',
+          },
+        }),
+      ],
+    };
+    const { container } = render(<MarketIndexPanel />);
+    expect(screen.getByText(/02110 \/ 02121 \/ 02130/)).toBeTruthy();
+    expect(screen.getByText(/have never been read/)).toBeTruthy();
+    const section = container.querySelector('section[aria-labelledby="nt-commodity"]')!;
+    // The nouns this test checks, named exhaustively. The page note used to
+    // claim this asserted "a beverage noun in ANY language" and it never did:
+    // until 2026-09-06 the list was 'wine' and 'beer' alone. The claim and the
+    // list are now the same size, and the series is Turkish, so the Turkish
+    // nouns are the ones that would actually have been invented here.
+    const BEVERAGE_NOUNS = ['wine', 'beer', 'şarap', 'şarabı', 'bira', 'rakı'];
+    const text = section.textContent!.toLocaleLowerCase('tr-TR');
+    for (const noun of BEVERAGE_NOUNS) {
+      expect(text).not.toContain(noun);
+    }
   });
 });

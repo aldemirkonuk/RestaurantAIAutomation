@@ -352,6 +352,31 @@ export interface HouseCurrencyRegister {
   auditReason?: string | null;
 }
 
+/**
+ * What holding stock costs this house, as `GET /settings/carrying-cost` answers.
+ *
+ * Mirrors `HouseCarryingCostReadout` (`apps/api-gateway/src/settings/
+ * house-carrying-cost.service.ts`). Three states, never two: `readable: false`
+ * is a failed READ, `percentPerMonth: null` is an unanswered QUESTION, and a
+ * number is an answer.
+ *
+ * The number is a PERCENT PER MONTH. `0.75` is three quarters of one percent a
+ * month — not 75, and not 0.0075. The gateway refuses both mis-spellings with
+ * the same bounds the database's own CHECK holds.
+ */
+export interface HouseCarryingCostRegister {
+  restaurantId: string;
+  percentPerMonth: number | null;
+  basis: string | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  /** Present on a write only. `false` = the change landed, the paper did not. */
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
 export interface SetVendorTermsBody {
   deliveryWeekdays?: number[] | null;
   orderCutoffTime?: string | null;
@@ -505,6 +530,16 @@ export function useSettingsNextData(active: SectionId) {
     const { data } = await apiClient.get<HouseCurrencyRegister>('/settings/currency');
     return data;
   });
+
+  const houseCarryingCost = useRemote<HouseCarryingCostRegister>(
+    tenantKey('carrying-cost'),
+    async () => {
+      const { data } = await apiClient.get<HouseCarryingCostRegister>(
+        '/settings/carrying-cost',
+      );
+      return data;
+    },
+  );
 
   const ledger = useRemote<LedgerRegister>(tenantKey('ledger'), async () => {
     const { data } = await apiClient.get<LedgerRegister>('/settings-audit?limit=100');
@@ -668,6 +703,29 @@ export function useSettingsNextData(active: SectionId) {
     [writer, houseCurrency, ledger],
   );
 
+  /**
+   * State what holding stock costs this house.
+   *
+   * The percent is always one a person typed — this function is never called
+   * with a figure the page worked out on its own, and there is no default
+   * anywhere in the path. The server's answer replaces the register rather than
+   * an optimistic patch, so a write whose audit row failed shows that fact.
+   */
+  const saveCarryingCost = useCallback(
+    (percentPerMonth: number, basis: string | null) =>
+      writer.run('carrying-cost', async () => {
+        const { data } = await apiClient.put<HouseCarryingCostRegister>(
+          '/settings/carrying-cost',
+          basis === null ? { percentPerMonth } : { percentPerMonth, basis },
+        );
+        if (data) houseCarryingCost.set(data);
+        else houseCarryingCost.reload();
+        // A number that moved is a row in the trail; the trail must not lag it.
+        ledger.reload();
+      }),
+    [writer, houseCarryingCost, ledger],
+  );
+
   const locations: RestaurantBranch[] = useMemo(
     () => availableRestaurants ?? [],
     [availableRestaurants],
@@ -683,11 +741,11 @@ export function useSettingsNextData(active: SectionId) {
     locations,
     refreshBranches,
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
-    vendorTerms, thresholds, ledger, houseCurrency,
+    vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
-    saveVendorTerms, saveThreshold, saveCurrency,
+    saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost,
   };
 }
 

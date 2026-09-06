@@ -35,11 +35,11 @@
  */
 
 import { useState } from 'react';
-import { BookOpen, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
+import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
 import { EM, countOf, figure, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
-import type { GoalsDesk } from './useGoalsDesk';
+import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
 import type { ViewCtx } from './rp-spec';
 
 /* ─────────────────────────────────────────────────────── the payload ───── */
@@ -135,6 +135,110 @@ function ScenarioReading({ scenario, caveat }: { scenario: GoalScenario; caveat:
 }
 
 /**
+ * "Ask for one" — the answer to the scenario that is not in the book.
+ *
+ *   *"Not yet; request a scenario instead."*
+ *                                        — the founder, 2026-09-05 (ADR 0120 Q4)
+ *
+ * A house may NOT write a scenario, and the sentence above the control says so
+ * rather than leaving it to be discovered: every row in the book carries an
+ * operator source a reader can check, and a row a house typed could carry none.
+ * So the request is words — who asked, when, and what they want to be held to —
+ * and it goes to Mudavym.
+ *
+ * The confirmation is the GATEWAY's sentence, printed only after the write was
+ * accepted. Nothing is claimed on submit (ADR 0020), and a failure says what
+ * failed rather than closing the box as though it had worked.
+ */
+function ScenarioAsk({ request }: { request: ScenarioRequest }) {
+  const [open, setOpen] = useState(false);
+  const [words, setWords] = useState('');
+  const ready = words.trim() !== '';
+
+  if (request.note) {
+    return (
+      <div className="rp-scenario__ask">
+        <p className="rp-cap" role="status" data-testid="rp-scenario-request-note">
+          {request.note}
+        </p>
+        <button
+          type="button"
+          className="rp-mini rp-ink rp-focus"
+          onClick={() => {
+            request.reset();
+            setWords('');
+            setOpen(false);
+          }}
+        >
+          Close
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rp-scenario__ask">
+      <p className="rp-cap">
+        The book is Mudavym’s: every scenario on it carries an operator source you can check, so a
+        house cannot add one. Tell us what you want to hold your house to and it reaches us in your
+        words.
+      </p>
+      {open ? (
+        <>
+          <label className="rp-field">
+            <span className="rp-eyebrow">What should we be able to hold you to</span>
+            <textarea
+              className="rp-input rp-focus"
+              rows={3}
+              maxLength={2000}
+              value={words}
+              placeholder="Keep pour cost under a number we set, counted every week"
+              aria-label="What should we be able to hold you to"
+              onChange={(e) => setWords(e.target.value)}
+            />
+          </label>
+          <div className="rp-row" style={{ gap: 6 }}>
+            <button
+              type="button"
+              className="rp-mini rp-ink rp-focus"
+              data-strong="true"
+              disabled={!ready || request.busy}
+              onClick={() => request.send(words)}
+            >
+              {request.busy ? 'Sending…' : 'Send it to Mudavym'}
+            </button>
+            <button
+              type="button"
+              className="rp-mini rp-ink rp-focus"
+              onClick={() => {
+                request.reset();
+                setOpen(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {request.error && (
+            <p className="rp-cap" role="status" data-testid="rp-scenario-request-error">
+              {request.error}
+            </p>
+          )}
+        </>
+      ) : (
+        <button
+          type="button"
+          className="rp-mini rp-ink rp-focus"
+          onClick={() => setOpen(true)}
+        >
+          <MessageSquarePlus size={12} strokeWidth={1.6} aria-hidden />
+          Ask for a scenario
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * "Start from a scenario" — the book, above the measure list.
  *
  *   *"we're going to create possible analytic scenarios a restaurant might set
@@ -150,15 +254,20 @@ function ScenarioReading({ scenario, caveat }: { scenario: GoalScenario; caveat:
  * field; it covers about half of it, and the missing half is the more useful
  * thing to know. The counts come from the payload, never from a number typed
  * here, so funding a gap moves them without a page edit.
+ *
+ * Below it sits `ScenarioAsk`: what a manager does when the thing they want to
+ * be held to is one of the greyed rows, or is on no row at all (ADR 0120 Q4).
  */
 function ScenarioPicker({
   scenarios,
   chosenId,
   onChoose,
+  request,
 }: {
   scenarios: GoalScenarios;
   chosenId: string;
   onChoose: (scenario: GoalScenario | null) => void;
+  request: ScenarioRequest;
 }) {
   if (scenarios.failure) {
     return (
@@ -166,6 +275,9 @@ function ScenarioPicker({
         <p className="rp-cap" role="status">
           {scenarios.failure}
         </p>
+        {/* Still offered: a manager whose book failed to load is exactly the
+            one who may want to say what is missing from it. */}
+        <ScenarioAsk request={request} />
       </div>
     );
   }
@@ -224,6 +336,7 @@ function ScenarioPicker({
           each naming the measure it would take. None of them carries a target.
         </p>
       )}
+      <ScenarioAsk request={request} />
     </div>
   );
 }
@@ -231,6 +344,7 @@ function ScenarioPicker({
 function GoalForm({
   metrics,
   scenarios,
+  scenarioRequest,
   initial,
   submitLabel,
   busy,
@@ -239,6 +353,7 @@ function GoalForm({
 }: {
   metrics: GoalsRegister['metrics'];
   scenarios: GoalScenarios;
+  scenarioRequest: ScenarioRequest;
   initial: Partial<GoalRow> | null;
   submitLabel: string;
   busy: boolean;
@@ -309,6 +424,7 @@ function GoalForm({
           scenarios={scenarios}
           chosenId={scenarioId}
           onChoose={chooseScenario}
+          request={scenarioRequest}
         />
       )}
       <Field label="What are we after">
@@ -471,6 +587,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
               <GoalForm
                 metrics={reg.metrics}
                 scenarios={desk.scenarios}
+                scenarioRequest={desk.scenarioRequest}
                 initial={g}
                 submitLabel="Save the change"
                 busy={desk.busy === g.id}
@@ -587,6 +704,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
           <GoalForm
             metrics={reg.metrics}
             scenarios={desk.scenarios}
+                scenarioRequest={desk.scenarioRequest}
             initial={null}
             submitLabel="Set the goal"
             busy={desk.busy === 'new'}

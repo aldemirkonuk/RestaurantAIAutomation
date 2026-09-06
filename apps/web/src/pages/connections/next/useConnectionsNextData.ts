@@ -275,6 +275,161 @@ export interface ArchiveVM {
   }
 }
 
+/**
+ * One licensed distributor, as the register measured it (ADR 0126).
+ *
+ * Field-for-field against `DistributorCatalogueRow`
+ * (`distributor-feed.service.ts`) rather than invented, for the reason
+ * `ProviderStateVM` records above: a guessed shape renders a real answer as an
+ * absence, which is the exact fault this page exists to catch.
+ */
+export interface DistributorVM {
+  key: string;
+  distributor: string;
+  jurisdictions: string[];
+  portal: { name: string; url: string } | null;
+  mechanism: string;
+  automatedAccess: {
+    verdict: 'forbidden' | 'permitted_with_bounds' | 'unstated';
+    robots: string;
+    terms: string | null;
+    measuredOn: string;
+    evidence: string[];
+  };
+  availability: string;
+  unbuilt: { reason: string; measuredOn: string } | null;
+  connectable: boolean;
+}
+
+export interface DistributorCatalogueVM {
+  connection: {
+    label: string;
+    description: string;
+    offerable: boolean;
+    notOfferableBecause: string;
+    waysIn: Array<{
+      id: string;
+      label: string;
+      built: boolean;
+      how: string;
+      route: string;
+      needs: string;
+    }>;
+  };
+  requested: string;
+  jurisdiction: string | null;
+  distributors: DistributorVM[];
+  /** Words when the list is empty. Never an empty array left to speak for itself. */
+  silence: string | null;
+}
+
+export interface FeedLetterVM {
+  id: string;
+  filename: string;
+  subject: string;
+  signedBy: string;
+  firstAsk: string;
+  neverSent: string;
+  brackets: string[];
+  body: string;
+}
+
+/** What `POST /procurement/documents` says back about an 832's own lines. */
+export interface CatalogueAdmissionVM {
+  distributorKey: string | null;
+  sha256: string;
+  documentId: string | null;
+  uploadedByName?: string | null;
+  uploadedAt: string;
+  admitted: number;
+  refused?: number;
+  alreadyRecorded?: number;
+  writeFailed?: number;
+  writeFailures?: string[];
+  linesRead?: number;
+  unmappedCodes?: string[];
+  refusedWhole: string | null;
+  knownDistributorKeys?: string[];
+  sentence: string;
+  lines?: Array<{
+    admitted: boolean;
+    item: string;
+    reason: string | null;
+    detail: string | null;
+    priceBasis?: string;
+    priceCode?: string;
+    rawPrice?: number;
+    currency?: string;
+  }>;
+}
+
+/**
+ * One manager's statement about one of a sender's price codes (ADR 0126 §7).
+ *
+ * Field-for-field against `PriceCodeMapping` (`distributor-feed/
+ * price-code-mappings.ts`) as `mapRow` hands it out, so a key this page reads
+ * is a key the gateway sends. `withdrawnBy` is an account id and NOT a name;
+ * `withdrawnByName` is the name, added 2026-09-06 (migration 20260906150000)
+ * because until then the register could say when a statement was withdrawn and
+ * why but not by whom in words. It is null on a withdrawal recorded before that
+ * day, and the panel says so rather than printing an id as if it were a person.
+ */
+export interface PriceCodeStatementVM {
+  id: string;
+  restaurantId: string;
+  distributorKey: string;
+  codeField: string;
+  priceCode: string;
+  priceBasis: string;
+  evidence: string;
+  declaredBy: string;
+  declaredByName: string;
+  declaredAt: string;
+  withdrawnBy: string | null;
+  withdrawnByName: string | null;
+  withdrawnAt: string | null;
+  withdrawnReason: string | null;
+}
+
+/**
+ * Every statement this house holds for ONE sender, live and withdrawn.
+ *
+ * `readFailed` and `unreadable` are two different failures and both are kept:
+ * the first is the GATEWAY saying it could not read the table (it answers 200
+ * with words, never an empty list — `PriceCodeMappingsService.forSender`), the
+ * second is this browser never reaching the gateway at all. Collapsing either
+ * into an empty `rows` would render "we do not know" as "nothing is mapped",
+ * and the second reads as a manager's own omission.
+ */
+export interface PriceCodeStatementsVM {
+  distributorKey: string;
+  rows: PriceCodeStatementVM[];
+  conflicted: string[];
+  live: number;
+  withdrawn: number;
+  readFailed: boolean;
+  /** The gateway's own sentence about this register. Never invented here. */
+  note: string;
+  /** Set only when the request itself failed. Null when the read landed. */
+  unreadable: string | null;
+}
+
+/** What `POST /distributor-feed/codes/:key` answers. It refuses with 200 and a
+ *  sentence rather than a status code, so `ok` is the field that matters. */
+export interface PriceCodeWriteVM {
+  ok: boolean;
+  mappingId: string | null;
+  refusedBecause: string | null;
+}
+
+/** What the withdrawal answers. `rowsAdmitted` is `null`, never 0, when the
+ *  prices that statement admitted could not be counted. */
+export interface PriceCodeWithdrawVM extends PriceCodeWriteVM {
+  rowsAdmitted: number | null;
+  rowsAdmittedUnreadable: string | null;
+  note: string;
+}
+
 export interface HouseGrantVM {
   connectionId: string;
   integrationId: string;
@@ -510,6 +665,110 @@ export function useConnectionsNextData() {
     staleTime: 60_000,
   })
 
+  /* read 9 — the distributors measured for THIS house's own state (ADR 0126).
+     `/me` rather than `/catalog`: the register holds entries for jurisdictions
+     this house is not in, and a list of Illinois distributors under a Michigan
+     house's address would be a page inventing a market. The gateway resolves
+     the state from `restaurants` and reports a FAILED read as a failure, which
+     arrives here in `silence`. */
+  const distributorsQ = useQuery({
+    queryKey: ['connections-next-distributors', rid],
+    queryFn: async (): Promise<DistributorCatalogueVM> => {
+      const { data } = await apiClient.get<DistributorCatalogueVM>(
+        '/distributor-feed/me',
+      );
+      return data;
+    },
+    enabled: on,
+    staleTime: 600_000,
+  });
+
+  /* read 10 — the invoice-feed letter the house signs. A constant on the
+     gateway, read rather than copied into this bundle so the text a house
+     downloads and the text `07-reference/DISTRIBUTOR-INVOICE-FEED-LETTER.md`
+     records cannot drift apart in a place nobody is testing. */
+  const letterQ = useQuery({
+    queryKey: ['connections-next-feed-letter'],
+    queryFn: async (): Promise<FeedLetterVM> => {
+      const { data } = await apiClient.get<{ letter: FeedLetterVM }>(
+        '/distributor-feed/letter',
+      );
+      return data.letter;
+    },
+    enabled: on,
+    staleTime: 3_600_000,
+  });
+
+  /* read 11 — what this house has said each sender's price codes mean
+     (ADR 0126 §7, the founder's batch-59 call: "Build it on /connections in
+     the distributor row").
+
+     ONE QUERY OVER MANY SENDERS, AND EACH SENDER FAILS ALONE. The route is
+     per distributor (`GET /distributor-feed/codes/:key`), so a query per row
+     would be the obvious build; it is not the one here, because the number of
+     rows is whatever the register measured and a hook cannot call `useQuery` a
+     variable number of times. What it does instead keeps the property that
+     matters: every sender is fetched in its own request inside one queryFn and
+     its own failure is caught and NAMED against that sender, so one distributor
+     being unreadable never blanks another's statements and never renders as
+     "this house has mapped nothing". */
+  const distributorKeys = useMemo(
+    () => (distributorsQ.data?.distributors ?? []).map((d) => d.key).sort(),
+    [distributorsQ.data],
+  );
+
+  const priceCodesQ = useQuery({
+    queryKey: ['connections-next-price-codes', rid, distributorKeys.join('|')],
+    queryFn: async (): Promise<Record<string, PriceCodeStatementsVM>> => {
+      const pairs = await Promise.all(
+        distributorKeys.map(
+          async (key): Promise<[string, PriceCodeStatementsVM]> => {
+            try {
+              const { data } = await apiClient.get<{
+                rows?: PriceCodeStatementVM[];
+                conflicted?: string[];
+                live?: number;
+                withdrawn?: number;
+                readFailed?: boolean;
+                note?: string;
+              }>(`/distributor-feed/codes/${encodeURIComponent(key)}`);
+              return [
+                key,
+                {
+                  distributorKey: key,
+                  rows: data.rows ?? [],
+                  conflicted: data.conflicted ?? [],
+                  live: data.live ?? 0,
+                  withdrawn: data.withdrawn ?? 0,
+                  readFailed: data.readFailed === true,
+                  note: data.note ?? '',
+                  unreadable: null,
+                },
+              ];
+            } catch (e) {
+              return [
+                key,
+                {
+                  distributorKey: key,
+                  rows: [],
+                  conflicted: [],
+                  live: 0,
+                  withdrawn: 0,
+                  readFailed: true,
+                  note: '',
+                  unreadable: readError(e),
+                },
+              ];
+            }
+          },
+        ),
+      );
+      return Object.fromEntries(pairs);
+    },
+    enabled: on && distributorKeys.length > 0,
+    staleTime: 60_000,
+  });
+
   /* ── writes ─────────────────────────────────────────────────────────── */
 
   const invalidate = useCallback(
@@ -540,6 +799,96 @@ export function useConnectionsNextData() {
       await apiClient.post('/calendar/ical-token/regenerate');
     },
     onSuccess: () => invalidate('connections-next-ical'),
+  });
+
+  /**
+   * Hand over a file the house already has (ADR 0126, batch 56).
+   *
+   * It posts to `/procurement/documents` — the SAME door every invoice goes
+   * through, not a door of this page's own. That is the decision, not an
+   * accident of routing: a second upload endpoint would be a second place for
+   * a document to be stored, deduplicated and provenanced, and the two would
+   * drift. An 810 is read as an invoice by the door itself; an 832 is stored
+   * as a price list and its lines are priced only under the code meanings this
+   * house has stated, which is what the `catalog` half of the answer reports.
+   */
+  const uploadDistributorFile = useMutation({
+    mutationFn: async (v: {
+      contentBase64: string;
+      filename: string;
+      distributorKey?: string | null;
+      declaredCurrency?: string | null;
+    }): Promise<{
+      documentId: string | null;
+      duplicate: boolean;
+      document: { docType?: string; warnings?: string[] } | null;
+      catalog?: CatalogueAdmissionVM;
+    }> => {
+      const { data } = await apiClient.post('/procurement/documents', {
+        contentBase64: v.contentBase64,
+        filename: v.filename,
+        source: 'upload',
+        ...(v.distributorKey ? { distributorKey: v.distributorKey } : {}),
+        ...(v.declaredCurrency ? { declaredCurrency: v.declaredCurrency } : {}),
+      });
+      return data;
+    },
+  });
+
+  /**
+   * A manager states what one of a sender's price codes means (ADR 0126 §7).
+   *
+   * The name on the statement is NOT sent from here and must not be: the
+   * gateway takes it from the session's own token, so a browser cannot sign a
+   * colleague's name to an attestation. If the token resolves no name at all
+   * the write is refused rather than written unsigned, and that refusal comes
+   * back in `refusedBecause` like every other.
+   *
+   * A refusal is HTTP 200 with `ok: false` — the controller returns the
+   * service's outcome rather than throwing — so this never rejects on a refusal
+   * and the caller must read `ok`. That is why the mutation returns the body.
+   */
+  const declarePriceCode = useMutation({
+    mutationFn: async (v: {
+      distributorKey: string;
+      priceCode: string;
+      priceBasis: string;
+      evidence: string;
+    }): Promise<PriceCodeWriteVM> => {
+      const { data } = await apiClient.post<PriceCodeWriteVM>(
+        `/distributor-feed/codes/${encodeURIComponent(v.distributorKey)}`,
+        {
+          priceCode: v.priceCode,
+          priceBasis: v.priceBasis,
+          evidence: v.evidence,
+        },
+      );
+      return data;
+    },
+    onSuccess: () => invalidate('connections-next-price-codes'),
+  });
+
+  /**
+   * A manager withdraws one. It MARKS and never deletes: the rows that
+   * statement admitted keep pointing at it (`ON DELETE RESTRICT`), and the
+   * count of them comes back with the answer — `null`, never 0, when it could
+   * not be counted.
+   */
+  const withdrawPriceCode = useMutation({
+    mutationFn: async (v: {
+      distributorKey: string;
+      mappingId: string;
+      reason: string;
+    }): Promise<PriceCodeWithdrawVM> => {
+      const { data } = await apiClient.post<PriceCodeWithdrawVM>(
+        `/distributor-feed/codes/${encodeURIComponent(
+          v.distributorKey,
+        )}/${encodeURIComponent(v.mappingId)}/withdraw`,
+        { reason: v.reason },
+      );
+      return data;
+    },
+    onSuccess: () => invalidate('connections-next-price-codes'),
   });
 
   const setHouseGrantAccess = useMutation({
@@ -895,8 +1244,25 @@ export function useConnectionsNextData() {
     houseGrants: toRegister(houseGrantsQ),
     catalog: toRegister(catalogQ),
     mailArchive: toRegister(archiveQ),
+    distributors: toRegister(distributorsQ),
+    feedLetter: toRegister(letterQ),
+    priceCodes: toRegister(priceCodesQ),
+    /**
+     * The name this session carries, shown beside the statement form so a
+     * manager sees whose name is going on the attestation before they make it.
+     * It is NOT what gets written — the gateway takes the name off the token —
+     * and the panel says so, because a page that displayed one name while the
+     * server recorded another would be the worst possible version of this.
+     */
+    sessionName:
+      (auth?.user as { name?: string; email?: string } | undefined)?.name?.trim() ||
+      (auth?.user as { email?: string } | undefined)?.email?.trim() ||
+      null,
     tally,
     regenerateFeed,
+    uploadDistributorFile,
+    declarePriceCode,
+    withdrawPriceCode,
     setHouseGrantAccess,
     setConsent,
     grantSeal,

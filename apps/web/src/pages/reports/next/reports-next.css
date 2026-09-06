@@ -915,3 +915,24 @@
   display: grid;
   gap: 6px;
 }
+
+/* "Ask for a scenario" (ADR 0120 Q4). Ruled off ABOVE rather than boxed: it is
+   the same statement as the picker, continued — the book is Mudavym's, and this
+   is what a house does about a scenario that is not in it. No tint, because the
+   seal belongs to what the product says itself and this is a form control. */
+.rp-scenario__ask {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink-4);
+}
+.rp-scenario__ask .rp-field,
+.rp-scenario__ask textarea {
+  width: 100%;
+}
+.rp-scenario__ask textarea {
+  resize: vertical;
+  min-height: 3.4em;
+  font: inherit;
+}

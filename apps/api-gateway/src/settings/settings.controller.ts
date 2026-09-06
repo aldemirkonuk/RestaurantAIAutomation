@@ -26,6 +26,10 @@ import {
   type HouseCurrencyReadout,
 } from "./house-currency.service";
 import {
+  HouseCarryingCostService,
+  type HouseCarryingCostReadout,
+} from "./house-carrying-cost.service";
+import {
   ApprovalThresholdsService,
   type ThresholdsReadout,
 } from "./approval-thresholds.service";
@@ -38,6 +42,7 @@ import {
   FeatureFlagCheckResultDto,
 } from "./dto/feature-flags.dto";
 import { SetHouseCurrencyDto } from "./dto/house-currency.dto";
+import { SetHouseCarryingCostDto } from "./dto/house-carrying-cost.dto";
 
 @ApiTags("settings")
 @ApiBearerAuth("JWT-auth")
@@ -49,6 +54,7 @@ export class SettingsController {
     private readonly thresholds: ApprovalThresholdsService,
     private readonly organizations: OrganizationsService,
     private readonly houseCurrency: HouseCurrencyService,
+    private readonly houseCarryingCost: HouseCarryingCostService,
   ) {}
 
   @Get("feature-flags")
@@ -251,6 +257,75 @@ export class SettingsController {
     // The author comes from the signed token and nowhere else:
     // `public.users.user_id`, never an `auth.users` id.
     return this.houseCurrency.write(restaurantId, dto?.code, userId);
+  }
+
+  /* ── What holding stock costs this house ─────────────────────────────
+   *
+   * THE FOUNDER, 2026-09-05, batch 59, answering the commodity plan's §12 Q5:
+   * *"Twice a year, and the house types its carrying cost."* Measured on 440
+   * recorded FAO months, the alert's whole gain is spent by a carrying cost of
+   * about one percent a month, and between 0.5 % and 1 % the recommendation
+   * flips from "worth having on six series" to "worth having on one". Nothing
+   * in this product had ever asked a house for that number, so the alert's
+   * money clause is gated on the answer rather than on an invented default.
+   */
+
+  @Get("carrying-cost")
+  @ApiOperation({
+    summary: "What holding stock costs this house, and who last stated it",
+    description:
+      "`percentPerMonth: null` means nobody has typed one — the commodity alert then says its saving is UNMEASURED and which number is missing, rather than pricing a fire off a figure nobody chose. `readable: false` means the row could not be READ, which is a different state and says so in words. The value is a PERCENT per month: 0.75 is three quarters of one percent.",
+  })
+  @ApiResponse({ status: 200, description: "The carrying-cost readout" })
+  async getHouseCarryingCost(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseCarryingCostReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is no carrying cost to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseCarryingCost.read(restaurantId);
+  }
+
+  @Put("carrying-cost")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "State what holding stock costs this house — owner or manager only",
+    description:
+      "The value must be between 0.01 and 25 percent a month, which is exactly what `restaurants_carrying_cost_is_a_plausible_percent` allows, so a value this route accepts is a value the database accepts. Those bounds are a UNITS check: 0.0075 (the fraction spelling) and 75 (percent-a-year typed as percent-a-month) are both refused with a sentence saying which spelling the field wants. The value, the author and the moment are written as one fact and the database's CHECK refuses any two of the three. The response carries `audited` and `auditReason`.",
+  })
+  @ApiResponse({ status: 200, description: "The readout after the write" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. What holding stock costs the house is not a per-person setting.",
+  })
+  async setHouseCarryingCost(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Body() dto: SetHouseCarryingCostDto,
+    @CurrentUser("userId") userId: string,
+  ): Promise<HouseCarryingCostReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "state what holding stock costs this restaurant",
+    );
+    // The author comes from the signed token and nowhere else:
+    // `public.users.user_id`, never an `auth.users` id.
+    return this.houseCarryingCost.write(
+      restaurantId,
+      dto?.percentPerMonth,
+      dto?.basis,
+      userId,
+    );
   }
 
   @Post("feature-flags/check")

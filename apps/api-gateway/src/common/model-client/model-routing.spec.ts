@@ -41,6 +41,48 @@ describe("resolveModel — the founder's routing, 2026-09-04", () => {
     expect(MODEL_FOR_CLASS.lookup).not.toMatch(/-\d{8}$/);
   });
 
+  it("gives the consultant its own class at the model it already ran", () => {
+    // ADR 0120 Q2, founder 2026-09-05: *"Fourth class: consult."* The point of
+    // the assertion is that naming the class did NOT move the model — the
+    // consultant ran claude-opus-4-8 before this class existed and runs it
+    // after. A change here is a model swap on the most expensive call in the
+    // gateway, and it must be a decision, never a side effect.
+    expect(MODEL_FOR_CLASS.consult).toBe("claude-opus-4-8");
+    expect(CLASS_ENV_VAR.consult).toBe("MODEL_FOR_CONSULT");
+    expect(TASK_CLASSES).toContain("consult");
+  });
+
+  it("keeps consult separable from compose in the ledger", () => {
+    // The rejected path was folding the consultant into `compose`. These two
+    // assertions are what the fold would have broken: one env var would have
+    // moved both, and one `task_class` would have covered both, so "what does
+    // composing cost" could not be answered from the rows.
+    expect(CLASS_ENV_VAR.consult).not.toBe(CLASS_ENV_VAR.compose);
+    expect(MODEL_FOR_CLASS.consult).not.toBe(MODEL_FOR_CLASS.compose);
+    const composeMoved = resolveModel({
+      config: config({ MODEL_FOR_COMPOSE: "claude-haiku-4-5" }),
+      taskClass: "consult",
+    });
+    expect(composeMoved.model).toBe("claude-opus-4-8");
+    expect(composeMoved.routedBy).toBe("class-default");
+  });
+
+  it("lets ANALYTICS_CONSULTANT_MODEL keep outranking the class", () => {
+    // A running gateway that set the site variable meant it; the new layer
+    // must not change that deployment's behaviour on deploy.
+    const r = resolveModel({
+      config: config({
+        ANALYTICS_CONSULTANT_MODEL: "claude-sonnet-5",
+        MODEL_FOR_CONSULT: "claude-haiku-4-5",
+      }),
+      taskClass: "consult",
+      siteEnvVar: "ANALYTICS_CONSULTANT_MODEL",
+    });
+    expect(r.model).toBe("claude-sonnet-5");
+    expect(r.routedBy).toBe("site-env");
+    expect(r.envVar).toBe("ANALYTICS_CONSULTANT_MODEL");
+  });
+
   it("routes every declared class to a model", () => {
     for (const taskClass of TASK_CLASSES) {
       const r = resolveModel({ config: config({}), taskClass });

@@ -1,3 +1,4 @@
+import { NOT_CONTRIBUTED_ONLY } from "../price-register/visibility";
 import { VendorComparisonService } from "./vendor-comparison.service";
 import { MIN_OUTLIER_SAMPLE } from "./vendor-site-sighting";
 
@@ -11,6 +12,8 @@ import { MIN_OUTLIER_SAMPLE } from "./vendor-site-sighting";
 interface Calls {
   or: string[];
   eq: Array<[string, any]>;
+  /** `.is(col, null)` -- the openMarketOnly scope's predicate (ADR 0117 addendum). */
+  is: Array<[string, any]>;
   inserted: any[];
 }
 
@@ -22,7 +25,7 @@ function makeService(
     insertError?: any;
   } = {},
 ) {
-  const calls: Calls = { or: [], eq: [], inserted: [] };
+  const calls: Calls = { or: [], eq: [], is: [], inserted: [] };
 
   // A PostgREST builder is thenable: every filter returns the builder and the
   // query only executes when it is awaited. The service chains .eq()/.or()
@@ -39,6 +42,10 @@ function makeService(
     },
     or: (clause: string) => {
       calls.or.push(clause);
+      return observations;
+    },
+    is: (col: string, val: any) => {
+      calls.is.push([col, val]);
       return observations;
     },
     insert: (payload: any) => {
@@ -199,16 +206,20 @@ describe("VendorComparisonService", () => {
       const { svc, calls } = makeService([row()]);
       await svc.compare({ masterWineId: WINE_ID });
 
-      expect(calls.or).toHaveLength(1);
-      expect(calls.or[0]).toContain(`master_wine_id.eq.${WINE_ID}`);
-      expect(calls.or[0]).toMatch(/signature_hash\.eq\.[0-9a-f]{64}/);
+      // The register's visibility clause is applied by
+      // `scopePriceRegisterRead` on every read (ADR 0117 addendum), so this
+      // assertion is about the PRODUCT-KEY `.or()` specifically.
+      const productOrs = calls.or.filter((c) => !c.startsWith("visibility."));
+      expect(productOrs).toHaveLength(1);
+      expect(productOrs[0]).toContain(`master_wine_id.eq.${WINE_ID}`);
+      expect(productOrs[0]).toMatch(/signature_hash\.eq\.[0-9a-f]{64}/);
     });
 
     it("falls back to the id alone when the wine is not in the library", async () => {
       const { svc, calls } = makeService([row()], null, { wine: null });
       await svc.compare({ masterWineId: WINE_ID });
 
-      expect(calls.or).toHaveLength(0);
+      expect(calls.or.filter((c) => !c.startsWith("visibility."))).toHaveLength(0);
       expect(calls.eq).toContainEqual(["master_wine_id", WINE_ID]);
     });
 
@@ -230,6 +241,40 @@ describe("VendorComparisonService", () => {
       await expect(
         svc.compare({ masterWineId: WINE_ID }),
       ).rejects.toMatchObject({ status: 400 });
+    });
+  });
+
+  describe("the register's tenancy boundary (ADR 0117 addendum)", () => {
+    it("adds this house's own rows to the open market when a house is named", async () => {
+      const { svc, calls } = makeService([]);
+      await svc.compare({ masterWineId: WINE_ID, restaurantId: "rest-1" });
+      expect(calls.or).toContain(NOT_CONTRIBUTED_ONLY);
+      expect(calls.or).toContain("restaurant_id.is.null,restaurant_id.eq.rest-1");
+      expect(calls.is).toEqual([]);
+    });
+
+    it("reads the OPEN MARKET ONLY when no house is named — it used to read everything", async () => {
+      // Measured against pre-fix code: with no restaurantId this read applied
+      // no tenancy clause at all, so "the market" was in fact every house's
+      // private paper. The branch is now `openMarketOnly`.
+      const { svc, calls } = makeService([]);
+      await svc.compare({ masterWineId: WINE_ID });
+      expect(calls.is).toContainEqual(["restaurant_id", null]);
+      expect(calls.or).toContain(NOT_CONTRIBUTED_ONLY);
+      expect(
+        calls.or.filter((c) => c.includes("restaurant_id.eq.")),
+      ).toEqual([]);
+    });
+
+    it("excludes a row contributed under a floor on both branches", async () => {
+      for (const args of [
+        { masterWineId: WINE_ID, restaurantId: "rest-1" },
+        { masterWineId: WINE_ID },
+      ]) {
+        const { svc, calls } = makeService([]);
+        await svc.compare(args);
+        expect(calls.or[0]).toBe(NOT_CONTRIBUTED_ONLY);
+      }
     });
   });
 

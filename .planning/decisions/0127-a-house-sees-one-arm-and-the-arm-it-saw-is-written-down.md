@@ -973,8 +973,7 @@ mutations, all nine caught**: the copy sent before the row; the "only if the row
 landed" guard removed; the once-per-ending gate removed; the outcome not written
 back; the address written into the row; an unreadable claim ledger read as
 "never announced"; and the three earlier ones re-run to confirm they still bite.
-**Nothing was sent** — every send in every case went to a double. If the founder wants mail, it is one call to the
-existing `GmailService` behind the same producer.
+**Nothing was sent in any test** — every send went to a double. The mail itself is BUILT (bf3b668f, D26-D30 above: one call to `GmailService` after the row, once per ending, the outcome written back on the row) and, like the row, ships behind `NOTIFICATION_PRODUCERS_ENABLED`, which is unset on this deployment. (This paragraph replaced a stale sentence from before the mail existed — audit a0b6c185ab03442e2.)
 
 
 ## Founder answer, 2026-09-05 (batch 57) — the claim-cascade residual

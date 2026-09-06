@@ -15,6 +15,7 @@ import {
 import {
   ApiTags,
   ApiOperation,
+  ApiHeader,
   ApiParam,
   ApiQuery,
   ApiResponse,
@@ -29,8 +30,11 @@ import {
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { goalScenarioBook } from "./goal-scenarios";
+import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
+import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
@@ -93,6 +97,7 @@ export class AnalyticsController {
     private readonly recommendationActions: RecommendationActionsService,
     private readonly tableAnalytics: TableAnalyticsService,
     private readonly goalsService: GoalsService,
+    private readonly goalScenarioRequests: GoalScenarioRequestsService,
     private readonly consultantsService: ConsultantsService,
     private readonly insightGenerator: InsightGeneratorService,
     private readonly scheduler: InsightSchedulerService,
@@ -509,6 +514,78 @@ export class AnalyticsController {
     return goalScenarioBook();
   }
 
+  /**
+   * A house asks for a scenario, in words (ADR 0120 Q4).
+   *
+   *   *"Not yet; request a scenario instead."*   — the founder, 2026-09-05
+   *
+   * The house may not author a scenario — the catalogue above stays one truth,
+   * because each of its rows carries an operator source a reader can check.
+   * This route stores the sentence and nothing else: no metric key is guessed
+   * from it, no model reads it, and `GET goal-scenarios` does not join it.
+   *
+   * A plain authenticated write, deliberately not sealed: it moves no money and
+   * sends nothing (ADR 0113). The actor is read from the token, never the body.
+   */
+  @Post("goal-scenarios/requests/:restaurantId")
+  @ApiOperation({
+    summary: "Ask Mudavym for a scenario the catalogue does not carry",
+    description:
+      "Body: { words }. Stores who asked, when, the words and the house. It does NOT create a scenario — the catalogue is Mudavym's, and a row on it must carry an operator source a reader can check. Refused with its reason when the words are empty, longer than 2000 characters, or the call carries no user.",
+  })
+  async requestGoalScenario(
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: { words?: string },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    try {
+      return await this.goalScenarioRequests.record({
+        restaurantId,
+        words: typeof body?.words === "string" ? body.words : "",
+        requestedBy: typeof user?.userId === "string" ? user.userId : null,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "The request was not stored",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Every house's requests — platform admin only (ADR 0099's ServiceKeyGuard,
+   * the same pattern the both-arms experiment report uses).
+   *
+   * `@Public()` short-circuits the class's JWT check so that `ServiceKeyGuard`
+   * — which FAILS CLOSED on an unset or empty `ADMIN_API_KEY` — is what
+   * decides. It authenticates a machine, not a user, so this handler derives
+   * neither a tenant nor a user from the request: the read is cross-tenant by
+   * design, which is exactly why no user token may reach it.
+   */
+  @Get("goal-scenarios/requests")
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiHeader({ name: "X-Admin-Key", required: true })
+  @ApiQuery({ name: "limit", required: false })
+  @ApiOperation({
+    summary: "What houses have asked to be able to hold themselves to",
+    description:
+      "Newest first, across every house, with the house's name and the asker's. Words a person typed — never parsed into a metric, never shown to a model, never read into the catalogue. A read that fails is an error with its reason, never an empty list.",
+  })
+  async listGoalScenarioRequests(@Query("limit") limit?: string) {
+    try {
+      const parsed = Number.parseInt(limit ?? "", 10);
+      return await this.goalScenarioRequests.listAll(
+        Number.isFinite(parsed) ? parsed : undefined,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the scenario requests",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get("goals/:restaurantId")
   @ApiOperation({
     summary: "List goals (status=active|all|achieved|missed|archived)",
@@ -690,16 +767,21 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Run a consultant persona over the analytics evidence pack",
     description:
-      "Body: { persona: finance|economics|statistics|physics }. Returns weighted claims + simple resolutions, every claim citing evidence paths. Gated by the toggle (default off).",
+      "Body: { persona: finance|economics|statistics|physics }. Returns weighted claims + simple resolutions, every claim citing evidence paths. Gated by the toggle (default off). Metered as the `consult` task class (ADR 0120 Q2) — the ledger names this call apart from `compose`.",
   })
   async consult(
     @Param("restaurantId") restaurantId: string,
     @Body() body: { persona?: string },
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
       return await this.consultantsService.consult(
         restaurantId,
         body?.persona || "finance",
+        // Metered as `context.asked_by` (ADR 0120). Read from the token, never
+        // from the body: "who asked" is a fact about the session, and a
+        // client-supplied one would be an assertion about someone else.
+        typeof user?.userId === "string" ? user.userId : null,
       );
     } catch (error) {
       throw new HttpException(

@@ -1,147 +1,272 @@
 /**
- * The USDA shell-egg parser — tested against the FIXTURE CONTRACT, because no
- * bytes of this report exist here and none may be fetched.
+ * The shell-egg parser, against the BYTES A PERSON BROUGHT BACK.
  *
- * `__fixtures__/USDA-SHELL-EGG-CONTRACT.md` states what the human download must
- * contain; the samples below are built from the format the plan recorded from
- * three one-off research reads (`commodity-signals-plan.md` §1, §2a) and are
- * **labelled as constructed, never as recorded**. The day a real download lands
- * these tests are re-pointed at it and the parser does not change.
+ * `__fixtures__/usda-ams-2843-2026-09-04.report-detail-weighted.tsv` is the
+ * *Report Detail Weighted* view of USDA AMS report 2843 for 2026-09-04 — all 23
+ * rows, header verbatim, 9,115 bytes, sha256 `0371c7c7…23d49c` — read on
+ * 2026-09-05 by the parent through the app's Browser pane on the founder's
+ * batch-57 rule: **a one-off human read, logged**. No fetcher, script or job
+ * touched the host, and nothing here goes outbound.
  *
- * The figures used are the ones the plan measured on the 2026-09-04 report:
- * graded loose, white, Large — weighted average **35.28**, change **-0.86**,
- * year ago **215.53**.
+ * These tests were previously written against a CONSTRUCTED sample of the PDF's
+ * face text. They are now against the real file, and the constructed one is
+ * gone: a fixture nobody fetched is not evidence.
  */
 
-import { parseUsdaShellEgg, weightedAverageFrom } from "./parse-usda-shell-egg";
+import { readFileSync } from "fs";
+import { join } from "path";
+import { createHash } from "crypto";
+import {
+  CENTS_PER_DOZEN,
+  NATIONAL_CAGED_LARGE,
+  neighbouringFigures,
+  parseUsdaShellEgg,
+  type EggRowSelector,
+} from "./parse-usda-shell-egg";
 import { admitRun } from "./commodity-admission";
 import { SERIES } from "./commodity.registry";
 
+const BYTES = readFileSync(
+  join(__dirname, "__fixtures__", "usda-ams-2843-2026-09-04.report-detail-weighted.tsv"),
+);
+const TSV = BYTES.toString("utf8");
 const ENTRY = SERIES["usda_ams.shell_egg_index.national"];
-const OPTS = { seriesKey: ENTRY.seriesKey, fetchedAt: "2026-09-05T12:00:00.000Z" };
+const OPTS = { seriesKey: ENTRY.seriesKey, fetchedAt: "2026-09-05T22:40:20.000Z" };
 
-/**
- * CONSTRUCTED FROM THE RECORDED FORMAT. Not a recording. Every string in the
- * header and every figure on the target row is one the plan measured.
- */
-const CONTRACT_SAMPLE = [
-  "USDA Agricultural Marketing Service",
-  "Livestock, Poultry & Grain Market News",
-  "Daily National Shell Egg Index Report (5-day rolling average)",
-  "Fri Sep 4, 2026",
-  "Report for: 09/04/2026",
-  "Caged 30-Dozen Cases / Cents Per Dozen / FOB",
-  "",
-  "Class          Color   Size          Volume   Price Range     Wtd Avg   Change   Last Reported   Year Ago",
-  "Graded Loose   White   Extra Large   1,102    36.00-39.00     37.94     -0.90    38.84           219.11",
-  "Graded Loose   White   Large         2,431    34.50-36.00     35.28     -0.86    36.14           215.53",
-  "Graded Loose   White   Medium        988      27.00-29.50     28.11     -0.55    28.66           191.02",
-].join("\n");
-
-describe("the weighted average is the right column", () => {
-  it("takes the figure after the range, not the largest number on the line", () => {
-    // On the 2026-09-04 report the year-ago column reads 215.53 against a
-    // weighted average of 35.28 -- a six-fold error that would look entirely
-    // plausible on a screen.
-    const row =
-      "Graded Loose   White   Large         2,431    34.50-36.00     35.28     -0.86    36.14           215.53";
-    expect(weightedAverageFrom(row)).toBe(35.28);
+describe("the fixture is the bytes the person brought back", () => {
+  it("hashes to the sha256 the provenance file records", () => {
+    // If this file is ever edited, this test says so rather than the parser
+    // silently being proved against something nobody read.
+    expect(createHash("sha256").update(BYTES).digest("hex")).toBe(
+      "0371c7c7e617683adb37d6ab22e0c6245e6784055c0657181d83d43df423d49c",
+    );
+    expect(BYTES.length).toBe(9115);
   });
 
-  it("returns null on a row with no decimal at all", () => {
-    expect(weightedAverageFrom("Graded Loose White Large 2,431")).toBeNull();
-  });
-
-  it("does NOT read the signed change column as the right half of a range", () => {
-    // The defect this replaced: a range pattern tolerating whitespace read
-    // "35.28     -0.86" as a range, threw both away, and returned the
-    // last-reported figure. A range prints tight; the change prints signed.
-    const row =
-      "Graded Loose   White   Large         2,431    34.50-36.00     35.28     -0.86    36.14           215.53";
-    expect(weightedAverageFrom(row)).not.toBe(36.14);
-    expect(weightedAverageFrom(row)).not.toBe(215.53);
-    expect(weightedAverageFrom(row)).not.toBe(34.5);
-  });
-
-  it("returns null when the row carries no range token, rather than guessing a column", () => {
-    expect(
-      weightedAverageFrom("Graded Loose White Large 2,431 35.28 -0.86 36.14"),
-    ).toBeNull();
+  it("carries the header and all 23 rows the page said it had", () => {
+    const lines = TSV.split(/\r?\n/).filter((l) => l.trim() !== "");
+    expect(lines).toHaveLength(24);
+    expect(lines[0].split("\t")).toContain("Wtd Avg Price");
   });
 });
 
-describe("the parser admits the contract sample", () => {
-  it("reads the issuer's own date, unit and value", () => {
-    const run = parseUsdaShellEgg(CONTRACT_SAMPLE, OPTS);
+describe("the facts arrive as COLUMNS, not as the PDF's face text", () => {
+  it("finds the date, the unit and the freight on the row itself", () => {
+    const header = TSV.split(/\r?\n/)[0].split("\t");
+    for (const column of [
+      "Report Date",
+      "Price Unit",
+      "Freight",
+      "Egg Type",
+      "Environment",
+      "Color",
+      "Class",
+      "Origin",
+    ]) {
+      expect(header).toContain(column);
+    }
+    // And the unit really is per row rather than in prose above the table.
+    const rows = TSV.split(/\r?\n/).slice(1).filter((l) => l.trim() !== "");
+    const unitAt = header.indexOf("Price Unit");
+    expect(rows.every((r) => r.split("\t")[unitAt].trim() === CENTS_PER_DOZEN)).toBe(true);
+  });
+});
+
+describe("THE SIX-PART SELECTION, and why five parts is a bug", () => {
+  it("reads the series the plan recorded: Caged, National, FOB, 35.28", () => {
+    const run = parseUsdaShellEgg(TSV, OPTS);
     expect(run.refusals).toEqual([]);
     expect(run.observations).toHaveLength(1);
     const o = run.observations[0];
     expect(o.value).toBe(35.28);
     expect(o.periodStart).toBe("2026-09-04");
     expect(o.periodGrain).toBe("day");
-    // The one series in phase 0 that earns `issuer_stated` off the face of a
-    // report rather than out of a JSON field.
     expect(o.issuedAtBasis).toBe("issuer_stated");
+    expect(o.sourceRef).toContain("Caged/National/FOB");
   });
 
-  it("picks the Large row and not Extra Large", () => {
-    const run = parseUsdaShellEgg(CONTRACT_SAMPLE, OPTS);
-    expect(run.observations[0].value).toBe(35.28);
-    expect(run.rowsRead).toBe(1);
+  it("agrees with the plan's neighbouring figures, which are NOT written as observations", () => {
+    // 35.28 - 36.14 = -0.86, the plan's recorded change. `Previous` and
+    // `Last Year` are the issuer restating other dates; writing them as
+    // observations would post one number twice under two periods.
+    const n = neighbouringFigures(TSV);
+    expect(n.previous).toBe(36.14);
+    expect(n.lastYear).toBe(215.53);
+    expect(n.volume).toBe(33234);
+    expect(Number((35.28 - 36.14).toFixed(2))).toBe(-0.86);
   });
 
-  it("states no base period, because a price has none", () => {
-    expect(parseUsdaShellEgg(CONTRACT_SAMPLE, OPTS).basePeriod).toBeNull();
+  it("THREE rows are white and Large, at three different prices", () => {
+    // This is the fact the contract did not foresee and that makes five parts a
+    // bug. Selecting on "white Large" alone would take whichever came first,
+    // and a Cage-Free California DELIVERED price is a different market: 50.46
+    // against the series' 35.28, a 43 percent error that looks entirely
+    // ordinary on a screen.
+    const header = TSV.split(/\r?\n/)[0].split("\t");
+    const at = (n: string) => header.indexOf(n);
+    const whiteLarge = TSV.split(/\r?\n/)
+      .slice(1)
+      .filter((l) => l.trim() !== "")
+      .map((l) => l.split("\t"))
+      .filter(
+        (r) =>
+          r[at("Egg Type")].trim() === "Graded Loose" &&
+          r[at("Color")].trim() === "White" &&
+          r[at("Class")].trim() === "Large",
+      );
+    expect(whiteLarge).toHaveLength(3);
+    expect(whiteLarge.map((r) => r[at("Wtd Avg Price")].trim()).sort()).toEqual([
+      "28.67",
+      "35.28",
+      "50.46",
+    ]);
   });
-});
 
-describe("the three things it refuses the whole payload for", () => {
-  it("refuses an undated report — a daily index without its date is the signal missing", () => {
-    const undated = CONTRACT_SAMPLE.replace("Report for: 09/04/2026", "Report for: ");
-    const run = parseUsdaShellEgg(undated, OPTS);
-    expect(run.observations).toEqual([]);
-    expect(run.refusals.map((r) => r.reason)).toContain("no_report_date");
+  it("each SIX-part description picks exactly one of those three, and a different one", () => {
+    const variants: Array<[Partial<EggRowSelector>, number]> = [
+      [{}, 35.28], // Caged / National / FOB - the series
+      [{ environment: "Cage-Free" }, 28.67], // Cage-Free / National / FOB
+      [{ environment: "Cage-Free", origin: "California", freight: "Delivered" }, 50.46],
+    ];
+    for (const [over, expected] of variants) {
+      const run = parseUsdaShellEgg(TSV, {
+        ...OPTS,
+        select: { ...NATIONAL_CAGED_LARGE, ...over },
+      });
+      expect(run.refusals).toEqual([]);
+      expect(run.observations).toHaveLength(1);
+      expect(run.observations[0].value).toBe(expected);
+    }
   });
 
-  it("refuses a report that does not state its unit", () => {
-    const unitless = CONTRACT_SAMPLE.replace("Cents Per Dozen", "Per Dozen");
-    const run = parseUsdaShellEgg(unitless, OPTS);
-    expect(run.observations).toEqual([]);
-    expect(run.refusals.map((r) => r.reason)).toContain("unit_not_stated");
-  });
-
-  it("refuses a report that does not state its trade level", () => {
-    // Wholesale and retail differed by 6.3x on the day this was measured.
-    const noFob = CONTRACT_SAMPLE.replace(" / FOB", "");
-    const run = parseUsdaShellEgg(noFob, OPTS);
-    expect(run.observations).toEqual([]);
-    expect(run.refusals.map((r) => r.reason)).toContain("trade_level_not_stated");
-  });
-});
-
-describe("layout changes are named, never resolved by guessing", () => {
-  it("refuses TWO rows that both read as the series", () => {
-    const doubled =
-      CONTRACT_SAMPLE +
-      "\nGraded Loose   White   Large         900      40.00-41.00     40.50     +5.22    35.28           220.00";
+  it("refuses by name when the description matches more than one row", () => {
+    // Built by widening the file rather than the selector: a second row that is
+    // the same six-part market is a report whose shape changed under us.
+    const lines = TSV.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const header = lines[0].split("\t");
+    const target = lines
+      .slice(1)
+      .find((l) => l.split("\t")[header.indexOf("Wtd Avg Price")].trim() === "35.28")!;
+    const doubled = [...lines, target].join("\n");
     const run = parseUsdaShellEgg(doubled, OPTS);
-    expect(run.refusals.map((r) => r.reason)).toContain("ambiguous_row");
-    expect(run.observations).toHaveLength(1);
+    expect(run.observations).toEqual([]);
+    expect(run.refusals[0].reason).toBe("ambiguous_row");
+    expect(run.refusals[0].detail).toMatch(/2 rows are Graded Loose \/ Caged \/ White \/ Large/);
+    expect(run.refusals[0].detail).toMatch(/one market's price under another's name/);
   });
 
-  it("says a missing row is an unrecognised layout, not a quiet market", () => {
-    const noRow = CONTRACT_SAMPLE.split("\n")
-      .filter((l) => !/\bLarge\b/.test(l) || /Extra Large/.test(l))
-      .join("\n");
-    const run = parseUsdaShellEgg(noRow, OPTS);
-    expect(run.refusals.map((r) => r.reason)).toContain("row_not_found");
-    expect(run.refusals[0].detail).toMatch(/not a day the market was quiet/);
+  it("refuses by name when the description matches none", () => {
+    const run = parseUsdaShellEgg(TSV, {
+      ...OPTS,
+      select: { ...NATIONAL_CAGED_LARGE, class: "Peewee" },
+    });
+    expect(run.refusals[0].reason).toBe("row_not_found");
+    expect(run.refusals[0].detail).toMatch(/never "a day the market was quiet"/);
+  });
+});
+
+describe("an empty price is a market that did not report, never a zero", () => {
+  /**
+   * EIGHT, AND THE NUMBER COMES FROM THE PARSER RATHER THAN FROM A SENTENCE.
+   *
+   * Four places in this repository said "six" until 2026-09-06. The audit of
+   * aa9510a6 counted the column instead — `awk -F'\t' 'NR>1 && $28==""' <fixture>
+   * | wc -l` → 8, at data rows 1, 2, 3, 11, 18, 19, 20 and 23 — and nothing
+   * caught the error because no test asserted the count at all. This one does,
+   * and it asserts it through `parseUsdaShellEgg` rather than through `awk`, so
+   * the number pinned here is the number the PARSER refuses, not a property of
+   * a file some future edit could drift away from.
+   */
+  it("refuses exactly eight of the 23 rows, one per blank price", () => {
+    const lines = TSV.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const header = lines[0].split("\t");
+    const at = (name: string) => header.indexOf(name);
+    const rows = lines.slice(1).map((l) => l.split("\t").map((c) => c.trim()));
+
+    const reasons: string[] = [];
+    for (const row of rows) {
+      const select: EggRowSelector = {
+        eggType: row[at("Egg Type")],
+        environment: row[at("Environment")],
+        color: row[at("Color")],
+        class: row[at("Class")],
+        origin: row[at("Origin")],
+        freight: row[at("Freight")],
+      };
+      const run = parseUsdaShellEgg(TSV, { ...OPTS, select });
+      reasons.push(run.refusals[0]?.reason ?? "admitted");
+    }
+
+    expect(reasons).toHaveLength(23);
+    // The count the four prose sites now agree with.
+    expect(reasons.filter((r) => r === "no_value")).toHaveLength(8);
+    // And every one of them is a blank cell in column "Wtd Avg Price", so the
+    // refusal count and the blank count are the same eight rows, not two
+    // different eights that happen to match.
+    const blankRows = rows
+      .map((row, i) => (row[at("Wtd Avg Price")] === "" ? i : -1))
+      .filter((i) => i >= 0);
+    expect(blankRows).toHaveLength(8);
+    for (const i of blankRows) {
+      expect(reasons[i]).toBe("no_value");
+    }
+  });
+
+  it("refuses one of the eight rows this file leaves blank", () => {
+    // Measured: eight of the 23 rows carry an empty Wtd Avg Price. `Number("")`
+    // is 0, which would post a price of zero cents a dozen.
+    const run = parseUsdaShellEgg(TSV, {
+      ...OPTS,
+      select: { ...NATIONAL_CAGED_LARGE, color: "Brown" },
+    });
+    expect(run.observations).toEqual([]);
+    expect(run.refusals[0].reason).toBe("no_value");
+    expect(run.refusals[0].detail).toMatch(/did not report on this date - it is not a price of zero/);
+  });
+});
+
+describe("the columns are resolved by NAME, and the unit is checked per row", () => {
+  it("refuses a payload whose column set is not the one it was written against", () => {
+    const run = parseUsdaShellEgg("A\tB\n1\t2", OPTS);
+    expect(run.observations).toEqual([]);
+    expect(run.refusals[0].reason).toBe("unknown_columns");
+    expect(run.refusals[0].detail).toMatch(/column ORDER is not a promise/);
+  });
+
+  it("survives a reordered header, because nothing here is positional", () => {
+    const lines = TSV.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const header = lines[0].split("\t");
+    const order = header.map((_, i) => i).reverse();
+    const flip = (l: string) => order.map((i) => l.split("\t")[i]).join("\t");
+    const reversed = lines.map(flip).join("\n");
+    const run = parseUsdaShellEgg(reversed, OPTS);
+    expect(run.observations[0]?.value).toBe(35.28);
+  });
+
+  it("refuses a row whose stated unit is not this series' unit", () => {
+    const dollars = TSV.replace(/Cents Per Dozen/g, "Dollars Per Dozen");
+    const run = parseUsdaShellEgg(dollars, OPTS);
+    expect(run.observations).toEqual([]);
+    expect(run.refusals[0].reason).toBe("unit_not_stated");
+    expect(run.refusals[0].detail).toMatch(/off by a hundred/);
+  });
+
+  it("refuses an unreadable report date", () => {
+    const undated = TSV.replace(/^09\/04\/2026/gm, "Sep 4");
+    const run = parseUsdaShellEgg(undated, OPTS);
+    expect(run.refusals[0].reason).toBe("no_report_date");
+    expect(run.refusals[0].detail).toMatch(/five-day rolling average/);
+  });
+
+  it("refuses a header with no rows as a read that returned nothing", () => {
+    const header = TSV.split(/\r?\n/)[0];
+    expect(parseUsdaShellEgg(header, OPTS).refusals[0].reason).toBe("unreadable_payload");
   });
 });
 
 describe("the admission gate, on a daily price series", () => {
-  it("admits a report read the day after it was issued", () => {
-    const run = parseUsdaShellEgg(CONTRACT_SAMPLE, OPTS);
+  it("admits the report read the day after it was issued", () => {
+    const run = parseUsdaShellEgg(TSV, OPTS);
     const v = admitRun(
       { ...ENTRY, admission: "fetch", withheld: null },
       run,
@@ -152,18 +277,20 @@ describe("the admission gate, on a daily price series", () => {
   });
 
   it("refuses one a week old, because this series is DAILY", () => {
-    const run = parseUsdaShellEgg(CONTRACT_SAMPLE, OPTS);
+    const run = parseUsdaShellEgg(TSV, OPTS);
     const v = admitRun(
       { ...ENTRY, admission: "fetch", withheld: null },
       run,
       new Date("2026-09-12T00:00:00Z"),
     );
-    expect(v.admitted).toBe(false);
     expect(v.reason).toBe("stale");
   });
 
-  it("refuses it outright while the series is upload_only — which it IS today", () => {
-    const run = parseUsdaShellEgg(CONTRACT_SAMPLE, OPTS);
+  it("refuses it outright while the series is upload_only — which it STILL IS", () => {
+    // The human read was a ONE-OFF. A daily series read by hand once is not a
+    // daily series, and nothing may point a fetcher at a host whose robots.txt
+    // returns 403.
+    const run = parseUsdaShellEgg(TSV, OPTS);
     const v = admitRun(ENTRY, run, new Date("2026-09-05T00:00:00Z"));
     expect(v.admitted).toBe(false);
     expect(v.reason).toBe("upload_only");
@@ -171,11 +298,14 @@ describe("the admission gate, on a daily price series", () => {
   });
 });
 
-describe("the series says out loud that it has never seen real bytes", () => {
-  it("is flagged awaiting the human download", () => {
-    // The founder's Q1 answer: a one-off human read, logged. Until it happens
-    // nothing anywhere may report this series as working.
-    expect(ENTRY.awaitingHumanDownload).toBe(true);
+describe("the series has now seen real bytes, and says what that did and did not change", () => {
+  it("no longer awaits the human download", () => {
+    expect(ENTRY.awaitingHumanDownload).toBe(false);
+  });
+
+  it("stays upload_only, and the registry says the read was a one-off", () => {
     expect(ENTRY.admission).toBe("upload_only");
+    expect(ENTRY.withheld?.reason).toMatch(/403/);
+    expect(ENTRY.withheld?.reason).toMatch(/one-off/i);
   });
 });

@@ -11,21 +11,36 @@
  *   lookup   → Haiku 4.5   — find the thing, name the thing
  *   help     → Haiku 4.5   — answer a question about how this product works
  *   compose  → Sonnet 5    — write a cutting spec, or a configuration proposal
+ *   consult  → Opus 4.8    — read an evidence pack and reason across it
  *
  * "all tiers" is the load-bearing half of the first sentence: a `core` house on
  * a $5 depleting credit gets the same model as a `pro` house
  * (`spend-tiers.ts`). The tier bounds SPEND, never QUALITY. Nothing in this file
  * reads a tier, and that is deliberate rather than incidental.
  *
- * WHAT IS NOT ROUTED HERE, AND WHY NOT
- * ------------------------------------
- * `ConsultantsService` runs Opus (`ANALYTICS_CONSULTANT_MODEL`, default
- * `claude-opus-4-8`, consultants.service.ts:166-168) over an evidence pack with
- * adaptive thinking and a 300-second budget. That is a fourth class — deep
- * analysis — and the founder's decision does not cover it. Routing it would be
- * a model change nobody asked for, made silently, on the most expensive call in
- * the gateway. It stays where it is; the question is filed for the founder.
+ * THE FOURTH CLASS — founder decision, 2026-09-05 (ADR 0120 Q2)
+ * -------------------------------------------------------------
+ * The first draft of this file left `ConsultantsService` unrouted and filed the
+ * question: *"the consultant's Opus call — fourth class, or fold it into
+ * `compose`?"* The founder's answer was **"Fourth class: consult."**
  *
+ * Folding it into `compose` was the rejected path, and it fails on both halves
+ * of what the fold would mean. `MODEL_FOR_COMPOSE` set for an incident would
+ * have moved the consultant too — one env var silently reaching the most
+ * expensive call in the gateway; and the ledger would have shown one
+ * `task_class` covering a 400-token cutting spec and a 4096-token adaptive
+ * thinking pass over a full evidence pack, so "what does composing cost"
+ * would have been unanswerable from the rows.
+ *
+ * The consultant's model DOES NOT CHANGE here. `MODEL_FOR_CLASS.consult` is
+ * `claude-opus-4-8` — the exact default `consultants.service.ts` has always
+ * carried — and `ANALYTICS_CONSULTANT_MODEL` still outranks it as the site
+ * variable. What changes is that the choice is now declared in this file, and
+ * that the ledger names the call `consult` rather than leaving it the one model
+ * site with no class at all.
+ *
+ * WHAT IS STILL NOT ROUTED HERE, AND WHY NOT
+ * ------------------------------------------
  * The seven extraction and vision sites (scan-parser, document-extractor,
  * photo-count, vendor-page-extractor, inbound-responder, ux-optimizer) are
  * likewise untouched: each is in a module outside this change's scope, and each
@@ -33,8 +48,9 @@
  *
  * PRECEDENCE, AND WHY THE SITE VARIABLE STILL WINS
  * ------------------------------------------------
- *   1. the site's own env var (`GOAL_CUTTING_MODEL`, `ASK_AI_MODEL`)
- *   2. the class env var (`MODEL_FOR_COMPOSE`, …)
+ *   1. the site's own env var (`GOAL_CUTTING_MODEL`, `ASK_AI_MODEL`,
+ *      `ANALYTICS_CONSULTANT_MODEL`)
+ *   2. the class env var (`MODEL_FOR_COMPOSE`, `MODEL_FOR_CONSULT`, …)
  *   3. the class default above
  *
  * An operator who has already set `ASK_AI_MODEL` on a running gateway set it to
@@ -54,7 +70,7 @@
  *
  * The two things it did not record are added here as explicit `context` keys:
  *
- *   `task_class`  — lookup | help | compose. Distinct from the existing
+ *   `task_class`  — lookup | help | compose | consult. Distinct from the existing
  *                   `task_type`, which is the SITE's task ("goal_cutting_spec").
  *                   One is the routing rule, the other is the job.
  *   `asked_by`    — the user id that caused the call, or `null`.
@@ -83,8 +99,18 @@
 
 import type { ConfigService } from "@nestjs/config";
 
-/** The three classes the founder's decision covers. Nothing else is routed. */
-export const TASK_CLASSES = ["lookup", "help", "compose"] as const;
+/**
+ * The four classes the founder's decision covers. Nothing else is routed.
+ *
+ * `consult` was added on 2026-09-05 (ADR 0120 Q2, *"Fourth class: consult."*).
+ * Adding it here is the whole addition: `MODEL_FOR_CLASS`, `CLASS_ENV_VAR` and
+ * the spec are all keyed `Record<TaskClass, …>`, so a class that is declared
+ * and not given a model or an env var does not compile, and the spec's
+ * "every declared class routes to a model the ledger can price" loop picks it
+ * up without being edited. That is why the list is a const tuple and not four
+ * strings scattered across the files that consume them.
+ */
+export const TASK_CLASSES = ["lookup", "help", "compose", "consult"] as const;
 export type TaskClass = (typeof TASK_CLASSES)[number];
 
 /**
@@ -116,6 +142,13 @@ export const MODEL_FOR_CLASS: Readonly<Record<TaskClass, string>> =
     lookup: "claude-haiku-4-5",
     help: "claude-haiku-4-5",
     compose: "claude-sonnet-5",
+    // MEASURED, not chosen: this is the literal default
+    // `consultants.service.ts` has carried since the service was written
+    // (`this.configService.get("ANALYTICS_CONSULTANT_MODEL") ||
+    // "claude-opus-4-8"`). Naming the class must not change which model a
+    // house's consultant runs — that would be a model swap smuggled in as a
+    // registry entry, which is the thing the first draft refused to do.
+    consult: "claude-opus-4-8",
   });
 
 /** One env var per class, so a class can be moved without a deploy. */
@@ -123,6 +156,7 @@ export const CLASS_ENV_VAR: Readonly<Record<TaskClass, string>> = Object.freeze(
   lookup: "MODEL_FOR_LOOKUP",
   help: "MODEL_FOR_HELP",
   compose: "MODEL_FOR_COMPOSE",
+  consult: "MODEL_FOR_CONSULT",
 });
 
 /** Why a model was chosen — recorded so an override is visible in the ledger. */

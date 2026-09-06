@@ -58,6 +58,19 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
   a publisher printed and never what this house will pay, and it is never placed
   beside or averaged with a vendor quote (`commodity-signals-plan.md` phase 0,
   2026-09-05)
+- **The alert's money clause has exactly three states** (2026-09-06, the founder's
+  batch-59 answer to the plan's Q5: *"Twice a year, and the house types its carrying
+  cost."*). `stated` — a saving in the house's own currency, and ONLY when the house
+  typed a carrying cost (`/settings?tab=carrying-cost`) AND a person typed a shelf
+  life for the item; `unmeasured` — the word UNMEASURED and which of the two numbers
+  is missing, never a figure nobody stated; `too_small` — everything is known and the
+  line is too small to repay an interruption, with the measured spend floor printed as
+  the reason. The third is not an absence and does not share a sentence with the
+  second (`cadence-value.ts`, `valueClause`/`moneyState`)
+- **Every fire names the budget AND the rate it actually delivered.** Out of sample a
+  once-a-year budget fired 1.62 times a year and a twice-a-year budget 2.27, so the
+  sentence prints both. Printing the budget alone would promise a frequency the data
+  refuses
 - A house with **no exposure mapped** sees the series and a sentence saying none
   of these numbers is about anything it buys yet. Nothing proposes a mapping:
   a mapping is a person's assertion and is never inferred
@@ -69,6 +82,20 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
   never seen real bytes can never look like a working feed
 - An **armed** series names who armed it, when, and the calibration it was armed
   on, on the same line as the number it produces
+- **A per-bottle duty figure** beside a rate series, for a mapped item whose
+  strength and size a person has both stated — labelled as a duty, never as a
+  price. Where either is missing the box prints the reason instead of a blank,
+  because "nobody has stated this bottle's strength" is something a person can
+  go and fix (2026-09-05)
+- **Türkiye's own CPI line**, beside FAO and ONS: TÜİK's food index read over the
+  publisher's documented SDMX service, with TÜİK's re-use notice cited on the
+  line because the licence requires the source to be named (2026-09-05)
+- A series read **over a credential** says when THIS deployment does not hold
+  one, and calls it a missing setting rather than a publisher refusing us
+- The **shell-egg index** no longer says it is waiting on a download: a person
+  brought the report on 2026-09-05 and the register holds that day. It still
+  says the source is not fetched, because a one-off read is not a cadence
+  (2026-09-05)
 
 **Mudavym redesign** (flag `mudavym_design_notifications`; legacy renders unchanged
 while the flag is off — `apps/web/src/pages/notifications/next/`):
@@ -2175,7 +2202,14 @@ from the product.
 
 The commit message of fb7248ec said `check_new_tables_are_locked_down: OK (268 CREATE TABLE / 268 live)`. Measured on an isolated archive of that commit: **258 / 258**. The 268 was the number the guard printed on the SHARED worktree, which carried other builders' uncommitted migrations — the parent pasted the tree's number rather than the archive's, the exact habit p4-rules.md forbids. The verdict (every table locked down) was right; the count was not. Also: the two `nt-book.test.ts` failures that message called "not this commit's" were confirmed pre-existing on the parent 59e25f92 and fixed in d35d27e2.
 
-### 13.35 What the founder's answers changed on this box (2026-09-05, batches 50-51)
+### 13.39 What the founder's answers changed on this box (2026-09-05, batches 50-51)
+
+*(Numbered 13.39 on 2026-09-06. It was written as a second `### 13.35` and
+collided with the ADR 0128 section above; the audits of aa9510a6 and e7c24d2e
+both flagged it. Renumbered to the next free number rather than resequencing
+everything after it, so no citation that was correct becomes wrong. A citation
+of "notifications.md §13.35" written before 2026-09-06 means whichever of the
+two the sentence is about.)*
 
 Five answers, and three of them are visible here.
 
@@ -2232,3 +2266,190 @@ for is skipped with `no_shelf_life_typed`, and an item that does not keep as
 long as the lag is skipped with a different sentence again. **Condition 7,
 coverage, is still unevaluated and still named on every decision and every
 ledger row.**
+
+### 13.36 The per-bottle duty stops being a sentence and becomes a figure (2026-09-05, batch 57)
+
+§13.39 (the batch-50/51 section, numbered 13.35 until 2026-09-06) recorded that
+the duty line printed a sentence rather than a number, for two measured reasons. The founder's batch-57 answer removed one of them and the
+schema turned out to have already removed the other.
+
+**The strength now exists.** `master_wine_library.abv_percent` — nullable, no
+default, carrying the person and the moment, with a
+`0 <= abv <= 100` range whose ceiling catches a US *proof* figure read as a
+percentage. It is on the SHARED library row and **never on a house's own alias**:
+strength is a property of the liquid, and the migration RAISEs if an `abv%`
+column ever appears on `beverage_identities`.
+
+**The stated size was already there, and this box had been reading the wrong
+column to look for it.** `master_wine_library.bottle_size_ml` is
+`DEFAULT 750 NOT NULL` and cannot tell a stated 750 from a defaulted one.
+`beverage_identities.size_ml` can, and says so in its own comment: *"NULL means
+unstated. NEVER 750."* So the size comes from the identity register, the strength
+from the library, and the defaulted column is read by nothing in this path.
+
+**Which bottle, when a library row names several.** This house's own identity
+first — that is the trade item it actually buys — then a platform-wide one, and
+otherwise **refused and named**. Picking the first of two would compute a
+magnum's tax for a 750: off by a factor of two, and entirely ordinary-looking on
+a screen.
+
+**What the box now draws.** Where both facts are stated, a figure with its whole
+working: *"GBP 9.19 per bottle on a mapped item. HM Revenue & Customs, GBP per
+litre of pure alcohol, in force from 2026-02-01 … Duty only; no VAT, no margin,
+no price."* The last clause is not decoration — a number beside a bottle reads
+as what the house pays for it unless the line says otherwise.
+
+Where a fact is missing, the box draws **the reason**, not a blank: *"No
+per-bottle figure for a mapped item: … this bottle's strength is required and
+nobody has stated one."* Three of the four causes are things a person can fix in
+a minute; the fourth (GİB never states what its figure is per) is not, and reads
+differently on purpose.
+
+**A duty of ZERO prints as a figure.** `duty.ts` previously refused
+`abvPercent <= 0`, collapsing *nobody stated one* with *somebody stated a
+de-alcoholised product* — and HMRC's own 0-1.2% band is GBP 0.00. It now refuses
+only null and negatives.
+
+**An index series draws no duty line at all**, and a test pins that: an index
+number is not a tax, and computing one from it would be inventing a liability.
+
+### 13.37 Türkiye gets a line, and it is the first one read with a key (2026-09-05, batch 58)
+
+Every commodity series in this box until now was keyless: FAO and ONS are read
+by anybody, and the shell-egg report and the three rate schedules are brought by
+a person. **TÜİK is the first source this product reads on a schedule with a
+credential**, and that is a different kind of fact about a source, so the box
+says it out loud.
+
+**What a Türkiye house now sees.** `Tüketici fiyat endeksi (TÜFE), 01 Gıda ve
+alkolsüz içecekler` — **134.31**, `Index, base year = 100 · base 2025=100 ·
+August 2026` — beside the FAO world index and above TÜİK's own ÖTV rate. Before
+this, a Turkish house saw one line (FAO) and the register recorded Türkiye as
+`silent: no_machine_endpoint`. ADR 0117's Q22 closes here.
+
+**The licence travels with the number, because it has to.** TÜİK states no
+licence on the service or in its manual; the only statement is a site-wide legal
+notice, in Turkish, that the English site does not link to, and it permits re-use
+*provided the source is cited*. So the series is `attribution_required` — the
+same slot ONS sits in — and the line carries an attribution string that is
+**ours**, because TÜİK prescribes none.
+
+**"Read on", not "issued".** The SDMX payload states no publication date.
+`YAYIM_DONEMI` is the release ROUND the figures belong to, not the day they were
+published, and reading it as one would invent a date the issuer never gave. So
+this series is `fetch_date` and says "read on" — the same distinction FAO's line
+makes, for the same measured reason.
+
+**A missing key is a missing SETTING, and the box says so.** When a deployment
+does not hold `TUIK_SDMX_API_KEY` the line reads *"Read over a credential this
+deployment does not hold: TUIK_SDMX_API_KEY is not set here, so nothing has been
+fetched. That is a missing setting, not a publisher refusing us."* Those are
+different facts and only one of them is fixable in a dashboard. **This is the
+state of production today** — the key is set in the repo's root `.env` and
+nothing built here can set it on Railway.
+
+**TT09 shows CODES and names nothing.** The founder's words were *"TT09 as well,
+codes unnamed for now"*. Its three beverage subclasses read 128.89, 126.50 and
+140.20 at 2026-08, and TÜİK's codelist endpoint answers 401 — the labels have
+never been read. So the box prints the codes and the sentence saying so, and a
+test asserts that no renderable field on that series contains any of the English
+and Turkish beverage nouns the test lists — `wine`, `beer`, `şarap`, `şarabı`,
+`bira`, `rakı` (`MarketIndexPanel.commodity.test.tsx`, the TT09 case). This
+sentence claimed *"a beverage noun in any language"* until 2026-09-06, and that
+was false: the test checked two English words. A test cannot assert a property
+of every language, and a page note may not claim a check the suite does not make
+— so the sentence now names the list, and the list gained the four Turkish nouns
+that actually matter for a Turkish series. Guessing which subclass is wine would
+be inventing a fact about a series a house might act on.
+
+**What was built against, and it would have been invisible.** The payload's
+`UNIT_MEASURE` column is **empty on every row**, and the thing that makes 134.31
+an index and 0.22 a monthly percentage is a dimension called `DEGISIM` that the
+file never explains. A parser that trusted the file would have put both on this
+box and both would have looked like data. The axis is declared on the series and
+any other value is refused by name.
+
+### 13.38 The shell-egg file landed, and it corrected two things this box believed (2026-09-05)
+
+§13.34 recorded the shell-egg series as registered, parsed against a contract,
+and **waiting on a person's own download**. The download happened. What came
+back was not what the contract described, and both surprises would have shown on
+this box.
+
+**It is the HTML data view, not the PDF.** The PDF URL answers a browser with a
+download dialog the pane cannot complete, so the same report was read through My
+Market News — *Report Detail Weighted*, 2026-09-04, Final, all 23 rows, 9,115
+bytes, sha256 `0371c7c7…23d49c`, recorded whole and hashed by a test.
+
+**The facts are columns, not face text.** `Report Date`, `Price Unit` and
+`Freight` are per-row columns; the parser written before the bytes existed
+looked for all three in prose above the table and would have refused the real
+file three times over.
+
+**Three rows are graded loose, white and Large — and only one is the series.**
+Cage-Free California *Delivered* reads **50.46**, Cage-Free National FOB reads
+**28.67**, and the series is the **Caged National FOB** row at **35.28**.
+Selecting on "white Large" alone would have put a 50.46 on this box under the
+series' name: a different market, a 43 percent error, and entirely
+ordinary-looking. The selection is now a six-part tuple and an ambiguous match
+is refused by name.
+
+**Eight of the 23 rows carry no price at all.** `Number("")` is 0, so an empty
+cell read as a value would have drawn **0.00 cents a dozen** here. It is refused
+with the words *"that market did not report on this date - it is not a price of
+zero"*. (This said **six** until 2026-09-06. Measured:
+`awk -F'\t' 'NR>1 && $28==""' <fixture> | wc -l` -> **8**, at data rows 1, 2, 3,
+11, 18, 19, 20, 23. The parser now asserts the count.)
+
+**What the line says now.** The *"waiting on a person's own download"* sentence
+is gone, because it would be false. The *"Not fetched"* sentence stays and has
+grown a clause: the host's crawl rules are still unreadable, **a one-off read is
+not a cadence**, and this daily series is refreshed only when a person brings the
+file again. Nothing about it is armed for alerting.
+
+### 13.40 The alert now has a price on it, and it decided the cadence (2026-09-06)
+
+*(Numbered 13.40 on 2026-09-06. It was appended as a second `### 13.36` and
+collided with the batch-57 per-bottle-duty section above. Same rule as 13.39:
+renumbered to the next free number, nothing after it resequenced.)*
+
+**The founder, 2026-09-05 batch 59, answering `commodity-signals-plan.md` §12 Q5:**
+*"Twice a year, and the house types its carrying cost."* The evidence is that plan's
+new §9f; the model is `apps/api-gateway/src/commodity/cadence-value.ts` and its 32
+tests.
+
+**What was measured, and why the two halves are one answer.** Over 440 recorded FAO
+months, walk-forward — the threshold at each observation derived only from the
+observations before it — a fire is followed by a higher index three months later
+**66.7 %** of the time against a **54.4 %** benchmark; pooled over seven recorded
+histories that is 923 fires and a lift of **+3.88 pp**. So the rule carries information.
+But buying three months of cover costs six unit-months of carry, and the break-even
+carrying cost is **0.96 %/month** on the FAO headline, **1.66 %** on Dairy and **0.27 %**
+on Meat. Between 0.5 % and 1 % the recommendation flips from "worth having on six
+series" to "worth having on one" — so the cadence was never separable from what holding
+stock costs the house, and nothing in this product had ever asked.
+
+**What changed on this page's rule.**
+
+* `carryPerPeriod` is `number | null` and `carryFraction` is **null, never zero**. Zero
+  would price holding three months of stock as free, which is the single assumption that
+  makes every fire look like a win.
+* Two new named refusals join the vocabulary: `no_carrying_cost_typed` (fixable by a
+  person in a minute, on the settings page) and `below_spend_floor` (a fact about the
+  line). Neither is a silence.
+* A **tenth condition the plan's nine do not have**: item size. At 8 units of attention a
+  fire, the smallest monthly spend that repays being told is 168-450 on the friendliest
+  parameters and runs into the thousands on realistic ones. Every one of the nine
+  conditions asks about the SERIES; none of them can see that a line is too small to be
+  worth a sentence.
+
+**Still dark.** `COMMODITY_ALERT_DARK` is off, `CommodityModule` still imports no
+`NotificationsModule`, and no sentence from this file has reached a person. The three
+money states are exercised in `cadence-value.spec.ts` against the recorded fixture, not
+on a screen.
+
+**Open, and the founder's** (carried in ADR 0117's class-E notes): the identical rule on
+this repository's own committed 40-month FAO fixture has a **negative lift at every
+cadence** and a **0 % hit rate at once a year**. Thirty-six years say the rule beats a
+coin; three and a half say it does not. Nothing further that could be measured settles
+which of the two is the future.

@@ -125,6 +125,8 @@ something adjacent was measured, `no` means the fetch failed and the reason is s
 | **BLS Public Data API v1** | PPI and CPI series, and the **AP average-price series which are prices in dollars, not index numbers** | monthly | `https://api.bls.gov/publicAPI/v1/timeseries/data/` | yes, in the payload, including a `"Preliminary"` footnote | **the terms page named by the FAQ, `bls.gov/bls/termsofservice.htm`, returned 404 — the terms are unread and are not asserted here** | **v1: 25 queries/day, 25 series, 10 years, no key. v2: 500/day, 50 series, 20 years, free annual key. Both 50 requests / 10 s** — quoted from `bls.gov/developers/api_faqs.htm` | **yes, and then a problem.** `APU0000708111` (*Eggs, grade A, large, per doz., US city average*) returned 2026 M07 = **2.189**, M02 = 2.500. `WPU017107` (*PPI, eggs for fresh use*) and `WPU0223` both returned clean. **Then `https://api.bls.gov/robots.txt` returned 200 with `User-agent: * / Disallow: /`** — see §3c. **Q1 CLOSED by the founder 2026-09-05: register a v2 key and use the API under its terms.** One gap that must close before arming: the terms document itself is **unread** — `bls.gov/bls/termsofservice.htm`, the page the FAQ names, returned **404** — so the only BLS terms this plan can currently point at are the published limits in `api_faqs.htm`. **The source row's `terms_url` may not be a 404** |
 | **FAO Food Price Index** | A world index of food commodity prices, plus five sub-indices: cereals, vegetable oils, dairy, meat, sugar | **monthly**, on a published calendar | **CSV**, keyless: `www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv` | **yes** — the page states the release date and the next one; the CSV states its own base | **no licence declared on the page.** Footer is "© FAO 2026" with a general terms link. **Unstated, recorded as unstated** | `robots.txt` **200**: `*` disallows `/index.php`, `/t3lib/`, `/typo3/`, `/*?id=*` and two `user_upload` paths. **The CSV path is permitted; no crawl-delay is declared** | **yes.** August 2026 = **133.3**, released **2026-09-04**, next **2026-10-02**. CSV: 48,006 B, sha256 `746104cf…c62f`, 444 lines, base **2014-2016=100**, last row `2026-08,133.3` |
 | **ONS time series (JSON)** | UK CPI, including **`d7bu` — CPI INDEX 01: FOOD AND NON-ALCOHOLIC BEVERAGES 2015=100** | monthly | keyless per-series URL: `.../timeseries/d7bu/mm23/data` | **yes** — `releaseDate`, `nextRelease`, and an `updateDate` on **every observation** | **Open Government Licence v3.0** | `www.ons.gov.uk/robots.txt` returns **404** (re-read 2026-09-05T14:12:41Z: 404, 101,929 B, an ONS "Page not found" page with zero `disallow` lines) — unrestricted per RFC 9309, the same reading the registry already applies to `ilcc.illinois.gov` | **yes.** 125,504 B, 463 months, 2026 JUL = **144.0**, `unit: "Index, base year = 100"` |
+| **TÜİK SDMX — `DF_TUFE_SDMX_TT01`** | Türkiye CPI by main expenditure group, including **01 food and non-alcoholic beverages** | **monthly**, first days of the following month | SDMX 2.1 REST, `nsiws.tuik.gov.tr/rest`, `?format=SDMX-CSV`; **a Keycloak bearer token is required** | **partly** — the payload states the period and the base and states **no publication date**; `UNIT_MEASURE` is empty on every row | **the site-wide legal notice** at `tuik.gov.tr/Kurumsal/Yasal_Uyari`: re-use permitted *provided the source is cited*. No licence on the service or in the manual. `attribution_required`, and the attribution string is OURS because TÜİK prescribes none | **none stated anywhere.** The 24-a-day ceiling is ours | **yes, with the founder's key, 2026-09-05.** Token `expires_in` 300; `TR.M.2.1._Z.2025.2026_01._Z.01.F_TFE` → **200, 891 B**, sha256 `5760a5fa…`, 8 rows, **2026-08 = 134.31**, base 2025=100. `nsiws.tuik.gov.tr/robots.txt` answers **401** |
+| **TÜİK SDMX — `DF_TUFE_SDMX_TT09`** | The same CPI at **325 COICOP-2018 levels**, index only, including three beverage subclasses | monthly | as above; **7,532,768 B / 84,500 rows unbounded** | as above | as above | as above | **yes (keyless route, by the researcher).** `02110`=128.89, `02121`=126.50, `02130`=140.20 at 2026-08. **Their LABELS were never read**: the codelist endpoint answers 401 and the Data Explorer view went blank five times. Registered as codes, `silent: codelist_unread` |
 | **USDA ERS Food Price Outlook** | **Forecasts** of annual food price change by category, plus the CPI and PPI series behind them | **monthly, on the 25th**; next **2026-09-25** | CSV and XLSX | yes | not stated on the page; a USDA work | not measured | **partial.** Both pages read. Its own documentation states it *"generates 95 percent forecast intervals"* — **the only source in this register that publishes an interval rather than a point** |
 | **Defra wholesale fruit and vegetable prices** | England and Wales wholesale produce, GBP per kg | fortnightly | CSV | yes, a date on every row | **OGL v3.0** | — | **Measured by the market-research builder on 2026-09-05 and already built as `parse-defra.ts`.** Cited, not re-fetched. See `price-sources.md` §"United Kingdom — one found" |
 | **EIA open data (diesel, natural gas)** | The input cost under every delivery and every kitchen | daily to monthly | REST v2, JSON | yes | *"EIA data is provided free of charge"* subject to its API Terms of Service and Copyrights and Reuse Policy | **free key required**; `api.eia.gov/robots.txt` answers `403 API_KEY_MISSING`; JSON max 5,000 rows, XML 300; throttle limits **not stated on the documentation page** | **partial.** Documentation read; no series pulled |
@@ -146,7 +148,14 @@ Both were re-measured on 2026-09-05 by the market-research builder and the resul
 `price-sources.md` §"Türkiye and the United Kingdom, re-measured 2026-09-05". **Nothing
 here re-crawls those hosts.** What this plan adds is two facts measured today:
 
-- **Türkiye has no machine-readable index this plan can use.** `veriportali.tuik.gov.tr/robots.txt`
+- **CORRECTED 2026-09-05, and this sentence is superseded: Türkiye HAS a machine-readable
+  index and it is now armed.** What this paragraph said next was true of a fetcher without a
+  credential, and stopped being the whole story the moment there was one. TÜİK runs a
+  documented SDMX 2.1 REST service at `https://nsiws.tuik.gov.tr/rest`; the founder minted a
+  personal API key in the Veri Portalı on 2026-09-05, and the exchanged token read
+  `DF_TUFE_SDMX_TT01` — CPI, food and non-alcoholic beverages, base 2025=100, 2026-08 =
+  **134.31** — HTTP 200, 891 bytes. §2a and §10 carry it; the original observation below is
+  kept because it is what a KEYLESS reader still sees. `veriportali.tuik.gov.tr/robots.txt`
   is **200** and names `anthropic-ai`, `ClaudeBot`, `ClaudeUser` and `Claude-SearchBot` in
   an explicit allow group — the only source in either register that permits us by name —
   and the portal behind it renders "JavaScript Required" with token-signed downloads and
@@ -396,6 +405,10 @@ per series, one row per observation.
 | `daily_request_budget` | `integer NULL` | **My rendering of the founder's *"stays under the daily limit"*, not their words.** A number the fetcher counts against, refusing rather than exceeding. It exists because I demonstrably needed it: §3c records that I spent **13-14 of the v1 tier's 25** on a research pass while believing I had spent 7 |
 | `rise_threshold` / `step_guard` | `numeric NULL` | derived from the series' own history — §9b. **NULL means the rule cannot fire for this series**, and that is said out loud |
 | `threshold_window_from` / `_to` / `_n_obs` / `_computed_at` | | so the number on the screen can be traced to the window that produced it |
+| `access_key_required` / `key_env_var` | `boolean NOT NULL DEFAULT false` / `text` | **Added 2026-09-05 for TÜİK, the first source read WITH a credential.** The register names the VARIABLE and never the key: a register that stored one would be a register that leaks one. A CHECK requires the pair to move together and requires the name to be shell-shaped, which a pasted credential is not. **Holding a key says nothing about `redistribution`** — a publisher letting us read is not a publisher letting us publish |
+| `robots_reading` | `text` | What the host said when ASKED. Four distinct answers now exist across this register — 200 with rules (FAO), 404 absent (ONS), 403 refused (USDA AMS), **401 unauthenticated (TÜİK `nsiws`)** — and flattening any into another is a different claim about a different publisher |
+| `user_agent` / `request_budget_per_day` | `text` / `integer` | The identity we present, on the row rather than in a constant. And a ceiling that is **OURS**: TÜİK states no rate limit anywhere, and a source with no stated limit is exactly where a runaway loop does its damage. A budget of zero is refused — that is `admission`, not a budget |
+| `licence_url` | `text` | Where the words in `licence` were read. TÜİK's re-use sentence lives in a Turkish site-wide notice the English site does not link to |
 | `armed` | `boolean NOT NULL DEFAULT false` | |
 | `withheld_reason` / `silent` | `text NULL` | mirroring `price-index.registry.ts`'s existing distinction: unreadable versus read-but-unusable |
 
@@ -619,6 +632,162 @@ item and a quantity the manager sets. Nothing is sent, nothing is approved, noth
 without `HoldToApprove`. A commodity signal is the weakest evidence in the building and it
 may never be the thing that moves money on its own.
 
+### 9f. Is it profitable? Measured, and the answer decided the cadence
+
+The founder asked the quant question directly on 2026-09-05: *"deploy (opus) to be quant
+agent, and understand how can it be profitable? maybe once in a week, 2 weeks...?"* The pass
+is `cadence-value.ts` and its 32 tests; the full working is `p4-scratch/p4bf-quant-cadence.md`.
+**Zero outbound requests** — every series was already recorded by phase 0 and its sha256
+re-verified before the run (`p4bf-fetch-log.md`).
+
+**What was measured.** Seven recorded monthly histories: the FAO Food Price Index and its
+five sub-indices (440 rows each, 1990-01 to 2026-08) and ONS `D7BU` (463 rows, 1988-01 to
+2026-07). **No egg series**: the human download the fixture contract asks for has still not
+landed, so every number here is an index number and none of them is money.
+
+**The cadence that was asked for does not exist.** These series publish monthly.
+
+| asked for | verdict | why |
+|---|---|---|
+| weekly (52/yr) | **refused** `finer_than_the_series_publishes` | the series speaks 12 times a year |
+| fortnightly (26/yr) | **refused** same | same |
+| monthly (12/yr) | **refused** `no_threshold` on FAO | at 12 fires on 12 chances the quantile lands on the smallest move the series ever made, which is a fall |
+
+On ONS the monthly cadence does derive — a 0.25 % threshold, 15 fires in 20 evaluable months,
+**lift −0.23 pp**. Not a refusal; worse than one.
+
+**The rule carries information, out of sample.** Threshold derived at each observation from
+the observations strictly before it, K = 12, three months of cover:
+
+| | fires / evaluable | hit rate | mean 3-month rise after a fire | benchmark (any month) | lift |
+|---|---|---|---|---|---|
+| FAO headline, quarterly | 135 / 401 | **66.7 %** | 4.81 % | 1.40 % | **+3.41 pp** |
+| FAO headline, twice a year | 76 / 401 | 65.8 % | 5.77 % | 1.40 % | +4.37 pp |
+| pooled, all seven, quarterly | 923 / 2,768 | 64.5 % | 5.65 % | 1.77 % | **+3.88 pp** |
+| FAO Meat, once a year | 54 / 401 | 53.7 % | 0.16 % | 1.06 % | **−0.90 pp** |
+
+**So §11's fear is half wrong** — it predicts something — **and half right**: on Meat the lift
+is negative at the cadence a house would most likely pick, which is why arming stays
+per-series.
+
+**And the money dies on two numbers nobody had measured.** Buying `H` periods of cover costs
+`c · H(H+1)/2` — triangular, because the units bought for the third month sit for three — and
+the pass-through multiplies the BENEFIT and never the COST. Break-even carrying cost, φ = 1:
+
+| series | H = 1 | H = 3 | H = 6 |
+|---|---|---|---|
+| FAO Food Price Index | 1.29 % | **0.96 %** | 0.84 % |
+| FAO Dairy | 1.71 % | **1.66 %** | 1.57 % |
+| FAO Meat | 0.53 % | **0.27 %** | 0.10 % |
+| ONS D7BU | 0.58 % | **0.60 %** | 0.62 % |
+
+At the pass-through USDA ERS measured for anything processed (16-53 %, §5b), **every fire
+loses money at any carrying cost above a quarter of a percent a month.** This is §5e made
+arithmetical: the alert is for goods whose published series IS the price the house pays.
+
+**Which cadence.** Net per year, FAO headline, H = 3, 1,000 a month of spend, 8 an
+interruption — every figure a stated parameter:
+
+| φ | carry /month | quarterly | twice a year | once a year |
+|---|---|---|---|---|
+| 1.0 | 0.25 % | **+101.3** | +78.9 | +63.9 |
+| 1.0 | 0.50 % | +40.7 | **+44.8** | +39.7 |
+| 1.0 | 0.75 % | −19.9 | +10.7 | **+15.4** |
+| 1.0 | 1.00 % | −80.4 | −23.4 | **−8.8** |
+| 0.5 | 0.50 % | −56.4 | −20.8 | **−10.9** |
+
+Quarterly wins one corner and collapses fastest; once a year is the most robust and leaves
+value unclaimed; **twice a year is never the worst and is within a small margin of the best
+almost everywhere.** That is the founder's answer, and the table is why.
+
+**A tenth condition the nine do not have: item size.** At 8 an interruption, the smallest
+monthly spend that repays being told is 168-450 on the friendliest parameters and runs into
+the thousands on realistic ones. The nine conditions in §9a all ask about the SERIES; none can
+see that a line is too small to be worth a sentence. `valueBacktest` names it
+`below_spend_floor` and the alert prints the floor as the reason.
+
+~~**Open: is the tenth condition ARMED — does the rule refuse to fire for an item below the
+floor — or is the floor only printed?**~~ **ANSWERED AND CLOSED by the founder, 2026-09-06
+(batch 61).** His words, verbatim: *"Printed state only, until the egg backtest."* So the
+floor stays a printed state and never a gate: `valueBacktest` returns `withheld:
+"below_spend_floor"` and `moneyState()` returns `too_small`, the sentence names the measured
+floor, and nothing is suppressed by it. The condition is not armed until a backtest on a
+series that IS money — the USDA shell-egg download of §10 — can say what the floor costs in
+missed fires rather than in index points. **No code changed for this answer**; the built
+behaviour already was the answer, and this paragraph is the record that it is now decided
+rather than merely implemented.
+
+**The strongest thing against all of it, measured on this repository's own fixture.** Run the
+identical rule on the committed 40-month window (2023-05 to 2026-08) and the sign flips at
+every cadence: quarterly **−0.79 pp**, twice a year **−2.74 pp**, once a year **−4.42 pp** with
+a **0 % hit rate**. Thirty-six years say it beats a coin; three and a half say it does not.
+The 36-year table is the evidence and the 40-month window is the world the house lives in, and
+nothing further that could be measured settles which is the future.
+
+### 9g. The egg series on one report
+
+**A one-point series admits no walk-forward and no hit rate, and this one is a single
+point.** The register holds ONE report of AMS 2843 (2026-09-04, 23 rows, 9,115 bytes, sha256
+`0371c7c7…23d49c`) and `THRESHOLD_HISTORY_FLOOR = 36` refuses a threshold below 36
+observations — so no threshold, no fire, no hit rate, no benchmark and no comparison between
+the six cadences, and a hit rate here would have a denominator of one. Two things ARE computable and
+both come out the same way (measured 2026-09-06 by `node p4-scratch/p4bo-run.js`; long form
+`p4-scratch/p4bo-egg-backtest.md`; every parameter labelled; **USD, cents per dozen, on one
+report**). **The whole money history is 47 price cells**: 15 current, 15 `Previous`, 17 `Last
+Year`, 9 rows with all three. The series row — the six-part tuple, matched once — is **35.28**,
+previous **36.14**, year ago **215.53**, volume 33,234 cases; and the two lagged columns are
+**undated by the file** (all four date columns read 09/04/2026), a second reason not to write
+them as observations.
+
+**Break-even carrying cost** `c* = gross / (H(H+1)/2)`; only H = 1 is observable at all:
+
+| Move | Gross | `c*` at H = 1 |
+|---|---|---|
+| series row vs `Previous` | **-2.3796 %** | **refused `not_a_rise`** — loses at a carry of zero |
+| series row vs `Last Year` | **-83.6310 %** | **refused `not_a_rise`** |
+| mean of all 15 rows | **-0.1985 %** | **refused `not_a_rise`** |
+| the file's one big riser (cage-free national FOB) | **+10.2692 %** | 10.2692 % a period |
+
+Three of 15 markets rose, five fell, seven did not move; year-on-year **nine of nine fell**
+(mean **-70.29 %**). At **8 USD an interruption** and a carrying cost of 0.5 %/month (both
+parameters; nobody has typed a carrying cost), weekly spends of **200 / 1,000 / 5,000 USD**
+give a reading cost of **4.00 / 0.80 / 0.16 %** of that week's spend and a break-even move of
+**4.12 / 0.92 / 0.28 %**, which **1 / 3 / 3** of the file's 15 markets beat. On the series
+row's own move the floor is **never** — the net is negative, so no spend repays a reading,
+which is not `below_spend_floor` (too small a line) and must not print as it.
+
+**What N reports each cadence costs**, at the FAO pass's standard — walk-forward, K = 12,
+floor 36, F out-of-sample fires, `N = 36 + F x observations-a-year / cadence + H`; F = 135 is
+that pass's own quarterly fire count (standard error 4.1 pp), F = 30 the weakest bar anyone
+would defend. Reports / years, recording weekly then every publication day (250 a year, a
+parameter — one report cannot show its own calendar):
+
+| Cadence | weekly, F=135 | weekly, F=30 | daily, F=135 | daily, F=30 |
+|---|---|---|---|---|
+| weekly | **refused** | **refused** | 691 / 2.8 | 186 / 0.7 |
+| fortnightly | 307 / 5.9 | **97 / 1.9** | 1,340 / 5.4 | 330 / 1.3 |
+| monthly | 622 / 12.0 | 167 / 3.2 | 2,854 / 11.4 | 666 / 2.7 |
+| quarterly | 1,792 / 34.5 | 427 / 8.2 | 8,479 / 33.9 | 1,916 / 7.7 |
+| twice a year | **3,547 / 68.2** | 817 / 15.7 | 16,916 / 67.7 | 3,791 / 15.2 |
+| once a year | 7,057 / 135.7 | 1,597 / 30.7 | 33,791 / 135.2 | 7,541 / 30.2 |
+
+**Recording five times as often buys five times the downloads and the same wall clock** —
+fires a year is fires a year; daily recording buys one thing only, that the weekly cadence
+stops being untestable. The archive is the escape (307 past reports are 307 downloads, not six
+years) but under `upload_only` each is a person in a browser.
+
+**The strongest case against reading anything into this.** Eggs are the series §5e was
+written for and the moves are large, so a one-report reading that had landed on a rising day
+would print a 100 % hit rate, an enormous gross and a break-even carry above anything a house
+would type. **This one fell.** A verdict that depends on which day the person downloaded is
+not a verdict — which is why nothing here arms anything and the spend floor stays the printed
+state batch 61 decided. Also measured: **eight of the 23 rows carry no `Wtd Avg Price`, not six**;
+six counts only the 19 `Graded Loose` rows. New code: `cadence-sample-size.ts`, pure, 21 tests.
+
+**The founder, 2026-09-06, batch 63, on this section's questions.** How more reports get recorded: **"A person records 40 going forward, one at a time"** — one report per download, each a logged one-off read under the batch-57 rule, until the 36-observation floor clears and the series can be armed; no archive batch, no letter to USDA for MARS access, no cadence promised. A year of cover for eggs: **"Price it; revisit at 40 reports"** — no rule is built on one report's nine year-on-year cells; the typed carrying cost already prices long cover and the sentence prints the figure. The spend floor stays the printed state batch 61 decided. Nothing in the code changes for either answer.
+
+---
+
 ---
 
 ## 10. Phasing
@@ -636,6 +805,17 @@ rules rather than the two that would be most useful:**
 - **ONS `d7bu`.** OGL v3.0, keyless, per-observation `updateDate`, `robots.txt` 404 and
   therefore unrestricted. Serves the one UK house and sits beside the Defra produce line
   another builder shipped on 2026-09-05.
+
+**A THIRD ARMED SOURCE, added 2026-09-05 on the founder's batch-58 decision.**
+**TÜİK `DF_TUFE_SDMX_TT01`** — Türkiye's CPI for food and non-alcoholic beverages, monthly,
+base 2025=100, read over the publisher's own documented SDMX service with a key the founder
+minted himself. It is unlike the first two in one way that had to be built for rather than
+noted: it is the first source here that needs a **credential**, so the register gained
+columns for that fact (`access_key_required`, `key_env_var`, `robots_reading`, `user_agent`,
+`request_budget_per_day`, `licence_url`) and the reader gained a token holder that never logs
+the key or the token. **TT09** is registered beside it at a lower fetch cadence — 28 days,
+because its unbounded payload measured 7,532,768 bytes — and its beverage subclasses land as
+**codes**, because their labels have never been read.
 
 **Two sources handled by the Michigan path instead of a fetcher**, because their hosts refuse
 to state their crawl rules: the **USDA AMS shell-egg index** (`www.ams.usda.gov/robots.txt` is
@@ -881,12 +1061,97 @@ peer's kind.
 **Verified.** `npx jest src/commodity` — **160 passed, 11 suites**. `npx vitest
 run src/pages/notifications/next` — **135 passed, 7 suites, 0 failed**. Gateway
 `tsc --noEmit -p tsconfig.json`: **0 errors**; `-p tsconfig.spec.json`: 0 in
-`src/commodity`. Web `tsc --noEmit`: 0 errors. Ten guards exit 0. Both migrations
+`src/commodity`. Web `tsc --noEmit`: 0 errors. Twelve guards exit 0 (the builder wrote "ten"; the parent counted twelve on the archive of 077636a2 and the audit abeee63f978b547f0 confirmed twelve). Both migrations
 applied twice on PGlite (idempotent), RLS on, anon/authenticated 0, every FK
 inside `public`, and the CHECK probes refused: arming with no actor, arming on a
 proposal hash that is not a hash, logging an arming with no numbers, an invented
 act, a shelf life with nobody's name on it, an author with no value, zero days,
 and clearing only half the fact.
+
+#### Phase 0, continued — the founder's batch-57 answers, BUILT 2026-09-05
+
+**"Add ABV to the library, nullable, no default."**
+`20260906120000_a_strength_is_stated_by_a_person.sql` adds
+`master_wine_library.abv_percent numeric(4,1)`, nullable, **no default**, with
+`abv_percent_set_by` / `abv_percent_set_at` enforced as one fact by a CHECK and
+an optional `abv_percent_basis` in the person's own words. Range
+`0 <= abv <= 100`, and the ceiling earns its place: a transcription that reads a
+US *proof* figure as a percentage doubles it, so 151 proof becomes 151 and is
+refused at the door.
+
+**Why the library's author pattern is the same as a house table's, and why it
+matters MORE here.** `restaurant_inventory.shelf_life_days` carries its author
+because a shelf life nobody typed would mislead the house that typed it.
+`master_wine_library` is **shared**: every house that stocks the bottle reads
+this row, and the value is the multiplicand in a **tax** figure. A wrong ABV does
+not merely mislead one kitchen; it produces a number that looks like a duty and
+is not one. The library's existing `beverage_identities.curated_by` /
+`curated_at` confirm the shape rather than contradict it — this is the same
+discipline applied to a field rather than to a promotion.
+
+**The house alias never touches it, and that is asserted rather than intended.**
+A house's own bottle is a `beverage_identities` row with
+`asserted_for_restaurant_id` set. Strength is a property of the LIQUID, so it
+lives on the shared row only, and the migration RAISEs if an `abv%` column ever
+appears on `beverage_identities` — measured on every replay instead of
+remembered. A test also asserts the resolver would not read one if it did.
+
+**CORRECTION to this document — a stated bottle size ALREADY EXISTED, and no
+new column was needed for it.** The requirement is that a duty print only on a
+STATED size, "not the 750 default". `master_wine_library.bottle_size_ml` is
+`integer DEFAULT 750 NOT NULL` and cannot distinguish the two — but
+`beverage_identities.size_ml` already can, by its own design and its own
+comment: *"NULL means unstated. NEVER 750: the library's 750 is a column default
+and this register exists partly to stop that default being read as a fact"*
+(20260905140000). So `bottle-facts.ts` reads the size off the identity register
+and the strength off the library, and **`bottle_size_ml` is read by nothing in
+this path**. Adding a second stated size to the library would have been a second
+answer to a question ADR 0124 already answered.
+
+**Which identity, when a library row names several.** A wine sold in 750 ml and
+in magnum is two trade items and one library entry. So: this house's own
+identity if exactly one states a size; else a platform-wide one if exactly one;
+else **refused as `size_ambiguous` and named**. Picking the first would compute
+a magnum's tax for a 750 — off by a factor of two and entirely ordinary-looking
+on a screen, the same failure the shell-egg parser refuses as `ambiguous_row`.
+
+**A correction to `duty.ts` the new column forced.** It previously refused
+`abvPercent <= 0`, which collapses two different answers: NULL is *nobody has
+stated a strength*, and **0.0 is a person stating a de-alcoholised product** —
+and HMRC's own 0-1.2% band is GBP 0.00. It now refuses only NULL and negatives,
+so a duty of zero prints as a figure rather than as an absence.
+
+**The line now prints.** Where both facts are stated: HMRC 30.62/l of pure
+alcohol on 750 ml at 40% = **GBP 9.19**; Illinois 8.55/gal on a house-stated
+1500 ml magnum = **USD 3.39**. Where they are not, the panel prints the refusal
+instead of an empty space, because *"nobody has stated this bottle's strength"*
+is something a person can go and fix. The three refusals and the one print are
+the tests the founder asked for (`bottle-facts.spec.ts`), plus the GİB case that
+no amount of typing fixes.
+
+**The DTO mirror, and it is now armed.** `WineResponseDto` was added to
+`wines/dto/wines.dto.ts` and a third entry to `check_web_reads_gateway_dto_keys.py`'s
+MIRRORS table pins the web's `Wine` against it — **21 client keys against the
+DTO's 23**. Proven adversarially rather than assumed: a phantom `abvProof` added
+to `Wine` made the guard exit **1** naming it, and removing it returned exit
+**0**. Two keys the web declares and `mapWine` does not send (`pairingNotes`,
+`imageUrl`) are declared on the DTO with a comment saying so rather than deleted
+from the client type — the honest fix for an unsent field is to send it, and
+that is filed rather than papered over.
+
+**Verified.** `npx jest src/commodity` — **198 passed, 13 suites**. `npx vitest
+run src/pages/notifications/next` — **140 passed, 7 suites**. Gateway `tsc` clean
+under both configs; web `tsc` clean. `check_gateway_boots.sh` PASS. The migration
+applied twice on PGlite on BOTH an empty library (the CI shape, where it NOTICEs
+that its probes did not run) and a seeded one, with a strength-without-an-author,
+a 151, a negative and a half-cleared fact each refused by name, a stated 0.0 and
+an exactly-100 admitted, and `beverage_identities` measured to carry **0** ABV
+columns.
+
+**A prefix collision, and how it was handled.** This migration was first written
+as `20260906110000` and another builder landed a file on that prefix between the
+check and the write. Mine was moved to `20260906120000`; theirs was not touched.
+`ls supabase/migrations | cut -c1-14 | sort | uniq -d` is empty.
 
 ### Phase 1 — the rule and the sentence
 
@@ -1001,13 +1266,190 @@ through below rather than removed; the other five are open.**
    registry's standing rule is that unstated terms are recorded as unstated and never as
    permissive, but it has never had to decide whether "unstated" blocks *display*. AHDB is the
    settled `prohibited` case; this is the unsettled one.
-5. **How often do you want to hear about a series?** §9b turns this from a percentage into a
-   budget, and the budget is yours: about four times a year, twice, or once. On the retail egg
-   series those are thresholds of 17.6, 35.7 and 57.2 percent respectively. The number is
-   derived; the frequency is a decision.
+5. ~~**How often do you want to hear about a series?**~~
+   **ANSWERED AND CLOSED by the founder, 2026-09-05, batch 59.** The question was which of
+   three budgets — four times a year, twice, or once — the register should propose. The
+   founder's words: **"Twice a year, and the house types its carrying cost."** Both halves
+   are now code. `DEFAULT_BUDGET = 2` in `commodity-calibration.ts`, marked on the proposal
+   the admin reads before arming, with the rejected budgets carrying their reasons beside
+   them (`BUDGET_RATIONALE`) rather than disappearing; and
+   `restaurants.carrying_cost_percent_per_month`
+   (`20260906140000_a_carrying_cost_is_typed_by_a_person.sql`), nullable, no default,
+   author and moment enforced as one fact, with its own settings register at
+   `/settings?tab=carrying-cost`.
+   **The evidence is §9f below, and it is what makes both halves one answer**: the alert
+   does carry information, and its whole gain is spent by a carrying cost of about one
+   percent a month — so the frequency was never separable from the cost of acting on it.
+   **The cadence that was asked for and does not exist is named rather than left absent**:
+   weekly and fortnightly are refused by `backtestCadence` as
+   `finer_than_the_series_publishes`, because FAO and ONS publish monthly and a rule cannot
+   speak more often than its series does (`CADENCE_NOT_ON_OFFER`).
+   **One thing this answer opens rather than closes**: the six questions the quant pass
+   raised are carried into ADR 0117's class-E notes, and the first two — will a house type
+   a carrying cost at all, and do we act on 36 years or on 40 months — are still the
+   founder's.
 6. **Is a rate a series?** HMRC duty, the GİB ÖTV schedule and the Illinois gallonage tax all
    fit `value_kind = 'rate'` cleanly, and they are exact, dated, unit-stamped and openly
    licensed — better provenance than most prices here. Putting them in this table would give
    the three non-US houses something real. It is also the second half of `price-sources.md`'s
    Q9 (the derived per-bottle duty line), which is still open, and this table would make that
    easier to build without deciding it.
+
+#### Phase 0, continued — TÜİK, and Q22 CLOSED (the founder's batch 58, 2026-09-05)
+
+**The founder's words:** he minted a personal API key in TÜİK's Veri Portalı —
+*institutional credentials later* — put it in the repo root `.env` as
+`TUIK_SDMX_API_KEY`, said *"act safely and healthy, and check if it works"*, and
+on the dataflow question chose *"TT09 as well, codes unnamed for now"*.
+
+**It works, and the check is logged.** The parent, once: a POST to
+`giris.tuik.gov.tr/realms/web/protocol/openid-connect/token` (client
+`nsi-ws-consumer`, `grant_type=password`) answered a bearer token with
+`expires_in` **300**; the CPI food key then answered **HTTP 200, 891 bytes**,
+8 monthly rows, **2026-08 = 134.31**, base 2025=100. The whole response is the
+fixture (`__fixtures__/tuik-tt01-cpi-food-2026-09-05.sample.csv`, sha256
+`5760a5fa…72a2d9`), unreduced, and a test asserts that hash so the parser can
+never be proved against something nobody fetched. **This builder made zero
+outbound requests.**
+
+**ADR 0117 Q22 is CLOSED.** Türkiye was `silent: no_machine_endpoint` in the
+price register and had no index line at all. It now has a documented, dated,
+base-stamped monthly series on the publisher's own supported route, and a
+Türkiye house sees four series where it saw one.
+
+**Q23 is closed too, and it was already decided.** The separate commodity table
+is where an index number lands — the founder's batch-37 call, *"a seperate table
+for index series"*. TÜİK makes the case concrete rather than theoretical:
+`DF_TUFE_SDMX_TT01` yields 134.31, unitless, base 2025=100, and every one of the
+five columns §6 lists would refuse it.
+
+**What "act safely" turned into, and it is five things.**
+
+1. **The key and the token are never logged, thrown or returned.** Every failure
+   path builds its sentence from a STATUS, never from a body — a rejected
+   credential's response is the single most plausible place for an echoed key —
+   and a scrubber strips anything JWT- or key-shaped from any message that could
+   still carry one. Tests assert the absence directly, including on a thrown
+   fetch error whose message contains the key.
+2. **An unset variable refuses in words, naming the variable.** A missing
+   credential and a broken publisher are different facts; the first is a
+   DEPLOYMENT fact and the sentence says so, because the person reading it is the
+   person who can fix it.
+3. **The 300-second life is respected with a 30-second margin**, so a slow read
+   started with a "valid" token cannot finish after it died.
+4. **A request budget we impose on ourselves** — 24 a day for TT01, 2 for TT09.
+   TÜİK states no rate limit anywhere, measured, and a source with no stated
+   limit is where a runaway loop does its damage. The budget is checked BEFORE
+   the token, so a misconfigured environment cannot spend the day's allowance
+   discovering it is misconfigured.
+5. **The identity is honest and reachable** — `MudavymBot/1.0` with a contact —
+   and `nsiws.tuik.gov.tr/robots.txt` answering **401** is recorded as itself,
+   not flattened into FAO's 200, ONS's 404 or USDA AMS's 403. The politeness
+   reading differs here and is written down: this is not a crawl, it is an
+   authenticated read of a documented API on a key the publisher issued.
+
+**The two traps the researcher found, both built against.**
+
+* **`UNIT_MEASURE` is empty on every row, and `DEGISIM` is the unit.** `1` is the
+  index level, `2` a monthly percentage change, `4` an annual one. Nothing in the
+  payload says so. A parser that trusted the file would put a 0.22 beside a
+  134.31 and both would look like data. The axis is declared on the series and
+  every other row is **refused and named**, never filtered out quietly.
+* **`BASE_PER` moved and both bases are still published.** TÜİK rebased off
+  2003=100 within the last year. The base is read back out of the file and
+  compared with the register's — the same gate that catches FAO's older CSV path
+  — and a test proves the 2003 file is refused as `base_changed`.
+
+**The ten-dimension key order is pinned against the recorded header.** The
+service's own `/structure` advertises **six** dimensions; the payload has ten.
+Building a key from `/structure` produces a wrong key that still looks right, so
+`KEY_DIMENSIONS` is the payload's order and a test asserts it equals the recorded
+file's columns 1..10.
+
+**TT09 stays codes.** `02110` = 128.89, `02121` = 126.50, `02130` = 140.20 at
+2026-08. The codelist endpoint answers 401 and the Data Explorer view went blank
+five times, so the labels have never been read; the entry is
+`silent: codelist_unread`, the panel prints the sentence, and a test asserts no
+renderable field on that series contains a beverage noun in any language.
+Guessing that `02130` is wine would be inventing a fact about a series a house
+might act on.
+
+**Verified.** `npx jest src/commodity` — **242 passed, 15 suites**. `npx vitest
+run src/pages/notifications/next` — **146 passed, 7 suites**. Gateway `tsc` clean
+under both configs; web `tsc` clean. `check_gateway_boots.sh` PASS. The migration
+applied twice on PGlite with six CHECK probes refused — keyed with no variable, a
+pasted credential where a name belongs, a lowercase name, keyless-but-naming-one,
+a zero budget and a negative one — and the real TT01 shape admitted.
+
+**OWED, AND NOT OURS TO DO: the key must be set on the production deployment's
+environment (Railway) before this series arms there.** Nothing built here sets
+it, and nothing can. Until it is, `GET /commodity-index/me` on production says,
+in words, *"Read over a credential this deployment does not hold: TUIK_SDMX_API_KEY
+is not set here"* — which is the honest sentence and not a silence.
+
+#### Phase 0, continued — the shell-egg file landed, and it corrected two of our own expectations (2026-09-05)
+
+**The founder's Q1 answer executed.** *A one-off human read, logged* — the
+parent read USDA AMS report 2843 through the app's Browser pane on 2026-09-05,
+and the parser and its tests are now against those bytes. **No fetcher, script
+or job touched the host, then or now.**
+
+**CORRECTION to this plan's §1 and §10: it is not the PDF.**
+`www.ams.usda.gov/mnreports/ams_2843.pdf` — the URL §1 records and §10 names as
+the Michigan-path target — answers a browser with a **file-download dialog the
+pane cannot complete**. The same report's **HTML data view** on My Market News
+was read instead (`mymarketnews.ams.usda.gov/public_data?slug_id=2843`, section
+*Report Detail Weighted*, Final, 2026-09-04, all 23 rows). 9,115 bytes, sha256
+`0371c7c7…23d49c`, recorded whole.
+
+**CORRECTION to the fixture contract, and the second one would have been a live
+bug.**
+
+1. **The facts are COLUMNS, not face text.** §1 quotes the PDF's
+   *"Caged 30-Dozen Cases / Cents Per Dozen / FOB"* line, and the parser written
+   before the bytes existed looked for exactly that in prose. In this view
+   `Report Date` is a column on every row, `Price Unit` reads `Cents Per Dozen`
+   on every row, and `Freight` reads `FOB` **or `Delivered` per row**. That
+   parser would have refused the real file three times over.
+
+2. **THREE rows are graded loose, white and Large.** §1 records the series as
+   *"Graded loose, white, Large: weighted average 35.28"* — true, and not
+   sufficient to find it:
+
+   | Environment | Origin | Freight | Wtd Avg |
+   |---|---|---|---|
+   | Cage-Free | California | Delivered | **50.46** |
+   | Cage-Free | National | FOB | **28.67** |
+   | **Caged** | **National** | **FOB** | **35.28** |
+
+   The contract's own `ambiguous_row` refusal would have fired on the real file
+   — which is the refusal working, not failing. **Selecting on "white Large"
+   alone would have taken 50.46 for 35.28: a 43 percent error, on a different
+   market, that looks entirely ordinary on a screen.**
+
+**So the parser was REPLACED rather than extended**, and the choice is stated
+because it is a choice: the PDF-text shape is gone. Keeping it beside the
+tabular one would mean shipping a second code path that has never seen a byte
+and can never be proved — the exact shape this register refuses everywhere else.
+If a PDF is ever brought, that gets a recorded fixture first and a branch
+second, in that order.
+
+**The selection is now a six-part tuple** — egg type, environment, colour,
+class, origin, freight — declared on the series and matched exactly; more than
+one match is `ambiguous_row`, none is `row_not_found`, and neither is resolved
+by guessing. Columns are resolved BY NAME (a test reverses the header and the
+parser still reads 35.28), the unit is checked per row, and **six of the 23 rows
+carry an empty `Wtd Avg Price`** — refused as *"that market did not report on
+this date - it is not a price of zero"*, because `Number("")` is 0.
+
+**What the landing did NOT change, and the register says so.**
+`awaitingHumanDownload` flipped to `false`, which means *the parser has seen
+real bytes*. `admission` stays **`upload_only`**, the withheld reason now
+carries the words *a one-off read is not a cadence*, and the series is still
+**not fetchable**: `www.ams.usda.gov/robots.txt` still returns 403, the report
+publishes **daily**, and this register holds one day of it. It also remains
+**unarmed for alerting** for the reason §9b gives — every threshold measurement
+behind this design was made on monthly series.
+
+**Verified.** `npx jest src/commodity` — **260 passed, 15 suites**, of which 19
+are this parser's, all against the recorded bytes with the sha256 asserted.

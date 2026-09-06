@@ -38,6 +38,8 @@ surface.
 - 7/30/90-day trend chips; "No comparable data" rendered honestly, never 0%
 - Record a manually observed price
 - **Identity decisions log** — who confirmed or rejected which bottle identity, when, in what role, and the evidence the server showed them; a manager can undo one and the undo is logged as its own decision (ADR 0124 Q2)
+- **One tenancy boundary for the price register** — every read of `vendor_price_observations` and `price_index_postings` passes through `scopePriceRegisterRead` (`apps/api-gateway/src/price-register/visibility.ts`), which names its scope out loud: this house plus the open market, this house alone, the open market alone, or — with a written reason — every house. The ladder this page draws is `houseAndOpenMarket`: no other house's negotiating position can reach it (ADR 0117 addendum, 2026-09-05)
+- **A third visibility state, defined and empty** — `vendor_price_observations.visibility` admits `contributed_aggregate_only` for a row a house contributes under a floor: countable in an aggregate, never returned as a row. No row is in that state and no read returns one; both are asserted (ADR 0117 addendum)
 - 🚧 Unreachable by navigation — no page links here (§9)
 
 ## 2. Entry
@@ -83,6 +85,22 @@ none.
 - Depends entirely on observation density: with only invoice-derived observations the
   comparison degenerates to one column per wine (S08's food scaffolding caveat,
   TIER-MAP S08).
+- **Two verdicts on the same row disagree about their population.** The write-time
+  outlier test judges a candidate against this house's rows POOLED WITH the open
+  market (`vendor-comparison.service.ts` `priorUnitPricesInClass`), while the nightly
+  re-judge buckets on `row.restaurant_id ?? "market"` (`outlier-rejudge.ts:221`) and
+  therefore judges a house's row against that house's rows ALONE. Same row, two
+  different comparison groups, and `belowTrailingAverage` filters on the stored
+  `is_outlier` either verdict may have written. Not a leak — nothing crosses houses in
+  either — and dormant while `PRICE_OUTLIER_REJUDGE_ENABLED` is unset in every
+  environment, which it is. Recorded 2026-09-05 by the tenancy-boundary build; the fix
+  is in the pure module and was out of that build's scope.
+- **Four register reads are not yet through the enforcement point**, in
+  `procurement/**`, `notifications/**` and `distributor-feed/**` — other builders'
+  files in the same wave. Two already carry the identical predicate by hand and two
+  project only a count or an id, so none is an open leak; each is pinned by name in
+  `scripts/check_price_register_reads_are_scoped.py`'s ALLOWLIST so the entry cannot
+  rot into a silent pass. Convert on merge (ADR 0117 addendum).
 
 ## 10. Maturity
 
@@ -369,3 +387,57 @@ recorded where the column is declared
 (`distributor-discovery.service.ts`), and `scripts/check_verified_at_is_not_a_boolean.py`
 keeps it true: 13 in-scope files name the column, 0 test it, and the guard exits
 2 rather than passing if its scope ever stops matching anything.
+
+### 13.x The register states who may see a row (ADR 0117 addendum, 2026-09-05)
+
+The founder, asked whether ADR 0128's fifteen census houses are real independently
+owned restaurants or test tenants: **"All real."** The consequence he accepted with
+it, recorded in ADR 0126: *"the register's tenancy boundary (nine hand-written
+filters and no RLS policy) must be fixed before any cross-house read."* Built the
+same day — **the boundary, not a cross-house read**: nothing here pools, bands or
+shows one house another's prices.
+
+**What this page gets.** The ladder's read is now `scopePriceRegisterRead(...,
+{ kind: "houseAndOpenMarket", restaurantId })` in three places
+(`vendor-comparison.service.ts` `loadObservations`, `priorUnitPricesInClass`,
+`belowTrailingAverage`) instead of three hand-written `.or()` clauses. The
+predicate is identical; what changed is that there is now exactly one copy of it
+and a guard that fails CI for a read that skips it.
+
+**The corrected count.** The "nine filters" of the instruction was wrong by three:
+`identity.service.ts:701` filters `beverage_identity_candidates`,
+`identity.service.ts:924` filters `beverage_identity_decisions`, and
+`invoice-confirmed.producer.ts:261` filters `providers`. The real boundary was
+**six** hand-written filters, two hand-applied `MARKET_VISIBILITY` sites, and
+**six reads with no visibility clause at all** — the half nobody had counted.
+
+**Fixed in passing:** `price-index.service.ts:635` counted held books as visible
+rows in `GET /price-index/status`, the exact number `countFor` refuses to report
+five lines above it, in the same service, about the same source (ADR 0128).
+
+**What the RLS policies do and do not do**, because the migration says it plainly
+rather than letting a reader assume: the gateway holds
+`SUPABASE_SERVICE_ROLE_KEY` and the service role bypasses row level security, so
+for every read this product makes, `scopePriceRegisterRead` is the entire
+boundary. Both tables are already shut to a JWT-bearing caller (RLS on with no
+permissive policy; RLS on plus a REVOKE), so the policies tighten nothing today
+either. They are a statement of the rule, written while nothing depends on them,
+and deliberately **not** paired with a GRANT.
+
+- Enforcement point: `apps/api-gateway/src/price-register/visibility.ts`
+  (+ `visibility.spec.ts`, 16 tests)
+- Migration: `supabase/migrations/20260906100000_the_register_states_who_may_see_a_row.sql`
+  (PGlite-proven 26/0, `p4-scratch/pglite-probe/p4bk-register-visibility.mjs`)
+- Guard: `scripts/check_price_register_reads_are_scoped.py` + `--self-test`, wired
+  into `ci.yml`; proven to bite on HEAD copies of two converted files (exit 1, six
+  findings)
+- Open: the four allowlisted reads (§9) and the two disagreeing outlier verdicts (§9)
+
+### Founder answers, 2026-09-06 (batch 60) — the re-judge's read and the two populations
+
+**"Keep the named read; fix the split before arming."** The nightly outlier re-judge keeps
+its one cross-house read, named `everyHouse` with its reason (no caller, no house, buckets
+on `restaurant_id`, off everywhere). `PRICE_OUTLIER_REJUDGE_ENABLED` may not be set until the
+write-time verdict (this house plus the open market) and the nightly verdict (this house
+alone) agree on one population — the §9 finding above. Rejected: narrow the read to one
+house now, which would leave every house's rows never re-judged.

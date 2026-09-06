@@ -108,6 +108,9 @@ describe("DocumentsController.canonicalDocument", () => {
       mockDb as any,
       canonical as any,
       spine as any,
+      // The 832 catalogue half (ADR 0126). Nothing on the canonical read path
+      // reaches it; a stub would have to pretend otherwise.
+      {} as any,
     );
   });
 

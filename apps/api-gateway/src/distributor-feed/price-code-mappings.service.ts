@@ -35,7 +35,7 @@ import {
 } from "./price-code-mappings";
 
 const COLUMNS =
-  "id, restaurant_id, distributor_key, code_field, price_code, price_basis, evidence, declared_by, declared_by_name, declared_at, withdrawn_by, withdrawn_at, withdrawn_reason";
+  "id, restaurant_id, distributor_key, code_field, price_code, price_basis, evidence, declared_by, declared_by_name, declared_at, withdrawn_by, withdrawn_by_name, withdrawn_at, withdrawn_reason";
 
 export interface MappingsForSender extends MappingReadOutcome {
   restaurantId: string;
@@ -207,6 +207,7 @@ export class PriceCodeMappingsService {
     mappingId: string;
     restaurantId: string;
     withdrawnBy: string;
+    withdrawnByName: string;
     reason: string;
   }): Promise<WriteOutcome> {
     const reason = (args.reason ?? "").trim();
@@ -218,12 +219,26 @@ export class PriceCodeMappingsService {
           "say why it is being withdrawn. A statement that stopped working and cannot say why leaves the rows it admitted unexplainable.",
       };
     }
+    // The withdrawal is signed, exactly as the statement is. Refused here in
+    // words rather than written blank and refused by the CHECK as a 23514: an
+    // unsigned withdrawal is the state migration 20260906150000 exists to end,
+    // and this register must not be able to say when and why but not by whom.
+    const withdrawnByName = (args.withdrawnByName ?? "").trim();
+    if (!withdrawnByName) {
+      return {
+        ok: false,
+        mappingId: args.mappingId,
+        refusedBecause:
+          "the withdrawal must name the person making it; no name was resolved for this account.",
+      };
+    }
     try {
       const { data, error } = await this.db.client
         .from("distributor_price_code_mappings")
         .update({
           withdrawn_at: new Date().toISOString(),
           withdrawn_by: args.withdrawnBy,
+          withdrawn_by_name: withdrawnByName,
           withdrawn_reason: reason,
         })
         .eq("id", args.mappingId)
@@ -292,6 +307,7 @@ function mapRow(row: Record<string, unknown>): PriceCodeMapping {
     declaredByName: String(row.declared_by_name),
     declaredAt: String(row.declared_at),
     withdrawnBy: (row.withdrawn_by as string) ?? null,
+    withdrawnByName: (row.withdrawn_by_name as string) ?? null,
     withdrawnAt: (row.withdrawn_at as string) ?? null,
     withdrawnReason: (row.withdrawn_reason as string) ?? null,
   };

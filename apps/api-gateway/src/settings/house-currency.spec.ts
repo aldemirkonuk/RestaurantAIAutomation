@@ -333,6 +333,9 @@ function controller(role: "owner" | "manager" | "staff" | null) {
       {} as unknown as ApprovalThresholdsService,
       organizations,
       houseCurrency,
+      // The carrying-cost register, added 2026-09-06 (founder batch 59). Not
+      // exercised here; a bare double so this file keeps owning one gate.
+      {} as never,
     ),
     write,
     read,

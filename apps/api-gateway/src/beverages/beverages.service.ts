@@ -29,6 +29,11 @@ import type {
   SetCocktailIngredientsDto,
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
+// The price register's one enforcement point (ADR 0117 addendum, 2026-09-05).
+import {
+  VENDOR_PRICE_OBSERVATIONS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 
 /**
  * The two catalogue tables that had a schema and no way in.
@@ -902,12 +907,18 @@ export class BeveragesService {
     label: string,
   ): Promise<BookRecord> {
     const source = "vendor_price_observations";
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("vendor_price_observations")
-      .select(QUOTE_COLUMNS)
-      .eq("restaurant_id", restaurantId)
-      .limit(ROW_RECORD_LINE_LIMIT);
+    // `houseOwnRowsOnly`, not `houseAndOpenMarket`: this is the HOUSE'S OWN
+    // record of what it was quoted. A scraped public list price is not a quote
+    // this house was given, and folding the open market into this book would
+    // put a number nobody said to them in their own ledger.
+    const { data, error } = await scopePriceRegisterRead(
+      this.dbService
+        .getClient()
+        .from("vendor_price_observations")
+        .select(QUOTE_COLUMNS),
+      VENDOR_PRICE_OBSERVATIONS,
+      { kind: "houseOwnRowsOnly", restaurantId },
+    ).limit(ROW_RECORD_LINE_LIMIT);
     if (error) return this.failed("quote", source, error);
 
     const ledger: LedgerEntry[] = [];

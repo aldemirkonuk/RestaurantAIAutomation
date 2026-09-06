@@ -67,14 +67,119 @@ never have entered `price_index_postings`, whose `price_unit` is `VARCHAR(24)`.
 
 ---
 
-## The source with no fixture, and why
+## `usda-ams-2843-2026-09-04.report-detail-weighted.tsv`
 
-**USDA AMS Daily National Shell Egg Index** is registered (`admission = 'upload_only'`,
-`armed = false`) and **has no fixture and no parser here.**
-`https://www.ams.usda.gov/robots.txt` returned HTTP **403** on 2026-09-04 and again on
-2026-09-05, and this repo's own rule — recorded in `price-sources.md` for K&L Wine
-Merchants, Majestic and Tesco — is that a host whose crawl rules cannot be read may not
-be fetched. **This task did not contact that host at all.** Building a parser would have
-required bytes it may not go and get, so the series carries the 403 as its
-`withheld_reason` and waits for a person to bring the file, exactly as the Michigan
-price book does.
+**The file landed on 2026-09-05, brought by a person, and it is not the PDF.**
+
+| | |
+|---|---|
+| **Who** | Claude Fable 5.1, the parent session, through the app's Browser pane — on the founder's batch-57 rule, *a one-off human read, logged*. **No fetcher, script or job touched the host.** |
+| **When** | 2026-09-05T22:40:20Z |
+| **sha256** (whole file) | `0371c7c7e617683adb37d6ab22e0c6245e6784055c0657181d83d43df423d49c` |
+| **Bytes** | **9,115** — header plus **23 data rows**, every row verbatim as the page rendered it |
+| Source URL | `https://mymarketnews.ams.usda.gov/public_data?slug_id=2843` |
+| Reduction | Page chrome (filters, pagination, footer links) dropped; the table header and all 23 rows kept verbatim, tab-separated as the page text renders them |
+
+**IT IS THE HTML DATA VIEW, NOT THE PDF.**
+`https://www.ams.usda.gov/mnreports/ams_2843.pdf` answers a browser with a file-download
+dialog the pane cannot complete, so the same report was read through My Market News
+instead: report **Daily National Shell Egg Index Report (5-day rolling average)** (slug
+2843, `AMS_2843`), section **Report Detail Weighted**, Report Begin Date = Report End Date
+= **2026-09-04**, published 09/04/2026 08:03:53, **Final**. The page stated *Total Rows
+returned in this view: 23 - Total Rows available: 23*, and all 23 are in the file.
+
+### Two things the contract did not foresee, and the second was a live bug
+
+**1. The facts arrive as COLUMNS, not as the PDF's face text.** `Report Date` is a column
+on every row; `Price Unit` reads `Cents Per Dozen` on every row; `Freight` reads `FOB` or
+`Delivered` **per row**. The contract asked the parser to find all three in prose above the
+table, and against this file that parser would have refused three times over.
+
+**2. THREE rows are graded loose, white and Large** — so the contract's own `ambiguous_row`
+refusal would have fired on the real file, exactly as it was written to:
+
+| Environment | Origin | Freight | Wtd Avg Price |
+|---|---|---|---|
+| Cage-Free | California | Delivered | **50.46** |
+| Cage-Free | National | FOB | **28.67** |
+| **Caged** | **National** | **FOB** | **35.28** — the series the plan recorded |
+
+Selecting on "white Large" alone would take whichever came first, and a cage-free
+California *delivered* price is a different market: **50.46 against 35.28, a 43 percent
+error that looks entirely ordinary on a screen.** So the selection is a **six-part tuple** —
+egg type, environment, colour, class, origin, freight — declared on the series and matched
+exactly, with more-than-one refused as `ambiguous_row` and none as `row_not_found`.
+
+The chosen row's neighbours confirm the plan's own note: `Wtd Avg Price Previous` **36.14**
+(35.28 minus 36.14 = **-0.86**), `Wtd Avg Price Last Year` **215.53**, `Volume` 33,234.
+Those two are read and **deliberately not written as observations**: they are the issuer
+restating other dates, and writing them would post one number twice under two periods.
+
+**Eight of the 23 rows carry an EMPTY `Wtd Avg Price`.** `Number("")` is 0, so an empty cell
+read as a value would post a price of zero cents a dozen. It is refused as `no_value` with
+the words *"that market did not report on this date - it is not a price of zero"*.
+
+The count was written here as **six** until 2026-09-06 and was wrong. Measured:
+`awk -F'\t' 'NR>1 && $28==""' usda-ams-2843-2026-09-04.report-detail-weighted.tsv | wc -l`
+→ **8** (column 28 is `Wtd Avg Price`), at data rows **1, 2, 3, 11, 18, 19, 20, 23**. Nothing
+broke, because no code path depended on the number — which is exactly why it survived: it was
+prose in four places and an assertion in none. `parse-usda-shell-egg.spec.ts` now asserts the
+parser refuses **exactly eight** rows with `no_value`, so the number is pinned by a run.
+
+### What the landing did NOT change
+
+`admission` stays **`upload_only`** and `www.ams.usda.gov/robots.txt` still returns **403**.
+A one-off human read is not a cadence: the series publishes **daily** and this register
+holds one day of it. `awaitingHumanDownload` flipped to `false` — which says *the parser has
+seen real bytes*, never *this source is now on a schedule*.
+
+---
+
+## `tuik-tt01-cpi-food-2026-09-05.sample.csv`
+
+| | |
+|---|---|
+| Source URL | `https://nsiws.tuik.gov.tr/rest/data/TR,DF_TUFE_SDMX_TT01,1.0/TR.M.2.1._Z.2025.2026_01._Z.01.F_TFE?format=SDMX-CSV&startPeriod=2026-01` |
+| Fetched | 2026-09-05T22:20:00Z, **by the parent, once, with the founder's own API key**, HTTP **200** |
+| Bytes | **891**, sha256 `5760a5fa969a27ea8d88000f593abf3d75d70491bad7308e6692dd139072a2d9` |
+| Shape | 1 header line + **8 monthly rows**, `2026-01` … `2026-08`, `OBS_VALUE` 117.26 … **134.31** |
+| Reduction | **NONE. This is the whole response, verbatim.** `startPeriod=2026-01` is what made it small; the unbounded call for the same key is 455,666 bytes |
+| `robots.txt` | `https://nsiws.tuik.gov.tr/robots.txt` returns **HTTP 401**, 48 bytes, `{"status":401,"message":"Unauthorized"}` — **the host will not tell an unauthenticated client its crawl rules at all.** That is a fourth distinct answer, beside FAO's 200, ONS's 404 and USDA AMS's 403, and it is recorded as itself |
+| Licence | TÜİK states none on the service or in the manual. The only statement is the site-wide legal notice at `https://www.tuik.gov.tr/Kurumsal/Yasal_Uyari` (200, 127,628 B): re-use is possible **provided the source is cited**, and all rights remain TÜİK's. Recorded as `attribution_required`, and the attribution string is OURS because TÜİK prescribes none |
+| Credential | Required. A Keycloak token from `https://giris.tuik.gov.tr/realms/web/protocol/openid-connect/token`, client `nsi-ws-consumer`, `grant_type=password` + `api_key`. **The key is never in this repository**: it lives in `TUIK_SDMX_API_KEY` and the register stores only that name |
+
+**The ten dimensions, in the order the payload uses them** — read off these real
+bytes, not off the service's `/structure` call, which advertises **six**:
+
+```
+REF_AREA . FREQ . SINIFLAMA_DUZEYI . DEGISIM . OZEL_KAPSAM_TUFE
+         . BASE_PER . YAYIM_DONEMI . COICOP_1999 . COICOP_2018 . INDICATOR
+```
+
+Building a key from `/structure` produces a wrong key that still looks right.
+`parse-tuik-sdmx.spec.ts` pins this order against this file.
+
+**Two things this file proves that no amount of documentation would.**
+
+1. **`UNIT_MEASURE` is EMPTY on every row.** The payload does not say that
+   `DEGISIM=1` is an index level and `DEGISIM=2` a monthly percentage change. A
+   parser that trusted the file would put a 0.22 beside a 134.31 and both would
+   look like data. So `DEGISIM` is hard-coded in the registry and anything else
+   is refused by name.
+2. **`BASE_PER` reads `2025`**, and TÜİK moved this series off `2003=100` within
+   the last year with **both bases still published**. The base is read back out
+   of the file and compared against the register's — the same gate that catches
+   FAO's second, older, still-live CSV path.
+
+## `tuik-tt09-beverage-subclasses-2026-09-05.sample.csv`
+
+Reduced from the researcher's `p4bg-fixtures/tt09-expenditure-groups.csv`
+(HTTP 200, **7,532,768 bytes**, 84,500 rows, sha256 `d3882cb3…50875f8b`, fetched
+2026-09-05 through TÜİK's keyless Data Explorer). The header verbatim plus the
+rows for the three beverage subclasses at `2026-08`.
+
+**Their labels are NOT in this file and were never read.** The Data Explorer's
+view for TT09 went blank on five attempts and the codelist endpoint answers 401.
+So the register holds `02110`, `02121` and `02130` as **codes**, with a sentence
+saying the labels are unread, and nothing anywhere names them. Guessing that
+`02130` is wine would be inventing a fact about a tax-adjacent series.

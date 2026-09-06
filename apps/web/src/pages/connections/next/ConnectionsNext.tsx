@@ -115,6 +115,7 @@ import {
 } from './AttachmentRow';
 import { grantHolds, wouldAskFor } from './cx-permissions';
 import { HouseServerControls } from './HouseServerControls';
+import { DistributorFeedPanel } from './DistributorFeedPanel';
 import { StripeCardPanel } from '../../../components/mudavym/StripeCardPanel';
 import {
   DASH,
@@ -834,6 +835,27 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             </>
           )}
         </section>
+
+        {/*
+          Licensed distributors (ADR 0126, batch 56).
+
+          NOT a fifth register, deliberately. The four registers answer "what
+          acts for this house"; this answers "what your distributors will send
+          you", and every row on it is something that CANNOT be attached —
+          which would make "Register V" a register of nothing. It sits after
+          Register I because the two ways in are both things the house does,
+          and before Register II because neither costs money.
+        */}
+        <DistributorFeedPanel
+          distributors={d.distributors}
+          letter={d.feedLetter}
+          upload={d.uploadDistributorFile}
+          priceCodes={d.priceCodes}
+          declareCode={d.declarePriceCode}
+          withdrawCode={d.withdrawPriceCode}
+          canManage={d.isManager}
+          sessionName={d.sessionName}
+        />
 
         {/* ══ REGISTER II ═══════════════════════════════════════════════ */}
         <section className="cx-sec" id="payment">

@@ -71,6 +71,26 @@ export interface Proposal {
   refusal: string | null;
 }
 
+/**
+ * Asking Mudavym for a scenario the book does not carry (ADR 0120 Q4).
+ *
+ *   *"Not yet; request a scenario instead."*   — the founder, 2026-09-05
+ *
+ * A house may not author a scenario, so this writes a REQUEST: who asked, when,
+ * the words, the house. `note` is the gateway's own sentence and is set ONLY
+ * after the write was accepted — a confirmation printed on submit would be this
+ * page claiming a write it has not seen land (ADR 0020).
+ */
+export interface ScenarioRequest {
+  send: (words: string) => void;
+  busy: boolean;
+  /** The gateway's confirmation, after it accepted. Null until then. */
+  note: string | null;
+  /** Why it did not go through, in words the reader can act on. */
+  error: string | null;
+  reset: () => void;
+}
+
 export interface GoalsDesk {
   canWrite: boolean;
   readOnlyReason: string | null;
@@ -95,6 +115,8 @@ export interface GoalsDesk {
    * going missing, and the form says exactly that.
    */
   scenarios: GoalScenarios;
+  /** Asking Mudavym for a scenario the catalogue does not carry (ADR 0120 Q4). */
+  scenarioRequest: ScenarioRequest;
 }
 
 export interface GoalsDeskOptions {
@@ -285,6 +307,75 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
   const dismiss = useCallback(() => setProposal(null), []);
   const clearError = useCallback(() => setError(null), []);
 
+  /**
+   * Ask Mudavym for a scenario the book does not carry.
+   *
+   * Kept out of `run()` on purpose: `run` invalidates the goals queries, and
+   * this write changes no goal and no figure on the sheet — refetching them
+   * would redraw the register for a write that did not touch it. It also has
+   * its own busy flag, so asking never greys the Set-a-goal button.
+   */
+  const [requesting, setRequesting] = useState(false);
+  const [requestNote, setRequestNote] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
+  const sendScenarioRequest = useCallback(
+    (words: string) => {
+      const typed = words.trim();
+      if (!activeRestaurantId || typed === '' || requesting) return;
+      setRequesting(true);
+      setRequestNote(null);
+      setRequestError(null);
+      void (async () => {
+        try {
+          const { data } = await apiClient.post<{ recorded?: boolean; note?: string }>(
+            `/analytics/goal-scenarios/requests/${activeRestaurantId}`,
+            { words: typed },
+          );
+          // Confirm only what the gateway confirmed. A `recorded` that is not
+          // `true` is not a stored request, and saying "sent" over it would be
+          // the page claiming a write it never made.
+          if (data?.recorded === true) {
+            setRequestNote(
+              typeof data.note === 'string' && data.note !== ''
+                ? data.note
+                : 'Mudavym has it, in your words.',
+            );
+          } else {
+            setRequestError(
+              'The gateway did not confirm the request, so it is not recorded. Nothing was sent.',
+            );
+          }
+        } catch (err: unknown) {
+          const detail =
+            (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+            (err as { message?: string })?.message ??
+            'the request failed';
+          setRequestError(`Your request did not go through: ${detail}`);
+        } finally {
+          setRequesting(false);
+        }
+      })();
+    },
+    [activeRestaurantId, requesting],
+  );
+
+  const resetScenarioRequest = useCallback(() => {
+    setRequestNote(null);
+    setRequestError(null);
+  }, []);
+
+  const scenarioRequest = useMemo<ScenarioRequest>(
+    () => ({
+      send: sendScenarioRequest,
+      busy: requesting,
+      note: requestNote,
+      error: requestError,
+      reset: resetScenarioRequest,
+    }),
+    [requestError, requestNote, requesting, resetScenarioRequest, sendScenarioRequest],
+  );
+
   return useMemo(
     () => ({
       canWrite,
@@ -301,6 +392,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       dismiss,
       place,
       scenarios,
+      scenarioRequest,
     }),
     [
       archive,
@@ -315,6 +407,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       place,
       proposal,
       readOnlyReason,
+      scenarioRequest,
       scenarios,
       update,
     ],

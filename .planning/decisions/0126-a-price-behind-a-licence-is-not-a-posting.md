@@ -1,10 +1,14 @@
 # 0126 — A price behind a licence is not a posting
 
-- **Status:** Proposed. **Q2 and Q3 answered by the founder on 2026-09-05 and built; Q1 is open and
-  narrowed** — he is asking about sanctioned APIs and a sign-in hand-over instead, and **no mirror
-  of any kind is built** while that answer is awaited. What exists: a read-only catalogue endpoint,
-  the 832 parser, the FOIA source entry, and the manager price-code mapping (§7). Nothing is armed,
-  no credential is stored, and no request was sent.
+- **Status:** Proposed. **All three founder questions answered on 2026-09-05, and all three built.**
+  ~~Q1 is open and narrowed — he is asking about sanctioned APIs and a sign-in hand-over instead~~ —
+  **Q1 CLOSED in batch 56: "Invoices + the built 810 ingest, and a letter for a feed."** **No mirror
+  and no session hand-over of any kind is built, and none will be under this decision.** What exists:
+  a read-only catalogue endpoint, the 832 parser, the FOIA source entry, the manager price-code
+  mapping (§7), and — from batch 56 — the catalogue ingest through the existing document door, the
+  `/connections` distributor panel and the house's invoice-feed request letter (see "BUILT,
+  2026-09-05" at the end). Nothing is armed, no credential is stored, and **no request and no letter
+  was sent**.
 - **Date:** 2026-09-05
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** class C, distributor feed, Illinois, Michigan, FOIA, EDI 832, EDI 810, licensee
@@ -259,6 +263,123 @@ a half-withdrawal and a backdated one are refused; deleting a mapping that admit
 **2** rows by join and deletes **none of 3**; and the withdrawn code is mappable again with both
 statements still on the table.
 
+**BUILT ON THE PAGE, 2026-09-05 (the founder, batch 59: _"Build it on /connections in the
+distributor row"_).** The three routes had no caller until this pass; they have one now, and it is
+the distributor row rather than a settings screen, because a statement is about ONE sender's paper
+and the distributor row is the only place this product names senders.
+
+`apps/web/src/pages/connections/next/DistributorFeedPanel.tsx` grew a `PriceCodeRegister` under
+each distributor: the live statements with the code, the meaning, **the evidence** and *stated by
+&lt;name&gt; on &lt;date&gt;*; the withdrawn ones **kept**, with their reason and their day; a
+withdrawal that asks for the reason FIRST and then prints the gateway's own sentence about how many
+prices that statement admitted — a number, or *unknown*, never a zero. The form refuses three
+things before a byte is sent, each saying **nothing was sent**: a blank code, a blank meaning, blank
+evidence. It refuses nothing the gateway would admit — the code's shape, a code already live, a
+session with no name are the server's judgements and its sentence is printed verbatim. The ingest
+report's `unmappedCodes` are now buttons that fill that sender's form in and focus it, which is the
+loop the founder described. Owner and manager only.
+
+> **Corrected 2026-09-06** (batch 62 Q3, the founder: _"Keep the page-level refusal; correct the
+> note"_). This paragraph originally read _"staff get the whole register **disabled with the
+> sentence**, never hidden (ADR 0083)"_. That cannot happen on `/connections`:
+> `ConnectionsNext.tsx:274-292` returns the whole page's written refusal — _"This page is for
+> managers and owners"_ — **before** `DistributorFeedPanel` is mounted, a gate that predates this
+> pass (commit `a9747074`, ADR 0114). The panel's `canManage=false` state is real, is disabled
+> rather than hidden, and is now tested with the prop **omitted entirely** as well as passed
+> `false`; it is a defence for any page that later admits staff, not a state a staff member sees
+> here today. `canManage` **defaults to false** so a missing prop cannot read as permission
+> (ADR 0051). The page's admission is unchanged.
+
+`useConnectionsNextData.ts` gained read 11 and two writes. Read 11 is one query over every
+distributor in the register, each sender fetched in its own request inside the queryFn and **each
+failing alone**, because `useQuery` cannot be called a variable number of times and one
+distributor's unreadable register must not blank another's. Two failures are kept apart: the gateway
+answering `readFailed` with words, and the request never landing.
+
+**The declared currency** now sits beside the sender picker: three characters, no default and no
+placeholder, sent as `declaredCurrency`. A half-typed value is refused in the browser and nothing is
+sent; a blank one is **omitted rather than padded**, because a file that states its own `CUR` is the
+ordinary case and a file with neither is refused whole by the parser in its own words.
+
+**Two defects this pass measured, one fixed.** The controller signed every statement with the
+manager's **email**: it read `user.fullName`, and `JwtStrategy.validate` (`auth/strategies/
+jwt.strategy.ts:55-69`) returns `name` and sets no `fullName` anywhere in the gateway —
+`grep -rn fullName apps/api-gateway/src` finds only the two lines that READ it. Proved against
+pre-fix code by running a probe spec on `git show HEAD:…/distributor-feed.controller.ts`, which
+asserted `declaredByName === "ada@example.test"` and **passed**; fixed to `fullName ?? name ??
+email` and pinned by the new `distributor-feed.controller.spec.ts`. **The identical line is still
+wrong in `procurement/documents/documents.controller.ts:326`** (`uploadedByName`), which this pass
+was fenced out of and names rather than fixes quietly. **Both are now closed** — the documents
+controller on 2026-09-06 (batch 61 Q2, _"One-line fix now, with a spec"_), see the follow-ups below.
+Second defect, unfixed at the time and a decision: a withdrawal records `withdrawn_by` (an account
+id) and **no name**, so the register can say when and why but not by whom in words. The panel said
+exactly that instead of printing a uuid as a person; closing it was a migration plus a controller
+line, and the founder took it on 2026-09-06 (batch 61 Q1).
+
+**Verification, on the tree this note describes.** `npx vitest run src/pages/connections` from
+`apps/web` — **111 passed / 3 files**, of which **25 in 1 file are new here** (measured baseline
+86 / 3 on the same command on the same tree before this pass). `npx jest --runInBand --forceExit
+src/distributor-feed` from `apps/api-gateway` — **101 passed / 7 suites**, of which **7 in 1 new
+suite are new** (baseline 94 / 6). Web `tsc --noEmit`: 0 errors. Gateway `tsc --noEmit` on both
+`tsconfig.json` and `tsconfig.spec.json`: 0 errors. `check_web_reads_gateway_dto_keys`,
+`check_read_errors_not_swallowed`, `check_windowed_figures`, `check_money_states_its_currency`,
+`check_route_exposure`, `check_no_seeded_defaults`, `check_read_columns_exist`,
+`check_queried_tables_exist`, `check_new_tables_are_locked_down`, `check_fk_targets_exist`,
+`check_flag_readby_anchors`, `check_order_capture_contract`, `check_adr_numbers_unique` and
+`check_decision_claims.sh` all **exit 0**; `scripts/check_gateway_boots.sh` answers **PASS**. **No
+migration.** Both grounds captured against a **stubbed** gateway
+(`$SP/shoot-price-codes.mjs` → `$SP/shots-price-codes/`, every `/api/v1/**` request fulfilled in the
+harness so nothing reached :4000): paper `--paper-0` computed `rgb(250, 247, 241)`, charcoal
+`rgb(21, 19, 15)`. **No row was written to any database and no route was called on a live gateway.**
+`eslint` could not be run **by the builder** — `eslint-plugin-jsx-a11y` is absent from every checkout
+on this machine, which is a known environment fault, not a clean result. **The parent then ran it**
+on the index archive with `eslint-plugin-jsx-a11y` **6.10.2** resolved from `p4-scratch/web-lint`
+(`--resolve-plugins-relative-to`), **exit 0** — which is what commit `da71cebe`'s message records.
+Both facts stand and neither replaces the other: a builder that cannot lint says so, and a parent
+that could says how it did. *(Amended 2026-09-06; the sentence here gave only the first half and so
+read as a contradiction of the commit message — audit of `da71cebe`, BLOCKING 2.)*
+
+### The follow-ups closed, 2026-09-06 (the founder, batches 61 and 62)
+
+**A withdrawal names the person who made it.** _"Add withdrawn_by_name now."_ The second defect
+named above is closed: `supabase/migrations/20260906150000_a_withdrawal_names_the_person_who_made_it
+.sql` adds `withdrawn_by_name TEXT` with
+`distributor_price_code_mappings_withdrawer_is_named` — present **exactly** when `withdrawn_at` is,
+blank refused. It is **additive**: the older `_withdrawal_is_whole` CHECK is left alone rather than
+dropped and widened, because dropping a live CHECK to rewrite it opens a window in which the old
+rule is not enforced. **Nothing is backfilled** — there is no name to backfill with, so the file
+asserts that no withdrawn row lacks one and RAISES with the count if any does, rather than writing a
+signature nobody gave. The controller signs the withdrawal from the session with the same
+`fullName ?? name ?? email` chain the statement uses; the service refuses an empty name in words
+(_"the withdrawal must name the person making it"_) rather than letting the CHECK answer with a
+23514. The panel prints _withdrawn by &lt;name&gt; on &lt;date&gt;: &lt;reason&gt;_, and a
+withdrawal recorded before this migration says it holds no name instead of printing a uuid.
+Measured on PGlite (`p4-scratch/pglite-probe/p4bn-withdrawn-by-name.mjs`, applying
+`20260905240000` then this file **twice**): **7 accepted/applied, 6 refused, 0 errors** — the
+unnamed withdrawal, a whitespace name, an empty-string name and a name with no withdrawal are all
+`23514`, and the two older withdrawal CHECKs still fire on a missing reason and a missing withdrawer.
+
+**Rows older than the column stay unnamed, said in words** (the founder, 2026-09-06, batch 63: *"Leave them unnamed, said in words"*). A withdrawal recorded before `withdrawn_by_name` existed prints *this withdrawal predates the column* rather than a name joined from `public.users` at read time, for the reason `declared_by_name` is stored and not joined: a joined name would show a later rename as the signer and vanish when the account is deleted. ADR 0126 §7 expects zero such rows in production; the migration stops with the count if any exist.
+
+**A file's `CUR` disagreeing with the declaration refuses the whole file.** _"Refuse the file,
+naming both."_ `parse-edi832.ts` had let the file's own `CUR` win silently, discarding the manager's
+typed declaration with no trace in the response (audit of `da71cebe`, finding 3). It now refuses the
+document with a new `currency_disagreement` reason and the sentence _"the file states EUR and the
+declaration says USD; nothing was read"_, surfaced through `refusedWhole` exactly as the parser's
+other whole-file refusals are and printed verbatim by `DistributorFeedPanel`. Agreement (the same
+code twice) and absence (no declaration) are unchanged. **The 810 path is untouched and that is
+measured, not assumed**: `grep -rn declaredCurrency apps/api-gateway/src apps/web/src` shows
+`declaredCurrency` reaching only `admitCatalogue`, which runs only behind `looksLikeEdi832`, so the
+invoice reader never sees a declared currency to disagree with. It carries a separate
+`?? "USD"` default at `procurement/documents/x12/x12-invoice.ts:254-257`, which is named here and
+**not** changed: it is a different question, on a path this pass was fenced out of.
+
+**The founder's third batch-62 answer, recorded and unchanged in code.** _"Keep as built"_ on the
+currency field: blank omitted rather than padded, a partial value refused in the browser, and a file
+with neither `CUR` nor declaration refused whole by the parser naming both absences. Nothing was
+built for it because it was already the behaviour; it is written here so the reading is on the
+record.
+
 ## Alternatives rejected
 
 **Mirror the portal with the house's own credentials, as the founder's call describes.** It is the
@@ -479,3 +600,94 @@ cross-house read — dispatched as its own build.
 house-obtained 832 or an 810 through the existing document door, the manager's code mapping
 (0e4b67ed) applied, and a /connections panel that says per distributor what is true today.
 Rejected: mark the pieces dormant on purpose.
+
+### BUILT, 2026-09-05 — the three of them, and one correction
+
+**The ingest is the document door, not a second door.** `POST /procurement/documents` already
+hashed, deduplicated, stored and provenanced a file; it now recognises an 832 as well.
+`document-intake.service.ts` classifies it as a `price_list` — one of the twelve doc types the
+spine already admits — with its `BCT` number, its `N1*SU` sender, its `DTM*007` date and its
+`CUR` currency, **and no lines**, because a `price_list` line would be a price and a price this
+house may see is one a manager's statement admitted. What the door did before was measured
+rather than assumed (`document-intake-catalog.spec.ts`, first case, run against the UNCHANGED
+`parseX12`): `looksLikeX12` says true, the envelope reader never opens the `ST` — it warns *"SE
+encountered with no open ST"* — so the file produced **zero transactions and zero skips**, and
+`route()` answered "EDI file produced no readable transaction sets" with docType `unknown`,
+confidence 0 and **`currency: "USD"` stamped on a document whose currency nobody had read.**
+
+**The prices are admitted separately, and every refusal is named.**
+`distributor-feed/catalog-ingest.service.ts` reads the house's live statements, runs
+`parseEdi832`, writes the admitted rows to `vendor_price_observations` with
+`price_code_mapping_id` set and a `raw.handover` block carrying **who uploaded it, when, the
+file's sha256, the filename, the stored document id and the sender**. The report is per line:
+what was priced and under whose statement, and for each refused line the reason and the detail.
+`Edi832Run` gained `unmappedCodes` so the codes come back **by name** — the one refusal a person
+can fix. Three states are kept apart that a row count would collapse: **admitted**, **already
+recorded** (a 23505 on the `(source_ref, content_hash)` index — a re-upload after finally stating
+a code is the ordinary case) and **write failed**, which is never counted as admitted and comes
+back in the database's own words. A mapping read that FAILED refuses the whole document with the
+read's reason: parsing against an empty map would refuse every line as `unmapped_price_basis` and
+blame the distributor for our own database error.
+
+**The door stays open to staff; the price register does not.** `POST /procurement/documents`
+carries `JwtAuthGuard` and no role gate, and it must: a runner photographs paper at the delivery
+door, and a role check there would lose documents at the moment they arrive. So the gate sits on
+the act that writes prices — `CatalogIngestService.admit` calls
+`assertCanManageRestaurant` before it reads a mapping — which is the posture the price-code
+statements themselves already carry (§7) and the one ADR 0114 sets. It is **not** a thrown 403:
+the document is already stored by the time the check runs, and a throw would turn
+stored-and-not-priced into "your upload failed", so the refusal comes back as the catalogue's own
+answer naming the rule and saying the file is on the record. The upload is not sealed, and that is
+deliberate — an upload is not money, and the write it can cause is a price sighting a manager can
+see, question and have withdrawn.
+
+**The panel says what is true and offers the two ways in.**
+`apps/web/src/pages/connections/next/DistributorFeedPanel.tsx`, mounted on `/connections` between
+Register I and Register II — deliberately **not** a fifth register, because every row on it is
+something that cannot be attached. Per distributor: the robots rule and the terms clause
+verbatim, the day they were read, `connectable: false` and the measured reason. Then the two ways
+in: hand over a file you obtained (a real control, posting to the document door, printing the
+per-line report) and ask your Sales Consultant (the letter, as a download). A failed register read
+is named with the gateway's own sentence; `silence` is printed rather than an empty list.
+
+**The letter.** `.planning/07-reference/DISTRIBUTOR-INVOICE-FEED-LETTER.md`, served verbatim by
+`GET /distributor-feed/letter` from `feed-request-letter.ts`. It asks for an **EDI 810 invoice
+feed** or an order-guide equivalent — the scratch draft led with an 832, which is the thing
+nobody sends — names Mudavym as the software and the house as the signatory, and carries seven
+brackets this product does not hold and will not guess. **This product never sends it and has no
+route that could**, said in the file, on the panel and in the constant.
+`feed-request-letter.spec.ts` reads the reference document off disk and fails if the served text
+and the printed text ever differ.
+
+**The correction this pass owed.** The registry's `southern-glazers-il` row, this ADR's Illinois
+table and the sentence a house reads all quoted `southernglazers.com`'s Terms of Use as if they
+governed the **SG Proof buyer portal**. They do not: those Terms define "Website" in their own
+first paragraph as `southernglazers.com`, and `shop.sgproof.com` is a different host whose own
+terms **nobody has read** — the visit window was shut on both passes. The registry now says
+exactly that, and says an unread term is not a permissive one. Corrected in the same words in
+`price-sources.md`'s SGWS row. The corporate clause still stands where it says it applies.
+
+**Verification, on the tree this note describes.** `npx jest --runInBand --forceExit
+src/distributor-feed src/procurement/documents` from `apps/api-gateway` — **293 passed / 20
+suites**, of which **33 cases in 3 suites are new here** (against a measured baseline of 260 / 17
+run on the same command on the same tree before this pass). `npx vitest run src/pages/connections` from `apps/web` —
+**86 passed / 3 files**, of which **19 in 1 file are new** (baseline 67 / 2). Gateway
+`tsc --noEmit` on both `tsconfig.json` and `tsconfig.spec.json`: **0 errors**. Web `tsc --noEmit`:
+**0 errors**. `check_route_exposure`, `check_read_errors_not_swallowed`, `check_read_columns_exist`,
+`check_web_reads_gateway_dto_keys`, `check_no_seeded_defaults`, `check_fk_targets_exist`,
+`check_new_tables_are_locked_down`, `check_order_capture_contract` and `check_adr_numbers_unique`
+all **exit 0**. **No migration** — `vpo_source_type_check` already admits `api_catalog` and
+`price_code_mapping_id` already exists. **No row was written to any database and no route was
+called on a live gateway.**
+
+**Two things this pass could NOT verify, stated.** `scripts/check_gateway_boots.sh` **cannot run
+on this tree**: its `npx nest build` fails on a syntax error in
+`apps/api-gateway/src/commodity/commodity.service.spec.ts`, a file another builder has open and
+this pass may not touch. The equivalent check was run instead — `tsc` build (which excludes
+specs) plus the guard's own `NestFactory.createApplicationContext(AppModule)` runner with the
+same placeholder environment — and answered **BOOT_OK**, so the new `ProcurementModule` →
+`DistributorFeedModule` import and the controller's fifth dependency resolve. And
+`check_queried_tables_exist.py` **exits 1** on this tree for a reason that is not this pass's: the
+unresolvable-table set grew from 26 to 27, and the 27th is in
+`apps/api-gateway/src/analytics/goal-scenario-requests.service.ts`, an untracked file belonging to
+another builder. Every table this pass queries is a string literal.

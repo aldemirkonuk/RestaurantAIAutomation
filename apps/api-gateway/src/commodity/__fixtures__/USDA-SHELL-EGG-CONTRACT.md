@@ -1,5 +1,20 @@
 # The USDA shell-egg fixture contract — what the human download must be
 
+> **SUPERSEDED IN PART, 2026-09-05. THE FILE LANDED, AND IT IS NOT WHAT THIS
+> CONTRACT EXPECTED.** A person read the report through the app's Browser pane
+> and brought back
+> `__fixtures__/usda-ams-2843-2026-09-04.report-detail-weighted.tsv` — the
+> **HTML data view** on My Market News, not the PDF, because the PDF URL answers
+> a browser with a download dialog the pane cannot complete. Two of this
+> document's expectations were wrong against the real bytes and are corrected in
+> `COMMODITY-PROVENANCE.md`: **the facts arrive as COLUMNS** (`Report Date`,
+> `Price Unit`, `Freight` per row) rather than as face text, and **THREE rows are
+> graded loose, white and Large**, so the `ambiguous_row` refusal this document
+> specifies would have fired on the real file. The parser now selects on a
+> six-part tuple. This document is kept as the record of what was asked for
+> before anything had been seen, and as the contract a SECOND download would
+> still have to satisfy for its four provenance facts.
+
 **No bytes of this report exist in this repository, and no code here will ever
 fetch them.** `https://www.ams.usda.gov/robots.txt` returned HTTP **403** on
 2026-09-04 and again on 2026-09-05, and this repository's rule is that a host

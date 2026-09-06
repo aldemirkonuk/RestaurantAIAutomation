@@ -29,6 +29,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { DistributorFeedService } from "./distributor-feed.service";
 import { PriceCodeMappingsService } from "./price-code-mappings.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { FEED_REQUEST_LETTER } from "./feed-request-letter";
 
 @ApiTags("Distributor Feed")
 @ApiBearerAuth()
@@ -81,7 +82,13 @@ export class DistributorFeedController {
   })
   async declareCode(
     @CurrentUser()
-    user: { userId: string; restaurantId: string; fullName?: string; email?: string },
+    user: {
+      userId: string;
+      restaurantId: string;
+      fullName?: string;
+      name?: string;
+      email?: string;
+    },
     @Param("distributorKey") distributorKey: string,
     @Body() body: { priceCode?: string; priceBasis?: string; evidence?: string },
   ) {
@@ -100,7 +107,19 @@ export class DistributorFeedController {
       // The name AS THE TOKEN CARRIES IT. Never a placeholder: if the session
       // resolves no name the service refuses, because an unsigned attestation
       // is the thing this whole decision exists to avoid.
-      declaredByName: (user.fullName ?? user.email ?? "").trim(),
+      //
+      // `name` IS THE FIELD THE SESSION ACTUALLY HAS, and it was missing here
+      // (2026-09-05, p4bl). `JwtStrategy.validate` returns
+      // `{ userId, email, name, role, restaurantId, … }` and sets no
+      // `fullName` anywhere in this gateway — measured with
+      // `grep -rn fullName apps/api-gateway/src`, which finds only the two
+      // places that READ it. So every statement made before this line changed
+      // was signed with the manager's email address rather than their name,
+      // silently, because the fallback made it look deliberate. `fullName`
+      // stays first in case a future strategy sets it; `name` is what resolves
+      // today; the email is still the last resort, and a session with none of
+      // the three is refused by the service rather than written unsigned.
+      declaredByName: (user.fullName ?? user.name ?? user.email ?? "").trim(),
     });
     return { success: outcome.ok, ...outcome };
   }
@@ -112,6 +131,12 @@ export class DistributorFeedController {
    * ON DELETE RESTRICT and the mark is the join to `withdrawn_at`. The count of
    * those rows is returned, because "how far did this go" is the first question
    * anyone asks — and it is `null`, never 0, when it could not be counted.
+   *
+   * A withdrawal is SIGNED, like the statement it ends (the founder,
+   * 2026-09-06, batch 61: "Add withdrawn_by_name now"). The name comes from the
+   * session, never from the body, so nobody can withdraw under a colleague's
+   * name; a session that resolves no name is refused rather than written
+   * unsigned.
    */
   @Post("codes/:distributorKey/:mappingId/withdraw")
   @ApiOperation({
@@ -119,7 +144,14 @@ export class DistributorFeedController {
       "Withdraw a price-code meaning. Nothing is deleted: the rows it admitted keep naming it and are marked by the withdrawal",
   })
   async withdrawCode(
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      fullName?: string;
+      name?: string;
+      email?: string;
+    },
     @Param("mappingId") mappingId: string,
     @Body() body: { reason?: string },
   ) {
@@ -132,6 +164,14 @@ export class DistributorFeedController {
       mappingId,
       restaurantId: user.restaurantId,
       withdrawnBy: user.userId,
+      // The same chain the statement is signed with, for the same reason: the
+      // register recorded `withdrawn_by` (an account id) and no name until
+      // 2026-09-06, so it could say when a statement was withdrawn and why but
+      // not by whom in words. `fullName` stays first in case a future strategy
+      // sets it; `name` is what `JwtStrategy.validate` resolves today; the
+      // email is the last resort; a session with none of the three is refused
+      // by the service rather than written unsigned.
+      withdrawnByName: (user.fullName ?? user.name ?? user.email ?? "").trim(),
       reason: body?.reason ?? "",
     });
     const admitted = await this.mappings.rowsAdmittedBy(mappingId);
@@ -154,6 +194,24 @@ export class DistributorFeedController {
   })
   catalog() {
     return { success: true, ...this.service.forJurisdiction(null) };
+  }
+
+  /**
+   * The letter a house sends its distributor asking for an invoice feed.
+   *
+   * A READ. It returns text for a person to print, complete and sign; there is
+   * no route on this gateway that sends it, no address field and no schedule,
+   * and the panel says so beside the download. Declared before `:jurisdiction`
+   * for the same reason `catalog` is — otherwise the word is captured as a
+   * jurisdiction and this route is unreachable.
+   */
+  @Get("letter")
+  @ApiOperation({
+    summary:
+      "The invoice-feed request letter, for the house to sign on its own letterhead. This product never sends it",
+  })
+  letter() {
+    return { success: true, letter: FEED_REQUEST_LETTER };
   }
 
   @Get(":jurisdiction")

@@ -32,6 +32,13 @@ import {
   assertPublicHttpTarget,
   safeFetch,
 } from "../common/net/ssrf-guard";
+// One enforcement point for the register's visibility rule (ADR 0117 addendum,
+// 2026-09-05). The `.from()` keeps the table's name as a string literal so
+// `check_read_columns_exist.py` still sees the columns this read names.
+import {
+  VENDOR_PRICE_OBSERVATIONS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 
 /** Identifies us in request logs so a vendor can allow or block us deliberately. */
 const USER_AGENT =
@@ -582,15 +589,18 @@ export class VendorPageExtractorService {
     const unique = Array.from(new Set(signatureHashes));
     if (unique.length === 0) return out;
 
-    let query = this.databaseService.supabase
-      .from("vendor_price_observations")
-      .select("signature_hash, normalized_unit_price")
+    const query = scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select("signature_hash, normalized_unit_price"),
+      VENDOR_PRICE_OBSERVATIONS,
+      restaurantId
+        ? { kind: "houseAndOpenMarket", restaurantId }
+        : { kind: "openMarketOnly" },
+    )
       .in("signature_hash", unique)
       .not("normalized_unit_price", "is", null)
       .limit(2000);
-    query = restaurantId
-      ? query.or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
-      : query.is("restaurant_id", null);
 
     const { data, error } = await query;
     if (error) {

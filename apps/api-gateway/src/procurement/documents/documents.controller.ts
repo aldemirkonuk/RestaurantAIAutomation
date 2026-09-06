@@ -23,8 +23,33 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { ApplyExtractionDto, UploadDocumentDto } from "./dto/documents.dto";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
+import { createHash } from "node:crypto";
+import { looksLikeEdi832 } from "../../distributor-feed/parse-edi832";
+import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
+import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
 
-type AuthedUser = { userId: string; restaurantId: string };
+/**
+ * `fullName`, `name` and `email` are read for ONE purpose: an admitted class-C
+ * price names the person who handed the catalogue over, as the session named
+ * them. All three optional because a token that carries none of them is a real
+ * state, and the row then says the name is unknown rather than inventing one.
+ *
+ * `name` IS THE FIELD THE SESSION ACTUALLY HAS, and it was missing from this
+ * type until 2026-09-06. `JwtStrategy.validate` (`auth/strategies/
+ * jwt.strategy.ts:55-69`) returns `{ userId, email, name, role, restaurantId,
+ * … }` and sets no `fullName` anywhere in this gateway, so `uploadedByName`
+ * below carried the uploader's EMAIL ADDRESS while claiming to be a name —
+ * silently, because the fallback made it look deliberate. The same defect was
+ * measured and fixed on `distributor-feed.controller.ts` on 2026-09-05 and
+ * named there as still open here (ADR 0126 §7); this is that one line.
+ */
+type AuthedUser = {
+  userId: string;
+  restaurantId: string;
+  fullName?: string;
+  name?: string;
+  email?: string;
+};
 
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
@@ -53,6 +78,7 @@ export class DocumentsController {
     private readonly db: DatabaseService,
     private readonly canonical: CanonicalDocumentService,
     private readonly spine: DeliverySpineService,
+    private readonly catalogIngest: CatalogIngestService,
   ) {}
 
   /**
@@ -202,7 +228,8 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Upload or photograph a vendor document",
     description:
-      "Accepts base64 content for a PDF, image or EDI file. Classifies it (invoice / packing slip / credit memo), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document.",
+      "Accepts base64 content for a PDF, image or EDI file. Classifies it (invoice / packing slip / credit memo / EDI 832 price list), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document. " +
+      "AN EDI 832 PRICE CATALOGUE IS ALSO ADMITTED HERE (ADR 0126, batch 56) rather than at a door of its own: it is stored as a `price_list`, and when `distributorKey` names a measured distributor its lines are read against the price-code meanings a manager of this house has stated. The per-line outcome comes back in `catalog` — what was priced, and for each refused line the reason and the code that refused it. There is never a bare row count.",
   })
   async upload(
     @Body() body: UploadDocumentDto,
@@ -234,13 +261,90 @@ export class DocumentsController {
     if (result.error)
       throw new HttpException(result.error, HttpStatus.UNPROCESSABLE_ENTITY);
 
+    /**
+     * The catalogue half.
+     *
+     * Run on the BYTES, not on `result.parsed`, and run even when the door
+     * reports a duplicate: `ingest` returns `parsed: null` for a document it
+     * has already stored, and a house re-uploading the same catalogue after
+     * finally stating what its codes mean is the ordinary case, not an error.
+     * The database's own unique index on (source_ref, content_hash) decides
+     * what is genuinely new, so re-admitting is idempotent and the report says
+     * how many rows were already there.
+     *
+     * The sha256 is recomputed here rather than plumbed back out of `ingest`:
+     * it is the same one-line hash over the same bytes, and the provenance
+     * stamped on each admitted row must be the FILE's hash, not a hash of the
+     * text after decoding.
+     */
+    const text = buffer.toString("utf8");
+    const catalog = looksLikeEdi832(text)
+      ? await this.admitCatalogue(text, buffer, body, user, result.documentId)
+      : null;
+
     return {
       documentId: result.documentId,
       duplicate: result.duplicate,
       // The parse is returned so the receiving screen can show what was read
       // immediately, without a second round trip.
       document: result.parsed,
+      ...(catalog ? { catalog } : {}),
     };
+  }
+
+  /**
+   * Price an 832's lines, or say in words why none of them was priced.
+   *
+   * A catalogue with no `distributorKey` is NOT an error and NOT a silent
+   * nothing: the file is on the record, and the answer names the keys the
+   * register holds so the person can send it again with one. Guessing the
+   * sender from the file's own `N1*SU` was the rejected alternative — one
+   * house's statement of what `CON` means is not a statement about another
+   * distributor's paper.
+   */
+  private async admitCatalogue(
+    text: string,
+    buffer: Buffer,
+    body: UploadDocumentDto,
+    user: AuthedUser,
+    documentId: string | null,
+  ) {
+    const sha256 = createHash("sha256").update(buffer).digest("hex");
+    const receivedAt = new Date().toISOString();
+    if (!body.distributorKey) {
+      const known = Object.keys(DISTRIBUTORS).sort();
+      return {
+        distributorKey: null,
+        sha256,
+        documentId,
+        uploadedBy: user.userId,
+        uploadedAt: receivedAt,
+        admitted: 0,
+        refusedWhole:
+          "This is an EDI 832 price catalogue and no sender was named with it, so not one line was priced. A price code means whatever ONE distributor's implementation guide says it means, and this house's statements are recorded per sender — reading them against the wrong distributor's paper would file an invented trade level against real money. Send the file again naming `distributorKey`.",
+        knownDistributorKeys: known,
+        sentence: `Stored, and nothing priced: name the sender (${known.join(", ")}) and upload the same file again.`,
+      };
+    }
+    return this.catalogIngest.admit({
+      restaurantId: user.restaurantId,
+      distributorKey: body.distributorKey,
+      raw: text,
+      sha256,
+      documentId,
+      uploadedBy: user.userId,
+      // `fullName ?? name ?? email`, in that order: `fullName` stays first in
+      // case a future strategy sets it, `name` is what resolves today, and the
+      // email is the last resort rather than the first answer. A session with
+      // none of the three stays `null`, which the row reads as "unknown" — an
+      // absent name is never filled in with a placeholder.
+      uploadedByName:
+        (user.fullName ?? user.name ?? user.email ?? "").trim() || null,
+      receivedAt,
+      declaredCurrency: body.declaredCurrency ?? null,
+      providerId: body.providerId ?? null,
+      filename: body.filename ?? null,
+    });
   }
 
   @Get()

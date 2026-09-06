@@ -65,7 +65,15 @@ export type SettingsRegister =
    * "preferences" row: `restaurants.currency` decides what every money figure
    * in the product means, and it is kept on the RESTAURANT, not on a person.
    */
-  | "currency";
+  | "currency"
+  /**
+   * What holding stock costs this house, percent a month. Its own register for
+   * the same reason the currency has one: it is a fact about the HOUSE that
+   * decides whether a money figure may be printed at all, not a preference.
+   * The founder, 2026-09-05 batch 59: *"Twice a year, and the house types its
+   * carrying cost."*
+   */
+  | "carrying-cost";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -87,6 +95,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * nothing to record (ADR 0117 Q25).
    */
   "reporting_currency_changed",
+  /**
+   * The house stated what holding stock costs it. Added 2026-09-06: until then
+   * nothing in this product had ever asked, and the commodity alert's money
+   * clause is gated on the answer.
+   */
+  "carrying_cost_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

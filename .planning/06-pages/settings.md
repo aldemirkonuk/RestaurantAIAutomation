@@ -187,6 +187,23 @@ OFF by default; with it off `Settings.tsx` renders byte-for-byte):
   `restaurants_currency_check` allows. The same field is on the legacy page
   (`ReportingCurrencySection`, `pages/Settings.tsx`), because the rebuild is
   behind a flag and a house without it must still be able to answer.
+- **Carrying cost (register 06, group "The house", 2026-09-06)** — what a month of
+  holding stock costs this house, as a PERCENT of the goods' value, with the number or
+  "no saving is shown anywhere", the date it was typed and by whom (from the column
+  itself, which carries its own moment by CHECK, never `restaurants.updated_at`), an
+  optional free-text basis in the person's own words, and a field disabled for anyone
+  who is not a manager or owner. `PUT /settings/carrying-cost` is gated by
+  `assertCanManageRestaurant` and validates `>= 0.01` and `<= 25` percent a month —
+  exactly what `restaurants_carrying_cost_is_a_plausible_percent` allows. **Those bounds
+  are a units check**: `0.0075` (the fraction spelling, which would understate the cost
+  by a hundred and make every commodity alert look profitable) and `75` (a percent a
+  year) are both refused with a sentence naming the spelling the field wants, in the
+  page AND in the gateway. **Why it is asked at all**: the founder, 2026-09-05 batch 59,
+  answering the commodity plan's Q5 — *"Twice a year, and the house types its carrying
+  cost."* Measured over 440 recorded FAO months, a commodity alert's whole gain is spent
+  by a carrying cost of about one percent a month, so until this is typed the alert says
+  its saving is UNMEASURED rather than pricing a stock-up off a figure nobody chose. No
+  legacy equivalent: this register exists only on the rebuilt page.
 - **Not rebuilt, deliberately**: the five modal dialogs (invite, add location,
   create/assign chain, edit branch) and the two labour/goals panels are the
   shipping components, mounted as-is — capability kept, visual seam accepted
@@ -879,6 +896,8 @@ because the rebuild is behind a flag:
 |---|---|---|---|
 | GET | `/settings/currency` | `settings/settings.controller.ts` → `settings/house-currency.service.ts` | `useSettingsNextData.ts` — `houseCurrency` remote, keyed `?tab=currency`; legacy `ReportingCurrencySection` (`pages/Settings.tsx`) |
 | PUT | `/settings/currency` | same | `useSettingsNextData.ts` — `saveCurrency`; legacy `ReportingCurrencySection` |
+| GET | `/settings/carrying-cost` | `settings/settings.controller.ts` → `settings/house-carrying-cost.service.ts` | `useSettingsNextData.ts` — `houseCarryingCost` remote, keyed `?tab=carrying-cost` |
+| PUT | `/settings/carrying-cost` | same | `useSettingsNextData.ts` — `saveCarryingCost` |
 
 The GET is not role-gated (a member may read what money the figures they are
 looking at are in); the PUT is owner/manager-only through
@@ -1870,3 +1889,37 @@ house SET its currency at all"*. It does.
 
 Not closed: `manager_preferences.report_timezone` and
 `manager_report_profiles.timezone` are still untouched.
+
+### 13.36 — What holding stock costs this house (CLOSED 2026-09-06)
+
+**The founder, 2026-09-05 batch 59, answering the commodity plan's §12 Q5:** *"Twice a
+year, and the house types its carrying cost."*
+
+* Column — `restaurants.carrying_cost_percent_per_month`
+  (`20260906140000_a_carrying_cost_is_typed_by_a_person.sql`), `NUMERIC(5,3)`, nullable,
+  **no default**, with `carrying_cost_set_by` (→ `public.users`, `ON DELETE RESTRICT`),
+  `carrying_cost_set_at` and an optional `carrying_cost_basis`. Two CHECKs: the value,
+  the author and the moment are one fact; and the value is a plausible PERCENT a month.
+  PGlite-proven — applied twice, seven refusals and three admissions measured, zero rows
+  backfilled, the author FK inside `public`.
+* Route — `GET`/`PUT /settings/carrying-cost`, manager-gated by
+  `assertCanManageRestaurant`, audited under the new `carrying-cost` register and the
+  `carrying_cost_changed` action, with the receipt on the readout.
+* Rebuilt page — register 06 "Carrying cost" under *The house*
+  (`pages/settings/next/CarryingCostSection.tsx`). Nothing is offered as a starting
+  value, because unlike a currency nothing implies a carrying cost; the sentence under
+  the field says exactly what Record will write, in a month AND in a year.
+
+**A defect found and fixed while doing it.** `settings-audit.controller.ts`'s `REGISTERS`
+allow-list — the values `?register=` may filter to — **omitted `currency` from the day
+that register was added**: `PUT /settings/currency` wrote `register: "currency"` rows and
+`GET /settings-audit?register=currency` answered 400 naming five registers that did not
+include it. An omission there reads to a caller as "that register does not exist" while
+rows for it are being written all the same. Both `currency` and `carrying-cost` are now
+in the list.
+
+**Not closed**: nothing in the product yet READS
+`restaurants.carrying_cost_percent_per_month` at runtime — the commodity alert is still
+dark (`COMMODITY_ALERT_DARK` off) and its money clause is exercised in
+`cadence-value.spec.ts` rather than on a screen. The register is the input; the reader is
+phase 1.

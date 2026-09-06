@@ -37,6 +37,8 @@ import { BillingModule } from "../../billing/billing.module";
 import { TextSenderService } from "./text-sender.service";
 import { TextSendersController } from "./text-senders.controller";
 import { TextCreditsController } from "./credits/text-credits.controller";
+import { PurchaseIntentService } from "./credits/purchase-intent.service";
+import { PurchaseIntentReconciler } from "./credits/purchase-intent.reconciler";
 import { TextUsageService } from "./text-usage.service";
 import { TextCredentialsService } from "./providers/text-credentials.service";
 import { TextTransportRegistry } from "./providers/text-transport.registry";
@@ -80,7 +82,9 @@ import { TextTransportRegistry } from "./providers/text-transport.registry";
     TextUsageService,
     TextCredentialsService,
     TextTransportRegistry,
+    PurchaseIntentService,
+    PurchaseIntentReconciler,
   ],
-  exports: [TextSenderService, TextUsageService],
+  exports: [TextSenderService, TextUsageService, PurchaseIntentReconciler],
 })
 export class TextSendersModule {}

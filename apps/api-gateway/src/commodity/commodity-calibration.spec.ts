@@ -7,6 +7,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import {
   BUDGETS,
+  CADENCE_NOT_ON_OFFER,
+  DEFAULT_BUDGET,
   hashProposal,
   isRefusal,
   proposeAllBudgets,
@@ -95,8 +97,12 @@ describe("the sentence the admin reads before the act", () => {
     expect(out.sentence).toMatch(/about 2 times a year/);
     expect(out.sentence).toMatch(/above its 12-observation median/);
     expect(out.sentence).toMatch(/between 2023-05-01 and 2026-08-01/);
-    // The one accuracy claim it must NOT make.
-    expect(out.sentence).toMatch(/How often it will be RIGHT is not stated/);
+    // The one accuracy claim it must NOT make. "for THIS house" was added
+    // 2026-09-06 with the quant pass: the sentence now DOES carry a measured
+    // hit rate for the SERIES (65.8 % over 440 FAO months), so the disclaimer
+    // had to become specific about what is still unmeasured — this house's own
+    // invoice — rather than reading as a denial of the number beside it.
+    expect(out.sentence).toMatch(/How often it will be RIGHT for THIS house is not stated/);
   });
 
   it("says 'once' rather than '1 times'", () => {
@@ -156,5 +162,67 @@ describe("the hash is what makes 'shown before the act' enforceable", () => {
       windowNObs: 427,
     };
     expect(hashProposal(core)).toBe(hashProposal({ ...core, riseThreshold: 0.085 }));
+  });
+});
+
+describe("the default budget is the founder's, and the rejected ones say why", () => {
+  it("proposes twice a year as the default and marks only that one", () => {
+    // The founder, 2026-09-05 batch 59, answering the plan's §12 Q5:
+    // "Twice a year, and the house types its carrying cost."
+    expect(DEFAULT_BUDGET).toBe(2);
+    const all = proposeAllBudgets("fao.food_price_index.all", "month", POINTS);
+    const flagged = all.filter((a) => a.isDefault);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].firesPerYear).toBe(2);
+  });
+
+  it("carries the rejected budgets' reasons, not just the chosen one", () => {
+    // The rejected alternative is the half of a decision that gets lost first.
+    const all = proposeAllBudgets("fao.food_price_index.all", "month", POINTS);
+    for (const a of all) expect(a.rationale.length).toBeGreaterThan(40);
+    expect(all.find((a) => a.firesPerYear === 4)?.rationale).toMatch(
+      /Rejected as the default/,
+    );
+    expect(all.find((a) => a.firesPerYear === 1)?.rationale).toMatch(
+      /Rejected as the default/,
+    );
+    expect(all.find((a) => a.firesPerYear === 2)?.rationale).toMatch(
+      /The default \(the founder/,
+    );
+  });
+
+  it("names the budgets that are NOT on offer, rather than leaving them absent", () => {
+    // The founder asked for weekly or fortnightly. An option that was asked
+    // for and is missing must be explained, or the absence reads as a choice.
+    expect(CADENCE_NOT_ON_OFFER).toMatch(/Weekly and fortnightly are not offered/);
+    expect(CADENCE_NOT_ON_OFFER).toMatch(/publish monthly/);
+  });
+
+  it("the default flag is NOT in the hash, so re-wording cannot refuse an arming", () => {
+    const out = proposeCalibration("fao.food_price_index.all", "month", POINTS, 2);
+    expect(isRefusal(out)).toBe(false);
+    if (isRefusal(out)) return;
+    expect(out.isDefaultBudget).toBe(true);
+    // The hash covers the NUMBERS on the screen and nothing else.
+    expect(out.proposalHash).toBe(
+      hashProposal({
+        seriesKey: out.seriesKey,
+        firesPerYear: out.firesPerYear,
+        riseThreshold: out.riseThreshold,
+        stepGuard: out.stepGuard,
+        windowFrom: out.windowFrom,
+        windowTo: out.windowTo,
+        windowNObs: out.windowNObs,
+      }),
+    );
+  });
+
+  it("the sentence says a budget is the proposed one only when it is", () => {
+    const two = proposeCalibration("fao.food_price_index.all", "month", POINTS, 2);
+    const four = proposeCalibration("fao.food_price_index.all", "month", POINTS, 4);
+    if (isRefusal(two) || isRefusal(four)) throw new Error("refused");
+    expect(two.sentence).toMatch(/This is the budget Mudavym proposes/);
+    expect(four.sentence).not.toMatch(/This is the budget Mudavym proposes/);
+    expect(four.sentence).toMatch(/Rejected as the default/);
   });
 });

@@ -39,7 +39,8 @@ import {
   type SeriesEntry,
 } from "./commodity.registry";
 import { COMMODITY_FETCH_FLAG, commodityFetchArmed } from "./commodity-admission";
-import { derivability } from "./duty";
+import { derivability, perBottleDuty } from "./duty";
+import { BottleFactsService } from "./bottle-facts";
 
 /**
  * The columns this service reads, named explicitly so
@@ -47,7 +48,7 @@ import { derivability } from "./duty";
  * `supabase/migrations/`.
  */
 const SERIES_COLUMNS =
-  "id, series_key, issuer, issuer_jurisdiction, series_title, source_url, value_kind, unit, base_period, currency, price_basis, cadence, max_age_days, licence, attribution, redistribution, admission, rise_threshold, step_guard, threshold_window_from, threshold_window_to, threshold_window_n_obs, threshold_computed_at, armed, armed_by_label, armed_at, armed_proposal_hash, armed_note, withheld_reason, silent, measured_on";
+  "id, series_key, issuer, issuer_jurisdiction, series_title, source_url, value_kind, unit, base_period, currency, price_basis, cadence, max_age_days, licence, attribution, redistribution, admission, access_key_required, key_env_var, robots_reading, user_agent, request_budget_per_day, licence_url, rise_threshold, step_guard, threshold_window_from, threshold_window_to, threshold_window_n_obs, threshold_computed_at, armed, armed_by_label, armed_at, armed_proposal_hash, armed_note, withheld_reason, silent, measured_on";
 
 const OBSERVATION_COLUMNS =
   "id, series_id, period_start, period_grain, value, issued_at, issued_at_basis, fetched_at, vintage, source_ref, content_hash";
@@ -67,10 +68,27 @@ export interface SeriesObservationLine {
   vintage: string | null;
 }
 
+/**
+ * The per-bottle duty for one exposed item, or the reason there is none.
+ *
+ * Never a bare null: "no duty is shown" has four causes here — nobody stated a
+ * strength, nobody stated a size, this bottle is registered in two sizes, or
+ * the publisher never said what its rate is per — and a person can act on
+ * three of them.
+ */
+export type ExposureDuty =
+  | { derived: true; amount: number; currency: string; basis: string }
+  | { derived: false; reason: string; detail: string };
+
 /** One house item a PERSON has mapped to this series. Never an inference. */
 export interface ExposureLine {
   id: string;
   houseItemId: string;
+  /**
+   * Present only on a RATE series. The per-bottle duty this rate implies for
+   * this item, computed from two person-stated facts, or the named refusal.
+   */
+  duty: ExposureDuty | null;
   /** Null with basis `unset` is the common case and it is said out loud. */
   passThrough: number | null;
   passThroughBasis: string;
@@ -102,6 +120,22 @@ export interface CommoditySeriesLine {
    * so no surface may report the series as working (the founder's Q1 answer).
    */
   awaitingHumanDownload: boolean;
+  /**
+   * Reading this source needs a credential, and WHICH environment variable
+   * holds it. Never the credential. A screen that shows a series as silent
+   * should be able to say whether the reason is a deployment that was never
+   * given a key.
+   */
+  accessKeyRequired: boolean;
+  keyEnvVar: string | null;
+  /** Whether THIS process actually holds it. `null` when none is needed. */
+  keyConfiguredHere: boolean | null;
+  /** What the host said when asked for its crawl rules, in words. */
+  robotsReading: string | null;
+  /** OUR self-imposed ceiling, not the publisher's limit. */
+  requestBudgetPerDay: number | null;
+  /** Where the licence text was read. `licence` holds the words. */
+  licenceUrl: string | null;
   /** A rate's instrument, in the issuer's own citation. Null for anything else. */
   statute: string | null;
   /** The date the issuer says a rate is in force from. */
@@ -153,7 +187,10 @@ export interface HouseCommodityResult {
 export class CommodityService {
   private readonly logger = new Logger(CommodityService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly bottles: BottleFactsService,
+  ) {}
 
   /**
    * The series register for the CALLER's own house.
@@ -243,6 +280,18 @@ export class CommodityService {
       attribution: entry.attribution,
       redistribution: entry.redistribution,
       admission: entry.admission,
+      accessKeyRequired: entry.accessKeyRequired === true,
+      keyEnvVar: entry.keyEnvVar ?? null,
+      // Read from the environment, never the value. `false` here is a
+      // DEPLOYMENT fact and is the difference between "the publisher refused
+      // us" and "this environment was never given the key".
+      keyConfiguredHere: entry.accessKeyRequired
+        ? typeof process.env[entry.keyEnvVar ?? ""] === "string" &&
+          (process.env[entry.keyEnvVar ?? ""] ?? "").trim() !== ""
+        : null,
+      robotsReading: entry.robotsReading ?? null,
+      requestBudgetPerDay: entry.requestBudgetPerDay ?? null,
+      licenceUrl: entry.licenceUrl ?? null,
       awaitingHumanDownload: entry.awaitingHumanDownload === true,
       statute: entry.statute ?? null,
       effectiveFrom: entry.effectiveFrom ?? null,
@@ -306,6 +355,10 @@ export class CommodityService {
     }
 
     if (!seriesId) {
+      if (entry.accessKeyRequired && base.keyConfiguredHere === false) {
+        base.note = `This series is registered and reads over a credential this environment does not hold: ${entry.keyEnvVar} is not set here. That is a deployment that was never given the key, not a publisher that refused us.`;
+        return base;
+      }
       base.note = entry.awaitingHumanDownload
         ? `This series is registered and waits for a person's own download. ${entry.withheld?.reason ?? ""} Nothing here fetches it, and nothing may report it as working until the file lands.`.trim()
         : entry.withheld
@@ -383,6 +436,7 @@ export class CommodityService {
           return {
             id: String(row.id),
             houseItemId: String(row.house_item_id),
+            duty: null as ExposureDuty | null,
             passThrough:
               row.pass_through === null ? null : Number(row.pass_through),
             passThroughBasis: String(row.pass_through_basis),
@@ -391,6 +445,14 @@ export class CommodityService {
             note: row.note === null ? null : String(row.note),
           };
         });
+
+        // THE PER-BOTTLE DUTY LINE, and only on a rate. An index number is not
+        // a tax, and computing one from it would be inventing a liability.
+        if (entry.valueKind === "rate" && base.latest) {
+          for (const e of base.exposures) {
+            e.duty = await this.dutyFor(entry, base.latest.value, restaurantId, e.houseItemId);
+          }
+        }
       } catch (err) {
         this.logger.warn(
           `house_item_commodity_exposure read failed for ${entry.seriesKey}: ${(err as Error).message}`,
@@ -405,6 +467,50 @@ export class CommodityService {
         "This register holds no observation of this series yet. Nothing is claimed about where it stands.";
     }
     return base;
+  }
+
+  /**
+   * The per-bottle duty for one exposed item, or the named reason there is none.
+   *
+   * Two person-stated facts and nothing else: the strength off the shared
+   * library row, the size off the bottle's identity. The library's
+   * `bottle_size_ml DEFAULT 750` is never read — `bottle-facts.ts` explains
+   * why, and `duty.ts` would refuse it by name anyway.
+   */
+  private async dutyFor(
+    entry: SeriesEntry,
+    value: number,
+    restaurantId: string,
+    houseItemId: string,
+  ): Promise<ExposureDuty> {
+    const resolved = await this.bottles.forHouseItem(restaurantId, houseItemId);
+    if (resolved.refusal) {
+      return {
+        derived: false,
+        reason: resolved.refusal,
+        detail: resolved.detail ?? "No duty could be computed and no reason was recorded.",
+      };
+    }
+    const outcome = perBottleDuty(
+      {
+        valueKind: entry.valueKind,
+        value,
+        currency: entry.currency,
+        denominator: entry.dutyDenominator ?? "unstated",
+        issuer: entry.issuer,
+        effectiveFrom: entry.effectiveFrom ?? null,
+        unit: entry.unit,
+      },
+      resolved.facts,
+    );
+    return outcome.derived
+      ? {
+          derived: true,
+          amount: outcome.amount,
+          currency: outcome.currency,
+          basis: outcome.basis,
+        }
+      : { derived: false, reason: outcome.reason, detail: outcome.detail };
   }
 
   /** Every registered series, with no house scoping. For the status route. */
