@@ -255,6 +255,139 @@
   outline-offset: 2px;
 }
 
+/* ── the spine, and the cap said out loud (1c) ────────────────────────────
+   One line under the contract: where you are, how you got here, how deep. Every
+   level before the last is a control; the last is where you stand. */
+.mdv-ovl__spine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.mdv-ovl__spine-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.mdv-ovl__spine-sep {
+  color: var(--ink-3);
+}
+.mdv-ovl__spine-back {
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--seal-deep);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  /* 24px of target on a 10px word — WCAG 2.2 SC 2.5.8, without a box. */
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
+.mdv-ovl__spine-back:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mdv-ovl__spine-back:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.mdv-ovl__spine-here {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.mdv-ovl__depth {
+  margin-left: auto;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+/* The refusal. Ink and a rule, never red — the house has one chromatic colour
+   and this is not it (ADR 0042). */
+.mdv-ovl__refusal {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* ── the phone form (F9) ──────────────────────────────────────────────────
+   The same sheet, resting at three heights on the bottom edge, with one
+   breadcrumb — the spine above, unchanged, on one line. */
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__panel {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-width: none;
+  border-left: 0;
+  border-top: 1px solid var(--paper-2);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -18px 48px rgba(23, 19, 15, 0.18);
+}
+.mdv-ovl--sheet[data-form='bottom'][data-detent='peek'] .mdv-ovl__panel {
+  height: 34vh;
+}
+.mdv-ovl--sheet[data-form='bottom'][data-detent='half'] .mdv-ovl__panel {
+  height: 58vh;
+}
+.mdv-ovl--sheet[data-form='bottom'][data-detent='full'] .mdv-ovl__panel {
+  height: 92vh;
+}
+/* One line, whatever the depth: the phone gets a breadcrumb, not a spine that
+   wraps to three rows on a 375px screen. */
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__spine {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__depth {
+  display: none;
+}
+
+/* The grabber. A 44px target around a 36×4 bar — the bar is the affordance,
+   the button is the target. */
+.mdv-ovl__grab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.mdv-ovl__grab-bar {
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+.mdv-ovl__grab:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -3px;
+  border-radius: 8px;
+}
+
 /* `0 1 auto`, not `1 1 auto`: a Panel or Popover must be as tall as its
    CONTENT and no taller — max-height then caps it and the body scrolls. With
    `1 1 auto` an overlay holding one sentence ("No recent pages yet") still

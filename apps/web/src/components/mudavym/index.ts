@@ -37,3 +37,12 @@ export {
   type OverlayShape,
 } from './Sheet';
 export { Stub, type StubProps } from './Stub';
+export {
+  SheetStackProvider,
+  useSheetStack,
+  SHEET_STACK_CAP,
+  SHEET_STACK_REFUSAL,
+  type SheetStackApi,
+  type SheetStackEntry,
+  type SheetStackProviderProps,
+} from './SheetStack';

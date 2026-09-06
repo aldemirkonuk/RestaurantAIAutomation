@@ -43,6 +43,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { HouseHeader } from './HouseHeader';
+import { SheetStackProvider } from './SheetStack';
 import { MudavymPage, useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
 import {
   MudavymGroundContext,
@@ -91,8 +92,16 @@ export function PageGate({ page, legacy, next }: PageGateProps) {
   // takes the same value for the same reason.
   return (
     <MudavymGroundContext.Provider value={ground}>
-      <HouseHeader page={page} ground={ground} />
-      {next}
+      {/* ── The gate also holds the SPINDLE (2026-09-06, sketch 103 · 1c) ──
+          Depth is a fact about a PAGE, not about the document: a test or a
+          sandbox that mounts one Sheet is not three levels deep in anything.
+          This is the one place that knows a real page is on screen, so the cap,
+          the named spine and the phone's breadcrumb live here — and a Sheet
+          mounted anywhere else behaves exactly as it always did. */}
+      <SheetStackProvider>
+        <HouseHeader page={page} ground={ground} />
+        {next}
+      </SheetStackProvider>
     </MudavymGroundContext.Provider>
   );
 }
