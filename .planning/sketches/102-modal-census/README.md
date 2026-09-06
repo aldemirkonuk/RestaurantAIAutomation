@@ -40,9 +40,9 @@ page's ground). Filter by shape and by status.
 | | |
 |---|---|
 | Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 31 |
+| Built on the primitive | 32 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 12 |
+| Owed — an act the rebuilt page does not yet offer | 11 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
@@ -103,7 +103,7 @@ page's ground). Filter by shape and by status.
 | `shell` | Nav-rail hint | — | Not a shape | An anchored, non-interactive label, portalled only so it can wear the ground. Not a shape. | `components/layout/Sidebar.tsx:255` |
 | `shell` | Header search | — | Retires | The palette is the search. | `components/layout/Header.tsx:464` |
 | `/` | The working behind a figure | — | Retires · fork F7 | Decided 2026-09-05 (F7): the KPI row expands in place — 'show the working' under the figure, like DayDetail under the sales calendar. Not an overlay; the expansion is still owed on KpiRow.tsx. | `pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today` |
-| `/` | A one-tap action of your own | sheet | Owed · fork F4 | A person's own act is one object on the rail; the rail stays producer-defined otherwise. | `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05` |
+| `/` | A one-tap action of your own | sheet | Built · fork F4 | A person's own act is one object on the rail; the rail stays producer-defined otherwise. BUILT 2026-09-06 (packet 2): pages/dashboard/next/OneTapSheet.tsx — write, change and take off the rail against POST/PUT/DELETE /one-tap-actions; the mark carries over, the colour theme does not (one chromatic colour), and the two unbuilt triggers say so. | `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05` |
 | `/` | Add an important date | — | Retires | The calendar's entry sheet — the house has one day-book (ADR 0111). | `components/dashboard/AddImportantDateModal.tsx:125` |
 | `/` | Edit a quick action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail (OneTapPanel). A person's own action is built as the sheet drawn above (decided 2026-09-05, F4). | `components/dashboard/QuickActionsPanel.tsx:332` |
 | `/` | Daily sales report (a day) | — | Retires | DayDetail expands in place under the sales calendar (pages/dashboard/next/SalesCalendar.tsx:217). | `pages/Dashboard.tsx:1414` |

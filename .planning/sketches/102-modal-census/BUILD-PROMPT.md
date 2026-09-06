@@ -221,11 +221,6 @@ These render legacy markup inside a house-flagged page **today**. Move each onto
 
 A rebuilt page cannot do something its legacy page could. Build the act, not a shell: the endpoint, the four states, the provenance, the ceremony. Several need a gateway route that does not exist yet — say so and build it.
 
-**`/`** — flag `mudavym_design_dashboard`
-
-- **A one-tap action of your own** — sheet. A person's own act is one object on the rail; the rail stays producer-defined otherwise.
-  `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05`
-
 **`/orders`** — flag `mudavym_design_orders`
 
 - **A new order** — sheet. The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext.

@@ -426,7 +426,7 @@
     },
     {
      "name": "A one-tap action of your own",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -483,7 +483,7 @@
       ]
      ],
      "footer": "An action names what it will do before it does it.",
-     "why": "A person's own act is one object on the rail; the rail stays producer-defined otherwise.",
+     "why": "A person's own act is one object on the rail; the rail stays producer-defined otherwise. BUILT 2026-09-06 (packet 2): pages/dashboard/next/OneTapSheet.tsx — write, change and take off the rail against POST/PUT/DELETE /one-tap-actions; the mark carries over, the colour theme does not (one chromatic colour), and the two unbuilt triggers say so.",
      "source": "components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05",
      "acts": null,
      "went": null,
