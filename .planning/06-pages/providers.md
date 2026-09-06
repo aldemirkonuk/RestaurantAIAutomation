@@ -60,6 +60,26 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
   apart from its column default is rendered as UNKNOWN with that reason, never as a term
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
+- **The vendor sheet says whether a number can be texted, and whether anybody
+  said so** (ADR 0121 P0 item 2). `Numbers on file` on the twin sheet
+  (`apps/web/src/pages/providers/next/ContactsSection.tsx`) lists each contact
+  with a chip — **Textable**, **Not textable**, **Not stated** — the gateway's
+  own sentence beneath it, and a picker that writes `phone_type` through
+  `PATCH /providers/:id/contacts/:contactId`. Nothing here computes the verdict:
+  it comes from `providers/phone-reachability.ts` and is rendered verbatim, so
+  the page and the send path cannot disagree about what a mobile is
+- **A row carrying `main_line` is shown as NOT STATED, not as an answer.** The
+  column is `text DEFAULT 'main_line'`, so a row nobody answered is
+  byte-identical to one a manager answered "main line" and no query can separate
+  them. The chip and the picker both say nobody has said, and the write path
+  sends an **explicit NULL** when a caller omits the field so future rows can
+  express the difference. Nothing is backfilled — inventing the answer is the
+  fault this is about
+- **A failed contacts read is words, never an empty book.** The list stays null
+  and the section says the contacts could not be read with a retry, because an
+  empty array here would render as *"this vendor has no contacts"* — a claim
+  about the book made out of a failed request
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -233,6 +253,19 @@ none — no user-visible `WineOps` strings (grep of `Providers.tsx`: zero hits).
 - No feature flags
 
 ## 9. Gaps
+
+**Open 2026-09-06 — the legacy edit modal still cannot save a contact at all.**
+`apps/web/src/components/providers/EditProviderModal.tsx` renders a full
+contacts tab with a phone-type picker and has **no call to
+`addProviderContact`, `updateProviderContact` or `deleteProviderContact`
+anywhere** — grep all three in that file and the result is empty. Everything
+typed there lives in component state and is lost on close. Its hydrate at `:403`
+used to overwrite the stored `phone_type` with the literal `'main_line'`; that
+line now reads the row (ADR 0121 P0 item 2), but the *saving* half is untouched
+because the rebuilt `/providers` sheet is where contacts are meant to be edited.
+Filed rather than fixed: making the legacy modal write would give the same field
+two owners.
+
 
 **Open 2026-09-04 — there is no one-provider read of the terms register.**
 `GET /vendor-terms` (`vendor-terms.controller.ts:44`) answers with every vendor's

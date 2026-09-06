@@ -325,6 +325,57 @@ export class TextSenderService {
   }
 
   /**
+   * Is there a dispatch behind this house's sender, and is THIS house wired to
+   * it? Measured, never asserted.
+   *
+   * `/communications/text-senders` used to answer `transport: { built: false }`
+   * as a hard-coded constant with a sentence about no credential existing. That
+   * was true when it was written and stopped being true the moment
+   * `TextDispatchService` landed and a house could hold a credential — and a
+   * constant cannot notice. The same self-report fault as
+   * [[absence-reported-as-health]], pointed the other way: a surface asserting
+   * an absence it never checked is exactly as wrong as one asserting a health
+   * it never checked.
+   *
+   * `wired` is the per-house half, and it is `null` when the read failed —
+   * never `false`, which would say this house has no provider account when the
+   * truth is that we could not tell.
+   */
+  async transportReadout(restaurantId: string): Promise<{
+    built: boolean;
+    wired: boolean | null;
+    words: string;
+  }> {
+    const readout = await this.readout(restaurantId);
+    const sender = readout.whatsapp ?? readout.sms;
+
+    if (!readout.readable || !sender) {
+      return {
+        built: true,
+        wired: readout.readable ? false : null,
+        words: readout.readable
+          ? "This house has no sender, so nothing can leave in its name. WhatsApp replies inside an open 24-hour window are the only thing this build can send, and they need a sender with a provider account behind it. The shared Plivo number is deliberately not a fallback: on a shared number a STOP reply opts a person out of every restaurant here, for five years."
+          : "Whether this house has a sender could not be read, so whether anything could be sent is unknown. That is not the same as nothing being possible.",
+      };
+    }
+
+    const resolved = await this.transports.resolve(restaurantId, sender.id);
+    if (resolved.state === "ready") {
+      return {
+        built: true,
+        wired: true,
+        words:
+          "This house's sender has a live provider credential, so a WhatsApp reply inside an open 24-hour customer service window will be sent and metered. Nothing else can leave: there are no templates in this build, so the house cannot start a conversation, and a message outside the window is refused rather than queued.",
+      };
+    }
+    return {
+      built: true,
+      wired: resolved.state === "unreadable" ? null : false,
+      words: resolved.words,
+    };
+  }
+
+  /**
    * Send. Refuses, every time, and says which of the two halves is missing.
    *
    * THIS IS NOT A STUB WAITING FOR A PROVIDER CALL TO BE PASTED IN. The

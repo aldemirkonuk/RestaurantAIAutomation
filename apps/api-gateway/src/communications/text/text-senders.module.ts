@@ -42,6 +42,12 @@ import { PurchaseIntentReconciler } from "./credits/purchase-intent.reconciler";
 import { TextUsageService } from "./text-usage.service";
 import { TextCredentialsService } from "./providers/text-credentials.service";
 import { TextTransportRegistry } from "./providers/text-transport.registry";
+import { TextDispatchService } from "./providers/text-dispatch.service";
+import { TextConfigService } from "./text-config.service";
+import { WhatsAppBookService } from "./inbound/whatsapp-book.service";
+import { WhatsAppInboundService } from "./inbound/whatsapp-inbound.service";
+import { WhatsAppWebhookController } from "./inbound/whatsapp-webhook.controller";
+import { WhatsAppSendService } from "./whatsapp-send.service";
 
 /**
  * WHY `CryptoModule`. A house's own provider token is stored encrypted the way
@@ -76,7 +82,13 @@ import { TextTransportRegistry } from "./providers/text-transport.registry";
     BillingModule,
     ConfigModule,
   ],
-  controllers: [TextSendersController, TextCreditsController],
+  controllers: [
+    TextSendersController,
+    TextCreditsController,
+    // PUBLIC, and it says so on every route. Meta calls it; the token it
+    // carries instead of a JWT is `X-Hub-Signature-256` over the raw body.
+    WhatsAppWebhookController,
+  ],
   providers: [
     TextSenderService,
     TextUsageService,
@@ -84,7 +96,22 @@ import { TextTransportRegistry } from "./providers/text-transport.registry";
     TextTransportRegistry,
     PurchaseIntentService,
     PurchaseIntentReconciler,
+    // The WhatsApp leg (ADR 0121 P1). `TextDispatchService` is the ONE place an
+    // HTTP call to a message provider happens; the adapters and the registry
+    // stay pure and `text-transport.spec.ts` still asserts they hold no HTTP
+    // primitive.
+    TextDispatchService,
+    TextConfigService,
+    WhatsAppBookService,
+    WhatsAppInboundService,
+    WhatsAppSendService,
   ],
-  exports: [TextSenderService, TextUsageService, PurchaseIntentReconciler],
+  exports: [
+    TextSenderService,
+    TextUsageService,
+    PurchaseIntentReconciler,
+    WhatsAppSendService,
+    WhatsAppBookService,
+  ],
 })
 export class TextSendersModule {}

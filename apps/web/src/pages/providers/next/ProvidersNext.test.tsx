@@ -42,6 +42,27 @@ vi.mock('./useProviderTerms', () => ({
   }),
 }));
 
+// Same reason, one section down: the sheet also carries the contacts register
+// (ADR 0121 P0 item 2). Its own behaviour is asserted in
+// ContactsSection.test.tsx against a mocked apiClient.
+vi.mock('./useProviderContacts', async () => {
+  const actual = await vi.importActual<typeof import('./useProviderContacts')>(
+    './useProviderContacts',
+  );
+  return {
+    ...actual,
+    useProviderContacts: () => ({
+      contacts: null,
+      loading: true,
+      error: null,
+      saving: null,
+      saveError: null,
+      setPhoneType: vi.fn(),
+      reload: vi.fn(),
+    }),
+  };
+});
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {

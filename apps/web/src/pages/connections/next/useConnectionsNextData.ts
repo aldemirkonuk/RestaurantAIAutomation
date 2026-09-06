@@ -165,7 +165,15 @@ export interface TextSendersVM {
   catalogue: Record<'whatsapp_business' | 'sms_sender', TextSenderDefinitionVM>;
   surveyedMarkets: { whatsapp: string[]; sms: string[] };
   /** The server's own statement that nothing can leave yet. */
-  transport: { built: boolean; words: string };
+  /**
+   * MEASURED BY THE GATEWAY FOR THIS HOUSE, not a constant about the
+   * deployment. `built` says a dispatch exists in this build at all; `wired`
+   * says whether THIS house has a live provider credential behind its sender,
+   * and it is `null` when that could not be read — never `false`, which would
+   * claim the house has no provider account when the truth is that we could not
+   * tell (ADR 0121 P1).
+   */
+  transport: { built: boolean; wired: boolean | null; words: string };
   myConsent: {
     consent: { phone: string; channel: string; consentedAt: string } | null;
     readable: boolean;
@@ -1238,6 +1246,14 @@ export function useConnectionsNextData() {
     payments: toRegister(paymentsQ),
     sender: toRegister(senderQ),
     textSenders: toRegister(textQ),
+    /**
+     * Re-read the text-sender register after a manager stops a sender.
+     * Exposed as its own function rather than added to every `Register` because
+     * this is the only row on the page with a write behind it, and a `reload`
+     * on all fourteen would suggest thirteen more that do nothing.
+     */
+    reloadTextSenders: () =>
+      void qc.invalidateQueries({ queryKey: ['connections-next-text-senders'] }),
     ical: toRegister(icalQ),
     mcp: toRegister(mcpQ),
     mcpRuntime: toRegister(mcpRuntimeQ),

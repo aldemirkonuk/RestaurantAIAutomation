@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -10,6 +11,11 @@ import {
   Max,
   Min,
 } from "class-validator";
+import {
+  PHONE_TYPES,
+  type PhoneReach,
+  type PhoneType,
+} from "../phone-reachability";
 
 export class CreateProviderDto {
   @ApiPropertyOptional({
@@ -366,6 +372,15 @@ export class CreateProviderContactDto {
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
+
+  @ApiPropertyOptional({
+    enum: PHONE_TYPES,
+    description:
+      "What kind of line this is. Omit it and the row is stored with an explicit NULL — 'nobody has said' — rather than picking up the column's 'main_line' default, because a value the column invented is indistinguishable from one a manager chose. Only a number recorded as a mobile is textable (ADR 0121 P0).",
+  })
+  @IsOptional()
+  @IsIn(PHONE_TYPES as unknown as string[])
+  phoneType?: PhoneType;
 }
 
 export class UpdateProviderContactDto {
@@ -393,6 +408,15 @@ export class UpdateProviderContactDto {
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
+
+  @ApiPropertyOptional({
+    enum: PHONE_TYPES,
+    description:
+      "What kind of line this is. Sending it is the only way a row stops reading as 'nobody has said'; omitting it leaves whatever is stored untouched (ADR 0121 P0).",
+  })
+  @IsOptional()
+  @IsIn(PHONE_TYPES as unknown as string[])
+  phoneType?: PhoneType;
 }
 
 export class ProviderContactResponseDto {
@@ -416,6 +440,30 @@ export class ProviderContactResponseDto {
 
   @ApiProperty()
   isPrimary: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "The stored `phone_type`, verbatim, or null when the row carries none.",
+  })
+  phoneType?: string | null;
+
+  @ApiProperty({
+    enum: ["mobile", "landline", "unstated"],
+    description:
+      "What may be done with this number. Only `mobile` is textable. `main_line` reports `landline` with `phoneTypeStated: false`, because it is also the value the column writes when nobody answered.",
+  })
+  reach: PhoneReach;
+
+  @ApiProperty({
+    description:
+      "Whether a person actually chose the type. False for `main_line` and for a row with none — the two ways the book can be silent.",
+  })
+  phoneTypeStated: boolean;
+
+  @ApiProperty({
+    description: "The sentence a surface shows about this number's type.",
+  })
+  reachSays: string;
 }
 
 // --- Search / Import DTOs ---

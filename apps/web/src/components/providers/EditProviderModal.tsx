@@ -400,7 +400,14 @@ export function EditProviderModal({
                 lastName:  nameIdx > -1 ? c.name.slice(nameIdx + 1) : '',
                 role: c.role || 'Sales Rep',
                 phone: c.phone || '',
-                phoneType: 'main_line',
+                // The STORED value, not a literal. This line used to hardcode
+                // 'main_line', which threw away whatever the row held and made
+                // the picker below unable to show a manager their own answer
+                // (ADR 0121 P0 item 2). Falls back to 'main_line' only when the
+                // row carries nothing, which is what this modal's local type
+                // can express; the /providers-next sheet shows the three-way
+                // state (mobile / not textable / nobody has said) properly.
+                phoneType: (c.phoneType as ProviderContactEntry['phoneType']) || 'main_line',
                 email: c.email || '',
                 isPrimary: c.isPrimary ?? false,
                 tag: '',

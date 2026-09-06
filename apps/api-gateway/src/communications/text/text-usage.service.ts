@@ -460,6 +460,97 @@ export class TextUsageService {
   }
 
   /**
+   * Write ONE meter row for ONE outbound text.
+   *
+   * WRITTEN WHETHER OR NOT IT COUNTS AGAINST ANYTHING, which is the migration's
+   * own rule for this table: a free-form WhatsApp reply inside an open window
+   * is free on Meta's rate card, and a table that only recorded chargeable
+   * messages could not answer "how much does this house actually send" — the
+   * question the first allowance is supposed to be derived from.
+   *
+   * WRITTEN WHEN THE OUTCOME IS UNKNOWN, TOO. A dispatch that timed out may
+   * have been accepted; `countsAgainstAllowance: false` with a reason saying so
+   * is an honest row, and NOT writing one would leave the send invisible to the
+   * only ledger that counts sends. An uncounted message is recoverable; a
+   * missing one cannot even be enumerated ([[absence-reported-as-health]], the
+   * O class).
+   *
+   * RETURNS WHETHER IT LANDED. Supabase resolves `{ data, error }` rather than
+   * throwing, so a caller that ignored this would report a metered send for a
+   * row that does not exist — which is the `pos-hub.service.ts:950` fault
+   * pointed at a bill.
+   */
+  async recordSend(params: {
+    restaurantId: string;
+    senderId: string | null;
+    channel: "whatsapp" | "sms";
+    provider: "meta_cloud" | "twilio";
+    countsAgainstAllowance: boolean;
+    billableReason: string;
+    providerMessageRef: string | null;
+    costState: "not_reported_yet" | "reported" | "unavailable";
+    costMinor?: number | null;
+    costCurrency?: string | null;
+    teamNoteDeliveryId?: string | null;
+    now?: Date;
+  }): Promise<{ recorded: boolean; id: string | null; reason: string | null }> {
+    const { data: houseRow, error: houseError } = await this.sb
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", params.restaurantId)
+      .maybeSingle();
+
+    // BOUND AND LOGGED. A failed read here does not stop the meter row being
+    // written — losing the row is worse than filing it in the wrong month —
+    // but it does change which month the message lands in, so it must not be
+    // silent. `monthKeyFor` falls back to UTC and STAMPS `month_timezone`
+    // with what it used, so the row itself says which clock produced its key.
+    if (houseError) {
+      this.logger.error(
+        `recordSend: this house's timezone could not be read (${houseError.message}); the month key falls back to UTC and the row records that.`,
+      );
+    }
+
+    const { monthKey, monthTimezone } = this.monthKeyFor(
+      ((houseRow as Record<string, unknown> | null)?.timezone as string | null) ??
+        null,
+      params.now ?? new Date(),
+    );
+
+    const reported = params.costState === "reported";
+    const { data, error } = await this.sb
+      .from("house_message_meter")
+      .insert({
+        restaurant_id: params.restaurantId,
+        sender_id: params.senderId,
+        team_note_delivery_id: params.teamNoteDeliveryId ?? null,
+        channel: params.channel,
+        provider: params.provider,
+        month_key: monthKey,
+        month_timezone: monthTimezone,
+        counts_against_allowance: params.countsAgainstAllowance,
+        billable_reason: params.billableReason,
+        provider_message_ref: params.providerMessageRef,
+        provider_cost_state: params.costState,
+        // The table's `house_message_meter_cost_matches_state` CHECK refuses a
+        // reported cost missing either half and refuses an unreported one
+        // carrying either. Sent as null rather than omitted so the shape is
+        // visible here and not only in the constraint.
+        provider_cost_minor: reported ? (params.costMinor ?? null) : null,
+        provider_cost_currency: reported ? (params.costCurrency ?? null) : null,
+        provider_cost_reported_at: reported ? new Date().toISOString() : null,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      this.logger.error(`house_message_meter insert failed: ${error.message}`);
+      return { recorded: false, id: null, reason: error.message };
+    }
+    return { recorded: true, id: String(data.id), reason: null };
+  }
+
+  /**
    * Record a purchase of message credits.
    *
    * SEALED BEFORE IT REACHES HERE. The seal id is a required argument and the

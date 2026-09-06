@@ -319,6 +319,31 @@ the two registers that would actually leak are refused at the gateway as well.
   rule and saying the file is on the record. The upload is **not sealed**, on
   purpose — an upload is not money, and the write it can cause is a price
   sighting a manager can see, question and have withdrawn
+- **A manager can stop a text sender from this page.** ADR 0114's rule is that
+  the *attachment* is the house's, so ending it is a house act and not a
+  personal one. The **Stop it** control appears on a sender row only when there
+  is a live sender to stop, calls the existing
+  `POST /communications/text-senders/revoke` with a stated reason (the gateway
+  requires one and keeps it on the row), and then **re-reads the register**
+  rather than painting *Stopped* itself — the row's state is the server's, and a
+  page that drew it would be claiming a write it only asked for (ADR 0083). A
+  refused stop replaces the row's note with *"This sender was NOT stopped, so
+  the house can still send through it"* and the number stays usable, which is
+  the truth. The two **declare** controls are still disabled and still carry the
+  server's own reason
+- **The transport line is measured for THIS house, not asserted for the
+  deployment.** `transport` used to be a hard-coded `{ built: false }` with a
+  sentence about no credential existing anywhere. That was true when it was
+  written and stopped being true the moment a dispatch landed — and a constant
+  cannot notice. The gateway now answers **`built`** (a dispatch exists in this
+  build at all) and **`wired`** (this house has a live provider credential
+  behind its sender), with `wired: null` for a read that failed — never `false`,
+  which would say the house has no provider account when the truth is that we
+  could not tell. A house that IS wired reads *"a WhatsApp reply inside an open
+  24-hour customer service window will be sent and metered"*, and it is the only
+  thing that can leave: there are no templates in this build, so the house
+  cannot start a conversation, and a message outside the window is refused
+  rather than queued (ADR 0121 P1)
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_connections`)
 
@@ -611,8 +636,10 @@ because it is true, and it changes when the deployment's mailbox does.
 
 Each is rendered honestly on the page rather than hidden.
 
-- **G-C10 — neither text-sender control does anything yet.** Both paths are
-  drawn and both are disabled. `POST /communications/text-senders/own` and
+- **G-C10 — neither text-sender *declare* control does anything yet.**
+  *(Narrowed 2026-09-06: the **Stop it** control now works — see §1a. What
+  follows is about the two ways to get a sender, which are still disabled.)*
+  Both paths are drawn and both are disabled. `POST /communications/text-senders/own` and
   `…/request` exist and are manager-gated, but this page has no form that calls
   them: connecting a WhatsApp number means running Meta's Embedded Signup in
   Meta's own window, which is a browser flow this page does not yet host, and
@@ -620,6 +647,17 @@ Each is rendered honestly on the page rather than hidden.
   reference, a use case, two sample messages and a 40-2049-character opt-in
   description — a sheet, not a button. Filed rather than papered over with a
   control that would open nothing.
+- **G-C15 — the dispatch exists and no house can reach it.** ADR 0121 P1 built
+  a real WhatsApp send: a signed inbound webhook, the 24-hour window as a read,
+  and one HTTP call behind a resolved credential. `house_text_sender_credentials`
+  holds **zero rows** and **no route writes one** — the credential arrives from
+  Meta's Embedded Signup code-for-token exchange, which sits behind Business
+  Verification and App Review (neither done) and must target v4, since
+  **Embedded Signup v2 is deprecated on 2026-10-15**. So this row's `wired` is
+  `false` for every house today and the page says so in the server's own words.
+  It is filed rather than hidden because "the transport is not built" and "your
+  house is not connected to it" are different sentences and only the second is
+  now true.
 - **G-C11 — a sender can never reach `connected` from this surface.** Only a
   live probe may move a row there and no probe exists (`last_probe_at` is NULL
   on every row, by construction). So the `connected` state is currently

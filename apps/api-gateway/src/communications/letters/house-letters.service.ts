@@ -57,7 +57,10 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { COMMITMENT_PATTERN_SOURCES } from "../../common/orchestrator/commitment-patterns";
+import {
+  composerGuardrails,
+  type GuardrailHit,
+} from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
 import { HouseSenderService } from "./house-sender.service";
@@ -106,12 +109,11 @@ export type LetterCategory = (typeof LETTER_CATEGORIES)[number];
  *  (procurement.service.ts:2697-2703 filters on that last one). */
 export const LETTER_TEMPLATE_TYPE = "letter";
 
-export interface GuardrailHit {
-  rule: string;
-  /** The sentence shown to the writer. Never a code, never silent. */
-  says: string;
-  blocking: boolean;
-}
+// Re-exported, not redeclared: the rules moved to `composer-guardrails.ts` so
+// the WhatsApp send path can run the SAME function rather than a second copy
+// (ADR 0121 P1). Every existing importer of `GuardrailHit` from this file keeps
+// working, and there is exactly one definition.
+export type { GuardrailHit } from "./composer-guardrails";
 
 export interface BookEntry {
   providerId: string;
@@ -121,14 +123,6 @@ export interface BookEntry {
   source: "provider" | "contact";
 }
 
-const COMMITMENT_RE = COMMITMENT_PATTERN_SOURCES.map((s) => new RegExp(s, "i"));
-
-/** An unresolved merge token: `{{ anything }}`. */
-// `[^{}]+` between the literal braces: one quantifier, nothing adjacent for it
-// to share a character with, so the match is linear in the letter's length. The
-// earlier `\s*[^}]+\s*` let a space match either side and backtracked
-// quadratically on a body full of them.
-const UNRESOLVED_TOKEN_RE = /\{\{[^{}]+\}\}/;
 
 @Injectable()
 export class HouseLettersService {
@@ -274,40 +268,11 @@ export class HouseLettersService {
     subject: string;
     priorOutboundOnOrder: number | null;
   }): GuardrailHit[] {
-    const hits: GuardrailHit[] = [];
-    const text = `${params.subject}\n${params.body}`;
-
-    const matched = COMMITMENT_RE.filter((p) => p.test(text));
-    if (matched.length > 0) {
-      const phrase = firstMatch(text, matched[0]);
-      hits.push({
-        rule: "commitment_language",
-        says: `This letter contains language that can form a binding purchase commitment${phrase ? ` — "${phrase}"` : ""}. Mudavym will not send a commitment from a free-text letter. Rewrite the sentence, or place the order so the commitment is the order and not the prose.`,
-        blocking: true,
-      });
-    }
-
-    const token = UNRESOLVED_TOKEN_RE.exec(params.body);
-    if (token) {
-      hits.push({
-        rule: "unresolved_merge_field",
-        says: `The letter still contains an unfilled merge field (${token[0]}). Fill it or delete the sentence — a letter that ships a raw placeholder tells the vendor a figure exists when none was found.`,
-        blocking: true,
-      });
-    }
-
-    if (
-      params.priorOutboundOnOrder !== null &&
-      params.priorOutboundOnOrder + 1 >= 3
-    ) {
-      hits.push({
-        rule: "max_rounds",
-        says: `This is message ${params.priorOutboundOnOrder + 1} from the house on this order. The AI reply path stops and asks for approval at three; you are the approval, so this is stated, not blocked.`,
-        blocking: false,
-      });
-    }
-
-    return hits;
+    // DELEGATED, NOT REIMPLEMENTED. The rules moved to `composer-guardrails.ts`
+    // in the ADR 0121 P1 pass so the WhatsApp send path could run the same
+    // function; the letter path's behaviour is unchanged, and there is one
+    // definition of "what the composer refuses" rather than two that can drift.
+    return composerGuardrails(params);
   }
 
   // ==========================================================================
@@ -861,11 +826,6 @@ export class HouseLettersService {
 /** Case- and whitespace-insensitive address comparison. */
 export function sameAddress(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-function firstMatch(text: string, re: RegExp): string | null {
-  const m = re.exec(text);
-  return m ? m[0] : null;
 }
 
 /** The merge fields a template body actually declares, in order of appearance. */

@@ -67,6 +67,12 @@ describe("ProvidersController", () => {
           phone: "+1234567890",
           role: "Sales Manager",
           isPrimary: true,
+          // ADR 0121 P0 item 2: the response now carries the phone's reach and
+          // whether anybody actually stated it. `unstated` is the honest
+          // verdict for a fixture that names no phone_type.
+          reach: "unstated" as const,
+          phoneTypeStated: false,
+          reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
         },
         {
           id: "contact-2",
@@ -76,6 +82,12 @@ describe("ProvidersController", () => {
           phone: "+0987654321",
           role: "Account Manager",
           isPrimary: false,
+          // ADR 0121 P0 item 2: the response now carries the phone's reach and
+          // whether anybody actually stated it. `unstated` is the honest
+          // verdict for a fixture that names no phone_type.
+          reach: "unstated" as const,
+          phoneTypeStated: false,
+          reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
         },
       ];
 
@@ -134,6 +146,12 @@ describe("ProvidersController", () => {
         phone: createDto.phone,
         role: createDto.role,
         isPrimary: createDto.isPrimary!,
+        // ADR 0121 P0 item 2: the response now carries the phone's reach and
+        // whether anybody actually stated it. `unstated` is the honest
+        // verdict for a fixture that names no phone_type.
+        reach: "unstated" as const,
+        phoneTypeStated: false,
+        reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
       };
 
       mockProvidersService.addProviderContact.mockResolvedValue(
@@ -179,6 +197,12 @@ describe("ProvidersController", () => {
         phone: "+1234567890",
         role: "Manager",
         isPrimary: false,
+        // ADR 0121 P0 item 2: the response now carries the phone's reach and
+        // whether anybody actually stated it. `unstated` is the honest
+        // verdict for a fixture that names no phone_type.
+        reach: "unstated" as const,
+        phoneTypeStated: false,
+        reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
       };
 
       mockProvidersService.updateProviderContact.mockResolvedValue(

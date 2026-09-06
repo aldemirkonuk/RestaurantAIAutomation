@@ -1,6 +1,17 @@
 # 0121 — The house's text sender
 
-- **Status:** **Accepted 2026-09-05 in FIVE parts the founder decided; the rest stays Proposed.**
+- **Status:** **P0 and P1 are BUILT (2026-09-06). Accepted 2026-09-05 in FIVE parts
+  the founder decided; the rest stays Proposed.**
+  P0 is complete — the push report is three-way *and now executed by tests*, and the
+  book can tell a mobile from a landline from a value nobody chose. P1 is built:
+  a signed Meta Cloud API inbound webhook threading onto `procurement_conversations`,
+  the 24-hour customer service window as a read, and a real dispatch that sends a
+  free-form reply inside an open window and refuses outside it. **This is the first
+  pass in which a message can leave**, and it leaves only for a house holding a live
+  provider credential — `house_text_sender_credentials` still holds zero rows on this
+  deployment, and no route writes one (see "What P0 and P1 made true" below for the
+  fork that leaves open). Templates, house-initiated conversations and the SMS legs
+  are untouched and still refused.
   **A sixth and seventh were accepted on 2026-09-05/06** and are written up in
   the founder-answer sections at the foot of this document: (6) WhatsApp is
   **bring-your-own billing** — a Tech Provider has no credit line, so each house
@@ -833,6 +844,220 @@ deliberately, on one house, watching — not to set it across the fleet from a
 quarter's aggregate.
 
 
+## What P0 and P1 made true, 2026-09-06
+
+Written as file:line and measured counts, because the last four passes of this
+document each recorded something as shipped and the reader has no way to tell a
+built thing from a described one without them.
+
+### P0 — the silence is honest
+
+1. **The push report was already three-way and had never been RUN.** The four
+   outcomes (`no_recipients`, `no_device_registered`, `read_failed`,
+   `accepted_by_service`) shipped on 2026-09-05 at
+   `apps/api-gateway/src/push/expo-push.service.ts:32-38`, and
+   `apps/api-gateway/src/push/` held **no spec file at all**.
+   `team.controller.broadcast.spec.ts:136` stubs `sendToUsers` wholesale with
+   `outcome: "accepted_by_service"`, so reverting the method to its old body —
+   `if (error || !data?.length) return;` — would have failed **none of the 5539
+   tests**. That is a guard whose failing half has never executed, on the exact
+   number this ADR was written about. Six cases now execute all four branches
+   plus the throw: `apps/api-gateway/src/push/expo-push.service.spec.ts`,
+   **6 passed**. The count-off-devices-not-roster assertion is the one that
+   fails if the fault comes back.
+
+2. **The book holds a mobile.** `provider_contacts.phone_type` was never written
+   by any path: `addProviderContact` and `updateProviderContact` built their
+   payloads without the column
+   (`apps/api-gateway/src/providers/providers.service.ts:664-670`, `:697-701`
+   as they stood), so every row acquired `'main_line'` from the column's
+   `DEFAULT`. The legacy sheet's picker
+   (`apps/web/src/components/providers/EditProviderModal.tsx:1504`) wrote to
+   local state, the modal has **no call to `addProviderContact` or
+   `updateProviderContact` anywhere**, and its hydrate at `:403` overwrote
+   whatever the row held with the literal `'main_line'`.
+
+   Now: `apps/api-gateway/src/providers/phone-reachability.ts` classifies a
+   stored value into **two facts, never one** — `reach`
+   (`mobile` / `landline` / `unstated`) and `stated`. The write path names the
+   column on every insert and sends an **explicit NULL** when the caller said
+   nothing (`providers.service.ts:671-681`), which is the only way to make
+   "nobody has said" expressible without a migration: PostgREST sends the key,
+   so Postgres does not substitute the default. `mapContactRow`
+   (`providers.service.ts:731-751`) returns `reach`, `phoneTypeStated` and the
+   server's own sentence.
+
+   **`'main_line'` reports `landline` with `stated: false`**, and that is the
+   load-bearing line. A row carrying it may be a value a manager chose or a
+   value the column invented, and no query can separate them — so the reading
+   goes in the safe direction (a withheld text is recoverable; a text read aloud
+   by a switchboard is not) and says out loud that nobody answered.
+   `apps/api-gateway/src/providers/phone-reachability.spec.ts`, **13 passed**,
+   including one that reads the default back off
+   `supabase/migrations/20260805000000_baseline_from_production.sql:4677` so a
+   future migration cannot silently move it.
+
+   The surface is a new section on the vendor sheet:
+   `apps/web/src/pages/providers/next/ContactsSection.tsx` +
+   `useProviderContacts.ts`, wired into `TwinSheet.tsx:92-99`. Three chips, and
+   `Not stated` wins over `Not textable` when nobody has answered.
+   `ContactsSection.test.tsx`, 6 cases.
+
+3. **Nothing sent, in P0.** Still true of P0. P1 changes it, deliberately.
+
+### P1 — WhatsApp, reply-shaped, and it dispatches
+
+**The inbound door.** `POST/GET /communications/webhooks/whatsapp`
+(`apps/api-gateway/src/communications/text/inbound/whatsapp-webhook.controller.ts`).
+Both routes are `@Public()` and say so, per ADR 0096; the token they carry
+instead of a JWT is Meta's own:
+
+- the GET handshake compares `hub.mode` against `"subscribe"` and
+  `hub.verify_token` against this deployment's, in constant time, and echoes
+  `hub.challenge` as the **body** of a 200
+  (`inbound/meta-webhook-signature.ts:139-196`);
+- the POST verifies `X-Hub-Signature-256` — `sha256=<hex>`, HMAC-SHA256 of the
+  **raw bytes** keyed on the app secret, compared with `timingSafeEqual`
+  (`meta-webhook-signature.ts:83-131`).
+
+Both schemes are transcribed from
+[developers.facebook.com/docs/graph-api/webhooks/getting-started](https://developers.facebook.com/docs/graph-api/webhooks/getting-started),
+fetched **2026-09-06**; the payload shape from
+[.../whatsapp/cloud-api/webhooks/payload-examples](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples),
+same date; the window rule from
+[.../whatsapp/cloud-api/guides/send-messages](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages),
+same date — *"When a WhatsApp user messages you or calls you, a 24-hour timer
+called a customer service window starts… When the window closes, you can only
+send pre-approved template messages."*
+
+**A missing app secret REFUSES.** `verifyMetaSignature` checks the secret first
+and on its own, and the route answers 401 for it. Treating an absent secret as
+"nothing to check" would turn a public URL into an unauthenticated write on
+every house's conversation book, which is
+[[absence-reported-as-health]] aimed at the one door nobody would look at.
+
+**The provenance is the mail path's, column for column.**
+`inbound/whatsapp-inbound.service.ts:196-236` writes `direction: "inbound"`,
+`channel: "whatsapp"`, the body in `message_text`, `received_at`,
+`delivery_status: "delivered"`, the `wamid` in `message_id`, and the transport
+envelope in `email_headers` — the same six the mail bridge writes at
+`common/orchestrator/rabbitmq-bridge.service.ts:745-770`. `order_id` is `NULL`
+and is not guessed: the mail path's fallback keys on a Gmail thread, and
+attaching "the most recent open order" would put a vendor's sentence on an
+order they never mentioned.
+
+**Three refusals that are not errors and are not silence.** No sender holds that
+`phone_number_id`; the number is not in that house's book (ADR 0118 D3 read
+backwards — and no vendor is created from a stranger's WhatsApp profile); the
+`wamid` is already stored (Meta retries what it did not get a 200 for). Each is
+a counted disposition with a sentence, enumerated in the response and logged as
+counts. **The tenant comes from `house_text_sender_credentials.sender_ref`, never
+from the payload** — asserted both behaviourally and structurally.
+
+**The window is a read, off the house's own book.**
+`inbound/whatsapp-book.service.ts:243-320`. Three verdicts: `open`, `closed`,
+and `unknown` for a read that failed. Folding `unknown` into `closed` would put
+our outage into the house's language ("start with a template"); folding it into
+`open` would hand Meta a message it refuses after the surface said it went.
+Computing it from our own mirror rather than from Meta is the mirror rule doing
+work: Meta holds the transport, the house's book holds the record.
+
+**The dispatch.** `providers/text-dispatch.service.ts` — the one place in this
+product where a text message leaves the building. The adapters and the registry
+are untouched and still hold **no HTTP primitive**, which is why it is a
+separate file: `text-transport.spec.ts`'s "the adapters cannot send" block is
+unchanged and still passes, and `whatsapp-send.spec.ts` adds its completing
+half — **exactly one** non-spec file under `communications/text/` holds an HTTP
+call, asserted over a walk of the whole tree.
+
+**The send.** `whatsapp-send.service.ts`, in this order and for these reasons:
+the book (the reply is addressed to the number the vendor **wrote from**, off
+the mirrored inbound row, so book-only holds by construction rather than by
+validation) → **the composer's guards, unchanged** → the window → the transport
+→ the money gate → **the mirror, written before the provider is asked** → the
+dispatch → the meter.
+
+- *Outside the window*: refused, with a sentence that says *"nothing was sent
+  and nothing was queued — it will not go out when they next reply"*. There is
+  no retry, no backlog and no scheduled column on this path. Queuing would be
+  the worse failure: the message would leave hours later, out of context, in the
+  house's name.
+- *Inside*: one request, one `procurement_conversations` outbound row, one
+  `house_message_meter` row — `counts_against_allowance: false` with the reason
+  quoting Meta's own rate card, and `provider_cost_state: 'not_reported_yet'`.
+- *Unreachable provider*: recorded as **unknown**, never as "not sent". A
+  timed-out POST may have been accepted, and telling a manager it failed is how
+  a vendor gets the same message twice.
+- *Mirror write fails*: the send is **refused**. ADR 0121 P1 says the mirror is
+  a precondition; a message Meta holds and the house's book does not is the
+  custody problem the mirror exists to answer.
+
+**The guards are the same function, not a copy.** `composerGuardrails` moved to
+`communications/letters/composer-guardrails.ts` and
+`HouseLettersService.guardrails` now delegates to it. The letter path's
+behaviour is byte-identical; the text path runs the same commitment-language
+regexes, the same unresolved-merge-token check and the same round count. Copying
+them was the alternative and was refused: a phrase added to one list and not the
+other is a hole nobody can see, on the channel this ADR says needs the guard
+*more*.
+
+**`transport: { built: false }` was a hard-coded constant and is now measured.**
+`text-senders.controller.ts` answered a fixed object saying nothing could be
+sent. That was true when written and stopped being true the moment a dispatch
+existed — and a constant cannot notice. It is now
+`TextSenderService.transportReadout`, which resolves this house's credential and
+reports `built` (a dispatch exists) and `wired` (this house has a live
+credential), with `wired: null` for a read that failed. The same self-report
+fault as [[absence-reported-as-health]], pointed the other way: asserting an
+absence you never checked is exactly as wrong as asserting a health you never
+checked.
+
+**A manager may stop it.** `/connections`' text-sender rows gained an enabled
+**Stop it** control wired to the existing `POST /communications/text-senders/revoke`
+(`apps/web/src/pages/connections/next/ConnectionsNext.tsx`, the `TextSenderRow`
+controls), and it re-reads the register rather than painting the new state
+itself. The two *declare* controls stay disabled and still carry the server's
+reason.
+
+### The forks this pass recorded rather than settled
+
+1. **No route writes a credential, so the dispatch is unreachable on this
+   deployment.** `house_text_sender_credentials` holds zero rows and the only
+   way to fill one is Meta's Embedded Signup code-for-token exchange, which sits
+   behind Business Verification and App Review (neither done) and against v4,
+   since **Embedded Signup v2 dies 2026-10-15**. Building an untested exchange
+   against an app that has not passed review would be inventing a provider
+   integration nobody can exercise. **Recommendation, and what was done:** build
+   the dispatch and its refusals now, seed a credential only in tests, and file
+   the exchange as the next piece of work. The cost of the alternative — wiring
+   a form that accepts a token — is a field on this platform that takes a
+   secret, which `text-senders.dto.ts` refuses by design.
+
+2. **`phone_type` still carries `DEFAULT 'main_line'`.** Dropping the default
+   in a migration would make future absence visible as NULL at the database
+   rather than only in the write path. It was **not** done, because no table
+   this ADR names is missing and a column change on the busiest vendor table
+   belongs in its own pass with its own backfill question. **Recommendation:**
+   drop the default and add a CHECK on the vocabulary when the vendor-book pass
+   next opens. Until then the code carries the honesty and
+   `PHONE_TYPE_COLUMN_DEFAULT` is asserted against the baseline so the two
+   cannot drift apart silently.
+
+3. **A vendor's consent is the open window, not a `person_text_consents` row.**
+   `person_text_consents` is a PERSON's agreement to be texted by their house
+   and a vendor is not a user. Meta's own opt-in rule is satisfied by the vendor
+   having written first, which is exactly what an open 24-hour window is
+   evidence of. **Recommendation:** leave it there. Adding a vendor consent row
+   would be a second record of a fact Meta already gates, and the first time the
+   two disagreed the product would have to choose which one to believe.
+
+4. **`'direct'` counts as a landline.** A "direct line" is usually a desk phone,
+   so it is not textable. If a house means "the rep's direct mobile" by it, the
+   read is wrong in the withholding direction. **Recommendation:** leave it, and
+   let the sheet's `Mobile` and `WhatsApp` options carry that meaning — the cost
+   of guessing the other way is a text to a desk.
+
+
 ## What only the founder can decide
 
 1. ~~**Does a crew text exist at all, or does the crew stay on inbox and push?**~~
@@ -1179,6 +1404,7 @@ of the world past step 3 is reachable from a row.
 
 | 2026-09-06 | Claude (intent-row pass) | **The window is closed.** Migration `20260906110000` adds `house_message_purchase_intents` — four states with no default, one intent per seal, and four constraints that make a row unable to lie about what has already happened (settled needs both halves, voided needs a reason, `charge_may_exist` needs an attempt time, `intended` may carry neither). `PurchaseIntentService` writes it before the provider exists to the request and marks `charge_may_exist` **before** the call; `PurchaseIntentReconciler` reads the provider by the seal id and settles, voids, or refuses to judge an intent younger than the provider's own search lag; `StripeClient.findChargeBySeal` and `BillingService.findChargeForSeal` are the read, sharing the one door through the money-resource deny-list and keeping "no charge found" apart from "the provider could not be asked". The door is `POST /communications/text-credits/reconcile` behind `ServiceKeyGuard`, allow-listed in the money guard with its reason, plus `scripts/reconcile_message_credit_purchases.py`. The response dropped `charged`/`recorded` for one `state`, asserted by a test that fails if either property returns. The ORDER is proven by a **mutation**: the charge stub records the intent's state as it stood when it was called, and moving the charge above the mark makes the suite fail — verified by doing it. PGlite: **77 checks, 0 errors**. |
 | 2026-09-06 | Claude (audit response) | **Two audit findings on the charge path, both closed.** DEFECT: `BillingService.chargeForMessageCredits` and its private `instrumentToCharge` had **zero direct coverage** — the credits spec mocked the method wholesale and `billing.service.spec.ts` never called it, so a regression in the `requires_action` check (filing an unauthenticated 200 as a payment) or in the read-failure branch would have failed none of the 553 tests. Sixteen cases added against a stubbed `StripeClient` and `DatabaseService` with the method itself real: the five outcomes, five non-`succeeded` statuses refused, a missing status not defaulted to success, the instrument taken from the MIRROR and not the provider, and the seal id in the idempotency key. **Each case proven by a one-change mutation**: ten mutations of `billing.service.ts` in a scratch copy, `10/10` killed by the case named in its comment, the file restored byte-identically and verified with `diff -q`. NIT: `stripe.client.spec.ts` restated the deny-list by hand and covered eight of its ten entries — `subscription_items` and `invoiceitems` were enforced in shipped code and asserted nowhere. `FORBIDDEN_PATHS` is now exported and iterated, sub-paths are covered for all ten rather than one, and normalisation (leading slash, case) is asserted; dropping either previously-untested entry now fails the suite, verified. Suite 553 -> 582. |
+| 2026-09-06 | Claude (P0 + P1 build pass) | **P0 closed and P1 built — the first pass in which a message can leave.** P0 item 1 turned out to be *shipped and never executed*: `src/push/` held no spec at all, so all four push outcomes existed and reverting `sendToUsers` to `if (error || !data?.length) return;` would have failed none of the 5539 tests; six cases now run every branch. P0 item 2 built the write path (`phone_type` named on every insert with an **explicit NULL** when the caller said nothing, so Postgres cannot substitute its default) and the read that returns **two facts, not one** — `reach` and `stated` — with `'main_line'` reporting `landline`/`stated: false` because the column's own default is byte-identical to a manager's answer; the legacy sheet's picker was writing to local state and its hydrate was overwriting the stored value with the literal `'main_line'`. P1: a `@Public()` Meta Cloud API webhook authenticated by `X-Hub-Signature-256` over the raw body with `timingSafeEqual` (401 on a wrong signature **and** on a missing secret, storing nothing either way, tenant from our own credential row and never from the payload); threading in the mail path's provenance shape, idempotent on the `wamid`; the 24-hour window as a **three-verdict** read off the house's own mirror; and a real dispatch in ONE new file so `text-transport.spec.ts`'s "the adapters cannot send" assertion is *completed* rather than relaxed — a walk of the whole `text/` tree now asserts exactly one file holds an HTTP primitive. A send outside the window is refused with the reason and **nothing is queued**; inside, one request, one mirrored row and one meter row, free by Meta's own rule. The composer's guards MOVED to `letters/composer-guardrails.ts` and are called by both paths — one implementation, byte-identical behaviour for the letter. `transport: { built: false }` was a hard-coded constant and is now measured per house (`built` / `wired` / `wired: null` for a failed read): asserting an absence you never checked is the same fault as asserting a health you never checked. **Measured:** gateway tsc both configs 0 errors; `npx jest` **369 suites, 5543 passed, 14 skipped, 0 failed** (65 new); web tsc clean, `vitest run` **164 files, 2308 passed**; `check_gateway_boots.sh` PASS; route-exposure, new-tables-locked-down, read-columns-exist, queried-tables-exist, read-errors-not-swallowed, money-routes-sealed, money-states-its-currency, migration-versions-unique, fk-targets-exist, citation-pairing all PASS; `check_decision_claims.sh` 254 checked, 254 holding. **No migration** — every table this pass writes to already exists. Four forks recorded rather than settled, the sharpest being that **no route writes a credential**, so the dispatch is real code that no house on this deployment can reach yet: Embedded Signup sits behind Business Verification and App Review, and v2 dies 2026-10-15. |
 
 ## Review trail, continued (parent, 2026-09-06) — 565ea4d4 and 9ac36595
 

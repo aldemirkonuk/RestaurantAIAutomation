@@ -226,7 +226,10 @@ function base(): Fixture {
       },
       surveyedMarkets: { whatsapp: ['TR', 'US'], sms: ['US', 'TR'] },
       transport: {
-        built: false,
+        // The dispatch exists in the build; THIS house is not wired to it.
+        // Two facts, because they became two the day the dispatch landed.
+        built: true,
+        wired: false,
         words:
           'No provider credential for a per-house sender exists on this deployment, so nothing can leave through one yet.',
       },

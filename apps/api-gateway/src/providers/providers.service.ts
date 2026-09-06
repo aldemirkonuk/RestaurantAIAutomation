@@ -24,6 +24,7 @@ import {
   UpdateProviderLocationDto,
 } from "./dto/providers.dto";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
+import { phoneReachability } from "./phone-reachability";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
@@ -668,6 +669,16 @@ export class ProvidersService {
       phone: dto.phone ?? null,
       role: dto.role ?? null,
       is_primary: dto.isPrimary ?? false,
+      // NAMED EVEN WHEN THE CALLER SAID NOTHING (ADR 0121 P0 item 2).
+      // The column is `text DEFAULT 'main_line'`
+      // (`20260805000000_baseline_from_production.sql:4677`), so OMITTING the
+      // key makes Postgres invent a landline for a number nobody described —
+      // and an invented value is byte-identical to a chosen one afterwards.
+      // An explicit NULL is sent instead, so "nobody has said" survives as a
+      // fact the read can report. Nothing is backfilled: rows written before
+      // this line carry the default and `phoneReachability` reports them as
+      // `stated: false` rather than guessing which they were.
+      phone_type: dto.phoneType ?? null,
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -698,6 +709,10 @@ export class ProvidersService {
     if (dto.phone !== undefined) updatePayload.phone = dto.phone;
     if (dto.role !== undefined) updatePayload.role = dto.role;
     if (dto.isPrimary !== undefined) updatePayload.is_primary = dto.isPrimary;
+    // Only when the caller said. An UPDATE that always wrote the column would
+    // overwrite a manager's answer with a blank on every unrelated edit — the
+    // opposite failure from the insert's, and one a patch endpoint invites.
+    if (dto.phoneType !== undefined) updatePayload.phone_type = dto.phoneType;
 
     const { data, error } = await this.databaseService.supabase
       .from("provider_contacts")
@@ -1304,6 +1319,11 @@ export class ProvidersService {
   // =========================================================================
 
   private mapContactRow(row: Record<string, any>): ProviderContactResponseDto {
+    // Two facts, never one (ADR 0121 P0 item 2). `reach` is what may be done
+    // with the number; `phoneTypeStated` is whether anybody said so. Collapsing
+    // them is what let `main_line` — the column's own default — read on a
+    // surface as a manager's answer.
+    const reachability = phoneReachability(row.phone_type);
     return {
       id: row.id,
       providerId: row.provider_id,
@@ -1312,6 +1332,10 @@ export class ProvidersService {
       phone: row.phone ?? undefined,
       role: row.role ?? undefined,
       isPrimary: row.is_primary ?? false,
+      phoneType: reachability.phoneType,
+      reach: reachability.reach,
+      phoneTypeStated: reachability.stated,
+      reachSays: reachability.says,
     };
   }
 

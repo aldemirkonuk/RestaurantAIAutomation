@@ -198,6 +198,45 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   duty is the restaurant's own. A GB or US house is never shown that sentence
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
+- **A vendor's WhatsApp reply is a conversation row like a letter, not a second
+  object** (ADR 0121 P1). The inbound webhook writes `direction: "inbound"`,
+  `channel: "whatsapp"`, the body in `message_text`, `received_at`,
+  `delivery_status: "delivered"`, the `wamid` in `message_id` and the transport
+  envelope in `email_headers` — the same six columns and the same meanings the
+  mail bridge writes, so a WhatsApp reply and a mail reply are the same kind of
+  row to the thread view, the round count and the weekly report. `order_id` is
+  **NULL and is not guessed**: the mail path's fallback keys on a Gmail thread,
+  and attaching "the most recent open order" would put a vendor's sentence on an
+  order they never mentioned
+- **The house may only ANSWER on WhatsApp, and only inside 24 hours.** Meta:
+  *"When a WhatsApp user messages you or calls you, a 24-hour timer called a
+  customer service window starts… When the window closes, you can only send
+  pre-approved template messages."* This build has no templates, so a closed
+  window is a **refusal** and not a fallback — the words say *"nothing was sent
+  and nothing was queued — it will not go out when they next reply"*, and there
+  is no retry, no backlog and no scheduled column on that path. An **unreadable**
+  window is a third answer kept apart from a closed one: a manager told to start
+  with a template for our own failed read has been handed the wrong problem
+- **There is no recipient field on a WhatsApp reply.** ADR 0118 D3's book-only
+  rule holds by construction rather than by validation: the reply goes to the
+  number the vendor actually wrote from, read off the mirrored inbound row — a
+  number that is in the book (the inbound path refuses to thread one that is
+  not) and is demonstrably reachable on WhatsApp
+- **The composer's guardrails are one function, and both channels call it.**
+  `composerGuardrails` (`communications/letters/composer-guardrails.ts`) holds
+  the commitment-language block, the unresolved-merge-token block and the round
+  count; `HouseLettersService.guardrails` delegates to it and the WhatsApp send
+  path calls it directly. Copying them was the alternative and was refused — a
+  phrase added to one list and not the other is a hole nobody can see, on the
+  channel that needs the guard *more*, because a text is short and reads as
+  casual
+- **The outbound is mirrored BEFORE the provider is asked**, at
+  `delivery_status: 'attempting'`, and the send is **refused outright** if that
+  write fails. A message Meta holds and the house's book does not is the custody
+  problem the mirror rule exists to answer. A dispatch that does not complete
+  leaves the row at `unknown` — never "sent" and never "failed", because a
+  timed-out POST may have been accepted and telling a manager it failed is how a
+  vendor gets the same message twice
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
 
@@ -462,6 +501,38 @@ chrome per dashboard.md §7.
   DB CHECK constraint (memory: procurement-conversations-schema-gotchas).
 
 ## 9. Gaps
+
+### The WhatsApp leg's gaps, 2026-09-06 (ADR 0121 P1)
+
+- **G-M20 — no house can reach the dispatch.** The send is real code:
+  `communications/text/whatsapp-send.service.ts` builds the request through the
+  Meta adapter and `providers/text-dispatch.service.ts` performs the one HTTP
+  call in the tree. But it resolves a credential first, and
+  `house_text_sender_credentials` holds **zero rows** with **no route that
+  writes one** — the credential arrives from Meta's Embedded Signup
+  code-for-token exchange, which sits behind Business Verification and App
+  Review and must target v4 (**v2 is deprecated 2026-10-15**). Filed rather than
+  papered over with a form that accepts a token: `text-senders.dto.ts` refuses a
+  secret field by design, and a house typing one would be handing this platform
+  a credential the ADR says it must never see
+- **G-M21 — a delivery receipt is not read.** Meta's create response carries no
+  per-message status; `delivered` and `read` arrive later on the same webhook as
+  `statuses`. The parser **counts** them so "we received nothing" and "we
+  received six delivery receipts" are different answers, and does not thread
+  them. So an outbound row says `accepted_by_provider` — Meta holding it — and
+  never `delivered`, which is the honest limit of what this build knows
+- **G-M22 — a non-text inbound is recorded as what it is, not as its content.**
+  An image, a document or a voice note is threaded with a body naming the type
+  and saying to open WhatsApp. Writing a blank or a summary we invented would
+  put a sentence in a vendor's mouth, which is the fabrication ADR 0084 removed
+  from the outbound side
+- **G-M23 — an inbound from a number outside the book is not stored anywhere.**
+  `procurement_conversations.provider_id` is NOT NULL, so there is literally no
+  row to write, and creating a vendor from a stranger's WhatsApp profile name is
+  how a book acquires rows nobody added. It is **counted and logged with its
+  reason** and reported in the webhook's response, so it is a refusal rather
+  than a silence — but there is no surface a manager can look at to find it. The
+  mail path has a prospects lane for the equivalent case; this one does not yet
 
 ### The composer's own gaps, 2026-09-04 (ADR 0118)
 
