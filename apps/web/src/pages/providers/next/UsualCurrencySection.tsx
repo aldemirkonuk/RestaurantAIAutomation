@@ -26,7 +26,7 @@
  * cannot do something should learn who can, not that the thing does not exist.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -51,13 +51,32 @@ function serverMessage(e: unknown, fallback: string): string {
 export function UsualCurrencySection({
   providerId,
   providerName,
+  takeFocus,
 }: {
   providerId: string;
   providerName: string;
+  /**
+   * Set when the sheet was opened FROM the currency prompt (the coverage
+   * panel's link, or `?vendor=` from the order sheet's empty field). The
+   * section then scrolls itself into view and, for a person allowed to use it,
+   * takes focus on the control.
+   *
+   * ONCE, AND ONLY ONCE. The latch below is not politeness: this section
+   * refetches after a save and on window focus, and an effect that re-ran on
+   * every settled query would yank the caret out of whatever the person had
+   * moved on to. It also fires only after the read has SETTLED — before that
+   * there is no control to focus, and scrolling to a sentence that is about to
+   * be replaced moves the page under the reader.
+   */
+  takeFocus?: boolean;
 }) {
   const { activeRole, user } = useAuth();
   const role = activeRole ?? user?.role ?? null;
   const canManage = role === 'owner' || role === 'manager';
+
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const selectRef = useRef<HTMLSelectElement | null>(null);
+  const tookFocus = useRef(false);
 
   const [choice, setChoice] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +117,19 @@ export function UsualCurrencySection({
     },
   });
 
+  const settled = !stated.isLoading;
+  useEffect(() => {
+    if (!takeFocus || tookFocus.current || !settled) return;
+    tookFocus.current = true;
+    // `scrollIntoView` is absent in jsdom and in older embedded webviews; its
+    // absence must not take the focus call down with it.
+    sectionRef.current?.scrollIntoView?.({ block: 'center' });
+    // A disabled control cannot hold focus, so a staff member is brought to the
+    // section and reads why they cannot use it, rather than being sent to a
+    // field that refuses them silently.
+    selectRef.current?.focus();
+  }, [takeFocus, settled]);
+
   const label = (
     <h3
       style={{
@@ -136,7 +168,7 @@ export function UsualCurrencySection({
    */
   if (stated.isError)
     return (
-      <section data-testid="vendor-usual-currency">
+      <section data-testid="vendor-usual-currency" ref={sectionRef}>
         {label}
         <p
           style={{
@@ -163,7 +195,7 @@ export function UsualCurrencySection({
 
   if (stated.isLoading)
     return (
-      <section data-testid="vendor-usual-currency">
+      <section data-testid="vendor-usual-currency" ref={sectionRef}>
         {label}
         {note('Reading what this vendor usually invoices in…')}
       </section>
@@ -172,7 +204,7 @@ export function UsualCurrencySection({
   const code = stated.data?.code ?? null;
 
   return (
-    <section data-testid="vendor-usual-currency">
+    <section data-testid="vendor-usual-currency" ref={sectionRef}>
       {label}
 
       <div className="flex items-baseline justify-between gap-4 py-1">
@@ -208,6 +240,7 @@ export function UsualCurrencySection({
 
       <div className="flex gap-2 items-center" style={{ marginTop: 10 }}>
         <select
+          ref={selectRef}
           aria-label="Currency this vendor usually invoices in"
           data-testid="vendor-usual-currency-select"
           disabled={!canManage || save.isPending}

@@ -118,6 +118,16 @@ function BucketCard({
 export default function ProvidersNext() {
   const data = useProvidersNextData();
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
+  /*
+   * A sheet opened FROM THE CURRENCY PROMPT — the panel's link or `?vendor=` —
+   * carries the reason it was opened, so `UsualCurrencySection` can put the
+   * person at the field rather than at the top of a sheet with four other
+   * sections above it. A sheet opened by clicking a card carries nothing and
+   * behaves as it always has: the panel exists to bring somebody to the
+   * control, and a sheet that lands them anywhere else is a link that only
+   * looks like it worked.
+   */
+  const [openedForCurrency, setOpenedForCurrency] = useState(false);
 
   const knownIds = useMemo(
     () => new Set(data.cards.map((vm) => vm.provider.id)),
@@ -125,7 +135,9 @@ export default function ProvidersNext() {
   );
   const openById = (id: string) => {
     const found = data.cards.find((vm) => vm.provider.id === id);
-    if (found) setOpenProvider(found.provider);
+    if (!found) return;
+    setOpenedForCurrency(true);
+    setOpenProvider(found.provider);
   };
 
   // The deep link is honoured ONCE. Without the latch, closing the sheet on a
@@ -136,6 +148,7 @@ export default function ProvidersNext() {
     const found = data.cards.find((vm) => vm.provider.id === asked.current);
     if (!found) return;
     asked.current = null;
+    setOpenedForCurrency(true);
     setOpenProvider(found.provider);
   }, [data.cards]);
 
@@ -232,13 +245,25 @@ export default function ProvidersNext() {
               key={vm.provider.id}
               vm={vm}
               ordersKnown={data.ordersKnown}
-              onOpen={() => setOpenProvider(vm.provider)}
+              onOpen={() => {
+                setOpenedForCurrency(false);
+                setOpenProvider(vm.provider);
+              }}
             />
           ))}
         </div>
       </div>
 
-      {openProvider && <TwinSheet provider={openProvider} onClose={() => setOpenProvider(null)} />}
+      {openProvider && (
+        <TwinSheet
+          provider={openProvider}
+          focusUsualCurrency={openedForCurrency}
+          onClose={() => {
+            setOpenedForCurrency(false);
+            setOpenProvider(null);
+          }}
+        />
+      )}
     </div>
   );
 }

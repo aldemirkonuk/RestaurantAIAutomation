@@ -103,8 +103,11 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
   > ones that have not. No provenance lie."
 
   One panel printing *"3 of your 14 vendors have stated a usual currency"*, with each
-  unstated vendor a link that opens that vendor's TwinSheet at the section where it is
-  stated. It answers the cost batch 65 disclosed: with nothing pre-filled and no vendor
+  unstated vendor a link that opens that vendor's TwinSheet, **scrolls the
+  usual-currency section into view and puts the caret in its control** (a staff member,
+  whose control is disabled, is still brought to the section and its sentence). The focus
+  is taken once per opening, so a refetch cannot yank the caret back; a sheet opened by
+  clicking a card behaves as it always did. It answers the cost batch 65 disclosed: with nothing pre-filled and no vendor
   profile filled in, every order records no currency, `procurement_orders.currency` stays
   NULL, the order rung of `filingCurrency` never fires and the chain falls back to the
   house exactly as before. **The rejected repair was restoring a house-derived pre-fill**,

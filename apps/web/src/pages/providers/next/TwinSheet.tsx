@@ -38,6 +38,14 @@ const ProviderIntelligencePanel = lazy(() =>
 interface Props {
   provider: Provider;
   onClose: () => void;
+  /**
+   * True when this sheet was opened from the currency prompt — the coverage
+   * panel's link or `?vendor=` — in which case the usual-currency section
+   * scrolls itself into view and takes focus. The panel's whole point is to
+   * bring a person to that field; landing them at the top of a sheet whose
+   * fifth section holds it is a link that only looks like it worked.
+   */
+  focusUsualCurrency?: boolean;
 }
 
 function FactRow({ label, value }: { label: string; value: string }) {
@@ -62,7 +70,7 @@ function FactRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TwinSheet({ provider, onClose }: Props) {
+export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
   const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
 
   return (
@@ -90,7 +98,11 @@ export function TwinSheet({ provider, onClose }: Props) {
       {/* what money they usually bill in — a fact about the VENDOR, offered on
           the order sheet and never used to file an invoice (founder, batch 65) */}
       <div className="px-4 pb-3" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-        <UsualCurrencySection providerId={provider.id} providerName={provider.name} />
+        <UsualCurrencySection
+          providerId={provider.id}
+          providerName={provider.name}
+          takeFocus={focusUsualCurrency}
+        />
       </div>
 
       {/* what this house knows about dealing with them — same register as

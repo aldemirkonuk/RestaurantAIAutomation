@@ -46,8 +46,14 @@ vi.mock('./useProviderTerms', () => ({
 // batch 65), which reads the session's role. This file is about the GRID and the
 // sheet's shape; that section is asserted in UsualCurrencySection.test.tsx
 // against a mocked apiClient and a mocked role.
+// The double prints the ONE prop this file is about — whether the sheet was
+// opened from the currency prompt and must therefore put the person at the
+// field. The section's own scroll-and-focus behaviour is asserted in
+// UsualCurrencySection.test.tsx, where the control actually renders.
 vi.mock('./UsualCurrencySection', () => ({
-  UsualCurrencySection: () => null,
+  UsualCurrencySection: ({ takeFocus }: { takeFocus?: boolean }) => (
+    <div data-testid="usual-currency-takefocus">{String(Boolean(takeFocus))}</div>
+  ),
 }));
 
 // The grid also carries the batch-66 prompt panel, which reads its own count
@@ -96,6 +102,10 @@ const base = {
 
 beforeEach(() => {
   mockData.current = { ...base, cards: [] };
+  // Each test states its own URL; without the reset a `?vendor=` from one test
+  // would open a sheet in the next and the failure would look like a leak in
+  // the component rather than in this file.
+  window.history.replaceState({}, '', '/providers');
 });
 
 describe('ProvidersNext', () => {
@@ -167,6 +177,56 @@ describe('ProvidersNext', () => {
     expect(screen.getByTestId('coverage-stub')).toHaveTextContent('coverage over 1');
     fireEvent.click(screen.getByTestId('coverage-stub'));
     expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
+    expect(screen.getByTestId('usual-currency-takefocus')).toHaveTextContent('true');
+  });
+
+  /*
+   * `?vendor=<id>` — the link the ORDER SHEET's empty currency field carries.
+   * Until these two tests, the URL-reading half of that path had no coverage:
+   * the panel's callback was exercised, `vendorFromUrl` never was, so a rename
+   * or a bad param name would have shipped green (Sonnet audit of 795d9c27,
+   * finding 8).
+   */
+  it('opens the asked-for vendor’s sheet when the page is reached by ?vendor=', async () => {
+    window.history.replaceState({}, '', '/providers?vendor=p1');
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
+    // and it arrives AT the field, not at the top of the sheet
+    expect(screen.getByTestId('usual-currency-takefocus')).toHaveTextContent('true');
+  });
+
+  it('honours ?vendor= once — a later render does not reopen the closed sheet', async () => {
+    window.history.replaceState({}, '', '/providers?vendor=p1');
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    const { rerender } = render(<ProvidersNext />);
+    await screen.findByTestId('twin-panel');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // The param is still in the URL. Without the latch this render reopens the
+    // sheet and the reader cannot close it at all.
+    rerender(<ProvidersNext />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('leaves a card-opened sheet where it always opened', async () => {
+    // The focus jump belongs to the currency prompt, not to browsing.
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    await screen.findByTestId('twin-panel');
+    expect(screen.getByTestId('usual-currency-takefocus')).toHaveTextContent('false');
   });
 
   it('admits an empty roster plainly', () => {

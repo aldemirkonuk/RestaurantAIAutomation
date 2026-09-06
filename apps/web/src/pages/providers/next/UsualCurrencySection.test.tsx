@@ -30,11 +30,15 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 import { UsualCurrencySection } from './UsualCurrencySection';
 
-function renderIt() {
+function renderIt(takeFocus?: boolean) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={client}>
-      <UsualCurrencySection providerId="p1" providerName="Bir Dagitim" />
+      <UsualCurrencySection
+        providerId="p1"
+        providerName="Bir Dagitim"
+        takeFocus={takeFocus}
+      />
     </QueryClientProvider>,
   );
 }
@@ -57,9 +61,65 @@ const UNSTATED = {
     'Bir Dagitim has not stated a usual currency. Nothing is assumed in its place — not this house’s currency and not the currency of their last invoice — so an order to them starts with an empty currency field.',
 };
 
+// jsdom implements no layout, so `scrollIntoView` does not exist on an element
+// there. The component calls it optionally for exactly that reason; the spy
+// both proves it was called and stands in for the missing implementation.
+const scrolled = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   auth.role = 'manager';
+  scrolled.mockClear();
+  (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView =
+    scrolled;
+});
+
+/*
+ * ARRIVING FROM THE CURRENCY PROMPT (Sonnet audit of 795d9c27, finding 9).
+ *
+ * The coverage panel on /providers and the empty currency field on the order
+ * sheet both link HERE. Before these tests the sheet opened at its top, four
+ * sections above this one, and both page notes claimed the link landed "at the
+ * control" — a claim no code made true.
+ */
+describe('UsualCurrencySection, opened from the currency prompt', () => {
+  it('scrolls itself into view and takes the control’s focus', async () => {
+    api.get.mockResolvedValue({ data: UNSTATED });
+    renderIt(true);
+    const select = await screen.findByTestId('vendor-usual-currency-select');
+    await waitFor(() => expect(select).toHaveFocus());
+    expect(scrolled).toHaveBeenCalled();
+  });
+
+  it('does neither when the sheet was opened by clicking the vendor’s card', async () => {
+    api.get.mockResolvedValue({ data: UNSTATED });
+    renderIt();
+    const select = await screen.findByTestId('vendor-usual-currency-select');
+    expect(select).not.toHaveFocus();
+    expect(scrolled).not.toHaveBeenCalled();
+  });
+
+  it('takes focus ONCE, so a refetch cannot yank the caret back', async () => {
+    api.get.mockResolvedValue({ data: UNSTATED });
+    const { rerender } = renderIt(true);
+    const select = await screen.findByTestId('vendor-usual-currency-select');
+    await waitFor(() => expect(select).toHaveFocus());
+
+    (select as HTMLSelectElement).blur();
+    scrolled.mockClear();
+    rerender(<div />);
+    expect(scrolled).not.toHaveBeenCalled();
+  });
+
+  it('brings a staff member to the section even though the control refuses them', async () => {
+    // A disabled control cannot hold focus. The scroll is what makes the link
+    // honest for a person who may not use it: they land on the sentence that
+    // says who can.
+    auth.role = 'staff';
+    api.get.mockResolvedValue({ data: UNSTATED });
+    renderIt(true);
+    await screen.findByTestId('vendor-usual-currency-select');
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+  });
 });
 
 describe('UsualCurrencySection', () => {

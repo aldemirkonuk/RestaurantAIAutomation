@@ -75,7 +75,8 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
   the orders sheet's empty field) saying how many vendors have stated a usual currency and
   linking to the ones that have not. No provenance lie."*). When the vendor picked has
   stated none, the field's sentence gains the link **"state it on the vendor's profile"**,
-  pointing at `/providers?vendor=<id>`, which opens that vendor's sheet at the control.
+  pointing at `/providers?vendor=<id>`, which opens that vendor's sheet, scrolls the
+  usual-currency section into view and focuses its control ([[providers]] §1a).
   It changes NOTHING about this order — the house's currency and the vendor's last invoice
   remain choices in the list, named as evidence and never pre-filled — it is how the next
   order to them starts with something. **A failed lookup shows no link**: a read that
