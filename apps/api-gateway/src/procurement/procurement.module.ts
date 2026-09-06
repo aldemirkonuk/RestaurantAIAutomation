@@ -17,6 +17,9 @@ import { DocumentExtractorService } from "./documents/document-extractor.service
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
 import { CreditsController } from "./documents/credits.controller";
+import { DeliveriesController } from "./deliveries.controller";
+import { CanonicalDocumentService } from "./canonical/canonical-document.service";
+import { DeliverySpineService } from "./canonical/delivery-spine.service";
 
 @Module({
   imports: [
@@ -35,6 +38,7 @@ import { CreditsController } from "./documents/credits.controller";
     DocumentsController,
     ReceivingController,
     CreditsController,
+    DeliveriesController,
   ],
   providers: [
     ProcurementService,
@@ -42,6 +46,11 @@ import { CreditsController } from "./documents/credits.controller";
     DocumentIntakeService,
     DocumentExtractorService,
     ReceivingService,
+    // ADR 0104 D12 slice 2. Slice 1 shipped these unregistered — the class
+    // existed and Nest could not construct it, so the first route to inject one
+    // would have failed at boot with a DI error CI cannot see.
+    CanonicalDocumentService,
+    DeliverySpineService,
   ],
   // Exported for callers that already depend on procurement. The inbound-email
   // path deliberately does NOT call it directly — ProcurementModule imports

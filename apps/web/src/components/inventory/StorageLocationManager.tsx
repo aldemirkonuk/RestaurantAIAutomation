@@ -78,6 +78,11 @@ export function StorageLocationManager({
 }: StorageLocationManagerProps) {
   const {
     locations,
+    // ADR 0080: `locations` is [] while loading and [] on a failed fetch, so a
+    // surface that renders it MUST branch on these first. "No storage locations
+    // defined" is a claim about the tenant; a dead request is not evidence for it.
+    locationsLoading,
+    locationsUnavailable,
     getLocationsWithActualCounts,
     mappings,
     assignWineToLocation,
@@ -577,7 +582,24 @@ export function StorageLocationManager({
                   </motion.div>
                 ))}
 
-                {locations.length === 0 && (
+                {locations.length === 0 && locationsUnavailable && (
+                  <div className="text-center py-8">
+                    <FolderTree className="w-12 h-12 text-amber-300 mx-auto mb-3" />
+                    <p className="text-amber-700">Zones could not be loaded</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      The /storage-locations request failed. This is not a claim that you have none.
+                    </p>
+                  </div>
+                )}
+
+                {locations.length === 0 && !locationsUnavailable && locationsLoading && (
+                  <div className="text-center py-8">
+                    <FolderTree className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                    <p className="text-gray-400">Loading zones…</p>
+                  </div>
+                )}
+
+                {locations.length === 0 && !locationsUnavailable && !locationsLoading && (
                   <div className="text-center py-8">
                     <FolderTree className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No storage locations defined</p>

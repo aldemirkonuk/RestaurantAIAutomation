@@ -29,8 +29,17 @@ import {
 export const SALE_UNITS = ["glass", "bottle"] as const;
 export type SaleUnit = (typeof SALE_UNITS)[number];
 
-/** The unit `applyStockEffects` uses when `sale_unit` is null (decision B36). */
-export const UNIT_IF_UNANSWERED: SaleUnit = "bottle";
+/**
+ * What `applyStockEffects` does with a mapping whose `sale_unit` is null.
+ *
+ * It was `"bottle"` — the `?? "bottle"` default of decision B36 — until ADR
+ * 0011 replaced that default with a fail-closed queue on 2026-08-25. The
+ * constant survived the ADR and kept telling the review screen that 107 wines
+ * were about to over-deplete, when what actually happens is that they deplete
+ * nothing and their lines pile up in `pos_unresolved_lines`. Measured on Sim
+ * Meyhouse 2026-09-03: an unanswered mapping depleted 0 ml.
+ */
+export const EFFECT_IF_UNANSWERED = "depletes_nothing" as const;
 
 /**
  * `@Type(() => Boolean)` is wrong for a query string: `Boolean("false")` is

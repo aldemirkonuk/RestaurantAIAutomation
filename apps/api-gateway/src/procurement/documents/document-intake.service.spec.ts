@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
+import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { getCorrelationId } from "../../common/model-client/correlation";
 
 describe("DocumentIntakeService — original bytes persistence (decision E47)", () => {
@@ -62,6 +63,11 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
         DocumentIntakeService,
         { provide: DatabaseService, useValue: mockDatabaseService },
         { provide: DocumentExtractorService, useValue: mockExtractor },
+        // DocumentIntakeService gained a CanonicalDocumentService dependency
+        // with the extraction door (it appends the document's revision). It is
+        // the real service over the same mocked client — nothing on the path
+        // under test reaches it, and a stub would have to pretend otherwise.
+        CanonicalDocumentService,
       ],
     }).compile();
 
@@ -138,6 +144,71 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     });
 
     expect(mockStorageUpload).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Finding 8 of `v3.0-TECH-DEBT.md` (2026-09-04): "the original is not
+   * reachable". The bucket was MEASURED on 2026-09-05 and all three objects
+   * were present and signable — the finding's premise was wrong — but the
+   * SHAPE that would have made it unfalsifiable was real and is what these
+   * two tests hold shut. A failed upload used to return NULL, which is the
+   * same value the EDI channel returns because it has no bytes at all: the
+   * document then said "no original was stored for this document" and nothing
+   * anywhere recorded that bytes had arrived and the write had broken.
+   */
+  it("surfaces a failed upload as a FAILED WRITE, never as an absent file", async () => {
+    mockStorageUpload.mockResolvedValue({
+      data: null,
+      error: { message: "bucket unreachable" },
+    });
+
+    const result = await service.ingest({
+      restaurantId: "rest-9",
+      source: "upload",
+      buffer: Buffer.from("SYNTHETIC bytes"),
+      filename: "invoice.pdf",
+      mimeType: "application/pdf",
+    });
+
+    // 1. The document still lands — a broken bucket must not discard a
+    //    readable invoice.
+    expect(result.documentId).toBe("doc-1");
+    expect(result.error).toBeUndefined();
+    // 2. But the failure is NAMED, and named as a write failure.
+    expect(result.storageError).toMatch(/could not be stored/);
+    expect(result.storageError).toMatch(/failed write, not a document that/);
+    // 3. And it reaches the row, so the screen can say it.
+    const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+    expect(String(insertCall.notes)).toMatch(/could not be stored/);
+  });
+
+  it("never claims a storage_path the bucket does not have", async () => {
+    mockStorageUpload.mockResolvedValue({
+      data: null,
+      error: { message: "bucket unreachable" },
+    });
+
+    await service.ingest({
+      restaurantId: "rest-9",
+      source: "upload",
+      buffer: Buffer.from("SYNTHETIC bytes"),
+      filename: "invoice.pdf",
+      mimeType: "application/pdf",
+    });
+
+    const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+    expect(insertCall.storage_path).toBeNull();
+  });
+
+  it("says nothing about storage when the channel had no bytes to store", async () => {
+    // EDI keeps its content in raw_payload. `storageError` ABSENT is the
+    // answer here — an empty string would read as a failure that happened.
+    const result = await service.ingest({
+      restaurantId: "rest-9",
+      source: "edi",
+      text: "ISA*00*",
+    });
+    expect(result.storageError).toBeUndefined();
   });
 
   it("does not fail ingest when the storage upload errors — it is best-effort", async () => {

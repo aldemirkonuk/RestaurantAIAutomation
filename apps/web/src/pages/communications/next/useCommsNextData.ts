@@ -42,10 +42,19 @@ import { sendState } from './cm-format';
  */
 export const COMMS_SERVER_WINDOWS = {
   /**
-   * procurement.service.ts:3820 — `getConversationHistory` ends
-   * `.in("status", HISTORY_STATUSES).order(...).limit(100)`. The 30-day sent
-   * figure is filtered from that page, so once the page is full the figure is
-   * a floor and the strip prints `≥`.
+   * procurement.service.ts:4208 — `getConversationHistory` ends
+   * `.or(…).or(…).order("created_at", { ascending: false }).limit(100)`. The
+   * 30-day sent figure is filtered from that page, so once the page is full the
+   * figure is a floor and the strip prints `≥`.
+   *
+   * WHAT THIS CITATION DOES AND DOES NOT BUY. `check_windowed_figures.py`
+   * requires the `<file>.ts:<line>` form and re-reads the cited FILE for a
+   * matching `.limit(N)` — it does not re-read the cited LINE. This citation
+   * said `:3820` and quoted `.in("status", HISTORY_STATUSES)`; within six hours
+   * ADR 0084 replaced that status allow-list with the two `.or()` deny-list
+   * filters above and moved the query, and the guard stayed green over a
+   * citation that no longer described anything. The line is corrected here, and
+   * the prose is kept to what the query still actually does.
    */
   HISTORY_ROWS: 100,
 } as const;

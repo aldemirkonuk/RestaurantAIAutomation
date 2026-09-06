@@ -259,14 +259,30 @@ export function useRegenerateSummary() {
 
 export interface ProcurementHistoryItem {
   id: string
-  orderId: string
+  /**
+   * NULL on 25 of production's 27 rows — which is why ADR 0084 had to turn the
+   * `procurement_orders!inner` embed into a `!left` one to see them at all.
+   */
+  orderId: string | null
   providerId: string
-  emailType: string
-  status: string
+  /**
+   * Uppercased by the gateway (`procurement.service.ts` `getConversationHistory`,
+   * whose spec asserts "normalises direction to the casing the UI compares
+   * against"). It was sent but not declared here, so no consumer could read it
+   * — and `/communications` rendered every inbound vendor reply as an outbound
+   * AI draft, because `status` on an inbound row is the column DEFAULT `'DRAFT'`
+   * that the inbound writer never sets.
+   */
+  direction: 'OUTBOUND' | 'INBOUND'
+  /** NULL on every inbound row — `outbound_email_type` is an outbound concept. */
+  emailType: string | null
+  /** `procurement_conversations.status` is nullable; ADR 0084 admits null rows. */
+  status: string | null
   roundCount: number
   createdAt: string
   sentAt: string
-  draftContent: string
+  /** `content ?? message_text ?? null` — the gateway may genuinely have none. */
+  draftContent: string | null
   constraintFlags: {
     hard: string[]
     annotating: string[]

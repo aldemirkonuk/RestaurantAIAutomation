@@ -39,14 +39,28 @@ jobs:
   parity:
     name: Fresh database equals remote
     runs-on: ubuntu-latest
-    # This job's `name:` is a required status check on `main` (branch protection,
-    # `contexts`, `strict: true`) — so are the other three jobs in this file that
-    # carry the same fork guard below. Renaming a job or changing this `if:` changes
-    # whether PRs can merge at all: a renamed job is the same failure as a skipped
-    # one — the required context stops reporting and the PR is blocked forever.
-    # See ADR 0072 (Consequences) for why the guard itself stays as-is: a fork PR
-    # has no access to the DB secret, so a check that ran "successfully" on a fork
-    # would be vacuously green — the exact fault ADR 0072 exists to close. The
+    # This file's job `name:` values are required status checks on `main` — but
+    # WHICH ones is a GitHub dashboard setting, not code: one person, one click,
+    # no commit and no diff. It changed three times on 2026-09-02/03. So this
+    # comment can only be a dated reading, never the state. Measure it:
+    #   gh api repos/aldemirkonuk/RestaurantAIAutomation/branches/main/protection \
+    #     --jq '.required_status_checks.contexts'
+    #
+    # Latest reading, 2026-09-03 04:40Z (`strict: true`): ALL FOUR of this file's
+    # jobs are required — THIS one, `Code queries only relations production has`,
+    # `Beverage identity key — SQL matches Python` and
+    # `Guest merge policy — zero false merges` — alongside `CI Complete`. The two
+    # migration-sensitive ones had been removed for part of 2026-09-02 to unblock
+    # PRs that add a migration, and the founder restored them once ADR 0092 made
+    # the comparison merge-base-aware. Treat that as "the last time somebody
+    # looked", not as what is true while you read this.
+    #
+    # Renaming a required job or changing its `if:` changes whether PRs can merge
+    # at all: a renamed job is the same failure as a skipped one — the required
+    # context stops reporting and the PR is blocked forever, not merely skipped.
+    # See ADR 0072 (Consequences) for why the fork guard itself stays as-is: a fork
+    # PR has no access to the DB secret, so a check that ran "successfully" on a
+    # fork would be vacuously green — the exact fault ADR 0072 exists to close. The
     # remedy for a real fork contribution is a maintainer re-pushing the branch to
     # this repo, not faking a green check.
     #

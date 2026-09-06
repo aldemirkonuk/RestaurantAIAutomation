@@ -33,6 +33,7 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 import { useAuth } from '../contexts/AuthContext'
 import { useStorageLocations } from './useStorageLocations'
 import { CellarMapView } from '../pages/inventory/command/CellarMapView'
+import { StorageLocationManager } from '../components/inventory/StorageLocationManager'
 
 const RESTAURANT = '11111111-1111-4111-8111-111111111111'
 
@@ -223,5 +224,44 @@ describe('useStorageLocations — a capacity nobody entered is unknown, not 100'
     expect(stats.totalCapacity).toBe(100)
     expect(stats.capacityUnknownCount).toBe(1)
     expect(stats.utilizationRate).toBe(25)
+  })
+})
+
+
+/**
+ * MERGE-CHECK 2026-09-02 — the manager modal was the surface the seed wrote
+ * FROM, and it was the one surface left rendering `locations.length === 0` with
+ * no branch on `locationsUnavailable`. On a dead gateway it printed "No storage
+ * locations defined" beside "Create your first location" — a positive claim
+ * about the tenant, made from a request that never answered, in the component
+ * ADR 0080 exists because of. The hook's own contract (useStorageLocations.ts,
+ * "Any surface that renders `locations` MUST branch on them first") named the
+ * rule the component did not follow.
+ *
+ * Both assertions below fail against the tree as merged.
+ */
+describe('the zone surfaces do not report a dead fetch as an empty cellar', () => {
+  it('the manager says the zones could not be loaded, not that there are none', async () => {
+    mockGet.mockRejectedValue(new Error('gateway down'))
+
+    render(<StorageLocationManager isOpen onClose={() => {}} />, { wrapper: wrapper() })
+
+    expect(
+      await screen.findByText(/zones could not be loaded/i, undefined, SETTLE),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/no storage locations defined/i)).not.toBeInTheDocument()
+    // And it must not invite the user to fix a problem they do not have.
+    expect(screen.queryByText(/create your first location/i)).not.toBeInTheDocument()
+  })
+
+  it('the manager still says "none" when the server actually answers with none', async () => {
+    mockGet.mockResolvedValue({ data: [] })
+
+    render(<StorageLocationManager isOpen onClose={() => {}} />, { wrapper: wrapper() })
+
+    expect(
+      await screen.findByText(/no storage locations defined/i, undefined, SETTLE),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/zones could not be loaded/i)).not.toBeInTheDocument()
   })
 })

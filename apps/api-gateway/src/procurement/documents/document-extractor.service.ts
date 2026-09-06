@@ -5,8 +5,15 @@ import {
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
-import { normalizeUom, toBottles, Uom } from "./document-types";
-import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
+import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
+import {
+  applyTieOut,
+  LINE_KINDS,
+  LineKind,
+  ParsedDocument,
+  ParsedLine,
+  ParsedTaxBreakdownRow,
+} from "./parsed-document";
 import {
   reconciliationVerdict,
   RECONCILIATION_BASIS,
@@ -68,33 +75,76 @@ export async function settledEventId(
 
 const SYSTEM_PROMPT = `You are reading a beverage distributor's delivery paperwork for a restaurant's back office.
 
-CLASSIFY the document first. It is one of:
-- "invoice": states prices and an amount owed.
-- "packing_slip": lists what shipped, usually WITHOUT prices. Often titled packing slip, delivery note, or ASN.
-- "credit_memo": a credit or adjustment against an earlier invoice.
+CLASSIFY the document first. It is exactly one of these twelve:
+- "invoice": states prices and an amount owed. A Turkish e-Fatura or fatura is an invoice.
+- "packing_slip": lists what shipped, usually WITHOUT prices. Often titled packing slip or ASN.
+- "delivery_note": a despatch advice that travels WITH the goods and carries no money — a Turkish irsaliye or e-İrsaliye, a bordro, a European delivery note. If it names quantities and a vehicle or a driver and prints no prices, it is this, not a packing_slip.
+- "receiving_advice": OUR OWN door count, written by the receiving restaurant rather than the vendor. It records what was counted at the door, not what was shipped or billed.
+- "credit_memo": a credit or adjustment against an earlier invoice (a Turkish iade faturası is the same document issued the other way).
 - "delivery_receipt": a signature/proof-of-delivery sheet with little or no line detail.
 - "statement": a period roll-up of several invoices.
-- "unknown": anything else.
+- "price_list": a vendor price sheet or quotation. Prices with no quantities ordered and no amount owed.
+- "portal_export": a CSV, spreadsheet or PDF pulled out of a distributor portal (Sysco/MOXē, Dot, Provi and the like). Machine-laid-out columns, often several documents' worth of rows, and usually an export header or a filename banner rather than a letterhead.
+- "purchase_order": what WE asked for, before anything shipped.
+- "informal_note": a handwritten slip, a photographed scrap of paper, or a note from an unregistered supplier (a farmer, a market stall). It is a legally normal transaction, not a broken document — classify it as itself so it does not sit in review ageing.
+- "unknown": anything else. Use this when you genuinely cannot tell; do not stretch one of the eleven to fit.
 
-A document with no prices is almost certainly a packing slip, NOT an invoice. This distinction matters more than any other field: a packing slip is the distributor's own statement of what shipped, and mislabelling one as an invoice destroys that evidence.
+A document with no prices is almost certainly a packing_slip or a delivery_note, NOT an invoice. This distinction matters more than any other field: a shipping document is the distributor's own statement of what shipped, and mislabelling one as an invoice destroys that evidence.
 
 EXTRACT, transcribing only what is printed:
 - docNumber (invoice/slip number), docDate (ISO), poNumber, referencesDocNumber (an invoice a credit memo adjusts, or the packing slip an invoice bills)
+- deliveredDate (ISO) — the date the GOODS WERE DELIVERED, transcribe only if printed
 - vendorName
 - header money: subtotal, freight, fuelSurcharge, splitCaseFee, deliveryFee, depositTotal, tax, otherCharges, discountTotal, total
-- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, lineTotal, allowance, deposit
+- taxBreakdown: one row per printed tax rate — {rate, taxableBase, amount, category}
+- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit, lineKind
 
 RULES
 - Transcribe, never compute. If a line total is not printed, leave it null; do not multiply.
 - Never invent a value to make the arithmetic work. A document that does not add up must come back not adding up — that is a signal, and smoothing it over hides the error we exist to catch.
 - uom is one of: bottle, case, keg, pack, split_case, each, liter. Use what the document says.
 - packSize is bottles per case when stated (a "12/750ml" case is packSize 12). Null if not stated — do not assume 12.
+- priceBaseQty / priceBaseUom are the quantity the UNIT PRICE is stated for, and its unit — ONLY when the document prints it. "142,00 / KS(12)" is priceBaseQty 12, priceBaseUom "bottle"; "22.00 / BT" is priceBaseQty 1, priceBaseUom "bottle". Null if not stated — do not assume 12, exactly as for packSize. Getting this wrong is a factor-of-twelve error on the line.
+- deliveredDate: transcribe only if printed AS A DELIVERY DATE — "DELIVERED Aug 12, 2026", "TESLİM TARİHİ", "Teslim tarihi", or the date printed against a referenced irsaliye when that date is presented as the delivery date. It is NOT docDate: a Turkish invoice is commonly issued days after the despatch it bills. Null when the page prints no delivery date; never copy docDate into it.
+- taxBreakdown: one row per rate the document actually prints, {"rate": 20, "taxableBase": 9172.00, "amount": 1834.40, "category": "S"}. "KDV %20 (matrah 9.172,00) 1.834,40" is ONE row; "Sales tax 8.625% on 2,940.00 = 253.58" is ONE row. rate is the percentage as a number (20, 8.625), taxableBase is the amount the rate was applied to (the matrah), amount is the tax it produced. category is the EN 16931 code (S standard, Z zero-rated, E exempt) only if the document states one — null otherwise. Empty array when no rate is printed; do not derive a rate by dividing the tax by a subtotal.
+- lineKind: "goods" (default), "deposit" (the line IS a returnable-container deposit or CRV — a "Depozito", "CRV", "bottle deposit" row), or "fee" (the line IS a freight, fuel or delivery charge). A line that IS the deposit gets lineKind "deposit" and NO deposit amount — its own lineTotal is the deposit. The line-level "deposit" field is a DIFFERENT thing: a deposit charged on that line IN ADDITION to its net, e.g. twelve bottles of wine plus a per-bottle crate charge. Never set both on one line.
 - Free goods: only set a line's allowance/zero price if the document itself says so.
 - Money as plain numbers, no currency symbols or thousands separators.
+- "printed": alongside each line and alongside the document totals, return the LITERAL text the page shows for money and quantity fields, exactly as printed — keep the vendor's own grouping and decimal marks ("1.704,00" stays "1.704,00", "142,00 / KS(12)" stays whole). Line keys: qty, unitPrice, lineTotal, allowance, deposit. Document keys: subtotal, tax, freight, total. Omit a key you did not read; never write "" and never rewrite the number into our format.
 - Anything illegible: null, and say so in "unreadable".
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"lineTotal":null,"allowance":null,"deposit":null}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
+
+/**
+ * The fence-stripping `normalize` applies before `JSON.parse`.
+ *
+ * Exported so a caller that wants to say WHY a body did not parse — the
+ * extraction door's 422 — can run the SAME preprocessing this parser runs.
+ * Duplicating the logic there would eventually let a body the door rejects be
+ * one `normalize` would have accepted, and vice versa.
+ *
+ * NO REGEX. This was `/^\`\`\`json\s*|\s*\`\`\`$/g` until CodeQL #1327
+ * (`js/polynomial-redos`, high). The second alternative has no anchor at its
+ * start, so on a run of whitespace the engine restarts `\s*` at every offset
+ * and backtracks the whole run each time — quadratic. Measured on node v22:
+ * 200 kB of spaces took 21_833 ms, and `" ".repeat(50_000) + "x"` took
+ * 1_702 ms. Harmless while the only caller was a model's own reply; PR #301
+ * put a client's request body on the same path, which makes one POST a
+ * multi-second stall of the gateway's single event loop.
+ *
+ * The replacement is character-for-character equivalent to that regex and
+ * linear. `\s*` after the opening fence and before the closing one both fall
+ * inside the final `.trim()`, so they never needed matching in the first
+ * place: what the regex actually decided was only WHETHER each fence was
+ * there, and `startsWith`/`endsWith` decide that in one pass.
+ */
+export function stripJsonFence(rawText: string): string {
+  let s = rawText;
+  if (s.startsWith("```json")) s = s.slice(7);
+  if (s.endsWith("```")) s = s.slice(0, -3);
+  return s.trim();
+}
 
 type MediaType =
   | "image/jpeg"
@@ -224,9 +274,13 @@ export class DocumentExtractorService {
    */
   normalize(rawText: string, model: string): ParsedDocument {
     const warnings: string[] = [];
+    // Keys the `printed` maps offered that `PRINTED_KEYS` does not accept.
+    // Collected across every line AND the document so the count below is one
+    // sentence, not one per line — but never merely swallowed.
+    const droppedPrintedKeys: string[] = [];
     let parsed: any = {};
     try {
-      parsed = JSON.parse(rawText.replace(/^```json\s*|\s*```$/g, "").trim());
+      parsed = JSON.parse(stripJsonFence(rawText));
     } catch {
       // A model that returned prose instead of JSON has told us nothing usable.
       // Returning an empty invoice here would read downstream as a vendor who
@@ -276,6 +330,30 @@ export class DocumentExtractorService {
           const resolved: Uom = uom ?? "each";
           const qty = num(l?.qty) ?? 0;
           const packSize = Math.max(1, Math.round(num(l?.packSize) ?? 1));
+
+          // BT-149/BT-150. Only what the page printed: `priceBaseQty` stays
+          // NULL when the model did not read one, exactly as `packSize` does,
+          // because a guessed base of 12 is a factor-of-twelve error on the
+          // line. An unreadable base UNIT is refused rather than defaulted to
+          // `bottle` for the same reason `normalizeUom` refuses elsewhere.
+          const priceBaseQty = num(l?.priceBaseQty);
+          const rawBaseUom = l?.priceBaseUom ? String(l.priceBaseUom) : null;
+          const priceBaseUom = normalizeUom(rawBaseUom);
+          if (rawBaseUom && !priceBaseUom)
+            warnings.push(
+              `Line ${i + 1}: unrecognised price base unit "${rawBaseUom}" — the printed price basis was not applied.`,
+            );
+
+          // What the line IS. An unrecognised label falls back to the
+          // description sniff rather than to a confident `goods`: a CRV row
+          // filed as wine is refundable money inside cost of goods.
+          const lineKind = coerceLineKind(
+            l?.lineKind,
+            str(l?.description),
+            i,
+            warnings,
+          );
+
           return {
             lineNo: i + 1,
             vendorSku: str(l?.vendorSku),
@@ -290,9 +368,16 @@ export class DocumentExtractorService {
             // billable comparison on a model's guess would hide a real overbill.
             freeGoodsQty: 0,
             unitPrice: num(l?.unitPrice),
+            priceBaseQty,
+            priceBaseUom,
             lineTotal: num(l?.lineTotal),
             allowance: num(l?.allowance),
-            deposit: num(l?.deposit),
+            // A line that IS the deposit carries no `deposit` amount: its own
+            // total is the deposit, and keeping both would add it twice —
+            // the `line_net_amount` 360-against-180 failure of 2026-09-04.
+            deposit: lineKind === "deposit" ? null : num(l?.deposit),
+            lineKind,
+            ...spreadPrinted(l?.printed, droppedPrintedKeys),
             poNumber: str(parsed.poNumber),
           };
         })
@@ -308,10 +393,20 @@ export class DocumentExtractorService {
         "Classified as an invoice but no line carries a price — it may actually be a packing slip.",
       );
 
+    const docPrinted = spreadPrinted(parsed.printed, droppedPrintedKeys);
+    if (droppedPrintedKeys.length)
+      warnings.push(
+        `Dropped ${droppedPrintedKeys.length} printed field(s) that are not money or quantity: ` +
+          `${[...new Set(droppedPrintedKeys)].slice(0, 8).join(", ")}.`,
+      );
+
     const doc: ParsedDocument = {
       docType,
       docNumber: str(parsed.docNumber),
       docDate: str(parsed.docDate),
+      // BG-13 / BT-72. NULL when the paper printed no delivery date — never
+      // `docDate`, which is the issuance date and can be a week later.
+      deliveredDate: str(parsed.deliveredDate),
       referencesDocNumber: str(parsed.referencesDocNumber),
       poNumber: str(parsed.poNumber),
       vendorName: str(parsed.vendorName),
@@ -327,7 +422,9 @@ export class DocumentExtractorService {
       otherCharges: num(parsed.otherCharges),
       discountTotal: num(parsed.discountTotal),
       total: num(parsed.total),
+      taxBreakdown: normalizeTaxBreakdown(parsed.taxBreakdown, warnings),
       lines,
+      ...docPrinted,
       computedLinesTotal: null,
       tieOutDelta: null,
       tiesOut: null,
@@ -356,17 +453,22 @@ export class DocumentExtractorService {
     return withTieOut;
   }
 
+  /**
+   * File the model's answer against the ONE vocabulary (`DOC_TYPES`).
+   *
+   * Derived from `DOC_TYPES` rather than repeating a list, because the two
+   * copies drifted: `DOC_TYPES` and the CHECK constraint carried twelve while
+   * this carried six, so an irsaliye the model classified correctly as
+   * `delivery_note` was thrown away and refiled as `unknown` — an absence
+   * reported as a classification.
+   *
+   * `unknown` stays a value the model may return AND the fallback for anything
+   * outside the vocabulary. Widening the list must never make an unrecognised
+   * label into a confident guess, so the warning survives untouched.
+   */
   private coerceDocType(value: unknown, warnings: string[]): DocType {
     const v = String(value ?? "").toLowerCase();
-    const known: DocType[] = [
-      "invoice",
-      "packing_slip",
-      "delivery_receipt",
-      "credit_memo",
-      "statement",
-      "purchase_order",
-    ];
-    if ((known as string[]).includes(v)) return v as DocType;
+    if ((DOC_TYPES as readonly string[]).includes(v)) return v as DocType;
     warnings.push(
       `Document type "${value ?? "(none)"}" was not recognised; filed as unknown for a human to classify.`,
     );
@@ -405,8 +507,179 @@ function int(v: unknown): number | null {
   return n == null ? null : Math.round(n);
 }
 
+/**
+ * The money and quantity fields whose printed glyphs we keep — the ONLY keys
+ * `spreadPrinted` will ever write.
+ *
+ * These are exactly the fields SYSTEM_PROMPT names for a line and for the
+ * document totals. The list is closed on purpose: `printed` is a transcript of
+ * the paper's numbers, so a key outside it is not a number we failed to
+ * anticipate, it is a key the model was never asked for.
+ */
+const PRINTED_KEYS = [
+  // line
+  "qty",
+  "uom",
+  "packSize",
+  "formatMl",
+  "unitPrice",
+  "priceBaseQty",
+  "priceBaseUom",
+  "lineTotal",
+  "allowance",
+  "deposit",
+  // document totals
+  "subtotal",
+  "freight",
+  "fuelSurcharge",
+  "splitCaseFee",
+  "deliveryFee",
+  "depositTotal",
+  "tax",
+  "otherCharges",
+  "discountTotal",
+  "total",
+] as const;
+
+const PRINTED_KEY_SET: ReadonlySet<string> = new Set(PRINTED_KEYS);
+
+/**
+ * The model's `printed` map, kept as text and NOTHING ELSE.
+ *
+ * Returned as a spreadable object so an ABSENT map stays absent on the line
+ * rather than becoming `{}` — `{}` would read as "the paper printed nothing",
+ * which is the opposite of "we did not keep it" (ADR 0067's distinction).
+ *
+ * Values are never trimmed, cased, re-grouped or re-pointed: `1.704,00` must
+ * still be `1.704,00` when the screen shows it beside our 1704. Entries that are
+ * empty or whitespace-only are DROPPED rather than stored, because an empty
+ * `as_printed` beside a real value is what the `as_printed_not_mutated`
+ * invariant exists to catch.
+ *
+ * KEYS COME FROM `PRINTED_KEYS`, NEVER FROM THE INPUT. This used to iterate
+ * `Object.entries(v)` and write `out[k]`, which CodeQL #1328
+ * (`js/remote-property-injection`, high) flags because the key was a
+ * user-provided value: harmless while the map could only come from our own
+ * model call, and not harmless since PR #301 put
+ * `POST /procurement/documents/:id/extraction` on the same path. Walking the
+ * allow-list instead of the input makes `__proto__`, `constructor` and
+ * `prototype` unreachable as keys by construction rather than by filter, and
+ * the result object is `Object.create(null)` so nothing downstream can reach a
+ * prototype through it either.
+ *
+ * Unknown keys are DROPPED AND COUNTED. Silently discarding them would be the
+ * absence-as-health fault at its smallest scale: a transcript that lost a
+ * field would look identical to one the paper never printed.
+ */
+function spreadPrinted(
+  v: unknown,
+  dropped: string[],
+): { printed?: Record<string, string> } {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const src = v as Record<string, unknown>;
+  const out: Record<string, string> = Object.create(null);
+  for (const key of PRINTED_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(src, key)) continue;
+    const raw = src[key];
+    if (typeof raw !== "string" || raw.trim() === "") continue;
+    out[key] = raw;
+  }
+  for (const key of Object.keys(src))
+    if (!PRINTED_KEY_SET.has(key)) dropped.push(key);
+  return Object.keys(out).length ? { printed: out } : {};
+}
+
 function str(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length && s.toLowerCase() !== "null" ? s : null;
+}
+
+/**
+ * A returnable deposit or CRV, by the words vendors actually print.
+ *
+ * The SAME expression as `canonical-invariants.DEPOSIT_WORDS` on purpose, and
+ * the reason it is duplicated rather than imported is that the two do opposite
+ * jobs: this one CLASSIFIES a line the extractor left unlabelled, the invariant
+ * one DETECTS a line nobody classified. Importing the detector into the
+ * classifier would make the invariant unable to fail — it would be grading its
+ * own input — which is the shape a guard must never have.
+ */
+const DEPOSIT_DESCRIPTION =
+  /\b(crv|deposit|depozito|bottle\s*deposit|container\s*redemption)\b/i;
+const FEE_DESCRIPTION =
+  /\b(freight|nakliye|kargo|fuel\s*surcharge|delivery\s*fee|split[-\s]*case\s*fee)\b/i;
+
+/**
+ * What the line IS, from the model's own label when it gave one.
+ *
+ * An unlabelled line falls back to the DESCRIPTION rather than to `goods`,
+ * because `goods` is the expensive wrong answer: a CRV row filed as wine sits
+ * inside BT-106 and inflates beverage cost every month it recurs (ADR 0103 D7).
+ * A label outside the vocabulary is a warning, never a silent `goods`.
+ */
+function coerceLineKind(
+  value: unknown,
+  description: string | null,
+  index: number,
+  warnings: string[],
+): LineKind {
+  const raw = str(value)?.toLowerCase() ?? null;
+  if (raw) {
+    if ((LINE_KINDS as readonly string[]).includes(raw)) return raw as LineKind;
+    warnings.push(
+      `Line ${index + 1}: unrecognised lineKind "${raw}" — classified from the description instead.`,
+    );
+  }
+  const d = description ?? "";
+  if (DEPOSIT_DESCRIPTION.test(d)) return "deposit";
+  if (FEE_DESCRIPTION.test(d)) return "fee";
+  return "goods";
+}
+
+/**
+ * BG-23, from what the page printed.
+ *
+ * A row is kept only when it carries a RATE and at least one of the two
+ * amounts: a row with neither cannot be checked against anything, and keeping
+ * it would make `vat_breakdown_present` pass on a breakdown that says nothing.
+ * Dropped rows are counted into a warning rather than swallowed.
+ *
+ * NOTHING HERE TOUCHES `printed`. `PRINTED_KEYS` is a closed allow-list of
+ * SCALAR money and quantity fields, and these rows are objects; a breakdown row
+ * has no single literal to keep, and widening the allow-list to nested shapes
+ * would reopen exactly the key-from-the-input path CodeQL #1328 closed.
+ */
+function normalizeTaxBreakdown(
+  v: unknown,
+  warnings: string[],
+): ParsedTaxBreakdownRow[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const rows: ParsedTaxBreakdownRow[] = [];
+  let dropped = 0;
+  for (const raw of v) {
+    const row =
+      raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    const rate = num(row?.rate);
+    const taxableBase = num(row?.taxableBase);
+    const amount = num(row?.amount);
+    const category = str(row?.category);
+    if (rate === null || (taxableBase === null && amount === null)) {
+      dropped += 1;
+      continue;
+    }
+    rows.push({
+      rate,
+      taxableBase,
+      amount,
+      ...(category ? { category } : {}),
+    });
+  }
+  if (dropped)
+    warnings.push(
+      `Dropped ${dropped} VAT breakdown row(s) that carried no rate, or a rate with neither a base nor a tax amount.`,
+    );
+  // An EMPTY array is a real answer ("the model looked and the page printed no
+  // rate"); `undefined` means the model returned no breakdown field at all.
+  return rows;
 }

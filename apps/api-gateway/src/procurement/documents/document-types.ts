@@ -18,6 +18,25 @@
  *   invoice           what we are billed           (EDI 810)
  *   credit_memo       what they agreed to give back(EDI 812)
  *   statement         a period roll-up used to tie out
+ *
+ * Five more arrived with ADR 0104 D2/S6 (migration
+ * 20260903160000_canonical_document_and_delivery.sql, which WIDENS the CHECK
+ * rather than replacing it — every literal above still writes):
+ *
+ *   receiving_advice  OUR door count. The document that makes "received" a fact
+ *                     rather than an inference (ADR 0103 A6).
+ *   delivery_note     irsaliye / e-İrsaliye / despatch advice. In Türkiye this is
+ *                     the correctable document the whole flow turns on (0103 D2).
+ *   informal_note     the farmer's handwritten slip (0104 S6). A legally normal
+ *                     transaction must not read like a broken intake.
+ *   price_list        a vendor price sheet.
+ *   portal_export     a CSV or PDF pulled from a distributor portal.
+ *
+ * The extractor emits all twelve as of the slice-1 gap fix: the prompt names
+ * each with a one-line definition and `DocumentExtractorService.coerceDocType`
+ * accepts every literal in this list. `unknown` REMAINS the fallback, with its
+ * warning — widening the vocabulary must never turn "we do not know what this
+ * is" into a confident guess, which is the failure the fallback exists for.
  */
 export const DOC_TYPES = [
   "purchase_order",
@@ -27,6 +46,11 @@ export const DOC_TYPES = [
   "credit_memo",
   "statement",
   "unknown",
+  "receiving_advice",
+  "delivery_note",
+  "informal_note",
+  "price_list",
+  "portal_export",
 ] as const;
 export type DocType = (typeof DOC_TYPES)[number];
 
@@ -110,23 +134,51 @@ export type ReceiptStage = (typeof RECEIPT_STAGES)[number];
  *
  * Unrecognised input returns null rather than guessing `bottle`: a wrong unit
  * produces confident, wrong quantity maths, and silence is worse than a refusal.
+ *
+ * TURKISH SPELLINGS, AND WHY THE FOLD IS NOT DECORATIVE (ADR 0104 slice 2).
+ * A Turkish invoice prints `KS`, `koli` or `kasa` for a case and `şişe` for a
+ * bottle, and `toLowerCase()` alone does NOT reach them: JavaScript lowercases
+ * the Turkish dotted capital `İ` to `i` + U+0307 (a combining dot above), so
+ * `"ŞİŞE".toLowerCase()` is `"şi̇şe"` and never equals the `"şişe"` in a switch
+ * arm. Every such spelling would fall through to `null` — a refusal that looks
+ * like a decision. So the input is decomposed and its combining marks removed
+ * before matching, which folds `ş→s`, `ı→i` and `İ→i` alike and leaves every
+ * ASCII spelling this function already accepted byte-identical.
+ *
+ * `adet` is mapped to `each`, NOT to `bottle`. It means a countable piece and
+ * says nothing about the container; `each` is already in this vocabulary and
+ * converts through `toBottles` exactly as `bottle` does, so nothing downstream
+ * changes — while calling it `bottle` would assert a format the paper never
+ * printed. `kutu` (box) is deliberately NOT mapped: it is used for a case and
+ * for a single retail carton on different documents, and no source settles
+ * which — see the report's undecided list rather than a guess here.
  */
 export function normalizeUom(raw?: string | null): Uom | null {
   if (!raw) return null;
   const s = raw
     .trim()
     .toLowerCase()
+    // Decompose, then drop combining marks: see the Turkish note above.
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    // `ı` (U+0131, dotless i) has no decomposition, so the pass above cannot
+    // reach it. Folded explicitly rather than left to fall through as null.
+    .replace(/ı/g, "i")
     .replace(/[\s_-]+/g, "");
   switch (s) {
     case "bottle":
     case "bottles":
     case "btl":
     case "bt":
+    case "sise": // TR `şişe`, folded to `sise` by the pass above.
       return "bottle";
     case "case":
     case "cases":
     case "cs":
     case "ca":
+    case "ks": // TR, the abbreviation a price base prints: `142,00 / KS(12)`.
+    case "koli": // TR, the word for the same shipping case.
+    case "kasa": // TR, likewise.
       return "case";
     case "keg":
     case "kegs":
@@ -143,6 +195,7 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "ea":
     case "unit":
     case "units":
+    case "adet": // TR, a countable piece. NOT `bottle` — see the header note.
       return "each";
     case "liter":
     case "liters":

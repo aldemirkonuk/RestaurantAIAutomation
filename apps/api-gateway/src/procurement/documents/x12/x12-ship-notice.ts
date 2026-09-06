@@ -131,6 +131,10 @@ export function parse856(
           // deliberate: 0 would tie out to a free delivery and quietly zero the
           // cost basis if this document were ever treated as an invoice.
           unitPrice: null,
+          // A packing slip carries no price at all, so it carries no price
+          // basis either. Absent, not unread.
+          priceBaseQty: null,
+          priceBaseUom: null,
           lineTotal: null,
           allowance: null,
           deposit: null,
@@ -156,6 +160,8 @@ export function parse856(
             qtyBottles: 0,
             freeGoodsQty: 0,
             unitPrice: null,
+            priceBaseQty: null,
+            priceBaseUom: null,
             lineTotal: null,
             allowance: null,
             deposit: null,

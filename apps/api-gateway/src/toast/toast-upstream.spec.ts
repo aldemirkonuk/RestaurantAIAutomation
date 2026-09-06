@@ -386,12 +386,10 @@ describe("ToastUpstream verdict lifecycle", () => {
     );
   });
 
-  it("records today's premise: the orchestrator declares no /api/v1/toast router", () => {
-    // Read from the live `APIRouter(prefix=…)` declarations, the same parse
-    // #230's ratchet uses. When the sibling's router lands this flips and the
-    // assertion fires — the correct response is to DELETE this test, not to
-    // edit toast-upstream.ts. The runtime derivation needs no change at all;
-    // that is what it was written for.
-    expect(orchestratorServesToast()).toBe(false);
-  });
+  // DELETED 2026-09-03, on this test's own written instruction. It pinned
+  // "the orchestrator declares no /api/v1/toast router" as *today's premise*,
+  // and said that when the sibling router landed the correct response was to
+  // delete it rather than edit `toast-upstream.ts`. PR #236 landed that router.
+  // The runtime derivation needed no change at all, which is exactly what it
+  // was written for — so this is the ratchet succeeding, not a test lost.
 });

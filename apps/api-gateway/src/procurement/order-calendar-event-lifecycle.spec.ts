@@ -158,10 +158,16 @@ describe("delivery calendar event — closing the lifecycle ADR 0066 opened", ()
   let loggerWarnSpy: jest.SpyInstance;
   let loggerLogSpy: jest.SpyInstance;
 
+  // Deliberately a CASE order of a twelve-pack, not a bottle order. The
+  // delivered description read `(${order.quantity} bottles)` unconditionally,
+  // and a fixture stated in bottles cannot fail that — pack size 1 makes the
+  // wrong unit and the right one the same word, which is the same trap ADR
+  // 0062 recorded for `countedUom: "bottle"`.
   const order = {
     id: ORDER_ID,
     orderNumber: "ORD-9001",
-    quantity: 12,
+    quantity: 5,
+    unitType: "case",
     deliveredAt: "2026-09-02T10:00:00.000Z",
   } as any;
 
@@ -338,6 +344,19 @@ describe("delivery calendar event — closing the lifecycle ADR 0066 opened", ()
         expect(c.recognisedBy).toContain(p.status);
         expect(String(p.status)).toBe(String(p.status).toLowerCase());
         expect(String(p.description)).toContain(c.descriptionContains);
+      });
+
+      // ADR 0062: a quantity that reaches a human states the unit it is in.
+      // `procurement_orders.quantity` is in the order's own `unit_type`, so
+      // the delivered description's `(${order.quantity} bottles)` announced
+      // "5 bottles" for a sixty-bottle delivery — the reader's only summary of
+      // what turned up, off by the pack size.
+      it("never states a quantity in a unit the order was not placed in", async () => {
+        await c.call();
+        const d = String(updatePayload().description ?? "");
+        expect(d).not.toContain("bottles");
+        // Not merely "the wrong word is gone" — the right one is present.
+        if (d.includes(String(order.quantity))) expect(d).toContain("5 cases");
       });
 
       it("never sends an uppercase status to the database, in a payload or a filter", async () => {

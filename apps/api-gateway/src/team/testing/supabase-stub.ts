@@ -204,6 +204,10 @@ class Builder implements PromiseLike<any> {
         : [this.payload];
       const written = incoming.map((r) => ({
         id: `stub-${store.length + 1}`,
+        // Postgres fills `created_at` from its DEFAULT now(); a stub that
+        // leaves it undefined makes an inserted row look like a table with no
+        // such column to the sort check below.
+        created_at: new Date().toISOString(),
         ...r,
       }));
       store.push(...written);
@@ -224,6 +228,19 @@ class Builder implements PromiseLike<any> {
     let out = [...hit];
     if (this.orderBy) {
       const { column, ascending } = this.orderBy;
+      // PostgREST does not silently ignore an unknown sort column -- it
+      // answers 42703 and returns NO rows. A stub that sorts by `undefined`
+      // instead would let `.order("granted_at")` on a table that has no such
+      // column pass every test while returning nothing in production.
+      if (store.length > 0 && !store.some((r) => column in r)) {
+        return {
+          data: null,
+          error: {
+            code: "42703",
+            message: `column ${this.table}.${column} does not exist`,
+          },
+        };
+      }
       out.sort((a, b) =>
         a[column] === b[column]
           ? 0
