@@ -392,6 +392,8 @@ record. Recorded in the plan at `.planning/07-reference/commodity-signals-plan.m
 a one-point history admits no walk-forward and no hit rate, and testing even the fortnightly
 cadence at this standard costs 307 weekly reports: the plan's §9g, measured 2026-09-06.**
 
+**Batch 63 (2026-09-06) closed the two questions §9g raised.** The founder: *"A person records 40 going forward, one at a time"* (each download a logged one-off read under the batch-57 rule; no archive batch, no MARS letter) and *"Price it; revisit at 40 reports"* (a year of cover for eggs is priced by the typed carrying cost, never refused by construction on one report's evidence). No code changed for either; the plan's §9g carries both verbatim.
+
 **And what it opens, carried here rather than lost.** Six questions came out of the quant pass
 (`p4-scratch/p4bf-quant-cadence.md` §9); two are answered above (the default budget; whether a
 house types a carrying cost — yes, and it is now a field), one is built and now also decided

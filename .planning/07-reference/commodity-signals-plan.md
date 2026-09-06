@@ -724,6 +724,68 @@ a **0 % hit rate**. Thirty-six years say it beats a coin; three and a half say i
 The 36-year table is the evidence and the 40-month window is the world the house lives in, and
 nothing further that could be measured settles which is the future.
 
+### 9g. The egg series on one report
+
+**A one-point series admits no walk-forward and no hit rate, and this one is a single
+point.** The register holds ONE report of AMS 2843 (2026-09-04, 23 rows, 9,115 bytes, sha256
+`0371c7c7…23d49c`) and `THRESHOLD_HISTORY_FLOOR = 36` refuses a threshold below 36
+observations — so no threshold, no fire, no hit rate, no benchmark and no comparison between
+the six cadences, and a hit rate here would have a denominator of one. Two things ARE computable and
+both come out the same way (measured 2026-09-06 by `node p4-scratch/p4bo-run.js`; long form
+`p4-scratch/p4bo-egg-backtest.md`; every parameter labelled; **USD, cents per dozen, on one
+report**). **The whole money history is 47 price cells**: 15 current, 15 `Previous`, 17 `Last
+Year`, 9 rows with all three. The series row — the six-part tuple, matched once — is **35.28**,
+previous **36.14**, year ago **215.53**, volume 33,234 cases; and the two lagged columns are
+**undated by the file** (all four date columns read 09/04/2026), a second reason not to write
+them as observations.
+
+**Break-even carrying cost** `c* = gross / (H(H+1)/2)`; only H = 1 is observable at all:
+
+| Move | Gross | `c*` at H = 1 |
+|---|---|---|
+| series row vs `Previous` | **-2.3796 %** | **refused `not_a_rise`** — loses at a carry of zero |
+| series row vs `Last Year` | **-83.6310 %** | **refused `not_a_rise`** |
+| mean of all 15 rows | **-0.1985 %** | **refused `not_a_rise`** |
+| the file's one big riser (cage-free national FOB) | **+10.2692 %** | 10.2692 % a period |
+
+Three of 15 markets rose, five fell, seven did not move; year-on-year **nine of nine fell**
+(mean **-70.29 %**). At **8 USD an interruption** and a carrying cost of 0.5 %/month (both
+parameters; nobody has typed a carrying cost), weekly spends of **200 / 1,000 / 5,000 USD**
+give a reading cost of **4.00 / 0.80 / 0.16 %** of that week's spend and a break-even move of
+**4.12 / 0.92 / 0.28 %**, which **1 / 3 / 3** of the file's 15 markets beat. On the series
+row's own move the floor is **never** — the net is negative, so no spend repays a reading,
+which is not `below_spend_floor` (too small a line) and must not print as it.
+
+**What N reports each cadence costs**, at the FAO pass's standard — walk-forward, K = 12,
+floor 36, F out-of-sample fires, `N = 36 + F x observations-a-year / cadence + H`; F = 135 is
+that pass's own quarterly fire count (standard error 4.1 pp), F = 30 the weakest bar anyone
+would defend. Reports / years, recording weekly then every publication day (250 a year, a
+parameter — one report cannot show its own calendar):
+
+| Cadence | weekly, F=135 | weekly, F=30 | daily, F=135 | daily, F=30 |
+|---|---|---|---|---|
+| weekly | **refused** | **refused** | 691 / 2.8 | 186 / 0.7 |
+| fortnightly | 307 / 5.9 | **97 / 1.9** | 1,340 / 5.4 | 330 / 1.3 |
+| monthly | 622 / 12.0 | 167 / 3.2 | 2,854 / 11.4 | 666 / 2.7 |
+| quarterly | 1,792 / 34.5 | 427 / 8.2 | 8,479 / 33.9 | 1,916 / 7.7 |
+| twice a year | **3,547 / 68.2** | 817 / 15.7 | 16,916 / 67.7 | 3,791 / 15.2 |
+| once a year | 7,057 / 135.7 | 1,597 / 30.7 | 33,791 / 135.2 | 7,541 / 30.2 |
+
+**Recording five times as often buys five times the downloads and the same wall clock** —
+fires a year is fires a year; daily recording buys one thing only, that the weekly cadence
+stops being untestable. The archive is the escape (307 past reports are 307 downloads, not six
+years) but under `upload_only` each is a person in a browser.
+
+**The strongest case against reading anything into this.** Eggs are the series §5e was
+written for and the moves are large, so a one-report reading that had landed on a rising day
+would print a 100 % hit rate, an enormous gross and a break-even carry above anything a house
+would type. **This one fell.** A verdict that depends on which day the person downloaded is
+not a verdict — which is why nothing here arms anything and the spend floor stays the printed
+state batch 61 decided. Also measured: **eight of the 23 rows carry no `Wtd Avg Price`, not six**;
+six counts only the 19 `Graded Loose` rows. New code: `cadence-sample-size.ts`, pure, 21 tests.
+
+**The founder, 2026-09-06, batch 63, on this section's questions.** How more reports get recorded: **"A person records 40 going forward, one at a time"** — one report per download, each a logged one-off read under the batch-57 rule, until the 36-observation floor clears and the series can be armed; no archive batch, no letter to USDA for MARS access, no cadence promised. A year of cover for eggs: **"Price it; revisit at 40 reports"** — no rule is built on one report's nine year-on-year cells; the typed carrying cost already prices long cover and the sentence prints the figure. The spend floor stays the printed state batch 61 decided. Nothing in the code changes for either answer.
+
 ---
 
 ---

@@ -359,6 +359,8 @@ Measured on PGlite (`p4-scratch/pglite-probe/p4bn-withdrawn-by-name.mjs`, applyi
 unnamed withdrawal, a whitespace name, an empty-string name and a name with no withdrawal are all
 `23514`, and the two older withdrawal CHECKs still fire on a missing reason and a missing withdrawer.
 
+**Rows older than the column stay unnamed, said in words** (the founder, 2026-09-06, batch 63: *"Leave them unnamed, said in words"*). A withdrawal recorded before `withdrawn_by_name` existed prints *this withdrawal predates the column* rather than a name joined from `public.users` at read time, for the reason `declared_by_name` is stored and not joined: a joined name would show a later rename as the signer and vanish when the account is deleted. ADR 0126 §7 expects zero such rows in production; the migration stops with the count if any exist.
+
 **A file's `CUR` disagreeing with the declaration refuses the whole file.** _"Refuse the file,
 naming both."_ `parse-edi832.ts` had let the file's own `CUR` win silently, discarding the manager's
 typed declaration with no trace in the response (audit of `da71cebe`, finding 3). It now refuses the
