@@ -179,13 +179,25 @@ applies (see dashboard.md §7).
   sub-line, the provenance hovers and the exception sentences are proven by component
   tests over synthetic envelopes ONLY. Nothing on this page has yet been seen against
   a document a model actually read.
-- **No delivery exists**, so the spine has never rendered with cards: every document
-  read back reports `deliveries: []`. The spine's collapse-at-two, absence-at-none,
-  `UNORDERED` mark and failed-read states are covered by component tests, not by a
-  screenshot.
-- **The door frame has no door count to show.** `?view=door` renders the frame and
-  its money suppression, but with no `receiving_advice` on any delivery every line
-  reads "not counted" — which is honest and is also the only door state seen so far.
+- ~~**No delivery exists**, so the spine has never rendered with cards~~ — **false since
+  2026-09-06.** Two deliveries were made on the sim tenant through the door-count door and
+  the invoice `b1e02edf` now sits on both; the spine renders two cards, each with its three
+  documents, the `UNORDERED · permanent` mark and the state ladder
+  (`DELIVERED · RECONCILING · AGREED · VERIFIED`). Screenshot
+  `scratchpad/lens-vendor/shots/02-delivery-spine.png`. Collapse-at-two and the failed-read
+  state are still component tests only.
+- **The gates and the proposal thread render only on a document that sits on exactly ONE
+  delivery** (`soleDelivery` in `CanonicalDocumentPage.tsx`). That is deliberate — an
+  ambiguous gate is worse than none — but it means the *invoice* page of a consolidated
+  document never offers them, and the only face that does is the door count's own page
+  (`shots/08-gates-and-thread.png`). A reader who arrives at the invoice sees no way to act.
+- ~~**The door frame has no door count to show.**~~ — **false since 2026-09-06**: two door
+  counts exist on the sim tenant. What the render then exposed is worse than the absence was:
+  **on the door count's own page the counted quantities appear under `Billed` and `Received`
+  reads "not counted" on every line**, and each verdict card says "NOT COMPARED · LINE n …
+  billed 10 bottle. Nothing was ordered, despatched or counted against it." The spine card for
+  the count itself reads "COUNTED AT THE DOOR / number not read". Filed in `v3.0-TECH-DEBT.md`
+  (2026-09-06, finding 3).
 
 - **Canonical view, first render against extracted documents (2026-09-04, `v3.0-TECH-DEBT.md` "nine findings"):** the verdict block says "4 lines differ from the delivery" when nothing exists to compare; the seller is blank though the extraction named it; delivered date and VAT breakdown are not in the extraction contract; the totals ladder shows "Charges —" under listed charges; deposits carry no UNCL7161 code; the original pane has nothing to bring (`imageUrl` null on 3 of 3).
 
@@ -193,6 +205,15 @@ applies (see dashboard.md §7).
 
 **partial.** The most honestly-built page in this cluster, and the only one whose
 producer chain is verified live end to end. What is absent is named, not faked.
+
+**Raised one notch on 2026-09-06, and only one.** The canonical face has now been driven
+through a whole commercial event on the sim tenant — door count → delivery → link → propose →
+counter → accept → AGREED (`both_sides_recorded`) → VERIFIED — with the gates, the thread and
+the spine rendering real rows rather than fixtures, and the four refusals measured (409 each,
+each naming what is missing). It is still **not** `built`: the line table mis-columns our own
+count (§9), the gates are unreachable from a consolidated document's page (§9), and no
+document on this tenant has yet been read by an extraction model, so the four-way table is
+still proven against a degraded parse.
 
 The canonical face (ADR 0104 slice 2) is **built and gated OFF**: route, page,
 seven sections, 27 component tests and 5 page tests, plus a gateway read route

@@ -277,3 +277,29 @@ Seams:
 - **Reconciling the two `computeMatch` copies is unscheduled** — no OD row, no agenda item,
   despite the drift in §7.1.
 
+
+## §9 Measured on the sim tenant — 2026-09-06 (slice 3 stop 3)
+
+The vendor lens ran the short-ship path through the delivery doors on Sim Meyhouse against a
+gateway built from `origin/main` `417474e6`. What this software gained, and what it did not:
+
+- **The agreement half of the match is real and auditable.** `AGREED` names the rule that
+  fired (`agreed_rule: both_sides_recorded`) and the page prints it as a sentence — "Agreed
+  06.09 11:55 because both sides were on the record and nothing was left open". Six months
+  later that is answerable, which is the whole point of writing the rule down.
+- **The dispute is a row, not free text.** The restaurant's `SHORT_SHIP` (line 1, qty 10,
+  ₺142 at risk, the count photo as `evidence`) and the vendor's counter (a ₺142,00 credit)
+  are two preserved rows, the second carrying `counters_proposal_id`, the first moved to
+  `countered`. The vendor's position raised the D8 notification; the restaurant's did not,
+  correctly — nobody needs telling what they just typed.
+- **🔴 The match's own finding does not gate the agreement.** A delivery whose count differs
+  from the invoice on a line the gateway had already notified about reached `AGREED` in one
+  call, with no proposal ever filed. See `v3.0-TECH-DEBT.md` (2026-09-06, finding 1).
+- **The credit is still only an amount in a note.** The counter recorded ₺142,00; no
+  `credit_memo` document was issued, nothing entered `credit-ledger.ts`, and the recovery
+  figures this card describes in §3 were untouched by the run. The claim→memo→recovery arc
+  remains unproven end to end on live rows.
+- **Landed cost stayed exactly where it was.** `0` inventory transactions carry these
+  delivery ids and `0` lots moved; every lot still reads `cost_state = final` — which it did
+  before the delivery existed, because the column defaults to `final` and has no writer
+  (finding 2). Nothing here closes the middle of the four-way match automatically yet.
