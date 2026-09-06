@@ -750,7 +750,12 @@ export class DeliveryService {
      * because it leaves the gate escapable by a per-vendor setting.
      */
     const answered = await this.unansweredDifferences(delivery);
-    if (!answered.ok) return { ok: false, status: 500, error: answered.error };
+    if (!answered.ok)
+      return {
+        ok: false,
+        status: 500,
+        error: `This delivery cannot be agreed. ${answered.error}`,
+      };
     if (answered.value.length) {
       const named = answered.value
         .map(
@@ -1029,6 +1034,53 @@ export class DeliveryService {
         error: `Document ${input.documentId} is not attached to delivery ${deliveryId}, so a line of it cannot answer a difference on this delivery.`,
       };
 
+    /**
+     * THE ACCEPTANCE MUST LAND ON A DIFFERENCE THAT EXISTS (V5, measured live
+     * 2026-09-06 on the sim tenant).
+     *
+     * Before this check, an acceptance keyed by any line of any attached
+     * document was written and answered with 201. Live, the caller keyed it by
+     * the INVOICE while the recorded difference was on the DOOR COUNT: the row
+     * went in, the door said "accepted", and `agree` still refused, naming the
+     * same unanswered line. That is this repository's standing fault in its
+     * purest form — silence wearing the shape of an answer.
+     *
+     * THE KEY IS NOT WIDENED. "Any line of any document on the delivery" would
+     * make the 409 go away and the row still answer nothing: a difference has
+     * ONE home — the document and line the comparison recorded it on — and the
+     * answer has to land there. So the refusal instead NAMES the differences
+     * that can be answered, with their two quantities, and the caller learns
+     * the key rather than guessing it.
+     *
+     * A SCAN THAT COULD NOT BE READ IS NOT AN EMPTY ONE (ADR 0067). An
+     * unreadable comparison fails the call; it never reads as "nothing to
+     * answer", which would refuse a real acceptance for the wrong reason.
+     */
+    const recorded = await this.recordedDifferences(found.value);
+    if (!recorded.ok) return { ok: false, status: 500, error: recorded.error };
+    const matches = recorded.value.some(
+      (l) => l.documentId === input.documentId && l.lineNo === input.lineNo,
+    );
+    if (!matches) {
+      const answerable = recorded.value.length
+        ? "The differences on this delivery that can be answered are: " +
+          recorded.value
+            .map(
+              (l) =>
+                `line ${l.lineNo} of document ${l.documentId} (${l.label}${l.why ? `: ${l.why}` : ""})`,
+            )
+            .join("; ") +
+          "."
+        : "No comparison on this delivery recorded a difference, so there is nothing to answer.";
+      return {
+        ok: false,
+        status: 409,
+        error:
+          `Line ${input.lineNo} of document ${input.documentId} has no recorded difference, so accepting it as billed would answer nothing. ` +
+          `${answerable} An acceptance is keyed by the document and line the difference was recorded on (ADR 0103 A11).`,
+      };
+    }
+
     const existing = await this.db
       .getClient()
       .from("delivery_line_acceptances")
@@ -1102,6 +1154,31 @@ export class DeliveryService {
   }
 
   /**
+   * Every difference a comparison RECORDED on this delivery, answered or not.
+   *
+   * The one list two callers need: `agree` asks which of them are unanswered,
+   * and `acceptAsBilled` asks whether the line it was handed is one of them at
+   * all. Sharing it is what keeps the two doors keyed the same way — the V5
+   * defect was exactly the two doors disagreeing about what a difference is.
+   *
+   * A SCAN THAT COULD NOT BE READ IS NOT AN EMPTY ONE (ADR 0067). `unreadable`
+   * fails the caller; `not_comparable` — nothing to compare — legitimately
+   * records nothing.
+   */
+  private async recordedDifferences(
+    delivery: DeliveryRow,
+  ): Promise<ReadResult<DifferenceLine[]>> {
+    const scan = await this.scanDifferences(delivery);
+    if (scan.status === "unreadable")
+      return {
+        ok: false,
+        error: `The difference check could not run: ${scan.reason}. A comparison that failed is not a comparison that passed.`,
+      };
+    if (scan.status === "not_comparable") return { ok: true, value: [] };
+    return { ok: true, value: [...scan.differing, ...scan.unmatched] };
+  }
+
+  /**
    * Which recorded differences have NO answer (ADR 0103 A11).
    *
    * An answer is an ACCEPTED PROPOSAL covering the line, or an ACCEPT-AS-BILLED
@@ -1124,15 +1201,9 @@ export class DeliveryService {
   private async unansweredDifferences(
     delivery: DeliveryRow,
   ): Promise<ReadResult<DifferenceLine[]>> {
-    const scan = await this.scanDifferences(delivery);
-    if (scan.status === "unreadable")
-      return {
-        ok: false,
-        error: `This delivery cannot be agreed because the difference check could not run: ${scan.reason}. A comparison that failed is not a comparison that passed.`,
-      };
-    if (scan.status === "not_comparable") return { ok: true, value: [] };
-
-    const recorded = [...scan.differing, ...scan.unmatched];
+    const read = await this.recordedDifferences(delivery);
+    if (!read.ok) return read;
+    const recorded = read.value;
     if (!recorded.length) return { ok: true, value: [] };
 
     const proposals = await this.db

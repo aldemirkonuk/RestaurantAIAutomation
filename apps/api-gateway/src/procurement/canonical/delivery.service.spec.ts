@@ -958,9 +958,15 @@ describe("DeliveryService", () => {
 
   // -------------------------------------------------------------------------
   describe("A11 — accept as billed is a human decision with a reason", () => {
+    /**
+     * A delivery with ONE recorded difference: the order says 10 bottles, the
+     * invoice bills 12, so `doc-inv` line 1 differs. `doc-count` is attached and
+     * differs from nothing — it is the key an acceptance must NOT be able to use
+     * (the V5 live defect, 2026-09-06).
+     */
     const onDelivery = () => {
       db.answers.deliveries = {
-        data: deliveryRow({ state: "RECONCILING" }),
+        data: deliveryRow({ state: "RECONCILING", order_id: "ord-1" }),
         error: null,
       };
       db.answers.procurement_documents = {
@@ -972,11 +978,53 @@ describe("DeliveryService", () => {
             direction: "issued_by_vendor",
             extracted: {},
           },
+          {
+            id: "doc-count",
+            provider_id: "prov-1",
+            doc_type: "receiving_advice",
+            direction: "issued_by_us",
+            extracted: {},
+          },
         ],
         error: null,
       };
       db.answers.document_deliveries = {
-        data: [{ document_id: "doc-inv", role: "invoice" }],
+        data: [
+          { document_id: "doc-inv", role: "invoice" },
+          { document_id: "doc-count", role: "door_count" },
+        ],
+        error: null,
+      };
+      db.answers.procurement_document_lines = {
+        data: [
+          {
+            id: "dl-1",
+            document_id: "doc-inv",
+            line_no: 1,
+            vendor_sku: null,
+            description: "SYNTHETIC Okuzgozu 2021",
+            vintage: 2021,
+            format_ml: 750,
+            qty_bottles: "12",
+            unit_price: "71",
+          },
+        ],
+        error: null,
+      };
+      db.answers.procurement_order_items = {
+        data: [
+          {
+            id: "ol-1",
+            wine_name: "SYNTHETIC Okuzgozu 2021",
+            vendor_sku: null,
+            vintage: 2021,
+            quantity: 10,
+            bottles_per_unit: 1,
+            total_bottles: 10,
+            quoted_unit_price: 71,
+            final_unit_price: null,
+          },
+        ],
         error: null,
       };
     };
@@ -1015,6 +1063,85 @@ describe("DeliveryService", () => {
       });
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.status).toBe(409);
+      expect(
+        db.writes.filter((w) => w.table === "delivery_line_acceptances"),
+      ).toEqual([]);
+    });
+
+    /**
+     * MEASURED LIVE, 2026-09-06 (V5, sim tenant a229f22b…, gateway main
+     * 412fd9d8). `accept-as-billed` keyed by the INVOICE line 1 answered 201
+     * `alreadyAccepted:false` while the recorded difference was on line 1 of the
+     * DOOR COUNT — so `agree` still refused, naming the same line. The door said
+     * "accepted" and nothing had been answered: absence wearing the shape of an
+     * answer.
+     */
+    it("refuses an acceptance whose key matches no recorded difference, and names the ones it could answer", async () => {
+      onDelivery();
+      const res = await service.acceptAsBilled(REST, DEL, "u1", {
+        documentId: "doc-count",
+        lineNo: 1,
+        reason: "accepted as billed",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/no recorded difference/i);
+        // The caller has to learn the key, so the sentence carries it.
+        expect(res.error).toMatch(/line 1 of document doc-inv/);
+        expect(res.error).toMatch(/12 against 10/);
+      }
+      expect(
+        db.writes.filter((w) => w.table === "delivery_line_acceptances"),
+      ).toEqual([]);
+    });
+
+    it("refuses on a delivery with no recorded difference at all, and says so", async () => {
+      onDelivery();
+      db.answers.procurement_order_items = {
+        data: [
+          {
+            id: "ol-1",
+            wine_name: "SYNTHETIC Okuzgozu 2021",
+            vendor_sku: null,
+            vintage: 2021,
+            quantity: 12,
+            bottles_per_unit: 1,
+            total_bottles: 12,
+            quoted_unit_price: 71,
+            final_unit_price: null,
+          },
+        ],
+        error: null,
+      };
+      const res = await service.acceptAsBilled(REST, DEL, "u1", {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "accepted as billed",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/no recorded difference/i);
+      }
+      expect(
+        db.writes.filter((w) => w.table === "delivery_line_acceptances"),
+      ).toEqual([]);
+    });
+
+    it("refuses rather than accepting when the difference check could not run", async () => {
+      onDelivery();
+      db.answers.procurement_order_items = {
+        data: null,
+        error: { message: "statement timeout" },
+      };
+      const res = await service.acceptAsBilled(REST, DEL, "u1", {
+        documentId: "doc-inv",
+        lineNo: 1,
+        reason: "accepted as billed",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toMatch(/could not run/i);
       expect(
         db.writes.filter((w) => w.table === "delivery_line_acceptances"),
       ).toEqual([]);

@@ -237,7 +237,7 @@ export class DeliveriesController {
     summary:
       "Accept one recorded difference as billed — a human gate (ADR 0103 A11)",
     description:
-      "The second of the two answers a difference will take (the first is an accepted proposal). It is NOT a proposal: a proposal is a position one side asks the other to accept, and this is the decision not to raise one. Requires a named user and a reason in their own words. Idempotent — a second acceptance of the same line returns the first one rather than moving its timestamp.",
+      "The second of the two answers a difference will take (the first is an accepted proposal). It is NOT a proposal: a proposal is a position one side asks the other to accept, and this is the decision not to raise one. Requires a named user and a reason in their own words. Idempotent — a second acceptance of the same line returns the first one rather than moving its timestamp. **The (document, line) must be one a comparison actually recorded a difference on;** an acceptance keyed anywhere else is refused with 409, and the refusal names the differences that can be answered, with their two quantities, so the caller learns the key (measured live 2026-09-06: it used to answer 201 and answer nothing).",
   })
   async acceptAsBilled(
     @Param("id") id: string,
