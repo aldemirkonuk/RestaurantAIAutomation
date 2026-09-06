@@ -1,8 +1,39 @@
-import { useState, useEffect } from 'react'
+/**
+ * "Place N bottles by their zones?" — the auto-locate proposal.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102) ────────────────────────────────
+ * SHAPE: `Panel`, and the PLAIN DIE. It is a question about a batch, answered
+ * once and left, so it is centred — and bulk gets the plain button, never the
+ * wax (ADR 0112 rule 3). A zone mapping is not a ledger row: it says where a
+ * bottle sits, not that it exists.
+ *
+ * WHAT THE ENGINE IS ALLOWED TO DO HERE. Nothing. It proposes a zone per wine,
+ * with its score and the reasons it scored that way, and every one of them sits
+ * GREY beside the row until a person leaves the tick on (sketch 103 `2c`). The
+ * ticks choose; the button applies; nothing is written by opening this.
+ *
+ * TWO THINGS THE LEGACY BRANCH COULD NOT SAY:
+ *
+ *  1. **What actually landed.** `onConfirm` fired `assignWineToLocation` per
+ *     row — fire-and-forget through `persistToServer`, which swallows every
+ *     failure — and then toasted "14 wines assigned to locations". True about
+ *     the React Query cache; possibly false about the database. The house
+ *     branch awaits `assignWinesToLocations` and reports the rows that did not
+ *     land, with the server's own words, and separates a refusal from a fault.
+ *  2. **Which wines were skipped, and why.** The header counted them
+ *     ("3 skipped (no valid match)") and the panel never named one. A count
+ *     with no rows behind it is the figure ADR 0020 exists to stop.
+ *
+ * The legacy branch below is frozen and renders byte-for-byte as it shipped.
+ */
+import { useMemo, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Zap } from 'lucide-react'
 import type { WineLocationScore, AutoLocateResult } from '../../lib/autoLocateEngine'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
+import { Panel } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import './inventory-mudavym.css'
 
 interface AutoLocatePreviewModalProps {
   isOpen: boolean
@@ -12,6 +43,18 @@ interface AutoLocatePreviewModalProps {
   includeAssigned: boolean
   onToggleIncludeAssigned: (val: boolean) => void
   onConfirm: (selected: WineLocationScore[]) => void
+  /**
+   * The awaited apply, used by the house branch only.
+   *
+   * `onConfirm` stays exactly what it was so the legacy branch's behaviour is
+   * untouched; this one returns what the server actually accepted, so the panel
+   * can say which rows did not land instead of claiming they all did.
+   */
+  onApply?: (selected: WineLocationScore[]) => Promise<{
+    written: string[]
+    failed: { wineId: string; label: string; message: string }[]
+    denied: boolean
+  }>
 }
 
 export function AutoLocatePreviewModal({
@@ -22,9 +65,20 @@ export function AutoLocatePreviewModal({
   includeAssigned,
   onToggleIncludeAssigned,
   onConfirm,
+  onApply,
 }: AutoLocatePreviewModalProps) {
+  const shell = useMudavymShell()
   const [rows, setRows] = useState<WineLocationScore[]>([])
   const [checked, setChecked] = useState<Record<string, boolean>>({})
+  /* House-branch state; the legacy render never reads any of it. */
+  const [applying, setApplying] = useState(false)
+  const [outcome, setOutcome] = useState<{
+    written: number
+    failed: { wineId: string; label: string; message: string }[]
+    denied: boolean
+    at: Date
+  } | null>(null)
+  const readAt = useMemo(() => new Date(), [result])
 
   useEffect(() => {
     setRows(result.assignments)
@@ -53,6 +107,219 @@ export function AutoLocatePreviewModal({
             }
           : r,
       ),
+    )
+  }
+
+  const apply = async () => {
+    const picks = rows.filter((r) => checked[r.wineId])
+    if (picks.length === 0 || !onApply) return
+    setApplying(true)
+    try {
+      const res = await onApply(picks)
+      setOutcome({
+        written: res.written.length,
+        failed: res.failed,
+        denied: res.denied,
+        at: new Date(),
+      })
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    const contract = `Place ${selectedCount} bottle${selectedCount !== 1 ? 's' : ''} by their zones?`
+    return (
+      <Panel
+        open={isOpen}
+        onClose={onClose}
+        label={`${contract} Applying writes a zone for each ticked wine. Leaving writes nothing.`}
+        eyebrow="The zones"
+        title={outcome ? 'What was placed' : contract}
+        closeLabel={outcome ? 'Done' : 'Close'}
+        zIndex={110}
+        footer={
+          <span>
+            A zone says where a bottle sits, not that it exists. Nothing here touches the ledger.
+          </span>
+        }
+      >
+        <div className="mdv-form">
+          <p className="mdv-contract">
+            {outcome
+              ? 'This is what the house accepted. Anything it refused is named below and is unplaced.'
+              : 'The engine proposes a zone for each wine. The ticks choose; nothing is written until you apply. Leaving writes nothing.'}
+          </p>
+
+          {outcome ? (
+            <>
+              <div className="mdv-panelbox">
+                <p className="mdv-alert__head">Placed</p>
+                <p className="mdv-record">{outcome.written}</p>
+                <span className="mdv-prov">
+                  of {outcome.written + outcome.failed.length} ticked ·{' '}
+                  {outcome.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              {outcome.failed.length > 0 && (
+                <div className="mdv-alert" role="alert">
+                  <p className="mdv-alert__head">
+                    {outcome.denied ? 'Not permitted' : 'Not placed'}
+                  </p>
+                  <p>
+                    {outcome.denied
+                      ? 'This account is not permitted to write zone assignments. The wines below are unplaced.'
+                      : `${outcome.failed.length} wine${outcome.failed.length !== 1 ? 's were' : ' was'} not written. ${outcome.failed.length !== 1 ? 'They are' : 'It is'} unplaced — nothing else changed.`}
+                  </p>
+                  {outcome.failed.map((f) => (
+                    <p key={f.wineId} className="mdv-hintline">
+                      {f.label} — {f.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <label className="mdv-pick" style={{ cursor: 'pointer' }}>
+                <span>
+                  <span className="mdv-pick__label">Include wines that already have a zone</span>
+                  <span className="mdv-pick__sub">Ticking this reassigns them.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={includeAssigned}
+                  onChange={(e) => onToggleIncludeAssigned(e.target.checked)}
+                />
+              </label>
+
+              {rows.length === 0 ? (
+                <p className="mdv-quiet">
+                  The engine proposed no placements. That is its answer, not a failure — every wine
+                  it looked at either has a zone already or matched none.
+                </p>
+              ) : (
+                <div>
+                  <span className="mdv-head">
+                    <span>The proposal</span>
+                    <button
+                      type="button"
+                      className="mdv-link"
+                      onClick={() => {
+                        const all = rows.every((r) => checked[r.wineId])
+                        const next: Record<string, boolean> = {}
+                        rows.forEach((r) => {
+                          next[r.wineId] = !all
+                        })
+                        setChecked(next)
+                      }}
+                    >
+                      {rows.every((r) => checked[r.wineId]) ? 'Untick all' : 'Tick all'}
+                    </button>
+                  </span>
+                  <div className="mdv-picks mdv-scroll">
+                    {rows.map((row) => {
+                      const on = checked[row.wineId] ?? true
+                      return (
+                        <div key={row.wineId} className="mdv-pick" aria-checked={on} role="group">
+                          <span style={{ minWidth: 0, flex: '1 1 auto' }}>
+                            <span className="mdv-pick__label">{row.wineName}</span>
+                            {/* The engine's words. Grey, and they stay grey. */}
+                            <span className="mdv-grey">
+                              proposes {row.locationName} · {row.score} points ·{' '}
+                              {row.reasons.length > 0
+                                ? row.reasons.join(' · ')
+                                : 'no reason was recorded'}
+                            </span>
+                            <span style={{ display: 'block', marginTop: 5 }}>
+                              <label className="mdv-label" htmlFor={`zone-${row.wineId}`}>
+                                Zone
+                              </label>
+                              <select
+                                id={`zone-${row.wineId}`}
+                                className="mdv-select"
+                                value={row.locationId}
+                                onChange={(e) => handleLocationChange(row.wineId, e.target.value)}
+                              >
+                                {allLocations.map((loc) => (
+                                  <option key={loc.id} value={loc.id}>
+                                    {loc.name} ({loc.currentCount}/{loc.capacity ?? 'no capacity recorded'})
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            aria-label={`Place ${row.wineName}`}
+                            checked={on}
+                            onChange={(e) =>
+                              setChecked((prev) => ({ ...prev, [row.wineId]: e.target.checked }))
+                            }
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <span className="mdv-prov">
+                    {rows.length} proposal{rows.length !== 1 ? 's' : ''} scored from this tenant's
+                    zones and the wines on the register · read{' '}
+                    {readAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ·{' '}
+                    {locationsUtilized} zone{locationsUtilized !== 1 ? 's' : ''} would be used
+                  </span>
+                </div>
+              )}
+
+              {/* A count with no rows behind it is not a fact. Name them. */}
+              {skippedCount > 0 && (
+                <div>
+                  <span className="mdv-head">
+                    <span>Matched no zone — {skippedCount}</span>
+                  </span>
+                  <div className="mdv-lines">
+                    {result.skipped.map((w) => (
+                      <div key={w.id} className="mdv-line" data-owed="true">
+                        <span className="mdv-line__name">
+                          {w.name}
+                          <span className="mdv-line__sub">
+                            No zone scored above nothing for this bottle. It stays where it is.
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mdv-actions">
+                <span className="mdv-tally">
+                  {selectedCount} of {rows.length} ticked
+                </span>
+                <button type="button" className="mdv-btn" onClick={onClose} disabled={applying}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="mdv-btn mdv-btn--seal"
+                  onClick={() => void apply()}
+                  disabled={applying || selectedCount === 0 || !onApply}
+                >
+                  {applying
+                    ? 'Placing…'
+                    : `Place ${selectedCount} wine${selectedCount !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+              {!onApply && (
+                <p className="mdv-hintline">
+                  This panel was mounted without an apply path, so the button is unavailable.
+                  Nothing here can write.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </Panel>
     )
   }
 

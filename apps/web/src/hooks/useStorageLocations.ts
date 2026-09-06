@@ -244,6 +244,83 @@ export function useStorageLocations() {
     [mappings, setMappings, setLocations, persistToServer, restaurantId, queryClient],
   )
 
+  /**
+   * Assign many wines, and report what actually landed.
+   *
+   * `assignWineToLocation` above is fire-and-forget by design: it updates the
+   * cache and hands the POST to `persistToServer`, which swallows every failure
+   * ("optimistic state is already in React Query cache"). That is defensible
+   * for a single drag in the zone manager, where the operator is looking at the
+   * thing they moved. It is NOT defensible for a batch: the auto-locate preview
+   * fired fourteen of them, awaited none, and then said "14 wines assigned to
+   * locations" — a sentence that was true about the cache and possibly false
+   * about the database. An absence reported as health, on a write path.
+   *
+   * This is the awaited form. It writes the same rows through the same route,
+   * one at a time so a single rejection cannot hide behind a `Promise.all`, and
+   * returns the failures with the server's own words. The optimistic cache
+   * update still happens first, so the list moves under the operator's hand;
+   * the difference is that the caller can now say which ones did not land.
+   *
+   * A zone id that is not a UUID never reaches the server (the same guard
+   * `assignWineToLocation` applies), so it is reported as NOT WRITTEN rather
+   * than counted as a success.
+   */
+  const assignWinesToLocations = useCallback(
+    async (
+      picks: { wineId: string; locationId: string; quantity?: number; label?: string }[],
+    ): Promise<{
+      written: string[]
+      failed: { wineId: string; label: string; message: string }[]
+      denied: boolean
+    }> => {
+      const written: string[] = []
+      const failed: { wineId: string; label: string; message: string }[] = []
+      let denied = false
+
+      for (const pick of picks) {
+        const label = pick.label ?? pick.wineId
+        assignWineToLocation(pick.wineId, pick.locationId, pick.quantity ?? 1)
+        if (!restaurantId) {
+          failed.push({
+            wineId: pick.wineId,
+            label,
+            message: 'no restaurant is active, so nothing was sent',
+          })
+          continue
+        }
+        if (!UUID_RE.test(pick.locationId)) {
+          failed.push({
+            wineId: pick.wineId,
+            label,
+            message: 'that zone has no server record yet, so nothing was written for it',
+          })
+          continue
+        }
+        try {
+          await apiClient.post(`/storage-locations/${restaurantId}/mappings`, {
+            wineId: pick.wineId,
+            locationId: pick.locationId,
+            quantity: pick.quantity ?? 1,
+          })
+          written.push(pick.wineId)
+        } catch (err) {
+          const e = err as { response?: { status?: number; data?: { message?: string } }; message?: string }
+          if (e?.response?.status === 403 || e?.response?.status === 401) denied = true
+          failed.push({
+            wineId: pick.wineId,
+            label,
+            message: e?.response?.data?.message || e?.message || 'the request did not complete',
+          })
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
+      return { written, failed, denied }
+    },
+    [assignWineToLocation, restaurantId, queryClient],
+  )
+
   const removeWineFromLocation = useCallback(
     (wineId: string) => {
       const mapping = mappings.find((m) => m.wineId === wineId)
@@ -435,6 +512,7 @@ export function useStorageLocations() {
     getWineLocation,
     getWinesInLocation,
     assignWineToLocation,
+    assignWinesToLocations,
     removeWineFromLocation,
     updateWineQuantityAtLocation,
     addLocation,
