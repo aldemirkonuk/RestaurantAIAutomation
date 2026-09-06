@@ -305,7 +305,7 @@ def page_section(pg):
                  + "".join(f'<li><span class="at">{esc(a)}</span><span class="ad">{b}</span><a class="al" href="{esc(u)}">{esc(u.split("/")[2])}</a></li>' for a, b, u in C.MORE_ACCESS) + '</ol>'
                  '<p class="tomb-h">A fit per act — proposed (F12), decided act by act</p><ol class="access">'
                  + "".join(f'<li><span class="at">{esc(a)}</span><span class="ad">{esc(b)}</span><span></span></li>' for a, b in C.FIT_PER_ACT) + '</ol>'
-                 '<p class="v">Evidence and verdicts: <code>research/A-command-first.md</code>, <code>B-ops-finance.md</code>, <code>C-ai-mobile.md</code>, <code>D-implementation.md</code>, <code>E-adversary.md</code>, then <code>F-security-ceremonies.md</code> and the lead\'s own pass <code>G-security-adversary.md</code> in the sketch directory. The adversary rejected five rows (an OS-wide capture a web app cannot honestly offer; two claims whose sources did not hold; a bare Approve on a push notification; a nested peek with no primary source) and found three misses: the manager passcode, the kitchen\'s bump-and-recall, and presence.</p>')
+                 '<p class="v">Evidence and verdicts: <code>research/A-command-first.md</code>, <code>B-ops-finance.md</code>, <code>C-ai-mobile.md</code>, <code>D-implementation.md</code>, <code>E-adversary.md</code>, then <code>F-security-ceremonies.md</code>, the lead\'s own pass <code>G-security-adversary.md</code>, the deep pass on the assistant\'s ceremonies <code>H-assistant-security-deep.md</code> and its check <code>I-deep-pass-check.md</code> in the sketch directory. The adversary rejected five rows (an OS-wide capture a web app cannot honestly offer; two claims whose sources did not hold; a bare Approve on a push notification; a nested peek with no primary source) and found three misses: the manager passcode, the kitchen\'s bump-and-recall, and presence.</p>')
     if tombs:
         h.append('<p class="tomb-h">Not drawn — and why</p><ul class="tomb">' + "".join(tomb(o) for o in tombs) + '</ul>')
     if not drawn and not tombs: h.append('<p class="quiet" style="padding-left:0">No overlay opens from this page.</p>')
@@ -437,7 +437,7 @@ page's ground). Filter by shape and by status.
 - **`census.py`** — the source of truth. Edit here.
 - **`census.json`** — the same data for tools (the page-doc subsections are generated from it).
 - **`build.py`** — the builder.
-- **`research/`** — the research behind the Behaviours section: three angles (A–C), the implementation references (D), the adversary's verdicts (E), the security ceremonies (F) and the lead's own pass over them (G), plus the adversary's brief.
+- **`research/`** — the research behind the Behaviours section: three angles (A–C), the implementation references (D), the adversary's verdicts (E), the security ceremonies (F) and the lead's own pass over them (G), the deep pass on the assistant's and tool-write ceremonies (H) and its check (I), plus the adversary's brief.
 
 ## What to look for
 

@@ -323,3 +323,42 @@ understand more of these"* on the assistant's and tool-write ceremonies (step-up
 the passkey-backed seal) — a deeper pass is running as `research/H-…`; its output amends this
 section, it does not reopen the rulings.
 
+### The deep pass on the assistant's and tool-write ceremonies (2026-09-05, night — Proposed where marked)
+
+`research/H-assistant-security-deep.md` (five sections, sourced) checked by the lead in
+`research/I-deep-pass-check.md`. What it established, and the house design it implies:
+
+- **Step-up in this stack.** Supabase Auth documents two second factors — a TOTP app and phone —
+  and defines AAL1/AAL2; the JWT carries an `amr` array of methods used and **no `auth_time`**.
+  WebAuthn/passkeys are not in the MFA docs. So the two-hour gate (GitHub's rolling window,
+  verified: any sensitive action resets it) is enforced by the gateway from a timestamp the house
+  persists itself, keyed by `session_id`, on every apply — never from the client's clock. The
+  panel says one line, only when the gate trips, with the prompt inline; a successful seal both
+  authorizes and re-arms the window.
+- **The passkey-backed seal** is a house-owned WebAuthn ceremony, not Supabase's MFA path: the
+  hold begins → the server mints a single-use challenge encoding hash(nonce ‖ amount ‖ payee ‖
+  order ‖ expiry) → the hold's release calls `navigator.credentials.get` with `userVerification:
+  "required"` → the server verifies the signature and consumes the challenge. Secure Payment
+  Confirmation (the browser shows merchant, instrument, amount and the authenticator signs them —
+  MDN, verified) is a Chromium enhancement later, not the baseline. **The mobile app must not
+  build the seal on `expo-local-authentication`**: a device-local prompt proves nothing to the
+  server; a real WebAuthn library is required on any device the seal is used from.
+- **Break-glass** follows the healthcare model (a reason, a real-time notice to every owner, an
+  audited review), not the cloud "primary auth is down" model: owner-only, never blocked, always
+  loud, marked in the trail.
+- **Authorized personnel** is a first-class grant row — grantor, grantee, scope, limit, expiry,
+  revoked-at — with *granted by* visible wherever the authority is used, expiry enforced at check
+  time, and grantor ≠ approver enforced in the database (an owner cannot approve twice through a
+  self-issued grant). This is more explicit than Ramp, Brex, Mercury or Rippling document, which
+  is right for a house where the owner must be able to read who acts as owner.
+- **Speed.** No vendor publishes a timing; the design rules that keep it to seconds are: one
+  prompt (hold = intent, the OS prompt = identity, never a third), the reason field only on
+  break-glass, no chain.
+
+**Questions put to the founder (2026-09-05, night):** the launch factor and the mobile timing
+(TOTP now with the house's own passkey seal on web, mobile when a real WebAuthn library ships —
+or wait); the break-glass review (a stated window, who reviews when all owners were only told,
+and whether the outcome is told); grants (any owner may revoke, and grantor ≠ approver enforced
+structurally); one security ledger for step-up, break-glass and grants or three tables. Answers
+are recorded below when given.
+
