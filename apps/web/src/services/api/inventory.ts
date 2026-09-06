@@ -18,6 +18,91 @@ import type {
 
 const INVENTORY_PATH = '/inventory';
 
+/**
+ * The snake_case keys the gateway hands back unmapped. `GET /inventory/:id`
+ * runs rows through the gateway's `mapInventoryItem` (camelCase laid over the
+ * raw row), but `GET /inventory/:id/low-stock` returns `v_low_stock_items` rows
+ * untouched (`apps/api-gateway/src/database/database.service.ts:55-63`):
+ * `wine_name`, `producer`, `vintage`, `stock_live`, `threshold_min`,
+ * `master_wine_id`. Every reader that trusted the declared `InventoryItem` type
+ * rendered "Unknown wine" with blank counts over seven named wines
+ * (`.planning/v3.0-TECH-DEBT.md`, 2026-09-03 intelligence lens, defect 1).
+ */
+interface RawInventoryRow {
+  restaurant_id?: string;
+  master_wine_id?: string;
+  provider_id?: string | null;
+  wine_name?: string | null;
+  wine_producer?: string | null;
+  producer?: string | null;
+  wine_vintage?: number | null;
+  vintage?: number | null;
+  provider_name?: string | null;
+  stock_live?: number | null;
+  physical_stock?: number | null;
+  shadow_stock?: number | null;
+  threshold_min?: number | null;
+  threshold_max?: number | null;
+  toast_item_guid?: string | null;
+  is_active?: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+  last_counted_at?: string | null;
+  bottle_size_ml?: number | null;
+  retail_price_avg?: number | null;
+  markup_ratio?: number | null;
+}
+
+/**
+ * Normalize one inventory row to the declared `InventoryItem` shape whichever
+ * casing the gateway used. camelCase wins when both are present, so a row the
+ * gateway already mapped passes through unchanged and the function is
+ * idempotent. Applied at the service boundary by `getLowStockItems` (the one
+ * inventory read that serves raw view rows) and by the TanStack inventory hooks.
+ *
+ * Absent values stay absent: a view row carries no `bottle_size_ml`, and this
+ * does not invent one — the renderer that wants a default applies its own.
+ */
+export function normalizeInventoryItem(
+  item: Partial<InventoryItem> & RawInventoryRow
+): InventoryItem {
+  return {
+    ...item,
+    restaurantId: item.restaurantId ?? item.restaurant_id,
+    wineId: item.wineId ?? item.master_wine_id,
+    providerId: item.providerId ?? item.provider_id ?? undefined,
+    wineName: item.wineName ?? item.wine_name ?? undefined,
+    wineProducer: item.wineProducer ?? item.wine_producer ?? item.producer ?? undefined,
+    wineVintage: item.wineVintage ?? item.wine_vintage ?? item.vintage ?? undefined,
+    providerName: item.providerName ?? item.provider_name ?? undefined,
+    stockLive: item.stockLive ?? item.stock_live ?? 0,
+    physicalStock: item.physicalStock ?? item.physical_stock ?? undefined,
+    shadowStock: item.shadowStock ?? item.shadow_stock ?? 0,
+    thresholdMin: item.thresholdMin ?? item.threshold_min ?? 0,
+    thresholdMax: item.thresholdMax ?? item.threshold_max ?? 0,
+    toastItemGuid: item.toastItemGuid ?? item.toast_item_guid ?? undefined,
+    isActive: item.isActive ?? item.is_active ?? true,
+    createdAt: item.createdAt ?? item.created_at,
+    updatedAt: item.updatedAt ?? item.updated_at,
+    bottleSizeMl: item.bottleSizeMl ?? item.bottle_size_ml ?? undefined,
+    retailPriceAvg: item.retailPriceAvg ?? item.retail_price_avg ?? undefined,
+    markupRatio: item.markupRatio ?? item.markup_ratio ?? undefined,
+    lastCountedAt: item.lastCountedAt ?? item.last_counted_at ?? null,
+    wac: item.wac ?? undefined,
+    costProvenance: item.costProvenance ?? undefined,
+    lotLocationCount: item.lotLocationCount ?? undefined,
+    openMl: item.openMl ?? 0,
+    velocityPerDay: item.velocityPerDay ?? undefined,
+    daysOfCover: item.daysOfCover ?? undefined,
+    reorderPoint: item.reorderPoint ?? undefined,
+    reorderSuggested: item.reorderSuggested ?? false,
+    abcClass: item.abcClass ?? undefined,
+    deadStock: item.deadStock ?? false,
+    daysSinceSale: item.daysSinceSale ?? undefined,
+    locations: item.locations ?? [],
+  } as InventoryItem;
+}
+
 export interface ItemActivity {
   daily: Array<{ date: string; out: number }>;
   /** 7 rows (Mon..Sun) x 8 slots (4pm..11pm) of depletion counts, last 28d */
@@ -109,14 +194,19 @@ export async function bulkCreateInventoryItems(
 }
 
 /**
- * Get low stock items
+ * Get low stock items.
+ *
+ * The endpoint serves `v_low_stock_items` rows as the database names them, so
+ * the read is normalized here — the declared return type is the delivered one.
  */
 export async function getLowStockItems(restaurantId?: string): Promise<InventoryItem[]> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.get<InventoryItem[]>(`${INVENTORY_PATH}/${id}/low-stock`);
-  return response.data;
+  const response = await apiClient.get<Array<Partial<InventoryItem> & RawInventoryRow>>(
+    `${INVENTORY_PATH}/${id}/low-stock`
+  );
+  return response.data.map(normalizeInventoryItem);
 }
 
 /**
