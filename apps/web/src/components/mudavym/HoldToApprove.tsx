@@ -20,8 +20,13 @@
  */
 
 import { CSSProperties, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { animate, pour, stamp, tuck, useReducedMotion } from '../../lib/mudavym/motion';
+import { animate, ink, pour, stamp, tuck, useReducedMotion } from '../../lib/mudavym/motion';
 import { Seal } from './Seal';
+/* `.mdv-bound` lives in the overlay stylesheet with the rest of the house
+   content vocabulary; the control is mounted inside a Sheet or a Panel most of
+   the time, but not always (dashboard's OneTapPanel mounts it inline), so it
+   carries its own import rather than assuming an overlay above it. */
+import './sheet.css';
 
 export interface HoldToApproveProps {
   /**
@@ -53,6 +58,28 @@ export interface HoldToApproveProps {
   label?: ReactNode;
   /** Shown next to the seal once approved. */
   approvedLabel?: ReactNode;
+  /**
+   * What the seal bound — sketch 103 · 1d, accepted 2026-09-06.
+   *
+   * "Hold it, and read back exactly what was bound." Rendered under the seal
+   * once the hold completes, headed "What the seal bound". This closes finder
+   * B's D17: every drawn footer in the census covers FAILURE, and nothing said
+   * what happens on success.
+   *
+   * It is the caller's own words — the amount, the payee, the rows summed —
+   * because only the caller knows what the write actually contained. The
+   * primitive supplies the ceremony and the heading, never the figures.
+   */
+  boundSummary?: ReactNode;
+  /**
+   * Called after the seal lands, with the summary it bound.
+   *
+   * Separate from `onApprove` on purpose: `onApprove` is the WRITE, and it runs
+   * before anything is read back. `onSealed` is the receipt — it is what a
+   * ledger line, a trail row or a toast is written from, and it carries the
+   * same `boundSummary` the reader can see, so the two cannot drift.
+   */
+  onSealed?: (bound: { summary: ReactNode; challenge: string | null }) => void;
   /** Hold duration in ms. Default: the `pour` token's 620. */
   holdMs?: number;
   disabled?: boolean;
@@ -69,6 +96,8 @@ export function HoldToApprove({
   onChallenge,
   label = 'Hold to approve',
   approvedLabel = 'Approved',
+  boundSummary,
+  onSealed,
   holdMs = pour.ms,
   disabled = false,
   className,
@@ -79,6 +108,12 @@ export function HoldToApprove({
 
   const fillRef = useRef<HTMLDivElement | null>(null);
   const sealRef = useRef<HTMLDivElement | null>(null);
+  const boundRef = useRef<HTMLDivElement | null>(null);
+  /* `boundSummary` is usually a freshly-created element on every render; read
+     it through a ref so `commit` is not rebuilt each time and the seal cannot
+     fire twice for one gesture. */
+  const boundSummaryRef = useRef<ReactNode>(boundSummary);
+  boundSummaryRef.current = boundSummary;
   const rafRef = useRef(0);
   const holdStartRef = useRef(0);
   const progressRef = useRef(0);
@@ -110,6 +145,7 @@ export function HoldToApprove({
       setFill(1);
       setPhase('sealed');
       onApprove(null);
+      onSealed?.({ summary: boundSummaryRef.current, challenge: null });
       return;
     }
 
@@ -121,6 +157,7 @@ export function HoldToApprove({
         setFill(1);
         setPhase('sealed');
         onApprove(token);
+        onSealed?.({ summary: boundSummaryRef.current, challenge: token });
       })
       .catch(() => {
         // Not sealed, and said so. The gesture completed and the approval did
@@ -133,7 +170,7 @@ export function HoldToApprove({
         if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
         noteTimerRef.current = setTimeout(() => setReleaseNote(null), RELEASE_NOTE_MS);
       });
-  }, [onApprove]);
+  }, [onApprove, onSealed]);
 
   /** Begin minting the proof, once per gesture. */
   const beginChallenge = useCallback(() => {
@@ -142,6 +179,14 @@ export function HoldToApprove({
       .then(() => onChallenge())
       .catch(() => null);
   }, [onChallenge]);
+
+  /* The read-back arrives on `ink` — a micro-state under a control that has
+     not moved. Under reduced motion it is simply there, which is the end state
+     and not a shorter version of it. */
+  useEffect(() => {
+    if (phase !== 'sealed' || reduced || !boundRef.current) return;
+    animate(boundRef.current, [{ opacity: 0 }, { opacity: 1 }], ink);
+  }, [phase, reduced]);
 
   // The seal lands on the stamp spring once its node exists.
   useEffect(() => {
@@ -290,6 +335,15 @@ export function HoldToApprove({
           </span>
         )}
       </button>
+      {/* What the seal bound (1d). Only after the wax lands, and only when the
+          caller gave something to read back — a heading over nothing would be
+          a receipt for a write nobody described. */}
+      {sealed && boundSummary ? (
+        <div ref={boundRef} className="mdv-bound" role="status" aria-live="polite">
+          <span className="mdv-bound__head">What the seal bound</span>
+          <div className="mdv-bound__body">{boundSummary}</div>
+        </div>
+      ) : null}
       {/* status line — honest, and reserved so nothing jumps */}
       <div
         aria-live="polite"

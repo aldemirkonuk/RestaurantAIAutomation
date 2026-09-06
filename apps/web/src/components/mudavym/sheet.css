@@ -266,6 +266,23 @@
   min-height: 0;
   overflow-y: auto;
 }
+/* What the paper is holding (1d). Empty until the panel leans, and it takes no
+   height when it is empty — a reserved band that says nothing is a band the
+   reader learns to ignore. */
+.mdv-ovl__weight {
+  flex: none;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.mdv-ovl__weight:not(:empty) {
+  padding: 8px 16px 9px;
+  border-top: 1px solid var(--paper-2);
+  border-left: 2px solid var(--seal-ring);
+  background: var(--paper-1);
+}
+
 .mdv-ovl__foot {
   flex: none;
   padding: 9px 16px 12px;
@@ -681,4 +698,42 @@
   font-size: 11px;
   line-height: 1.5;
   color: var(--ink-3);
+}
+
+/* ============================================================
+   What the seal bound — sketch 103 · 1d
+   ============================================================
+   The census draws a failure line on four of sixty rows and nothing at all on
+   success (finder B, D17). This is the success line: after the wax lands, the
+   control reads back exactly what it bound, in the caller's own figures.
+*/
+.mdv-bound {
+  margin-top: 8px;
+  padding: 8px 12px 9px;
+  border: 1px solid var(--seal-ring);
+  border-left: 2px solid var(--seal);
+  border-radius: 10px;
+  background: var(--seal-tint);
+}
+.mdv-bound__head {
+  display: block;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+  margin-bottom: 3px;
+}
+.mdv-bound__body {
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-1);
+}
+/* A figure inside the read-back is a figure of record. */
+.mdv-bound__body strong {
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }

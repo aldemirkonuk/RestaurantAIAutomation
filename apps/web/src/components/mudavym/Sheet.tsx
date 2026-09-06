@@ -219,6 +219,20 @@ function warnIfLabelIsATitle(label: string): void {
   );
 }
 
+/* ── the weight (1d) ─────────────────────────────────────────────────────
+   A dialog that asks "are you sure you want to discard?" is a system that never
+   watched what you did. A dirty Panel gains weight instead: a stray click
+   outside cannot lift it — it leans, says what it is holding, and waits for a
+   second, deliberate act. The sentence is spoken, not only drawn, because the
+   lean is a movement and a movement reaches no screen reader. */
+const WEIGHT_OUTSIDE =
+  'This panel is holding unsaved edits. Click Close to leave; nothing will be written.';
+const WEIGHT_ESC =
+  'This panel is holding unsaved edits. Press Escape again to leave; nothing will be written.';
+/** How long a first Escape stays armed. Long enough to be deliberate, short
+    enough that an Escape minutes later is not read as a confirmation. */
+const ESC_ARM_MS = 6000;
+
 export type OverlayShape = 'sheet' | 'panel' | 'popover';
 
 export interface OverlayProps {
@@ -570,6 +584,39 @@ function OverlayRoot({
     [onClose, onTear, reduced],
   );
 
+  /* ── the lean (1d) ──────────────────────────────────────────────────────
+     `settle`, 6px, one lean each way and back. The note lives in a polite live
+     region so the ear gets the same fact the eye does. */
+  const [weightNote, setWeightNote] = useState<string | null>(null);
+  const escArmed = useRef(false);
+  const escTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (escTimer.current) clearTimeout(escTimer.current);
+    },
+    [],
+  );
+
+  const lean = useCallback(
+    (note: string) => {
+      setWeightNote(note);
+      const panel = panelRef.current;
+      if (!reduced && panel) {
+        animate(
+          panel,
+          [
+            { transform: 'none' },
+            { transform: 'translateX(-6px)' },
+            { transform: 'translateX(6px)' },
+            { transform: 'none' },
+          ],
+          settle,
+        );
+      }
+    },
+    [reduced],
+  );
+
   /** What a leave gesture means on this surface, right now. */
   const leave = useCallback(
     (reason: 'esc' | 'outside') => {
@@ -577,9 +624,31 @@ function OverlayRoot({
         tear(reason);
         return;
       }
+      if (dirty && shape === 'panel') {
+        // A stray click never lifts this paper. Escape does, said twice.
+        if (reason === 'outside') {
+          lean(WEIGHT_OUTSIDE);
+          return;
+        }
+        if (!escArmed.current) {
+          escArmed.current = true;
+          lean(WEIGHT_ESC);
+          if (escTimer.current) clearTimeout(escTimer.current);
+          escTimer.current = setTimeout(() => {
+            escArmed.current = false;
+            setWeightNote(null);
+          }, ESC_ARM_MS);
+          return;
+        }
+        escArmed.current = false;
+        if (escTimer.current) clearTimeout(escTimer.current);
+        onTear?.('esc');
+        onClose();
+        return;
+      }
       onClose();
     },
-    [dirty, shape, tear, onClose],
+    [dirty, shape, tear, lean, onTear, onClose],
   );
 
   /* Esc closes, from anywhere — an overlay whose Esc only works while focus is
@@ -705,6 +774,13 @@ function OverlayRoot({
       >
         {head}
         <div className={`mdv-ovl__body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
+        {/* What the paper is holding. Rendered only on a surface that can be
+            dirty, so fifty-nine clean rows do not carry an empty region. */}
+        {dirty ? (
+          <p className="mdv-ovl__weight" role="status" aria-live="polite">
+            {weightNote}
+          </p>
+        ) : null}
         {footer ? <div className="mdv-ovl__foot">{footer}</div> : null}
       </div>
     </div>,
