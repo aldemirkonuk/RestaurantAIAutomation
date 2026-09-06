@@ -318,3 +318,32 @@ export class RunClocksDto {
   @MaxLength(40)
   now?: string;
 }
+
+/**
+ * ADR 0103 A11 — accepting ONE recorded difference as billed.
+ *
+ * The line is (document, line number), never "the delivery's line n": A2 puts N
+ * documents on one delivery, so a delivery has no line numbering of its own.
+ */
+export class AcceptAsBilledDto {
+  @ApiProperty({
+    description:
+      "The document the difference was found on. It must be attached to this delivery.",
+  })
+  @IsUUID()
+  documentId!: string;
+
+  @ApiProperty({ description: "The line number OF THAT DOCUMENT." })
+  @IsInt()
+  @Min(1)
+  lineNo!: number;
+
+  @ApiProperty({
+    description:
+      "Why this difference is not being disputed, in the accepting person's own words. Required — an acceptance with no reason is indistinguishable from a click.",
+  })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(2000)
+  reason!: string;
+}

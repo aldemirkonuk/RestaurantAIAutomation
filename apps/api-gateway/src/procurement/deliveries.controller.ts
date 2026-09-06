@@ -16,6 +16,7 @@ import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DeliveryService } from "./canonical/delivery.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
 import {
+  AcceptAsBilledDto,
   CreateDeliveryDto,
   LinkDocumentDto,
   ProposeDto,
@@ -35,6 +36,7 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   POST /procurement/deliveries/:id/proposals   put a position on the record
  *   POST /procurement/deliveries/proposals/:pid/counter   answer one
  *   POST /procurement/deliveries/proposals/:pid/accept    accept one (human)
+ *   POST /procurement/deliveries/:id/accept-as-billed  A11 — answer a difference
  *   POST /procurement/deliveries/:id/agree     D3 — and it says which rule fired
  *   POST /procurement/deliveries/:id/verify    D6 — a human, and idempotent
  *   POST /procurement/deliveries/clocks/run    the catch-up for D9's ladder
@@ -219,11 +221,44 @@ export class DeliveriesController {
     return res.value;
   }
 
+  /**
+   * ACCEPT ONE DIFFERENCE AS BILLED (ADR 0103 A11).
+   *
+   * WHY THE LINE IS IN THE BODY AND NOT THE PATH. A11's first sketch was
+   * `…/deliveries/:id/lines/:line/accept-as-billed`, and a delivery has no
+   * "line n": A2 puts N documents on one delivery, so line 3 of the invoice and
+   * line 3 of the door count are different lines that can disagree with each
+   * other. The path segment would have been ambiguous the moment a second
+   * document was attached — which is the modal case, not the edge. The key is
+   * the one `delivery_proposals` already uses: (document, line number).
+   */
+  @Post(":id/accept-as-billed")
+  @ApiOperation({
+    summary:
+      "Accept one recorded difference as billed — a human gate (ADR 0103 A11)",
+    description:
+      "The second of the two answers a difference will take (the first is an accepted proposal). It is NOT a proposal: a proposal is a position one side asks the other to accept, and this is the decision not to raise one. Requires a named user and a reason in their own words. Idempotent — a second acceptance of the same line returns the first one rather than moving its timestamp.",
+  })
+  async acceptAsBilled(
+    @Param("id") id: string,
+    @Body() body: AcceptAsBilledDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const res = await this.deliveries.acceptAsBilled(
+      user.restaurantId,
+      id,
+      user.userId,
+      { documentId: body.documentId, lineNo: body.lineNo, reason: body.reason },
+    );
+    if (!res.ok) throw new HttpException(res.error, res.status);
+    return res.value;
+  }
+
   @Post(":id/agree")
   @ApiOperation({
     summary: "AGREED — both sides on the record, or a final signed ticket (D3)",
     description:
-      "Refuses unless the restaurant's position AND the vendor's position are both recorded with nothing left open, OR this vendor's `signed_ticket_is_final` is true and a signed door document is attached. The response names WHICH rule fired; a refusal names what is missing. Vendor silence never becomes agreement here, whatever the law deems.",
+      "Refuses unless the restaurant's position AND the vendor's position are both recorded with nothing left open, OR this vendor's `signed_ticket_is_final` is true and a signed door document is attached. **And, before either rule (ADR 0103 A11), every recorded difference — door count against paperwork, or invoice against PO — must be answered by an accepted proposal or an explicit accept-as-billed;** a refusal names the unanswered lines. The response names WHICH rule fired. Vendor silence never becomes agreement here, whatever the law deems.",
   })
   async agree(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     const res = await this.deliveries.agree(user.restaurantId, id, user.userId);

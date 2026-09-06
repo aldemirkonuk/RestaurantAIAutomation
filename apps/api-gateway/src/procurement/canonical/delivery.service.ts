@@ -67,6 +67,35 @@ export type ReasonClass = (typeof REASON_CLASSES)[number];
 /** States a delivery has finished from. Nothing moves it out of these. */
 const SETTLED = ["VERIFIED", "CANCELLED", "REJECTED"];
 
+/**
+ * One line a comparison found something on (ADR 0103 A11).
+ *
+ * Keyed by the DOCUMENT and its line number, never by "the delivery's line n":
+ * A2 puts N documents on a delivery, so line 3 of the invoice and line 3 of the
+ * door count are different lines that can disagree with each other.
+ */
+export interface DifferenceLine {
+  documentId: string;
+  lineNo: number;
+  /** What the line calls itself, so a refusal names something a person knows. */
+  label: string;
+  /** The shape of the disagreement, in words. */
+  why?: string;
+}
+
+/**
+ * What a comparison answered. THREE answers, never two — see `scanDifferences`.
+ */
+export type DifferenceScan =
+  | {
+      status: "compared";
+      basis: "order" | "vendor_document";
+      differing: DifferenceLine[];
+      unmatched: DifferenceLine[];
+    }
+  | { status: "not_comparable"; reason: string }
+  | { status: "unreadable"; reason: string };
+
 interface DeliveryRow {
   id: string;
   restaurant_id: string;
@@ -304,7 +333,7 @@ export class DeliveryService {
     }
 
     await this.scheduleClocksFor(delivery, docs);
-    const differs = await this.notifyIfItDiffersFromTheOrder(delivery, docs);
+    const differs = await this.notifyIfItDiffers(delivery);
 
     return { ok: true, value: { delivery, differsOnLines: differs } };
   }
@@ -399,9 +428,10 @@ export class DeliveryService {
 
     if (!alreadyLinked) {
       await this.scheduleClocksFor(delivery, [{ documentId, role }]);
-      await this.notifyIfItDiffersFromTheOrder(delivery, [
-        { documentId, role },
-      ]);
+      // The scan reads the join itself, so a document attached LATE is compared
+      // against everything already on the delivery — and the same scan is what
+      // the AGREED gate will read (A11).
+      await this.notifyIfItDiffers(delivery);
     }
     return { ok: true, value: { delivery, alreadyLinked } };
   }
@@ -704,6 +734,39 @@ export class DeliveryService {
         error: `This delivery is ${delivery.state}; it cannot be agreed now.`,
       };
 
+    /**
+     * A11 — A RECORDED DIFFERENCE MUST BE ANSWERED, AND IT IS CHECKED FIRST.
+     *
+     * Before either rule is even considered. The founder, 2026-09-06: "AGREED
+     * is refused while any recorded difference (door count vs paperwork, or
+     * invoice vs PO) has no accepted proposal or an explicit 'accept as billed'
+     * from the restaurant. Rule A stays for deliveries with no difference."
+     *
+     * IT GATES BOTH RULES, NOT ONLY RULE A. The sentence names AGREED, not one
+     * of its routes, and rule B is the route most in need of it: a signed
+     * delivery ticket that contradicts the count is exactly the moment somebody
+     * has to say, in one tap, that the difference is accepted anyway. The
+     * alternative reading — gate rule A only — is recorded in A11 as rejected,
+     * because it leaves the gate escapable by a per-vendor setting.
+     */
+    const answered = await this.unansweredDifferences(delivery);
+    if (!answered.ok) return { ok: false, status: 500, error: answered.error };
+    if (answered.value.length) {
+      const named = answered.value
+        .map(
+          (l) =>
+            `line ${l.lineNo} of document ${l.documentId} (${l.label}${l.why ? `: ${l.why}` : ""})`,
+        )
+        .join("; ");
+      return {
+        ok: false,
+        status: 409,
+        error:
+          `This delivery cannot be agreed yet: ${answered.value.length} recorded difference(s) have no answer — ${named}. ` +
+          "Answer each one by accepting a proposal that covers it, or by accepting it as billed with a reason (ADR 0103 A11).",
+      };
+    }
+
     const evidence = await this.agreementEvidence(restaurantId, delivery);
     if (!evidence.ok) return { ok: false, status: 500, error: evidence.error };
     const e = evidence.value;
@@ -871,6 +934,257 @@ export class DeliveryService {
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /**
+   * ACCEPT ONE DIFFERENCE AS BILLED (ADR 0103 A11) — the second of the two
+   * answers a difference will take.
+   *
+   * WHY IT IS NOT A PROPOSAL. A proposal is a POSITION one side asks the other
+   * to accept. "We counted 10, they billed 12, and we are not disputing it" is
+   * the decision NOT to raise one; filing it as an accepted `SHORT_SHIP` from
+   * the restaurant would put a claim on the record that the restaurant
+   * deliberately did not make. Its own row says the true thing.
+   *
+   * A HUMAN, WITH A REASON. D6: a call with no user is refused rather than
+   * attributed to the platform, and an acceptance with no sentence behind it is
+   * indistinguishable from a click.
+   *
+   * IDEMPOTENT. A second acceptance of the same line returns the first one — the
+   * fact recorded is that a named person decided, on a date, not to dispute this
+   * line; rewriting it would move that moment to one at which nobody decided
+   * anything.
+   */
+  async acceptAsBilled(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+    input: { documentId: string; lineNo: number; reason: string },
+  ): Promise<
+    WriteResult<{
+      acceptanceId: string;
+      acceptedAt: string;
+      acceptedBy: string;
+      alreadyAccepted: boolean;
+    }>
+  > {
+    if (!userId)
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Accepting a difference as billed is a human gate (ADR 0103 D6/A11). This call carries no user, so there is nobody to record as having accepted it.",
+      };
+    const reason = (input.reason ?? "").trim();
+    if (!reason)
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "An acceptance needs a reason in your own words. Six months from now the row has to read as a decision somebody made, not as a click.",
+      };
+    if (!Number.isInteger(input.lineNo))
+      return {
+        ok: false,
+        status: 400,
+        error: "`lineNo` is the line number of the document, as an integer.",
+      };
+
+    const found = await this.byId(restaurantId, deliveryId);
+    if (!found.ok) return { ok: false, status: 500, error: found.error };
+    if (!found.value)
+      return { ok: false, status: 404, error: "Delivery not found" };
+    if (SETTLED.includes(found.value.state))
+      return {
+        ok: false,
+        status: 409,
+        error: `This delivery is ${found.value.state}; a difference accepted now would change a record somebody has already acted on.`,
+      };
+
+    // The document must be this restaurant's AND on this delivery. Without the
+    // second check an acceptance could be filed against a line of a document
+    // that has nothing to do with the difference it claims to answer.
+    const owned = await this.documentsOwnedBy(restaurantId, [input.documentId]);
+    if (!owned.ok) return { ok: false, status: 500, error: owned.error };
+    if (owned.value.missing.length)
+      return { ok: false, status: 404, error: "Document not found" };
+
+    const joins = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("document_id")
+      .eq("delivery_id", deliveryId);
+    if (joins.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `document_deliveries read failed for ${deliveryId}: ${joins.error.message}`,
+      };
+    const onDelivery = (
+      (joins.data ?? []) as unknown as { document_id: string }[]
+    ).some((j) => j.document_id === input.documentId);
+    if (!onDelivery)
+      return {
+        ok: false,
+        status: 409,
+        error: `Document ${input.documentId} is not attached to delivery ${deliveryId}, so a line of it cannot answer a difference on this delivery.`,
+      };
+
+    const existing = await this.db
+      .getClient()
+      .from("delivery_line_acceptances")
+      .select("id, accepted_at, accepted_by")
+      .eq("delivery_id", deliveryId)
+      .eq("document_id", input.documentId)
+      .eq("line_no", input.lineNo)
+      .maybeSingle();
+    if (existing.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `delivery_line_acceptances read failed: ${existing.error.message}`,
+      };
+    if (existing.data) {
+      const row = existing.data as unknown as {
+        id: string;
+        accepted_at: string;
+        accepted_by: string;
+      };
+      return {
+        ok: true,
+        value: {
+          acceptanceId: row.id,
+          acceptedAt: row.accepted_at,
+          acceptedBy: row.accepted_by,
+          alreadyAccepted: true,
+        },
+      };
+    }
+
+    const insert = await this.db
+      .getClient()
+      .from("delivery_line_acceptances")
+      .insert({
+        delivery_id: deliveryId,
+        document_id: input.documentId,
+        line_no: input.lineNo,
+        reason,
+        accepted_by: userId,
+      })
+      .select("id, accepted_at, accepted_by")
+      .single();
+    if (insert.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `delivery_line_acceptances insert failed: ${insert.error.message}`,
+      };
+    if (!insert.data)
+      return {
+        ok: false,
+        status: 500,
+        error:
+          "the acceptance insert returned no row and no error, so it cannot be reported as recorded",
+      };
+    const row = insert.data as unknown as {
+      id: string;
+      accepted_at: string;
+      accepted_by: string;
+    };
+    return {
+      ok: true,
+      value: {
+        acceptanceId: row.id,
+        acceptedAt: row.accepted_at,
+        acceptedBy: row.accepted_by,
+        alreadyAccepted: false,
+      },
+    };
+  }
+
+  /**
+   * Which recorded differences have NO answer (ADR 0103 A11).
+   *
+   * An answer is an ACCEPTED PROPOSAL covering the line, or an ACCEPT-AS-BILLED
+   * on it. A proposal covers a line when it names the same document and line; a
+   * proposal that names the document but no line covers every line of it, and
+   * one that names neither is about the delivery as a whole and covers all of
+   * it — the model's own reading of a NULL `document_id` (migration
+   * 20260903160000: "NULL when the proposal is about the delivery as a whole").
+   *
+   * UNMATCHED LINES COUNT AS UNANSWERED. The notification is right to call an
+   * unmatched line "a question, not a difference", but a billed line that pairs
+   * with nothing counted is the most expensive question at the door, and it is
+   * answerable by the same two doors. The refusal names the two groups
+   * separately so the sentence stays true.
+   *
+   * A SCAN THAT COULD NOT BE READ IS NOT AN EMPTY ONE (ADR 0067). `unreadable`
+   * fails the caller; `not_comparable` — nothing to compare — legitimately
+   * leaves nothing to answer, and rule A stands exactly as it did.
+   */
+  private async unansweredDifferences(
+    delivery: DeliveryRow,
+  ): Promise<ReadResult<DifferenceLine[]>> {
+    const scan = await this.scanDifferences(delivery);
+    if (scan.status === "unreadable")
+      return {
+        ok: false,
+        error: `This delivery cannot be agreed because the difference check could not run: ${scan.reason}. A comparison that failed is not a comparison that passed.`,
+      };
+    if (scan.status === "not_comparable") return { ok: true, value: [] };
+
+    const recorded = [...scan.differing, ...scan.unmatched];
+    if (!recorded.length) return { ok: true, value: [] };
+
+    const proposals = await this.db
+      .getClient()
+      .from("delivery_proposals")
+      .select("document_id, line_no, status")
+      .eq("delivery_id", delivery.id);
+    if (proposals.error)
+      return {
+        ok: false,
+        error: `delivery_proposals read failed for ${delivery.id}: ${proposals.error.message}`,
+      };
+    const accepted = (
+      (proposals.data ?? []) as unknown as {
+        document_id: string | null;
+        line_no: number | null;
+        status: string;
+      }[]
+    ).filter((p) => p.status === "accepted");
+
+    const acceptances = await this.db
+      .getClient()
+      .from("delivery_line_acceptances")
+      .select("document_id, line_no")
+      .eq("delivery_id", delivery.id);
+    if (acceptances.error)
+      return {
+        ok: false,
+        error: `delivery_line_acceptances read failed for ${delivery.id}: ${acceptances.error.message}`,
+      };
+    const asBilled = new Set(
+      (
+        (acceptances.data ?? []) as unknown as {
+          document_id: string;
+          line_no: number;
+        }[]
+      ).map((a) => `${a.document_id}#${a.line_no}`),
+    );
+
+    return {
+      ok: true,
+      value: recorded.filter((line) => {
+        if (asBilled.has(`${line.documentId}#${line.lineNo}`)) return false;
+        return !accepted.some(
+          (p) =>
+            (p.document_id == null && p.line_no == null) ||
+            (p.document_id === line.documentId &&
+              (p.line_no == null || p.line_no === line.lineNo)),
+        );
+      }),
+    };
+  }
 
   private async proposalById(
     restaurantId: string,
@@ -1107,44 +1421,138 @@ export class DeliveryService {
   }
 
   /**
-   * D8's first notification — "this delivery differs from your order on N lines",
-   * at the door, which is the only moment it is cheap.
+   * D8's first notification — "this delivery differs from your order on N
+   * lines", at the door, which is the only moment it is cheap.
    *
-   * WHAT IT SAYS WHEN IT CANNOT TELL. With no order there is nothing to differ
-   * FROM, and the notification is not sent — `null` comes back, and the caller
-   * reports `differsOnLines: null` rather than 0. A zero would say "we compared
-   * and everything matched", which is the sentence this repository's standing
-   * fault is made of. Lines the matcher could not pair are counted and named
-   * separately from lines that genuinely disagree.
+   * IT DOES NOT COMPUTE THE DIFFERENCE. `scanDifferences` does, and `agree()`
+   * calls the SAME method (ADR 0103 A11). A second copy of the comparison here
+   * is the failure mode the amendment exists to prevent: the notification would
+   * say a line differs while the gate, reading its own copy, let the delivery
+   * agree — one system telling a person two things.
+   *
+   * WHAT IT SAYS WHEN IT CANNOT TELL. `null` comes back when no comparison ran,
+   * and the caller reports `differsOnLines: null` rather than 0. A zero would
+   * say "we compared and everything matched", which is the sentence this
+   * repository's standing fault is made of. Lines the matcher could not pair are
+   * counted and named separately from lines that genuinely disagree.
    */
-  private async notifyIfItDiffersFromTheOrder(
-    delivery: DeliveryRow,
-    docs: { documentId: string; role: DeliveryRole }[],
-  ): Promise<number | null> {
-    const comparable = docs.filter(
-      (d) => d.role === "door_count" || d.role === "invoice",
+  private async notifyIfItDiffers(delivery: DeliveryRow): Promise<number | null> {
+    const scan = await this.scanDifferences(delivery);
+    if (scan.status !== "compared") {
+      if (scan.status === "unreadable")
+        this.logger.warn(`delivery ${delivery.id}: ${scan.reason}`);
+      return null;
+    }
+
+    const differing = scan.differing.length;
+    const unmatched = scan.unmatched.length;
+    if (!differing && !unmatched) return 0;
+
+    const againstTheOrder = scan.basis === "order";
+    await this.notifications.persistForRestaurant(
+      delivery.restaurant_id,
+      {
+        type: "delivery_differs",
+        title:
+          differing > 0
+            ? againstTheOrder
+              ? `This delivery differs from your order on ${differing} line(s)`
+              : `This delivery differs from the vendor's paperwork on ${differing} line(s)`
+            : againstTheOrder
+              ? `This delivery has ${unmatched} line(s) that are not on your order`
+              : `${unmatched} counted line(s) are on no vendor document`,
+        message:
+          (againstTheOrder
+            ? `${differing} line(s) disagree with what you ordered`
+            : `Nobody ordered this delivery, so there is no order to check it against — ` +
+              `what we counted at the door is compared with what the vendor's own document says. ` +
+              `${differing} line(s) disagree`) +
+          (unmatched
+            ? `, and ${unmatched} line(s) could not be matched at all — which is a question, not a difference.`
+            : ".") +
+          " The door is the cheapest moment to say so.",
+        priority: "high",
+        actionUrl: `/deliveries/${delivery.id}`,
+        actionLabel: "Open the delivery",
+        groupKey: `delivery-differs:${delivery.id}`,
+        metadata: {
+          deliveryId: delivery.id,
+          orderId: delivery.order_id,
+          basis:
+            scan.basis === "order"
+              ? "document_vs_order"
+              : "door_count_vs_vendor_document",
+          differingLines: differing,
+          unmatchedLines: unmatched,
+        },
+      },
+      { dedupeWithinMinutes: 60 * 6 },
     );
-    if (!comparable.length) return null;
+    return differing;
+  }
+
+  /**
+   * THE ONE COMPARISON (ADR 0103 D8, A11).
+   *
+   * Every reader of "does this delivery differ" comes through here: the
+   * notification at the door, and the AGREED gate. Which basis it used is part
+   * of the answer, because "differs from your order" and "differs from the
+   * vendor's paperwork" are different sentences to a receiver.
+   *
+   * THREE ANSWERS, NEVER TWO.
+   *   `compared`       a comparison ran; `differing` may legitimately be empty.
+   *   `not_comparable` there was nothing to compare — no lines on either side.
+   *   `unreadable`     a read FAILED. This is not "no differences": ADR 0067.
+   * Collapsing `unreadable` into `not_comparable` would let a statement timeout
+   * open the gate, which is the exact shape of this repository's standing fault.
+   */
+  private async scanDifferences(
+    delivery: DeliveryRow,
+  ): Promise<DifferenceScan> {
+    const joins = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("document_id, role")
+      .eq("delivery_id", delivery.id);
+    if (joins.error)
+      return {
+        status: "unreadable",
+        reason: `the comparison could not run — document_deliveries read failed: ${joins.error.message}`,
+      };
+    const links = (joins.data ?? []) as unknown as {
+      document_id: string;
+      role: string;
+    }[];
 
     /**
      * WITH NO ORDER THERE IS STILL SOMETHING TO DIFFER FROM.
      *
      * D8's sentence is "this delivery differs from your order on N lines", and
-     * the first draft of this method simply returned `null` when there was no
-     * order. That silences the notification on exactly the case ADR 0103 D5
-     * exists for — an UNORDERED delivery, where nobody has any prior number at
-     * all and the door count against the vendor's own paperwork is the ONLY
-     * comparison available. Measured on the sim tenant on 2026-09-05: zero
-     * purchase orders, so the founder's asked-for notification could not fire
-     * on any delivery there.
-     *
-     * So the basis is chosen, and the sentence says which one it used: the
-     * ORDER when one preceded the goods, otherwise the VENDOR'S DOCUMENT
-     * against our own count. Both are `matchLines` over the same shapes; what
-     * changes is what the reader is being told they disagree with.
+     * the first draft simply gave up when there was no order. That silences the
+     * comparison on exactly the case ADR 0103 D5 exists for — an UNORDERED
+     * delivery, where the door count against the vendor's own paperwork is the
+     * ONLY comparison available. Measured on the sim tenant on 2026-09-05: zero
+     * purchase orders, so the founder's asked-for notification could not fire on
+     * any delivery there.
      */
-    if (!delivery.order_id)
-      return this.notifyIfTheCountDiffersFromThePaperwork(delivery);
+    return delivery.order_id
+      ? this.scanAgainstTheOrder(delivery, links)
+      : this.scanAgainstThePaperwork(delivery, links);
+  }
+
+  /** The ORDERED basis: what a vendor document says against what we ordered. */
+  private async scanAgainstTheOrder(
+    delivery: DeliveryRow,
+    links: { document_id: string; role: string }[],
+  ): Promise<DifferenceScan> {
+    const comparable = links
+      .filter((l) => l.role === "door_count" || l.role === "invoice")
+      .map((l) => l.document_id);
+    if (!comparable.length)
+      return {
+        status: "not_comparable",
+        reason: "no door count and no invoice is attached to this delivery",
+      };
 
     const [orderRead, docLines] = await Promise.all([
       this.db
@@ -1164,26 +1572,16 @@ export class DeliveryService {
             "total_bottles, quoted_unit_price, final_unit_price, inventory_id",
         )
         .eq("order_id", delivery.order_id),
-      this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .select(
-          "id, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price",
-        )
-        .in(
-          "document_id",
-          comparable.map((d) => d.documentId),
-        ),
+      this.linesFor(comparable),
     ]);
 
-    if (orderRead.error || docLines.error) {
-      // Cannot compare is NOT "no differences". Nothing is sent, and the caller
-      // gets null so the screen can say the comparison did not run.
-      this.logger.warn(
-        `delivery ${delivery.id}: the order comparison could not run — ${orderRead.error?.message ?? docLines.error?.message}`,
-      );
-      return null;
-    }
+    if (orderRead.error)
+      return {
+        status: "unreadable",
+        reason: `the order comparison could not run — procurement_order_items read failed: ${orderRead.error.message}`,
+      };
+    if (!docLines.ok)
+      return { status: "unreadable", reason: docLines.error };
 
     const orderLines: MatchableLine[] = (
       (orderRead.data ?? []) as unknown as {
@@ -1218,180 +1616,125 @@ export class DeliveryService {
             : null,
     }));
 
-    const documentLines: MatchableLine[] = (
-      (docLines.data ?? []) as unknown as {
-        id: string;
-        vendor_sku: string | null;
-        description: string | null;
-        vintage: number | null;
-        format_ml: number | null;
-        qty_bottles: number | null;
-        unit_price: number | null;
-      }[]
-    ).map((l) => ({
-      id: l.id,
-      vendorSku: l.vendor_sku,
-      description: l.description,
-      vintage: l.vintage,
-      formatMl: l.format_ml,
-      qtyBottles: Number(l.qty_bottles ?? 0),
-      unitPrice: l.unit_price == null ? null : Number(l.unit_price),
-    }));
+    if (!orderLines.length || !docLines.value.lines.length)
+      return {
+        status: "not_comparable",
+        reason: "one side of the comparison has no lines",
+      };
 
-    if (!orderLines.length || !documentLines.length) return null;
-
-    const matched = matchLines(documentLines, orderLines);
-    const orderById = new Map(orderLines.map((o) => [o.id, o]));
-    const docById = new Map(documentLines.map((d) => [d.id, d]));
-
-    let differing = 0;
-    for (const m of [...matched.applied, ...matched.suggested]) {
-      const o = orderById.get(m.orderLineId);
-      const d = docById.get(m.documentLineId);
-      if (!o || !d) continue;
-      if (m.substitution || Math.abs(o.qtyBottles - d.qtyBottles) > 0.001)
-        differing += 1;
-    }
-    const unmatched = matched.unmatchedDocumentLineIds.length;
-
-    if (!differing && !unmatched) return 0;
-
-    await this.notifications.persistForRestaurant(
-      delivery.restaurant_id,
-      {
-        type: "delivery_differs",
-        title:
-          differing > 0
-            ? `This delivery differs from your order on ${differing} line(s)`
-            : `This delivery has ${unmatched} line(s) that are not on your order`,
-        message:
-          `${differing} line(s) disagree with what you ordered` +
-          (unmatched
-            ? `, and ${unmatched} line(s) could not be matched to the order at all — which is a question, not a difference.`
-            : ".") +
-          " The door is the cheapest moment to say so.",
-        priority: "high",
-        actionUrl: `/deliveries/${delivery.id}`,
-        actionLabel: "Open the delivery",
-        groupKey: `delivery-differs:${delivery.id}`,
-        metadata: {
-          deliveryId: delivery.id,
-          orderId: delivery.order_id,
-          differingLines: differing,
-          unmatchedLines: unmatched,
-        },
-      },
-      { dedupeWithinMinutes: 60 * 6 },
+    return this.gradePairing(
+      "order",
+      docLines.value.lines,
+      orderLines,
+      docLines.value.identify,
     );
-    return differing;
   }
 
   /**
    * The UNORDERED basis: our door count against the vendor's own document.
    *
-   * Returns `null` when there is nothing to compare — no door count, no vendor
-   * document, or a read that failed — and a NUMBER when a comparison actually
-   * ran. `0` therefore means "compared, and nothing differed", which is a
-   * different sentence from "we could not compare" and must never wear its
-   * clothes.
+   * The DIFFERENCE is attributed to the COUNT'S lines, not the vendor's: the
+   * count is the document this restaurant authored, and an "accept as billed"
+   * is a decision about our own line.
    */
-  private async notifyIfTheCountDiffersFromThePaperwork(
+  private async scanAgainstThePaperwork(
     delivery: DeliveryRow,
-  ): Promise<number | null> {
-    const joins = await this.db
-      .getClient()
-      .from("document_deliveries")
-      .select("document_id, role")
-      .eq("delivery_id", delivery.id);
-    if (joins.error) {
-      this.logger.warn(
-        `delivery ${delivery.id}: the paperwork comparison could not run — ${joins.error.message}`,
-      );
-      return null;
-    }
-    const links = (joins.data ?? []) as unknown as {
-      document_id: string;
-      role: string;
-    }[];
+    links: { document_id: string; role: string }[],
+  ): Promise<DifferenceScan> {
     const countIds = links
       .filter((l) => l.role === "door_count")
       .map((l) => l.document_id);
     const paperIds = links
       .filter((l) => l.role === "invoice" || l.role === "despatch_advice")
       .map((l) => l.document_id);
-    if (!countIds.length || !paperIds.length) return null;
+    if (!countIds.length || !paperIds.length)
+      return {
+        status: "not_comparable",
+        reason:
+          "this delivery has no order, and it does not carry both a door count and a vendor document to compare",
+      };
 
     const [countLines, paperLines] = await Promise.all([
       this.linesFor(countIds),
       this.linesFor(paperIds),
     ]);
-    if (!countLines.ok || !paperLines.ok) {
-      this.logger.warn(
-        `delivery ${delivery.id}: the paperwork comparison could not run — ${(!countLines.ok && countLines.error) || (!paperLines.ok && paperLines.error)}`,
-      );
-      return null;
-    }
-    if (!countLines.value.length || !paperLines.value.length) return null;
+    if (!countLines.ok)
+      return { status: "unreadable", reason: countLines.error };
+    if (!paperLines.ok)
+      return { status: "unreadable", reason: paperLines.error };
+    if (!countLines.value.lines.length || !paperLines.value.lines.length)
+      return {
+        status: "not_comparable",
+        reason: "one side of the comparison has no lines",
+      };
 
-    const matched = matchLines(countLines.value, paperLines.value);
-    const paperById = new Map(paperLines.value.map((l) => [l.id, l]));
-    const countById = new Map(countLines.value.map((l) => [l.id, l]));
-
-    let differing = 0;
-    for (const m of [...matched.applied, ...matched.suggested]) {
-      const paper = paperById.get(m.orderLineId);
-      const count = countById.get(m.documentLineId);
-      if (!paper || !count) continue;
-      if (
-        m.substitution ||
-        Math.abs(paper.qtyBottles - count.qtyBottles) > 0.001
-      )
-        differing += 1;
-    }
-    const unmatched = matched.unmatchedDocumentLineIds.length;
-    if (!differing && !unmatched) return 0;
-
-    await this.notifications.persistForRestaurant(
-      delivery.restaurant_id,
-      {
-        type: "delivery_differs",
-        title:
-          differing > 0
-            ? `This delivery differs from the vendor's paperwork on ${differing} line(s)`
-            : `${unmatched} counted line(s) are on no vendor document`,
-        message:
-          `Nobody ordered this delivery, so there is no order to check it against — ` +
-          `what we counted at the door is compared with what the vendor's own document says. ` +
-          `${differing} line(s) disagree` +
-          (unmatched
-            ? `, and ${unmatched} counted line(s) appear on no vendor document at all — which is a question, not a difference.`
-            : ".") +
-          " The door is the cheapest moment to say so.",
-        priority: "high",
-        actionUrl: `/deliveries/${delivery.id}`,
-        actionLabel: "Open the delivery",
-        groupKey: `delivery-differs:${delivery.id}`,
-        metadata: {
-          deliveryId: delivery.id,
-          basis: "door_count_vs_vendor_document",
-          differingLines: differing,
-          unmatchedLines: unmatched,
-        },
-      },
-      { dedupeWithinMinutes: 60 * 6 },
+    return this.gradePairing(
+      "vendor_document",
+      countLines.value.lines,
+      paperLines.value.lines,
+      countLines.value.identify,
     );
-    return differing;
   }
 
-  /** Document lines as the matcher wants them, for a set of documents. */
-  private async linesFor(
-    documentIds: string[],
-  ): Promise<ReadResult<MatchableLine[]>> {
+  /**
+   * One pairing, graded once. `left` is the side the differences are attributed
+   * to — the side a person can answer, line by line.
+   */
+  private gradePairing(
+    basis: "order" | "vendor_document",
+    left: MatchableLine[],
+    right: MatchableLine[],
+    identify: (id: string) => DifferenceLine | null,
+  ): DifferenceScan {
+    const matched = matchLines(left, right);
+    const rightById = new Map(right.map((r) => [r.id, r]));
+    const leftById = new Map(left.map((l) => [l.id, l]));
+
+    const differing: DifferenceLine[] = [];
+    for (const m of [...matched.applied, ...matched.suggested]) {
+      const r = rightById.get(m.orderLineId);
+      const l = leftById.get(m.documentLineId);
+      if (!r || !l) continue;
+      if (m.substitution || Math.abs(r.qtyBottles - l.qtyBottles) > 0.001) {
+        const line = identify(m.documentLineId);
+        if (line)
+          differing.push({
+            ...line,
+            why: m.substitution
+              ? "a different item arrived"
+              : `${l.qtyBottles} against ${r.qtyBottles}`,
+          });
+      }
+    }
+
+    const unmatched: DifferenceLine[] = [];
+    for (const id of matched.unmatchedDocumentLineIds) {
+      const line = identify(id);
+      if (line)
+        unmatched.push({
+          ...line,
+          why: "it pairs with nothing on the other document",
+        });
+    }
+
+    return { status: "compared", basis, differing, unmatched };
+  }
+
+  /**
+   * Document lines as the matcher wants them, plus the identity a person can
+   * answer: which document, which line number, what it says it is.
+   */
+  private async linesFor(documentIds: string[]): Promise<
+    ReadResult<{
+      lines: MatchableLine[];
+      identify: (id: string) => DifferenceLine | null;
+    }>
+  > {
     const read = await this.db
       .getClient()
       .from("procurement_document_lines")
       .select(
-        "id, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price",
+        "id, document_id, line_no, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price",
       )
       .in("document_id", documentIds);
     if (read.error)
@@ -1399,27 +1742,44 @@ export class DeliveryService {
         ok: false,
         error: `procurement_document_lines read failed: ${read.error.message}`,
       };
+    const rows = (read.data ?? []) as unknown as {
+      id: string;
+      document_id: string;
+      line_no: number | null;
+      vendor_sku: string | null;
+      description: string | null;
+      vintage: number | null;
+      format_ml: number | null;
+      qty_bottles: number | null;
+      unit_price: number | null;
+    }[];
+    const byId = new Map(rows.map((r) => [r.id, r]));
     return {
       ok: true,
-      value: (
-        (read.data ?? []) as unknown as {
-          id: string;
-          vendor_sku: string | null;
-          description: string | null;
-          vintage: number | null;
-          format_ml: number | null;
-          qty_bottles: number | null;
-          unit_price: number | null;
-        }[]
-      ).map((l) => ({
-        id: l.id,
-        vendorSku: l.vendor_sku,
-        description: l.description,
-        vintage: l.vintage,
-        formatMl: l.format_ml,
-        qtyBottles: Number(l.qty_bottles ?? 0),
-        unitPrice: l.unit_price == null ? null : Number(l.unit_price),
-      })),
+      value: {
+        lines: rows.map((l) => ({
+          id: l.id,
+          vendorSku: l.vendor_sku,
+          description: l.description,
+          vintage: l.vintage,
+          formatMl: l.format_ml,
+          qtyBottles: Number(l.qty_bottles ?? 0),
+          unitPrice: l.unit_price == null ? null : Number(l.unit_price),
+        })),
+        identify: (id: string) => {
+          const r = byId.get(id);
+          // A line whose number the row does not carry cannot be answered by
+          // (document, line) — and an unanswerable line must not silently
+          // become an unblocking one, so it is dropped from the scan rather
+          // than counted as a difference nobody can clear.
+          if (!r || r.line_no == null) return null;
+          return {
+            documentId: r.document_id,
+            lineNo: r.line_no,
+            label: r.description ?? r.vendor_sku ?? `line ${r.line_no}`,
+          };
+        },
+      },
     };
   }
 }
