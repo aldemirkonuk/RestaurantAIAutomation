@@ -32,6 +32,28 @@
    nothing outside an overlay body.
 */
 
+/* ── a consequence, before the seal ──────────────────────────────────────── */
+/* Identical to the declaration in `components/locations/locations-mudavym.css`.
+   It belongs in `components/mudavym/sheet.css`, where both callers would share
+   one copy — but that file is owned by the packet 0 primitive rebuild this
+   session, so hoisting it here would be two sessions editing one file. Flagged
+   in the packet 1 report as a one-line merge: move it up, delete both copies. */
+.mdv-consequence {
+  margin: 0;
+  padding: 8px 11px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+}
+.mdv-consequence strong {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+
 /* ── a ledger line ───────────────────────────────────────────────────────── */
 .mdv-lines {
   display: grid;
