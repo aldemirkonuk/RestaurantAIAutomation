@@ -1,8 +1,14 @@
 # 0090 — An Opus audit gate reviews every PR before it merges to main, and an approval merges + deploys with no human click
 
-- **Status:** Proposed (founder answered the two forks live via `AskUserQuestion` on
-  2026-09-02; formal lock is a separate founder action per this log's convention —
-  see Review trail)
+- **Status:** **Merged** — PR [#261](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/261)
+  squash-merged to `main` 2026-09-03 as `ce519d4208b5bd27751d8acc572c1b53ca99fc78`
+  (SHA-pinned via `gh api .../pulls/261/merge`, all five required contexts green,
+  `--self-test` 29/29 on `main`'s own copy). Merged under **direct founder
+  authorization in chat**, not the automated skill/hook path: this PR touches the
+  gate's own owned paths (`_GATE_OWNED_PATHS`), so `touches_own_gate` force-escalates
+  it to BLOCK by the gate's own design — the system cannot self-clear a PR that
+  modifies itself. That escalation firing here is the intended shape, not a bug;
+  see Review trail's final row.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** audit, merge-gate, autonomous-deploy, opus, branch-protection, ci,
@@ -146,20 +152,16 @@ limitation, not a verified guarantee.
 - What becomes harder / given up: a bad audit call now ships to production
   unattended. The adversarial pass and fail-closed error handling are the
   mitigations; they are not a proof of safety.
-- **What this does NOT yet do:** it does not add `PR Audit Gate` to `main`'s
-  required status contexts (that PATCH is a persistent-config change needing
-  explicit founder permission per this session's operating rules — command is
-  ready, not run) and, as of 2026-09-02, it does not yet have an
-  `ANTHROPIC_API_KEY` **Actions secret** — the founder has the key in a local,
-  gitignored `.env`, which is a different store: GitHub Actions reads only its
-  own secret store, never a repo's `.env` file, and I do not read a credential's
-  value out of `.env` and enter it anywhere myself (prohibited regardless of
-  authorization). The founder still needs to run
-  `gh secret set ANTHROPIC_API_KEY` (or the GitHub UI) themselves. Until both
-  happen, the CI half posts findings and will still attempt its own
-  `gh pr merge --auto`, but nothing stops a merge that bypasses this workflow
-  entirely — only the Claude-side hook is a hard constraint, and only inside a
-  Claude Code session.
+- **What this does NOT yet do, as of the 2026-09-03 merge:** it does not add
+  `PR Audit Gate` to `main`'s required status contexts. That PATCH is a
+  persistent branch-protection change needing explicit founder permission per
+  this session's operating rules — still not run, still open, tracked
+  alongside this ADR in `SKILL.md`'s "Known limitations". Until it lands, the
+  CI half posts findings and attempts its own SHA-pinned merge on PASS, but
+  nothing stops a merge that bypasses this workflow entirely — only the
+  Claude-side hook is a hard constraint, and only inside a Claude Code session.
+  (The `ANTHROPIC_API_KEY` Actions secret half of this gap is closed — added
+  2026-09-02, confirmed live by this gate's own first real run against PR #261.)
 - **Correction, second live audit (2026-09-03):** the line above originally
   claimed fork PRs can't see this secret, true of `pull_request` (ADR 0072's
   precedent) and carried over unchanged when this workflow moved to
@@ -534,3 +536,4 @@ rows behind its own Correction count (fixed by this edit).
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — a GITHUB_TOKEN merge silently removes the post-merge deploy audit (confirmed against GitHub's documented behavior + this repo's own merge history); a repo-wide hook that both over- and under-blocked real git commands (confirmed by execution); a diff-truncation gap the third round's correctness angle didn't reach (confirmed by harness-executing a planted regression past the old cut); 6 fixes landed same day, `--self-test` grown 17 → 24, see fourth Correction above |
 | 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — round 4's own `workflow_dispatch` fix 403'd on every run (missing `actions: write`, self-caught independently before either report landed) and round 4's own `\n`-exclusion regex fix regressed a real backslash-continuation case; both fixed same day, `--self-test` grown 24 → 29, see fifth Correction above |
 | 2026-09-03 | pr-audit-gate skill, combined correctness+security (fresh Opus subagent, final round) | BLOCK — one finding, in the YAML consuming `wait_upstream`'s return value rather than the Python producing it: a confirmed-red required check reported job SUCCESS having audited nothing; fixed same day. Explicitly stated the parsers/hook have converged after five prior rounds' adversarial testing found nothing new, see sixth Correction above |
+| 2026-09-03 | Aldemir (chat, direct authorization) | PR #261 modifies `_GATE_OWNED_PATHS` itself, so `touches_own_gate` force-escalates it to BLOCK by design — the gate cannot self-clear a PR that changes itself; that is the intended shape, not a bug. Founder authorized completing the merge directly in chat, the escalation path this exact case exists for. Merged via `gh api .../pulls/261/merge`, SHA-pinned to `ce519d4208b5bd27751d8acc572c1b53ca99fc78`, all five required contexts green, `--self-test` 29/29 re-confirmed on `main`'s own copy post-merge. **Status → Merged.** The branch-protection PATCH gap (still needs founder go) is carried forward, not closed by this merge |
