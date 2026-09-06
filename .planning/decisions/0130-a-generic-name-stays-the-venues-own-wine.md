@@ -263,7 +263,12 @@ decision and goes through `merge_library_wines`, which repoints
 `restaurant_inventory`, lots and mappings. **Not built in this PR** — no UI, no
 endpoint. The path exists and is proven (T8); the door is not cut.
 
-**The rows already written are not repaired here.** The 26 Antalya rows and the
+**The rows already written are not repaired here — done in a separate stop,
+2026-09-05.** See the review trail: 77 rows repaired, `ac6a550f` untouched, the
+venue's own name restored. What follows is the instruction that stop carried out;
+it is left standing because it is also the instruction for the **251
+`menu_corpus` rows that remain**, which are outside that authorisation and
+outside its fingerprint. The 26 Antalya rows and the
 earlier Meyhouse rows keep their wrong links until a separate stop. That stop
 must follow `memory/deleting-fabricated-production-rows`: fingerprint the whole
 seeded tuple rather than the name (several are legitimately named "HOUSE
@@ -303,3 +308,4 @@ wrong place rather than that the mechanism is wrong.
 | 2026-09-05 | Adversarial pass | Killed the "remove the fabrication and it is fixed" reading: an empty producer on both sides scores `psim = 1.0`, so that fix alone *widens* the hole. Gate moved onto the query, in SQL, ahead of the resolver. |
 | 2026-09-05 | Schema measurement | Four storage mechanisms tried against the built schema; three rejected with reasons above; the adopted one proved on T1–T9 (pre-fix control: confidence 90; post-fix: 0 candidates) |
 | 2026-09-06 | PR #318 landed on main | The adversarial prediction became a measurement: with the fabrication removed, the same generic draft scores **100**, by the exact-signature branch as well as the fuzzy one, and two venues cannot both hold the row (`23505`). Re-measured against `main f4f9e4a6`: 0 candidates with this migration, 2 rows / 2 hashes for two venues. |
+| 2026-09-05 | Repair stop executed | The "rows already written are not repaired here" clause below is now **discharged for the two sim tenants**: 77 rows repaired in production, 0 deleted, 0 other tenants' rows altered (`datasets/library/REPAIR-2026-09-05.md`). Two claims in this ADR were corrected by the measurement — `ac6a550f` was written by the **Sim Bistro** load, not Sim Meyhouse, and `sku_mappings` (named in the Consequences as an FK to read) holds no rows for these wines, while `inventory_lots.master_wine_id` and `pour_events.master_wine_id` — which carry **no FK at all** — do. |

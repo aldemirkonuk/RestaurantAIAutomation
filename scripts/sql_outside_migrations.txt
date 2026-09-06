@@ -10,6 +10,7 @@ Supabase_SQL_Files/SQL_editor5.sql
 Supabase_SQL_Files/SQL_editor6_sku_additions.sql
 Supabase_SQL_Files/supabase_sql_file_v1.sql
 Supabase_SQL_Files/supabase_sql_file_v2.sql
+datasets/library/repair-2026-09-05.sql
 scripts/fix_uuid_migration.sql
 scripts/init_database_local.sql
 services/database/migrations_archive/000_migration_tracker.sql
