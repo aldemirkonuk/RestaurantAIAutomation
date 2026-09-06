@@ -225,6 +225,9 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     {} as any,
     {} as any,
     {} as any,
+    // DocumentCorrectionService (ADR 0104 D5) — the correction door is not on
+    // the 832 catalogue path, so a stub would have to pretend otherwise.
+    {} as any,
     catalogIngest as any,
     // OrganizationsService — reached only by the deliberate currency
     // restatement (founder, 2026-09-06), which this file never calls.
@@ -318,6 +321,9 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     intake as any,
     {} as any,
     {} as any,
+    {} as any,
+    // DocumentCorrectionService (ADR 0104 D5) — the correction door is not on
+    // the 832 catalogue path, so a stub would have to pretend otherwise.
     {} as any,
     catalogIngest as any,
     // OrganizationsService — reached only by the deliberate currency

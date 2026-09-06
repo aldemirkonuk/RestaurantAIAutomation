@@ -20,7 +20,12 @@
  * `mudavym.css` gives that the light token column even under `.dark`.
  */
 
-import type { CanonicalDocument, FieldEnvelope } from '../../services/api/canonical'
+import { useMemo } from 'react'
+import type {
+  CanonicalDocument,
+  CorrectionLogEntry,
+  FieldEnvelope,
+} from '../../services/api/canonical'
 import { ProvenanceHover } from './ProvenanceHover'
 import {
   DOC_TYPE_LABELS,
@@ -65,17 +70,28 @@ const TD: React.CSSProperties = {
   textAlign: 'right',
 }
 
-/** A value with its provenance, or the em dash when the document did not say. */
+/**
+ * A value with its provenance, or the em dash when the document did not say.
+ *
+ * `correct` carries the correction wiring for this one field. A field with no
+ * `path` offers no correction affordance — the gateway holds the closed list of
+ * what may be corrected (ADR 0104 D5), and a button that leads to a 400 is
+ * worse than no button.
+ */
 function Field<T>({
   label,
   envelope,
   render,
   footnote,
+  path,
+  correct,
 }: {
   label: string
   envelope: FieldEnvelope<T>
   render?: (v: T) => string
   footnote?: number
+  path?: string
+  correct?: CorrectionWiring
 }) {
   const text =
     envelope.value == null
@@ -87,10 +103,20 @@ function Field<T>({
     <div>
       <span style={KICK}>{label}</span>
       <span style={{ fontFamily: MONO, fontSize: 11.5 }}>
-        {envelope.value == null ? (
+        {/* A field the document did not state is STILL correctable: "the
+            extraction read nothing here and the paper says 14.08" is exactly
+            the correction an empty field needs. Without a path it stays the
+            plain em dash it was. */}
+        {envelope.value == null && !path ? (
           text
         ) : (
-          <ProvenanceHover label={label} envelope={envelope} footnote={footnote}>
+          <ProvenanceHover
+            label={label}
+            envelope={envelope}
+            footnote={footnote}
+            path={path}
+            {...(path ? correct?.(path) : {})}
+          >
             {text}
           </ProvenanceHover>
         )}
@@ -99,16 +125,75 @@ function Field<T>({
   )
 }
 
+/**
+ * Everything one field needs to show and offer its correction history.
+ *
+ * A FUNCTION, not a bag of props, so each of the sheet's ~20 provenance sites
+ * asks for its own path and gets back the log for that path alone. Passing the
+ * whole log to every field and filtering inside would make the popover on line 1
+ * re-render whenever line 40 was corrected — and, worse, would put the wrong
+ * field's history one indexing mistake away from being printed.
+ */
+export type CorrectionWiring = (path: string) => {
+  log: CorrectionLogEntry[]
+  onCorrect?: (path: string, label: string) => void
+  onVerify?: (path: string, label: string) => void
+  jurisdiction?: string | null
+  currency?: string | null
+}
+
 export interface CanonicalSheetProps {
   doc: CanonicalDocument
   /** Called when a line is clicked, so the original pane can follow it. */
   onSelectLine?: (lineIndex: number) => void
   selectedLine?: number | null
+  /**
+   * ADR 0104 D5. `null` means the correction log could not be READ — the sheet
+   * then offers no correction affordance and says so, rather than inviting a
+   * correction on top of a history it cannot see. `[]` means nobody has
+   * corrected anything, which is a different sentence.
+   */
+  corrections?: CorrectionLogEntry[] | null
+  onCorrect?: (path: string, label: string) => void
+  onVerify?: (path: string, label: string) => void
 }
 
-export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalSheetProps) {
+export function CanonicalSheet({
+  doc,
+  onSelectLine,
+  selectedLine,
+  corrections,
+  onCorrect,
+  onVerify,
+}: CanonicalSheetProps) {
   const l1 = doc.layer1
   const currency = l1.currency.value
+
+  /**
+   * path -> its corrections, newest first. Built once per render.
+   *
+   * `corrections === null` means the LOG READ FAILED, and the sheet then hands
+   * out no correction handlers at all: inviting someone to correct a field
+   * whose history we could not read would let the same field be "corrected"
+   * twice by two people who each believed they were the first.
+   */
+  const byPath = useMemo(() => {
+    const m = new Map<string, CorrectionLogEntry[]>()
+    for (const c of corrections ?? []) {
+      const list = m.get(c.path)
+      if (list) list.push(c)
+      else m.set(c.path, [c])
+    }
+    return m
+  }, [corrections])
+
+  const wiring: CorrectionWiring = (path) => ({
+    log: byPath.get(path) ?? [],
+    ...(corrections !== null && onCorrect ? { onCorrect } : {}),
+    ...(corrections !== null && onVerify ? { onVerify } : {}),
+    jurisdiction: doc.jurisdiction,
+    currency,
+  })
   /**
    * NOTHING WAS READ. Caught on screen 2026-09-04 against three real
    * documents: with zero lines the totals block still printed
@@ -149,16 +234,35 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
     }
   }
 
+  /**
+   * `path` is present only on the totals a HUMAN may correct.
+   *
+   * Charges, Allowances and Before tax are computed — BT-107 and BT-108 are the
+   * sums of the groups above them and BT-109 is BT-106 − BT-107 + BT-108
+   * (BR-CO-13). A correction to one of those would be overwritten by the next
+   * read, so the gateway refuses them and the sheet offers no handle.
+   */
   const ladder: {
     label: string
     envelope: FieldEnvelope<number>
     summed: boolean
+    path?: string
   }[] = [
-    { label: 'Lines', envelope: l1.totals.linesNetTotal, summed: false },
+    {
+      label: 'Lines',
+      envelope: l1.totals.linesNetTotal,
+      summed: false,
+      path: 'totals.linesNetTotal',
+    },
     { label: 'Charges', ...fill(l1.totals.chargesTotal, true) },
     { label: 'Allowances', ...fill(l1.totals.allowancesTotal, false) },
     { label: 'Before tax', envelope: l1.totals.taxExclusiveAmount, summed: false },
-    { label: 'Tax', envelope: l1.totals.taxAmount, summed: false },
+    {
+      label: 'Tax',
+      envelope: l1.totals.taxAmount,
+      summed: false,
+      path: 'totals.taxAmount',
+    },
   ]
 
   return (
@@ -232,7 +336,12 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
               never wears the paper's authority (ADR 0104 D1). */}
           <span style={{ fontSize: 11.5, fontWeight: 600 }}>
             {l1.seller.name.value ? (
-              <ProvenanceHover label="Seller" envelope={l1.seller.name}>
+              <ProvenanceHover
+                label="Seller"
+                envelope={l1.seller.name}
+                path="seller.name"
+                {...wiring('seller.name')}
+              >
                 {l1.seller.name.value}
               </ProvenanceHover>
             ) : (
@@ -241,7 +350,12 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
           </span>
           <span style={{ display: 'block', fontFamily: MONO, fontSize: 9.5 }}>
             {l1.seller.vatIdentifier.value ? (
-              <ProvenanceHover label="Seller VAT id" envelope={l1.seller.vatIdentifier}>
+              <ProvenanceHover
+                label="Seller VAT id"
+                envelope={l1.seller.vatIdentifier}
+                path="seller.vatIdentifier"
+                {...wiring('seller.vatIdentifier')}
+              >
                 {l1.seller.vatIdentifier.value}
               </ProvenanceHover>
             ) : (
@@ -265,21 +379,42 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
           label="Issued"
           envelope={l1.issueDate}
           render={(v) => fmtDate(String(v), juris, currency)}
+          path="issueDate"
+          correct={wiring}
         />
         <Field
           label="Delivered"
           envelope={l1.actualDeliveryDate}
           render={(v) => fmtDate(String(v), juris, currency)}
+          path="actualDeliveryDate"
+          correct={wiring}
         />
         <Field
           label="Due"
           envelope={l1.paymentDueDate}
           render={(v) => fmtDate(String(v), juris, currency)}
+          path="paymentDueDate"
+          correct={wiring}
         />
-        <Field label="Order reference" envelope={l1.purchaseOrderReference} />
-        <Field label="Despatch reference" envelope={l1.despatchAdviceReference} />
+        <Field
+          label="Order reference"
+          envelope={l1.purchaseOrderReference}
+          path="purchaseOrderReference"
+          correct={wiring}
+        />
+        <Field
+          label="Despatch reference"
+          envelope={l1.despatchAdviceReference}
+          path="despatchAdviceReference"
+          correct={wiring}
+        />
         {showsClaimBlock(doc.docType) && (
-          <Field label="Credits invoice" envelope={l1.precedingInvoiceReference} />
+          <Field
+            label="Credits invoice"
+            envelope={l1.precedingInvoiceReference}
+            path="precedingInvoiceReference"
+            correct={wiring}
+          />
         )}
       </div>
 
@@ -377,7 +512,12 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
                 </td>
                 <td style={{ ...TD, fontFamily: 'inherit', textAlign: 'left', fontSize: 11.5 }}>
                   {line.description.as_printed != null ? (
-                    <ProvenanceHover label={`Item, line ${i + 1}`} envelope={line.description}>
+                    <ProvenanceHover
+                      label={`Item, line ${i + 1}`}
+                      envelope={line.description}
+                      path={`lines[${i}].description`}
+                      {...wiring(`lines[${i}].description`)}
+                    >
                       {line.description.value ?? EM}
                     </ProvenanceHover>
                   ) : (
@@ -404,13 +544,28 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
                 >
                   {fmtReceived(adj?.received ?? null, currency)}
                 </td>
-                <td style={TD}>{fmtQty(adj?.billed ?? null, currency)}</td>
+                {/* BILLED is the bottle-equivalent of BT-129, so the field a
+                    person corrects here is the INVOICED QUANTITY the paper
+                    printed — not the converted number. The hover carries the
+                    quantity's own envelope for exactly that reason. */}
+                <td style={TD}>
+                  <ProvenanceHover
+                    label={`Quantity, line ${i + 1}`}
+                    envelope={line.quantity}
+                    path={`lines[${i}].quantity`}
+                    {...wiring(`lines[${i}].quantity`)}
+                  >
+                    {fmtQty(adj?.billed ?? null, currency)}
+                  </ProvenanceHover>
+                </td>
                 <td style={TD}>
                   {money ? (
                     <>
                       <ProvenanceHover
                         label={`Unit price, line ${i + 1}`}
                         envelope={line.netPrice}
+                        path={`lines[${i}].netPrice`}
+                        {...wiring(`lines[${i}].netPrice`)}
                       >
                         {fmtMoney(line.netPrice.value, currency)}
                       </ProvenanceHover>
@@ -434,7 +589,12 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
                 </td>
                 {money && (
                   <td style={TD}>
-                    <ProvenanceHover label={`Line total, line ${i + 1}`} envelope={line.netAmount}>
+                    <ProvenanceHover
+                      label={`Line total, line ${i + 1}`}
+                      envelope={line.netAmount}
+                      path={`lines[${i}].netAmount`}
+                      {...wiring(`lines[${i}].netAmount`)}
+                    >
                       {fmtMoney(line.netAmount.value, currency)}
                     </ProvenanceHover>
                   </td>
@@ -530,7 +690,7 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
 
           <div>
             <span style={KICK}>Totals</span>
-            {ladder.map(({ label, envelope, summed }) => (
+            {ladder.map(({ label, envelope, summed, path }) => (
               <div
                 key={label}
                 data-testid={`total-${label.toLowerCase().replace(/\s+/g, '-')}`}
@@ -557,7 +717,12 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
                   {summed ? (
                     fmtMoney(envelope.value, currency)
                   ) : (
-                    <ProvenanceHover label={label} envelope={envelope}>
+                    <ProvenanceHover
+                      label={label}
+                      envelope={envelope}
+                      path={path}
+                      {...(path ? wiring(path) : { log: [] })}
+                    >
                       {fmtMoney(envelope.value, currency)}
                     </ProvenanceHover>
                   )}
@@ -574,7 +739,14 @@ export function CanonicalSheet({ doc, onSelectLine, selectedLine }: CanonicalShe
             >
               <span style={{ fontFamily: SERIF, fontSize: 12, fontWeight: 600 }}>Total</span>
               <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 600 }}>
-                {fmtMoney(l1.totals.taxInclusiveAmount.value, currency)}
+                <ProvenanceHover
+                  label="Document total"
+                  envelope={l1.totals.taxInclusiveAmount}
+                  path="totals.taxInclusiveAmount"
+                  {...wiring('totals.taxInclusiveAmount')}
+                >
+                  {fmtMoney(l1.totals.taxInclusiveAmount.value, currency)}
+                </ProvenanceHover>
               </span>
             </div>
           </div>
