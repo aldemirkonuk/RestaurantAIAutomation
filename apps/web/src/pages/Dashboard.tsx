@@ -326,15 +326,20 @@ export function Dashboard() {
 
   const topPerformingWines = useMemo(() => {
     const agg = new Map<string, { name: string; wineId?: string; spend: number; bottles: number }>()
+    // OrderResponseDto's own key names. This block read `wineId`,
+    // `wineProducer` and `totalPrice` until 2026-09-05 — three names
+    // GET /procurement/orders has never sent — so every key fell through to
+    // the wine name, the producer never showed, and `order.totalPrice || 0`
+    // added ZERO to the spend of every order in this table.
     for (const order of apiPendingOrders) {
-      const key = order.wineId || order.wineName || 'unknown'
+      const key = order.inventoryId || order.wineName || 'unknown'
       const existing = agg.get(key) || {
-        name: order.wineName || order.wineProducer || 'Unknown wine',
-        wineId: order.wineId,
+        name: order.wineName || 'Unknown wine',
+        wineId: order.inventoryId,
         spend: 0,
         bottles: 0,
       }
-      existing.spend += order.totalPrice || 0
+      existing.spend += order.totalCost ?? 0
       existing.bottles += order.quantity || 0
       agg.set(key, existing)
     }
@@ -1251,18 +1256,19 @@ export function Dashboard() {
                         </div>
                       ) : (
                         apiPendingOrders.slice(0, 4).map((order) => {
-                          const wine = libraryWines.find(w => w.id === order.wineId)
+                          const wine = libraryWines.find(w => w.id === order.inventoryId)
                           const bottleMl = (order as { bottleSizeMl?: number }).bottleSizeMl ?? wine?.bottleSizeMl ?? 750
                           return (
                           <div key={order.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
                             <div>
                               <p className="text-sm font-medium text-gray-900">
-                                {order.wineName || order.wineProducer || 'Unknown wine'}
+                                {order.wineName || 'Unknown wine'}
                                 <span className="text-gray-400 text-xs font-normal ml-1">
                                   · {formatVolume(bottleMl, measurementUnit)}
                                 </span>
                               </p>
-                              <p className="text-xs text-gray-500">{order.providerName || 'Unknown provider'} · {order.quantity} bottles</p>
+                              {/* No vendor name on the wire — the DTO carries `providerId` only. */}
+                              <p className="text-xs text-gray-500">{order.quantity} bottles</p>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               <Truck className="w-4 h-4" />

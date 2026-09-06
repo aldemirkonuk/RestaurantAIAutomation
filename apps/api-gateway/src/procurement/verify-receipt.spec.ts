@@ -50,6 +50,24 @@ type Row = Record<string, any>;
  * catches drift; this list catches the write.
  */
 const PROCUREMENT_ORDER_COLUMNS = new Set([
+  // 20260905235800_an_order_that_repeats_says_so_on_itself.sql (2026-09-05):
+  // nine additive recurrence columns; createOrder writes the last two on a
+  // generated child (ADR 0125 recurrence addendum).
+  "recurrence_frequency",
+  "recurrence_anchor_day",
+  "recurrence_anchored_on",
+  "recurrence_next_due_on",
+  "recurrence_status",
+  "recurrence_status_by",
+  "recurrence_status_at",
+  "recurrence_parent_order_id",
+  "recurrence_occurrence_on",
+  // 20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql
+  // (2026-09-06): the ORDER carries the currency it was placed in and says where
+  // that came from. `createOrder` writes both, always together -- the CHECK
+  // `procurement_orders_currency_states_its_source` refuses either half alone.
+  "currency",
+  "currency_source",
   "accepted_quantity",
   "ai_autonomy_paused",
   "approved_at",
@@ -603,7 +621,13 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     const row = calls.priceHistoryInserts[0];
-    expect(row.unit).toBe("BOTTLE");
+    // Lowercase since ADR 0119 Q4 (2026-09-05): `price_history.unit` joined the
+    // house's one seven-word vocabulary, NOT NULL with no default, and the
+    // migration case-folded the one legacy spelling. The receipt path's claim is
+    // `bottle_equivalent` — not the agreement's unit, but a measured property of
+    // `computeMatch`, which converts all four documents to bottle-equivalents
+    // before producing this cost.
+    expect(row.unit).toBe("bottle");
     expect(row.price).toBe(22);
     // 24 BOTTLES, not the raw 24 that happened to be typed, and not 2 cases.
     expect(row.quantity).toBe(24);

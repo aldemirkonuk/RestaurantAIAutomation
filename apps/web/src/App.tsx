@@ -84,6 +84,14 @@ const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/
 const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))
 const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-reports/next/DocumentsReportsNext'))
+const ReportsNext = lazyWithRefresh(() => import('./pages/reports/next/ReportsNext'))
+const NotificationsNext = lazyWithRefresh(() => import('./pages/notifications/next/NotificationsNext'))
+const RecommendationsNext = lazyWithRefresh(() => import('./pages/recommendations/next/RecommendationsNext'))
+const CalendarNext = lazyWithRefresh(() => import('./pages/calendar/next/CalendarNext'))
+const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/SettingsNext'))
+const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
+const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
+const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
 const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
@@ -293,7 +301,14 @@ function App() {
                   }
                 >
                   <Route path="/" element={<PageGate page="dashboard" legacy={<Dashboard />} next={<DashboardNext />} />} />
-                  <Route path="/inventory" element={<InventoryCommandPage />} />
+                  {/* `/inventory` is enrolled in the gate (founder, 2026-09-04) with the
+                      SAME page on both branches. The command page is not being
+                      redesigned — the gate is what mounts `HouseHeader`
+                      (PageGate.tsx), so without this route the one page the house
+                      runs on all day was the only surface with no bell, no account
+                      menu and no theme switch. Flag off, `legacy` renders the page
+                      with no wrapper and no class: byte-for-byte what shipped. */}
+                  <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
                       onto `/inventory` first — a bookmark lands somewhere that can
@@ -303,9 +318,20 @@ function App() {
                   <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
-                  <Route path="/wines" element={<WineLibrary />} />
-                  <Route path="/reports" element={<Reports />} />
-                  <Route path="/recommendations" element={<Recommendations />} />
+                  <Route path="/wines" element={<PageGate page="cellar" legacy={<WineLibrary />} next={<CellarNext category="wines" />} />} />
+                  {/* `/cellar` is the parent surface (founder, 2026-08-29/30): what is in
+                      the building, with /wines /beer /whiskey /cocktails as its children.
+                      Flag off, the parent and the three new children land on the shipping
+                      wine list rather than the catch-all — a bookmark still does the job. */}
+                  <Route path="/cellar" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext />} />} />
+                  <Route path="/beer" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="beer" />} />} />
+                  <Route path="/whiskey" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="whiskey" />} />} />
+                  <Route path="/cocktails" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="cocktails" />} />} />
+                  <Route path="/spirits" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="spirits" />} />} />
+                  <Route path="/non-alcoholic" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="non_alcoholic" />} />} />
+                  <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
+                  <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
+                  <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
@@ -333,7 +359,7 @@ function App() {
                       server-side, so the whole credential file rendered to any
                       member. */}
                   <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
-                  <Route path="/calendar" element={<CalendarModular />} />
+                  <Route path="/calendar" element={<PageGate page="calendar" legacy={<CalendarModular />} next={<CalendarNext />} />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`
                       is retired (ADR 0019 §B) and its one exclusive — reminders that
                       actually fire — was ported onto `/calendar` first. */}
@@ -357,9 +383,16 @@ function App() {
                     }
                   />
                   <Route path="/logs" element={<LogsTimelinePage />} />
-                  <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/notifications" element={<PageGate page="notifications" legacy={<Notifications />} next={<NotificationsNext />} />} />
+                  <Route path="/settings" element={<PageGate page="settings" legacy={<Settings />} next={<SettingsNext />} />} />
+                  <Route path="/profile" element={<PageGate page="profile" legacy={<Profile />} next={<ProfileNext />} />} />
+                  {/* `/connections` — what acts for this house (ADR 0114). A NEW
+                      route, not a redesign, so its `legacy` is a redirect: with the
+                      flag off the URL is inert and lands on `/profile`, where the
+                      three house registers still live. The page refuses in words
+                      for a non-manager, and the two registers that would leak are
+                      role-gated at the gateway as well (G19). */}
+                  <Route path="/connections" element={<PageGate page="connections" legacy={<Navigate to="/profile" replace />} next={<ConnectionsNext />} />} />
                   <Route path="/help" element={<Help />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}

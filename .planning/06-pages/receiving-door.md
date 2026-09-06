@@ -40,6 +40,15 @@ Designed for a porter on a sidewalk with a phone at 12% and no signal in the wal
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving_door`)
 
+> **Chrome (2026-09-04): none, and that is the decision.** The house header
+> built this wave (`apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate`) deliberately does NOT render here. The door is routed outside
+> `DashboardLayout` because it is "full-screen and one-handed, used at a loading
+> dock by someone who is not navigating the app" (App.tsx:227-240), and it forces
+> the charcoal ground (`DoorNext.tsx:380`). The exclusion is a named constant —
+> `NO_CHROME` in `lib/mudavym/pageNames.ts` — rather than a route that happens
+> not to render a header, so it cannot be lost by accident.
+
 Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-door.md` —
 this list is the note-side index (ADR 0044 §2).
 
@@ -113,10 +122,39 @@ renders outside DashboardLayout, so it carries no WineOps wordmark at all.
 
 ## 9. Gaps
 
+**~~The credit-note draft cannot name the vendor it is addressed to~~ — CLOSED
+2026-09-05, batch 40.** `GET /procurement/orders/:id` now selects
+`provider:provider_id(name)` in the same statement as the order and
+`OrderResponseDto.providerName` carries it, so the letter opens
+`To Vinifera Imports:` instead of `To the vendor:`. When the join answers nothing the
+draft says so in words — `VENDOR_NOT_NAMED`, exported from `DoorModel.ts` so the test
+asserts the sentence rather than a paraphrase — because this letter LEAVES THE BUILDING
+and an unaddressed one has to admit it is unaddressed. `composeDoorNotes` already
+budgeted 60 characters for a vendor name (`VENDOR_MAX`), so the 500-character `notes`
+cap holds WITH the distributor's name in it; the "longest real names" case now asserts
+both "Château Pichon" and "Southern Glazer" and still measures under `NOTES_MAX`.
+
+The original measurement, kept: `normalizeDoorOrder` read `providerName` off the shared
+`Order` type; `OrderResponseDto` carried `providerId` and no name, so the letter had
+always begun "To the vendor: order ORD-…". Two `DoorModel.test.ts` cases had asserted
+the vendor's name from a FIXTURE that supplied one, so the suite proved a sentence the
+wire could not produce; those two were flipped to pin the ABSENCE on 2026-09-05 and are
+flipped again here to pin the NAME. `.planning/v3.0-TECH-DEBT.md`, "The orders wire",
+item 1. ~~*Blocker: founder.*~~ **Decided and built.**
+
+**The shared `Order` type's widening cast is gone.** `normalizeDoorOrder` used
+`raw as Order & { unitType?: unknown; bottlesTotal?: unknown }` because the shared type
+predated both fields. It now declares them (it is exactly `OrderResponseDto` since
+2026-09-05, guarded by `scripts/check_web_reads_gateway_dto_keys.py`), so the cast is
+deleted and both reads are type-checked.
+
 - Inherits `/receiving`'s reachability problem (receiving.md §9): the only path to
   this URL is a page nothing links to.
-- None recorded against this page in `v3.0-TECH-DEBT.md` (checked "receiving" and
-  "door" — no hits).
+- ~~One recorded against this page in `v3.0-TECH-DEBT.md` since 2026-09-05: "The orders
+  wire", item 1 — the vendor name the credit-note draft cannot print.~~ **Closed the
+  same day (batch 40); item 1 is struck through in the register.** (The line here read
+  "none recorded" before that entry, then named it; it names none against this page
+  again.)
 
 ## 10. Maturity
 

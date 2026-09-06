@@ -15,7 +15,9 @@ Tests cover:
 
 import asyncio
 import json
+import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -658,3 +660,54 @@ async def test_promo_extraction_prose_answer_records_partial_not_success():
     assert kwargs["outcome"] == "partial"
     assert kwargs["context"]["outcome_basis"] == "parse_v1"
     assert kwargs["context"]["parse_failed"] is True
+
+
+# ---------------------------------------------------------------------------
+# No emoji reaches a stored notification title
+#
+# `_notify` writes DIRECTLY into `public.notifications` (D-03), bypassing the
+# NestJS funnel entirely, so a picture written here lands permanently in the
+# inbox the founder reads and no gateway change can prevent it. Both titles
+# carried one until 2026-09-03 (an envelope on "New message from …", a tag on
+# "Deal: …"). The gateway-side scan that enforces the same rule across every
+# producer in both runtimes is
+# `apps/api-gateway/src/notifications/notification-text-is-plain.spec.ts`.
+# ---------------------------------------------------------------------------
+
+EMOJI_RANGE = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F]")
+
+
+async def test_operational_notification_title_is_plain():
+    agent = _make_agent()
+    payload = _operational_payload()
+
+    with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
+        agent, "_classify_email", return_value=_mock_classification("OPERATIONAL")
+    ), patch.object(agent, "_mark_processed", new_callable=AsyncMock), patch.object(
+        agent, "publish", new_callable=AsyncMock
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ) as mock_notify:
+        await agent.process_message(payload)
+
+    assert mock_notify.await_count >= 1
+    title = mock_notify.await_args_list[0].kwargs["title"]
+    assert not EMOJI_RANGE.search(title), title
+    # and the sentence still says who it is from — nothing was lost with the picture
+    assert title.startswith("New message from ")
+
+
+def test_promo_notification_title_is_plain():
+    # Read the literal rather than driving the whole promo pipeline: the title
+    # is built by string concatenation across four branches, and the assertion
+    # that matters is that none of them opens with a picture.
+    source = Path(__file__).resolve().parents[1] / "agents" / "email_intel_agent.py"
+    text = source.read_text(encoding="utf-8")
+    assert 'title = f"Deal: {details.product_name}"' in text
+    offences = [
+        (i + 1, line)
+        for i, line in enumerate(text.splitlines())
+        if ("title" in line and "=" in line and not line.strip().startswith("#"))
+        and EMOJI_RANGE.search(line)
+    ]
+    assert offences == []

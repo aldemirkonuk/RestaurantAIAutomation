@@ -1,7 +1,7 @@
 {
   "_comment": "Pre-existing swallowed supabase reads, recorded at adoption of scripts/check_read_errors_not_swallowed.py (ADR 0067). ADOPTION IS THE MERGE OF THAT GUARD, not the day this file was first written: code that reached main before the guard did is pre-existing by definition, and rows for it may be added while this branch is still open. AFTER the guard is on main this list ONLY SHRINKS -- a key absent from the tree fails the build, and a new finding must be fixed or allowlisted with a written reason in the guard, never appended here. Two rows were added on 2026-09-02 under the first rule (procurement.service.ts from PR #240, and SeatingDensityPanel.tsx which is a detector false match from an ASI statement boundary, not a real swallowed read); six were retired the same day because concurrent sessions fixed them.",
-  "total_sites": 195,
-  "total_files": 43,
+  "total_sites": 191,
+  "total_files": 42,
   "sites": {
     "apps/api-gateway/src/analytics/consultants.service.ts::analytics_insight_prefs::data": 1,
     "apps/api-gateway/src/analytics/recommendation-actions.service.ts::recommendation_digest_prefs::data": 1,
@@ -111,7 +111,6 @@
     "apps/api-gateway/src/procurement/procurement.service.ts::procurement_conversations::rows": 2,
     "apps/api-gateway/src/procurement/procurement.service.ts::procurement_orders::order": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::procurement_orders::orderRow": 1,
-    "apps/api-gateway/src/procurement/procurement.service.ts::procurement_orders::preCancelRow": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::providers::provider": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::restaurant_branding::b": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::restaurant_inventory::currentStock": 1,
@@ -155,7 +154,7 @@
     "apps/api-gateway/src/team/team.service.ts::team_settings::data": 1,
     "apps/api-gateway/src/team/team.service.ts::user_restaurant_access::access": 4,
     "apps/api-gateway/src/team/team.service.ts::users::user": 1,
-    "apps/api-gateway/src/team/team.service.ts::users::users": 2,
+    "apps/api-gateway/src/team/team.service.ts::users::users": 1,
     "apps/api-gateway/src/toast/toast.service.ts::pos_item_mappings::mapping": 1,
     "apps/api-gateway/src/toast/toast.service.ts::restaurant_inventory::inv": 1,
     "apps/api-gateway/src/user-preferences/user-preferences.service.ts::user_preferences::existing": 1,

@@ -31,6 +31,7 @@ Two-path account creation: **Path A "Join Your Team"** — enter an 8-character 
 ## 1a. Features
 - **Path A "Join Your Team"**: enter an 8-character invite code (validated live as you type) and create a staff/manager account — lands straight on the dashboard
 - **Path B "Open a Restaurant"**: create an owner account plus the restaurant record in a 3-section rail form (identity / location / contact), with address autocomplete, phone input, cuisine picker — ends at email verification
+- **A currency step in the Location section** (`components/onboarding/CurrencyStep.tsx`, added 2026-09-05, ADR 0117 Q25): the house's reporting currency, DEFAULTED from the address's country and stated in words before it is recorded — "Defaulted from Türkiye. We will record TRY. Change it if that is wrong." "Not yet" is a real answer that records nothing; a country the table cannot place gets NO default and says so. The copy tells the manager nothing is converted: each invoice keeps the currency its vendor billed in
 - Live "email already in use" check while typing
 - Deep links pre-route the path: `?invite=CODE`, `?type=join|new`
 - 🚧 No Google sign-*up* — OAuth exists on `/login` only
@@ -42,8 +43,11 @@ Two-path account creation: **Path A "Join Your Team"** — enter an 8-character 
 
 ## 3. Files
 - Route binding: `apps/web/src/App.tsx:150` (eager, `App.tsx:65`)
-- `apps/web/src/pages/Register.tsx` (1,332 lines — largest auth page; builds its own shell rather than using `AuthShell`)
-- Inputs: `PhoneNumberInput`, `PlacesAutocomplete`, `CountryCombobox`, `CuisinePicker` (`Register.tsx:7-12`)
+- `apps/web/src/pages/Register.tsx` (largest auth page; builds its own shell rather than using `AuthShell`)
+- Inputs: `PhoneNumberInput`, `PlacesAutocomplete`, `CountryCombobox`, `CuisinePicker`
+- `apps/web/src/components/onboarding/CurrencyStep.tsx` — the currency step, extracted so the decision can be rendered and asserted on its own
+- `apps/web/src/lib/currency.ts` — ISO 3166 name to ISO 4217 code, the picker's list, `currencyToRecord`, and `formatMoney`, which renders an unrecorded currency in words rather than as a symbol
+- Tests: `src/lib/currency.test.ts` (12), `src/pages/__tests__/Register.currencyStep.test.tsx` (12)
 
 ## 4. Endpoints
 | Method | Path | Where called | Atlas |
@@ -75,6 +79,8 @@ Wine-domain copy that is rebrand-adjacent but not the literal string: "start man
 ## 9. Gaps
 - No Google/OAuth sign-*up* path — `GoogleSignInButton` exists on `/login` only; a new user who wants Google must register with a password first, then link (Profile → Linked accounts). Since ADR 0024 the provider set is declared in one place (`apps/api-gateway/src/auth/identity-providers.ts`), so a future sign-up path should read from that registry rather than hard-code buttons.
 - The relative-path invite fetch (`Register.tsx:157`) breaks if the SPA is served from an origin with no `/api` rewrite (works on Vercel, not on a bare static host) — inconsistent with `InviteLanding.tsx:38` which uses `API_URL`.
+- ~~**The country tables disagree, and Google is on the losing side.**~~ FIXED 2026-09-05 (ADR 0117 Q33): one table, `lib/countries.ts`, keyed by ISO 3166-1 alpha-2, with `Türkiye` as a recorded alias of `TR`; `PlacesAutocomplete`'s `COUNTRY_ISO` and `currency.ts`'s `COUNTRY_CURRENCY` are deleted and `countries.migration.test.ts` proves every retired pair still resolves. The original finding, kept because it is the reason: `PlacesAutocomplete` writes Google's own `longText` into `country`, which today is `Türkiye`; both `lib/countries.ts` (the combobox's 194 names) and `PlacesAutocomplete`'s own `COUNTRY_ISO` map still say `Turkey`, so a Turkish address filled in from Google matches neither — the ISO bias on subsequent searches is silently lost. Measured 2026-09-05 on the three live Turkish/British rows. `lib/currency.ts` folds the spelling for its own purposes only; the other two tables are untouched. ADR 0117 Q33.
+- **Path B step 1 can wedge on "Checking email…".** Observed 2026-09-05 driving the live form at `127.0.0.1:5274`: after `Next: Restaurant Details` runs the inline availability check, `createEmailCheck.checking` stayed true and the button stayed disabled, with both `GET /auth/check-email` calls returning 200 and no console error; the email field then rejected further input. Not reproduced from a cold load, and not investigated — recorded because it blocked a capture, and the currency step had to be photographed through its own component instead.
 
 ---
 
@@ -140,3 +146,4 @@ Secondary gaps:
 4. Decide `check-email`: keep the oracle, or replace it with a post-submit 400. *Still a founder call* — but no longer wide open. **ADR 0024** (2026-08-26) made enumeration deliberate on the *sign-in* route: `/login` now reveals which methods an address has, and the argument there was that `check-email` and `POST /auth/register`'s "Email already registered" already leak existence anyway. That settles the direction (revealing is accepted) without settling this endpoint's shape — what remains is whether `check-email` should move to the POST-with-body form ADR 0024 chose, so the address stays out of URLs and logs. Cheaper now: it is a shape change, not a policy fight.
 5. Unify the invite-preview fetch on `API_URL` (`Register.tsx:157`).
 6. Add funnel signals — path choice, step advance, abandonment. *Blocked:* no sink (see [[get-started]] §11).
+7. **The currency step is built, and so is everything that was open around it** (ADR 0117 Q25/Q30/Q33, 2026-09-05). The three wrong production rows were corrected on the founder's word; the country tables are one table; `--clear-inherited` is written and waiting for him to run it. ~~**What the step now makes urgent is Q35: nothing lets a house change its currency after sign-up.**~~ **BUILT 2026-09-05.** The step asks once, here; `/settings` is now where an EXISTING house answers — the Currency register on the rebuilt page (`pages/settings/next/CurrencySection.tsx`) and `ReportingCurrencySection` on the legacy one, both through `GET`/`PUT /settings/currency` (`apps/api-gateway/src/settings/house-currency.service.ts`), manager-or-owner only and audited. The same three rules hold there as here: the default is offered from the country and stated in words, only Record writes, and "not recorded" stays a real state. See `06-pages/settings.md` §1a/§4/§9/§13.35.

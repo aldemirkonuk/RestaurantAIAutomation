@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowUp, Check } from 'lucide-react';
 import { pour, tuck, useReducedMotion } from '../../../lib/mudavym/motion';
 import { MONO, SANS } from './rc2-format';
 
@@ -163,7 +164,14 @@ export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }
             fontSize: 15,
           }}
         >
-          {done ? '✓' : '↑'}
+          {/* Icons, not glyphs (no emoji anywhere on a rebuilt page). The
+              button's own aria-label already says what the gesture asserts,
+              so the mark itself is decorative. */}
+          {done ? (
+            <Check size={16} strokeWidth={2} aria-hidden="true" />
+          ) : (
+            <ArrowUp size={16} strokeWidth={2} aria-hidden="true" />
+          )}
         </button>
       </div>
       <p

@@ -1,4 +1,5 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
+import { countryCodeFor } from '../../lib/countries';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Building2, Loader2, MapPin, Search } from 'lucide-react';
 
@@ -21,6 +22,16 @@ export interface PlaceResult {
    */
   latitude: number | null;
   longitude: number | null;
+  /**
+   * Google's stable identifier for the selected place.
+   *
+   * Kept alongside the coordinates because it is the only key that lets a later
+   * pass ask Google the same question again — the coordinate backfill for
+   * restaurants that signed up before this capture existed is keyed on it
+   * (`scripts/backfill_restaurant_coordinates.py`). Null when the prediction
+   * carried no place id.
+   */
+  googlePlaceId: string | null;
 }
 
 interface SuggestionRow {
@@ -41,33 +52,12 @@ interface PlacesAutocompleteProps {
   id?: string;
 }
 
-// country display name → ISO 3166-1 alpha-2
-const COUNTRY_ISO: Record<string, string> = {
-  'Afghanistan':'af','Albania':'al','Algeria':'dz','Argentina':'ar','Armenia':'am',
-  'Australia':'au','Austria':'at','Azerbaijan':'az','Bahrain':'bh','Bangladesh':'bd',
-  'Belarus':'by','Belgium':'be','Bolivia':'bo','Bosnia and Herzegovina':'ba',
-  'Brazil':'br','Bulgaria':'bg','Cambodia':'kh','Canada':'ca','Chile':'cl',
-  'China':'cn','Colombia':'co','Croatia':'hr','Cuba':'cu','Cyprus':'cy',
-  'Czech Republic':'cz','Denmark':'dk','Dominican Republic':'do','Ecuador':'ec',
-  'Egypt':'eg','Estonia':'ee','Ethiopia':'et','Finland':'fi','France':'fr',
-  'Georgia':'ge','Germany':'de','Ghana':'gh','Greece':'gr','Guatemala':'gt',
-  'Honduras':'hn','Hungary':'hu','Iceland':'is','India':'in','Indonesia':'id',
-  'Iran':'ir','Iraq':'iq','Ireland':'ie','Israel':'il','Italy':'it',
-  'Jamaica':'jm','Japan':'jp','Jordan':'jo','Kazakhstan':'kz','Kenya':'ke',
-  'Kuwait':'kw','Latvia':'lv','Lebanon':'lb','Libya':'ly','Lithuania':'lt',
-  'Luxembourg':'lu','Malaysia':'my','Malta':'mt','Mexico':'mx','Moldova':'md',
-  'Morocco':'ma','Myanmar':'mm','Nepal':'np','Netherlands':'nl','New Zealand':'nz',
-  'Nicaragua':'ni','Nigeria':'ng','North Macedonia':'mk','Norway':'no','Oman':'om',
-  'Pakistan':'pk','Panama':'pa','Paraguay':'py','Peru':'pe','Philippines':'ph',
-  'Poland':'pl','Portugal':'pt','Qatar':'qa','Romania':'ro','Russia':'ru',
-  'Saudi Arabia':'sa','Senegal':'sn','Serbia':'rs','Singapore':'sg','Slovakia':'sk',
-  'Slovenia':'si','South Africa':'za','South Korea':'kr','Spain':'es','Sri Lanka':'lk',
-  'Sudan':'sd','Sweden':'se','Switzerland':'ch','Syria':'sy','Taiwan':'tw',
-  'Tanzania':'tz','Thailand':'th','Tunisia':'tn','Turkey':'tr','Uganda':'ug',
-  'Ukraine':'ua','United Arab Emirates':'ae','United Kingdom':'gb',
-  'United States':'us','Uruguay':'uy','Uzbekistan':'uz','Venezuela':'ve',
-  'Vietnam':'vn','Yemen':'ye','Zimbabwe':'zw',
-};
+// The name -> alpha-2 table that used to live here is RETIRED (ADR 0117 Q33,
+// 2026-09-05). It held 113 pairs and spelled Türkiye "Turkey", so the country
+// Google itself writes into `restaurants.country` matched nothing and the
+// region bias below was silently dropped on every Turkish address — measured on
+// the three live Turkish and British rows. One table now, keyed by the code
+// rather than by a name that changes: `lib/countries.ts`.
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
@@ -105,6 +95,7 @@ function parseAddressComponents(
     // function can and cannot know.
     latitude: null,
     longitude: null,
+    googlePlaceId: null,
     streetAddress: [streetNumber, route].filter(Boolean).join(' '),
     city:
       get('locality') ||
@@ -188,7 +179,7 @@ export function PlacesAutocomplete({
       try {
         setApiError(null);
         const lib = await ensurePlaces();
-        const iso = countryName ? COUNTRY_ISO[countryName] : undefined;
+        const iso = countryCodeFor(countryName);
 
         const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
           input: trimmed,
@@ -258,6 +249,9 @@ export function PlacesAutocomplete({
       }
       result.latitude = place.location?.lat() ?? null;
       result.longitude = place.location?.lng() ?? null;
+      // `placeId` is on the prediction itself, so it survives even when
+      // fetchFields declines to return a location.
+      result.googlePlaceId = row.prediction.placeId ?? null;
       onPlaceSelect(result);
     } catch (err) {
       console.warn('[PlacesAutocomplete] getDetails failed', err);

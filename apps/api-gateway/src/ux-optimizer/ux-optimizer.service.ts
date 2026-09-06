@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -17,6 +19,17 @@ import {
   filterProposals,
   uxProposalVerdict,
 } from "./ux-proposal-grounding";
+import {
+  EXPERIMENT_EVENTS,
+  EXPERIMENT_QUARTER_DAYS,
+  UNASSIGNABLE_BUCKET,
+  type ExperimentEvent,
+  type ExperimentSpec,
+  assignArm,
+  experimentByKey,
+  experimentEndsAt,
+  isDeclaredArm,
+} from "./experiments";
 
 /** Most signals read into one friction summary. See summarize() for why it is ordered. */
 const SIGNAL_SAMPLE_CAP = 5000;
@@ -802,6 +815,975 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .lt("created_at", toIso);
     return count ?? 0;
   }
+
+  // ==========================================================================
+  // 6. Experiments — a house sees one arm, and the arm it saw is written down
+  // ==========================================================================
+  //
+  // This is a MEASUREMENT, not a second way to ship a change. Nothing in this
+  // section applies anything, and the optimizer's standing guardrail is
+  // untouched: which arm completes more is a count a person reads.
+  //
+  // It is deliberately NOT behind UX_OPTIMIZER_ENABLED. That switch exists to
+  // stop the agent putting its own proposals in front of users; an experiment a
+  // founder asked for is not the agent's proposal. More to the point, an
+  // experiment that stops recording when a flag is off leaves a gap in the
+  // ledger that reads exactly like a period of nobody using the control.
+
+  /**
+   * The stored assignment, or null when this house has none yet.
+   *
+   * A READ FAILURE THROWS. It must never resolve null: supabase-js returns
+   * `{ data, error }` rather than throwing, so a caller that treats an error as
+   * "no row" would assign a fresh arm on every failure and scatter a house
+   * across both. Null here means "asked, and there is no row".
+   */
+  private async readAssignment(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<ExperimentAssignmentRow | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_assignments")
+      .select("restaurant_id, experiment_key, arm, bucket, ratio, assigned_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("experiment_key", experimentKey)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as ExperimentAssignmentRow | null) ?? null;
+  }
+
+  // ==========================================================================
+  // The window — when the experiment ends, and the arm a person named after it
+  // ==========================================================================
+  //
+  // The founder, 2026-09-05, answering ADR 0127's second open question: the
+  // experiment ends ONE QUARTER after its first exposure, and after that every
+  // house gets the arm the founder names.
+  //
+  // The end date is DERIVED, never typed: first exposure across all houses plus
+  // EXPERIMENT_QUARTER_DAYS. It is derived ONCE and then frozen in
+  // `ux_experiment_state`, for the same reason the assignment row is frozen —
+  // the interval is a constant in a source file, a constant can be edited, and
+  // a re-derived finish line would move under a running experiment with every
+  // individual row still correct.
+  //
+  // NOTHING HERE PICKS AN ARM. When the window closes and no winner has been
+  // named, the experiment reports that it has ended and that no winner is
+  // recorded. It never reports the first-declared arm as a winner: a fallback
+  // is what an unreadable experiment RENDERS, and reading it as a verdict is
+  // exactly the absence-as-health shape this whole pass exists to avoid.
+
+  /**
+   * The stored window, or null when no exposure has ever been recorded.
+   *
+   * A READ FAILURE THROWS, with its reason, and never resolves null. Null here
+   * means "asked, and this experiment has not started". An error folded into
+   * null would report a database outage as "no experiment", which would then
+   * make an ENDED experiment look like a running one and start recording
+   * exposures again after its window had closed.
+   */
+  private async readExperimentState(
+    experimentKey: string,
+  ): Promise<ExperimentStateRow | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_state")
+      .select(
+        "experiment_key, first_exposure_at, quarter_days, ends_at, winner_arm, winner_named_at, winner_words",
+      )
+      .eq("experiment_key", experimentKey)
+      .maybeSingle();
+    if (error)
+      throw new Error(
+        `experiment ${experimentKey}: its state could not be read — ${error.message}`,
+      );
+    return (data as ExperimentStateRow | null) ?? null;
+  }
+
+  /** The stored row read as a window. Never invents one. */
+  private windowFrom(
+    row: ExperimentStateRow | null,
+    nowMs: number = Date.now(),
+  ): ExperimentWindow {
+    if (!row)
+      return {
+        started: false,
+        firstExposureAt: null,
+        quarterDays: EXPERIMENT_QUARTER_DAYS,
+        endsAt: null,
+        ended: false,
+        winnerArm: null,
+        winnerNamedAt: null,
+        winnerWords: null,
+      };
+    const endsMs = new Date(row.ends_at).getTime();
+    // An unreadable end date must not compare false against every `now` and
+    // quietly become an experiment that runs forever.
+    if (!Number.isFinite(endsMs))
+      throw new Error(
+        `experiment ${row.experiment_key}: its stored end date "${row.ends_at}" is not a readable time`,
+      );
+    return {
+      started: true,
+      firstExposureAt: row.first_exposure_at,
+      quarterDays: row.quarter_days,
+      endsAt: row.ends_at,
+      ended: endsMs <= nowMs,
+      winnerArm: row.winner_arm,
+      winnerNamedAt: row.winner_named_at,
+      winnerWords: row.winner_words,
+    };
+  }
+
+  /**
+   * The earliest exposure across ALL houses.
+   *
+   * THIS IS THE ONE READ ON THIS SERVICE THAT IS NOT TENANT-SCOPED, and it is
+   * deliberate: "first exposure" in the founder's rule means the experiment's
+   * first exposure, not this house's. It selects a TIMESTAMP and nothing else —
+   * no restaurant id, no arm, no count — so it cannot tell a caller who was
+   * shown anything, only when the experiment began. The value it produces
+   * reaches a tenant only as `running: true|false`; the date itself is on the
+   * admin report alone.
+   */
+  private async firstExposureAcrossAllHouses(
+    experimentKey: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("occurred_at")
+      .eq("subject_type", "operator")
+      .eq("choice", "exposed")
+      .eq("context->>experiment_key", experimentKey)
+      .order("occurred_at", { ascending: true })
+      .limit(1);
+    if (error)
+      throw new Error(
+        `experiment ${experimentKey}: its first exposure could not be read — ${error.message}`,
+      );
+    return data?.[0]?.occurred_at ?? null;
+  }
+
+  /**
+   * Derive and freeze the window, if it is not frozen already.
+   *
+   * Returns null when nothing has been exposed to anybody yet — there is no
+   * start, so there is no window, and that is a real answer rather than a
+   * failure. Every failure on this path THROWS with its reason; callers decide
+   * whether that failure should reach the requester (the admin report: yes, the
+   * end date is what it exists to show) or be logged (an exposure write: the
+   * event itself already landed and the next exposure retries the stamp).
+   *
+   * `ignoreDuplicates` rather than a plain insert: two exposures arriving at
+   * once both derive the same MIN, so the loser of the race has nothing to
+   * correct. The first stamp stands — which is the whole point.
+   */
+  private async stampWindowIfUnstarted(
+    spec: ExperimentSpec,
+  ): Promise<ExperimentStateRow | null> {
+    const existing = await this.readExperimentState(spec.key);
+    if (existing) return existing;
+
+    const firstExposureAt = await this.firstExposureAcrossAllHouses(spec.key);
+    if (!firstExposureAt) return null;
+
+    const { error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_state")
+      .upsert(
+        {
+          experiment_key: spec.key,
+          first_exposure_at: firstExposureAt,
+          quarter_days: EXPERIMENT_QUARTER_DAYS,
+          ends_at: experimentEndsAt(firstExposureAt, EXPERIMENT_QUARTER_DAYS),
+        },
+        { onConflict: "experiment_key", ignoreDuplicates: true },
+      );
+    if (error)
+      throw new Error(
+        `experiment ${spec.key}: its window could not be recorded — ${error.message}`,
+      );
+
+    // Re-read rather than echo what was sent: with ignoreDuplicates the row
+    // that ended up in the table may be an earlier stamp, and that one is the
+    // record.
+    const after = await this.readExperimentState(spec.key);
+    if (!after)
+      throw new Error(
+        `experiment ${spec.key}: its window was written and then read back as absent`,
+      );
+    return after;
+  }
+
+  /**
+   * The window as it stands, deriving it first if it can be derived.
+   *
+   * Used by the admin report and by the winner act, both of which must see the
+   * end date the moment it is knowable. The per-house paths deliberately do NOT
+   * derive — an exposure or an assignment must not pay for a cross-house read.
+   */
+  private async currentWindow(spec: ExperimentSpec): Promise<ExperimentWindow> {
+    return this.windowFrom(await this.stampWindowIfUnstarted(spec));
+  }
+
+  /**
+   * The frozen assignment for this house — the stored row, or a fresh one.
+   *
+   * Kept separate from `assignmentFor` on purpose. This returns what the house
+   * WAS SHOWN, which is the only thing an event may be stamped with; the route
+   * layers the window (and any named winner) on top of it. Folding the two
+   * together would let a winner named after the end be stamped onto a historic
+   * exposure and silently re-label it.
+   */
+  private async frozenAssignment(
+    spec: ExperimentSpec,
+    restaurantId: string,
+  ): Promise<ExperimentAssignment> {
+    const stored = await this.readAssignment(spec.key, restaurantId);
+    if (stored) {
+      return {
+        experimentKey: spec.key,
+        arm: stored.arm,
+        armSource: "assignment",
+        assignedArm: stored.arm,
+        bucket: stored.bucket,
+        ratio: stored.ratio,
+        assignedAt: stored.assigned_at,
+        recorded: true,
+        running: true,
+        winnerArm: null,
+        decidedOn: spec.decidedOn,
+        founderWords: spec.founderWords,
+      };
+    }
+
+    const { bucket, arm } = assignArm(spec, restaurantId);
+    if (arm === null)
+      throw new Error(
+        `experiment ${spec.key}: bucket ${bucket} fell in no arm for this house`,
+      );
+
+    // ignoreDuplicates, not a plain insert: two tabs opening at once both
+    // compute the SAME arm (that is what deterministic means), so the loser of
+    // the race has nothing to correct and a 23505 would be noise. The first
+    // write stands.
+    const { error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_assignments")
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          experiment_key: spec.key,
+          arm,
+          bucket,
+          ratio: spec.ratio,
+        },
+        {
+          onConflict: "restaurant_id,experiment_key",
+          ignoreDuplicates: true,
+        },
+      );
+
+    if (error) {
+      this.logger.warn(
+        `experiment ${spec.key}: assignment for ${restaurantId} was not recorded — ${error.message}`,
+      );
+      return {
+        experimentKey: spec.key,
+        arm,
+        armSource: "assignment",
+        assignedArm: arm,
+        bucket,
+        ratio: spec.ratio,
+        assignedAt: null,
+        recorded: false,
+        running: true,
+        winnerArm: null,
+        decidedOn: spec.decidedOn,
+        founderWords: spec.founderWords,
+      };
+    }
+
+    // Re-read rather than echo what was just sent: with ignoreDuplicates the
+    // row that ended up in the table may be an earlier one, and the report
+    // joins on what is stored.
+    const after = await this.readAssignment(spec.key, restaurantId);
+    return {
+      experimentKey: spec.key,
+      arm: after?.arm ?? arm,
+      armSource: "assignment",
+      assignedArm: after?.arm ?? arm,
+      bucket: after?.bucket ?? bucket,
+      ratio: after?.ratio ?? spec.ratio,
+      assignedAt: after?.assigned_at ?? null,
+      recorded: !!after,
+      running: true,
+      winnerArm: null,
+      decidedOn: spec.decidedOn,
+      founderWords: spec.founderWords,
+    };
+  }
+
+  /**
+   * Which arm this house is on, assigning it on first ask.
+   *
+   * THE STORED ROW WINS OVER THE RECOMPUTED HASH. The hash chooses an arm the
+   * first time; the row is what the house is ON. If the ratio constant is ever
+   * edited, a recompute would move houses and re-label every exposure already
+   * in the ledger — each row still correct, the whole comparison wrong. So the
+   * row is returned as it stands, carrying the ratio it was made under.
+   *
+   * `recorded: false` means the arm is real and deterministic but the write did
+   * not land. The caller is told, rather than the failure being folded into a
+   * value that looks the same as a stored one.
+   *
+   * AFTER THE WINDOW CLOSES, NOBODY NEW IS ENROLLED. A house first seen after
+   * the end is not assigned: the row could never carry an exposure, and it
+   * would enlarge a denominator nobody was shown anything under. It is served
+   * the named winner if there is one, and otherwise the fallback arm — which is
+   * the product as built, marked `armSource: "fallback"` so it can never be
+   * mistaken for a verdict.
+   */
+  async assignmentFor(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<ExperimentAssignment> {
+    const spec = experimentByKey(experimentKey);
+    if (!spec) throw new NotFoundException(`No experiment "${experimentKey}"`);
+
+    // Read only — this path never derives the window. Deriving is a cross-house
+    // read, and a page load must not pay for one; the admin report and the
+    // winner act do it instead.
+    const win = this.windowFrom(await this.readExperimentState(spec.key));
+
+    if (win.ended) {
+      const stored = await this.readAssignment(spec.key, restaurantId);
+      const armSource = win.winnerArm
+        ? ("winner" as const)
+        : stored
+          ? ("assignment" as const)
+          : ("fallback" as const);
+      return {
+        experimentKey: spec.key,
+        arm: win.winnerArm ?? stored?.arm ?? spec.arms[0],
+        armSource,
+        assignedArm: stored?.arm ?? null,
+        bucket: stored?.bucket ?? UNASSIGNABLE_BUCKET,
+        ratio: stored?.ratio ?? spec.ratio,
+        assignedAt: stored?.assigned_at ?? null,
+        recorded: !!stored,
+        running: false,
+        winnerArm: win.winnerArm,
+        decidedOn: spec.decidedOn,
+        founderWords: spec.founderWords,
+      };
+    }
+
+    return this.frozenAssignment(spec, restaurantId);
+  }
+
+  /**
+   * Write one exposure or outcome to the Neural Footprint ledger.
+   *
+   * THE ARM IS STAMPED HERE, NOT SENT BY THE CALLER. A browser that could name
+   * its own arm could attribute its outcome to the other one, and an audit
+   * trail the caller writes about itself is not an audit trail — the same rule
+   * `reviewProposal` keeps for the reviewer id.
+   *
+   * `outcome` is NULL for everything but a completion. The ledger's contract is
+   * that NULL means UNKNOWN and never success, and an abandon is genuinely
+   * unknown: a person who walks away from a note may have changed their mind,
+   * which is a correct refusal, not a failure of the control.
+   *
+   * NOTHING IS RECORDED AFTER THE WINDOW CLOSES. The experiment ends one
+   * quarter after its first exposure; an event written after that would extend
+   * a measurement the founder ended, and would do it invisibly, because a
+   * later exposure looks exactly like an earlier one. `recorded: false` with a
+   * reason is returned instead of an error: the note itself is not a failure,
+   * and the browser fires this and forgets it.
+   */
+  async recordExperimentEvent(input: {
+    experimentKey: string;
+    restaurantId: string;
+    userId: string;
+    event: ExperimentEvent;
+    actionId?: string | null;
+    durationMs?: number | null;
+  }): Promise<{
+    ok: boolean;
+    recorded: boolean;
+    arm: string | null;
+    reason: string | null;
+  }> {
+    const spec = experimentByKey(input.experimentKey);
+    if (!spec)
+      throw new NotFoundException(`No experiment "${input.experimentKey}"`);
+
+    // Read only, and BEFORE anything is assigned or written. A failed read
+    // throws with its reason rather than resolving to "no experiment", which
+    // would make an ended window look like a running one and quietly resume
+    // recording.
+    const win = this.windowFrom(await this.readExperimentState(spec.key));
+    if (win.ended)
+      return {
+        ok: true,
+        recorded: false,
+        arm: null,
+        reason: "experiment_ended",
+      };
+
+    const assignment = await this.frozenAssignment(spec, input.restaurantId);
+
+    const context: Record<string, unknown> = {
+      experiment_key: spec.key,
+      arm: assignment.arm,
+      bucket: assignment.bucket,
+      ratio: assignment.ratio,
+      assignment_recorded: assignment.recorded,
+      surface: "dashboard:one-tap:note",
+    };
+    if (input.actionId) context.one_tap_action_id = input.actionId;
+
+    const { error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .insert({
+        subject_type: "operator",
+        subject_id: input.userId,
+        stimulus: "one_tap_note_card",
+        choice: input.event,
+        outcome: input.event === "completed" ? "success" : null,
+        context,
+        // Exposure to completion, NOT press to completion. Pressing a plain
+        // button completes in ~0ms and holding the die completes in `pour.ms`'s
+        // 620 by construction, so a press-to-complete figure would measure a
+        // constant this repository chose rather than an operator.
+        duration_ms:
+          input.event === "completed" && typeof input.durationMs === "number"
+            ? Math.round(input.durationMs)
+            : null,
+        restaurant_id: input.restaurantId,
+      });
+    if (error) throw new Error(error.message);
+
+    // The window starts at the FIRST exposure, so the first exposure is where
+    // it can first be derived. Stamped after the write, so the MIN it reads
+    // includes the row just landed and the window can never start later than
+    // the earliest event in the ledger.
+    //
+    // A failed stamp is logged, not thrown: the exposure itself is recorded and
+    // that is what the caller asked for, and the next exposure retries. It is
+    // not swallowed — the admin report derives the window itself and surfaces
+    // the same failure to the one person who reads the end date.
+    if (input.event === "exposed" && !win.started) {
+      try {
+        await this.stampWindowIfUnstarted(spec);
+      } catch (stampError) {
+        this.logger.warn(
+          `experiment ${spec.key}: the window was not stamped on this exposure — ${
+            stampError instanceof Error ? stampError.message : String(stampError)
+          }`,
+        );
+      }
+    }
+
+    return { ok: true, recorded: true, arm: assignment.arm, reason: null };
+  }
+
+  /**
+   * The counts, for THIS HOUSE only, and never a verdict.
+   *
+   * Scoped to the caller's restaurant like every other read on this service.
+   * The consequence is stated rather than hidden: assignment is per house, so a
+   * house is on exactly one arm and this report can only ever show that arm's
+   * figures. The cross-arm comparison the ratio exists to settle is a
+   * cross-tenant read, and no role in this codebase grants one — see ADR 0127's
+   * open question. A report that quietly printed `plain: 0 exposures` beside a
+   * die house's real numbers would read as a verdict against an arm this house
+   * was simply never shown.
+   *
+   * Reads do NOT assign: a person opening a page to look at counts must not
+   * enrol their house by looking.
+   */
+  async experimentReport(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<ExperimentReport> {
+    const spec = experimentByKey(experimentKey);
+    if (!spec) throw new NotFoundException(`No experiment "${experimentKey}"`);
+
+    // Read only, like everything else here: a report must not derive a window
+    // any more than it may enrol a house. `running` and `winnerArm` are the
+    // only two things this payload learns from it — the dates belong to the
+    // admin report, because a house's own end date is another house's first
+    // exposure.
+    const win = this.windowFrom(await this.readExperimentState(spec.key));
+
+    const stored = await this.readAssignment(spec.key, restaurantId);
+    const counts: Record<string, number> = {};
+    for (const event of EXPERIMENT_EVENTS) {
+      counts[event] = stored
+        ? await this.countExperimentEvents(
+            spec.key,
+            restaurantId,
+            stored.arm,
+            event,
+          )
+        : 0;
+    }
+
+    return {
+      experimentKey: spec.key,
+      ratio: stored?.ratio ?? spec.ratio,
+      decidedOn: spec.decidedOn,
+      founderWords: spec.founderWords,
+      question: spec.question,
+      /** Null means this house has never been assigned, not that it saw nothing. */
+      arm: stored?.arm ?? null,
+      assignedAt: stored?.assigned_at ?? null,
+      exposures: counts.exposed,
+      completed: counts.completed,
+      /**
+       * A FLOOR, not a total. An abandon is recorded when the card is left
+       * while still open; a browser tab closed outright records nothing,
+       * because the web app may not reach the gateway with a keepalive fetch
+       * (`__tests__/no-raw-gateway-fetch.test.ts`). Both arms lose exactly the
+       * same cases, so the comparison holds and the absolute number does not.
+       */
+      abandoned: counts.abandoned,
+      since: stored ? await this.firstExperimentEventAt(spec.key, restaurantId) : null,
+      houseScopedOnly: true,
+      /**
+       * False once the window has closed. The counts above are still this
+       * house's real history and are still printed; what changes is that they
+       * are final, and that nothing further will be added to them.
+       */
+      running: !win.ended,
+      /**
+       * The arm a person named after the end, which is the product from then
+       * on. NULL while the experiment is running AND after it ends until
+       * somebody names one — it is never the first-declared arm by default.
+       */
+      winnerArm: win.winnerArm,
+    };
+  }
+
+  // ==========================================================================
+  // The both-arms report, and the act that ends the experiment
+  // ==========================================================================
+  //
+  // The founder, 2026-09-05, answering ADR 0127's first open question: the
+  // founder alone may read both arms' figures. Both methods below are reachable
+  // only through the platform-admin service key (ADR 0099's ServiceKeyGuard) —
+  // no tenant, no user, no JWT. See the controller.
+
+  /**
+   * Both arms' figures, across every house, and never a house's identity.
+   *
+   * WHAT IT RETURNS AND WHAT IT CANNOT. Per arm: how many houses are on it, its
+   * exposures, completions and abandons, and the date of its first exposure.
+   * Every one of those is a COUNT or a DATE produced by an aggregate. No
+   * restaurant id, no user id and no row is selected anywhere on this path, so
+   * there is no shape in which a house's identity can appear beside its arm —
+   * which is the property that makes reading both arms safe to grant at all.
+   * The per-house report is unchanged and still shows one house its own arm.
+   *
+   * IT ALSO DERIVES THE WINDOW, because this is where the end date is read and
+   * a failure to derive it must reach the person reading it rather than a log.
+   *
+   * NO VERDICT. Integers, dates, and the ratio. No percentage of one arm is
+   * placed beside another's, nothing is called leading, and nothing here or
+   * downstream picks an arm — a person does that, deliberately, afterwards.
+   */
+  async adminExperimentReport(
+    experimentKey: string,
+  ): Promise<AdminExperimentReport> {
+    const spec = experimentByKey(experimentKey);
+    if (!spec) throw new NotFoundException(`No experiment "${experimentKey}"`);
+
+    const win = await this.currentWindow(spec);
+
+    const arms: AdminArmFigures[] = [];
+    for (const arm of spec.arms) {
+      arms.push({
+        arm,
+        sharePct: spec.ratio[arm],
+        housesAssigned: await this.countAssignedHouses(spec.key, arm),
+        exposures: await this.countArmEvents(spec.key, arm, "exposed"),
+        completed: await this.countArmEvents(spec.key, arm, "completed"),
+        abandoned: await this.countArmEvents(spec.key, arm, "abandoned"),
+        firstExposureAt: await this.firstArmExposureAt(spec.key, arm),
+      });
+    }
+
+    return {
+      experimentKey: spec.key,
+      question: spec.question,
+      decidedOn: spec.decidedOn,
+      founderWords: spec.founderWords,
+      ratio: spec.ratio,
+      arms,
+      quarterDays: win.quarterDays,
+      firstExposureAt: win.firstExposureAt,
+      endsAt: win.endsAt,
+      started: win.started,
+      running: win.started && !win.ended,
+      ended: win.ended,
+      winnerArm: win.winnerArm,
+      winnerNamedAt: win.winnerNamedAt,
+      winnerWords: win.winnerWords,
+      /** True the moment the window closes with no arm named. Never a default. */
+      endedWithNoWinnerNamed: win.ended && win.winnerArm === null,
+      /** Stated in the payload so no reader has to infer it. */
+      houseIdentitiesWithheld: true,
+      /** Every abandon figure is a floor — a tab closed outright records nothing. */
+      abandonedIsAFloor: true,
+    };
+  }
+
+  /**
+   * Name the winning arm. A platform-admin act, and it is written once.
+   *
+   * FOUR REFUSALS, all of them before any write:
+   *   - an experiment nobody declared           404
+   *   - an arm this experiment does not declare 400  (a typo would otherwise be
+   *     frozen by the trigger and then served to every house as the product)
+   *   - a window that has not started or has not closed  409  (naming a winner
+   *     early is deciding, not measuring — which is the thing the ratio exists
+   *     to avoid)
+   *   - a different winner already named        409  (the database refuses it
+   *     too; this refusal exists so the answer is a sentence and not a 500)
+   *
+   * Naming the SAME arm again is idempotent and says so, so a retried request
+   * is not an error.
+   *
+   * The assignment rows are not touched. They are the record of what each house
+   * was actually shown, and they are kept as history — the winner is a separate
+   * fact about what everyone gets from now on.
+   */
+  async nameExperimentWinner(input: {
+    experimentKey: string;
+    arm: string;
+    words?: string | null;
+  }): Promise<ExperimentWinnerResult> {
+    const spec = experimentByKey(input.experimentKey);
+    if (!spec)
+      throw new NotFoundException(`No experiment "${input.experimentKey}"`);
+
+    if (!isDeclaredArm(spec, input.arm))
+      throw new BadRequestException(
+        `"${input.arm}" is not an arm of ${spec.key}. Its arms are: ${spec.arms.join(", ")}.`,
+      );
+
+    const win = await this.currentWindow(spec);
+    if (!win.started)
+      throw new ConflictException(
+        `${spec.key} has no end date yet: nothing has been exposed to anybody, so its window has not started. The end is one quarter from the FIRST exposure.`,
+      );
+    if (!win.ended)
+      throw new ConflictException(
+        `${spec.key} is still running until ${win.endsAt}. The founder's rule is one quarter (${win.quarterDays} days) from the first exposure on ${win.firstExposureAt}; naming a winner before that is deciding rather than measuring.`,
+      );
+
+    if (win.winnerArm && win.winnerArm !== input.arm)
+      throw new ConflictException(
+        `${spec.key} already has a winner: "${win.winnerArm}", named on ${win.winnerNamedAt}. A named winner is not rewritten.`,
+      );
+    if (win.winnerArm === input.arm)
+      return {
+        experimentKey: spec.key,
+        winnerArm: win.winnerArm,
+        winnerNamedAt: win.winnerNamedAt,
+        winnerWords: win.winnerWords,
+        alreadyNamed: true,
+        endsAt: win.endsAt,
+      };
+
+    const namedAt = new Date().toISOString();
+    // `.is("winner_arm", null)` is the same rule as the trigger, one layer out:
+    // two simultaneous namings both pass the read above, and the loser must
+    // lose at the database rather than at the check.
+    const { error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_state")
+      .update({
+        winner_arm: input.arm,
+        winner_named_at: namedAt,
+        winner_words: input.words ?? null,
+      })
+      .eq("experiment_key", spec.key)
+      .is("winner_arm", null);
+    if (error)
+      throw new Error(
+        `experiment ${spec.key}: the winner was not recorded — ${error.message}`,
+      );
+
+    // Read back rather than echo. A write that matched no row (the loser of a
+    // race) is not an error in PostgREST, so echoing the request would report a
+    // decision that was never stored.
+    const after = await this.readExperimentState(spec.key);
+    if (!after?.winner_arm)
+      throw new Error(
+        `experiment ${spec.key}: the winner was written and then read back as absent`,
+      );
+    if (after.winner_arm !== input.arm)
+      throw new ConflictException(
+        `${spec.key} was named "${after.winner_arm}" by another request while this one was in flight. A named winner is not rewritten.`,
+      );
+
+    return {
+      experimentKey: spec.key,
+      winnerArm: after.winner_arm,
+      winnerNamedAt: after.winner_named_at,
+      winnerWords: after.winner_words,
+      alreadyNamed: false,
+      endsAt: after.ends_at,
+    };
+  }
+
+  /**
+   * How many HOUSES are on one arm. A count, never the houses.
+   *
+   * `head: true` means PostgREST returns the count and no rows at all, so this
+   * cannot become a list of restaurant ids by accident later.
+   */
+  private async countAssignedHouses(
+    experimentKey: string,
+    arm: string,
+  ): Promise<number> {
+    const { count, error } = await this.dbService
+      .getClient()
+      .from("ux_experiment_assignments")
+      .select("*", { count: "exact", head: true })
+      .eq("experiment_key", experimentKey)
+      .eq("arm", arm);
+    if (error)
+      throw new Error(
+        `experiment ${experimentKey}: the houses on "${arm}" could not be counted — ${error.message}`,
+      );
+    return count ?? 0;
+  }
+
+  /** One arm's events across every house. A failed count is never zero. */
+  private async countArmEvents(
+    experimentKey: string,
+    arm: string,
+    event: string,
+  ): Promise<number> {
+    const { count, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("*", { count: "exact", head: true })
+      .eq("subject_type", "operator")
+      .eq("choice", event)
+      .eq("context->>experiment_key", experimentKey)
+      .eq("context->>arm", arm);
+    if (error)
+      throw new Error(
+        `experiment ${experimentKey}: "${event}" on arm "${arm}" could not be counted — ${error.message}`,
+      );
+    return count ?? 0;
+  }
+
+  /** The date one arm was first shown to anybody. Null means never. */
+  private async firstArmExposureAt(
+    experimentKey: string,
+    arm: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("occurred_at")
+      .eq("subject_type", "operator")
+      .eq("choice", "exposed")
+      .eq("context->>experiment_key", experimentKey)
+      .eq("context->>arm", arm)
+      .order("occurred_at", { ascending: true })
+      .limit(1);
+    if (error)
+      throw new Error(
+        `experiment ${experimentKey}: the first exposure on arm "${arm}" could not be read — ${error.message}`,
+      );
+    return data?.[0]?.occurred_at ?? null;
+  }
+
+  private async countExperimentEvents(
+    experimentKey: string,
+    restaurantId: string,
+    arm: string,
+    event: string,
+  ): Promise<number> {
+    const { count, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("*", { count: "exact", head: true })
+      .eq("subject_type", "operator")
+      .eq("restaurant_id", restaurantId)
+      .eq("choice", event)
+      .eq("context->>experiment_key", experimentKey)
+      .eq("context->>arm", arm);
+    // A failed count is not zero. Zero is a real answer this report prints in
+    // words ("no exposures yet"), so collapsing an error into it would be the
+    // absence-as-health shape in the one place that exists to report absence.
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
+  private async firstExperimentEventAt(
+    experimentKey: string,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("neural_footprint_event")
+      .select("occurred_at")
+      .eq("subject_type", "operator")
+      .eq("restaurant_id", restaurantId)
+      .eq("context->>experiment_key", experimentKey)
+      .order("occurred_at", { ascending: true })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    return data?.[0]?.occurred_at ?? null;
+  }
+}
+
+interface ExperimentAssignmentRow {
+  restaurant_id: string;
+  experiment_key: string;
+  arm: string;
+  bucket: number;
+  ratio: Record<string, number>;
+  assigned_at: string;
+}
+
+interface ExperimentStateRow {
+  experiment_key: string;
+  first_exposure_at: string;
+  quarter_days: number;
+  ends_at: string;
+  winner_arm: string | null;
+  winner_named_at: string | null;
+  winner_words: string | null;
+}
+
+/**
+ * The experiment's window, as it stands.
+ *
+ * `started: false` means no exposure has ever been recorded, so there is no
+ * start and therefore no end — a real answer, and never what a failed read
+ * resolves to. Every read on this path throws with its reason instead.
+ */
+export interface ExperimentWindow {
+  started: boolean;
+  firstExposureAt: string | null;
+  quarterDays: number;
+  endsAt: string | null;
+  ended: boolean;
+  winnerArm: string | null;
+  winnerNamedAt: string | null;
+  winnerWords: string | null;
+}
+
+export interface ExperimentAssignment {
+  experimentKey: string;
+  /** The arm to draw. */
+  arm: string;
+  /**
+   * Where `arm` came from, so no reader has to infer it:
+   *   assignment  this house's own frozen row — the experiment is running, or
+   *               it has ended and no winner has been named
+   *   winner      the arm a person named after the window closed
+   *   fallback    the first declared arm, for a house that was never assigned
+   *               and never will be because the window has closed. It is the
+   *               product as built and NOT a verdict.
+   */
+  armSource: "assignment" | "winner" | "fallback";
+  /** The frozen row's arm — history. Null for a house that was never assigned. */
+  assignedArm: string | null;
+  bucket: number;
+  ratio: Record<string, number>;
+  assignedAt: string | null;
+  /** False when the arm is real and deterministic but the row did not land. */
+  recorded: boolean;
+  /** False once the window has closed. No further exposure is recorded. */
+  running: boolean;
+  /** Null while running, and after the end until somebody names one. */
+  winnerArm: string | null;
+  decidedOn: string;
+  founderWords: string;
+}
+
+export interface ExperimentReport {
+  experimentKey: string;
+  ratio: Record<string, number>;
+  decidedOn: string;
+  founderWords: string;
+  question: string;
+  arm: string | null;
+  assignedAt: string | null;
+  exposures: number;
+  completed: number;
+  abandoned: number;
+  since: string | null;
+  /** Always true today. Stated in the payload so the web cannot forget it. */
+  houseScopedOnly: boolean;
+  /** False once the window has closed; the counts above are then final. */
+  running: boolean;
+  /** The arm named after the end, or null. Never a default. */
+  winnerArm: string | null;
+}
+
+/** One arm's figures on the both-arms report. Counts and dates only. */
+export interface AdminArmFigures {
+  arm: string;
+  /** The declared share, so the houses figure can be read against it. */
+  sharePct: number;
+  housesAssigned: number;
+  exposures: number;
+  completed: number;
+  /** A floor — a tab closed outright records nothing, equally in both arms. */
+  abandoned: number;
+  firstExposureAt: string | null;
+}
+
+/**
+ * Both arms, across every house. Platform admin only.
+ *
+ * There is no restaurant id anywhere in this shape, and there is deliberately
+ * no field for one: the property that makes a cross-house read safe to grant is
+ * that a house's identity never appears beside its arm.
+ */
+export interface AdminExperimentReport {
+  experimentKey: string;
+  question: string;
+  decidedOn: string;
+  founderWords: string;
+  ratio: Record<string, number>;
+  arms: AdminArmFigures[];
+  quarterDays: number;
+  firstExposureAt: string | null;
+  endsAt: string | null;
+  started: boolean;
+  running: boolean;
+  ended: boolean;
+  winnerArm: string | null;
+  winnerNamedAt: string | null;
+  winnerWords: string | null;
+  endedWithNoWinnerNamed: boolean;
+  houseIdentitiesWithheld: boolean;
+  abandonedIsAFloor: boolean;
+}
+
+export interface ExperimentWinnerResult {
+  experimentKey: string;
+  winnerArm: string;
+  winnerNamedAt: string | null;
+  winnerWords: string | null;
+  /** True when this arm was already the recorded winner — a retry, not an error. */
+  alreadyNamed: boolean;
+  endsAt: string | null;
 }
 
 function summarizeWindowBounds() {

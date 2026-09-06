@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Get,
   Header,
+  Headers,
   HttpException,
   HttpStatus,
   Param,
@@ -257,13 +258,65 @@ export class ProcurementController {
     }
   }
 
+  @Post("orders/:id/cancel-seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal this order's cancellation has to carry back",
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `cancel`, so this token cannot be spent on `POST orders/:id/approve` and an approval's cannot be spent on the cancel. The seal is bound to this actor, this order, this act, and the order's total, vendor and STATE: it cannot be spent after the wine arrives.",
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      "The same refusal `DELETE orders/:id` would give. A seal is not minted for a cancellation this house will not perform — an order whose goods have arrived, or one already closed.",
+  })
+  async issueOrderCancelSealChallenge(
+    @Param("id") orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueOrderCancelSealChallenge(
+      user.restaurantId,
+      orderId,
+      user.userId,
+    );
+  }
+
+  /**
+   * Cancel an order. The verb says DELETE and nothing is deleted — the row
+   * moves to CANCELLED — and that mismatch is kept rather than fixed here,
+   * because renaming it would break the legacy desk mid-flight for no gain the
+   * seal does not already give. Named as a follow-up in ADR 0125.
+   */
   @Delete("orders/:id")
-  @ApiOperation({ summary: "Cancel procurement order" })
+  @ApiOperation({
+    summary: "Cancel procurement order, behind a redeemed seal and a reason",
+  })
   @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "No reason was given. A cancellation has to say why; the reason is written to `rejection_reason` and is the only account of why this wine was not bought.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, already spent, issued to somebody else, issued for a different order, issued for a different act, or issued before the order's total, vendor or state changed. The body's `message` is the whole sentence and is rendered verbatim by the page.",
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      "This house does not allow that state change — the order's goods have arrived, or it is already closed. `message` names the state, the reason, and what to do instead.",
+  })
   async cancelOrder(
     @Param("id") orderId: string,
     @Query("reason") reason: string | undefined,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    // The seal travels in the SAME header as the approval's, so a caller has
+    // one thing to learn and the two acts cannot be confused by shape — only
+    // by the act the token was minted for, which the seal service compares.
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<OrderResponseDto> {
     try {
       return await this.procurementService.cancelOrder(
@@ -271,8 +324,15 @@ export class ProcurementController {
         orderId,
         user.userId,
         reason,
+        challenge ?? null,
       );
     } catch (error) {
+      // A refusal is not a server fault. Every throw here used to be re-wrapped
+      // as a 500, so the 400 that says a reason is needed, the 403 that says
+      // the seal was not proven and the 422 that says the wine is already on
+      // the shelf would all have reached the browser as "Internal Server Error"
+      // with their sentences buried inside.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to cancel order",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -280,20 +340,129 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * What this house's approval rules say about every order still waiting.
+   *
+   * Read-only and one call for the whole house. `/orders` uses it to render the
+   * hold-to-approve ceremony DISABLED, with the rule and the amount in words,
+   * for a person whose role cannot seal that row — never hidden, because a
+   * control that disappears teaches nothing.
+   *
+   * It is a courtesy, not the gate. `POST orders/:id/approve` decides
+   * independently and the page prints its refusal too.
+   *
+   * Declared as `order-approval-gate` rather than `orders/approval-gate` so it
+   * can never be shadowed by, or shadow, a future `orders/:id` route.
+   */
+  @Get("order-approval-gate")
+  @ApiOperation({
+    summary: "Who may seal which pending order, and why not",
+    description:
+      "Per pending order: the role the house's rules demand, which rules fired with the numbers that fired them, which could not be tested, and whether the caller's role satisfies it. `policySet: false` means this house has recorded no rule at all — which is not the same as 'anyone, any amount'.",
+  })
+  @ApiResponse({ status: 200, description: "The gate readout" })
+  async orderApprovalGate(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.approvalGate(user.restaurantId, user.userId);
+  }
+
+  /**
+   * The currency the agreement sheet should offer, and why.
+   *
+   * ADR 0117 Q31. Declared as `agreement-currency` rather than under `orders/`
+   * so it can never be shadowed by, or shadow, `orders/:id` — the same reason
+   * `order-approval-gate` sits where it does.
+   *
+   * A GET with no side effects. `code: null` is a real answer and the sheet
+   * renders it as one: it means neither this vendor's paper nor this house
+   * states a currency, and after ADR 0117 Q30 cleared every unattributable
+   * `USD` to NULL that is a state live houses are in.
+   */
+  @Get("agreement-currency")
+  @ApiOperation({
+    summary: "The currency to offer on a new agreement line, and the evidence for it",
+    description:
+      "Resolves in order: what this vendor last billed this house in (procurement_documents.currency, by the document's own date), then the house's own reporting currency (restaurants.currency), then nothing. `basis` names which rung answered so the sheet can show the evidence rather than just the suggestion; `code: null` means the person must choose or the line records no currency at all. Nothing is converted anywhere.",
+  })
+  @ApiResponse({ status: 200, description: "The offered default and its basis" })
+  async agreementCurrency(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query("providerId") providerId?: string,
+  ) {
+    return this.procurementService.agreementCurrencyForVendor(
+      user.restaurantId,
+      providerId ?? null,
+    );
+  }
+
+  /**
+   * Begin the hold. Returns a one-time seal, once.
+   *
+   * The token is returned HERE and nowhere else, and it is minted at the moment
+   * the gesture STARTS — a token fetched at the moment of approval would be one
+   * more thing the same request asked for itself, which is the assertion model
+   * with extra steps (founder, 2026-09-04; ADR 0116 addendum).
+   *
+   * Everything that would refuse the approval refuses the seal first, so a
+   * manager is never handed a seal that is going to be refused two seconds
+   * later.
+   */
+  @Post("orders/:id/seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal this order's approval has to carry back",
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act`. The seal is bound to this actor, this order, this act and this order's own figures: it cannot be spent by another person, on another order, or after the order's total changes.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The same refusal `POST orders/:id/approve` would give. A seal is not issued for a call that is refused for another reason.",
+  })
+  async issueOrderSealChallenge(
+    @Param("id") orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueOrderSealChallenge(
+      user.restaurantId,
+      orderId,
+      user.userId,
+    );
+  }
+
   @Post("orders/:id/approve")
-  @ApiOperation({ summary: "Approve procurement order" })
+  @ApiOperation({ summary: "Approve procurement order, behind a redeemed seal" })
   @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Either this house's approval rules require a role the caller does not hold, or the seal was absent, already spent, issued to somebody else, issued for a different order, or issued before the order's total changed. The body's `message` is the whole sentence and is rendered verbatim by the page.",
+  })
   async approveOrder(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    // The seal travels in a HEADER rather than a body field so that DELETE and
+    // PATCH writes elsewhere can carry it identically, and so that a caller
+    // cannot confuse it with the arguments it is a seal OVER.
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<OrderResponseDto> {
     try {
       return await this.procurementService.approveOrder(
         user.restaurantId,
         orderId,
         user.userId,
+        challenge ?? null,
       );
     } catch (error) {
+      // A refusal is not a server fault. Before the approval gate existed
+      // (ADR 0116) every throw from this method was re-wrapped as a 500, so a
+      // 403 carrying the reason a person was stopped would have reached the
+      // browser as "Internal Server Error" with the sentence buried in it.
+      // HttpExceptions carry their own status and their own body; pass them.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to approve order",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -337,6 +506,14 @@ export class ProcurementController {
         parsedQuantity,
       );
     } catch (error) {
+      // An HttpException already carries its own status AND its own body; the
+      // re-wrap below keeps only `message` and throws the rest away. That was
+      // survivable while every refusal here was a bare sentence, and is not now
+      // that a second delivery is refused with `409 { reason, orderId, status,
+      // deliveredAt, message }` — a client that branches on `reason` would have
+      // received prose and had to parse it. Same shape as the approve route
+      // above, for the same reason.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to mark order delivered",
         // Preserve the status the service chose. Without this a 404 for a

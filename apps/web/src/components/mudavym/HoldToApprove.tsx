@@ -24,8 +24,31 @@ import { animate, pour, stamp, tuck, useReducedMotion } from '../../lib/mudavym/
 import { Seal } from './Seal';
 
 export interface HoldToApproveProps {
-  /** Called exactly once when the hold completes (or the confirm is given). */
-  onApprove: () => void;
+  /**
+   * Called exactly once when the hold completes (or the confirm is given).
+   *
+   * Receives the challenge token when `onChallenge` supplied one, so a caller
+   * that needs a PROVABLE seal can pass it straight to the write. Callers that
+   * do not use `onChallenge` keep the `() => void` shape and get `null`.
+   */
+  onApprove: (challenge?: string | null) => void;
+  /**
+   * Mint the proof, at the moment the hold BEGINS.
+   *
+   * The seal on an MCP tool write is redeemed rather than asserted (founder,
+   * 2026-09-04; ADR 0107 addendum): the gateway issues a one-time token bound
+   * to the actor, the connection, the tool and the arguments, and the write has
+   * to carry it back. That only means anything if the token is minted when the
+   * gesture STARTS — a token fetched at the moment of approval would be one
+   * more thing the same request asked for itself, which is the assertion model
+   * with extra steps.
+   *
+   * If it resolves null or throws, the hold does NOT approve: the control says
+   * the seal could not be issued and nothing is sent. Silently approving
+   * without a token would be the one failure this whole mechanism exists to
+   * prevent, arriving through the UI instead of the API.
+   */
+  onChallenge?: () => Promise<string | null>;
   /** Face of the control, e.g. the amount being approved. */
   label?: ReactNode;
   /** Shown next to the seal once approved. */
@@ -43,6 +66,7 @@ const RELEASE_NOTE_MS = 1800;
 
 export function HoldToApprove({
   onApprove,
+  onChallenge,
   label = 'Hold to approve',
   approvedLabel = 'Approved',
   holdMs = pour.ms,
@@ -59,6 +83,8 @@ export function HoldToApprove({
   const holdStartRef = useRef(0);
   const progressRef = useRef(0);
   const committedRef = useRef(false);
+  /** The in-flight mint, started when the gesture began. */
+  const challengeRef = useRef<Promise<string | null> | null>(null);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,10 +104,44 @@ export function HoldToApprove({
     if (committedRef.current) return;
     committedRef.current = true;
     clearTimers();
-    setFill(1);
-    setPhase('sealed');
-    onApprove();
+
+    // No proof was asked for: the original behaviour, unchanged.
+    if (!challengeRef.current) {
+      setFill(1);
+      setPhase('sealed');
+      onApprove(null);
+      return;
+    }
+
+    const pending = challengeRef.current;
+    challengeRef.current = null;
+    void pending
+      .then((token) => {
+        if (!token) throw new Error('no seal');
+        setFill(1);
+        setPhase('sealed');
+        onApprove(token);
+      })
+      .catch(() => {
+        // Not sealed, and said so. The gesture completed and the approval did
+        // not — which is a different sentence from "released early", because
+        // the operator did nothing wrong.
+        committedRef.current = false;
+        setFill(0);
+        setPhase('idle');
+        setReleaseNote('The seal could not be issued — nothing sent.');
+        if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
+        noteTimerRef.current = setTimeout(() => setReleaseNote(null), RELEASE_NOTE_MS);
+      });
   }, [onApprove]);
+
+  /** Begin minting the proof, once per gesture. */
+  const beginChallenge = useCallback(() => {
+    if (!onChallenge || challengeRef.current) return;
+    challengeRef.current = Promise.resolve()
+      .then(() => onChallenge())
+      .catch(() => null);
+  }, [onChallenge]);
 
   // The seal lands on the stamp spring once its node exists.
   useEffect(() => {
@@ -98,6 +158,7 @@ export function HoldToApprove({
   }, [phase]);
 
   const arm = () => {
+    beginChallenge();
     setPhase('armed');
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     armTimerRef.current = setTimeout(() => {
@@ -112,6 +173,7 @@ export function HoldToApprove({
   };
 
   const startHold = () => {
+    beginChallenge();
     setReleaseNote(null);
     setPhase('holding');
     holdStartRef.current = performance.now();
@@ -129,6 +191,9 @@ export function HoldToApprove({
     if (committedRef.current || phase !== 'holding') return;
     cancelAnimationFrame(rafRef.current);
     const p = progressRef.current;
+    // The gesture ended without approval, so the seal it began is abandoned.
+    // It expires on the server; nothing here spends it.
+    challengeRef.current = null;
     setPhase('idle');
     // Honest about what did NOT happen.
     setReleaseNote(`Released at ${Math.round(p * 100)}% — nothing sent.`);

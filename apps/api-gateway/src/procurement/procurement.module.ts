@@ -3,6 +3,14 @@ import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
 import { RecurringOrdersService } from "./recurring-orders.service";
 import { RecurringOrdersController } from "./recurring-orders.controller";
+// Recurrence ON THE ORDER (founder, 2026-09-05; ADR 0125's addendum). Distinct
+// from `RecurringOrdersService` above, which owns the `recurring_orders`
+// TEMPLATE table: a template repeats four facts, an order repeats the whole
+// agreement. Registered here rather than left as a class Nest cannot construct —
+// slice 1 of ADR 0104 D12 shipped exactly that mistake, and the first route to
+// inject one would have failed at boot with a DI error CI cannot see.
+import { OrderRecurrenceService } from "./order-recurrence.service";
+import { OrderRecurrenceController } from "./order-recurrence.controller";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
@@ -17,13 +25,37 @@ import { DocumentExtractorService } from "./documents/document-extractor.service
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
 import { CreditsController } from "./documents/credits.controller";
+import { SettingsModule } from "../settings/settings.module";
+import { OrganizationsModule } from "../organizations/organizations.module";
+// The seal on an order (founder, 2026-09-04). Not circular: SealModule imports
+// DatabaseModule and nothing else.
+import { SealModule } from "../common/seal/seal.module";
 import { DeliveriesController } from "./deliveries.controller";
 import { CanonicalDocumentService } from "./canonical/canonical-document.service";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "./canonical/document-correction.service";
+// The 832 catalogue half of the document door (ADR 0126, batch 56). Not
+// circular: DistributorFeedModule imports Database, Config, Auth and
+// Organizations, and nothing in that graph imports procurement — so no
+// forwardRef, and Nest resolves it at build time rather than injecting
+// `undefined` at runtime.
+import { DistributorFeedModule } from "../distributor-feed/distributor-feed.module";
 import { DeliveryService } from "./canonical/delivery.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
 
+/**
+ * `SettingsModule` and `OrganizationsModule` are the approval gate's two halves
+ * (ADR 0116). `ApprovalThresholdsService` supplies the house's rules and
+ * `OrganizationsService.resolveRestaurantRole` supplies the actor's rank, and
+ * `ProcurementService.approveOrder` refuses the seal when the two disagree.
+ *
+ * Neither import is circular: `SettingsModule` imports Database, Auth,
+ * SettingsAudit and VendorTerms; `OrganizationsModule` imports Database and
+ * Auth. Nothing in either graph imports procurement, so no `forwardRef` is
+ * needed and Nest resolves both at build time rather than injecting `undefined`
+ * at runtime — which is the failure mode a `forwardRef` on a real cycle would
+ * have produced, and which a gate must never suffer silently.
+ */
 @Module({
   imports: [
     DatabaseModule,
@@ -33,11 +65,16 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     OrchestratorModule,
     CommunicationsModule,
     WebsocketModule,
+    SettingsModule,
+    OrganizationsModule,
+    SealModule,
+    DistributorFeedModule,
     forwardRef(() => NotificationsModule),
   ],
   controllers: [
     ProcurementController,
     RecurringOrdersController,
+    OrderRecurrenceController,
     DocumentsController,
     ReceivingController,
     CreditsController,
@@ -46,6 +83,7 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
   providers: [
     ProcurementService,
     RecurringOrdersService,
+    OrderRecurrenceService,
     DocumentIntakeService,
     DocumentExtractorService,
     ReceivingService,

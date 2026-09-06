@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 095 — The Cellar, merged</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mudavym tokens, copied inline from apps/web/src/styles/mudavym.css (ADR 0042).
+   Sketches render from file:// with no build, so the tokens are duplicated here
+   rather than imported. Do not re-derive values; copy them. */
+:root {
+  --seal: #1A5E6B;
+  --seal-deep: #14515C;
+  --seal-tint: rgba(26, 94, 107, 0.10);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #FAF7F1;
+  --paper-1: #F3EFE6;
+  --paper-2: #EAE4D8;
+  --ink-1: #211C16;
+  --ink-2: #4F473C;
+  --ink-3: #7C7365;
+  --ink-4: #665D50;
+  color-scheme: light;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.sk-banner {
+  background: var(--ink-1);
+  color: var(--paper-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 7px 20px;
+}
+.wrap { max-width: 1400px; margin: 0 auto; padding: 22px 24px 56px; }
+.serif { font-family: var(--serif); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--ink-3); }
+h1.sk-h1 {
+  font-family: var(--serif);
+  font-size: 40px; line-height: 1.04; letter-spacing: -0.022em;
+  font-weight: 600; margin: 12px 0 0;
+}
+h2.sk-sec {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin: 30px 0 10px;
+}
+.sk-crumb { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.sk-standing { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 10px 0 0; max-width: 74ch; }
+.sk-note { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 9px 0 0; }
+.sk-said { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--paper-2); height: 3px; margin: 16px 0 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--paper-2); border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; color: var(--ink-2); background: var(--paper-1);
+}
+.chip[data-seal="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+.panel { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 14px 16px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1);
+  color: var(--ink-1); font: inherit; font-size: 12px; padding: 6px 11px; cursor: pointer;
+}
+.btn[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+table.reg { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.reg th {
+  text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; padding: 8px 10px;
+  border-bottom: 1px solid var(--ink-1);
+}
+table.reg td { padding: 8px 10px; border-bottom: 1px solid var(--paper-2); vertical-align: top; }
+table.reg tbody tr:nth-child(even) td { background: var(--paper-1); }
+</style>
+<style>
+/* additions for the merge */
+.grid { display: grid; gap: 14px; }
+.tiles { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+.tile { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 12px 14px; }
+.tile-label { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.tile-fig { font-family: var(--mono); font-size: 27px; font-variant-numeric: tabular-nums; margin: 4px 0 0; letter-spacing: -0.02em; }
+.cards { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
+.card { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-0); padding: 13px 14px; }
+.card h3 { font-family: var(--serif); font-size: 18px; font-weight: 600; margin: 0; }
+.card dl { display: flex; gap: 16px; margin: 9px 0 0; }
+.card dt { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.card dd { font-family: var(--mono); font-size: 16px; margin: 2px 0 0; }
+.floorstrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.zone { border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); padding: 9px 10px; }
+.zone b { display: block; font-family: var(--mono); font-size: 11px; color: var(--seal-deep); }
+.zone span { display: block; font-size: 11px; color: var(--ink-2); margin-top: 3px; line-height: 1.35; }
+.zone .n { font-family: var(--mono); font-size: 17px; margin-top: 6px; display: block; }
+.mark { display: inline-block; width: 15px; height: 15px; line-height: 15px; text-align: center;
+        font-family: var(--mono); font-size: 9.5px; border: 1px solid var(--paper-2);
+        border-radius: 4px; color: var(--ink-3); background: var(--paper-0); }
+.mark[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); color: var(--seal-deep); font-weight: 600; }
+.menu { position: absolute; width: 330px; background: var(--paper-0); border: 1px solid var(--paper-2);
+        border-radius: 10px; box-shadow: 0 14px 34px rgba(0,0,0,.13); padding: 10px; z-index: 5; }
+.menuitem { display: flex; gap: 7px; align-items: center; padding: 6px 8px; border-radius: 6px; font-size: 12.5px; }
+.menuitem[data-on="true"] { background: var(--paper-1); border: 1px solid var(--seal-ring); }
+.menunote { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 6px 0 0; }
+.account { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--paper-2); }
+.series { border: 1px solid var(--paper-2); border-bottom: 3px double var(--ink-4); border-radius: 10px;
+          background: var(--paper-1); padding: 14px 16px 16px; }
+.two { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.contrib { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.contrib h4 { margin: 0 0 5px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--seal-deep); }
+.contrib p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+a.nav { text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="sk-banner">SKETCH &middot; 095 &middot; the cellar, A and B merged &middot; example data, not a tenant</div>
+<div class="wrap">
+
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div>
+      <p class="sk-crumb">What the house keeps &middot; Kadıköy Meyhane</p>
+      <h1 class="sk-h1">The Cellar<span style="color:var(--seal)">.</span></h1>
+    </div>
+    <nav style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
+      <span class="btn" data-on="true">Wines</span>
+      <a class="btn nav" href="merged-register.html">Beer</a>
+      <span class="btn">Spirits</span>
+      <span class="btn">Cocktails</span>
+      <span class="btn">Non-alcoholic</span>
+    </nav>
+  </div>
+
+  <p class="sk-standing">
+    Five registers, because that is what this house pours. The other two are not drawn.
+  </p>
+  <p class="sk-note">
+    Called the Cellar because this house keeps bottles &mdash; wine or spirits are on its
+    registers. Change which registers it carries in Settings. The address stays
+    <span class="num">/cellar</span> whatever this page is called.
+  </p>
+  <hr class="rule">
+
+  <!-- ── KEPT: the top info boxes the founder asked to keep ─────────────── -->
+  <h2 class="sk-sec">In the building tonight</h2>
+  <div class="grid tiles">
+    <div class="tile"><p class="tile-label">Bottles on hand</p><p class="tile-fig">1,184</p></div>
+    <div class="tile"><p class="tile-label">Titles carried</p><p class="tile-fig">256</p></div>
+    <div class="tile"><p class="tile-label">At or under their own par</p><p class="tile-fig">4</p></div>
+    <div class="tile"><p class="tile-label">Carried but off this read</p><p class="tile-fig">36</p></div>
+  </div>
+  <p class="sk-note">
+    Every figure counted from a real lot. Par is only claimed for a row that records its own
+    minimum.
+  </p>
+
+  <!-- ── FROM DIRECTION A: the room, BUILT over confirmed zones only ─────── -->
+  <h2 class="sk-sec">On the floor &middot; from direction A</h2>
+  <div class="floorstrip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="zone"><b>A</b><span>North rack &middot; reds</span><span class="n">486</span><span class="dim">confirmed by Deniz &middot; 2 Sep</span></div>
+    <div class="zone"><b>B</b><span>Cold wall &middot; whites, orange</span><span class="n">263</span><span class="dim">confirmed by Deniz &middot; 2 Sep</span></div>
+    <div class="zone"><b>C</b><span>Keg line &middot; beer</span><span class="n">9 kegs</span><span class="dim">renamed by the house &middot; 3 Sep</span></div>
+    <div class="zone"><b>D</b><span>Back bar &middot; rakı, gin, amaro</span><span class="n">318</span><span class="dim">confirmed by Aslı &middot; 3 Sep</span></div>
+  </div>
+  <p class="sk-said" style="margin-top:10px">
+    <b>3 zones are not yet confirmed and are not drawn.</b> Every zone here was
+    written by a seeder or an import until somebody in this house says otherwise.
+    <span class="btn" style="margin-left:6px">Confirm your zones</span>
+  </p>
+  <div class="panel" style="margin-top:10px">
+    <p class="sk-note" style="margin:0 0 8px">
+      Confirm the name as it stands, or type the name this room actually goes by.
+      Either way it is recorded against you and the zone joins the floor.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--paper-2)">
+      <span class="btn" style="flex:1 1 240px;justify-content:flex-start">Reserve Room - Rare Collection</span>
+      <span class="btn">&#10003; It is called that</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--paper-2)">
+      <span class="btn" style="flex:1 1 240px;justify-content:flex-start">Cold room</span>
+      <span class="btn" data-on="true">&#9998; Rename it</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--paper-2)">
+      <span class="btn" style="flex:1 1 240px;justify-content:flex-start">Overflow Storage</span>
+      <span class="btn">&#10003; It is called that</span>
+    </div>
+  </div>
+  <p class="sk-note">
+    <b>What A contributed, and what the merge kept of it.</b> A answered the one
+    question no table answers &mdash; <i>where</i>. What it could not survive was
+    trust: <span class="num">storage_locations</span> cannot tell a zone somebody
+    walked from a zone a seeder invented, and a floor plan is the one surface
+    where that difference IS the content. Measured on production
+    <b>2026-09-04: 4 rows across 2 tenants, and all four carry one of the four
+    names the seeded-defaults sweep named</b> (87 rows across 7 tenants was the
+    2026-09-02 figure; 83 have since been deleted, so the proportion went from
+    84-of-87 to 4-of-4). So the floor is built in the cellar&rsquo;s own
+    infer-then-confirm shape: <b>a zone is drawn once somebody in this house has
+    confirmed its name, and never before.</b> The rest are a sentence with a
+    count and the control beside it &mdash; never a drawn room, and never
+    &ldquo;no zones&rdquo;, which would be a claim about the building.
+  </p>
+  <p class="sk-note">
+    What is in a zone is counted from the inventory rows assigned to it, not read
+    off <span class="num">current_occupancy</span> &mdash; on the only tenant that
+    has both, that column says 180/32/45 against 17/17/16 rows actually assigned.
+    Confirming a zone&rsquo;s NAME is not confirming a seeder&rsquo;s arithmetic.
+  </p>
+  <div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">
+    <span class="btn" data-on="true">Count zone D &mdash; oldest walk on the floor</span>
+    <span class="btn">Put away the 36 at the door</span>
+  </div>
+
+  <!-- ── the registers, the shipped spine ────────────────────────────────── -->
+  <h2 class="sk-sec">The registers</h2>
+  <div class="grid cards">
+    <div class="card">
+      <h3>Wines</h3>
+      <p class="sk-said dim" style="margin-top:4px">The master library as this house sees it, with the cellar laid over it.</p>
+      <dl><div><dt>Titles</dt><dd>212</dd></div><div><dt>On hand</dt><dd>1,067</dd></div><div><dt>Below par</dt><dd>3</dd></div></dl>
+    </div>
+    <div class="card">
+      <h3>Beer</h3>
+      <p class="sk-said dim" style="margin-top:4px">Every beer this house has bought, listed, quoted or poured.</p>
+      <dl><div><dt>Ours</dt><dd>18</dd></div><div><dt>Catalogued</dt><dd>57</dd></div><div><dt>Sold 30d</dt><dd>412</dd></div></dl>
+    </div>
+    <div class="card">
+      <h3>Spirits</h3>
+      <p class="sk-said dim" style="margin-top:4px">Every spirit, whiskey included.</p>
+      <dl><div><dt>Ours</dt><dd>44</dd></div><div><dt>Catalogued</dt><dd>400</dd></div><div><dt>Sold 30d</dt><dd>289</dd></div></dl>
+    </div>
+    <div class="card">
+      <h3>Cocktails</h3>
+      <p class="sk-said dim" style="margin-top:4px">The one register this house can write &mdash; and the only one with a recipe.</p>
+      <dl><div><dt>On the list</dt><dd>11</dd></div><div><dt>With a recipe</dt><dd>7</dd></div><div><dt>Sold 30d</dt><dd>318</dd></div></dl>
+    </div>
+    <div class="card">
+      <h3>Non-alcoholic</h3>
+      <p class="sk-said dim" style="margin-top:4px">What the house pours to someone who is not drinking.</p>
+      <dl><div><dt>Ours</dt><dd>14</dd></div><div><dt>Catalogued</dt><dd>10</dd></div><div><dt>Sold 30d</dt><dd>604</dd></div></dl>
+    </div>
+  </div>
+
+  <!-- ── FROM DIRECTION B: everything at once, general columns ───────────── -->
+  <h2 class="sk-sec">Everything at once &middot; from direction B</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    <span class="btn" data-on="true">Every register</span>
+    <span class="btn">Beer</span><span class="btn">Spirits</span>
+    <span class="btn">Cocktails</span><span class="btn">Non-alcoholic</span>
+    <span class="dim num" style="margin-left:auto;font-size:12px">87 of 87</span>
+  </div>
+  <div style="border:1px solid var(--paper-2);border-radius:10px;overflow:hidden">
+  <table class="reg">
+    <thead><tr>
+      <th>Bottle</th><th>Register</th><th>Our record</th>
+      <th style="text-align:right">On the list</th><th style="text-align:right">Paid</th>
+      <th style="text-align:right">Sold</th><th style="text-align:right">Taken</th>
+      <th style="text-align:right">Last quote</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Efes Pilsen</span><br><span class="dim" style="font-size:11px">Anadolu Efes</span></td>
+        <td>Beer</td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark" data-on="true">o</span> <span class="mark" data-on="true">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">₺95</td><td class="num" style="text-align:right">₺6,184.00</td>
+        <td class="num" style="text-align:right">581</td><td class="num" style="text-align:right">₺55,195</td>
+        <td class="num" style="text-align:right">₺8.60</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Yeni Rakı 70cl</span><br><span class="dim" style="font-size:11px">Mey İçki</span></td>
+        <td>Spirits</td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark">o</span> <span class="mark" data-on="true">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">₺1,150</td><td class="num" style="text-align:right">₺18,420.00</td>
+        <td class="num" style="text-align:right">96</td><td class="num" style="text-align:right">₺110,400</td>
+        <td class="num" style="text-align:right">₺612.00</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Mediterranean Fizz</span><br><span class="dim" style="font-size:11px">this house&rsquo;s own line</span></td>
+        <td>Cocktails</td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark">i</span> <span class="mark">o</span> <span class="mark">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">₺340</td><td class="num" style="text-align:right">&mdash;</td>
+        <td class="num" style="text-align:right">318</td><td class="num" style="text-align:right">₺108,120</td>
+        <td class="num" style="text-align:right">&mdash;</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Türk Kahvesi</span><br><span class="dim" style="font-size:11px">this house&rsquo;s own line</span></td>
+        <td>Non-alcoholic</td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark" data-on="true">o</span> <span class="mark">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">₺85</td><td class="num" style="text-align:right">₺2,940.00</td>
+        <td class="num" style="text-align:right">604</td><td class="num" style="text-align:right">₺51,340</td>
+        <td class="num" style="text-align:right">₺41.00</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Bomonti Filtresiz</span><br><span class="dim" style="font-size:11px">this house&rsquo;s own line &middot; not in any catalogue</span></td>
+        <td>Beer</td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark">o</span> <span class="mark">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">₺110</td><td class="num" style="text-align:right">₺3,072.00</td>
+        <td class="num" style="text-align:right">204</td><td class="num" style="text-align:right">₺22,440</td>
+        <td class="num" style="text-align:right">&mdash;</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Beyoğlu Dry Gin</span><br><span class="dim" style="font-size:11px">Ata &middot; matched loosely</span></td>
+        <td>Spirits</td>
+        <td><span class="mark">m</span> <span class="mark" data-on="true">i</span> <span class="mark" data-on="true">o</span> <span class="mark" data-on="true">q</span> <span class="mark">p</span></td>
+        <td class="num" style="text-align:right">&mdash;</td><td class="num" style="text-align:right">₺4,860.00</td>
+        <td class="num" style="text-align:right">&mdash;</td><td class="num" style="text-align:right">&mdash;</td>
+        <td class="num" style="text-align:right">₺810.00</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sk-note">
+    <b>What B contributed, and what the merge kept of it.</b> B&rsquo;s idea is that a whisky,
+    a keg and a Burgundy belong in one list with the kind as a facet, because that is what
+    &ldquo;see everything&rdquo; literally means. Its cost, in its own sketch, was one row
+    grammar for three kinds of thing &mdash; the exact thing the four-child IA was chosen to
+    avoid. The merge keeps the idea and pays a smaller price: the registers stay as the place
+    a kind is <i>worked</i>, and this is the place the whole book is <i>read</i>, with only
+    the eight columns that mean the same thing in every register.
+    <b>On hand is deliberately not one of them</b> &mdash; it is real for wines and
+    structurally absent for the other six, so as a general column it would be an em dash on
+    most of the page.
+  </p>
+
+  <h2 class="sk-sec">What each direction gave the merge</h2>
+  <div class="contrib">
+    <div class="panel">
+      <h4>A &middot; the cellar floor</h4>
+      <p>The room, and the only answer to <i>where</i>. Kept as a strip on the parent, drawn
+      only from zones that carry a real count and a real walk date. Its own cost &mdash; 84
+      of 87 <span class="num">storage_locations</span> rows carrying invented names &mdash;
+      is why it is a band and not the whole surface.</p>
+    </div>
+    <div class="panel">
+      <h4>B &middot; one register, kind as a facet</h4>
+      <p>&ldquo;See everything&rdquo; taken literally. Kept as its own section with a general
+      column set and a register facet, opened deliberately because it is one read per
+      register. Its cost &mdash; one grammar for every kind &mdash; is paid only by the eight
+      columns that survive being general.</p>
+    </div>
+    <div class="panel">
+      <h4>The shipped book</h4>
+      <p>The spine, unchanged: a parent of registers, each opening at full breadth, with depth
+      on a reading stand. It is the only one of the three that needs nothing further, and it
+      is what both of the others now hang off.</p>
+    </div>
+  </div>
+
+  <p class="sk-note" style="margin-top:22px">
+    Sketch only. Screens: <a href="merged-register.html">a register, with the column menu and
+    the series a cell opens</a>.
+  </p>
+</div>
+</body>
+</html>

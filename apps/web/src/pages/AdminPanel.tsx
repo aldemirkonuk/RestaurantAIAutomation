@@ -820,6 +820,8 @@ export default function AdminPanel() {
                     details: 'Real-time sales sync enabled',
                   },
                   {
+                    // The only place in the product that names a message vendor.
+                    // The survey lives once: .planning/07-reference/messaging-senders.md (ADR 0121).
                     name: 'Plivo SMS',
                     description: 'SMS Notifications',
                     status: 'Sandbox',

@@ -3,6 +3,8 @@ import { NotFoundException } from "@nestjs/common";
 import { OneTapActionsService } from "../one-tap-actions/one-tap-actions.service";
 import { DatabaseService } from "../database/database.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { ProcurementService } from "../procurement/procurement.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import {
   OneTapActionType,
   OneTapActionStatus,
@@ -49,6 +51,30 @@ describe("OneTapActionsService", () => {
         {
           provide: WebsocketGateway,
           useValue: mockWebsocketGateway,
+        },
+        // The two dependencies the first real workflow added (2026-09-05).
+        // They THROW rather than returning a stub value: nothing in this suite
+        // executes a delivery, and a suite that quietly booked stock while
+        // testing "should mark action as completed" would be worse than no
+        // suite at all.
+        {
+          provide: ProcurementService,
+          useValue: {
+            markDelivered: () => {
+              throw new Error("markDelivered is not exercised by this suite");
+            },
+          },
+        },
+        {
+          provide: SealChallengeService,
+          useValue: {
+            issue: () => {
+              throw new Error("no seal is issued by this suite");
+            },
+            redeem: () => {
+              throw new Error("no seal is redeemed by this suite");
+            },
+          },
         },
       ],
     }).compile();

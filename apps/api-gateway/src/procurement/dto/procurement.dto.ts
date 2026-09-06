@@ -8,12 +8,14 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   Min,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
+import { PRICE_UOM_TYPES } from "../agreed-price";
 
 export enum ProcurementOrderStatus {
   PENDING = "PENDING",
@@ -77,6 +79,90 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   vendorSku?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The unit the AGREED PRICE is stated in — bottle | case | keg | pack | split_case | " +
+      "each | liter. INDEPENDENT of unitType: five cases at a per-bottle price is an " +
+      "ordinary order, and a bottle price and a case price for the same item are posted " +
+      "separately by the trade (ADR 0119). Omitted means UNSTATED, never 'bottle': an " +
+      "agreement with no stated price unit does not enter the price register, and the " +
+      "page says so rather than the number being filed under a guess. Must be sent " +
+      "together with pricePackSize — half a statement is refused with a 400.",
+    enum: PRICE_UOM_TYPES as unknown as string[],
+  })
+  @IsString()
+  @IsOptional()
+  priceUom?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "How many bottles are in one of priceUom. Exactly 1 for a unit that holds one " +
+      "(bottle/each/keg/liter); the real pack for case/pack/split_case. Required " +
+      "whenever priceUom is sent, and refused without it.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  pricePackSize?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The money EVERY amount on this line is in — unit price, line total, allowance, deposit, " +
+      "freight (ADR 0117 Q31). ISO 4217 alpha-3. Omitted means UNSTATED and the column stores NULL: " +
+      "there is no default, because a defaulted currency is a claim about a vendor nobody made — " +
+      "`restaurants.currency` said USD about a restaurant in Fethiye for seven months on exactly " +
+      "that mechanism. The agreement sheet offers a default worked out from what this vendor last " +
+      "billed this house in, and the person confirms or changes it before it is sent.",
+    example: "TRY",
+  })
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: "currency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+  })
+  @IsOptional()
+  currency?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Money the vendor DEDUCTS from this line, as a POSITIVE amount for the whole line " +
+      "(ADR 0119 Q3). The agreement's mirror of the invoice line's allowance. Kept outside " +
+      "the unit price on purpose: folded in, a one-off deduction is indistinguishable from " +
+      "the wine being cheaper, and the next order inherits a price the vendor never gave. " +
+      "Omitted means the agreement named none, which is NOT the same as naming zero.",
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  allowance?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Refundable container deposit agreed for this line, a POSITIVE amount for the whole " +
+      "line (ADR 0119 Q3). Not part of what the wine costs — a deposit folded into the unit " +
+      "price becomes a permanent price rise on a bottle that will be redeemed. Omitted means " +
+      "the agreement named none.",
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  deposit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Delivery, fuel surcharge or other carriage agreed for this line, a POSITIVE amount for " +
+      "the whole line (ADR 0119 Q3). Distributors publish freight as its own schedule by " +
+      "weight and distance; it is a cost component, never a price variance. Omitted means the " +
+      "agreement named none.",
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  freight?: number;
 
   @ApiPropertyOptional()
   @IsNumber()
@@ -358,6 +444,23 @@ export class VerifyReceiptDto {
   @Min(0)
   @IsOptional()
   invoiceUnitPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The ISO 4217 alpha-3 code the invoice is denominated in — the VENDOR'S currency, off the vendor's paper, " +
+      "not the house's. `procurement_documents.currency` is where an uploaded invoice already carries it, and " +
+      "production holds TRY invoices against a house whose own currency says USD. Omit it and the price series " +
+      "records the figure with its currency marked NOT RECORDED, and the price register refuses the sighting " +
+      "outright rather than stamping USD on it (ADR 0117 Q25).",
+    example: "TRY",
+  })
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message:
+      "invoiceCurrency must be an ISO 4217 alpha-3 code in capitals, e.g. USD, TRY, GBP.",
+  })
+  @IsOptional()
+  invoiceCurrency?: string;
 
   @ApiPropertyOptional({
     description:
@@ -728,6 +831,249 @@ export class OrderResponseDto {
 
   @ApiPropertyOptional()
   wineName?: string;
+
+  /**
+   * The vendor's NAME, joined from `providers` on `provider_id`.
+   *
+   * The same three states as the price pair below, and for the same reason:
+   *   * a string — the provider row was read and carries this name;
+   *   * `null` — the route joined `providers` and got nothing back. The
+   *     provider row is gone, or `provider_id` is null. That is a fact about
+   *     this order, and the screens print "the vendor is not named on this
+   *     order" rather than a blank;
+   *   * **the key ABSENT** — this route does not join `providers` at all, so
+   *     it knows nothing either way. Only `GET /procurement/orders`,
+   *     `/orders/history`, `/orders/pending` and `/orders/:id` join it today.
+   *
+   * A consumer must never read the absent case as "no vendor" — that is the
+   * absence-reported-as-health fault (ADR 0020). Before this field existed,
+   * four surfaces read a `providerName` the wire had never sent: the receiving
+   * door's credit-note letter was addressed "To the vendor" and named nobody
+   * on every order it had ever opened.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "Kavaklidere Saraplari",
+    description:
+      "The vendor's name, joined from providers on provider_id. null = the join was made and returned no name. Key ABSENT = this route does not join providers.",
+  })
+  providerName?: string | null;
+
+  /**
+   * `procurement_orders.quantity_received` — what has actually been booked
+   * against this order so far.
+   *
+   * Three states, as everywhere else on this DTO: a number; `null` (the column
+   * was read and is empty — nothing has been received); the key ABSENT (this
+   * route did not read the column). A screen that pre-fills a physical count
+   * MUST tell `null` from absent: the phone used to read
+   * `order.quantityReceived ?? order.quantity` against a key the wire never
+   * sent, so a partially-received order pre-filled the receiver's count from
+   * the ORDERED quantity.
+   *
+   * IT TRAVELS WITH `quantityReceivedUom` AND IS UNSAFE WITHOUT IT. The column
+   * has four writers and they do not agree on its unit — see
+   * `quantity-received-unit.ts`, which carries the measurement.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 3,
+    description:
+      "Units received against this order so far, in quantityReceivedUom. null = the column was read and is empty. Key ABSENT = this route does not read it. Never use it without its unit.",
+  })
+  quantityReceived?: number | null;
+
+  /**
+   * The unit `quantityReceived` is stated in — ADR 0070.
+   *
+   * A unit when the row can state one; `null` when it CANNOT, which is a
+   * refusal and not a default. The column is a single integer written in the
+   * order's own unit by three code paths and in bottles by the receiving door,
+   * and nothing on the row records which wrote it — so on an order placed in
+   * cases the two readings differ by the pack size and neither is knowledge.
+   * On an order whose unit does not multiply (bottle, each, keg, liter, or
+   * absent) both writers produce the same number and the unit is stated.
+   *
+   * The key is ABSENT exactly when `quantityReceived` is absent: they are one
+   * fact and never travel apart.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "bottle",
+    description:
+      "The unit quantityReceived is stated in. null = this row cannot state it (the column has two writers with two units and the row does not say which), so the count must not be used as a pre-fill. Travels with quantityReceived: both stated, both null-able, or both keys absent.",
+  })
+  quantityReceivedUom?: string | null;
+
+  /**
+   * The unit the agreed price is stated in — ADR 0119, read from the LINE.
+   *
+   * THREE VALUES, AND THE THIRD ONE IS THE POINT:
+   *   * `"case"` (etc.) — the line states this unit, and `pricePackSize` says
+   *     how many bottles are in one of them. The two always travel together.
+   *   * `null` — the line was READ and states no unit. That is a refusal, not a
+   *     default: the price register will not take this agreement, and the page
+   *     prints the register's own sentence instead of a bare number.
+   *   * **the key is ABSENT** — this route does not read
+   *     `procurement_order_items` at all, so it knows nothing either way. Only
+   *     `GET /procurement/orders` (and `/orders/history`, which is the same
+   *     method) joins the line today; every other route returning an
+   *     `OrderResponseDto` omits both keys.
+   *
+   * A consumer must never read the absent case as "unstated" — that is the
+   * absence-reported-as-health fault (ADR 0020), and it is why this is
+   * `string | null` on an optional property rather than a plain optional
+   * string: missing and null are different answers, and JSON keeps them apart.
+   *
+   * `procurement_orders` carries no price unit of its own — the header's
+   * `final_price` is an echo of the line by column comment
+   * (`20260905010000_an_agreed_price_states_its_unit.sql`) — so this field
+   * reports a unit only when every line under the order agrees on one
+   * (`agreed-price.ts` `foldOrderPriceUnit`).
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "case",
+    description:
+      "The unit the agreed price is stated in, read from the order line. null = the line was read and states none, so the price register refuses it. Key ABSENT = this route does not read the line and knows nothing either way.",
+  })
+  priceUom?: string | null;
+
+  /**
+   * How many bottles are in one `priceUom`. Both halves or neither: the CHECK
+   * `procurement_order_items_price_unit_pair_check` says so in the database,
+   * and `readStatedPriceUnit` reads a half-written row as UNSTATED rather than
+   * as half a claim.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description:
+      "Bottles in one priceUom. Travels with priceUom: both stated, both null, or both keys absent.",
+  })
+  pricePackSize?: number | null;
+
+  /**
+   * The money the agreement names OUTSIDE the price of the wine — ADR 0119 Q3,
+   * read from the LINE like the pair above.
+   *
+   * The same three states as `priceUom`, and the third is again the point:
+   *   * a number — the agreement names this amount for the whole line;
+   *   * `null` — the line was read and names none;
+   *   * **the key ABSENT** — this route did not read the fee columns, so it
+   *     knows nothing either way. A consumer that read absence as "no deposit"
+   *     would be reporting the absence of a read as a fact about the agreement.
+   *
+   * All three are POSITIVE amounts. `allowance` deducts; `deposit` and
+   * `freight` add. The direction is in the name, never in a sign, and the
+   * database CHECKs refuse a negative.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 25,
+    description:
+      "Allowance the vendor deducts from this line, positive, for the whole line. null = the line was read and names none. Key ABSENT = this route does not read the line's fee columns.",
+  })
+  allowance?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 6,
+    description:
+      "Refundable container deposit agreed for this line, positive, for the whole line. Travels with allowance and freight: all three stated, all three null, or all three keys absent.",
+  })
+  deposit?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 48,
+    description:
+      "Freight or carriage agreed for this line, positive, for the whole line. A cost component, never a price variance.",
+  })
+  freight?: number | null;
+
+  /*
+   * ===========================================================================
+   * THE RECURRENCE (ADR 0125's addendum, founder 2026-09-05)
+   * ===========================================================================
+   * Six keys that travel together: all six stated, or all six ABSENT. The
+   * distinction is the point of the whole group.
+   *
+   *   a value        this order repeats, and this is the rule
+   *   null           this route READ the recurrence columns and this order does
+   *                  not repeat
+   *   key absent     this route does not read them, and knows nothing either way
+   *
+   * Reading absent as "does not repeat" is the fault this whole group exists to
+   * remove. `.planning/v3.0-TECH-DEBT.md` "The orders wire" item 2:
+   * `useOrdersNextData.toRow` set `recurring = false` unconditionally, so the
+   * rebuilt page's Recurring station could never fill and every order fell into
+   * "one-time" — and nothing on the wire could have told it otherwise.
+   *
+   * `GET /procurement/orders` and `GET /procurement/orders/:id` select `*` and
+   * therefore send all six. A route that selects a column list sends none.
+   */
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "weekly",
+    description:
+      "How often this order repeats: daily, weekly, biweekly, monthly or quarterly. null = this route read the recurrence and this order does not repeat. Key ABSENT = this route does not read it. There is no second flag; procurement_orders.is_recurring is tombstoned.",
+  })
+  recurrenceFrequency?: string | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 1,
+    description:
+      "What the rule is anchored to. Weekly/biweekly: a weekday, 0 = Monday to 6 = Sunday. Monthly/quarterly: a day of the month, 1 to 28 — 28 so that every month has one. null = no anchor stated, and the series runs from its start date.",
+  })
+  recurrenceAnchorDay?: number | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "2026-09-12",
+    description:
+      "The next date this order comes round, YYYY-MM-DD. DERIVED, never typed: nextOccurrenceOn() in order-recurrence.ts is the only thing that advances it. null on a paused or ended series.",
+  })
+  recurrenceNextDueOn?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "active",
+    description:
+      "active, paused or ended. Paused keeps its place in the calendar and can be resumed; ended is over. A recurrence never approves anything — every occurrence is born PENDING and is sealed by a person.",
+  })
+  recurrenceStatus?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      "The order carrying the rule this one was minted from. Set on a CHILD, null on the parent and on every order that does not recur.",
+  })
+  recurrenceParentOrderId?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "2026-09-12",
+    description:
+      "The occurrence date this child was minted for. Travels with recurrenceParentOrderId: both set or both null. A partial unique index over the pair is what stops two orders being raised for one occurrence.",
+  })
+  recurrenceOccurrenceOn?: string | null;
 }
 
 export class OrderListResponseDto {

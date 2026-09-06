@@ -30,6 +30,7 @@ import {
 } from "../../services/api/simpos";
 import { documentsApi, dashNull } from "../../services/api/documents";
 import { cn } from "../../lib/utils";
+import { formatMoney } from "../../lib/currency";
 import { formatVenueTime, hoursStateLabel } from "../../lib/venueTime";
 
 /** The categories Edit POS offers. Mirrors the CHECK constraint on the column. */
@@ -48,9 +49,10 @@ type SimposCategory = (typeof SIMPOS_CATEGORY_OPTIONS)[number];
 
 type Tab = "home" | "receipts";
 
-function fmtMoney(n: number | null | undefined): string {
+/** The venue's own currency, or the number with "currency not recorded" — never a bare dollar. */
+function fmtMoney(n: number | null | undefined, currency: string | null): string {
   if (n == null) return "—";
-  return `$${Number(n).toFixed(2)}`;
+  return formatMoney(Number(n), currency);
 }
 
 /**
@@ -59,15 +61,15 @@ function fmtMoney(n: number | null | undefined): string {
  * 53 buttons showed a price nobody had set. A null price now renders as the
  * word — never as $0.00, which would claim the item is free (ADR 0020).
  */
-function fmtPrice(n: number | null | undefined): string {
+function fmtPrice(n: number | null | undefined, currency: string | null): string {
   if (n === null || n === undefined) return "unpriced";
-  return `$${Number(n).toFixed(2)}`;
+  return formatMoney(Number(n), currency);
 }
 
 /** A line's money, or the word — same rule as fmtPrice, times quantity. */
-function fmtLineTotal(price: number | null | undefined, qty: number): string {
+function fmtLineTotal(price: number | null | undefined, qty: number, currency: string | null): string {
   if (price === null || price === undefined) return "unpriced";
-  return `$${(Number(price) * Number(qty)).toFixed(2)}`;
+  return formatMoney(Number(price) * Number(qty), currency);
 }
 
 export function SimposTerminalPage() {
@@ -121,6 +123,7 @@ export function SimposTerminalPage() {
     retry: false,
     staleTime: 300_000,
   });
+  const venueCurrency = venueQuery.data?.currency ?? null;
   const venueZone = venueQuery.data?.timezone ?? null;
 
   const receiptsQuery = useQuery({
@@ -431,7 +434,7 @@ export function SimposTerminalPage() {
                   Loss
                 </p>
                 <p className="text-lg font-mono font-bold text-rose-300 tabular-nums">
-                  {fmtMoney(check?.lossTotal ?? 0)}
+                  {fmtMoney(check?.lossTotal ?? 0, venueCurrency)}
                 </p>
               </div>
             </div>
@@ -471,7 +474,7 @@ export function SimposTerminalPage() {
                       }
                     </span>
                     <span className="tabular-nums w-16 text-right">
-                      {fmtLineTotal(l.unit_price_snapshot, l.qty)}
+                      {fmtLineTotal(l.unit_price_snapshot, l.qty, venueCurrency)}
                     </span>
                     <button
                       onClick={() => void handleVoid(l)}
@@ -512,6 +515,7 @@ export function SimposTerminalPage() {
           {/* Menu pane OR Edit POS */}
           {editPos ? (
             <EditPosPane
+              currency={venueCurrency}
               restaurantId={restaurantId}
               catalog={catalog}
               onChanged={() =>
@@ -522,6 +526,7 @@ export function SimposTerminalPage() {
             />
           ) : (
             <MenuPane
+              currency={venueCurrency}
               wines={wines}
               onAdd={(id) => void handleAdd(id)}
               busy={busy}
@@ -531,6 +536,7 @@ export function SimposTerminalPage() {
       ) : (
         <div className="flex-1 p-4 max-w-5xl mx-auto w-full">
           <SimposReceiptsPane
+              currency={venueCurrency}
             docs={receiptsQuery.data ?? []}
             loading={receiptsQuery.isLoading}
           />
@@ -551,7 +557,9 @@ function MenuPane({
   wines,
   onAdd,
   busy,
+  currency,
 }: {
+  currency: string | null;
   wines: [string, SimposCatalogItem[]][];
   onAdd: (catalogId: string) => void;
   busy: boolean;
@@ -655,7 +663,7 @@ function MenuPane({
                               : "border-gray-700 text-gray-300 hover:bg-gray-800",
                           )}
                         >
-                          {s.size_ml}ml · {fmtPrice(s.price)}
+                          {s.size_ml}ml · {fmtPrice(s.price, currency)}
                         </button>
                       ))}
                     </div>
@@ -701,7 +709,9 @@ function EditPosPane({
   restaurantId,
   catalog,
   onChanged,
+  currency,
 }: {
+  currency: string | null;
   restaurantId: string;
   catalog: SimposCatalogItem[];
   onChanged: () => void;
@@ -847,7 +857,7 @@ function EditPosPane({
                   : undefined
               }
             >
-              {fmtPrice(c.price)}
+              {fmtPrice(c.price, currency)}
             </span>
             <button
               onClick={() => void remove(c.id)}
@@ -866,7 +876,9 @@ function EditPosPane({
 function SimposReceiptsPane({
   docs,
   loading,
+  currency,
 }: {
+  currency: string | null;
   docs: Awaited<ReturnType<typeof documentsApi.list>>;
   loading: boolean;
 }) {
@@ -902,7 +914,7 @@ function SimposReceiptsPane({
               <span className="text-gray-500">{dashNull(d.doc_number)}</span>
               <span className="text-gray-600 ml-auto">{d.status}</span>
               <span className="font-mono tabular-nums w-20 text-right">
-                {d.total == null ? "—" : fmtMoney(d.total)}
+                {d.total == null ? "—" : fmtMoney(d.total, currency)}
               </span>
             </li>
           ))}

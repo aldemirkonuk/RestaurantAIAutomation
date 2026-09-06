@@ -42,6 +42,8 @@ import {
 import { getErrorMessage } from '../../services/api/client'
 import { ProposalCard } from './ProposalCard'
 import { composeUtterance, derivePageContext } from './page-context'
+import { Panel } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 const EXAMPLES = [
   'Reorder 6 bottles of the Barolo from our usual vendor',
@@ -50,6 +52,7 @@ const EXAMPLES = [
 
 export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation()
+  const shell = useMudavymShell()
   const inputRef = useRef<HTMLInputElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
 
@@ -157,6 +160,130 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
   }, [ask, asking, pageContext, useContext])
 
   if (!open) return null
+
+  if (shell.on) {
+    return (
+      <Panel
+        open={open}
+        onClose={onClose}
+        label="Ask AI"
+        showClose={false}
+        bodyClassName="mdv-ovl__body--flush"
+        footer={
+          <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <span>
+              <kbd className="mdv-kbd">
+                <CornerDownLeft size={9} style={{ display: 'inline', verticalAlign: 'middle' }} />
+              </kbd>{' '}
+              to ask
+            </span>
+            <span>Drafts only — nothing reaches a vendor without a second approval</span>
+          </span>
+        }
+      >
+        <div className="mdv-field">
+          <Sparkles size={15} aria-hidden style={{ color: 'var(--seal)', flex: 'none' }} />
+          <input
+            ref={inputRef}
+            value={ask}
+            onChange={(e) => setAsk(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void submit()
+              }
+            }}
+            placeholder="Ask for an action — reorder stock, draft a vendor reply…"
+            aria-label="Ask AI for an action"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={asking}
+          />
+          {asking ? (
+            <Loader2 size={14} aria-hidden style={{ color: 'var(--ink-3)', flex: 'none' }} />
+          ) : (
+            <kbd className="mdv-kbd">esc</kbd>
+          )}
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 16px',
+            borderBottom: '1px solid var(--paper-2)',
+          }}
+        >
+          <button
+            type="button"
+            className="mdv-chip"
+            onClick={() => setUseContext((v) => !v)}
+            aria-pressed={useContext}
+            title={pageContext.line}
+          >
+            <MapPin size={11} aria-hidden />
+            {pageContext.label}
+            {pageContext.recordId ? ' · this record' : ''}
+          </button>
+          <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+            {useContext
+              ? 'sent with your ask so \u201cthis\u201d resolves'
+              : 'context off — only your words are sent'}
+          </span>
+        </div>
+
+        <div style={{ padding: '12px 16px' }}>
+          {refusal && (
+            <div role="status" data-testid="askai-refusal" className="mdv-alert">
+              <p className="mdv-alert__head">
+                <AlertCircle size={11} aria-hidden />
+                Ask AI did not propose an action
+              </p>
+              <p>{refusal}</p>
+            </div>
+          )}
+
+          {error && (
+            <div role="alert" data-testid="askai-error" className="mdv-alert">
+              <p className="mdv-alert__head">Could not ask</p>
+              <p>{error}</p>
+            </div>
+          )}
+
+          {/* The proposal card is the legacy component, unchanged: it carries the
+              approve/confirm contract and re-skinning it is a separate decision. */}
+          {proposals.map((p) => (
+            <ProposalCard key={p.actionId} proposal={p} candidates={candidates} />
+          ))}
+
+          {!refusal && !error && proposals.length === 0 && (
+            <div>
+              <p className="mdv-quiet" style={{ padding: '4px 0 10px' }}>
+                Ask AI proposes; you confirm. Nothing runs until you do.
+              </p>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+                {EXAMPLES.map((example) => (
+                  <li key={example}>
+                    <button
+                      type="button"
+                      className="mdv-link"
+                      onClick={() => {
+                        setAsk(example)
+                        inputRef.current?.focus()
+                      }}
+                    >
+                      “{example}”
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </Panel>
+    )
+  }
 
   return (
     <div

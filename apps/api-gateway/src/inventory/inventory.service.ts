@@ -82,6 +82,16 @@ export class InventoryService {
     const wineName: string | null =
       row.wine_name || row.master_wine_library?.name || null;
 
+    // BOTH NAMES TRAVEL (ADR 0124, the naming rule, founder 2026-09-05: "both
+    // names searchable"). `wineName` above collapses the two into whichever one
+    // is shown, so on its own it makes the OTHER one unfindable: a house that
+    // renames "1988 Wine X" to "Wine X" could no longer search for "1988".
+    // `libraryName` is the library's own name, carried beside the alias and
+    // NEVER shown in its place -- the display is the house's, the search is
+    // both. Null when the row has no library name to differ from.
+    const libraryName: string | null = row.master_wine_library?.name ?? null;
+    const houseAlias: string | null = row.wine_name || null;
+
     // Market price + markup live on the joined wine library / inventory row —
     // capture them BEFORE the nested library object is stripped below, or they are lost.
     const retailPriceAvg: number | null =
@@ -96,6 +106,13 @@ export class InventoryService {
       ...result,
       wineName,
       wine_name: wineName,
+      // The library's own name, for search only. `wineName` stays the one
+      // displayed value so no surface has to choose.
+      libraryName,
+      // Whether the house has actually set an alias, told apart from the
+      // fallback: `wineName` is non-null either way, so without this a caller
+      // cannot see that a name is the library's rather than the house's.
+      houseAlias,
       bottleSizeMl: effectiveBottleSizeMl,
       bottleSizeOz: roundOz(effectiveBottleSizeMl),
       pourSizeMl,
@@ -1323,6 +1340,22 @@ export class InventoryService {
       updateData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
       updateData.glasses_per_bottle_override = dto.glassesPerBottleOverride;
+    // THE NAMING RULE (ADR 0124, founder 2026-09-05): "One alias on the item,
+    // library immutable" -- "Names are the house's; identity is the library's."
+    //
+    // `wine_name` IS that one alias. It is not a new column: it already existed
+    // and this service already PREFERS it over the library's name when it reads
+    // (`:83`). What did not exist was a way for the house to set it, so a house
+    // could not call its house white anything but what the library row said.
+    //
+    // An empty string CLEARS the alias -- the row falls back to the library
+    // name -- rather than storing "" as a name. Nothing here touches
+    // `master_wine_library`: the library is immutable from this page, which is
+    // the founder's own line, "masterwinelibrary parts /wines not at all".
+    if (dto.wineName !== undefined) {
+      const alias = dto.wineName.trim();
+      updateData.wine_name = alias.length > 0 ? alias : null;
+    }
 
     if (Object.keys(updateData).length > 0) {
       const { error: updErr } = await client

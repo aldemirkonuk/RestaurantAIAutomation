@@ -44,8 +44,61 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 - Switch branches and see another branch's stock
 - Contextual insights rail (analytics engine)
 - **Receipts & invoices depth in the dropdown, behind `mudavym_design_inventory` (OFF)** — the founder's named gap (MAKEOVER: KEEP the dropdowns, deepen receipt/invoice actions): for the wine's recent orders, every attached invoice / delivery receipt / packing slip with total, tie-out state and review status, E49-honest (null tie-out = dash, never a pass), linking into `/receipts`
+- **The house header, behind the same flag (OFF)** — `/inventory` is enrolled in `PageGate` (2026-09-04) with the SAME command page on both branches, purely so the page gets the chrome every other rebuilt page has: mark, page name, ⌘K "Search or act", house/branch switcher, bell, theme menu, account menu. No redesign, and no style change inside the page (measured — §1b)
 
+- A house may name a bottle the library does not have; the item carries that **provisional** identity until Mudavym curates it, and promotion re-points the item (ADR 0124 Q3)
+- The house names its own bottles: one editable display name per item (`wine_name`), used everywhere the house sees it; the library row is never written from here, and BOTH names stay searchable (ADR 0124, the naming rule)
 ## 1b. Motions used — Mudavym addition (flag `mudavym_design_inventory`)
+
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+>
+> **Enrolment, 2026-09-04 (founder's call).** The paragraph above was written
+> while `/inventory` was still routed OUTSIDE any gate
+> (`App.tsx:303`, `element={<InventoryCommandPage />}`), so no header actually
+> mounted here: the gate is the only thing that mounts `HouseHeader`
+> (`components/mudavym/PageGate.tsx`), and the one page the house runs on all
+> day was the last surface with no bell, no account menu and no theme switch.
+> The route is now
+> `<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />`
+> — the SAME component on both branches. This is not a redesign: the flag's
+> only effect on this route is the chrome.
+>
+> **What the flag does NOT do, measured 2026-09-04.** `PageGate` renders `next`
+> as-is with no wrapper, so the command page gains no `.mudavym` scope and no
+> ancestor of it changes. Measured rather than assumed: the route was loaded
+> twice in one browser (override `0`, then `1`) and the FULL computed style of
+> every element in the page's subtree diffed, keyed by a structural path that
+> re-indexes past the header so the two runs line up
+> (`$SP/measure-inventory-styles.mjs`). 1,939 elements compared, **zero**
+> property differences inside the page. The only four differences in the whole
+> tree are on the shell's own `<main>` — `height` 4113.25px → 4166.25px and the
+> two origins that track it — i.e. the header's 53px of occupied flow, which is
+> the point of adding it. Consistent with the source: every top-level selector
+> in `house-header.css` and `sheet.css` is scoped to `.mdv-*`/`.mudavym`, so
+> the stylesheets the header imports cannot reach the page's Tailwind
+> utilities. No token-driven component inside the command page changes.
+>
+> The header's ground on this route is always **paper** unless the app's own
+> dark theme is on: `readShellGroundFromDom` (`lib/mudavym/shellGround.ts:135`)
+> returns `charcoal` only when a `.mudavym[data-ground="charcoal"]` node is in
+> the document, and the command page declares none. Captures:
+> `$SP/shots-inventory-header/inventory.png` (paper) and
+> `inventory-charcoal.png` (the app's dark theme, where `.dark .mudavym` turns
+> the bar).
+>
+> One real behavioural change beyond the bar, named honestly: while a `next`
+> tree is mounted the gate claims a slot in `lib/mudavym/shellGround`, and the
+> nine shared shell overlays (command palette, scrim, Ask AI bar, …) render
+> their house shape rather than their legacy one. That is by design
+> (PageGate's header comment) and is now reachable from `/inventory` with the
+> flag on.
 
 Deliberately none. This is a card added inside the KEPT page (the founder's
 verdict kept `/inventory` as it is — the addition is styled native to the
@@ -64,6 +117,28 @@ tie-out and review status. Known limitation, recorded: rows are doc-level;
 the per-item invoice LINE (this wine's qty × price inside the document) needs
 an order-line join the web API does not expose yet — filed in §9 rather than
 faked with description matching. Flag off = byte-identical page.
+
+### Overlays, 2026-09-05 (sketch 102 · ADR 0112)
+
+<!-- sketch-102-overlays -->
+Generated by `.planning/sketches/102-modal-census/build.py --docs` from `census.py` — edit the census, not this table.
+The rule: an object gets a sheet, a question a panel, a choice a popover; the seal never sits in a popover.
+
+**`/inventory`** — The one page whose flag turns on nothing new: legacy and next are the same component (App.tsx:311), so its eight fixed-inset modals are live inside a house-flagged page today. Seven migrate; one retires to /receipts.
+
+| Page | Overlay | Shape | Status | Where the act lives or went | Source |
+|---|---|---|---|---|---|
+| `/inventory` | Carry this bottle | sheet | Migrate | One bottle entering the book is one object; three ways to start, one sheet. | `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)` |
+| `/inventory` | Carry this bottle · an auction lot | sheet | Owed · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. | `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet` |
+| `/inventory` | Place 14 bottles by their zones? | panel | Migrate | A question about a batch. Bulk, so no wax — the plain die. | `components/inventory/AutoLocatePreviewModal.tsx:70` |
+| `/inventory` | A delivery without an order | sheet · wide | Migrate · fork F3 | Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
+| `/inventory` | POS buttons and stock | sheet | Migrate | One queue, worked line by line, the register still visible beneath. | `components/inventory/PosMappingPanel.tsx:294` |
+| `/inventory` | Write off 6 bottles? | panel · seal | Migrate | A ledger write is a real commitment — wax. | `components/inventory/RemoveFromInventoryModal.tsx:121` |
+| `/inventory` | The zones | sheet | Migrate | The zones are one object the house owns. | `components/inventory/StorageLocationManager.tsx:327` |
+| `/inventory` | Spot count | sheet · seal | Migrate | Opened from the row expander; one bottle's count is one record. | `pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)` |
+| `/inventory` | Receipt record | — | Retires | /receipts is the receipts desk (ReceiptsNext). /inventory links there and never overlays it. | `pages/inventory/command/ReceivingWorkspace.tsx:376` |
+
+Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
 
@@ -257,3 +332,201 @@ keep it true — count what drifted, verify what arrived.
    (`ReceivingWorkspace.tsx:126,625,633`) — the instrumentation is written, the sink is not.
 6. `INVENTORY_SOTA_PLAN.md` phases 2–3 (`v3.0-TECH-DEBT.md:357`). *Blocker: unbuilt plan,
    not a defect.*
+
+### The ledger's key becomes the house item — what changes here (added 2026-09-04)
+
+OD-113 is decided (founder, 2026-09-03): **one house item id across all
+beverages.** [[0115-the-house-item-is-the-ledgers-key]] — *Proposed*, the founder
+locks — makes the house item `restaurant_inventory.id`, the row this page is
+built on. The row stops being a wine: `master_wine_id` becomes a nullable
+attribute and the row gains `kind`, `uom`, `display_name`, `beverage_id` and
+`identity_provenance`. Migration
+`supabase/migrations/20260903171000_the_house_item_is_the_ledgers_key.sql` is
+written and **NOT applied**; `scripts/check_house_item_invariants.py` holds the
+invariants the database cannot.
+
+**This page is the one that changes most, and one line of it is a blocker.**
+
+1. **`inventory.service.ts:69` must be fixed before the migration lands.**
+   `const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750` is the
+   first line of `mapInventoryItem`, and `glassesPerBottle` is
+   `floor(effectiveBottleSizeMl / pourSizeMl)` from it. A keg carries no library
+   row, so it would be published as a 750 ml bottle yielding five glasses — a
+   fabricated number in the read path every inventory surface uses (ADR 0020 /
+   ADR 0051). It becomes an em dash. This is why the migration is gated rather
+   than merely staged, and it is item 1 of the ADR's phase 2.
+2. **`database.service.ts:46`** embeds `master_wine_library(...)` as a LEFT join,
+   so a non-wine row returns `master_wine_library: null` rather than
+   disappearing. Measured: there are **zero** `master_wine_library!inner` embeds
+   in the gateway, so no list silently drops a keg — but every consumer of that
+   embedded shape has to be read before the columns arrive.
+3. **The row expander gains what the cellar's could not have.** `RowExpansion.tsx`
+   is the anatomy [[wines]] copied, and the two cards the cellar draws hatched —
+   *Live vs shadow* and *Par and reorder* — are exactly the two this page draws
+   real. Once a keg has a row they are the same arithmetic on both pages, off
+   `stock_live` and `threshold_min`.
+4. **The POS bridge needs no repointing.** Measured on production 2026-09-03:
+   `pos_item_mappings` holds 254 rows, **239 carry an `inventory_id`** and only
+   107 carry a `master_wine_id`. The bridge already keys on the house item; what
+   changes is that a till line for a keg now has one to resolve *to*, instead of
+   landing in `pos_unresolved_lines` (130 rows) and being invisible to this page,
+   to `/reports` and to the analytics engine. ADR 0030's mapping-integrity rules
+   are unaffected — the FK it rests on
+   (`20260902130000_capture_pos_inventory_fks.sql:65`) points at
+   `restaurant_inventory(id)` and that target does not move.
+5. **Low-stock alerts need no new producer.**
+   `notifications/low-stock-alerts.service.ts:683-690` reads `stock_live` and
+   `threshold_min` off whatever row it is handed and keys on `inventoryId`, so a
+   keg with a par is alerted the day it has a row.
+6. **`INVENTORY_SOTA_PLAN.md:352`'s identity paragraph is superseded** by the ADR
+   (retire-to-write; that file gets no edit). `kind` is the one axis, on the row,
+   CHECK-constrained — there is no `domain`/`subsection`/`subtype` triple and no
+   attribute pack, because `beverages.type_attributes` already holds
+   category-specific attributes and a second copy would be two homes for one
+   fact. `:134`'s `inventory_lots(master_wine_id UUID NOT NULL, …)` is superseded
+   too: phase 1 drops that `NOT NULL`, because it is what makes a non-wine lot
+   unwritable.
+
+7. **A library wine this page stocks can no longer be hard-deleted** (founder,
+   2026-09-04). The FK becomes `ON DELETE RESTRICT`, soft-delete
+   (`master_wine_library.deleted_at`) is the only retirement path, and the refusal
+   names the count rather than saying *"still referenced from table
+   restaurant_inventory"*. This closes a real hole on this page's data: under
+   `CASCADE`, deleting a library row took the house's `restaurant_inventory` row
+   **and**, through `inventory_lots_inventory_id_fkey`'s own cascade, its lots —
+   silently and irreversibly. Nothing has to change here to benefit; what does
+   change is that a **retired** wine now shows up as a live item whose library row
+   is soft-deleted, which invariant 7 of the guard **flags** (never fails, because
+   a house pours out a retired wine over weeks) and which phase 2's producer turns
+   into a notification.
+8. **Nothing on this page may auto-create a house item** (founder, 2026-09-04).
+   A house item comes into being only through an explicit "carry this" that states
+   kind and unit together. The receiving and four-way-match paths this page owns
+   must therefore leave an unmatched line **unmatched, and say so** — they may
+   never mint an inventory row to make a document reconcile. That is the same rule
+   `ReceiptDepth`'s §9 gap already follows by accident ("deliberately not faked
+   with description matching"); it is now a decision rather than a restraint.
+
+*Blocker on all eight: the founder locks ADR 0115. Nothing here is built.*
+
+### Filed separately — the price register, and why receiving is the thing that fills it
+
+**[ADR 0117](../decisions/0117-a-price-sighting-names-its-source-its-date-and-its-unit.md)
+(Proposed, 2026-09-04) — a price sighting names its source, its date and its unit.**
+Independent of the eight items above and of ADR 0115: this page's receiving door is the
+first and best writer the house's price register will ever have, and it is not wired to it.
+
+Measured on production 2026-09-04: `vendor_price_observations` **0 rows**,
+`price_history` **0**, `procurement_documents` **0**, `procurement_document_lines` **0**.
+`price_history` *does* have a writer — `procurement.service.ts:900`, called from receipt
+verification at `:2902` with the match's `effectiveUnitCost`, and from order confirmation
+at `:4393` — but it writes a **different table** from the one the market box, the calendar
+price mark and every register's `quote` line read. So the moment this page's four-way
+match settles what a vendor actually charged, the house produces its highest-trust price
+evidence (`source_type: 'invoice'`, trust tier 1) and then puts it somewhere nothing can
+compare it. **Where it would write:** the same call site at
+`procurement.service.ts:2902`, mirrored into `vendor_price_observations` scoped to the
+restaurant — the ADR's step one, and the only step that needs no vendor, no terms, no
+rate limit and no network.
+
+Two constraints from the ADR that land on this page's work:
+
+- **A sighting carries a unit, and the register has no food unit.** `unit_volume_ml` and
+  `pack_size` are the only unit columns, and `normalizeUnitPrice`
+  (`vendor-price-consensus.ts:115`) scales only by millilitres to a 750 ml reference.
+  Anything this page receives by weight or by count has no comparable unit at all — which
+  is the same seam ADR 0070 and OD-113 already circle, seen from the price side.
+- **`price_history.unit` is hardcoded `'BOTTLE'`** and the comment at
+  `procurement.service.ts:942` says why it must stay that way: a caller free to vary it
+  would write a case price into a per-bottle series and no reader could tell. Any mirror
+  into the sighting register inherits that constraint rather than escaping it.
+
+Registry of every source examined, with the result of the 2026-09-04 fetch against each:
+[`.planning/07-reference/price-sources.md`](../07-reference/price-sources.md). Dry-run
+proof (writes nothing): `scripts/fetch_price_sightings.py`.
+
+**Update 2026-09-04 — the public-list side (steps 2–3) is now built, as its own
+register.** The item above is class A (this page's own paper) and is unchanged. Separately,
+`price_index_postings` (`supabase/migrations/20260904200000_a_posted_price_names_its_state.sql`)
+and the gateway `price-index/` module now hold the class-B/D/E **index** — California live,
+Iowa/Oregon control-state shelf lines, Michigan withheld. It is keyed by **state, not
+restaurant**, so it never touches this page's tenant-scoped bookkeeping; a house's index
+line is read at `GET /price-index/:state`. The food-unit and `'BOTTLE'` constraints above
+still bind class A; the index register sidesteps them by storing each posted price **as
+posted** (its own unit and pack, no 750 ml normalisation) rather than reducing it to a
+comparable — because an index line is shown, never averaged against a vendor quote.
+
+### 13.x The house item can name the bottle it is (ADR 0124, 2026-09-05)
+
+`restaurant_inventory` gained a **nullable `identity_id`**
+(`supabase/migrations/20260905140000_a_bottle_has_one_identity.sql`) pointing at
+the trade-item register ADR 0124 introduced. It is nullable and never guessed:
+an unjoined house item stays unjoined and the reader says so.
+
+**The measurement that matters for this page.** Run through the real reader
+against production on 2026-09-05: **0 of 206** house items can be read as an
+identity from their own columns — 153 have no producer (the table has no producer
+column at all) and 53 have no `wine_name` — while **205 of 206** can be read
+**through the library row they link to**. `restaurant_inventory` also has **no
+barcode or UPC column**, `internal_sku`/`pos_sku`/`sku_aliases` are empty on all
+206 rows, and `bottle_size_ml` is known on **51** (47 × 750, 4 × 375), NULL on 155.
+
+So the house item's identity comes from the library link it already has, not from
+its own fields — which is a question for the founder rather than a fact this
+build settled: whether a house item may ever carry an identity the library does
+not have (ADR 0124 §Founder-only questions, Q3, beside ADR 0115's house-item key).
+
+### 13.y A house may name a bottle the library does not have (ADR 0124 Q3, 2026-09-05)
+
+The founder: **"Provisional on the item, curated into the library."** A house
+states an identity for a bottle the shared library has never heard of; that
+identity is **provisional**, named to the person, the time and the house
+(`beverage_identities.asserted_for_restaurant_id`,
+`supabase/migrations/20260906050000_a_house_may_name_a_bottle_the_library_does_not_have.sql`),
+and it waits in a curation queue until Mudavym promotes it.
+
+**Promotion re-points this page's rows.** When a provisional identity is
+promoted, every `restaurant_inventory` row carrying that `identity_id` has its
+`master_wine_id` moved to the newly shared library entry, and the number
+re-pointed is reported — zero is a real answer and is printed rather than
+implied. If the re-point fails the call fails and says the identity was
+promoted, because a half-done promotion reporting success would leave this
+page's row pointing at a placeholder forever.
+
+**The house's assertion survives promotion.** `asserted_for_restaurant_id` is
+written once and never cleared — deliberately a different column from ADR 0130's
+`master_wine_library.provisional_for_restaurant_id`, which IS cleared on
+promotion because there it is state and here it is provenance.
+
+**Standing is generated, not flagged.** `library` / `provisional` / `source` is
+a GENERATED column, so "printed as provisional everywhere it appears, never as
+official" cannot drift from the two columns it describes. Three values and not
+two on purpose: calling an Iowa transcription "official" would be the same class
+of falsehood the register exists to stop.
+
+### 13.z One alias on the item, library immutable (ADR 0124, the naming rule, 2026-09-05)
+
+The founder: **"One alias on the item, library immutable."** *"Names are the
+house's; identity is the library's."* His own words: *"let each restaurant to
+name their products to match their likings, eg. instead of 1988 Wine X ...
+maybe they would prefer to name it: Wine X only."*
+
+**No column was added.** `restaurant_inventory.wine_name` already existed and
+this page already rendered it — `inventory.service.ts:83` reads
+`row.wine_name || row.master_wine_library?.name`. Measured read-only on
+production 2026-09-05: 233 rows, `wine_name` present on **180**, **156**
+distinct, and **0 differ from the library's own name**, because nothing let a
+house set it (`UpdateInventoryItemDto` had no such field). It does now, and an
+empty string CLEARS the alias rather than storing a name of `""`.
+
+**Both names stay searchable.** `wineName` is whichever name is shown, so
+matching on it alone would make the other unfindable — rename "1988 Wine X" to
+"Wine X" and "1988" stops finding it. The item read now also carries
+`libraryName` (matched, never displayed in the alias's place) and `houseAlias`
+(whether the house set one at all, which `wineName` cannot say because it is
+non-null either way), and `useInventoryPage`'s filter matches both.
+
+**The library is immutable from this path, and a test reads the source to prove
+it:** `house-item-alias.spec.ts` pulls the real `updateInventoryItem` body out
+of the file and fails if it ever contains `from("master_wine_library")`.
+

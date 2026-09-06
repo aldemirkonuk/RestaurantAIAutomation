@@ -24,6 +24,7 @@ import {
   type PriceSourceType,
   type PriceTrend,
 } from '../services/api/vendorIntel'
+import { IdentityDecisionLog } from './IdentityDecisionLog'
 
 /** Every source is labelled and depicted — the badge is the label. */
 const SOURCE_META: Record<PriceSourceType, { label: string; cls: string }> = {
@@ -588,6 +589,15 @@ export function VendorPriceCompare() {
           )}
         </>
       )}
+
+      {/*
+        The identity decision log, ADR 0124 Q2. It is NOT inside the
+        `{data && ...}` branch above: the log is a fact about this house and
+        stays readable when no wine is picked and when the comparison itself
+        fails, which is exactly when somebody is most likely to be asking who
+        confirmed what.
+      */}
+      <IdentityDecisionLog />
     </div>
   )
 }

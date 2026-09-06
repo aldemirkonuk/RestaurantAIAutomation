@@ -216,7 +216,23 @@ export function parsedFromDocumentRows(
     poNumber: null,
     vendorName: snapshot.vendorName,
     vendorAccount: null,
-    currency: rowStr(document.currency) ?? "USD",
+    /*
+     * WHAT THE ROW SAYS, or nothing — never `USD`.
+     *
+     * This read `?? "USD"` until 2026-09-06, and the founder's currency
+     * decision that day turned it from a latent defect into a live one: rules 1
+     * and 2 (`documents/invoice-currency.ts`) now write `currency = NULL` on
+     * every document whose money was REFUSED (neither the paper nor the house
+     * states a currency) or HELD (the model saw a different one). Read back
+     * through a `?? "USD"`, every one of those would reappear on the canonical
+     * face denominated in dollars — the exact claim the withholding exists to
+     * refuse, reconstructed one layer down.
+     *
+     * The empty string is what `canonical-invariants`' `str()` already reads as
+     * absent, so BR-5 reports "not testable: this document states no money at
+     * all" rather than asserting a currency nobody stated.
+     */
+    currency: rowStr(document.currency) ?? "",
     subtotal: rowNum(document.subtotal),
     freight: rowNum(document.freight),
     fuelSurcharge: rowNum(document.fuel_surcharge),

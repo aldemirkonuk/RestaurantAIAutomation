@@ -18,6 +18,25 @@ import { comparableUnits, DocType, toBottles, Uom } from "./document-types";
 export const LINE_KINDS = ["goods", "deposit", "fee"] as const;
 export type LineKind = (typeof LINE_KINDS)[number];
 
+/**
+ * What the extraction model says it SAW as this document's currency, and where.
+ *
+ * Declared HERE rather than in `invoice-currency.ts` so the two files are not
+ * circular: the rules module needs `ParsedDocument`, and `ParsedDocument` needs
+ * this shape. The rules that read it — glyph resolution, agreement, the hold —
+ * all live in `documents/invoice-currency.ts`.
+ *
+ * `code` is the model's own reading when the page prints an unambiguous ISO
+ * 4217 code; `asPrinted` is the literal glyph or word kept exactly as printed
+ * (the same contract as `ParsedLine.printed`, ADR 0104 D1); `where` is the
+ * location on the page, in the words a person would use.
+ */
+export interface CurrencySeen {
+  code: string | null;
+  asPrinted: string;
+  where: string;
+}
+
 /** One row of BG-23, as the paper prints it, before any canonical mapping. */
 export interface ParsedTaxBreakdownRow {
   /** BT-119 — the rate as a percentage: 20 for `KDV %20`, 8.625 for `8.625%`. */
@@ -137,7 +156,75 @@ export interface ParsedDocument {
   /** Vendor's own account number for this restaurant, when stated. */
   vendorAccount?: string | null;
 
+  /**
+   * The currency this document's money is FILED under. Empty string means the
+   * money was refused or held and there is none to file — never `USD` by
+   * default (ADR 0104 amendment 2026-09-06; `documents/invoice-currency.ts`).
+   */
   currency: string;
+  /**
+   * WHERE that currency came from, in the words a person would use: the
+   * document's own `CUR02`, or this house's stated `restaurants.currency`.
+   *
+   * Absent means nobody recorded it — it never means "the document said so".
+   * A screen that shows a currency without its provenance cannot tell a manager
+   * whether the vendor stated it or the house's own row supplied it, and those
+   * two are exactly the difference between a bill and an assumption.
+   */
+  currencyFiledFrom?: string | null;
+  /**
+   * What the extraction model says it SAW on the page, with the location.
+   *
+   * Founder, 2026-09-06: *"AI needs to ... if the invoice is other than their
+   * default"*. This is evidence and never authority: it can HOLD the money
+   * (`moneyHeld`) but it can never set `currency`. NULL means the model saw no
+   * currency at all, which is a stated absence; ABSENT means no model ran (EDI,
+   * or an unread document).
+   */
+  currencySeen?: CurrencySeen | null;
+  /**
+   * Set when the money on this document was refused or held, with the sentence
+   * saying why. Every money field is `null` while this is set, and the figures
+   * that were stripped are kept verbatim in `moneyWithheld` so a person naming
+   * the currency re-files them.
+   */
+  moneyHeld?: string | null;
+  /**
+   * The figures `withholdMoney` took off this parse, kept so they can be put
+   * back.
+   *
+   * MEASURED, and it is the reason this field exists. `moneyHeld`'s comment used
+   * to say the full reading stayed in `procurement_documents.extracted` — but
+   * `document-intake.service.ts` writes `extracted` from the SAME object it
+   * writes the money columns from, and by then `withholdMoney` had nulled both.
+   * So a held invoice's figures were gone, and `refiledMoney` restored a
+   * document of nulls while `refilingSentence` announced that the money "was
+   * held and is now filed". A restatement that reports a re-filing it did not
+   * perform is worse than one that refuses, because the manager stops looking.
+   *
+   * Nothing here is ever READ as money. It is the un-denominated reading, held
+   * aside until a person says what currency it is in; every consumer of this
+   * document's money reads the top-level fields, which stay `null` until then.
+   */
+  moneyWithheld?: {
+    subtotal: number | null;
+    freight: number | null;
+    fuelSurcharge: number | null;
+    splitCaseFee: number | null;
+    deliveryFee: number | null;
+    depositTotal: number | null;
+    tax: number | null;
+    otherCharges: number | null;
+    discountTotal: number | null;
+    total: number | null;
+    lines: Array<{
+      lineNo: number | null;
+      unitPrice: number | null;
+      lineTotal: number | null;
+      allowance: number | null;
+      deposit: number | null;
+    }>;
+  } | null;
   subtotal?: number | null;
   freight?: number | null;
   fuelSurcharge?: number | null;

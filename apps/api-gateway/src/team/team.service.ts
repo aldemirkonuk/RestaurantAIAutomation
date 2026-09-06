@@ -155,22 +155,47 @@ export class TeamService {
     const settings = await this.getSettings(userId, restaurantId);
     const showWage = settings?.wage_visible !== false;
 
-    // Enrich with membership role + linked user profile.
+    /**
+     * Enrich with membership role + linked user profile.
+     *
+     * `public.users` has NO `avatar_url` column (baseline
+     * `20260805000000_baseline_from_production.sql:5848-5861`; avatars live on
+     * `team_members`). Naming it here made PostgREST answer 42703 and, with
+     * `error` unbound by the destructure, `data` came back `null` — so
+     * `userMap` was empty and EVERY member returned `linkedUser: null`.
+     * Measured against the demo tenant on 2026-09-04: 3 of 3 roster rows came
+     * back unnamed while `GET /restaurants/:rid/members` — which fixed the
+     * identical bug at `restaurants/members.service.ts:101-117` — returned
+     * "Demo User", "Sarah Johnson" and "David Chen" for the same three user
+     * ids. Same fault, same module family, one of them already repaired.
+     *
+     * Both errors are now bound. A roster whose identities could not be read
+     * is not a roster of anonymous people, and a member list whose roles could
+     * not be read is not a list of people with no role.
+     */
     const userIds = [
       ...new Set((members ?? []).map((m: any) => m.user_id).filter(Boolean)),
     ];
-    const [{ data: access }, { data: users }] = await Promise.all([
-      this.sb
-        .from("user_restaurant_access")
-        .select("user_id, role, is_active")
-        .eq("restaurant_id", restaurantId),
-      userIds.length
-        ? this.sb
-            .from("users")
-            .select("user_id, name, email, avatar_url")
-            .in("user_id", userIds)
-        : Promise.resolve({ data: [] as any[] }),
-    ]);
+    const [{ data: access, error: accessError }, { data: users, error: usersError }] =
+      await Promise.all([
+        this.sb
+          .from("user_restaurant_access")
+          .select("user_id, role, is_active")
+          .eq("restaurant_id", restaurantId),
+        userIds.length
+          ? this.sb
+              .from("users")
+              .select("user_id, name, email")
+              .in("user_id", userIds)
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ]);
+    if (accessError || usersError) {
+      this.logger.error(
+        `listMembers could not read member identities for ${restaurantId}: ` +
+          `${accessError?.message ?? ""} ${usersError?.message ?? ""}`.trim(),
+      );
+      throw new InternalServerErrorException("Failed to load team members");
+    }
     const roleMap = new Map(
       (access ?? []).map((a: any) => [a.user_id, a.role]),
     );
@@ -211,22 +236,57 @@ export class TeamService {
     );
     if (!missing.length) return;
 
-    const { data: users } = await this.sb
+    /**
+     * The same 42703 as `listMembers` above — `public.users` has no
+     * `avatar_url` — but here it did not merely blank a field: with `data`
+     * null the map was empty, every branch of the name expression below fell
+     * through, and this backfill WROTE the literal "Team member" into
+     * `team_members.display_name` (a NOT NULL column, baseline `:5632`) for
+     * every access row it created. Those rows are durable, so the demo
+     * tenant's three roster rows still read "Team member" today with
+     * `email: null` — a fabricated name produced by a failed read, which is
+     * the write-path form of [[absence-reported-as-health]].
+     *
+     * The error is now bound and a failed identity read ABORTS the backfill:
+     * an ops profile that cannot be named is not created at all, because the
+     * only name available would be one nobody chose.
+     */
+    const { data: users, error: usersError } = await this.sb
       .from("users")
-      .select("user_id, name, email, avatar_url")
+      .select("user_id, name, email")
       .in(
         "user_id",
         missing.map((m: any) => m.user_id),
       );
+    if (usersError) {
+      this.logger.error(
+        `ensureRosterFromAccess: identities unreadable (${usersError.message}) — ` +
+          "no roster rows created rather than rows carrying a placeholder name",
+      );
+      // Not a silent return. There ARE access rows here with no ops profile,
+      // so swallowing this would answer the caller's "who is on this team?"
+      // with a roster that is short by exactly the people it could not name —
+      // the absence reported as health, one layer up.
+      throw new InternalServerErrorException("Failed to load team members");
+    }
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
     const rows = missing.map((a: any) => {
       const u = userMap.get(a.user_id);
       return {
         restaurant_id: restaurantId,
         user_id: a.user_id,
+        /**
+         * `users.name` is NOT NULL (baseline `:5852`), so after the fix above
+         * a found user always yields a real name. The literal survives only
+         * for the case where an access row points at a user row that is not
+         * there — a broken reference, not a person called this. `/team`'s
+         * Mudavym roster recognises it as the placeholder it is and renders
+         * "No name on file" (`pages/team/next/tm-format.ts`), never as a name.
+         */
         display_name: u?.name || u?.email || "Team member",
         email: u?.email ?? null,
-        avatar_url: u?.avatar_url ?? null,
+        /** Avatars live on `team_members`; `public.users` has no such column. */
+        avatar_url: null,
         position:
           a.role === "owner"
             ? "Owner"
@@ -490,7 +550,14 @@ export class TeamService {
    * The member row this user is, in this restaurant. `null` when they have no
    * ops profile yet (an account-less roster entry, or a brand-new account).
    */
-  private async ownMemberId(
+  /**
+   * PUBLIC since 2026-09-04: `NotesService` needs it to answer "which roster
+   * row is the caller?" when recording that a crew note was opened. Kept as one
+   * implementation rather than copied, so the error handling below — a failed
+   * lookup RAISES rather than returning the `null` that means "no ops profile"
+   * — cannot drift between two versions of the same question.
+   */
+  async ownMemberId(
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {

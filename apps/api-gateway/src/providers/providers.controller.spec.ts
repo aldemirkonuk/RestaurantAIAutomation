@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { ProvidersController } from "./providers.controller";
 import { ProvidersService } from "./providers.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
   CreateProviderContactDto,
@@ -37,6 +38,15 @@ describe("ProvidersController", () => {
         {
           provide: ProvidersService,
           useValue: mockProvidersService,
+        },
+        {
+          // The role half of the vendor usual-currency gate (B1, founder
+          // 2026-09-06 batch 65). No test in this file reaches that route; the
+          // double exists so the controller can be constructed at all. Its
+          // refusals are pinned in `vendor-currency.spec.ts`, which builds the
+          // controller directly with a real role double.
+          provide: OrganizationsService,
+          useValue: { resolveRestaurantRole: jest.fn().mockResolvedValue(null) },
         },
       ],
     })

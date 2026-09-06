@@ -21,6 +21,12 @@ import { GmailService } from "./gmail.service";
 import { SmsService } from "./sms.service";
 import { GmailWatchService } from "./gmail-watch.service";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
+// The one Gmail MIME walk, shared with the house-inbox reader. See gmail-mime.ts.
+import {
+  extractEmailContent as extractGmailContent,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_ATTACHMENT_B64_LEN,
+} from "./gmail-mime";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -93,6 +99,67 @@ export class CommunicationsController {
     this.logger.log(
       `Configured manager emails: ${this.managerEmails.join(", ")}`,
     );
+  }
+
+  /**
+   * The address this house's letters leave from — `/connections` Register I.
+   *
+   * WHY THIS ROUTE EXISTS (2026-09-03)
+   * ---------------------------------
+   * Every vendor letter this deployment sends leaves from ONE mailbox that
+   * every restaurant on it shares (`gmail.service.ts:78-80`,
+   * `GMAIL_SENDER_EMAIL` falling back to `notifications@wineops.ai`). The
+   * sign-off inside the letter carries the house's name; the envelope does not.
+   * DESIGN-FOUNDATION §6b measured that as the largest gap on the connections
+   * surface, and a page cannot state it without being able to READ it — so
+   * before this route the row would have been page prose about a value only the
+   * server knew.
+   *
+   * It returns the address and its SOURCE, never a credential. `scope:
+   * "deployment"` is the honest word for what this is: not the house's, not
+   * nobody's, but one setting shared by every house here.
+   *
+   * The founder settled the direction on 2026-09-03 — a house gets its own
+   * mailbox, or a Mudavym subdomain — and neither is built: there is no
+   * per-restaurant sender column, no domain, and no DNS. `perHouse.supported`
+   * is therefore `false` with the reason, and the page's control is disabled
+   * carrying that sentence rather than a hopeful one of its own.
+   */
+  @Get("sender-identity")
+  @ApiOperation({
+    summary: "Which address this house's outbound mail actually leaves from",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "`scope: \"deployment\"` means one mailbox shared by every restaurant on this deployment. No credential is returned in any shape.",
+  })
+  senderIdentity(): {
+    address: string | null;
+    scope: "deployment" | "house";
+    configuredBy: string;
+    resolvedFromProfile: boolean;
+    perHouse: { supported: boolean; reason: string };
+  } {
+    // The RESOLVED address where one exists (Gmail reports the profile's own
+    // address at init), falling back to the variable, falling back to the
+    // hardcoded default the service itself uses. Three steps, because a page
+    // that showed the variable while the service used the profile would be
+    // describing a different mailbox from the one that sends.
+    const resolved = this.gmailService.getSenderEmail();
+    const configured =
+      this.configService.get<string>("GMAIL_SENDER_EMAIL") ?? null;
+    return {
+      address: resolved || configured || "notifications@wineops.ai",
+      scope: "deployment",
+      configuredBy: "GMAIL_SENDER_EMAIL",
+      resolvedFromProfile: Boolean(resolved),
+      perHouse: {
+        supported: false,
+        reason:
+          "No per-restaurant sender exists: there is no sender column on any table, no verified domain, and no DNS. The direction is decided (a house's own mailbox, or a Mudavym subdomain) and neither is built, so this house's letters leave from the deployment's shared address.",
+      },
+    };
   }
 
   /**
@@ -1446,11 +1513,11 @@ export class CommunicationsController {
   }
 
   /**
-   * Recursively walk a Gmail MIME tree to pull the best text body and list any
-   * image/PDF attachments. When an email carries an attachment the text nests one
-   * or more levels deep (multipart/mixed → multipart/alternative → text/plain), so
-   * a flat scan of the top-level parts misses it and yields an empty body — which
-   * is what broke inbound emails that included a confirmation/receipt image.
+   * The Gmail MIME walk moved to `gmail-mime.ts` on 2026-09-04 and is imported
+   * rather than reimplemented: the house-inbox reader parses messages fetched
+   * through a HOUSE's own grant, and two walkers would eventually give the same
+   * vendor reply two different bodies depending on which mailbox it arrived on.
+   * Kept as a thin method so the two call sites below read unchanged.
    */
   private extractEmailContent(payload: any): {
     text: string;
@@ -1460,46 +1527,7 @@ export class CommunicationsController {
       attachmentId: string;
     }>;
   } {
-    let text = "";
-    let html = "";
-    const attachmentRefs: Array<{
-      filename: string;
-      mimeType: string;
-      attachmentId: string;
-    }> = [];
-
-    const walk = (part: any): void => {
-      if (!part) return;
-      const mimeType: string = part.mimeType || "";
-      const data = part.body?.data;
-      if (mimeType === "text/plain" && data && !text) {
-        text = Buffer.from(data, "base64url").toString("utf-8");
-      } else if (mimeType === "text/html" && data && !html) {
-        html = Buffer.from(data, "base64url").toString("utf-8");
-      } else if (
-        (mimeType.startsWith("image/") || mimeType === "application/pdf") &&
-        part.body?.attachmentId
-      ) {
-        attachmentRefs.push({
-          filename: part.filename || "attachment",
-          mimeType,
-          attachmentId: part.body.attachmentId,
-        });
-      }
-      for (const child of part.parts || []) walk(child);
-    };
-    walk(payload);
-
-    // No text/plain anywhere → render the HTML part down to text so we never
-    // hand the AI an empty body.
-    if (!text && html) {
-      text = html
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-    return { text, attachmentRefs };
+    return extractGmailContent(payload);
   }
 
   /**
@@ -1510,8 +1538,11 @@ export class CommunicationsController {
     messageId: string,
     refs: Array<{ filename: string; mimeType: string; attachmentId: string }>,
   ): Promise<Array<{ filename: string; mime_type: string; data: string }>> {
-    const MAX_ATTACHMENTS = 3;
-    const MAX_B64_LEN = 7_000_000; // ~5 MB raw
+    // The caps are shared with the house-inbox reader (`gmail-mime.ts`) so the
+    // same vendor receipt is admitted or dropped identically whichever mailbox
+    // it arrived on.
+    const MAX_ATTACHMENTS = MAX_ATTACHMENTS_PER_MESSAGE;
+    const MAX_B64_LEN = MAX_ATTACHMENT_B64_LEN;
     const out: Array<{ filename: string; mime_type: string; data: string }> =
       [];
     for (const ref of refs.slice(0, MAX_ATTACHMENTS)) {

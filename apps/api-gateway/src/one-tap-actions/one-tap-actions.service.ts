@@ -1,6 +1,15 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { ProcurementService } from "../procurement/procurement.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import {
   CreateOneTapActionDto,
   UpdateOneTapActionDto,
@@ -11,6 +20,33 @@ import {
   OneTapActionType,
   OneTapPriority,
 } from "./dto/one-tap-action.dto";
+import {
+  DELIVERY_WITHOUT_ORDER,
+  ONE_TAP_DELIVER_ACT,
+  deliverySealArgs,
+  dispositionOf,
+} from "./one-tap-workflow";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import {
+  ORDER_GOODS_ARRIVED_STATUSES,
+  readOrderStatus,
+  statusInWords,
+} from "../procurement/order-transitions";
+import {
+  DELIVERY_REFUSED_ALREADY_ARRIVED,
+  earlierDeliveryOf,
+  resolveReceiverName,
+} from "../procurement/delivered-once";
+
+/** Every column the seal path reads off an order, for `check_read_columns_exist.py`. */
+// Widened 2026-09-05 (founder, batch 46) past what the seal args need: the
+// refusal this path throws carries the EARLIER DELIVERY, and a page cannot
+// print "delivered on the 4th by Ada" from columns nobody read. The seal's
+// argument hash is unchanged — `deliverySealArgs` names its four fields
+// explicitly and ignores everything else on the row.
+const ORDER_SEAL_COLUMNS =
+  "id, restaurant_id, status, quantity, bottles_total, unit_type, " +
+  "order_number, delivered_at, received_by, quantity_received";
 
 /**
  * One-Tap Actions Service
@@ -20,6 +56,34 @@ import {
  * - Real-time sync via WebSocket
  * - Action execution and tracking
  * - Integration with backend workflows
+ *
+ * ===========================================================================
+ * WHAT "EXECUTE" MEANS HERE, SINCE 2026-09-05
+ * ===========================================================================
+ * It used to mean: stamp the row `completed`, then call `triggerWorkflow`,
+ * which was three `// TODO` branches and a default log. So the one control on
+ * the dashboard rail that carries the house seal reported success for a
+ * reorder, a delivery and a price change that had not happened — a claim about
+ * a write, made by the thing that did not make it (ADR 0083).
+ *
+ * Now the disposition of the action's TYPE decides, and it decides BEFORE
+ * anything is written (`one-tap-workflow.ts`):
+ *
+ *   * `workflow` (today: `delivery_confirm` alone) — the seal is redeemed, the
+ *     real service is called, and only then is the row stamped. The order in
+ *     which those three happen is the whole safety property: proven, done,
+ *     recorded.
+ *   * `record` (`custom`) — marking it done IS the act. Recorded, and the row
+ *     says so in `execution_result` rather than leaving a reader to assume a
+ *     workflow ran.
+ *   * `unbuilt` (everything else) — refused with a whole sentence, and the row
+ *     stays `pending`. An action marked done for a workflow that never ran is
+ *     a lie that outlives the toast that told it.
+ *
+ * THE SPENT SEAL IS ALSO THE IDEMPOTENCY GUARD. `markDelivered` books stock
+ * through the ledger; running it twice would book it twice. A seal is good for
+ * exactly one act, so a retry after a successful delivery is refused by the
+ * seal rather than by a flag this service would have to remember to check.
  */
 @Injectable()
 export class OneTapActionsService {
@@ -28,6 +92,12 @@ export class OneTapActionsService {
   constructor(
     private readonly dbService: DatabaseService,
     private readonly websocketGateway: WebsocketGateway,
+    // Required, never @Optional(). An optional ProcurementService that failed
+    // to resolve would turn every delivery confirmation back into a silent
+    // record — the exact fault this change exists to remove, reintroduced as a
+    // DI accident nothing would report.
+    private readonly procurementService: ProcurementService,
+    private readonly sealChallengeService: SealChallengeService,
   ) {}
 
   /**
@@ -225,18 +295,275 @@ export class OneTapActionsService {
   }
 
   /**
-   * Execute an action (mark as completed with result)
+   * Mint the one-time seal this action's execution has to carry back.
+   *
+   * Everything that would refuse the execution refuses the seal FIRST, so a
+   * manager is never handed a seal and then told two seconds later that it
+   * meant nothing (the rule `procurement.controller.ts:317-322` states for
+   * orders). That is why this method reads the order and its state rather than
+   * only the card.
+   *
+   * A seal is issued ONLY for a `workflow` action. A `record` needs no proof —
+   * nothing outside the card changes — and an `unbuilt` one must not be handed
+   * a seal for an act that does not exist.
+   */
+  async issueExecutionSeal(
+    actionId: string,
+    restaurantId: string,
+    actorUserId: string,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    // Throws 404 unless the action belongs to this restaurant.
+    const action = await this.getAction(actionId, restaurantId);
+    const order = await this.deliverableOrderFor(action);
+
+    const issued = await this.sealChallengeService.issue({
+      restaurantId,
+      actorUserId,
+      subjectKind: "procurement_order",
+      subjectId: order.id,
+      action: ONE_TAP_DELIVER_ACT,
+      args: deliverySealArgs({
+        actionId: action.id,
+        orderId: order.id,
+        quantity: order.quantity,
+        bottlesTotal: order.bottles_total,
+        status: order.status,
+      }),
+    });
+
+    // `act`, not `action`: the same word the order route answers with
+    // (`procurement.controller.ts:340`), so one client shape reads both.
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Read the order a delivery card points at, and refuse in words if this act
+   * cannot be carried out on it.
+   *
+   * Shared by the mint and the redemption so the two cannot disagree about
+   * which order, or about whether it is still deliverable. A split check here
+   * would let a seal be minted against an order the write then refuses, which
+   * is how a ceremony becomes decoration.
+   */
+  private async deliverableOrderFor(action: OneTapActionResponseDto): Promise<{
+    id: string;
+    quantity: unknown;
+    bottles_total: unknown;
+    status: unknown;
+  }> {
+    const disposition = dispositionOf(action.actionType);
+    if (disposition.kind !== "workflow") {
+      throw new BadRequestException(
+        disposition.kind === "record"
+          ? "This action is a note, not a workflow. Marking it done records the decision and needs no seal."
+          : disposition.sentence,
+      );
+    }
+    if (action.status !== OneTapActionStatus.PENDING) {
+      throw new BadRequestException(
+        `This action was already ${action.status}, so there is nothing left to carry out. Nothing was changed.`,
+      );
+    }
+    if (!action.relatedOrderId) {
+      throw new BadRequestException(DELIVERY_WITHOUT_ORDER);
+    }
+
+    const { data, error } = await this.dbService.supabase
+      .from("procurement_orders")
+      .select(ORDER_SEAL_COLUMNS)
+      .eq("id", action.relatedOrderId)
+      .eq("restaurant_id", action.restaurantId)
+      .maybeSingle();
+
+    // A read that FAILED is not a read that found nothing. Reporting a broken
+    // connection as "no such order" would tell a manager their order is gone.
+    if (error) {
+      this.logger.error(
+        `Failed to read order ${action.relatedOrderId} for one-tap action ${action.id}: ${error.message}`,
+      );
+      // Raised as a real exception rather than the bare PostgREST object: a
+      // thrown `{ message }` is not an Error, so every caller that branches on
+      // `instanceof` — and the controller's `error.status` check — sees
+      // something it has no name for, and the person is told nothing.
+      throw new InternalServerErrorException(
+        `The order this card points at could not be read, so nothing was changed: ${error.message}`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "The order this card points at is not in this house's book, so nothing was changed.",
+      );
+    }
+
+    const order = data as unknown as {
+      id: string;
+      status: unknown;
+      quantity: unknown;
+      bottles_total: unknown;
+    };
+
+    // THIS REFUSAL STAYS FIRST, AND IT IS NO LONGER THE ONLY ONE.
+    //
+    // It was written when `markDelivered` had no guard of its own, so this was
+    // the whole defence and it lived one caller deep. Since 2026-09-05 the
+    // service refuses a second delivery for EVERY caller (`delivered-once.ts`,
+    // `procurement.service.ts` `markDelivered`) with a 409. This check is kept,
+    // and kept ahead of the seal, because of what it protects that the service
+    // cannot: the seal is minted here and redeemed before `markDelivered` runs,
+    // so a refusal that arrived only from the service would burn a one-shot
+    // seal on an act the house was always going to decline, and the card could
+    // not be retried.
+    //
+    // Widened to the whole goods-have-arrived set for the same reason. A
+    // PARTIALLY_RECEIVED or COMPLETED order passed this check before and would
+    // now be refused downstream — after the seal was spent.
+    //
+    // 409, NOT 400 (founder, 2026-09-05, batch 46). This used to throw
+    // BadRequest, and 400 was rejected in words: *"the request is well-formed,
+    // the order's state conflicts with it, and the door and the one-tap rail
+    // must be able to tell 'already done' from 'you sent nonsense' and show the
+    // earlier delivery instead of an error."* The rail literally could not: it
+    // printed the gateway's sentence only for a 400 or 403 and framed
+    // everything else as a failure, so the one refusal a manager most needs to
+    // read plainly was the one it dressed up. Both refusals now carry the SAME
+    // body as `markDelivered`'s, so a caller renders one shape whichever end
+    // refused it.
+    const arrived = readOrderStatus(order.status);
+    if (arrived !== null && ORDER_GOODS_ARRIVED_STATUSES.includes(arrived)) {
+      const receiver = await resolveReceiverName(
+        this.dbService.supabase as any,
+        (order as any).received_by ?? null,
+      );
+      const earlierDelivery = earlierDeliveryOf({
+        deliveredAt: (order as any).delivered_at ?? null,
+        receivedBy: (order as any).received_by ?? null,
+        receivedByName: receiver.name,
+        receivedByNameReason: receiver.reason,
+        // RAW: `earlierDeliveryOf` asks `quantity-received-unit.ts` which unit
+        // this column is in, and refuses to state one it would have to guess.
+        quantityReceived: (order as any).quantity_received ?? null,
+        unitType: (order as any).unit_type ?? null,
+        bottlesTotal:
+          order.bottles_total == null ? null : Number(order.bottles_total),
+      });
+      // The DELIVERED wording is kept verbatim from `be80f8b5` — it is the
+      // sentence this desk has shipped and the one its spec pins. The other two
+      // arrived states get their own, because "already booked in" is not what
+      // happened to a partly-received order.
+      const message =
+        arrived === ProcurementOrderStatus.DELIVERED
+          ? "That order is already booked in as delivered, so nothing was changed. Booking it twice would double the stock."
+          : `That order is ${statusInWords(arrived)} — its wine has already been ` +
+            `counted in, so nothing was changed. Confirming delivery from a card ` +
+            `would book the whole order on top of what the receiving door has ` +
+            `already recorded. Finish it at the receiving door instead.`;
+      throw new ConflictException({
+        reason: DELIVERY_REFUSED_ALREADY_ARRIVED,
+        orderId: order.id,
+        orderNumber: (order as any).order_number ?? null,
+        status: arrived,
+        deliveredAt: (order as any).delivered_at ?? null,
+        earlierDelivery,
+        message,
+      });
+    }
+
+    return {
+      id: order.id,
+      quantity: order.quantity,
+      bottles_total: order.bottles_total,
+      status: order.status,
+    };
+  }
+
+  /**
+   * Carry the action out, then record it.
+   *
+   * THE ORDER OF THESE THREE STEPS IS THE SAFETY PROPERTY:
+   *   1. the seal is redeemed (for a `workflow` action) — proven;
+   *   2. the real service runs — done;
+   *   3. the row is stamped with what happened — recorded.
+   *
+   * It used to be (3) alone, with a log where (2) belongs. Stamping first means
+   * a workflow that throws leaves a row saying the house did something it did
+   * not do, and no later repair removes a row already written.
+   *
+   * If (3) fails after (2) succeeded, the delivery HAS happened and this throws:
+   * the response must not say "confirmed" when the desk still shows the card,
+   * and the spent seal stops a retry from booking the stock a second time.
    */
   async executeAction(
     actionId: string,
     restaurantId: string,
     userId: string,
     dto: ExecuteActionDto,
+    challenge?: string | null,
   ): Promise<OneTapActionResponseDto> {
     const client = this.dbService.getClient();
 
     // Throws 404 unless the action belongs to this restaurant.
     const existing = await this.getAction(actionId, restaurantId);
+    const disposition = dispositionOf(existing.actionType);
+
+    // Refused, and nothing written. The row stays pending, which is true.
+    if (disposition.kind === "unbuilt") {
+      throw new BadRequestException(disposition.sentence);
+    }
+
+    let result: Record<string, unknown>;
+
+    if (disposition.kind === "workflow") {
+      const order = await this.deliverableOrderFor(existing);
+
+      await this.sealChallengeService.redeem({
+        restaurantId,
+        actorUserId: userId,
+        subjectKind: "procurement_order",
+        subjectId: order.id,
+        action: ONE_TAP_DELIVER_ACT,
+        args: deliverySealArgs({
+          actionId: existing.id,
+          orderId: order.id,
+          quantity: order.quantity,
+          bottlesTotal: order.bottles_total,
+          status: order.status,
+        }),
+        challenge,
+      });
+
+      const delivered = await this.procurementService.markDelivered(
+        restaurantId,
+        order.id,
+        userId,
+      );
+
+      // Explicit keys, every one of them a fact from the write that just
+      // happened. No spread of the DTO: a record of an act should say what the
+      // act did, not whatever the caller's object happened to contain.
+      result = {
+        act: ONE_TAP_DELIVER_ACT,
+        orderId: delivered.id,
+        orderNumber: delivered.orderNumber ?? null,
+        status: delivered.status,
+        quantityBooked: delivered.quantity ?? null,
+        bottlesBooked: delivered.bottlesTotal ?? null,
+        sealed: true,
+        ranAt: new Date().toISOString(),
+      };
+    } else {
+      // A note. Marking it done IS the act, and the record says exactly that
+      // rather than leaving a reader to assume a workflow ran.
+      result = {
+        act: "record",
+        note: "Recorded against the person who marked it done. No workflow runs for a written action.",
+        sealed: false,
+        ranAt: new Date().toISOString(),
+      };
+    }
 
     const { data, error } = await client
       .from("one_tap_actions")
@@ -244,7 +571,7 @@ export class OneTapActionsService {
         status: OneTapActionStatus.COMPLETED,
         executed_at: new Date().toISOString(),
         executed_by: userId,
-        execution_result: dto.result || {},
+        execution_result: result,
       })
       .eq("id", actionId)
       .eq("restaurant_id", restaurantId)
@@ -253,13 +580,16 @@ export class OneTapActionsService {
 
     if (error) {
       this.logger.error(`Failed to execute action: ${error.message}`);
+      if (disposition.kind === "workflow") {
+        this.logger.error(
+          `ONE_TAP_DELIVERY_UNRECORDED action=${actionId} order=${String(result.orderId)} — ` +
+            `the delivery was booked and the card was not updated. The seal is spent, so a retry will be refused.`,
+        );
+      }
       throw error;
     }
 
     const action = this.mapToResponse(data);
-
-    // Trigger backend workflow based on action type
-    await this.triggerWorkflow(action);
 
     // Broadcast to WebSocket clients
     this.broadcastActionUpdate(
@@ -396,37 +726,6 @@ export class OneTapActionsService {
 
     this.logger.log(`Created system action: ${action.id} - ${action.title}`);
     return action;
-  }
-
-  /**
-   * Trigger backend workflow based on action type
-   */
-  private async triggerWorkflow(
-    action: OneTapActionResponseDto,
-  ): Promise<void> {
-    switch (action.actionType) {
-      case OneTapActionType.LOW_STOCK:
-        // TODO: Trigger reorder workflow
-        this.logger.log(`Triggering reorder workflow for action: ${action.id}`);
-        break;
-
-      case OneTapActionType.DELIVERY_CONFIRM:
-        // TODO: Update inventory with delivered items
-        this.logger.log(
-          `Triggering delivery confirmation for action: ${action.id}`,
-        );
-        break;
-
-      case OneTapActionType.PRICE_CHANGE:
-        // TODO: Update price in system
-        this.logger.log(`Triggering price update for action: ${action.id}`);
-        break;
-
-      default:
-        this.logger.log(
-          `No workflow defined for action type: ${action.actionType}`,
-        );
-    }
   }
 
   /**

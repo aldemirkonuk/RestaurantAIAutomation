@@ -20,6 +20,7 @@
  * not a decision. Rules mirrored from lib/invoiceMatch.ts (the backend is authoritative).
  */
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, Check, AlertTriangle, Plus, Receipt, FileText, ShieldCheck } from 'lucide-react'
 import { verifyOrderReceipt } from '../../../services/api/orders'
@@ -199,12 +200,21 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const [extras, setExtras] = useState<ExtraLine[]>([])
   const [addingId, setAddingId] = useState('')
 
-  const { data: documents = [] } = useQuery({
+  /*
+   * A + B4 (founder, 2026-09-06 batch 64/65). The same request now also brings
+   * back what the ORDER was placed in, so the two halves of the invoice-versus-
+   * order comparison come from ONE moment: an invoice read now against an order
+   * read a second later can show a mismatch a restatement in between had already
+   * resolved.
+   */
+  const { data: docsAndOrder } = useQuery({
     queryKey: ['procurement-documents', order.id],
-    queryFn: () => documentsApi.forOrder(order.id),
+    queryFn: () => documentsApi.forOrderWithCurrency(order.id),
     enabled: !!order.id,
     staleTime: 30_000,
   })
+  const documents = docsAndOrder?.documents ?? []
+  const orderCurrency = docsAndOrder?.order ?? null
 
   const { invoice, packingSlip } = useMemo(() => pickDocuments(documents), [documents])
   const allocatedCharges = useMemo(() => allocatedChargesFor(invoice), [invoice])
@@ -288,6 +298,32 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       priceOverrideReason,
     ],
   )
+
+  /*
+   * ITEM A — THE PRICE IS REFUSED WHILE THE INVOICE'S MONEY IS HELD.
+   *
+   * `moneyState` is the gateway's own verdict, computed by the SAME function
+   * `verifyReceipt` refuses the price with, so this field is disabled exactly
+   * when the server would reject it. Deriving the verdict here instead would
+   * eventually show an enabled box over a request that 409s.
+   *
+   * The count, the rejection and the stock movement are untouched: only this one
+   * input is closed, and the sentence says so.
+   */
+  const moneyHold =
+    invoice && invoice.moneyState && invoice.moneyState.priced === false
+      ? invoice.moneyState.reason
+      : null
+
+  /*
+   * B4 — the invoice's currency beside the order's. NOTHING IS CONVERTED and
+   * nothing is judged: the two codes are printed as they are, and a screen that
+   * shows them differing has said the useful thing.
+   */
+  const currencyMismatch =
+    !!orderCurrency?.currency &&
+    !!invoice?.currency &&
+    orderCurrency.currency !== invoice.currency
 
   const style = verdictStyle(match.verdict)
   const priceDiffers =
@@ -488,10 +524,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 type="number"
                 min={0}
                 step="0.01"
-                disabled={readOnly}
+                disabled={readOnly || !!moneyHold}
                 aria-label="Invoice unit price"
+                title={moneyHold ?? undefined}
                 placeholder="—"
-                value={invoiceUnitPrice ?? ''}
+                value={moneyHold ? '' : (invoiceUnitPrice ?? '')}
                 onChange={(e) =>
                   setInvoiceUnitPrice(
                     e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
@@ -504,7 +541,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               />
             </div>
             <div className="text-right">
-              {poUnitPrice == null ? (
+              {moneyHold ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3 h-3" /> Price held — currency not filed
+                </span>
+              ) : poUnitPrice == null ? (
                 <span className="text-[11px] text-gray-400">No agreed price on this order</span>
               ) : priceDiffers ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
@@ -519,6 +560,70 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               )}
             </div>
           </div>
+
+          {/* A — the refusal, in words, with the act that clears it. Never hidden
+              and never a bare disabled box: a person who cannot do something has
+              to learn who can and how. */}
+          {moneyHold && (
+            <div
+              data-testid="receiving-money-hold"
+              className="mt-1 mb-2 p-3 rounded-lg bg-amber-50/70 ring-1 ring-amber-200"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-1.5">
+                The unit price is not accepted on this delivery
+              </p>
+              <p className="text-[11.5px] leading-relaxed text-amber-900/90">{moneyHold}</p>
+              <p className="text-[11.5px] leading-relaxed text-amber-900/90 mt-1.5">
+                Everything else here still stands — the count, the rejection and the
+                stock movement are unaffected, and this receipt can be submitted now
+                without a price.{' '}
+                <Link
+                  to={`/receipts?doc=${invoice?.id ?? ''}`}
+                  className="underline font-semibold"
+                >
+                  Restate or confirm this invoice’s currency
+                </Link>{' '}
+                — a manager’s or an owner’s decision, recorded with their name — and
+                the price is accepted as it stands.
+              </p>
+            </div>
+          )}
+
+          {/* B4 — the invoice's money beside the order's. Nothing is converted. */}
+          {(orderCurrency?.failure || currencyMismatch) && (
+            <div
+              data-testid="receiving-currency-compare"
+              className={cn(
+                'mt-1 mb-2 p-3 rounded-lg ring-1',
+                currencyMismatch
+                  ? 'bg-rose-50/60 ring-rose-200'
+                  : 'bg-gray-50 ring-gray-200',
+              )}
+            >
+              {orderCurrency?.failure ? (
+                <p className="text-[11.5px] leading-relaxed text-gray-700">
+                  {orderCurrency.failure}
+                </p>
+              ) : (
+                <p className="text-[11.5px] leading-relaxed text-rose-800">
+                  <span className="font-semibold">
+                    The order was placed in {orderCurrency?.currency}; this invoice states{' '}
+                    {invoice?.currency}.
+                  </span>{' '}
+                  Nothing has been converted — there is no exchange rate in this
+                  system — so the figures above are not comparable until one of the
+                  two is right.{' '}
+                  <Link
+                    to={`/receipts?doc=${invoice?.id ?? ''}`}
+                    className="underline font-semibold"
+                  >
+                    Restate or confirm the invoice’s currency
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+          )}
 
           {/* price override — the only way past an exact-match failure */}
           {priceDiffers && !readOnly && (

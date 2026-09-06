@@ -79,13 +79,47 @@ export interface InventoryItem {
   [key: string]: any;
 }
 
+/**
+ * One procurement order as `/procurement/orders/pending` and
+ * `/procurement/orders/:id` send it — a subset of the gateway's
+ * `OrderResponseDto` (`apps/api-gateway/src/procurement/dto/procurement.dto.ts`).
+ *
+ * NO INDEX SIGNATURE. It carried `[key: string]: any` until 2026-09-05, which
+ * made every possible key legal: `order.totalPrice` — a name the route has
+ * never sent — would have compiled here exactly as it did on the web, where it
+ * printed "$0" over real money. `scripts/check_web_reads_gateway_dto_keys.py`
+ * checks this type against the DTO and refuses an index signature, because a
+ * type that declares everything cannot be checked against anything.
+ *
+ * It declares FEWER keys than the DTO on purpose; that direction is fine, and
+ * the guard only fails a key the gateway does not send.
+ */
 export interface ProcurementOrder {
   id: string;
   orderNumber?: string;
   wineName?: string;
   providerId?: string;
+  /**
+   * The vendor's name, joined from `providers` (2026-09-05). A name; `null`
+   * (the route joined and found none); or the key ABSENT (this route does not
+   * join). `/procurement/orders/:id` and `/orders/pending` — the two this app
+   * calls — both join it.
+   */
+  providerName?: string | null;
   quantity?: number;
   unitType?: string;
+  /**
+   * What has been booked against this order so far. A number; `null` (read,
+   * and nothing received); or the key absent.
+   *
+   * NEVER READ IT WITHOUT `quantityReceivedUom`. The column is written in the
+   * order's unit by the desk and in bottles by the receiving door, so on an
+   * order placed in cases the unit key is `null` and the number must not be
+   * used as a count pre-fill. See `quantity-received-unit.ts` on the gateway.
+   */
+  quantityReceived?: number | null;
+  /** The unit `quantityReceived` is in, or `null` when this row cannot say. */
+  quantityReceivedUom?: string | null;
   quotedPrice?: number;
   negotiatedPrice?: number;
   finalPrice?: number;
@@ -95,7 +129,6 @@ export interface ProcurementOrder {
   approvedAt?: string;
   deliveredAt?: string;
   isEmergency?: boolean;
-  [key: string]: any;
 }
 
 export interface CalendarEvent {

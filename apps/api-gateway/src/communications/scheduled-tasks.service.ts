@@ -264,7 +264,7 @@ export class ScheduledTasksService implements OnModuleInit {
 
       await this.persistRestaurantNotification(tenant.id, {
         type: "report",
-        title: "📊 Weekly report ready",
+        title: "Weekly report ready",
         message: `${reportData.lowStockCount} low-stock · ${reportData.totalBottles} bottles on hand. Tap to view the full weekly report.`,
         actionUrl: "/reports?type=weekly",
         actionLabel: "View Report",
@@ -488,7 +488,7 @@ export class ScheduledTasksService implements OnModuleInit {
 
         await this.persistRestaurantNotification(tenant.id, {
           type: "order_pending",
-          title: `🔁 ${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`,
+          title: `${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`,
           message:
             labels.length > 0
               ? labels.slice(0, 5).join(", ")
@@ -579,7 +579,7 @@ export class ScheduledTasksService implements OnModuleInit {
 
         await this.persistRestaurantNotification(tenant.id, {
           type: "delivery_scheduled",
-          title: `📦 ${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`,
+          title: `${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`,
           message: deliveries
             .map((d) => d.wine_name || "Wine")
             .slice(0, 5)

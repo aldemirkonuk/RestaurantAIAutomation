@@ -33,7 +33,12 @@ const NEGOTIATION_MODEL = "claude-haiku-4-5";
 // Undo window for autonomous sends: a guardrail-clear reply is staged and only
 // actually sent after this delay, giving the manager a chance to cancel/edit it
 // from the sidebar. Processed by ProcurementService's auto-send cron.
-const AUTO_SEND_UNDO_MS = 2 * 60 * 1000;
+// EXPORTED (2026-09-04) because `communications/letters/house-sender.service.ts`
+// re-declares this window for the house composer and claims in its own header
+// that "the spec asserts the two agree". That claim was not true while this was
+// private: the spec could only hardcode the literal, and would have gone on
+// passing if this number drifted. It is exported so the assertion can be real.
+export const AUTO_SEND_UNDO_MS = 2 * 60 * 1000;
 
 // Subject patterns that mark an inbound as an automated reply / bounce — never
 // reply to these (prevents auto-send loops with vacation responders, mailers, etc).
@@ -102,6 +107,22 @@ export interface ResponderResult {
   autoSendScheduled?: boolean;
   reason?: string;
 }
+
+/**
+ * The intents that mean the vendor said no.
+ *
+ * ADR 0125 Q3. Taken from the model's own prompt, which names
+ * `price_acceptance | counter_offer | rejection | question | promo_offer |
+ * out_of_stock | confirmation | general` — plus `declined`, which
+ * `procurement_agent.py` has always branched on and which writes the same
+ * column. Exported so the responses sheet marks the same rows the gateway acts
+ * on, rather than keeping a second opinion about what a decline is.
+ *
+ * `counter_offer` is deliberately NOT here: a counter-offer is a negotiation
+ * continuing, not a refusal, and treating it as one would make every haggle
+ * read as a rejection.
+ */
+export const DECLINE_INTENTS = ["rejection", "declined", "out_of_stock"];
 
 interface Analysis {
   intent: string;
@@ -1103,6 +1124,20 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       const vendorPrice = this.toNum(sameQtyOffer?.price_per_bottle);
 
       const currentStatus = String(order.status || "").toUpperCase();
+
+      // The intents the model is told to emit for a refusal, in its own prompt's
+      // words: "rejection" and "out_of_stock". `declined` is accepted too
+      // because `procurement_agent.py` has always branched on it and the two
+      // paths read the same column.
+      //
+      // COMPUTED BEFORE THE TERMINAL GUARD, and that placement is the whole fix
+      // (found by writing the regression test the audit asked for: the edge
+      // CONFIRMED -> NEGOTIATING was added to the transition table and was
+      // UNREACHABLE from here, because the guard below returned first).
+      const isDecline = DECLINE_INTENTS.includes(
+        String(analysis.intent || "").toLowerCase(),
+      );
+
       // ORDERED (CONFIRMED) and beyond are terminal — don't rewind a placed order.
       // APPROVED is intentionally NOT terminal here: a matching vendor receipt
       // should still advance an approved order to ORDERED.
@@ -1115,7 +1150,21 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         "REJECTED",
         "FAILED",
       ];
-      if (terminal.includes(currentStatus)) return;
+
+      // The ONE state a decline is allowed to rewind out of. A vendor that
+      // confirmed an order and then went short is the case ADR 0125 Q3 is
+      // about; a vendor "declining" an order already on a truck or already
+      // counted at the door is a delivery problem, and the transition table
+      // refuses those (IN_TRANSIT/DELIVERED/... -> NEGOTIATING is not an edge),
+      // so this list and that table have to agree. They are checked against
+      // each other in `order-transitions.spec.ts`.
+      const declineMayRewindFrom = ["CONFIRMED"];
+      if (
+        terminal.includes(currentStatus) &&
+        !(isDecline && declineMayRewindFrom.includes(currentStatus))
+      ) {
+        return;
+      }
 
       const accepted =
         analysis.intent === "price_acceptance" ||
@@ -1128,6 +1177,9 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         negotiation_attempts: (this.toNum(order.negotiation_attempts) ?? 0) + 1,
       };
       if (vendorPrice != null) update.negotiated_price = vendorPrice;
+
+      /** The agreed price this sync commits to, if any. Written to the LINE below. */
+      let agreedPriceToWrite: number | null = null;
 
       // Receipt verification: the vendor is acknowledging OUR order (e.g. "confirmed,
       // shipping Monday"). If it doesn't contradict what we approved (any stated
@@ -1148,7 +1200,58 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       const receiptMatches =
         isVerification && !priceContradicts && !qtyContradicts;
 
-      if (currentStatus === "APPROVED") {
+      // A VENDOR'S NO IS NOT THE ORDER'S DEATH (ADR 0125 Q3, founder 2026-09-05:
+      // "Return to NEGOTIATING, with the decline recorded").
+      //
+      // Checked FIRST, above the acceptance branches, because a decline is not a
+      // deal and must not fall through into one. The order returns to
+      // NEGOTIATING — never to a terminal state — because the house may still
+      // buy this wine at another price, or from another vendor, and an order
+      // marked REJECTED drops out of every open-order list before anybody
+      // decides. Dynamics 365 does the same, holding such a PO "In external
+      // review"; `procurement_agent.py` did the opposite and is corrected in the
+      // same pass.
+      //
+      // WHO DECLINED, WHEN, AND IN WHAT WORDS is already recorded, and is not
+      // re-recorded here: `persistConversation` writes the inbound row with the
+      // provider, its `created_at`, the vendor's own message and
+      // `detected_intent`. That row IS the record; copying it onto the order
+      // would make two accounts of one event that can disagree. The transition
+      // table permits every from-state this can fire in
+      // (PENDING/APPROVAL_NEEDED/NEGOTIATING/APPROVED/CONFIRMED -> NEGOTIATING);
+      // CONFIRMED -> NEGOTIATING was added to it for exactly this branch.
+      if (isDecline) {
+        if (currentStatus !== "NEGOTIATING") {
+          update.status = "NEGOTIATING";
+          this.logger.log(
+            `Order ${order.id}: the vendor declined, so it returns to NEGOTIATING ` +
+              `from ${currentStatus || "an unread state"} rather than being closed. ` +
+              `The decline is the inbound conversation row.`,
+          );
+        }
+        // A decline is the one inbound answer that needs a person and gets no
+        // AI reply worth reading. `procurement_agent.py` has always notified on
+        // this path; the gateway's did not, so a decline arriving through the
+        // HTTP responder was silent. Best-effort, like every other notification
+        // here: the status change must not depend on the paper.
+        void this.persistManagerNotification(
+          String(order.restaurant_id ?? ""),
+          {
+            type: "vendor_reply",
+            title: "Vendor declined — back to you",
+            message:
+              "The vendor declined this order. It is open for negotiation again, " +
+              "not cancelled: re-price it, try another vendor, or reject it yourself.",
+            priority: "high",
+            actionUrl: `/orders?order=${order.id}`,
+            metadata: {
+              order_id: order.id,
+              intent: String(analysis.intent || ""),
+              from_status: currentStatus,
+            },
+          },
+        );
+      } else if (currentStatus === "APPROVED") {
         if (receiptMatches) {
           update.status = "CONFIRMED"; // -> UI "ordered"
           update.confirmed_at = new Date().toISOString();
@@ -1158,12 +1261,66 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         // Vendor accepted our terms and full autonomy is on: we agree the deal, but
         // this is APPROVED (not yet placed) until a matching receipt arrives.
         update.status = "APPROVED";
-        update.final_price = vendorPrice;
+        agreedPriceToWrite = vendorPrice;
       } else if (
         currentStatus === "PENDING" ||
         currentStatus === "APPROVAL_NEEDED"
       ) {
         update.status = "NEGOTIATING";
+      }
+
+      // THE AGREED PRICE GOES ON THE LINE, NOT ON THE HEADER — ADR 0119 Q2
+      // (founder, 2026-09-05). `procurement_orders.final_price` is now a
+      // trigger-maintained echo of `procurement_order_items.final_unit_price`,
+      // and a direct write here that disagreed with the line comes back as a
+      // 23514 from `trg_procurement_header_price_is_an_echo`. It is also the
+      // right place on its own terms: the LINE is what the invoice matcher and
+      // the price register read, and this branch fires only when the vendor has
+      // ACCEPTED our terms — so the number is in the unit our own line already
+      // states, and the line's price_uom keeps saying which one that is.
+      //
+      // The header is written directly only when there is no line to write to,
+      // which the trigger permits because there is then nothing to disagree
+      // with.
+      if (agreedPriceToWrite != null) {
+        const { data: line, error: lineReadError } =
+          await this.databaseService.supabase
+            .from("procurement_order_items")
+            .select("id")
+            .eq("order_id", order.id)
+            .order("line_no", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        if (lineReadError) {
+          // A failed read is never an empty one. Without knowing whether a line
+          // exists, writing the header could hit the echo trigger and take the
+          // whole status update down with it, so the price is left unwritten
+          // and said out loud instead.
+          this.logger.warn(
+            `Could not read order ${order.id}'s line to record the accepted price ` +
+              `(${lineReadError.message}). The status was still advanced; the agreed ` +
+              `price was NOT written, so nothing claims a price nobody stored.`,
+          );
+        } else if (line?.id) {
+          const { error: lineWriteError } = await this.databaseService.supabase
+            .from("procurement_order_items")
+            .update({ final_unit_price: agreedPriceToWrite })
+            .eq("id", line.id);
+          if (lineWriteError) {
+            this.logger.warn(
+              `Could not write the accepted price to order ${order.id}'s line ` +
+                `(${lineWriteError.message}). The header was left alone rather than ` +
+                `written on its own, which would put the two numbers out of step.`,
+            );
+          }
+        } else {
+          update.final_price = agreedPriceToWrite;
+          this.logger.warn(
+            `Order ${order.id} has no line, so the accepted price was written to the ` +
+              `header, which names no unit. No invoice can be matched against it.`,
+          );
+        }
       }
 
       await this.databaseService.supabase

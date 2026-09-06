@@ -203,6 +203,39 @@ export function dayOfWeekProfile(
   return { profiles, best, worst };
 }
 
+/**
+ * The separable extremes of a weekday profile.
+ *
+ * `dayOfWeekProfile` picks best/worst with `reduce((a, b) => b.mean > a.mean)`,
+ * which resolves an exact tie to whichever weekday came first — Sunday. On a
+ * restaurant with no movement all seven means are 0, so the endpoint reported
+ * Sunday as both the busiest AND the quietest night: an arbitrary tie-break
+ * dressed as a finding, and a manager could staff against it.
+ *
+ * A ranking that shares its extreme is not a ranking. This returns the extreme
+ * only when exactly one weekday holds it — exact equality is the right test
+ * because exact equality is precisely when the `reduce` above was choosing
+ * arbitrarily — and reports `tie` so a caller can say why it printed nothing.
+ * A profile with fewer than two observed weekdays cannot rank either: its one
+ * day is both the best and the worst, which is a tautology, not a finding.
+ */
+export function separableExtremes(profiles: WeekdayProfile[]): {
+  best: WeekdayProfile | null;
+  worst: WeekdayProfile | null;
+  tie: boolean;
+} {
+  if (profiles.length < 2)
+    return { best: null, worst: null, tie: profiles.length === 1 };
+  const means = profiles.map((p) => p.mean);
+  const max = Math.max(...means);
+  const min = Math.min(...means);
+  const atMax = profiles.filter((p) => p.mean === max);
+  const atMin = profiles.filter((p) => p.mean === min);
+  const best = atMax.length === 1 ? atMax[0] : null;
+  const worst = atMin.length === 1 ? atMin[0] : null;
+  return { best, worst, tie: best === null || worst === null };
+}
+
 export const WEEKDAY_NAMES = [
   "Sunday",
   "Monday",

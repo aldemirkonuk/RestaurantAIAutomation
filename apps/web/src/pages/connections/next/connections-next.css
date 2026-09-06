@@ -1,0 +1,615 @@
+/* ============================================================
+   /connections — what acts for this house
+   ============================================================
+
+   Every rule is scoped under `.cx` inside `.mudavym`, and every colour is a
+   token from styles/mudavym.css. No raw hex for a ground, an ink or the seal
+   (ADR 0042). Both grounds must read: the charcoal column comes from the
+   tokens themselves, so there is no second palette in this file and nothing
+   here to keep in sync.
+
+   The whole page is drawn by ONE row (`.cx-row`) with four columns and no
+   fifth. A live POS feed and an unconnected Excel grant get the same amount of
+   design; what separates them is the chip, whether the control is live, and
+   the sentence under it. That is deliberate — a page that draws a rich
+   attachment richer than a poor one flatters itself.
+   ============================================================ */
+
+/* MEASURED 2026-09-05, while capturing the charcoal ground for the card panel.
+   The page root is ONE element carrying both classes — `<div className="mudavym
+   cx" data-ground={ground}>` (`ConnectionsNext.tsx`) — so the descendant
+   selector `.mudavym .cx` could never match it and this page has never painted a
+   ground of its own. On paper that was invisible (the app shell behind it is
+   already light); on charcoal the tokens flipped while the background did not,
+   giving pale ink on white. Measured: `getComputedStyle(el).backgroundColor` was
+   `rgba(0, 0, 0, 0)` with `--paper-0` resolving to `#15130F`. The compound
+   selector is added ahead of the descendant one so both shapes match. */
+.mudavym.cx,
+.mudavym .cx {
+  background: var(--paper-0);
+  color: var(--ink-1);
+  min-height: 100%;
+  padding: 26px 24px 96px;
+  font-size: 13px;
+}
+
+.mudavym .cx-wrap { max-width: 1180px; margin: 0 auto; }
+
+.mudavym .cx-eyebrow {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* The three headings state their colour, because inheritance cannot reach them.
+   `globals.css:129-136` sets `h1`/`h2` to `text-slate-900` on every heading in
+   the app, and ANY matching rule beats an inherited value — so `.cx`'s
+   `color: var(--ink-1)` never applied to them. Invisible on paper (slate-900 is
+   close enough to the house ink); on charcoal it rendered dark headings on the
+   dark ground. Measured 2026-09-05 while capturing both grounds. */
+.mudavym .cx-title {
+  color: var(--ink-1);
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.06;
+  margin: 4px 0 0;
+}
+.mudavym .cx-title .cx-dot { color: var(--seal); }
+
+.mudavym .cx-lede {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-2);
+  margin: 7px 0 0;
+}
+
+/* The double rule — the account is ruled off (DESIGN-FOUNDATION §0). */
+.mudavym .cx-rule {
+  border-top: 1px solid var(--ink-1);
+  border-bottom: 1px solid var(--ink-1);
+  height: 3px;
+  opacity: 0.5;
+  margin: 18px 0 0;
+}
+
+/* ── the ledger sentence ─────────────────────────────────────────────── */
+
+.mudavym .cx-ledger {
+  margin: 22px 0 0;
+  padding: 16px 20px 17px;
+  background: var(--paper-1);
+  border-left: 2px solid var(--seal);
+}
+.mudavym .cx-ledger-line {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--ink-1);
+  margin: 0;
+  max-width: 940px;
+}
+.mudavym .cx-ledger-line b { font-weight: 600; color: var(--seal-deep); }
+.mudavym .cx-ledger-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 9px 0 0;
+  max-width: 900px;
+}
+
+.mudavym .cx-tally {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 14px 0 0;
+  border-top: 1px solid var(--paper-2);
+}
+.mudavym .cx-tally > div {
+  padding: 9px 15px 0 0;
+  margin-right: 15px;
+  border-right: 1px solid var(--paper-2);
+}
+.mudavym .cx-tally > div:last-child { border-right: 0; }
+.mudavym .cx-tally-n {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  line-height: 1.1;
+}
+.mudavym .cx-tally-n.is-seal { color: var(--seal-deep); }
+.mudavym .cx-tally-k {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-top: 3px;
+}
+
+/* ── register headings ───────────────────────────────────────────────── */
+
+.mudavym .cx-sec { margin: 36px 0 0; }
+.mudavym .cx-sec-h { display: flex; align-items: baseline; gap: 12px; }
+.mudavym .cx-sec-n {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+  white-space: nowrap;
+}
+.mudavym .cx-sec-h h2 {
+  color: var(--ink-1);
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin: 0;
+}
+.mudavym .cx-sec-d {
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  margin: 6px 0 0;
+  max-width: 840px;
+}
+.mudavym .cx-sec-k {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 5px 0 12px;
+}
+
+/* ── the one row ─────────────────────────────────────────────────────── */
+
+.mudavym .cx-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 200px 156px 180px;
+  gap: 0 16px;
+  padding: 14px 0 15px;
+  border-top: 1px solid var(--paper-2);
+  align-items: start;
+}
+.mudavym .cx-row:hover { background: var(--paper-1); }
+.mudavym .cx-row.is-nested { padding-left: 34px; }
+.mudavym .cx-row-ic { color: var(--ink-3); padding-top: 2px; }
+
+.mudavym .cx-row-ttl {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--ink-1);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.mudavym .cx-row-sub {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 3px;
+  word-break: break-all;
+}
+.mudavym .cx-row-why {
+  font-size: 11.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  margin-top: 7px;
+  max-width: 520px;
+}
+.mudavym .cx-row-why em { font-style: normal; color: var(--ink-1); font-weight: 500; }
+
+.mudavym .cx-col-h {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-bottom: 4px;
+}
+.mudavym .cx-scope, .mudavym .cx-last {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.mudavym .cx-scope ul { margin: 0; padding-left: 13px; }
+.mudavym .cx-scope li { margin: 0 0 2px; }
+.mudavym .cx-scope li.is-not { color: var(--ink-3); }
+.mudavym .cx-last-w {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.mudavym .cx-last-d {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.mudavym .cx-last-em { font-family: inherit; color: var(--ink-3); }
+
+/* Chips carry INK, never the semantic colour — measured for contrast. */
+.mudavym .cx-chip {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: var(--paper-2);
+}
+.mudavym .cx-chip.is-on {
+  color: var(--seal-deep);
+  background: var(--seal-tint);
+  box-shadow: inset 0 0 0 1px var(--seal-ring);
+}
+.mudavym .cx-chip.is-off {
+  color: var(--ink-3);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--paper-2);
+}
+.mudavym .cx-chip.is-warn {
+  color: var(--ink-1);
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1px var(--ink-4);
+}
+.mudavym .cx-owner {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-ctl { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.mudavym .cx-btn {
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 4px;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  color: var(--ink-1);
+  cursor: pointer;
+  white-space: nowrap;
+  /* `ink` — 160ms on the house curve (lib/mudavym/motion.ts:96,106). The only
+     motion on this page: a register of what can act for a house should not
+     move while it is being read. */
+  transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mudavym .cx-btn:hover:not(:disabled) { background: var(--paper-2); }
+.mudavym .cx-btn:disabled {
+  border-color: var(--paper-2);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+/* EMPHASIS, NOT THE SEAL (audit, 2026-09-04).
+   This rule used to paint a plain button in the seal's own ring and ink, and
+   callers asked for it whenever an action felt weighty — the calendar feed's
+   "Regenerate", the declare-a-server button. So the seal marked two different
+   things at once: an act that had been PROVEN, and an act that merely mattered.
+   A reader could not tell which from looking, which is the whole value of a
+   seal.
+   The seal's appearance now belongs to `HoldToApprove` and to nothing else: it
+   draws its own track and stamps its own Seal, and it only appears where a
+   gesture is required and a one-time token is redeemed. What is left here is
+   ordinary emphasis in the house's ink, for the buttons that still want weight
+   without claiming proof. */
+.mudavym .cx-btn.is-seal {
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+  font-weight: 600;
+}
+/* The focus ring sits on a PAPER gap: a ring on the seal fill measured 1.00:1. */
+.mudavym .cx-btn:focus-visible,
+.mudavym .cx-linkbtn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.mudavym .cx-ctl-note {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  max-width: 180px;
+}
+/* What just happened to this row, in the server's own words. Ink, never a
+   colour: the house has no red, and a refusal is not the seal (ADR 0042). The
+   rule at the left is the same mark `.cx-unread` uses for a register that could
+   not be read, because a refused write and an unread register are the same kind
+   of fact — something did not happen and the reason is quoted, not summarised. */
+.mudavym .cx-ctl-alert {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-1);
+  max-width: 180px;
+  border-left: 2px solid var(--ink-3);
+  padding-left: 7px;
+}
+
+.mudavym .cx-linkbtn {
+  font-family: inherit;
+  font-size: 11.5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--seal-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ── callouts, states, footer ────────────────────────────────────────── */
+
+.mudavym .cx-callout {
+  border-left: 2px solid var(--seal);
+  padding: 11px 0 11px 15px;
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  background: linear-gradient(90deg, var(--seal-tint), transparent 60%);
+  max-width: 900px;
+}
+.mudavym .cx-callout b { color: var(--ink-1); font-weight: 600; }
+
+/* A register that could not be read says WHICH register, in words. */
+.mudavym .cx-unread {
+  border-top: 1px solid var(--paper-2);
+  padding: 14px 0 15px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  max-width: 760px;
+}
+.mudavym .cx-unread b { color: var(--ink-1); font-weight: 600; }
+.mudavym .cx-unread .cx-gateway-words {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-loading {
+  border-top: 1px solid var(--paper-2);
+  padding: 14px 0 15px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mudavym .cx-foot {
+  margin: 44px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--ink-1);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-3);
+  max-width: 900px;
+}
+.mudavym .cx-foot b { color: var(--ink-2); }
+.mudavym .cx-foot p { margin: 0 0 12px; }
+.mudavym .cx-foot p:last-child { margin-bottom: 0; }
+
+/* The refusal a non-manager sees. Words, never an empty page. */
+.mudavym .cx-refused {
+  max-width: 640px;
+  margin: 40px auto;
+  padding: 24px 26px;
+  background: var(--paper-1);
+  border-left: 2px solid var(--seal);
+}
+.mudavym .cx-refused h1 {
+  color: var(--ink-1);
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.mudavym .cx-refused p { font-size: 13px; line-height: 1.7; color: var(--ink-2); margin: 0 0 10px; }
+
+/* Narrow: the four columns stack, and the labels earn their keep. */
+@media (max-width: 900px) {
+  .mudavym .cx-row { grid-template-columns: 24px minmax(0, 1fr); gap: 10px 16px; }
+  .mudavym .cx-row > *:nth-child(n + 3) { grid-column: 2; }
+  .mudavym .cx-ctl-note { max-width: none; }
+}
+
+/* Reduced motion: the one transition is dropped outright. There is nothing to
+   degrade gracefully to, because there is nothing here whose meaning depends
+   on movement. */
+@media (prefers-reduced-motion: reduce) {
+  .mudavym .cx-btn { transition: none; }
+}
+
+/* A grant the gate is refusing right now.
+   Its own line and its own colour, because it is the one sentence on this page
+   that means "something you were told worked has stopped working, and here is
+   what moved". It uses the warn token rather than the seal: the seal marks a
+   thing you may do, and this marks a thing that is currently refused. */
+.mudavym .cx-reconsent {
+  display: block;
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ink-3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* A re-consent control names its tool, and a tool name is the server's word —
+   it can be long. `.cx-btn` is `white-space: nowrap` so a short label never
+   breaks awkwardly; this one control opts out instead of being truncated,
+   because a clipped label would hide WHICH tool the seal is for, which is the
+   only thing that makes the control safe to press. */
+/* The re-consent gesture. `HoldToApprove` draws its own track and its own seal
+   ring, so this only gives it the column's width and lets a tool name wrap —
+   a clipped label would hide WHICH tool the seal is for, which is the only
+   thing that makes the gesture safe to complete. */
+.mudavym .cx-hold {
+  width: 100%;
+}
+.mudavym .cx-hold-wide button {
+  white-space: normal;
+  line-height: 1.35;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+/* ── Register II's add-a-card bar (2026-09-05) ────────────────────────────
+   The panel it opens is `components/mudavym/StripeCardPanel`, which brings its
+   own rules and draws everything else over the house tokens. What belongs here
+   is only the bar's place in the register: indented to the row's text column
+   (24px icon + 16px gap) so the button lines up with the instrument titles
+   above it rather than with the icon gutter, and carrying the same rule the
+   rows are separated by. */
+.mudavym .cx-add {
+  border-top: 1px solid var(--paper-2);
+  padding: 14px 0 0 40px;
+  max-width: 680px;
+}
+.mudavym .cx-add:empty { border-top: 0; padding: 0; }
+.mudavym .cx-add .cx-ctl-note { margin-top: 6px; max-width: 600px; }
+
+/* ── the distributor panel's sender picker (2026-09-05, ADR 0126) ─────────
+   The one native control on this page, and it stays native on purpose: it
+   names which distributor's price-code statements a catalogue is read against,
+   and a custom listbox would be a second popover shape on a page ADR 0112
+   already gave three. It sits in the same `.cx-add` bar the card control uses,
+   so it lines up with the row titles rather than the icon gutter. Tokens only,
+   both grounds, and no colour of its own. */
+.mudavym .cx-add label {
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.mudavym .cx-add select {
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink-1);
+  background: transparent;
+  border: 1px solid var(--paper-2);
+  border-radius: 2px;
+  padding: 4px 6px;
+  margin-left: 6px;
+  max-width: 100%;
+}
+.mudavym .cx-add select:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* ── the declared currency, beside the sender picker (2026-09-05, ADR 0126) ──
+   Same bar, same tokens. Three characters wide because the value is three
+   characters and a wider box would invite a word. `.cx-add-second` only puts
+   air between it and the picker; it carries no colour of its own. */
+.mudavym .cx-add-second { margin-left: 14px; white-space: nowrap; }
+.mudavym .cx-add input[type='text'] {
+  font-family: var(--mono, inherit);
+  font-size: 11.5px;
+  color: var(--ink-1);
+  background: transparent;
+  border: 1px solid var(--paper-2);
+  border-radius: 2px;
+  padding: 4px 6px;
+  margin-left: 6px;
+  width: 4.5em;
+  text-transform: uppercase;
+}
+.mudavym .cx-add input[type='text']:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* `.cx-ctl-note` is 180px wide because it lives in the row's control column.
+   Under the distributor row it is prose in a 720px block, so the cap is lifted
+   here rather than a second note class being invented. */
+.mudavym .cx-codes .cx-ctl-note { max-width: 620px; }
+
+/* ── the price-code register under a distributor row (2026-09-05, ADR 0126 §7)
+   A manager's statements about one sender's codes, and the form that makes
+   one. Indented to the row's text column like `.cx-add`, so it reads as part
+   of the distributor above it rather than as a section of its own — it is not
+   a register in the page's sense and must not look like one. Tokens only. */
+.mudavym .cx-codes {
+  padding: 10px 0 16px 40px;
+  max-width: 720px;
+}
+.mudavym .cx-codes .cx-scope { margin-top: 6px; }
+.mudavym .cx-codes .cx-scope li { margin-bottom: 8px; }
+.mudavym .cx-pc-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.mudavym .cx-pc-ceremony {
+  display: block;
+  margin-top: 6px;
+}
+.mudavym .cx-pc-ceremony input[type='text'] {
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink-1);
+  background: transparent;
+  border: 1px solid var(--paper-2);
+  border-radius: 2px;
+  padding: 4px 6px;
+  min-width: 16em;
+}
+.mudavym .cx-pc-form {
+  margin-top: 12px;
+  border-top: 1px solid var(--paper-2);
+  padding-top: 12px;
+}
+.mudavym .cx-pc-form > div { margin-bottom: 8px; }
+.mudavym .cx-pc-form > .cx-ctl-note,
+.mudavym .cx-pc-form > span.cx-ctl-note { display: block; margin: 8px 0; }
+.mudavym .cx-pc-form > button { margin-top: 4px; }
+.mudavym .cx-pc-form label {
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.mudavym .cx-pc-form input[type='text'],
+.mudavym .cx-pc-form textarea,
+.mudavym .cx-pc-form select {
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink-1);
+  background: transparent;
+  border: 1px solid var(--paper-2);
+  border-radius: 2px;
+  padding: 4px 6px;
+  margin-left: 6px;
+  max-width: 100%;
+}
+.mudavym .cx-pc-form input[type='text'] { min-width: 14em; }
+.mudavym .cx-pc-form textarea { min-width: 22em; vertical-align: top; }
+.mudavym .cx-pc-form input:disabled,
+.mudavym .cx-pc-form textarea:disabled,
+.mudavym .cx-pc-form select:disabled,
+.mudavym .cx-pc-ceremony input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mudavym .cx-pc-form input:focus-visible,
+.mudavym .cx-pc-form textarea:focus-visible,
+.mudavym .cx-pc-form select:focus-visible,
+.mudavym .cx-pc-ceremony input:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}

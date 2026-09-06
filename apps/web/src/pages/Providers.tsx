@@ -42,6 +42,12 @@ import {
 import { toast } from 'sonner'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
 import { EditProviderModal, EditProviderData } from '../components/providers/EditProviderModal'
+import {
+  setVendorTerms,
+  listVendorTerms,
+  weekdayNamesToIndices,
+  weekdayIndicesToNames,
+} from '../services/api/vendorTerms'
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
 import { PageSkeleton, ErrorState } from '../components/ui'
@@ -248,6 +254,16 @@ export function Providers() {
   const [showAddProviderModal, setShowAddProviderModal] = useState(false)
   const [showVendorSearch, setShowVendorSearch]     = useState(false)
   const [editingProvider, setEditingProvider]       = useState<Provider | null>(null)
+  /**
+   * Delivery weekdays per provider, read from the vendor-terms register.
+   *
+   * `null` = the register has not been read yet or could not be read. It is NOT
+   * an empty map: an empty map would tell the edit dialog "this vendor has no
+   * delivery days", which is a statement, and saving would then record it.
+   */
+  const [vendorDeliveryDays, setVendorDeliveryDays] =
+    useState<Record<string, string[]> | null>(null)
+  const [vendorTermsError, setVendorTermsError] = useState<string | null>(null)
   const [showEmailModal, setShowEmailModal]         = useState(false)
   const [emailRecipient, setEmailRecipient]         = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly]   = useState(false)
@@ -321,7 +337,8 @@ export function Providers() {
         physicalAddress: data.address,
         primaryBusinessType: data.primaryBusinessType as any,
         winePortfolio: data.specialties.join(', '),
-        statesOrRegionsServed: data.deliveryDays,
+        // NOT `statesOrRegionsServed: data.deliveryDays` — see handleAddProvider.
+        // Weekdays are a vendor term, not a territory.
         notes: data.notes,
         rating: data.rating > 0 ? data.rating : undefined,
         knownPersonnel: data.contacts
@@ -329,7 +346,7 @@ export function Providers() {
           .map(c => `${c.firstName} ${c.lastName}`.trim())
           .filter(Boolean),
         restaurantId: restaurantId || '',
-        paymentTerms: data.paymentTerms,
+        paymentTerms: data.paymentTerms || undefined,
         minimumOrderValue: data.minimumOrder ?? undefined,
       } as any)
     } catch (err) {
@@ -342,8 +359,37 @@ export function Providers() {
     if (data.rating > 0) setRatings(prev => ({ ...prev, [data.id]: data.rating }))
     setEditingProvider(null)
 
-    // ── Step 2: sync provider_contacts (decoupled — never blocks the save) ─
+    // ── Step 1b: record the delivery days as a vendor term ───────────────
+    //
+    // An empty selection sends `[]`, which STATES "no fixed days" rather than
+    // withdrawing the statement — the dialog always shows the full picker, so a
+    // person who unticks everything has said something. `null` (withdraw) is
+    // reserved for the settings register, which has a control for it.
     const providerId = data.id
+    try {
+      if (vendorTermsError) {
+        // The picker was disabled and never seeded, so `data.deliveryDays` is
+        // an artefact of a failed read, not a statement. Writing it would
+        // record "no fixed days" for a vendor whose days we simply could not
+        // see — the exact shape of [[absence-reported-as-health]].
+        toast.warning('Delivery days were not saved: the vendor-terms register could not be read.')
+      } else if (vendorDeliveryDays === null) {
+        // Same artefact, different cause: the read has not come back. The
+        // dialog holds Save for exactly this, so reaching here means something
+        // called the handler another way; refuse the write rather than trust
+        // the empty selection.
+        toast.warning('Delivery days were not saved: they had not been read yet.')
+      } else {
+        await setVendorTerms(providerId, {
+          deliveryWeekdays: weekdayNamesToIndices(data.deliveryDays),
+        })
+      }
+    } catch (termsErr) {
+      console.error('Delivery days not recorded:', termsErr)
+      toast.warning('Provider saved, but the delivery days were not recorded. Set them in Settings → Vendor terms.')
+    }
+
+    // ── Step 2: sync provider_contacts (decoupled — never blocks the save) ─
     try {
       const existingDbContacts = await fetchProviderContacts(providerId)
       const existingDbIds = new Set(existingDbContacts.map(c => c.id))
@@ -455,13 +501,36 @@ export function Providers() {
         website: providerData.website,
         accountNumber: providerData.accountNumber,
         winePortfolio: providerData.specialties.join(', '),
-        statesOrRegionsServed: providerData.deliveryDays,
-        paymentTerms: providerData.paymentTerms,
+        // `statesOrRegionsServed` and `deliverySchedule` used to be handed the
+        // delivery weekdays here. The first wrote them into
+        // `providers.regions_covered` — the GEOGRAPHY column the map and the
+        // territory filters read — and the second never reached a payload at
+        // all (`services/api/providers.ts` drops it in
+        // `mapProviderToApiPayload`). Delivery days now go to
+        // `PUT /vendor-terms/:providerId` below, which is the only place in the
+        // schema that can hold them with a person's name attached.
+        paymentTerms: providerData.paymentTerms || undefined,
         minimumOrderValue: providerData.minimumOrder ?? undefined,
-        deliverySchedule: providerData.deliveryDays.join(', '),
         notes: `Specialties: ${providerData.specialties.join(', ')}`,
       })
       if (providerData.rating > 0 && result?.id) setRatings(prev => ({ ...prev, [result.id]: providerData.rating }))
+
+      // The delivery days, recorded as a vendor TERM.
+      //
+      // Decoupled from the create the same way the location sync below is: the
+      // provider is already saved, and a terms failure must not present as
+      // "failed to add provider". It IS reported — a silent failure here is how
+      // the original defect stayed invisible for a year.
+      if (result?.id && providerData.deliveryDays.length > 0) {
+        try {
+          await setVendorTerms(result.id, {
+            deliveryWeekdays: weekdayNamesToIndices(providerData.deliveryDays),
+          })
+        } catch (termsErr) {
+          console.error('Delivery days not recorded:', termsErr)
+          toast.warning('Provider saved, but the delivery days were not recorded. Set them in Settings → Vendor terms.')
+        }
+      }
 
       // Persist the address as a geocoded primary location.
       //
@@ -628,6 +697,40 @@ export function Providers() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedProvider, editingProvider, showAddProviderModal, showVendorSearch, showEmailModal])
+
+  // ── The vendor-terms register, for the delivery-days picker ──────────────
+  //
+  // Tenant-keyed: a restaurant switch must never show the previous tenant's
+  // days. A failed read sets the ERROR and leaves the map null, so the edit
+  // dialog disables the picker and says why instead of showing an empty
+  // selection — an empty selection is a statement ("no fixed days") and this
+  // page would save it.
+  useEffect(() => {
+    if (!restaurantId) {
+      setVendorDeliveryDays(null)
+      setVendorTermsError(null)
+      return
+    }
+    let aborted = false
+    setVendorDeliveryDays(null)
+    setVendorTermsError(null)
+    void listVendorTerms()
+      .then(readout => {
+        if (aborted) return
+        const map: Record<string, string[]> = {}
+        for (const v of readout.vendors ?? []) {
+          map[v.providerId] = weekdayIndicesToNames(v.deliveryWeekdays?.value)
+        }
+        setVendorDeliveryDays(map)
+      })
+      .catch((err: unknown) => {
+        if (aborted) return
+        setVendorTermsError(
+          (err as { message?: string })?.message ?? 'the request failed',
+        )
+      })
+    return () => { aborted = true }
+  }, [restaurantId])
 
   // Close the right-click menu on any outside click.
   useEffect(() => {
@@ -1463,6 +1566,18 @@ export function Providers() {
           ? { ...editingProvider, rating: ratings[editingProvider.id] ?? editingProvider.rating ?? 0 }
           : null
         }
+        deliveryWeekdays={
+          editingProvider && vendorDeliveryDays
+            ? vendorDeliveryDays[editingProvider.id] ?? []
+            : undefined
+        }
+        deliveryWeekdaysError={vendorTermsError}
+        // The third state. `vendorDeliveryDays === null` with no error is the
+        // read still in flight, and it is NOT the same as a read that came back
+        // empty: while it is in flight the dialog seeds `[]`, which reads as a
+        // person having ticked nothing, and Save would write "no fixed days"
+        // over days the register holds.
+        deliveryWeekdaysPending={vendorDeliveryDays === null && !vendorTermsError}
       />
       <VendorSearchModal
         open={showVendorSearch}

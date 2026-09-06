@@ -21,7 +21,17 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 
 ## Surface — buttons → where they go
 
-- **Add provider** → (modal) → API `POST /api/v1/providers`
+- **Add provider** → (modal) → API `POST /api/v1/providers`, then
+  `PUT /api/v1/vendor-terms/:providerId` for the delivery days (ADR 0116).
+  Same on **Edit provider**. The two calls are deliberately decoupled: the
+  provider is already saved by the time the terms are written, and a terms
+  failure is reported as itself rather than as "failed to add provider"
+- **Record what they said** (Terms section of the redesign's TwinSheet) → API
+  `PUT /api/v1/vendor-terms/:providerId` (founder's decision 2026-09-04: the terms
+  register is reachable on the vendor's own row, not only in [[settings]]). Anyone
+  signed in may write; the author is filed by the gateway from the JWT
+  (`vendor-terms.controller.ts:29-35,91-98`) — recorded, not restricted
+- **Every vendor's terms** (same section) → [[settings]] `/settings?tab=vendor-terms`
 - **View orders** (row menu) → [[orders]] `/orders?provider=<id>`
 - **Discover tab** → renders the [[distributors]] map inline (no route change)
 - **Email vendor** → (QuickGmailModal on this page)
@@ -43,20 +53,73 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
 - Export; contextual insights rail
 - 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
+- **Vendor terms on the vendor's row** (redesign only, TwinSheet §Terms): the five terms
+  — closes / delivers / will not go below / lead time / payment — each showing its source
+  (stated by the house · on the vendor record · inferred with the receipt count and
+  confidence · unknown with the reason), editable in place. A value the gateway cannot tell
+  apart from its column default is rendered as UNKNOWN with that reason, never as a term
+- **"This vendor usually invoices in"** (redesign only, TwinSheet, 2026-09-06). The
+  founder, batch 65, verbatim:
+
+  > "maybe Every vendor and their profile will show their default currency, but we won't
+  > use that as the invoice... definitely invoice receipt. However, we will use the
+  > currency from where we order it. We will show the user the currency the vendor always
+  > uses, and they have the ability to change it or not in the orders page. And after
+  > that, we will have time To make sure that the invoice is good with the order we had.
+  > and we... or the user or the manager are able to change the invoice if needed. Makes
+  > sense?"
+
+  The section shows `providers.usual_currency` — an ISO 4217 code TYPED BY A PERSON —
+  with who stated it and when, printed beside it. **It never files an invoice**, and the
+  section says so every time it is shown: an invoice takes the currency printed on it,
+  then the currency of the ORDER it is matched to, then the house's. Its one consumer is
+  the order sheet, where it is the starting value.
+  - **Nothing is offered as a starting value.** The field is empty for a vendor nobody has
+    asked, and the sentence says the vendor has not stated one rather than leaving a
+    silent box. A pre-filled value saved without reading is indistinguishable afterwards
+    from one somebody thought about, which is what `usual_currency_set_by` exists to tell
+    apart — so the select does not even pre-select the STORED code.
+  - **Manager or owner only.** `PATCH /providers/:id/usual-currency`; staff see the
+    control disabled with the sentence naming what they are and who can. A blank is
+    REFUSED rather than treated as "clear it" — clearing a stated currency is a different
+    act with a different consequence and it is not built.
+  - **A failed read is a failure in words**, never "this vendor has stated none": the
+    gateway answers 503 with the reason and the section renders it.
+  - Value, author and moment are ONE fact enforced by
+    `providers_usual_currency_names_its_author`; the code is shape-checked to ISO 4217
+    alpha-3 so `TL`, `usd` and `$` cannot become three currencies. Migration
+    `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`;
+    no DEFAULT, nullable, nothing backfilled (the migration MEASURES that it wrote none).
+  - Files: `apps/web/src/pages/providers/next/UsualCurrencySection.tsx`,
+    `apps/api-gateway/src/providers/vendor-currency.ts`,
+    `providers.controller.ts` (`GET`/`PATCH :id/usual-currency`, declared before
+    `@Get(":id")` or Nest would never reach them), `providers.service.ts`
+    (`getUsualCurrency` / `setUsualCurrency`).
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
+
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
 
 Canonical source with curves: `apps/web/src/pages/providers/next/MOTIONS.md` —
 this list is the note-side index (ADR 0044 §2).
 
 | id | name | fires |
 |---|---|---|
-| `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — `settle`, 320ms house curve, 24px travel |
+| `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — now the house `Sheet`'s `tuck` (spring 380/32, 300ms, 28px travel); the hand-rolled `settle`/24px variant is retired (ADR 0112) |
 | `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
 
 Deliberate non-motions: no card stagger (a roster is a reference, not an
-arrival), no count tallies, instant sheet close.
+arrival), no count tallies, instant sheet close. **The Terms section adds no
+motion**: a register that animates while you read a cutoff off it is a register
+that is harder to trust, and its open/close is the sheet's own `tuck`.
 
 ### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE)
 
@@ -78,6 +141,84 @@ learned behaviours stay in the sheet's intelligence panel. A second known
 coherence gap: that panel renders in the legacy grey/blue skin inside the
 İznik sheet — filed in §9 and v3.0-TECH-DEBT rather than hacked over with
 CSS overrides.
+
+### Modal shape, 2026-09-03 (ADR 0112)
+
+**TwinSheet is a `Sheet`** — the house's right slide-in, for one object's record.
+Its own overlay is deleted: the inline scrim, the `pv-sheet-in` keyframes and its
+private Esc handler are gone, replaced by `components/mudavym/Sheet.tsx`, which
+adds the three things it never had — a focus trap, focus returned to the card you
+opened it from, and a body-scroll lock. The component is 186 → 110 lines and what
+is *inside* the sheet is unchanged, line for line.
+
+Still legacy on this page, and honestly so: **Add provider** at §Surface line 24
+is `components/providers/AddProviderModal.tsx` → `VendorSearchModal.tsx`, both
+still the legacy white-and-wine dialogs. They are reachable from the LEGACY page
+only (`pages/Providers.tsx`), so nothing a Mudavym reader sees is mixed — but if
+the rebuilt page ever grows an Add control, it needs a `Panel` first. And
+`ProviderIntelligencePanel` inside the sheet is still the grey/blue skin, as §9
+already records.
+
+### Terms on the vendor row, 2026-09-04 (founder's decision)
+
+**What was asked.** Vendor terms (cutoffs, delivery days, minimums, payment
+terms) must be reachable from `/providers` on the vendor's own row, not only in
+`/settings`.
+
+**What was built.** `pages/providers/next/TermsSection.tsx`, rendered inside
+`TwinSheet.tsx:90-93` between the vendor's own record and the learned twin, fed
+by `pages/providers/next/useProviderTerms.ts`. It is **one register with two
+doors**, not a second store: the same rows, the same routes, and the settings
+section's own formatters imported from `pages/settings/next/st-format.ts`
+(`fmtCutoff`, `fmtWeekdays`, `fmtMoney`, `fmtWhen`, `SOURCE_LABEL`,
+`WEEKDAY_INITIALS`) rather than forked, so a cutoff cannot read one way here and
+another way there. A link at the foot goes to `/settings?tab=vendor-terms` for
+the whole house.
+
+**Honesty, as measured by the tests.** Every cell branches on `source`, so no
+path prints a value without provenance under it; a value indistinguishable from
+its column default arrives `source: 'unknown'` and renders as an em dash with the
+gateway's reason on the row itself (not only in a `title=`, which a
+non-hovering reader never sees); an unreadable register is words naming what
+could not be read, and a partially-read one names the specific book
+(`sources.statedTerms` / `sources.orders`); a 403 is said as permission, not as
+absence; a write whose audit row failed says so rather than letting the trail be
+assumed. Only touched fields are sent, because the gateway reads an explicit
+`null` as *withdraw* and a missing key as *leave alone*
+(`vendor-terms.dto.ts:15-26`).
+
+**Who may write.** Anyone signed in — the founder's call, and the controller's
+(`vendor-terms.controller.ts:29-35`). The author is taken from the JWT by the
+gateway and never sent by this form.
+
+**What is NOT built, and why.** The section reads the WHOLE house register and
+picks one row, because `GET /vendor-terms` is the only read route that exists —
+see §9 for the additive one-provider patch, which was written up rather than
+applied (`apps/api-gateway/src/vendor-terms/**` belonged to another builder this
+pass). Notes are not editable here (the field exists on the DTO; the row already
+has more controls than a sheet should carry — it stays in the settings
+register). The link is a plain `<a>`, so it costs a full page load; a
+`react-router` `Link` would need the sheet's tests to mount a router.
+
+### Overlays, 2026-09-05 (sketch 102 · ADR 0112)
+
+<!-- sketch-102-overlays -->
+Generated by `.planning/sketches/102-modal-census/build.py --docs` from `census.py` — edit the census, not this table.
+The rule: an object gets a sheet, a question a panel, a choice a popover; the seal never sits in a popover.
+
+**`/providers`** — The twin sheet is built and carries the vendor's terms. Adding a vendor is owed: the catalogue search, the custom vendor and the duplicate check are one sheet and one question.
+
+| Page | Overlay | Shape | Status | Where the act lives or went | Source |
+|---|---|---|---|---|---|
+| `/providers` | The vendor's twin | sheet | Built | One vendor, opened from the list you can still see. | `pages/providers/next/TwinSheet.tsx:68` |
+| `/providers` | A new vendor | sheet | Owed | The vendor being added is one object; the old page split it across three modals. | `components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161` |
+| `/providers` | A vendor you already have? | panel | Owed | A question with two answers before a write. | `components/providers/VendorMatchModal.tsx:108` |
+| `/providers` | Edit provider | — | Retires | The twin sheet's edit half; terms on the row. | `components/providers/EditProviderModal.tsx:678` |
+| `/providers` | Send message | — | Retires | The composer (letters); the text sender is ADR 0121. | `components/providers/SendMessageSlideOver.tsx:319` |
+| `/providers` | Provider card | — | Retires | The twin sheet. | `pages/Providers.tsx:1355` |
+| `/providers` | Add provider type | — | Retires | A field inside the new-vendor sheet. | `components/providers/AddProviderModal.tsx:629` |
+
+Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with
@@ -103,6 +244,10 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   catalogue `POST /providers` (`vendors.ts:121,131`) via `VendorSearchModal`
 - Discover: `GET /distributors/search`, `/distributors/facets`, `/distributors/:id`
   (`services/api/distributors.ts:158-173`; ENDPOINTS.md:210-216)
+- Terms (redesign only): `GET /vendor-terms` and `PUT /vendor-terms/:providerId`
+  (`apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:44,71`) via
+  `pages/providers/next/useProviderTerms.ts`. The GET is house-wide — there is no
+  per-provider read route (§9)
 - Intelligence panel: `GET /providers/:id/promotions`, `/providers/promotions/active`,
   `/expiring`, `/savings` + knowledge/conversation-memory
   (`services/api/provider-intelligence.ts`; ENDPOINTS.md:450-459)
@@ -125,6 +270,80 @@ none — no user-visible `WineOps` strings (grep of `Providers.tsx`: zero hits).
 - No feature flags
 
 ## 9. Gaps
+
+**Open 2026-09-04 — there is no one-provider read of the terms register.**
+`GET /vendor-terms` (`vendor-terms.controller.ts:44`) answers with every vendor's
+terms for the tenant, and `VendorTermsService.read` (`vendor-terms.service.ts:257`)
+computes inferences for all of them. The provider row therefore fetches the whole
+house register and filters client-side, which is correct but wasteful on a house
+with many vendors, and it means one slow vendor's inference delays the sheet.
+**The patch was NOT applied** — `apps/api-gateway/src/vendor-terms/**` belonged to
+another builder this pass — so it is written here instead:
+
+```ts
+// vendor-terms.controller.ts — additive, alongside the existing @Get()
+@Get(":providerId")
+@ApiOperation({ summary: "One vendor's terms, with where each field came from" })
+async readOne(
+  @CurrentUser("restaurantId") restaurantId: string,
+  @Param("providerId") providerId: string,
+): Promise<VendorTermsRow> {
+  if (!restaurantId) throw new HttpException(
+    "This session is not attached to a restaurant, so there are no vendor terms to read.",
+    HttpStatus.BAD_REQUEST);
+  // requireProvider is already the tenant-scoped row filter the write uses
+  // (vendor-terms.service.ts:784) — a provider of another house is 404, not empty.
+  const readout = await this.terms.read(restaurantId);
+  const row = readout.vendors.find((v) => v.providerId === providerId);
+  if (!row) throw new NotFoundException(
+    "That vendor does not belong to this restaurant.");
+  return row;
+}
+```
+
+That shape is honest but not yet cheaper — it still computes the whole readout.
+The cheaper version needs `VendorTermsService.read` to take an optional
+`providerIds` filter threaded into `readProviders`/`readStated`/`readOrders`, plus
+a jest spec asserting a provider of another tenant 404s and that the filtered read
+returns the same row as the unfiltered one. Route order matters: `@Get(":providerId")`
+must not shadow anything, and the register's own client
+(`pages/settings/next/useSettingsNextData.ts:470`) must keep using the list route.
+
+**Closed 2026-09-04 — ADR 0116. The delivery-days picker wrote into the
+geography column, and had since it was built.** `AddProviderModal.tsx:820`
+collected weekdays; `pages/Providers.tsx` sent them as `statesOrRegionsServed`;
+`services/api/providers.ts` mapped that to `regionsCovered`; the gateway wrote
+`providers.regions_covered` (`providers.service.ts:199`) — the column the
+provider map and the territory filters read. The sibling `deliverySchedule`
+field was declared on the web DTO (`services/api/providers.ts:88`) and never
+reached `mapProviderToApiPayload`'s output, so it was dropped on the floor.
+**And `EditProviderModal.tsx:324` read `regionsCovered` back INTO the picker**,
+so opening the dialog and saving wrote the weekdays again — the defect
+round-tripped through its own UI.
+
+Now: the picker writes `PUT /vendor-terms/:providerId` and nothing else, the
+edit dialog seeds from `GET /vendor-terms`, and when that register cannot be
+read the picker is **disabled with the reason in words** and the page skips the
+write — an empty selection is itself a statement ("no fixed days") this page
+would otherwise save. Mapping and payload pinned in
+`services/api/vendorTerms.test.ts` (9 cases).
+
+**Not cleaned up, on purpose.** Whatever weekday names are already in
+`regions_covered` are still there. `regions_covered` is free text and a "Sunday"
+in it cannot be proven a picker artefact rather than a place somebody meant —
+Sunday is a town in Louisiana — so removing one would destroy a row of somebody's
+data on an inference. `scripts/list_weekdays_in_regions_covered.py` lists every
+affected row with the value it would leave behind, and has **no `--apply`**. The
+rows are the founder's call.
+
+**Also closed here: the form no longer seeds `paymentTerms: 'Net 30'`.** Both
+dialogs defaulted the field to Net 30 in the browser, so every provider saved
+through them asserted terms nobody chose — the same fabricated answer
+`providers.payment_terms DEFAULT 'Net 30'` used to write, moved client-side. It
+would have refilled the column on every save after migration `20260903170000`
+dropped the default. Both now default to `''` with an explicit "Not stated"
+option.
+
 - TwinSheet's intelligence panel renders in the legacy grey/blue skin inside
   the İznik sheet (`ProviderIntelligencePanel` is a shared legacy component) —
   the founder's "set does not cohere" complaint, reproduced in miniature;
@@ -212,6 +431,37 @@ same shape.
 
 ## 13. Roadmap
 
+**2026-09-06 — the vendor states its usual currency (batch 65).** The founder's words are
+quoted in full in §1a. Built as B1 of the invoice-currency pass; ADR 0104 carries the
+dated amendment.
+
+**One assumption is STATED, not decided, and the founder should confirm it.** The
+precedence an invoice is filed under is: the file's own currency, then the currency of the
+ORDER it is matched to, then the HOUSE's currency — and the house's rung is reached only
+when the invoice has no matched order, or when that order named no currency (the sentence
+says which). **The vendor's usual currency never files anything by itself.** That reading
+follows the founder's *"we won't use that as the invoice"* plus *"we will use the currency
+from where we order it"*, but the founder did not say what happens to an invoice with no
+matched order at all, and the house's currency as the last rung is our inference.
+
+**A second, narrower thing was decided in code and is flagged as a fork.** ADR 0117 Q31
+(2026-09-05) set the agreement line's currency to default from *"the vendor's terms or the
+house"*, and `agreementCurrencyDefault` still does exactly that. Batch 65 named ONE source
+for the ORDER — the currency the vendor always uses — so `orderCurrencyOffer` pre-fills
+only that, and shows the house's currency and the vendor's last invoice as EVIDENCE beside
+the field rather than putting either in it. The reason is `procurement_orders.currency_source`,
+which admits `vendor_usual` and `typed` and nothing else: a field pre-filled from the house
+and submitted untouched would be recorded as `typed`, which says a person chose it when
+nobody did.
+
+0. **Narrow the terms read to one provider** — the additive gateway patch in §9, plus
+   the `providerIds` filter that would make it actually cheaper. *Blocker: none once
+   `apps/api-gateway/src/vendor-terms/**` is free.*
+0a. **Terms notes on the provider row.** `notes` is on the DTO
+   (`vendor-terms.dto.ts:86-90`) and read back in the readout, but the sheet does not
+   edit it — deliberately, to keep the row from becoming a form. Revisit if the founder
+   asks for it.
+0b. **Make the whole-house link a router navigation** rather than an `<a>` full load.
 1. **Link to [[vendor-prices]] from the provider row and from a wine's provider list.**
    The comparison page exists, is guarded, and is unreachable — this is the single
    highest-value edge missing in the vendor cluster, and TIER-MAP S13 Pro already names
@@ -228,3 +478,12 @@ same shape.
 6. Fold `pages/distributors/useDistributorsPage.ts` into the discover tab or keep it
    deliberately — today it is a standalone page hook with one consumer (§9 of
    [[distributors]]).
+
+7. **The Terms panel no longer assumes dollars** (done 2026-09-05, ADR 0117 Q25).
+   `TermsSection.tsx` read `reg?.currency.code ?? 'USD'`, which was the only
+   honest reading while `restaurants.currency` carried `DEFAULT 'USD'` — and
+   which told a London house its vendor's minimum was in dollars. The default is
+   dropped (`20260905120000_a_house_names_its_money.sql`), so `code` can now be
+   `null`: the minimum-order field is labelled "(currency not recorded)" and
+   `fmtMoney` prints the number unsymboled. Nothing here can SET the currency;
+   today the only place it is asked is the sign-up form ([[register]] §1a).

@@ -1,0 +1,745 @@
+/* ============================================================
+   CalendarNext page styles. Every class is prefixed `cn-` and used only
+   inside pages/calendar/next/** — nothing here is shared.
+
+   Colour comes exclusively from the `.mudavym` tokens (ADR 0042), so both
+   grounds (warm paper / Warm Charcoal) resolve without a second rule set,
+   and the İznik seal stays the one chromatic colour on the page.
+
+   The house device on this page is the DOUBLE RULE: a delivery that arrived
+   is ruled off, the way a book closes an account. It is drawn with a border
+   plus a box-shadow (never an image), so it inherits the ink token.
+   ============================================================ */
+
+.cn-page {
+  min-height: 100%;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+}
+
+.cn-shell {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 24px 16px 48px;
+}
+
+/* ── micro-states: 160ms house curve, nothing travels more than 2px ─────── */
+.cn-ink {
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Focus never lands on the seal fill — a ring on İznik measured 1.00:1.
+   It sits on a paper gap instead (outline + offset). */
+.cn-page :focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+.cn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.cn-period {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  margin: 4px 0 0;
+}
+.cn-standing {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink-2);
+  margin: 4px 0 0;
+}
+.cn-eyebrow {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.cn-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.cn-btn:hover:not(:disabled) {
+  border-color: var(--seal-ring);
+  color: var(--ink-1);
+}
+.cn-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cn-btn[data-primary='true'] {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  background: var(--seal-tint);
+}
+
+.cn-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.cn-tab {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.cn-tab[aria-pressed='true'] {
+  background: var(--paper-0);
+  color: var(--ink-1);
+  box-shadow: inset 0 0 0 1px var(--seal-ring);
+}
+
+.cn-input {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  color: var(--ink-1);
+  width: 100%;
+}
+.cn-input::placeholder {
+  color: var(--ink-3);
+}
+
+/* ── the notice band (error / permission / partial-knowledge) ───────────── */
+.cn-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-1);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.cn-quiet {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+
+/* ── the month ledger ───────────────────────────────────────────────────── */
+.cn-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cn-weekday {
+  padding-bottom: 4px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cn-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 104px;
+  padding: 5px 6px 6px;
+  text-align: left;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  background: var(--paper-1);
+  cursor: pointer;
+}
+.cn-cell:hover {
+  border-color: var(--seal-ring);
+}
+.cn-cell[data-outside='true'] {
+  background: transparent;
+}
+.cn-cell[data-outside='true'] .cn-daynum {
+  opacity: 0.5;
+}
+.cn-cell[data-selected='true'] {
+  border-color: var(--seal);
+  box-shadow: inset 0 0 0 1px var(--seal);
+}
+.cn-cell[data-dropzone='true'] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+}
+.cn-daynum {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.cn-cell[data-today='true'] .cn-daynum {
+  color: var(--seal);
+  font-weight: 700;
+}
+
+/* ── an event ribbon: the ledger line ───────────────────────────────────── */
+.cn-ribbon {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 2px 5px 3px;
+  border: 0;
+  border-left: 2px solid var(--ink-3);
+  border-radius: 0 3px 3px 0;
+  background: var(--paper-2);
+  color: var(--ink-1);
+  font-size: 11px;
+  line-height: 1.25;
+  cursor: grab;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cn-ribbon:hover {
+  background: var(--paper-0);
+}
+.cn-ribbon[data-spine='true'] {
+  border-left-color: var(--seal);
+  background: var(--seal-tint);
+}
+.cn-ribbon[data-dragging='true'] {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+.cn-ribbon[data-ruled='true'] {
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--ink-3);
+  box-shadow: 0 3px 0 -2px var(--ink-3);
+  margin-bottom: 2px;
+}
+.cn-ribbon-time {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  color: var(--ink-3);
+  margin-right: 4px;
+}
+
+/* The house double rule, at full width — an account ruled off. */
+.cn-rule2 {
+  border-top: 1px solid var(--ink-3);
+  box-shadow: 0 3px 0 -2px var(--ink-3);
+  margin: 10px 0 8px;
+}
+
+/* ── the settle expansion (0fr → 1fr), the founder's named favourite ────── */
+.cn-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cn-expand[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.cn-expand > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── the day ledger ─────────────────────────────────────────────────────── */
+.cn-ledger {
+  margin-top: 12px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.cn-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-left: 2px solid var(--ink-3);
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+  color: var(--ink-1);
+  text-align: left;
+  cursor: pointer;
+}
+.cn-line:hover {
+  background: var(--paper-0);
+}
+.cn-line[data-spine='true'] {
+  border-left-color: var(--seal);
+}
+.cn-line[data-ruled='true'] {
+  color: var(--ink-3);
+}
+.cn-when {
+  /* wide enough for the longest honest string this column carries:
+     "All day · 18:00 recorded" (an all-day row that still has a time). */
+  flex: 0 0 124px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  padding-top: 1px;
+}
+.cn-meta {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* ── the time grid (week / day) ─────────────────────────────────────────── */
+.cn-time {
+  position: relative;
+  display: grid;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  overflow: hidden;
+}
+.cn-time-head {
+  display: grid;
+  border-bottom: 1px solid var(--paper-2);
+}
+.cn-time-head > * {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+  border-left: 1px solid var(--paper-2);
+}
+.cn-time-head > *:first-child {
+  border-left: 0;
+}
+.cn-time-head [data-today='true'] {
+  color: var(--seal);
+  font-weight: 700;
+}
+.cn-time-body {
+  position: relative;
+  display: grid;
+  max-height: 560px;
+  overflow-y: auto;
+}
+.cn-hours {
+  border-right: 1px solid var(--paper-2);
+}
+.cn-hour {
+  height: 44px;
+  padding-right: 6px;
+  text-align: right;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--paper-2);
+}
+.cn-col {
+  position: relative;
+  border-left: 1px solid var(--paper-2);
+}
+.cn-slot {
+  height: 44px;
+  border-top: 1px solid var(--paper-2);
+  cursor: cell;
+}
+.cn-slot:hover {
+  background: var(--paper-0);
+}
+.cn-block {
+  position: absolute;
+  left: 2px;
+  right: 4px;
+  padding: 3px 6px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-3);
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-size: 11px;
+  text-align: left;
+  cursor: grab;
+  overflow: hidden;
+  touch-action: none;
+}
+.cn-block[data-spine='true'] {
+  border-left-color: var(--seal);
+  background: var(--seal-tint);
+}
+.cn-block[data-ruled='true'] {
+  color: var(--ink-3);
+}
+.cn-block[data-dragging='true'] {
+  cursor: grabbing;
+  z-index: 3;
+  box-shadow: 0 8px 22px rgba(23, 19, 15, 0.16);
+}
+.cn-block-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cn-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: ns-resize;
+}
+.cn-handle::after {
+  content: '';
+  display: block;
+  width: 22px;
+  height: 2px;
+  margin: 3px auto 0;
+  border-radius: 1px;
+  background: var(--ink-3);
+  opacity: 0.45;
+}
+.cn-allday {
+  display: grid;
+  border-bottom: 1px solid var(--paper-2);
+  background: var(--paper-0);
+}
+.cn-allday > * {
+  min-height: 26px;
+  padding: 3px;
+  border-left: 1px solid var(--paper-2);
+}
+.cn-allday > *:first-child {
+  border-left: 0;
+}
+
+/* ── agenda roll ────────────────────────────────────────────────────────── */
+.cn-agenda-day {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--paper-2);
+}
+.cn-agenda-key {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-top: 8px;
+}
+.cn-agenda-key small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.75;
+}
+
+/* ── the event sheet ──────────────────────────────────────────────────────
+   RETIRED 2026-09-04 (ADR 0112): `.cn-scrim`, `.cn-sheet` and `@keyframes
+   cn-sheet-in` are gone. The sheet is the house primitive now
+   (components/mudavym/Sheet.tsx + sheet.css), which owns the scrim colour, the
+   440px width, the tuck motion, the focus trap, the scroll lock and Esc — none
+   of which this page's copy had. The form's own classes below (.cn-form,
+   .cn-field, .cn-input, .cn-chip …) are unchanged and still this page's. */
+.cn-field {
+  display: block;
+  margin-bottom: 10px;
+}
+.cn-label {
+  display: block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 3px;
+}
+.cn-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-1);
+  /* chip labels are ink, never the semantic colour (contrast measured) */
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.cn-chip[aria-pressed='true'] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+  color: var(--ink-1);
+}
+.cn-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cn-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* ── reduced motion: the change still happens, it just does not travel ──── */
+@media (prefers-reduced-motion: reduce) {
+  .cn-expand,
+  .cn-ink,
+  .cn-cell,
+  .cn-block {
+    transition: none !important;
+  }
+  /* The sheet's own reduced-motion branch moved with it: the primitive skips
+     the WAAPI enter entirely under `prefers-reduced-motion` (Sheet.tsx), which
+     is stronger than disabling a CSS animation after the fact. */
+}
+
+/* ── small layout primitives, so the TSX carries structure not styling ───── */
+.cn-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cn-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.cn-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.cn-form {
+  padding: 18px 20px 28px;
+}
+.cn-h2 {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 22px;
+  font-weight: 600;
+  margin: 2px 0 0;
+}
+.cn-h3 {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 2px 0 0;
+}
+.cn-entry {
+  min-width: 0;
+}
+.cn-entry b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cn-tight {
+  margin-top: 4px;
+}
+.cn-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* ── a note line that carries a mark ─────────────────────────────────────────
+   The reminder register's lines each open with a lucide glyph. Left inline, a
+   long sentence wraps and strands the mark on a line of its own (measured in
+   the 2026-09-03 capture); `display:flex` fixes that and breaks worse, because
+   every <strong> and <code> in the sentence becomes its own flex column. A
+   hanging indent does it without touching inline formatting: the mark sits in
+   the negative indent on line one, the prose wraps under it. */
+.cn-noteline {
+  padding-left: 19px;
+  text-indent: -19px;
+}
+.cn-noteline > svg {
+  /* The app's CSS reset makes every svg `display: block` (Tailwind preflight),
+     which is why the mark took a line of its own before this. */
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+  color: var(--ink-3);
+}
+
+/* ============================================================
+   THE SKY AND THE RECORD — ADR 0111 slices 2 and 3.
+
+   Drawn from sketch 098 (`month-overlay.html`). Ink for everything except the
+   rain bar, which is the one place the İznik seal appears in a cell: rain is
+   the single weather fact that changes what a kitchen does, so it is the one
+   that earns the colour.
+
+   The mark is never absent. `[data-dark]` is the cell's own way of saying "no
+   reading, and here is why" — a cell that simply omitted the sky would read as
+   fair weather to anyone scanning the column, which is the absence-reported-as-
+   health fault drawn as a blank.
+   ============================================================ */
+
+.cn-sky {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.cn-sky svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--ink-3);
+}
+.cn-sky-lo {
+  color: var(--ink-3);
+}
+.cn-sky[data-dark='true'] {
+  color: var(--ink-3);
+  font-style: normal;
+}
+
+/* Six bars of rain CHANCE — NWS publishes no quantitative amount. */
+.cn-rain {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 9px;
+  margin-left: 2px;
+}
+.cn-rain i {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--paper-2);
+}
+.cn-rain i[data-on] {
+  height: 9px;
+  background: var(--seal);
+  opacity: 0.55;
+}
+/* A probability the issuer never published — visibly not a published 0%. */
+.cn-rain[data-none='true'] {
+  width: 23px;
+  border-bottom: 1px dashed var(--paper-2);
+  height: 5px;
+}
+
+/* ── the record under a passed day ──────────────────────────────────────── */
+.cn-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  line-height: 1.25;
+}
+.cn-record-figure {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.cn-record-tag {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.cn-record-said {
+  flex-basis: 100%;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+
+/* A day the house was shut is hatched, never drawn as a zero: a closure
+   counted as zero trading is the most damaging input a demand model can take. */
+.cn-cell[data-shut='true'] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--paper-0),
+    var(--paper-0) 6px,
+    var(--paper-1) 6px,
+    var(--paper-1) 12px
+  );
+}
+
+/* The axis between what is recorded and what is forecast. */
+.cn-axis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+.cn-axis .cn-axis-line {
+  flex: 1;
+  border-top: 1px solid var(--paper-2);
+}

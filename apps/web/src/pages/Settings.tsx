@@ -48,6 +48,12 @@ import {
 import { cn } from '../lib/utils';
 import { ServicesPermissions } from '../components/settings/ServicesPermissions';
 import { apiClient, getErrorMessage } from '../services/api/client';
+import {
+  CURRENCY_CODES,
+  CURRENCY_NOT_RECORDED,
+  currencyForCountry,
+  currencyLabel,
+} from '../lib/currency';
 
 interface TeamMemberRow {
   user_id: string;
@@ -64,7 +70,7 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'map', 'features', 'pos', 'calendar'] as const;
+const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'currency', 'measurement', 'map', 'features', 'pos', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
@@ -72,6 +78,7 @@ const SECTION_LABELS: Record<SectionId, string> = {
   email: 'Email',
   notifications: 'Notifications',
   locations: 'Locations',
+  currency: 'Currency',
   measurement: 'Measurement',
   map: 'Map',
   features: 'Features',
@@ -107,6 +114,170 @@ const categoryLabels: Record<string, string> = {
   analytics: 'Analytics',
   operations: 'Operations',
 };
+
+// ─── Reporting currency ──────────────────────────────────────────────────────
+//
+// `restaurants.currency` carried `DEFAULT 'USD'` and the sign-up insert named no
+// currency key, so the COLUMN was the writer: `USD` on all fourteen production
+// houses, two of them in Türkiye and one in London, none ever asked (measured
+// 2026-09-05, ADR 0117 Q25). `20260905120000_a_house_names_its_money.sql`
+// dropped that default and the founder's Q30 call cleared every unattributable
+// value, so production now holds GBP 1, TRY 3, NULL 11.
+//
+// `CurrencyStep` asks a house being CREATED. Until this section existed an
+// EXISTING house had no field at all, and eleven of them print "currency not
+// recorded" against every money figure (`formatCurrency`, `lib/utils.ts`) with
+// nothing anywhere that could change it.
+//
+// Three rules, the same three the rebuilt page holds: the default is OFFERED
+// from the house's country and stated in words before anything is written, only
+// Record writes, and a failed read is never rendered as an unanswered question.
+// The role check is the gateway's (`assertCanManageRestaurant` on
+// `PUT /settings/currency`); the control here is disabled for anyone else and
+// says so, but this page is a courtesy and the route is the rule.
+
+interface HouseCurrency {
+  code: string | null;
+  country: string | null;
+  readable: boolean;
+  reason: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+}
+
+// Exported so the field can be asserted on its own. The rest of this page is a
+// 1,400-line scroll of legacy sections whose mounting is not what this rule is
+// about — the same argument `CurrencyStep` makes for living outside
+// `Register.tsx`.
+export function ReportingCurrencySection() {
+  const { activeRestaurantId, activeRole, user } = useAuth();
+  const role = activeRole ?? user?.role ?? null;
+  const canManage = role === 'owner' || role === 'manager';
+
+  const [state, setState] = useState<
+    { status: 'loading' | 'ok' | 'error'; reg: HouseCurrency | null; error: string | null }
+  >({ status: 'loading', reg: null, error: null });
+  const [choice, setChoice] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!activeRestaurantId) return;
+    setState({ status: 'loading', reg: null, error: null });
+    try {
+      const { data } = await apiClient.get<HouseCurrency>('/settings/currency');
+      setState({ status: 'ok', reg: data, error: null });
+      setChoice(data?.code ?? currencyForCountry(data?.country ?? null) ?? '');
+    } catch (e) {
+      // A failed read is never rendered as "not recorded": the two states are
+      // what this whole field exists to keep apart.
+      setState({ status: 'error', reg: null, error: getErrorMessage(e) });
+    }
+  }, [activeRestaurantId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const reg = state.reg;
+  const fromCountry = currencyForCountry(reg?.country ?? null);
+  const dirty = choice !== '' && choice !== (reg?.code ?? null);
+
+  const record = async () => {
+    setSaving(true);
+    try {
+      const { data } = await apiClient.put<HouseCurrency>('/settings/currency', { code: choice });
+      setState({ status: 'ok', reg: data, error: null });
+      toast.success(`Recorded ${choice} as this restaurant's reporting currency`);
+    } catch (e) {
+      // Nothing is assumed saved. The server's sentence is what the person sees.
+      toast.error(getErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 flex items-center gap-2 border-b border-gray-100">
+        <SettingsIcon className="w-4 h-4 text-wine-500" />
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Currency</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            The money this restaurant reports in. Each invoice keeps the currency its vendor billed in — nothing is
+            converted.
+          </p>
+        </div>
+      </div>
+      <div className="px-6 py-4">
+        {state.status === 'loading' && <p className="text-sm text-gray-500">Reading the currency…</p>}
+
+        {state.status === 'error' && (
+          <p role="alert" className="text-sm text-gray-700">
+            The currency could not be read — {state.error}. This is not the same as a restaurant that has not been
+            asked, and nothing below is claimed for it.
+          </p>
+        )}
+
+        {state.status === 'ok' && reg && !reg.readable && (
+          <p role="alert" className="text-sm text-gray-700">
+            The currency could not be read — {reg.reason ?? 'no reason was given'}. This is not the same as a
+            restaurant that has not been asked.
+          </p>
+        )}
+
+        {state.status === 'ok' && reg?.readable && (
+          <>
+            <p className="text-sm text-gray-700">
+              {reg.code ? (
+                <>Recorded: <strong>{currencyLabel(reg.code)}</strong>.</>
+              ) : (
+                <>
+                  <strong>{CURRENCY_NOT_RECORDED}</strong>. Every money figure on this restaurant&rsquo;s screens
+                  prints the number and says the currency is not recorded, rather than guessing a symbol.
+                </>
+              )}
+              {reg.statedBy?.name ? ` Last stated by ${reg.statedBy.name}.` : ''}
+            </p>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <label htmlFor="legacy-currency" className="sr-only">Currency</label>
+              <select
+                id="legacy-currency"
+                value={choice}
+                disabled={!canManage || saving}
+                onChange={(e) => setChoice(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white disabled:opacity-50"
+              >
+                <option value="">Not recorded — choose one</option>
+                {CURRENCY_CODES.map((code) => (
+                  <option key={code} value={code}>{currencyLabel(code)}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!canManage || saving || !dirty}
+                onClick={() => void record()}
+                className="px-3 py-2 text-sm font-medium rounded-lg border border-wine-200 text-wine-700 disabled:opacity-50"
+              >
+                {saving ? 'Recording…' : 'Record'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {!dirty
+                ? reg.code
+                  ? `${reg.code} is already recorded. Choose another to change it.`
+                  : 'Nothing is recorded yet. Choose a currency, then Record it.'
+                : choice === fromCountry && reg.code === null
+                  ? `Defaulted from ${reg.country ?? 'this restaurant’s country'}. Record will write ${choice}. Change it if that is wrong.`
+                  : `Record will write ${choice}${reg.code ? `, replacing ${reg.code}` : ''}.`}
+            </p>
+            {!canManage && (
+              <p className="text-xs text-gray-500 mt-1">
+                Only managers and owners can state the currency this restaurant reports in.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Calendar subscription section ───────────────────────────────────────────
 
@@ -1294,6 +1465,11 @@ export default function Settings() {
           />
         )}
 
+        {/* ── Reporting currency ── */}
+        <div id="currency" className="scroll-mt-32">
+          <ReportingCurrencySection />
+        </div>
+
         {/* ── Measurement ── */}
         <div id="measurement" className="scroll-mt-32">
           <MeasurementVolumeSection />
@@ -1307,8 +1483,12 @@ export default function Settings() {
 
         {/* ── Features ── */}
         <div id="features" className="scroll-mt-32 space-y-3">
-          {/* The two switches that actually govern something. */}
-          <AiAutonomySection />
+          {/* The two switches that actually govern something. The route refuses a
+              non-manager since 2026-09-05, so the section renders its controls
+              disabled with the reason rather than live (ADR 0083). */}
+          <AiAutonomySection
+            canManage={effectiveRole === 'owner' || effectiveRole === 'manager'}
+          />
 
           {/* Connected accounts — real OAuth state, not a flag. */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

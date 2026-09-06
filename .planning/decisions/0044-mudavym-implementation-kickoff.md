@@ -142,3 +142,119 @@ first, then this branch rebases onto it (tailwind scales, İznik@600,
 citation guard, byte-identical legacy re-check) before any merge is
 proposed. `feat/mudavym-brand` remains the one branch this session never
 pushes to.
+
+## Status — 2026-09-02, wave 4 built, founder review open
+
+Seven more pages are built behind their own flags on `feat/mudavym-design-p4`
+(cut from main `77eb7888`): `/reports` (MERGE), `/notifications` (REWORK),
+`/recommendations` (REWORK), `/calendar` (KEEP), `/settings` (KEEP Editorial +
+"more"), `/profile` (KEEP+ with MCPs · linked accounts · payments), and `/cellar`
+as the parent of `/wines` `/beer` `/whiskey` `/cocktails` (REJECT the crowded
+design, IA decided). Mechanics unchanged from §Mechanics: one `mudavym_design_<page>`
+flag each, OFF by default, columns added by a NEW migration
+`20260902230000_mudavym_design_flags_p4.sql` (the applied 20260831090000 file is
+not widened — an edited applied migration reads as ownerless to parity); legacy
+pages byte-untouched; per-page `06-pages` note carries §1a/§1b/§8/§9/§13; every
+page directory is now in `check_no_seeded_defaults.py`'s `SCAN_ROOTS`.
+
+Page-choice reasoning (a judgment call, recorded here rather than as a new ADR):
+the wave took every page with a REWORK/MERGE/KEEP+ verdict that had no build
+yet, plus the two the founder named most strongly (`/calendar` as the one page
+liked unreservedly, `/cellar` as the decided IA). Left for the next wave:
+`/login` + `/register` ("the most important step" — improve today's, not a
+Next), `/onboarding` (five sketches asked for), `/vendor-prices`, `/promotions`,
+`/wine-agent` (the general chatbot, scope defined, name open), `/sommelier` (HOLD).
+
+Review protocol as before: Sonnet audit per page (all seven ran; defects sent
+back to the builder and fixed with tests), founder elimination on the gallery
+artifact **Mudavym Wave Four**
+(<https://claude.ai/code/artifact/fb2f9455-8d35-411c-85c9-cfb0dbbf7abe> — update
+that URL, never republish new), which records the founder's per-page call
+(Keep / Rework / Merge / Hold + note) in the artifact's own store. The competitor
+reference the founder asked for is DESIGN-FOUNDATION §6 (48 sources); its
+cross-page finding — provenance, not arrangement, is the differentiator on six of
+the seven surfaces — is the design position this wave built to.
+
+Shortcuts and overruns, stated: every page is over the ~900-line guidance the
+brief set (1,340–2,360 lines); the builders each cut once and declared the
+remainder genuine surface. Three page notes were corrected mid-wave because the
+brief's premises were stale (recommendations was not broken; the reports mock
+answerer and unwired generator were already gone). `/settings` failed its first
+audit on five false provenance claims — the fix is to grep every runtime
+(orchestrator and mobile included) before calling a setting "read by nothing".
+
+### Wave 4, second pass — 2026-09-03, after the founder's review
+
+The founder reviewed the seven pages on the gallery and asked, per page: no
+emojis anywhere (real icons); one-tap actions to move out of the day-book;
+`/reports` to let a reader change a cutting's graph type or its analysis while
+arranging, with many detailed graphs and drag kept; `/recommendations` to make
+dismissal binding on the engine and its sentences solid; two full-picture
+sketches each for notifications, recommendations, settings and the cellar
+(screenshots only); `/profile` at the standard of a $100B startup with MCP
+servers and payment types real; the cellar to adapt to what each house carries;
+and every "honest about" line closed with a profound fix rather than an em dash.
+Founder calls recorded that day: one-tap → the dashboard rail; cellar registers
+in their own table, inferred then confirmed at onboarding, shipped gated with
+OD-113 next; dismissal asks its scope per dismissal; gap depth = small fixes
+first, then the four large builds (Stripe live, server-side reminders, full
+beverages catalogue, MCP runtime) plus a Mudavym MCP server documented only.
+
+What the pass measured and changed: the emojis were producer-written
+notification titles (100 of 100 rows on production's first page), fixed at
+twelve producer sites with a guard spec; the founder's example insight
+sentence was a live zero-fill bug on the gateway, and a third reader (the
+persisted `analytics_insights` cache) kept serving it until every row carried
+its generator version; `/settings` had asserted five false provenance claims
+and now greps all four runtimes before calling a setting dead; the team roster
+had been empty for every tenant in production (a column its table never had,
+swallowed into `[]`, and listed as known debt in the guard's own list) — PR #287;
+`?limit=` on calendar events 400'd for every caller. Sonnet re-audits ran on
+every page after the pass and every finding was closed or filed. The branch
+took main by merge (`e4c753f8`) rather than rebase, because six builders were
+editing the worktree. Sketches 089–092 registered by the parent in MANIFEST at
+PR time. The four large builds run as their own ADRs (0102 onward).
+
+### Wave 4, third pass — 2026-09-03, the four large builds
+
+The founder's gap-depth call was "small fixes first, then everything left
+including the four large builds — make them elegant and pretty." All four are
+on the branch, each with its own decision record and a Sonnet audit whose
+findings were closed before the wave was called done:
+
+- **ADR 0107 — the MCP runtime.** A connection row became a reading: a probe
+  performs the real handshake (initialize → initialized → tools/list over
+  Streamable HTTP/SSE, with timeout and caps), stores status and the server's
+  own words, moves `last_used_at` only when the server answered; secrets are
+  encrypted at rest and never returned; tool invocation is deliberately
+  absent until the commitment guardrail is extended to it. The audit found
+  the endpoint guard bypassable through IPv4-mapped IPv6 literals; the guard
+  is now a byte-level parser that resolves names before the call and pins the
+  vetted address into the socket (33 guard tests, 7 red on the old check).
+- **ADR 0108 — the beverages catalogue.** A register is the house's own books
+  first: the non-wine registers were thin because `beverages` has no
+  restaurant column, so the spine was inverted onto the five tenant tables
+  that carry both a restaurant and a product name — and `pos_unresolved_lines`
+  turned out to be the de-facto sales ledger for everything that is not wine.
+  Six real registers, cocktails CRUD, the three routeless registers routed.
+- **ADR 0109 — server-side reminders.** Idempotency is a database index, not a
+  boolean: a claim per entry and person before any send; quiet hours a
+  per-person deferral; `reminder_sent` finally written. Ships OFF behind an
+  environment allow-list, deliberately not the design flag, because it writes
+  to every member's inbox and phone; the audit proved the claim-before-send
+  by racing a reverted copy.
+- **ADR 0110 — Stripe as the live provider.** Nothing had ever spoken to
+  Stripe, so the earlier "everything except the credential" was false and is
+  corrected in the record; SetupIntents, a customer per restaurant, a mirror of
+  the provider's instruments, a signed webhook, and a client that throws before
+  any charge because pricing is still OD-23. The Elements mount is unverified
+  without a test key; the page says which secret unlocks it.
+
+Also in this pass: the team roster had been empty for every tenant in
+production (PR #287, an ordering column the table never had, listed in the
+guard's own known-bad list); the Mudavym MCP *server* is documented, not
+built (`08-softwares/mudavym-mcp.md`, 42 tools); ADR numbers were allocated by
+sweeping every worktree because `next_free()` reads refs only. What the founder
+decides next: the four flags and the two environment switches
+(`CALENDAR_REMINDERS_ENABLED`, the Stripe trio) stay OFF until his call on the
+gallery; the branch merges to main only on his word.

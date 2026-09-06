@@ -32,6 +32,17 @@ export interface ProcurementDocument {
    * fact to state, not a dollar sign to assume.
    */
   currency?: string | null
+  /**
+   * Whether this document's money may be read, and the sentence saying why not.
+   *
+   * DERIVED BY THE GATEWAY, never here. `documentMoneyState` in
+   * `procurement/documents/invoice-currency.ts` is the same function
+   * `verifyReceipt` refuses a keyed-in unit price with, so the screen and the
+   * gate cannot disagree about whether a document is held — a second
+   * implementation in the browser is how a page comes to show an enabled field
+   * the server will reject. Absent on responses from a gateway that predates it.
+   */
+  moneyState?: { priced: true } | { priced: false; reason: string }
   total: number | null
   freight: number | null
   fuel_surcharge: number | null
@@ -93,6 +104,23 @@ export function dashNull(value: string | number | null | undefined): string {
   return String(value)
 }
 
+/**
+ * What the ORDER a document is filed against was placed in (B4, founder
+ * 2026-09-06 batch 65: "we will have time To make sure that the invoice is good
+ * with the order we had").
+ *
+ * `failure` is not decoration. A read that broke and an order that named no
+ * currency both arrive as `currency: null`, and only one of them means the
+ * comparison can be trusted (ADR 0067).
+ */
+export interface OrderCurrencyBlock {
+  id: string
+  currency: string | null
+  currencySource: 'vendor_usual' | 'typed' | null
+  orderNumber: string | null
+  failure: string | null
+}
+
 export const documentsApi = {
   /** Documents linked to one order. Empty when none are attached yet. */
   async forOrder(orderId: string): Promise<ProcurementDocument[]> {
@@ -100,6 +128,24 @@ export const documentsApi = {
       params: { orderId, limit: 50 },
     })
     return data.items ?? []
+  },
+
+  /**
+   * The same list, plus the order's OWN currency, for the surface that
+   * reconciles an invoice against its order.
+   *
+   * One request rather than two so the two halves of the comparison come from
+   * one moment: an invoice read now against an order read a second later can
+   * show a mismatch that a restatement in between had already resolved.
+   */
+  async forOrderWithCurrency(orderId: string): Promise<{
+    documents: ProcurementDocument[]
+    order: OrderCurrencyBlock | null
+  }> {
+    const { data } = await apiClient.get('/procurement/documents', {
+      params: { orderId, limit: 50 },
+    })
+    return { documents: data.items ?? [], order: data.order ?? null }
   },
 
   /** All documents for the restaurant, optionally filtered by status (needs_review / verified). */
@@ -130,6 +176,38 @@ export const documentsApi = {
   /** Confirm the extraction is a faithful transcription of the paper document. */
   async verify(id: string): Promise<void> {
     await apiClient.post(`/procurement/documents/${id}/verify`, {})
+  },
+
+  /**
+   * RULE 3 — restate what currency this invoice's money is in.
+   *
+   * Founder, 2026-09-06: the house may deliberately change it when the invoice
+   * is other than their default. Managers and owners only; the gateway refuses
+   * anyone else in a sentence, and the page disables the control with that
+   * sentence rather than hiding it.
+   *
+   * The gateway writes the audit row FIRST and does not change the currency if
+   * the log cannot be written, so a resolved promise here means both landed.
+   * `sentence` is what moved, in the server's own words — rendered verbatim
+   * rather than paraphrased, because it names figures this client does not have.
+   */
+  async restateCurrency(
+    id: string,
+    currency: string,
+    reason?: string,
+  ): Promise<{
+    currency: string
+    previousCurrency: string | null
+    sentence: string
+    moneyRefiled: boolean
+    linesRefiled: number
+    lineFailures: string[]
+  }> {
+    const { data } = await apiClient.patch(
+      `/procurement/documents/${id}/currency`,
+      { currency, reason },
+    )
+    return data
   },
 
   /**

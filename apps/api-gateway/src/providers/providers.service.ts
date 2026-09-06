@@ -1385,4 +1385,144 @@ export class ProvidersService {
       knownPersonnel: row.known_personnel ?? undefined,
     };
   }
+
+  // =========================================================================
+  // B1 — the vendor's usual currency (founder, 2026-09-06 batch 65).
+  //
+  // Read and write live here rather than folding into `updateProvider` on
+  // purpose. `updateProvider` is open to anyone signed in and strips undefined
+  // keys from a wide payload; this fact is manager-gated and carries an author
+  // and a moment that the database enforces as ONE fact with the value. Putting
+  // it in that payload would let a form that happens to send `usualCurrency`
+  // write a vendor-level currency with nobody's name on it, which is the exact
+  // shape `providers_usual_currency_names_its_author` refuses.
+  // =========================================================================
+
+  /**
+   * What this vendor usually invoices in, with who said so and when.
+   *
+   * A FAILED READ IS NOT AN ABSENT CURRENCY (ADR 0067). supabase-js resolves
+   * `{ data, error }` and never throws, so without the error arm an outage would
+   * render as "this vendor has not stated a usual currency" — a page confidently
+   * telling a manager that a fact they entered does not exist.
+   */
+  async getUsualCurrency(
+    providerId: string,
+    restaurantId: string,
+  ): Promise<{
+    code: string | null;
+    setAt: string | null;
+    setByName: string | null;
+    vendorName: string | null;
+  }> {
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("name, usual_currency, usual_currency_set_by, usual_currency_set_at")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error("Failed to read a vendor's usual currency", {
+        providerId,
+        error: error.message,
+      });
+      throw new ServiceUnavailableException(
+        `This vendor's usual currency could not be read (${error.message}). That is a failed read, not an empty field — nothing here says the vendor has stated no currency.`,
+      );
+    }
+    if (!data) throw new NotFoundException(`Provider ${providerId} not found`);
+
+    const row = data as {
+      name?: string | null;
+      usual_currency?: string | null;
+      usual_currency_set_by?: string | null;
+      usual_currency_set_at?: string | null;
+    };
+
+    // The author's name, read separately and NEVER load-bearing: a name that
+    // cannot be read leaves the attribution off the sentence rather than
+    // suppressing the currency, and it never falls back to an email address
+    // while calling it a name.
+    let setByName: string | null = null;
+    if (row.usual_currency_set_by) {
+      const { data: person, error: personError } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("name")
+          .eq("user_id", row.usual_currency_set_by)
+          .maybeSingle();
+      if (personError)
+        this.logger.warn(
+          `The person who stated ${providerId}'s usual currency could not be read (${personError.message}); the sentence names no author.`,
+        );
+      else setByName = ((person as { name?: string | null })?.name ?? null) || null;
+    }
+
+    return {
+      code: row.usual_currency ?? null,
+      setAt: row.usual_currency_set_at ?? null,
+      setByName,
+      vendorName: row.name ?? null,
+    };
+  }
+
+  /**
+   * State what this vendor usually invoices in. Manager-gated by the caller.
+   *
+   * The value, the author and the moment are written as three EXPLICIT literal
+   * keys in one payload — never a conditional spread, which
+   * `scripts/check_order_capture_contract.py` reads as an unreadable key set —
+   * and the database CHECK refuses any two of the three without the third.
+   */
+  async setUsualCurrency(args: {
+    providerId: string;
+    restaurantId: string;
+    code: string;
+    userId: string;
+  }): Promise<{
+    code: string;
+    setAt: string;
+    previous: string | null;
+  }> {
+    const before = await this.getUsualCurrency(
+      args.providerId,
+      args.restaurantId,
+    );
+    const setAt = new Date().toISOString();
+
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .update({
+        usual_currency: args.code,
+        // `public.users.user_id` — the id the JWT carries. NEVER an `auth.users`
+        // id: the two tables are disjoint in this database and an actor FK to
+        // `auth.users` 23503s on every write.
+        usual_currency_set_by: args.userId,
+        usual_currency_set_at: setAt,
+      })
+      .eq("id", args.providerId)
+      .eq("restaurant_id", args.restaurantId)
+      .select("usual_currency, usual_currency_set_at")
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error("Failed to state a vendor's usual currency", {
+        providerId: args.providerId,
+        error: error.message,
+      });
+      throw new ServiceUnavailableException(
+        `This vendor's usual currency was NOT changed (${error.message}).`,
+      );
+    }
+    if (!data)
+      throw new NotFoundException(`Provider ${args.providerId} not found`);
+
+    return {
+      code: (data as { usual_currency: string }).usual_currency,
+      setAt:
+        (data as { usual_currency_set_at?: string | null })
+          .usual_currency_set_at ?? setAt,
+      previous: before.code,
+    };
+  }
 }

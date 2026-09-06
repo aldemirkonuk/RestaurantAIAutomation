@@ -23,6 +23,33 @@ vi.mock('../../../components/providers/ProviderIntelligencePanel', () => ({
   ),
 }));
 
+// The sheet now carries the terms register; this file is about the GRID and the
+// sheet's shape, so the terms hook is stubbed here and asserted in
+// TermsSection.test.tsx against a mocked apiClient.
+vi.mock('./useProviderTerms', () => ({
+  useProviderTerms: () => ({
+    register: null,
+    row: null,
+    loading: true,
+    error: null,
+    denied: false,
+    saving: false,
+    saveError: null,
+    audited: null,
+    auditReason: null,
+    save: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
+// The sheet also carries the vendor's usual currency (B1, founder 2026-09-06
+// batch 65), which reads the session's role. This file is about the GRID and the
+// sheet's shape; that section is asserted in UsualCurrencySection.test.tsx
+// against a mocked apiClient and a mocked role.
+vi.mock('./UsualCurrencySection', () => ({
+  UsualCurrencySection: () => null,
+}));
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {

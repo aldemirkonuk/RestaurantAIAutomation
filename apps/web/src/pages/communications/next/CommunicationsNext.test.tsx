@@ -20,11 +20,16 @@ vi.mock('./useCommsNextData', async (importOriginal) => ({
   useCommsNextData: () => mockData.current,
 }));
 
-vi.mock('../../../components/documents/GmailTemplateBuilder', () => ({
-  GmailTemplateBuilder: () => <div data-testid="gmail-builder" />,
+// ADR 0118 — the two legacy builders are no longer mounted from this page, so
+// there is nothing to stub for them. What the page owns now is the composer and
+// the house library; both are proved in their own files, and here they are
+// stubbed so this file stays a test of the PAGE.
+vi.mock('./Compose/ComposeSheet', () => ({
+  ComposeSheet: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="composer" /> : null,
 }));
-vi.mock('../../../components/documents/SMSTemplateBuilder', () => ({
-  SMSTemplateBuilder: () => <div data-testid="sms-builder" />,
+vi.mock('./TemplateSheet', () => ({
+  TemplateSheet: () => <div data-testid="letter-library" />,
 }));
 
 import CommunicationsNext from './CommunicationsNext';
@@ -129,13 +134,68 @@ describe('CommunicationsNext', () => {
     expect(screen.getByText('≥97')).toBeInTheDocument();
   });
 
-  it('the template sheet leads with what is going on', async () => {
+  // ── ADR 0118: the legacy builders are retired from the rebuilt page ───────
+  it('opens the house composer, not a template builder', () => {
     render(<CommunicationsNext />);
-    fireEvent.click(screen.getByText('Email template workshop'));
-    // "a saved template" was itself untrue: the sheet never passes
-    // `editingTemplate`, so the builder always opens on a NEW, unsaved one.
-    expect(screen.getByText('You are editing a new template. Nothing is sent from here.')).toBeInTheDocument();
-    expect(await screen.findByTestId('gmail-builder')).toBeInTheDocument();
+    expect(screen.queryByTestId('composer')).toBeNull();
+    fireEvent.click(screen.getByText('Write a letter'));
+    expect(screen.getByTestId('composer')).toBeInTheDocument();
+  });
+
+  it('opens the house letter library', () => {
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText("The house's letter templates"));
+    expect(screen.getByTestId('letter-library')).toBeInTheDocument();
+  });
+
+  it('offers no template workshop at all', () => {
+    render(<CommunicationsNext />);
+    expect(screen.queryByText('Email template workshop')).toBeNull();
+    expect(screen.queryByText('SMS template workshop')).toBeNull();
+  });
+
+  /**
+   * The retirement as a RULE, not a habit.
+   *
+   * The two legacy builders still exist and the legacy `/communications` still
+   * mounts them — that is ADR 0042's byte-for-byte promise and it is deliberate.
+   * What must not come back is a rebuilt page importing them: the flag was
+   * supposed to retire them, and a single `lazy(() => import(...))` slipped back
+   * into any `next` file would quietly un-retire them with nothing failing.
+   * Reading the source is the only check that can see that.
+   */
+  it('no rebuilt page imports the legacy template builders', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const root = join(process.cwd(), 'src', 'pages');
+    const offenders: string[] = [];
+    const walk = (dir: string, insideNext: boolean) => {
+      // withFileTypes: the kind comes back WITH the entry, so there is no
+      // separate stat of the same path to go stale between check and read.
+      for (const dirent of readdirSync(dir, { withFileTypes: true })) {
+        const entry = dirent.name;
+        const full = join(dir, entry);
+        if (dirent.isDirectory()) {
+          walk(full, insideNext || entry === 'next');
+          continue;
+        }
+        if (!insideNext || !/\.tsx?$/.test(entry)) continue;
+        if (/\.test\.tsx?$/.test(entry)) continue;
+        const source = readFileSync(full, 'utf8');
+        // An IMPORT, not a mention: this file's own header explains what was
+        // retired and names both builders, and a substring match would flag
+        // the explanation as the offence.
+        if (
+          /(?:from|import\()\s*['"][^'"]*components\/documents\/(?:Gmail|SMS)TemplateBuilder/.test(
+            source,
+          )
+        ) {
+          offenders.push(full);
+        }
+      }
+    };
+    walk(root, false);
+    expect(offenders).toEqual([]);
   });
 
   it('says a gateway failure in words', () => {

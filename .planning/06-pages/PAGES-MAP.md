@@ -29,6 +29,22 @@ divisions of [ECOSYSTEM-PLAN §3a](../04-specs/ECOSYSTEM-PLAN.md) ([ADR 0049](..
 The mapping is N:M — `providers` hosts two softwares behind its `?tab=` — and all 47 notes
 are assigned, none left unowned. This is the [[PAGE-CONTRACT]] half of PV-12.
 
+**The collapse (2026-09-04, [ADR 0114](../decisions/0114-connections-are-the-houses-profile-is-the-persons.md)).**
+The page COUNT is unchanged at 47 — `/connections` was already documented — but the
+surface count behind three of these rows fell, which is the arithmetic that justified the
+route:
+
+| Route | Registers / tabs, flag off | Flag on | What moved |
+|---|---|---|---|
+| [[settings]] | 14 registers | 10 + one line out | `services` · `pos` · `email` · `calendar` → [[connections]] `#grants` `#till` `#sender` `#feed` |
+| [[profile]] | 7 registers | 5 | Model context (**split**) · How the house pays · The house → [[connections]] and [[settings]] |
+| [[connections]] | — (route inert) | 4 registers | receives all of the above, plus declare-a-server and revoke from [[profile]] |
+
+Four new page→page edges (`/settings` → `/connections`, and three from `/profile`), and the
+four `?tab=` edges out of `/settings` become redirects into `/connections` fragments rather
+than in-page tabs. Both branches ship: with `mudavym_design_connections` off — its state in
+production — every count above reverts to the left-hand column.
+
 **§1a Features (2026-08-26, founder mandate):** every page note now carries a
 `## 1a. Features` list — what the page presents to the user, in plain product
 language, one bullet per capability. Broken or dark features are marked, never
@@ -60,6 +76,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/authorize/:integrationId` | [[authorize-integration]] | owner | core | focused | none | 3 |
 | `/calendar` | [[calendar]] | owner | core | calendar | none | 0 |
 | `/communications` | [[communications]] | owner | core | list+detail | none | 3 |
+| `/connections` | [[connections]] | owner | core | list+detail | none | 1 |
 | `/credits` | [[credits]] | owner | core | redirect | none | 0 |
 | `/dev-sandbox` | [[dev-sandbox]] | dev | core | dev | none | 5 |
 | `/distributors` | [[distributors]] | owner | core | redirect | none | 0 |

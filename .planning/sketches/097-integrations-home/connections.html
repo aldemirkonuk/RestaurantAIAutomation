@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>097 · Connections — what acts for this house</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Mudavym tokens — ADR 0042, copied inline from apps/web/src/styles/mudavym.css */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:36px;font-weight:600;letter-spacing:-.018em;line-height:1.06;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:16px;color:var(--ink-2);margin:7px 0 0}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:18px 0 0}
+
+/* ── the standing sentence: the "what can act on your behalf" ledger line ── */
+.ledger{margin:22px 0 0;padding:16px 20px 17px;background:var(--paper-1);border-left:2px solid var(--seal)}
+.ledger .l1{font-family:var(--serif);font-size:20px;line-height:1.4;color:var(--ink-1);margin:0;max-width:940px}
+.ledger .l1 b{font-weight:600;color:var(--seal-deep)}
+.ledger .l2{font-size:12px;line-height:1.65;color:var(--ink-2);margin:9px 0 0;max-width:900px}
+.tally{display:flex;gap:0;margin:14px 0 0;border-top:1px solid var(--paper-2);flex-wrap:wrap}
+.tally div{padding:9px 15px 0 0;margin-right:15px;border-right:1px solid var(--paper-2)}
+.tally div:last-child{border-right:0}
+.tally .n{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--ink-1);font-variant-numeric:tabular-nums;display:block;line-height:1.1}
+.tally .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+.tally .n.seal{color:var(--seal-deep)}
+
+/* ── registers ── */
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:36px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:25px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-d{font-size:12.5px;line-height:1.62;color:var(--ink-2);margin:6px 0 0;max-width:840px}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:5px 0 12px}
+
+/* ── the one row component — every attachment on the page is drawn by it ── */
+.row{display:grid;grid-template-columns:24px minmax(0,1fr) 200px 152px 176px;gap:0 16px;padding:14px 0 15px;border-top:1px solid var(--paper-2);align-items:start}
+.row:hover{background:var(--paper-1)}
+.row .ic{color:var(--ink-3);padding-top:2px}
+.ttl{font-weight:600;font-size:13.5px;color:var(--ink-1);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.sub{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:3px;word-break:break-all}
+.why{font-size:11.5px;line-height:1.62;color:var(--ink-2);margin-top:7px;max-width:500px}
+.why em{font-style:normal;color:var(--ink-1);font-weight:500}
+
+.scope{font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.scope .h{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:4px}
+.scope ul{margin:0;padding-left:13px}
+.scope li{margin:0 0 2px}
+.scope .no{color:var(--ink-3)}
+
+.last{font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.last .h{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:4px}
+.last .w{font-family:var(--mono);font-size:11.5px;color:var(--ink-1);font-variant-numeric:tabular-nums}
+.last .d{display:block;font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.last .em{font-family:var(--sans);color:var(--ink-3)}
+
+/* chips — ink labels, never the semantic colour (DESIGN-FOUNDATION) */
+.chip{font-family:var(--mono);font-size:8.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;padding:3px 7px;border-radius:3px;white-space:nowrap;color:var(--ink-2);background:var(--paper-2)}
+.chip.on{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.chip.off{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.chip.warn{color:var(--ink-1);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4)}
+.owner{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+
+.ctl{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+button{white-space:nowrap}
+button{font-family:var(--sans);font-size:11.5px;font-weight:500;padding:5px 11px;border-radius:4px;border:1px solid var(--ink-4);background:transparent;color:var(--ink-1);cursor:pointer}
+button:hover{background:var(--paper-2)}
+button[disabled]{border-color:var(--paper-2);color:var(--ink-3);cursor:not-allowed}
+button.seal{border-color:var(--seal);color:var(--seal-deep)}
+.ctlnote{font-size:10.5px;line-height:1.5;color:var(--ink-3);max-width:176px}
+
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:14px 0 0;font-size:12px;line-height:1.65;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 60%);max-width:900px}
+.callout b{color:var(--ink-1);font-weight:600}
+.foot{margin:44px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.7;color:var(--ink-3);max-width:900px}
+.foot b{color:var(--ink-2)}
+.back{display:inline-block;margin:0 0 12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 097 · connections — example data, not a tenant</div>
+<div class="wrap">
+  <a class="back" href="index.html">&larr; 097 index</a>
+  <div class="wordmark">Mudavym</div>
+  <h1>Connections<span class="dot">.</span></h1>
+  <p class="lede">What acts for this house.</p>
+  <div class="dbl"></div>
+
+  <!-- ══ THE LEDGER LINE ══════════════════════════════════════════════ -->
+  <div class="ledger">
+    <p class="l1">Fourteen things can act in Lokanta Müdavim's name. <b>Seven are the house's own</b>, three are set by the deployment for every house on it, three belong to one person who works here, and one is offered and untaken. <b>Nothing here can spend money today</b> &mdash; the payment provider has no key, and the one tool that could place an order is advertised, not granted. <b>None may call a tool.</b></p>
+    <p class="l2">Every row below says whose it is, what it may do, what it last did, and how to stop it. A row you cannot stop from here says who can. Nothing is listed twice, and nothing that acts is missing — a connection with no row is a defect, not a feature.</p>
+    <div class="tally">
+      <div><span class="n">7</span><span class="k">the house's own</span></div>
+      <div><span class="n">3</span><span class="k">the deployment's</span></div>
+      <div><span class="n">3</span><span class="k">a person's</span></div>
+      <div><span class="n">1</span><span class="k">offered, untaken</span></div>
+      <div><span class="n">2</span><span class="k">public to anyone</span></div>
+      <div><span class="n seal">0</span><span class="k">can spend today</span></div>
+      <div><span class="n seal">0</span><span class="k">may call a tool</span></div>
+      <div><span class="n">1</span><span class="k">refused its handshake</span></div>
+    </div>
+  </div>
+
+  <!-- ══ REGISTER I — THE HOUSE'S OWN ═════════════════════════════════ -->
+  <div class="sec-h"><span class="sec-n">Register I</span><h2>What the house has attached</h2></div>
+  <p class="sec-d">Six rows the house is answerable for. Five belong to Lokanta M&uuml;davim and survive the person who connected them; the sixth &mdash; the address its letters leave from &mdash; belongs to the deployment, and it is here because the house can see it nowhere else.</p>
+  <p class="sec-k">kept for this restaurant · managers and owners may change · read by everyone who works here</p>
+
+  <!-- POS -->
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></span>
+    <div>
+      <div class="ttl">Point of sale &middot; Toast <span class="chip on">Sending</span> <span class="owner">the house's</span></div>
+      <div class="sub">webhook &rarr; /api/v1/pos-hub/webhook/toast/lok-mdv &middot; restaurant GUID 5f2a&hellip;c910</div>
+      <div class="why">The till pushes every closed check here. It is the only attachment that <em>writes into the ledger without being asked</em> — 41,208 checks since March, and every insight on /dashboard is downstream of it. Connected 14 March 2026 by Hasan Demir.</div>
+    </div>
+    <div class="scope"><span class="h">May do</span><ul><li>Send closed checks, voids and comps</li><li>Send the menu and its prices</li><li class="no">May not read our inventory</li><li class="no">May not place an order</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">7 minutes ago</span><span class="d">check #88,412 &middot; &#8378;2,340 &middot; table 6</span><span class="d">1,106 checks in the last 7 days</span></div>
+    <div class="ctl"><button>Pause ingest</button><button>Disconnect</button><span class="ctlnote">Disconnecting stops the feed. The 41,208 checks already received stay.</span></div>
+  </div>
+
+  <!-- Payment provider -->
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg></span>
+    <div>
+      <div class="ttl">Payment provider &middot; Stripe <span class="chip warn">Key missing</span> <span class="owner">the house's</span></div>
+      <div class="sub">STRIPE_SECRET_KEY unset &middot; STRIPE_WEBHOOK_SECRET unset &middot; VITE_STRIPE_PUBLISHABLE_KEY unset</div>
+      <div class="why">Everything except the credential exists: SetupIntent, Elements on Stripe's own origin, detach, reconcile and a signed webhook. Until the three secrets are set, <em>no instrument can be recorded</em> — which is why the register below is empty for a stated reason rather than because nobody added a card.</div>
+    </div>
+    <div class="scope"><span class="h">Will do, once keyed</span><ul><li>Hold a card for this restaurant</li><li>Detach one at the provider</li><li class="no">May not charge &mdash; pricing is undecided (OD&#8209;23)</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">&mdash;</span><span class="d">No signed delivery has ever been authenticated here. That is not the same as healthy.</span></div>
+    <div class="ctl"><button disabled>Connect</button><span class="ctlnote">Three variables and one Stripe dashboard entry. Named in full on the row detail.</span></div>
+  </div>
+
+  <!-- Sender identity -->
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></span>
+    <div>
+      <div class="ttl">Sender identity <span class="chip warn">Shared, not yours</span> <span class="owner">the deployment's</span></div>
+      <div class="sub">notifications@wineops.ai &middot; Gmail OAuth2, GMAIL_SENDER_EMAIL</div>
+      <div class="why">Every vendor letter this house sends leaves from <em>one mailbox the whole deployment shares</em>, not from an address Lokanta Müdavim owns. The sign-off inside the letter says "Hasan Demir, Lokanta Müdavim"; the envelope does not. A vendor who replies is replying to a mailbox other restaurants also send from. This is the single largest gap on the page.</div>
+    </div>
+    <div class="scope"><span class="h">May do</span><ul><li>Send mail signed with this house's name</li><li>Receive the vendor's reply</li><li class="no">Cannot be changed by this house</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">Today, 09:41</span><span class="d">PO&nbsp;#2026&#8209;0418 to Kavaklıdere &mdash; delivered</span><span class="d">62 letters in the last 30 days</span></div>
+    <div class="ctl"><button disabled>Use our own address</button><span class="ctlnote">No per-restaurant sender exists yet. Filed, with the sentence that says why.</span></div>
+  </div>
+
+  <!-- Calendar feed -->
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+    <div>
+      <div class="ttl">Calendar feed <span class="chip on">Published</span> <span class="owner">public to anyone with the link</span></div>
+      <div class="sub">/api/v1/calendar/feed/8f31c2a7&hellip;.ics</div>
+      <div class="why">A read-only iCal address. It is <em>unauthenticated by design</em> so Outlook and Apple Calendar can subscribe — which means anyone holding the URL reads this house's deliveries, deadlines and shifts. Four subscribers have fetched it this week. Regenerating the token silently breaks all four.</div>
+    </div>
+    <div class="scope"><span class="h">Grants</span><ul><li>Read every calendar event</li><li class="no">Cannot write, cannot see prices</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">31 minutes ago</span><span class="d">fetched &middot; Apple Calendar &middot; 4 subscribers</span></div>
+    <div class="ctl"><button>Copy address</button><button class="seal">Regenerate</button><span class="ctlnote">Regenerating revokes all four subscriptions at once.</span></div>
+  </div>
+
+  <!-- Vendor-facing page -->
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></span>
+    <div>
+      <div class="ttl">Public house page <span class="chip on">Live</span> <span class="owner">public to anyone</span></div>
+      <div class="sub">mudavym.com/v/lokanta-mudavim</div>
+      <div class="why">What a vendor sees before they reply: the name, the contact, and the twelve listings this house publishes. Indexed &mdash; the JSON&#8209;LD is served to search engines. Nothing behind the counter is on it.</div>
+    </div>
+    <div class="scope"><span class="h">Shows</span><ul><li>Name, contact, 12 published listings</li><li class="no">No prices paid, no stock, no staff</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">2 days ago</span><span class="d">listing edited &middot; Selin Kara</span><span class="d">318 views in 30 days</span></div>
+    <div class="ctl"><button>Edit page</button><button>Unpublish</button></div>
+  </div>
+
+  <!-- Model context, as a house register -->
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="M17 16.5v-5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.33"/><path d="M12 8 7.26 5.15"/><path d="M12 8v5.5"/><path d="M12 2.5 7.03 5.38A2 2 0 0 0 7 7.09v3.24"/></svg></span>
+    <div>
+      <div class="ttl">Model-context servers &middot; 3 declared <span class="chip on">2 answering</span> <span class="owner">contested &mdash; see below</span></div>
+      <div class="sub">3 rows &middot; each with its own scope, secret and probe record</div>
+      <div class="why">Servers the house agents may reach. Two answered their last handshake and listed their tools; one refused. <em>None may be called</em> — listing a tool and invoking it are different grants, and the second has never been decided.</div>
+    </div>
+    <div class="scope"><span class="h">Each row carries</span><ul><li>URL, scopes, encrypted secret</li><li>Server name, version, protocol</li><li>The tools it advertises</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">Checked 41 min ago</span><span class="d">2 of 3 answered</span></div>
+    <div class="ctl"><button>Declare a server</button><button>Check all three</button></div>
+  </div>
+
+  <!-- the three MCP servers, indented as a sub-register -->
+  <div class="row" style="padding-left:34px">
+    <span class="ic"></span>
+    <div>
+      <div class="ttl">Toast bridge <span class="chip on">Answered</span></div>
+      <div class="sub">https://mcp.lokanta-mudavim.co/toast</div>
+      <div class="why">Protocol 2025&#8209;06&#8209;18 &middot; toast&#8209;bridge 0.4.1 &middot; advertises 6 tools: <em>list_checks, get_check, list_menu_items, get_sales_summary, list_voids, get_daypart_mix</em>. Secret stored AES&#8209;256&#8209;GCM and never read back.</div>
+    </div>
+    <div class="scope"><span class="h">Granted</span><ul><li>checks:read &middot; menu:read</li><li class="no">No write scope requested</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">41 min ago</span><span class="d">handshake &middot; tools/list &middot; 6 tools</span></div>
+    <div class="ctl"><button>Check again</button><button>Revoke</button></div>
+  </div>
+  <div class="row" style="padding-left:34px">
+    <span class="ic"></span>
+    <div>
+      <div class="ttl">Kavaklıdere catalogue <span class="chip on">Answered</span></div>
+      <div class="sub">https://mcp.kavaklidere.com.tr/v1</div>
+      <div class="why">Protocol 2025&#8209;06&#8209;18 &middot; kv&#8209;catalogue 2.1.0 &middot; advertises 4 tools: <em>search_products, get_price_list, check_availability, <b style="color:var(--seal-deep)">place_order</b></em>. The fourth is the reason tool invocation is a decision and not a build — it spends money.</div>
+    </div>
+    <div class="scope"><span class="h">Granted</span><ul><li>catalogue:read &middot; price:read</li><li class="no">order:write advertised, NOT granted</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">41 min ago</span><span class="d">handshake &middot; tools/list &middot; 4 tools</span></div>
+    <div class="ctl"><button>Check again</button><button>Revoke</button></div>
+  </div>
+  <div class="row" style="padding-left:34px">
+    <span class="ic"></span>
+    <div>
+      <div class="ttl">Selin's notes server <span class="chip off">Refused</span></div>
+      <div class="sub">https://notes.selinkara.dev/mcp</div>
+      <div class="why">The handshake was refused: <em>connect ECONNREFUSED after 2 attempts, 4.0s</em>. Nothing is claimed about this server either way &mdash; a refusal is not a verdict on what it would have listed. Declared by Selin Kara, who is the only person who can see it today.</div>
+    </div>
+    <div class="scope"><span class="h">Granted</span><ul><li>notes:read</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">Never answered</span><span class="d">declared 2 days ago &middot; checked twice</span></div>
+    <div class="ctl"><button>Check again</button><button>Revoke</button></div>
+  </div>
+
+  <div class="callout"><b>The one open fork on this page.</b> The table's own comment says a model&#8209;context server "acts with the user's authority, so it hangs off the user"; the register calls them "servers the house agents may call". Both cannot be true. Today a server is keyed to <em>one person in one restaurant</em> — so Selin's row is invisible to Hasan, who owns the house, and deleting Selin's account deletes the Toast bridge with it. Claude, Notion, Slack and Claude Code all resolve this the same way: <b>the house declares which servers may exist; each person consents to the ones that act as them.</b></div>
+
+  <!-- ══ REGISTER II — WHAT THE HOUSE PAYS WITH ═══════════════════════ -->
+  <div class="sec-h"><span class="sec-n">Register II</span><h2>What the house pays with</h2></div>
+  <p class="sec-d">Instruments on file for Lokanta Müdavim. Every field is a copy of the provider's answer, with the moment we last heard it — the provider stays the system of record.</p>
+  <p class="sec-k">kept for this restaurant · managers and owners may read and change · the plan is Professional</p>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg></span>
+    <div>
+      <div class="ttl">No payment method on file <span class="chip warn">Provider not connected</span></div>
+      <div class="sub">payment_methods &mdash; 0 rows, by construction</div>
+      <div class="why">Not "you have no cards". <em>No card could exist</em> — the provider has never been keyed, so the create path refuses with the same sentence this row carries. When the three secrets land, this register fills from Stripe rather than from a form.</div>
+    </div>
+    <div class="scope"><span class="h">Will hold</span><ul><li>Brand, last four, printable expiry</li><li>The provider's own reference</li><li class="no">Never a card number, CVC or address</li></ul></div>
+    <div class="last"><span class="h">Last reconciled</span><span class="w em">&mdash;</span><span class="d">Nothing has ever been synced.</span></div>
+    <div class="ctl"><button disabled>Add a card</button><span class="ctlnote">Disabled because Stripe is not connected, not because of your role.</span></div>
+  </div>
+
+  <div class="callout"><b>Where this used to live.</b> This register is on <em>/profile</em> today, on a page every member of the house reaches — and the list endpoint has no role check, only the buttons do. So the day this house hires a third person, that person's own profile page shows the house's cards. Moving the register here does not add a gate; it makes the missing one obvious.</div>
+
+  <!-- ══ REGISTER III — PERSONAL GRANTS ACTING INSIDE THE HOUSE ═══════ -->
+  <div class="sec-h"><span class="sec-n">Register III</span><h2>Personal grants that act inside this house</h2></div>
+  <p class="sec-d">These belong to a person, not to Lokanta Müdavim. They are listed here because they act here — and they are the rows this page can name but cannot revoke. Only their owner can, from their own profile.</p>
+  <p class="sec-k">kept on a person's account · listed, never revocable from this page · four rows</p>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+    <div>
+      <div class="ttl">Google Drive &middot; hasan@lokantamudavim.com <span class="chip on">Connected</span> <span class="owner">Hasan Demir's</span></div>
+      <div class="sub">drive.file &middot; openid &middot; email &mdash; connected 22 August 2026</div>
+      <div class="why">The house's inventory exports and scanned menus are written into <em>Hasan's personal Drive</em>, not into a folder the restaurant owns. If Hasan leaves, the files leave with him and the export silently starts failing. Narrow scope — we can only touch files we created.</div>
+    </div>
+    <div class="scope"><span class="h">May do</span><ul><li>Create and edit files it made</li><li class="no">Cannot read his other documents</li><li class="no">Cannot touch his mail</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">Yesterday, 18:02</span><span class="d">wrote &ldquo;Stok &mdash; Ağustos 2026.xlsx&rdquo;</span></div>
+    <div class="ctl"><button disabled>Revoke</button><span class="ctlnote">Only Hasan Demir can revoke this, from his profile.</span></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg></span>
+    <div>
+      <div class="ttl">Google sign-in &middot; 3 people <span class="chip on">Linked</span> <span class="owner">each person's</span></div>
+      <div class="sub">hasan@lokantamudavim.com &middot; selin@lokantamudavim.com &middot; emre@lokantamudavim.com</div>
+      <div class="why">Identity only. These prove who someone is at the door; they carry <em>no token and grant no access</em> to anything. Listed here so "everything that touches this house" is one list — and so an unexpected fourth name would be visible.</div>
+    </div>
+    <div class="scope"><span class="h">Grants</span><ul><li>Proof of identity at sign-in</li><li class="no">No API access of any kind</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">Today, 08:14</span><span class="d">Selin Kara signed in</span></div>
+    <div class="ctl"><button disabled>Unlink</button><span class="ctlnote">Each person unlinks their own, from their profile.</span></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg></span>
+    <div>
+      <div class="ttl">Phones receiving this house's alerts &middot; 4 <span class="chip on">Registered</span> <span class="owner">each person's device</span></div>
+      <div class="sub">Expo push &mdash; 2 iPhone, 1 iPad, 1 Android</div>
+      <div class="why">Low-stock warnings, delivery arrivals and approval requests leave the building to these four devices. <em>A device nobody recognises is the signal</em> this register exists to make visible — an old phone that still receives is the same as an unrevoked key.</div>
+    </div>
+    <div class="scope"><span class="h">Receives</span><ul><li>Alerts, deliveries, approvals</li><li class="no">No figures in the payload</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">4 hours ago</span><span class="d">&ldquo;Kavaklıdere delivery at the door&rdquo;</span></div>
+    <div class="ctl"><button disabled>Remove a device</button><span class="ctlnote">Each person manages their own devices.</span></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg></span>
+    <div>
+      <div class="ttl">Microsoft Excel <span class="chip off">Not connected</span> <span class="owner">would be a person's</span></div>
+      <div class="sub">Files.ReadWrite &middot; User.Read &middot; offline_access</div>
+      <div class="why">Offered and never taken up by anyone here. Drawn at the same weight as the live rows above on purpose &mdash; <em>an attachment nobody has made must not look smaller than one they have</em>, or the page starts flattering itself.</div>
+    </div>
+    <div class="scope"><span class="h">Would ask for</span><ul><li>Create and edit workbooks it made</li><li class="no">Never Outlook mail</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">Never connected</span></div>
+    <div class="ctl"><button>Connect yours</button><span class="ctlnote">Connects to your account, not the house's.</span></div>
+  </div>
+
+  <!-- ══ REGISTER IV — THE DEPLOYMENT'S ═══════════════════════════════ -->
+  <div class="sec-h"><span class="sec-n">Register IV</span><h2>Set once for every house on this deployment</h2></div>
+  <p class="sec-d">Three keys nobody in this restaurant can change, listed because they act here anyway. A page that shows only what a house controls is not a list of what acts on its behalf.</p>
+  <p class="sec-k">kept in the deployment's environment · read-only here · named so a support call starts with a fact</p>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></span>
+    <div>
+      <div class="ttl">Model provider &middot; Anthropic <span class="chip on">Configured</span></div>
+      <div class="sub">api.anthropic.com &middot; ANTHROPIC_API_KEY &middot; anthropic-version 2023-06-01</div>
+      <div class="why">The engine behind every drafted vendor letter, every extracted invoice line and every insight sentence. <em>It reads this house's data to write them.</em> Named here because a house is entitled to know which model wrote the letter it is about to seal.</div>
+    </div>
+    <div class="scope"><span class="h">Sees</span><ul><li>Order and invoice text, catalogue rows</li><li class="no">No card, no password, no token</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w">18 minutes ago</span><span class="d">drafted a reply to Kavaklıdere</span></div>
+    <div class="ctl"><button disabled>Change</button><span class="ctlnote">Deployment setting.</span></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5"/></svg></span>
+    <div>
+      <div class="ttl">Token encryption <span class="chip on">Configured</span></div>
+      <div class="sub">INTEGRATION_TOKEN_ENCRYPTION_KEY &middot; MCP_CONNECTION_SECRET_KEY &middot; AES-256-GCM</div>
+      <div class="why">Two keys, not one. The first encrypts Google and Microsoft refresh tokens; the second encrypts model-context secrets. <em>Without either, the connections it protects are disabled rather than stored in the clear</em> — the failure is a refusal, never a quiet downgrade.</div>
+    </div>
+    <div class="scope"><span class="h">Protects</span><ul><li>Refresh tokens at rest</li><li>Per-server model-context secrets</li></ul></div>
+    <div class="last"><span class="h">Last rotated</span><span class="w em">&mdash;</span><span class="d">No rotation has been recorded.</span></div>
+    <div class="ctl"><button disabled>Rotate</button><span class="ctlnote">Deployment setting.</span></div>
+  </div>
+
+  <div class="foot">
+    <b>Everything on this page is drawn by one row component.</b> A live POS feed and an unconnected Excel grant get the same amount of design — what separates them is the chip, whether the control is live, and the sentence under it. The page therefore cannot flatter an empty attachment by drawing it richer than its evidence, and there is no control on it that can appear to succeed.<br><br>
+    <b>Four things on every row, and no fifth.</b> Every row says whose it is (<em>the house's</em> · <em>a person's</em> · <em>the deployment's</em> · <em>public</em>), what it may do, what it last did, and how to stop it. A row that cannot be stopped from here names who can stop it. An unknown is an em dash — never a zero, and never a blank a save could write back.
+  </div>
+</div>
+</body>
+</html>

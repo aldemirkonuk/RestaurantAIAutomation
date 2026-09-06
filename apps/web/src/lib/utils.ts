@@ -49,8 +49,24 @@ export function formatNumber(value: number, mode: FormatMode = 'full'): string {
   return value.toLocaleString('en-US')
 }
 
-/** @deprecated Use formatMoney instead */
-export function formatCurrency(value: number, currency: string = 'USD', locale: string = 'en-US'): string {
+/**
+ * @deprecated Use `formatMoney` from `lib/currency` instead.
+ *
+ * The `currency = 'USD'` default is gone (ADR 0117 Q25/Q30, 2026-09-05). It was
+ * the same fault as `restaurants.currency DEFAULT 'USD'`, one layer up: a caller
+ * that never thought about currency got dollars, and after Q30 cleared every
+ * unattributable value to NULL there are live houses whose currency is not
+ * recorded at all. A caller with nothing to pass now gets the number and a
+ * caveat, which is legible; it used to get a dollar sign, which was a claim.
+ */
+export function formatCurrency(
+  value: number,
+  currency: string | null = null,
+  locale: string = 'en-US',
+): string {
+  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
+    return `${value.toLocaleString(locale)} (currency not recorded)`
+  }
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency,
