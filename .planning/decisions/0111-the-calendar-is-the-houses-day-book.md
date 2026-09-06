@@ -1,10 +1,13 @@
 # 0111 — The calendar is the house's day-book of events, deadlines and the world outside
 
-- **Status:** **Proposed — 2026-09-03. Slices 1-3 and the iCal fixes are BUILT behind
-  `mudavym_design_calendar`; founder review open.** The document was a draft until the
-  founder answered five of its six forks the same day. Those answers are recorded below,
-  the build order they unblocked was executed as far as slice 3, and slices 4-9 remain
-  unbuilt and undispatched.
+- **Status:** **Proposed — 2026-09-03. Slices 1-3, the iCal fixes and slice 7
+  (§5 connection direction 1, PUSH) are BUILT; founder review open.** The document
+  was a draft until the founder answered five of its six forks the same day. Those
+  answers are recorded below, the build order they unblocked was executed as far as
+  slice 3, and slice 7 was built on 2026-09-06 out of order — see *Direction 1
+  built* below, and the deviation table in it. Slices 4-6, 8 and 9 remain unbuilt.
+  Slices 1-3 sit behind `mudavym_design_calendar`; the push sits behind
+  `CALENDAR_PUSH_ENABLED`, default OFF.
 
   **The founder's five decisions, 2026-09-03 — each supersedes what this ADR proposed:**
 
@@ -96,6 +99,101 @@
   works for every tenant. The cost is stated rather than hidden: a house nobody opens
   accumulates no history, which matters for slice 9's ninety-day floor and is filed in
   `calendar.md` §13.
+  ---
+
+  ## Direction 1 built — 2026-09-06 (slice 7, PUSH only)
+
+  §5's first connection direction is built on `feat/connect-calendar-push`,
+  behind `CALENDAR_PUSH_ENABLED` (**default OFF**). Nothing is pulled. Nothing
+  is two-way. Directions 2, 3 and 4 are untouched.
+
+  **The scope, as fetched.** `https://developers.google.com/workspace/calendar/api/auth`
+  read live on 2026-09-06 lists **20** calendar scopes. `calendar.app.created`
+  still exists and reads, verbatim: *"Make secondary Google calendars, and see,
+  create, change, and delete events on them."* It remains the narrowest that can
+  do this job — the next two candidates, `calendar` ("See, edit, share, and
+  permanently delete **all** the calendars you can access") and `calendar.events`
+  ("View and edit events on **all** your calendars"), both grant the whole
+  account. The page marks no scope sensitive/restricted, so the §Status
+  submission table's classification is unchanged by this reading.
+
+  | What | Where | Count |
+  |---|---|---|
+  | The definition row, one scope, no `openid`/`email` | `integrations-oauth.constants.ts:132-207` | 1 scope of the 20 published |
+  | Migration — 3 tables, 2 columns, 1 append-only trigger | `supabase/migrations/20260906190000_a_pushed_entry_keeps_the_providers_own_id.sql` | applied on top of all **173** existing migrations in a throwaway Postgres, exit 0; a pre-fix control database without it holds none of the three tables |
+  | The Google seam (no read verb exists in it) | `calendar/push/google-calendar.client.ts` | 3 methods: POST, PUT, DELETE |
+  | The push service | `calendar/push/calendar-push.service.ts` | 8 outcomes, 1 idempotency key |
+  | The reconcile sweep | `calendar/push/calendar-push-reconcile.service.ts` | cron `12 * * * *`, ≤25 entries per house per sweep |
+  | The status route | `calendar/calendar.controller.ts` `GET /calendar/push` | read-only; no "push everything now" control exists |
+  | The register entry | `apps/web/src/pages/connections/next/ConnectionsNext.tsx` Register I | 6 chip states |
+  | Specs | `calendar/push/*.spec.ts` + `ConnectionsNext.test.tsx` | 48 gateway + 13 web, all passing |
+
+  **Three things the BUILD measured that this ADR's §5 had not.**
+
+  1. **There is no single write path to hook.** §5 direction 1 says "one write
+     per mutation" and the brief said to find the calendar service's single
+     write path. `calendar.service.ts` mutates `calendar_events` in **eleven
+     statements across five public methods**, two of them early-returning
+     branches that skip the shared code entirely. Counting them found a real
+     gap the reading had missed: `updateEvent`'s `updateScope: "all"` updates
+     the **parent** of a series and then pushes only the occurrence, so the
+     parent's copy in Google would have kept its old title for ever — on the one
+     scope a person picks when they mean *change all of them*. Eight of the
+     eleven are pushed through one private funnel; three are bookkeeping that
+     changes nothing a copy would show. `push-write-paths.spec.ts` pins both
+     numbers so a twelfth statement cannot be added without deciding.
+  2. **The idempotency key can be the provider's event id, which makes the
+     retry free.** Google Calendar accepts a client-supplied `id` on
+     `events.insert` and answers a repeat with **409 `duplicate`**; the id must
+     be base32hex (RFC 4648 §7, `0-9a-v`), and a lowercase sha256 hex digest is
+     a strict subset of that alphabet. So `sha256(restaurant | entry |
+     connection)` — exactly §5's "(restaurant, entry, provider account)" — is
+     both our uniqueness constraint and Google's, and a retry after a lost
+     mapping produces one event with **no search**. The spec wipes the mapping
+     on purpose and asserts `google.events.size === 1`.
+  3. **"The connection row says reconnect" had nowhere to be written.**
+     `integration_oauth_connections` carried only `token_expires_at`, which
+     passes on every healthy grant between refreshes — reading it as "reconnect"
+     would mark every working connection broken once an hour. Two columns were
+     added (`reconnect_required_at`, `reconnect_reason`) and, more to the point,
+     `getAccessToken` did not previously record a failed refresh **anywhere but
+     a log line**: the provider's own `invalid_grant` sentence reached the log
+     and the grant row went on looking healthy. That is fixed at
+     `integrations-oauth.service.ts` (`markReconnectRequired`), and cleared by a
+     successful reconsent in `storeConnection`.
+
+  **Absence is not health, in three places.** (a) `calendar_push_outcomes` is an
+  append-only row per attempt with **eight** named outcomes, because a push that
+  silently does not happen leaves no other trace — the house's Google calendar
+  simply lacks an event and every internal count still agrees with itself.
+  (b) `GET /calendar/push` answers with counts, and every count is **nullable**:
+  "0 of 40 pushed" and "the register could not be counted" are different values,
+  and the sentence *"in sync"* is unreachable by construction —
+  `pushSentence()`'s only use of those two words is inside its own refusal.
+  (c) The reconcile sweep distinguishes *nothing owed* from *nothing known* from
+  *nothing connected* and prints all three differently.
+
+  **Deviations from what §5 wrote, each stated rather than absorbed.**
+
+  | # | §5 said | What was built | Why |
+  |---|---|---|---|
+  | 1 | "Adding `google_calendar` is a row in `INTEGRATION_DEFINITIONS`, **not a migration**" | True of the CONNECTOR, and one migration was still needed | It is the mapping table §5 itself budgets for, plus the two reconnect columns that §5's "the connection row says reconnect" has no home for otherwise |
+  | 2 | Nothing about a switch | Default **OFF** behind `CALENDAR_PUSH_ENABLED` | §4 puts a push in the same class as sending mail. A first ship of that arms deliberately, like `CALENDAR_REMINDERS_ENABLED` and unlike the weather prefetch |
+  | 3 | Nothing about the account's address | The register names the **person** who consented and the secondary calendar's own id, never the Google address | Following `gmail_send` and `gmail_read`: no `openid`/`email`. The calendar id is the better answer to "which account" anyway — it is where the writes land and it does not change when somebody renames a mailbox |
+  | 4 | "Quotas are not a constraint" (of direction 2) | Still backs off on 429 and on a 403 whose reason is a rate reason | A 403 is both "too fast" and "not allowed" in this API; branching on the status alone either retries a permanent refusal for ever or never retries a rate limit |
+
+  **What is NOT proven, and cannot be here.** A live push. The gateway's
+  `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are unset on every deployment, no
+  consent screen has ever been shown for this scope, and the app is still
+  unsubmitted for verification (§Status, 2026-09-04). So the service is proven
+  against a **stateful mocked Google** with recorded request shapes — one that
+  409s a repeated id and 404s an update to a removed event, as the real API
+  does. Everything in the table above is a statement about behaviour; nothing in
+  it is a statement about a real Google account. The first thing to do when the
+  credentials exist is connect one house and read `GET /calendar/push`.
+
+  ---
+
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** calendar, day-book, weather, forecast, covers, quant, vendor-cutoff,
@@ -596,6 +694,17 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-06 — **§5 connection direction 1 (push) built**, out of the slice order,
+  on `feat/connect-calendar-push`. The full account is in *Direction 1 built*
+  above; the three things the build measured that the research pass had not were
+  that there is **no single write path** in the calendar service (eleven mutation
+  statements, and counting them found a real gap on `updateScope: "all"`), that
+  the idempotency key can BE the Google event id and make a retry free, and that
+  *"the connection row says reconnect"* had nowhere to be written and no writer —
+  a failed refresh reached a log line and left the grant row looking healthy.
+  Four deviations from what §5 wrote are tabled there rather than absorbed. **No
+  live push is proven and none can be**: the gateway's Google credentials are
+  still unset everywhere.
 - 2026-09-04 — **observations recorded from today, and the forecast is scored.**
   `weather_observations` (`20260904140000`) stores what the nearest station
   measured; `day-record.service.ts` writes the first non-null `accuracy_score`

@@ -43,6 +43,14 @@ operator (`Sidebar.tsx:110`).
 - Capture a meeting memo after a meeting
 - Link events to vendors
 - "Add calendar event" from the command palette deep-links straight into the create modal
+- **The day-book pushes itself to Google** (ADR 0111 §5 direction 1, built 2026-09-06,
+  behind `CALENDAR_PUSH_ENABLED`, default OFF). Every create, update, cancel and delete
+  writes one copy into a *secondary* calendar Mudavym makes in the connected account
+  under `calendar.app.created` — Google's narrowest scope, which cannot reach a personal
+  or shared calendar at all. Nothing is read back and nothing is two-way. A copy deleted
+  inside Google **comes back on the next push**; delete the entry here to remove it there.
+  An hourly sweep re-pushes what is owed and reports, per house, *"n of N pushed"* —
+  never "in sync". The connection is made and ended on `/connections` Register I
 
 **Added by the Mudavym rebuild** (behind `mudavym_design_calendar`; the shipping page is
 unchanged with the flag off):
@@ -777,6 +785,38 @@ interception.
   confirmed the feed subscribes" (`v3.0-TECH-DEBT.md:243-245`); the subscribe UI
   lives in Settings and Dashboard, but the untested feed serves this page's data.
 
+### Found while building the push to Google, 2026-09-06 (ADR 0111 direction 1)
+
+1. 🔴 **`updateEvent`'s `updateScope: "all"` updated the series PARENT and nothing
+   downstream knew.** The branch writes the parent (`calendar.service.ts`, the
+   `updateScope === "all"` block) and then falls through to update and return the
+   OCCURRENCE. Every consumer downstream of the occurrence therefore saw the change and
+   nothing that keyed on the parent did — which for the Google copy meant the parent kept
+   its old title for ever, on the one scope a person picks when they mean *change all of
+   them*. **Found by counting the eleven `calendar_events` mutation statements in the
+   file, not by reading the method.** Closed for the push (site 8 of 8); it is worth a
+   separate look at whether the iCal feed and the reminder job have the same blind spot,
+   because neither was checked.
+2. 🟠 **A failed token refresh left the grant row looking healthy.**
+   `IntegrationsOauthService.getAccessToken` threw with the provider's own
+   `invalid_grant` sentence, that sentence reached a log line, and
+   `integration_oauth_connections` recorded nothing at all — so `/connections` and
+   `/profile` both went on drawing a grant that could not be used. Closed by
+   `reconnect_required_at` / `reconnect_reason` (`20260906190000`) plus
+   `markReconnectRequired`, cleared on a successful reconsent. It applies to **every**
+   grant, not only the calendar one.
+3. 🟡 **`public.users` has no `full_name` column** (it is `name`, baseline:5848-5861).
+   A first draft of the push read `full_name` to name the grant's owner; PostgREST
+   answers 42703 and fails the WHOLE select, silently for any caller that does not read
+   `error`. Caught by `scripts/check_read_columns_exist.py` before it left the worktree —
+   which is the guard working exactly as intended, recorded here because the same read
+   appears elsewhere in the codebase and may not be.
+4. **There is still no way to prove a live push.** `GOOGLE_CLIENT_ID` /
+   `GOOGLE_CLIENT_SECRET` are unset on every deployment and the app is unsubmitted for
+   verification, so the service is proven against a stateful mocked Google with recorded
+   request shapes and nothing more. The first real test is one house connected and
+   `GET /calendar/push` read.
+
 ### Found while rebuilding the page, 2026-09-02 — all OUTSIDE `pages/calendar/next/**`
 
 Measured against the local gateway running on this branch, pointed at the production
@@ -1270,11 +1310,17 @@ ADR's; the order is not preference — each slice earns the trust the next one s
     [[0013-one-commitment-guardrail|ADR 0013]]'s leaves-the-house test. The
     dispatcher already fails loudly when the allowlist and its switch disagree
     (`ask-ai.service.ts:955-959`), so the widening is safe by construction.
-26. **Google Calendar connector — push** (**M**). A `google_calendar` row in
-    `INTEGRATION_DEFINITIONS`, scope `calendar.app.created`, one mapping table. **No
-    migration for the connector itself.** Requires the gateway's `GOOGLE_CLIENT_ID` /
-    `GOOGLE_CLIENT_SECRET` and a registered redirect URI, neither of which this deployment
-    has. Also the only way a Google Meet link can exist on an entry.
+26. ~~**Google Calendar connector — push** (**M**)~~ — **done 2026-09-06**, out of
+    order, with four deviations tabled in ADR 0111's *Direction 1 built* section: one
+    migration WAS needed (the mapping tables plus the two reconnect columns), the push
+    is behind `CALENDAR_PUSH_ENABLED` default OFF, the register names the person who
+    consented rather than the Google address (the scope never reads it), and a 429 or a
+    rate-reason 403 backs off. **Still requires** `GOOGLE_CLIENT_ID` /
+    `GOOGLE_CLIENT_SECRET`, which no deployment has — so no live push is proven. A Meet
+    link is still unbuilt: it needs `conferenceData.createRequest`, which sends
+    invitations and is therefore an ADR 0013 seal decision, not a field. Original text:
+    A `google_calendar` row in `INTEGRATION_DEFINITIONS`, scope `calendar.app.created`,
+    one mapping table. **No migration for the connector itself.**
 27. **Pull, then two-way** on the same connector (**L**). Sync tokens, watch-channel renewal,
     an external-event read-only lane, and the conflict rules stated in ADR 0111 §5 —
     last-writer-wins **per field**, a delete that never wins silently, the loser kept as a

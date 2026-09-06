@@ -76,8 +76,24 @@ the two registers that would actually leak are refused at the gateway as well.
 - **Register I — what the house has attached.** The till (POS ingest over 30
   days, by source), the payment provider (which secrets are set, whether a
   signed delivery has ever arrived), the sender identity, the calendar feed
-  (address, copy, regenerate), the public page *(states that none exists for a
-  house — see §9)*, and the model-context servers with a row each.
+  (address, copy, regenerate), **the day-book pushed to Google**, the public
+  page *(states that none exists for a house — see §9)*, and the model-context
+  servers with a row each.
+- **Push the day-book to Google** (ADR 0111 §5 direction 1, added 2026-09-06).
+  Beside the iCal feed and not folded into it: the feed is the house PUBLISHING
+  to anyone holding a link, and this is the house WRITING into one named
+  person's account, so one chip cannot describe both. The row names whose
+  account and **which secondary calendar** (by the id every write is addressed
+  to), connects through the existing `/authorize/:integrationId` consent screen
+  rather than a second one, disconnects through the same door every other grant
+  uses, and carries the honest line on its face: *a copy deleted inside Google
+  comes back on the next push*. Its chip has **six** states — not offered here ·
+  not connected · house let go · needs reconnecting · switched off · *n* of *N*
+  pushed — because a two-state chip would show "Connected" over a grant a
+  manager has stopped, over an expired token and over a deployment with the push
+  switched off, all of which mean this house's entries are NOT in Google. Every
+  count comes from the gateway and every count is nullable: an unread count
+  draws as *Count unread*, never as a zero.
 - **Model-context rows** carry the declarer, the reader's own consent, how many
   people have consented, the tools granted by name, and which of those can
   change something outside this app. *(New this pass: consent and per-tool
@@ -553,6 +569,8 @@ manager; a staff member reaches the written refusal.
 | GET | `/communications/sender-identity` | JWT | **new this pass** — the address and its scope, never a credential |
 | GET | `/calendar/ical-token` | JWT | provisions on read |
 | POST | `/calendar/ical-token/regenerate` | JWT | revokes every subscription |
+| GET | `/calendar/push` | JWT | **new 2026-09-06 (ADR 0111 direction 1)** — how much of this house's day-book is in Google. Counts are **nullable**: "0 of 40 pushed" and "the register could not be counted" are different answers, and the word "in sync" is unreachable. Read-only; there is deliberately no "push everything now" control, because a push is a write to a system other people read (ADR 0111 §4) |
+| DELETE | `/integrations/oauth/google_calendar` | JWT | **wired 2026-09-06** — ends the push. Not a new route: the same disconnect every other grant uses, so the consent screen's promises have one implementation |
 | GET | `/mcp-connections` | JWT | **house-scoped this pass**; carries consent and tool grants |
 | GET | `/mcp-connections/runtime` | JWT | `invocation.enabled` is now `true`, with the terms |
 | PUT | `/mcp-connections/:id/consent` | JWT | the caller's own consent; no user id is accepted |
@@ -620,6 +638,22 @@ Each is rendered honestly on the page rather than hidden.
   reference, a use case, two sample messages and a 40-2049-character opt-in
   description — a sheet, not a button. Filed rather than papered over with a
   control that would open nothing.
+- **G-CAL-PUSH — the day-book row can never show a delivered push on this
+  deployment.** `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are unset
+  everywhere, so `availability()` refuses the connector and the row draws *Not
+  offered here* with the gateway's own reason. The Connect control is disabled
+  rather than hidden, and its stop-note carries the reason: a hidden control
+  would make a deployment that cannot connect look identical to one where
+  nobody has. Nothing on this page can close it — it needs the credentials and
+  the verification submission ADR 0111 §Status names.
+- **G-CAL-ADDR — the row cannot name the Google address, and says so.** The
+  `google_calendar` grant asks for `calendar.app.created` and nothing else, so
+  `account_email` is NULL on it by construction (the `openid`/`email` pair is
+  what fills that column, and asking for them for a label would be two read
+  scopes about a person for a cosmetic gain). The row names the person who
+  consented and prints *"The Google address is never read, so it is not shown"*
+  in the Holds column, rather than leaving a blank the reader would fill in with
+  a guess. Same shape as `gmail_send` and `gmail_read`.
 - **G-C11 — a sender can never reach `connected` from this surface.** Only a
   live probe may move a row there and no probe exists (`last_probe_at` is NULL
   on every row, by construction). So the `connected` state is currently
