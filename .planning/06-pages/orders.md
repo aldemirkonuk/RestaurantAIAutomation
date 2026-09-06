@@ -70,6 +70,20 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
   header; the agreement LINE's own chain (`agreementCurrencyDefault`) is unchanged, and
   the fork is filed in [[providers]] §13. Migration
   `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`
+- **The empty currency field says where the emptiness is repaired** (2026-09-06, founder
+  batch 66, verbatim: **"Add the prompt panel"** — *"One panel on the providers page (and
+  the orders sheet's empty field) saying how many vendors have stated a usual currency and
+  linking to the ones that have not. No provenance lie."*). When the vendor picked has
+  stated none, the field's sentence gains the link **"state it on the vendor's profile"**,
+  pointing at `/providers?vendor=<id>`, which opens that vendor's sheet at the control.
+  It changes NOTHING about this order — the house's currency and the vendor's last invoice
+  remain choices in the list, named as evidence and never pre-filled — it is how the next
+  order to them starts with something. **A failed lookup shows no link**: a read that
+  broke is not a vendor who has stated none, and sending somebody to correct a field that
+  may already be filled in would be the same absence-as-health fault wearing a helpful
+  link. A plain anchor, not a router link, so a full navigation is the cost.
+  `apps/web/src/pages/orders/next/AgreementSheet.tsx`; the count itself is
+  `GET /providers/usual-currency/coverage` ([[providers]] §1a)
 - **The agreement's total is drawn from the stated pair, with its working printed** — five cases of twelve at $420 per case reads $2,100, not the $25,200 the old per-bottle arithmetic gave; a quantity or price not yet typed leaves the total an em dash, never a zero
 - **The price register's refusal is said on the page, before the save** — an agreement saved with no price unit shows, in the register's own words, that it will not enter the price register and why. It still saves (a NULL pair is an ordinary row); nobody saves one unknowingly. A price unit the order cannot be counted in (a keg order priced per bottle) blocks the save with the sentence the gateway would answer
 - **Every ledger row states the unit its price is in, and shows the working in that unit** (2026-09-05, ADR 0119 phase 2) — `GET /procurement/orders` joins the line's pair in the same query and the expanded row prints "$420.00 per case (12 bottles)" above "60 bottles ÷ 12 = 5 cases × $420.00 = $2,100.00". A row whose unit is UNSTATED — every order placed before ADR 0119 — prints the price, the register's refusal in words, and **no working of the page's own**: the per-bottle convention would print a case price twelve times over, which is the error this ADR exists to end. A pairing the order cannot be counted in (per keg, counted in bottles) prints the refusal instead of a total, and a route that never read the line says exactly that rather than announcing a refusal about a line nobody looked at
@@ -649,6 +663,18 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
    restaurant look the same.
 
 ## 13. Roadmap
+
+**2026-09-06, batch 66 — the empty currency field now points somewhere (DONE).** The
+founder's option text, verbatim: **"Add the prompt panel"** — *"One panel on the providers
+page (and the orders sheet's empty field) saying how many vendors have stated a usual
+currency and linking to the ones that have not. No provenance lie."* Built by p4bu: the
+sheet's link is in §1a above, the panel and its count in [[providers]] §1a. **No pre-fill
+was restored** — the rejected alternative was defaulting the field from the house, which
+`procurement_orders.currency_source` would record as `typed`, a person's choice nobody
+made. What is still NOT built: nothing tells a manager, at the moment they place an order
+with no currency, that the resulting invoice will be filed under the house's currency
+rather than the order's — the sheet says the order records none, and the consequence one
+rung further on is only named on [[providers]] and [[receiving]].
 
 1. **Delete the `add-from-order` call** (`Orders.tsx:686`) — or, if a separate booking
    step is genuinely wanted, build the endpoint. Leaving a permanently-404ing write with

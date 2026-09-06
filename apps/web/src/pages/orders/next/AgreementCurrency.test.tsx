@@ -38,7 +38,15 @@ const postMock = vi.hoisted(() =>
 );
 const getMock = vi.hoisted(() =>
   vi.fn(async (): Promise<{
-    data: { code: string | null; basis: string | null; sentence: string };
+    // `alsoKnown` is what the gateway shows but does NOT pre-fill (the house's
+    // currency and the vendor's last invoice); the batch-66 tests below send it,
+    // so the double's type must carry it or they cannot state the case.
+    data: {
+      code: string | null;
+      basis: string | null;
+      sentence: string;
+      alsoKnown?: { vendorPaper: string | null; house: string | null };
+    };
   }> => ({
     data: {
       code: 'TRY',
@@ -161,6 +169,65 @@ describe('the agreement currency field', () => {
     const field = (await screen.findByLabelText('Currency')) as HTMLSelectElement;
     await waitFor(() => expect(field.value).toBe(''));
     expect(screen.getByText(/currency not recorded/)).toBeTruthy();
+  });
+
+  /*
+   * BATCH 66 — the empty field says where the emptiness is repaired.
+   *
+   * THE FOUNDER, 2026-09-06, verbatim: *"Add the prompt panel"* — "One panel on
+   * the providers page (and the orders sheet's empty field) saying how many
+   * vendors have stated a usual currency and linking to the ones that have not.
+   * No provenance lie."
+   *
+   * The link is not decoration: with nothing pre-filled and no vendor profile
+   * filled in, every order records no currency, `procurement_orders.currency`
+   * stays NULL and the order rung of the filing chain never fires. It changes
+   * nothing about THIS order — the house's currency is still only a choice in
+   * the list — it is how the next one starts with something.
+   */
+  it('points at the vendor’s profile when they have stated no usual currency', async () => {
+    getMock.mockResolvedValue({
+      data: {
+        code: null,
+        basis: null,
+        sentence:
+          'Anadolu Şarap has not stated a usual currency, so nothing is pre-filled here. For what it is worth: this house reports in TRY. Either is available in the list.',
+        alsoKnown: { vendorPaper: null, house: 'TRY' },
+      },
+    });
+    mount();
+    await screen.findByLabelText('Currency');
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'prov-1' } });
+
+    const link = await screen.findByTestId('state-usual-currency-link');
+    expect(link).toHaveAttribute('href', '/providers?vendor=prov-1');
+    // the house's currency is still OFFERED as a choice, never assumed
+    expect((screen.getByLabelText('Currency') as HTMLSelectElement).value).toBe('');
+    expect(screen.getByText(/this house reports in TRY/)).toBeTruthy();
+  });
+
+  it('does not point anywhere when the lookup FAILED', async () => {
+    // A failed read is not a vendor who has stated none. Sending somebody to a
+    // profile to fill in a field that may already be filled in would be the
+    // absence-as-health fault wearing a helpful link.
+    getMock.mockRejectedValue(new Error('gateway down'));
+    mount();
+    await screen.findByLabelText('Currency');
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'prov-1' } });
+    await waitFor(() =>
+      expect((screen.getByLabelText('Currency') as HTMLSelectElement).value).toBe(''),
+    );
+    expect(screen.queryByTestId('state-usual-currency-link')).toBeNull();
+  });
+
+  it('does not nag when the vendor has already stated one', async () => {
+    mount();
+    await screen.findByLabelText('Currency');
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'prov-1' } });
+    await waitFor(() =>
+      expect((screen.getByLabelText('Currency') as HTMLSelectElement).value).toBe('TRY'),
+    );
+    expect(screen.queryByTestId('state-usual-currency-link')).toBeNull();
   });
 
   it('sends the confirmed default with the order', async () => {

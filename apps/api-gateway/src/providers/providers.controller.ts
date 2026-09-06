@@ -36,6 +36,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
 import {
   readVendorCurrency,
+  usualCurrencyCoverageSentence,
   vendorCurrencySentence,
 } from "./vendor-currency";
 
@@ -55,6 +56,49 @@ export class ProvidersController {
   // =========================================================================
   // STATIC ROUTES (must come before :id params)
   // =========================================================================
+
+  // =========================================================================
+  // B2 (batch 66) — how many vendors have stated a usual currency.
+  //
+  // THE FOUNDER, 2026-09-06, batch 66, verbatim: *"Add the prompt panel"* —
+  // "One panel on the providers page (and the orders sheet's empty field)
+  // saying how many vendors have stated a usual currency and linking to the
+  // ones that have not. No provenance lie."
+  //
+  // READABLE BY MANAGERS AND STAFF ALIKE: it is information about the house's
+  // own book, not an act. Only STATING a currency is manager-gated
+  // (`PATCH :id/usual-currency` below), and a staff member who can see which
+  // vendors are unanswered is the person most likely to ask a manager to
+  // answer them.
+  //
+  // Two static segments, so `@Get(":id")` and `@Get(":id/usual-currency")`
+  // cannot swallow it; declared here with the other static routes regardless.
+  // =========================================================================
+  @Get("usual-currency/coverage")
+  @ApiOperation({
+    summary: "How many of this house's vendors have stated a usual currency",
+    description:
+      "A count and the names that are missing, for the providers page's prompt panel and the order sheet's empty currency field. It PRE-FILLS NOTHING and writes nothing: the repair for an unstated vendor is a person stating it on that vendor's profile, never a house-derived default recorded as somebody's choice. Live vendors only (is_active is not false and deleted_at is null) — the retired ones can take no order. A stored value that is not an ISO 4217 currency counts as unstated and is returned with the code it holds. A failed read is a 503 with the reason, never a coverage of zero.",
+  })
+  async usualCurrencyCoverage(
+    @CurrentUser() user: { id: string; restaurantId: string },
+  ): Promise<{
+    stated: number;
+    total: number;
+    unstated: { id: string; name: string; recorded: string | null }[];
+    sentence: string;
+  }> {
+    const counted = await this.providersService.usualCurrencyCoverage(
+      user.restaurantId,
+    );
+    return {
+      ...counted,
+      sentence: usualCurrencyCoverageSentence({
+        stated: counted.stated,
+        total: counted.total,
+      }),
+    };
+  }
 
   @Get("search")
   @ApiOperation({ summary: "Search providers" })

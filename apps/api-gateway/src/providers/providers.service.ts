@@ -27,6 +27,7 @@ import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
+import { isIso4217 } from "../common/iso-4217";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -1524,5 +1525,83 @@ export class ProvidersService {
           .usual_currency_set_at ?? setAt,
       previous: before.code,
     };
+  }
+
+  /**
+   * B2 (batch 66) — how many of this house's vendors have stated one, and which
+   * have not.
+   *
+   * WHICH VENDORS ARE COUNTED, AND WHY. `providers` distinguishes live vendors
+   * from retired ones with two columns that `softDeleteProvider` writes
+   * together (`is_active = false`, `deleted_at = now()`), so the denominator is
+   * the vendors this house can still place an order with. Counting the retired
+   * ones would put a number on the panel that no order sheet will ever read,
+   * and every un-filled retired vendor would make the coverage look worse than
+   * the house's actual exposure.
+   *
+   * THE FILTER IS APPLIED IN CODE, NOT IN THE QUERY, ON PURPOSE. `is_active` is
+   * nullable with `DEFAULT true`, and a PostgREST `is_active=neq.false` DROPS
+   * the NULL rows — so a vendor whose flag was never written would silently
+   * leave the denominator. `flag !== false` keeps them, which is what a NULL
+   * there means.
+   *
+   * A STORED VALUE THAT IS NOT A CURRENCY IS NOT "STATED". `ZZZ` was writable
+   * in this column until 2026-09-06 and the order sheet offers nothing for it
+   * (`vendorCurrencySentence`), so counting it as stated would report coverage
+   * the order sheet does not have. Those vendors appear in `unstated` with the
+   * code they hold, so the panel can say "recorded as ZZZ" rather than
+   * "has stated none".
+   *
+   * A FAILED READ IS A FAILURE IN WORDS, never a coverage of zero.
+   */
+  async usualCurrencyCoverage(restaurantId: string): Promise<{
+    stated: number;
+    total: number;
+    unstated: { id: string; name: string; recorded: string | null }[];
+  }> {
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("id, name, usual_currency, is_active, deleted_at")
+      .eq("restaurant_id", restaurantId);
+
+    if (error) {
+      this.logger.error("Failed to count stated vendor currencies", {
+        restaurantId,
+        error: error.message,
+      });
+      throw new ServiceUnavailableException(
+        `How many vendors have stated a usual currency could not be read (${error.message}). That is a failed read, not a house whose vendors have stated none.`,
+      );
+    }
+
+    const rows = (data ?? []) as {
+      id: string;
+      name?: string | null;
+      usual_currency?: string | null;
+      is_active?: boolean | null;
+      deleted_at?: string | null;
+    }[];
+
+    const live = rows.filter(
+      (r) => r.is_active !== false && !r.deleted_at,
+    );
+
+    const unstated: { id: string; name: string; recorded: string | null }[] = [];
+    let stated = 0;
+    for (const r of live) {
+      const code = (r.usual_currency ?? "").trim().toUpperCase();
+      if (code !== "" && isIso4217(code)) {
+        stated += 1;
+        continue;
+      }
+      unstated.push({
+        id: r.id,
+        name: (r.name ?? "").trim() || "This vendor",
+        recorded: code === "" ? null : code,
+      });
+    }
+    unstated.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { stated, total: live.length, unstated };
   }
 }

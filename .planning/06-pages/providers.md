@@ -95,6 +95,42 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
     `providers.controller.ts` (`GET`/`PATCH :id/usual-currency`, declared before
     `@Get(":id")` or Nest would never reach them), `providers.service.ts`
     (`getUsualCurrency` / `setUsualCurrency`).
+- **"Usual currencies stated" — the prompt panel** (redesign only, above the grid,
+  2026-09-06 batch 66). The founder, verbatim:
+
+  > **"Add the prompt panel"** — "One panel on the providers page (and the orders sheet's
+  > empty field) saying how many vendors have stated a usual currency and linking to the
+  > ones that have not. No provenance lie."
+
+  One panel printing *"3 of your 14 vendors have stated a usual currency"*, with each
+  unstated vendor a link that opens that vendor's TwinSheet at the section where it is
+  stated. It answers the cost batch 65 disclosed: with nothing pre-filled and no vendor
+  profile filled in, every order records no currency, `procurement_orders.currency` stays
+  NULL, the order rung of `filingCurrency` never fires and the chain falls back to the
+  house exactly as before. **The rejected repair was restoring a house-derived pre-fill**,
+  which `procurement_orders.currency_source` would record as `typed` — a person's choice
+  nobody made. This panel pre-fills nothing and writes nothing; it counts and links.
+  - **Never an empty panel.** Zero stated is the sentence *"None of your 14 vendors has
+    stated a usual currency"*; a house with no vendors gets its own sentence. A panel that
+    draws nothing when the answer is "none of them" cannot be told apart from one that
+    failed to load.
+  - **A failed read prints the failure** and says it is not a coverage of zero.
+  - **Live vendors only** — `is_active` is not false and `deleted_at` is null — because a
+    retired vendor takes no order. The filter is applied in code, not in the query:
+    `is_active` is nullable with `DEFAULT true` and a PostgREST `neq.false` would DROP the
+    NULL rows, silently removing vendors the house orders from every week.
+  - **A stored value that is not ISO 4217 does not count as stated** (`ZZZ` was writable
+    here until 2026-09-06) and is listed with the code it holds, so the panel says
+    "recorded as ZZZ" rather than "has stated none".
+  - **Readable by managers and staff alike** — it is information, not an act; only STATING
+    a currency is manager-gated.
+  - `?vendor=<id>` on this page opens that vendor's sheet, read once at mount, so the
+    orders sheet's link can land on the control.
+  - Files: `apps/web/src/pages/providers/next/UsualCurrencyCoveragePanel.tsx`,
+    `ProvidersNext.tsx` (`vendorFromUrl`, the deep-link latch),
+    `apps/api-gateway/src/providers/providers.controller.ts`
+    (`GET /providers/usual-currency/coverage`), `providers.service.ts`
+    (`usualCurrencyCoverage`), `vendor-currency.ts` (`usualCurrencyCoverageSentence`).
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
@@ -458,6 +494,14 @@ in, every new order records no currency, which makes the order rung inert and th
 chain fall back to the house exactly as before. The panel — *"N of your M vendors have
 stated a usual currency"* — is being built by **p4bu**, not by the invoice-currency pass,
 and is not in the tree as of this line.
+
+**2026-09-06, batch 66 — the prompt panel is BUILT** (p4bu; this line supersedes the "not
+in the tree" sentence above, which was true when it was written). `GET
+/providers/usual-currency/coverage` returns `{ stated, total, unstated[], sentence }` for
+the caller's house; `UsualCurrencyCoveragePanel` prints it above the grid with a link per
+unanswered vendor; the order sheet's empty currency field carries the same link. It counts
+and links — no pre-fill was restored anywhere, so no provenance lie was added. §1a holds
+the founder's option text and what the panel does in each of its three states.
 
 **A second, narrower thing was decided in code and is flagged as a fork.** ADR 0117 Q31
 (2026-09-05) set the agreement line's currency to default from *"the vendor's terms or the

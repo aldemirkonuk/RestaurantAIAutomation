@@ -611,6 +611,43 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
             Every amount above is in it — the price, the total, and each of the
             three charges below. Nothing is converted anywhere: a comparison
             across two currencies refuses rather than guessing a rate.
+            {/*
+              THE PROMPT, founder 2026-09-06 batch 66: *"Add the prompt panel"* —
+              "One panel on the providers page (and the orders sheet's empty
+              field) saying how many vendors have stated a usual currency and
+              linking to the ones that have not. No provenance lie."
+
+              Shown only when a vendor IS picked and the gateway ANSWERED that
+              they have stated none. A failed lookup is excluded on purpose: it
+              would send somebody to a profile to fix a field that may already be
+              filled in, and it would state as fact something the read did not
+              return. The house's currency stays a CHOICE in the list above and
+              is named in the gateway's own sentence — this link changes nothing
+              on this order; it is how the next one starts with something.
+
+              A plain anchor rather than a router link: this sheet renders in
+              suites that mount it without a router, and the target page reads
+              `?vendor=` at mount, so a full navigation is the honest cost.
+            */}
+            {providerId &&
+            !currencyDefaultQuery.isLoading &&
+            !currencyDefaultQuery.isError &&
+            currencyDefaultQuery.data &&
+            currencyDefaultQuery.data.code === null ? (
+              <>
+                {' '}
+                This vendor has stated no usual currency —{' '}
+                <a
+                  data-testid="state-usual-currency-link"
+                  href={`/providers?vendor=${encodeURIComponent(providerId)}`}
+                  style={{ color: 'var(--seal-deep, #14515C)' }}
+                >
+                  state it on the vendor&rsquo;s profile
+                </a>{' '}
+                and every future order to them starts with it. Nothing is
+                pre-filled here in the meantime.
+              </>
+            ) : null}
           </Note>
         </fieldset>
 

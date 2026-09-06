@@ -137,3 +137,62 @@ export function vendorCurrencySentence(args: {
     `it, then the currency of the order it is matched to.`
   );
 }
+
+/**
+ * HOW MANY VENDORS HAVE BEEN ASKED — the prompt that keeps the chain alive.
+ *
+ * THE FOUNDER, 2026-09-06, batch 66, verbatim:
+ *   *"Add the prompt panel"* — "One panel on the providers page (and the orders
+ *    sheet's empty field) saying how many vendors have stated a usual currency
+ *    and linking to the ones that have not. No provenance lie."
+ *
+ * The fault this answers was named in batch 65's own report: with nothing
+ * pre-filled and no vendor profile filled in, every new order records no
+ * currency, `procurement_orders.currency` stays NULL, the order rung of
+ * `filingCurrency` is inert, and the whole chain falls back to the house
+ * exactly as before — a feature that degrades to nothing while the product
+ * asks nobody to keep it alive. The rejected repair was restoring a
+ * house-derived pre-fill, which would record `currency_source = 'typed'` over a
+ * value no person typed: a provenance lie in the one column built to tell a
+ * decision from a default.
+ *
+ * THIS COUNT PRE-FILLS NOTHING. It is a count and a list of names. Reading it
+ * changes no order sheet and no vendor row.
+ */
+export function usualCurrencyCoverageSentence(args: {
+  stated: number;
+  total: number;
+}): string {
+  const { stated, total } = args;
+  const vendors = total === 1 ? "vendor" : "vendors";
+  // NEVER AN EMPTY PANEL. Every branch below is a sentence, including the two
+  // that have no list under them, because a panel that renders nothing when the
+  // answer is "none of them" is the absence-reported-as-health fault with a
+  // heading on it: a reader cannot tell it from a panel that failed to load.
+  if (total === 0)
+    return (
+      "There are no vendors on this house's book, so there is nothing to state a " +
+      "usual currency for. When a vendor is added, an order to them starts with an " +
+      "empty currency field until somebody states what they usually invoice in."
+    );
+  if (stated === 0)
+    return (
+      `None of your ${total} ${vendors} has stated a usual currency. ` +
+      `Nothing is assumed in their place — not this house's currency and not the ` +
+      `currency of their last invoice — so every order starts with an empty ` +
+      `currency field, and an invoice matched to such an order is filed under this ` +
+      `house's currency rather than the order's.`
+    );
+  if (stated === total)
+    return (
+      `All ${total} of your ${vendors} ${total === 1 ? "has" : "have"} stated a usual currency. ` +
+      `Each one is offered as the starting currency on an order to that vendor and can ` +
+      `be changed there; none of them files an invoice.`
+    );
+  return (
+    `${stated} of your ${total} ${vendors} ${stated === 1 ? "has" : "have"} stated a usual currency. ` +
+    `An order to one of the remaining ${total - stated} starts with an empty currency ` +
+    `field — nothing is assumed in its place — and an invoice matched to such an order ` +
+    `is filed under this house's currency rather than the order's.`
+  );
+}

@@ -50,6 +50,25 @@ vi.mock('./UsualCurrencySection', () => ({
   UsualCurrencySection: () => null,
 }));
 
+// The grid also carries the batch-66 prompt panel, which reads its own count
+// from the gateway. This file is about the GRID; the panel's three states are
+// asserted in UsualCurrencyCoveragePanel.test.tsx against a mocked apiClient.
+// The double keeps its two props visible so a rename cannot pass silently, and
+// exposes the open-a-vendor callback the panel's links use.
+vi.mock('./UsualCurrencyCoveragePanel', () => ({
+  UsualCurrencyCoveragePanel: ({
+    knownIds,
+    onOpenVendor,
+  }: {
+    knownIds: Set<string>;
+    onOpenVendor: (id: string) => void;
+  }) => (
+    <button type="button" data-testid="coverage-stub" onClick={() => onOpenVendor('p1')}>
+      {`coverage over ${knownIds.size}`}
+    </button>
+  ),
+}));
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {
@@ -134,6 +153,20 @@ describe('ProvidersNext', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('could not be reached');
     fireEvent.click(screen.getByText('Try again'));
     expect(base.refetch).toHaveBeenCalled();
+  });
+
+  it('opens a vendor’s sheet from the currency prompt panel’s link', async () => {
+    // The panel names vendors that have stated no usual currency; its links must
+    // land on the profile section where somebody can state one, or the prompt is
+    // a nag with nowhere to go.
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    expect(screen.getByTestId('coverage-stub')).toHaveTextContent('coverage over 1');
+    fireEvent.click(screen.getByTestId('coverage-stub'));
+    expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
   });
 
   it('admits an empty roster plainly', () => {
