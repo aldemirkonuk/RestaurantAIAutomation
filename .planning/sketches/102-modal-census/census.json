@@ -727,7 +727,7 @@
     },
     {
      "name": "A new order",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -772,15 +772,15 @@
       ]
      ],
      "footer": "Nothing is sent by saving a draft.",
-     "why": "The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext.",
-     "source": "pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found",
+     "why": "The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. BUILT 2026-09-06 (packet 2): several lines, one POST per line because CreateOrderDto carries one, and a per-line account of what landed. The agreed price is OFFERED grey from the NEW route GET /procurement/last-agreement, never applied.",
+     "source": "BUILT 2026-09-06 as pages/orders/next/NewOrderSheet.tsx (was pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903)",
      "acts": null,
      "went": null,
      "fork": "F5"
     },
     {
      "name": "Add a vendor first",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -806,8 +806,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question with two answers. Travels with the new-order sheet.",
-     "source": "components/orders/OrderGuardModal.tsx:27",
+     "why": "A question with two answers. Travels with the new-order sheet. BUILT 2026-09-06: reached before the composer opens on an empty vendor list, and again on the gateway's 403 no_vendors, where it says the order was NOT placed. An unreadable vendor list never opens it.",
+     "source": "BUILT 2026-09-06 as pages/orders/next/VendorFirstPanel.tsx (was components/orders/OrderGuardModal.tsx:27)",
      "acts": null,
      "went": null,
      "fork": null

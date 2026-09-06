@@ -41,6 +41,47 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 ## 1a. Features
 - See the purchase-order list with filters and per-order status through delivery (draft → approved → delivered)
 - Create an order: pick a vendor, build the item list, submit — then approve, edit, or cancel it
+- **A new order, on the rebuilt page — a SHEET with several lines** (built 2026-09-06,
+  packet 2 of the overlay layer; census 102 · fork F5 · ADR 0112).
+  `pages/orders/next/NewOrderSheet.tsx`, opened by *Write a new order* in the masthead.
+  Until it landed the rebuilt page had no manual create path at all: `AgreementSheet`
+  writes ONE line and `DraftRail` shows what the engine drafted, and the thing the
+  legacy desk could do that neither can is the CART.
+  - **One POST per line, because that is what the schema is.** `CreateOrderDto` carries
+    exactly one `inventoryId` and the writer stamps `line_no: 1`
+    (`procurement.service.ts:1263`), so four lines are four orders — exactly how the
+    legacy desk placed them (`pages/Orders.tsx:902-1046`). PARTIAL SUCCESS is therefore
+    the ordinary case and is reported as one: each line says whether it was placed and
+    under what order number, or was refused and with which sentence, and a refused line
+    stays in the composer with its words. Nothing is cleared on a failure.
+  - **The gateway's own refusals are said before the round trip** — a case order with no
+    pack size is refused in the composer with the sentence the gateway would answer.
+  - **A price that was not stated is not sent.** `quotedPrice` is omitted rather than
+    zeroed: a zero records that this vendor charges nothing, which nobody said.
+- **The agreement is offered, never applied, and needs a NEW route** (2026-09-06).
+  `GET /procurement/last-agreement?providerId=&inventoryId=` —
+  `procurement.controller.ts` (`lastAgreement`), service `lastAgreementFor`, pure part
+  `procurement/last-agreement.ts`, spec `last-agreement.spec.ts` (8 assertions). Nothing
+  could answer the census's "price and unit come from the agreement on the vendor's row":
+  `agreement-currency` answers which MONEY, `vendor-terms` carries no prices, and the
+  price register has no controller.
+  - **Three states, kept apart**: `found` (price, its unit pair, the currency, the date
+    and the order it was struck on), `none` (never agreed with this vendor for this item)
+    and `unreadable` (the read FAILED). Every state carries a sentence. A failed read
+    rendered as "no agreed price" would send a vendor a request to quote a wine they have
+    already quoted — absence reported as health, in one request.
+  - **It arrives GREY** (sketch 103, 2c). The figure sits beside the field as a proposal
+    with a *Take it* control and is ink only once a person has taken it. Nothing is
+    prefilled and no unit is converted — a price whose unit was never stated is reported
+    as UNSTATED, never as per bottle (ADR 0119).
+- **"Add a vendor to place orders" is a PANEL that travels with the composer** (built
+  2026-09-06). `pages/orders/next/VendorFirstPanel.tsx`. Two ways in, and the second is
+  the one a pre-flight read can never cover: the empty vendor list stops the composer
+  opening (the legacy desk's rule, `pages/Orders.tsx:296-302`), and the gateway's 403
+  `no_vendors` (`procurement.controller.ts:116-119`) is caught on a real write, where it
+  says **the order was not placed** before anything else. An UNREADABLE vendor list never
+  opens it — that is a different sentence on the composer, because sending a person off
+  to add a vendor they already have is the same fault wearing a different coat.
 - Book a delivered order into inventory in one step
 - AI vendor-email layer: one-tap approve an AI-drafted reply, write a manual reply, pause the AI, cancel a scheduled send
 - See active vendor conversation threads and open the chat/message thread drawer per conversation
@@ -95,6 +136,7 @@ this list is the note-side index (ADR 0044 §2).
 | `orders.draft.drain` | Auto-send countdown | scheduled sends drain linear over the exact remaining ms, cancel live |
 | `orders.agreement.panel` | The composer opens | "Write down an agreement" opens the house `Panel` on `settle`; the composer adds NO motion of its own — a refusal is stated in place, never announced with movement |
 | `orders.responses.sheet` / `.step` | The vendor's answers | the row's "The vendor's answers" opens the house `Sheet` on `tuck`; stepping moves only the position dot (`settle` width, `ink` colour) — the answers themselves do not slide, because three answers are three letters, not three pages of one |
+| `orders.neworder.sheet` | The order composer opens | *Write a new order* opens the house `Sheet` on `tuck` (440); the guard panel opens on `settle`. Neither adds a motion of its own, and `prefers-reduced-motion` renders none — both come from `components/mudavym/Sheet.tsx` |
 | `orders.micro.ink` | Micro-states | hovers, chips, deliver button; ≤2px travel |
 
 Not used, on purpose: no shake, no bouncing checkmarks, no skeleton shimmer for
@@ -172,8 +214,8 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/orders` | What was agreed | panel | Built | A question the house asks before it writes a price. | `pages/orders/next/AgreementSheet.tsx:349` |
 | `/orders` | Make this order repeat | panel | Built | A commitment about the future — a question, answered once. | `pages/orders/next/RecurrenceSheet.tsx:222` |
 | `/orders` | Vendor answers | sheet · wide | Built | One order's correspondence is one object, read at 640 because letters are prose — the wide case ADR 0112 anticipated. | `pages/orders/next/ResponsesSheet.tsx:353` |
-| `/orders` | A new order | sheet | Owed · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. | `pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found` |
-| `/orders` | Add a vendor first | panel | Owed | A question with two answers. Travels with the new-order sheet. | `components/orders/OrderGuardModal.tsx:27` |
+| `/orders` | A new order | sheet | Built · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. BUILT 2026-09-06 (packet 2): several lines, one POST per line because CreateOrderDto carries one, and a per-line account of what landed. The agreed price is OFFERED grey from the NEW route GET /procurement/last-agreement, never applied. | `BUILT 2026-09-06 as pages/orders/next/NewOrderSheet.tsx (was pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903)` |
+| `/orders` | Add a vendor first | panel | Built | A question with two answers. Travels with the new-order sheet. BUILT 2026-09-06: reached before the composer opens on an empty vendor list, and again on the gateway's 403 no_vendors, where it says the order was NOT placed. An unreadable vendor list never opens it. | `BUILT 2026-09-06 as pages/orders/next/VendorFirstPanel.tsx (was components/orders/OrderGuardModal.tsx:27)` |
 | `/orders` | Wine config | — | Retires | What was agreed (unit · price · currency) on the ledger row. | `pages/Orders.tsx:2903` |
 | `/orders` | Reject this order? | — | Retires | Vendor answers — 'Hold to reject', with the reason in words. | `pages/Orders.tsx:3359 (SealedRejectDie)` |
 | `/orders` | Provider comms thread | — | Retires · fork F4 | Vendor answers reads the thread; the composer writes. **Pause / resume the AI on this thread** becomes a control in the responses sheet's head (decided 2026-09-05, F4) — a switch, not an overlay. | `components/orders/CommsThreadDrawer.tsx:436` |
@@ -216,6 +258,7 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | POST | `/procurement/orders/:id/cancel-seal-challenge` | `services/api/orders.ts::mintOrderCancelSeal`, called from both dies' `onChallenge`. Mints act `cancel`; refuses 422 for a cancellation the house would not perform, so the reason arrives at the START of the hold |
 | POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275`; `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`, `pages/dashboard/next/WaitingOnYou.tsx` — all via `services/api/orders.ts`. **Can answer 403** since ADR 0116 |
 | GET | `/procurement/order-approval-gate` | `pages/orders/next/useOrdersNextData.ts` — one call per house, not per row |
+| GET | `/procurement/last-agreement?providerId=&inventoryId=` | **NEW 2026-09-06** (packet 2). `pages/orders/next/NewOrderSheet.tsx`, once per (vendor, item) pair. Answers `found` / `none` / `unreadable` with a sentence for each; the restaurant is the token's and both ids are required (a 400 otherwise — an agreement resolved without a vendor is the last price from anybody) |
 | POST | `/procurement/orders/:id/recurrence` | `pages/orders/next/RecurrenceSheet.tsx`. Body is `{ frequency, anchorDay?, startsOn? }` and **there is no `nextDueOn` field** — the next date is derived. **400** on an order nobody has approved (`not_approved`), on an order that is itself an occurrence (`child_cannot_recur`), on an unknown rule or an anchor outside its frequency's range |
 | POST | `/procurement/orders/:id/recurrence/{pause,resume,end}` | same sheet. Plain acts with an audit row, deliberately NOT sealed — they commit no money. A resume rolls the next date FORWARD past every date the series slept through, so a rule paused in March and resumed in September does not mint one order a day until it catches up |
 | POST | `/procurement/orders/:id/deliver` | `pages/Orders.tsx:651` |

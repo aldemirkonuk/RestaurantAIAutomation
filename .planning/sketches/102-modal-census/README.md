@@ -40,9 +40,9 @@ page's ground). Filter by shape and by status.
 | | |
 |---|---|
 | Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 32 |
+| Built on the primitive | 34 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 11 |
+| Owed — an act the rebuilt page does not yet offer | 9 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
@@ -110,8 +110,8 @@ page's ground). Filter by shape and by status.
 | `/orders` | What was agreed | panel | Built | A question the house asks before it writes a price. | `pages/orders/next/AgreementSheet.tsx:349` |
 | `/orders` | Make this order repeat | panel | Built | A commitment about the future — a question, answered once. | `pages/orders/next/RecurrenceSheet.tsx:222` |
 | `/orders` | Vendor answers | sheet · wide | Built | One order's correspondence is one object, read at 640 because letters are prose — the wide case ADR 0112 anticipated. | `pages/orders/next/ResponsesSheet.tsx:353` |
-| `/orders` | A new order | sheet | Owed · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. | `pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found` |
-| `/orders` | Add a vendor first | panel | Owed | A question with two answers. Travels with the new-order sheet. | `components/orders/OrderGuardModal.tsx:27` |
+| `/orders` | A new order | sheet | Built · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. BUILT 2026-09-06 (packet 2): several lines, one POST per line because CreateOrderDto carries one, and a per-line account of what landed. The agreed price is OFFERED grey from the NEW route GET /procurement/last-agreement, never applied. | `BUILT 2026-09-06 as pages/orders/next/NewOrderSheet.tsx (was pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903)` |
+| `/orders` | Add a vendor first | panel | Built | A question with two answers. Travels with the new-order sheet. BUILT 2026-09-06: reached before the composer opens on an empty vendor list, and again on the gateway's 403 no_vendors, where it says the order was NOT placed. An unreadable vendor list never opens it. | `BUILT 2026-09-06 as pages/orders/next/VendorFirstPanel.tsx (was components/orders/OrderGuardModal.tsx:27)` |
 | `/orders` | Wine config | — | Retires | What was agreed (unit · price · currency) on the ledger row. | `pages/Orders.tsx:2903` |
 | `/orders` | Reject this order? | — | Retires | Vendor answers — 'Hold to reject', with the reason in words. | `pages/Orders.tsx:3359 (SealedRejectDie)` |
 | `/orders` | Provider comms thread | — | Retires · fork F4 | Vendor answers reads the thread; the composer writes. **Pause / resume the AI on this thread** becomes a control in the responses sheet's head (decided 2026-09-05, F4) — a switch, not an overlay. | `components/orders/CommsThreadDrawer.tsx:436` |

@@ -55,7 +55,7 @@ const mine = {
   actionUrl: '/inventory',
   priority: 'high',
   icon: 'Wine',
-  status: 'pending',
+  status: 'pending' as const,
   createdAt: new Date().toISOString(),
 };
 

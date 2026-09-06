@@ -80,6 +80,7 @@ import {
   type PriceCurrencyClaim,
 } from "./price-currency";
 import { agreementCurrencyDefault } from "./agreement-currency";
+import { lastAgreementAnswer, type LastAgreement } from "./last-agreement";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -2107,6 +2108,105 @@ export class ProcurementService {
           `rather than filing one under a guessed unit.`,
       );
       return { read: false, reason: e?.message ?? "unknown", ...empty };
+    }
+  }
+
+  /**
+   * What this house last agreed with this vendor for this shelf item.
+   *
+   * The read behind `GET /procurement/last-agreement`, built for packet 2's
+   * new-order sheet: the census draws that sheet with "price and unit come from
+   * the agreement on the vendor's row", and no route could answer it.
+   *
+   * SCOPED THREE WAYS, ALWAYS. `restaurant_id` on the LINE, `provider_id` on the
+   * order, and `inventory_id` on the line. The restaurant comes from the token
+   * at the controller; nothing here trusts a body.
+   *
+   * ORDERED BY `requested_at`, never by insertion, for the same reason
+   * `agreementCurrencyForVendor` orders documents by their own date: "what we
+   * last agreed" must not change because somebody back-filled an old order this
+   * morning.
+   *
+   * A FAILED READ IS REPORTED AS ONE. The catch does not return "none"; it
+   * returns `unreadable`, and `lastAgreementAnswer` gives that its own sentence.
+   * The whole point of the route is that a sheet can tell a vendor who has
+   * never quoted this wine from a database that would not answer.
+   */
+  async lastAgreementFor(
+    restaurantId: string,
+    providerId: string,
+    inventoryId: string,
+  ): Promise<LastAgreement> {
+    let vendorName: string | null = null;
+    try {
+      const { data: vendor } = await this.databaseService.supabase
+        .from("providers")
+        .select("name")
+        .eq("id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      vendorName = (vendor as { name?: string } | null)?.name ?? null;
+    } catch {
+      // A missing vendor name costs the sentence a noun and nothing else. It is
+      // NOT allowed to turn the answer into a failure, because the price is the
+      // thing the caller asked for.
+      vendorName = null;
+    }
+
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_order_items")
+        .select(
+          "final_unit_price, price_uom, price_pack_size, currency, unit_type, " +
+            "bottles_per_unit, procurement_orders!inner(order_number, provider_id, requested_at, restaurant_id)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .eq("procurement_orders.provider_id", providerId)
+        .eq("procurement_orders.restaurant_id", restaurantId)
+        .order("requested_at", {
+          ascending: false,
+          nullsFirst: false,
+          referencedTable: "procurement_orders",
+        })
+        .limit(1);
+
+      if (error) throw new Error(error.message);
+
+      const row = Array.isArray(data) ? (data[0] as any) : null;
+      if (!row) return lastAgreementAnswer(null, false, vendorName);
+
+      // Supabase returns an `!inner` to-one embed as an object; some client
+      // versions hand back a one-element array. Both are read, because a shape
+      // assumption here would silently blank the date and the order number.
+      const parent = Array.isArray(row.procurement_orders)
+        ? row.procurement_orders[0]
+        : row.procurement_orders;
+
+      return lastAgreementAnswer(
+        {
+          price:
+            typeof row.final_unit_price === "number" ? row.final_unit_price : null,
+          priceUom: row.price_uom ?? null,
+          pricePackSize:
+            typeof row.price_pack_size === "number" ? row.price_pack_size : null,
+          currency: row.currency ?? null,
+          unitType: row.unit_type ?? null,
+          bottlesPerUnit:
+            typeof row.bottles_per_unit === "number" ? row.bottles_per_unit : null,
+          agreedOn: parent?.requested_at ?? null,
+          orderNumber: parent?.order_number ?? null,
+        },
+        false,
+        vendorName,
+      );
+    } catch (e: any) {
+      this.logger.warn(
+        `Could not read the last agreement for provider ${providerId} and ` +
+          `inventory ${inventoryId}: ${e?.message}. Answering 'unreadable' — ` +
+          `NOT 'none', which would tell the sheet there is no agreed price.`,
+      );
+      return lastAgreementAnswer(null, true, vendorName);
     }
   }
 

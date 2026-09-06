@@ -15,7 +15,7 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
@@ -393,6 +393,52 @@ export class ProcurementController {
     return this.procurementService.agreementCurrencyForVendor(
       user.restaurantId,
       providerId ?? null,
+    );
+  }
+
+  /**
+   * What this house last agreed with one vendor for one shelf item.
+   *
+   * NEW ROUTE (packet 2 of the overlay layer, 2026-09-06). The new-order sheet
+   * is drawn with "price and unit come from the agreement on the vendor's row"
+   * and nothing could answer that: `agreement-currency` answers which money,
+   * `vendor-terms` carries no prices, and the price register has no controller.
+   *
+   * Declared as a literal tail rather than under `orders/` for the same reason
+   * `order-approval-gate` and `agreement-currency` are — it can never be
+   * shadowed by, or shadow, `orders/:id`.
+   *
+   * The restaurant is the token's. Both ids are REQUIRED and refused when
+   * absent: an "agreement" resolved without naming the vendor would be the last
+   * price from anybody, which is a different and much more dangerous number.
+   * A read that fails answers `state: "unreadable"` with its own sentence — it
+   * is never flattened into "no agreement on file".
+   */
+  @Get("last-agreement")
+  @ApiOperation({
+    summary: "The last agreed price and unit for one vendor and one shelf item",
+    description:
+      'Three states, kept apart: "found" (with the price, its unit pair, the currency, the date and the order it was struck on), "none" (this house has never agreed a price with this vendor for this item) and "unreadable" (the read failed). Every state carries a sentence, because an answer with no sentence is what lets a failure render as an empty field. Nothing is converted — a price whose unit was never stated is reported as unstated, never as per bottle.',
+  })
+  @ApiQuery({ name: "providerId", required: true })
+  @ApiQuery({ name: "inventoryId", required: true })
+  @ApiResponse({ status: 200, description: "The last agreement, or why there is none" })
+  @ApiResponse({ status: 400, description: "providerId and inventoryId are both required" })
+  async lastAgreement(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query("providerId") providerId?: string,
+    @Query("inventoryId") inventoryId?: string,
+  ) {
+    if (!providerId?.trim() || !inventoryId?.trim()) {
+      throw new HttpException(
+        "Name both the vendor and the shelf item. An agreement resolved without a vendor is the last price from anybody, which is a different number.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.procurementService.lastAgreementFor(
+      user.restaurantId,
+      providerId.trim(),
+      inventoryId.trim(),
     );
   }
 
