@@ -1112,3 +1112,249 @@ form of the sheet (detents, F9), undo-after for reversible routine writes (F10) 
 authority (F11) are the other three decisions. Sources for every drawn behaviour are on the
 specimen and in `research/E-adversary.md`.
 
+
+### 6g. Motions and overlays decided per page (2026-09-06)
+
+**Why this exists.** §6f left sixteen behaviours drawn and nothing decided about *motion*. The
+founder then asked for agents to decide the best motion and the best overlay design **for each
+page**, with no shortcuts. Three finders and an adversary ran per CLAUDE.md §3 — A on motion per
+act per page, B on the overlay of every census row, C on what the code actually carries, and an
+adversarial pass that tried to kill A and B from six angles they had not used. This subsection is
+the **judged** result: the house vocabulary as measured, the cross-page rules that came out of it,
+the shell (which has no page note of its own), and the guards the whole thing needs. The per-page
+decisions are in each note's new `§1c Motions decided` and `§1b Overlays decided`; the rule changes
+and the founder's forks are in
+[ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+
+#### The house vocabulary, as measured
+
+Source of truth is `apps/web/src/lib/mudavym/motion.ts`; `HOUSE = 'cubic-bezier(0.16, 1, 0.3, 1)'`
+at `:96`. The spring figures were computed by re-running the file's own `springLinear` integrator,
+not copied.
+
+| token | line | easing | ms | spring | zeta | overshoot | settles |
+|---|---|---|---|---|---|---|---|
+| `settle` | `:103` | HOUSE | 320 | — | — | — | — |
+| `ink` | `:106` | HOUSE | 160 | — | — | — | — |
+| `tuck` | `:109` | sampled `linear(…)` | 300 | k=380 c=32 m=1 | 0.821 | +0.93 % | 270 ms |
+| `turn` | `:112` | `cubic-bezier(0.32, 0.72, 0, 1)` | 420 | — | — | — | — |
+| `pour` (= `press`, `:123`) | `:120` | `linear` | 620 | — | — | — | — |
+| `stamp` | `:126` | sampled `linear(…)` | 360 | k=500 c=26 m=1 | 0.581 | +10.36 % | 375 ms |
+| `tally` | `:129` | sampled `linear(…)` | 840 | k=120 c=26 m=1 | 1.187 | 0 % (overdamped) | 852 ms |
+
+Two facts worth stating rather than leaving as accidents. `turn`'s curve is **the iOS curve** —
+bit-identical to the one Vaul's drawer takes from Ionic, which runs it at 500 ms; the house runs it
+at 420. And `stamp` at zeta 0.581 is roughly as bouncy as Material 3 Expressive's *most* expressive
+spatial default, while every other house token is more damped than Material's *least* expressive
+one. That asymmetry — one ceremonial spring, everything else quieter than the field's baseline —
+is the house's motion identity, and it is now written down.
+
+#### The eighth literal: folded, not promoted
+
+`{ easing: settle.easing, ms: 420 }` — the house curve at `turn`'s duration, a pairing that exists
+in no token — appears as a raw literal in exactly four files: `pages/dashboard/next/DashboardNext.tsx:68`,
+`pages/dashboard/next/SalesCalendar.tsx:75`, `pages/reports/next/ReportsNext.tsx:139` and
+`pages/calendar/next/CalendarNext.tsx:212`. Three of the four are the opening line; the fourth is
+the sales calendar's month stagger. Two other pages animate the **identical keyframes for the
+identical act** with the token proper at 320 (`NotificationsNext.tsx:190-197`,
+`ProfileNext.tsx:220-227`).
+
+**Decided: fold all four into `settle` 320. No eighth token is minted.** A masthead does not earn a
+token that two pages already answer correctly, and the stagger's identity is its 16 ms x 0.94 delay
+decay, not its per-cell duration — which no ADR ever chose. **Pages that change: `/`, `/reports`,
+`/calendar`.** The cost is stated: the sales calendar's month arrival gets ~100 ms faster per cell.
+The rejected alternative — promote `rise = { easing: HOUSE, ms: 420 }` and move **all five** opening
+lines onto it — stays on the table as the founder's fork, and if it is taken the literal must not
+survive anywhere: a literal repeated four times is how the next divergence starts.
+
+#### The cross-page rules
+
+1. **One motion answers one act, everywhere.** The act table below is binding; a page that wants a
+   different answer records the exception in its own note, with the reason, the way `/wines` and
+   `/team` now do.
+
+   | Act | The house's answer |
+   |---|---|
+   | A row expands | `settle` 320 on `grid-template-rows: 0fr to 1fr`, chevron on the same token. Two recorded exceptions: `/team` (a table you lose your place in) and `/wines`' wine register (seven cards behind a height animation is a compositor stall per open) |
+   | A reading surface **opens** | `settle` 320 |
+   | What is **in** that surface is switched | `turn` 420 — the open-versus-switch pair `/wines` drew first |
+   | "Show the working" | `turn` 420 |
+   | A figure that **arrives** | `tally` 840. A figure of **record** and a figure that is an **estimate** never tally |
+   | Arithmetic correcting itself | no tween, ever — a smooth move implies a continuity a correction does not have |
+   | A real commitment | `pour` 620 to `stamp` 360, at **620 ms for every act** — weight belongs in identity (the step-up), never in gesture length |
+   | A standing instruction is captured | the surface appears **instantly**; a one-off answer gets `settle` 320 |
+   | A machine's countdown | drains, un-eased, duration equal to the milliseconds remaining |
+   | A grace the reader may spend | ticks as a number — no bar |
+   | Waiting for a server | **never a spinner.** A label change and a sentence. Three live violations are named for migration: `SpotCountPanel.tsx:263,297` and `DoorNext.tsx:470` |
+   | An overlay closes | instantly. The one exception is packet 0's tear on a dirty Sheet (`tuck` 300, the enter run backwards) |
+
+2. **The wax is rationed by one rule, not three.** Three incompatible rules were in force —
+   `/profile`'s *mechanical* one, `/team`'s *consequence* one and `/reports`' *counter-party* one —
+   and they disagree on live cases. **Decided: `/profile`'s, both clauses, applied literally.** *The
+   seal appears exactly where a server redeems one, plus an act that is irreversible in this house
+   and has no server to ask.* Consequences: `/orders`' reject loses the wax **and** the hold, keeping
+   a required reason; the dashboard's un-sealed `die` arm becomes a plain button; `/calendar`'s
+   delete **keeps** the wax under the second clause (the earlier recommendation demoted it while
+   keeping `/team`'s two destructive acts sealed by the same clause, which is the same rule applied
+   two ways in one paragraph); `/team`'s publish and copy-week keep it.
+   **The dry emboss is not promoted to a second ceremony.** It stays where it is — `/orders`' bulk
+   bar — and it is named for what it is: **the plural rendering of the wax, not a lesser one.** It
+   appears only where the wax would have appeared, many times over, so it cannot dilute the ration;
+   promoting it to every non-wax act would make the wax stand against a smaller stamp rather than
+   against nothing, which is rationing collapsing in the other direction. **`BUILD-PROMPT.md` rule 3
+   ("Bulk gets a plain button") is false today and must be amended to say this.**
+
+3. **A keyboard-opened overlay does not animate — decided per surface, not per opener.** The
+   command palette, Ask AI, Recently viewed and Keyboard shortcuts render with **no enter animation
+   at all, always**, whatever the motion setting, because they are opened hundreds of times a day.
+   One boolean on the component. The rejected form of the same rule — decide at runtime from *how*
+   this particular open happened — is refused: the same trigger would give two different products
+   depending on mouse or keyboard, and a phone with a Bluetooth keyboard is undefined.
+   The corollary: **the palette does not animate its filtering either.** A FLIP on survivors with
+   every keystroke is the textbook case the source rule forbids; a "Recent" group at the top of an
+   empty palette does more for perceived speed than any animation.
+
+4. **The sidebar leaves framer-motion for the house tokens — but only inside the house branch,
+   byte-identical off.** `components/layout/DashboardLayout.tsx:68` renders `<Sidebar />` on **every**
+   route, legacy and rebuilt, so this is the one piece of chrome where a motion change reaches a
+   flag-off tenant. Three parts, decided separately:
+   - **(a) The reduced-motion guard goes in now, ungated.** It only ever *removes* motion, so it
+     cannot break a byte-identical promise in any way a reader can see, and it closes a live gap —
+     `Sidebar.tsx` has no hook and no media query today.
+   - **(b) The nav-rail hover hint** (`Sidebar.tsx:256-260` and the identical legacy branch at
+     `:275-280`, both `duration: 0.15, ease: [0.4, 0, 0.2, 1]`) gets `ink` 160 on the house curve
+     **in CSS, inside the `.mudavym` branch only.** The branch already exists at `:254` for colour;
+     only the motion was left behind.
+   - **(c) The 260-to-72 width collapse** (`Sidebar.tsx:512-515`, `duration: 0.2`) is **left alone**
+     and recorded here as the last unmigrated chrome, to die with the legacy pages. The rejected
+     remedy animated `width` — a layout property — for 60 % longer, on every legacy page.
+   - The comment at `Sidebar.tsx:250-251` claims the hint is "Tokens only (ADR 0112)". The geometry
+     and the aria contract do change with the branch; **the motion does not, and is not a token in
+     either branch.** Fixing that sentence costs one line and is not optional.
+
+5. **`/inventory`'s route to the tokens.** `App.tsx:311` renders the **same component** on both
+   branches, with a comment saying so, so every edit under `pages/inventory/command/**` reaches a
+   flag-off tenant. Decided, and already executed by packet 1: **gate inside the component** on
+   `useMudavymShell()` / `useMudavymDesign('inventory')`. The eight overlays ship that way and bring
+   `tuck`, `settle`, `pour` and `stamp` with them. The `ink` micro-state swap and the `settle` row
+   expand are **deferred**, not refused: both need `.mudavym`-scoped CSS that beats a Tailwind
+   utility's specificity on a page with no page CSS file, so neither is the one-line swap it was
+   described as, and both carry all of the byte-identical risk with none of the accessibility
+   benefit. What this page actually needs first is the reduced-motion guard, which is a pure removal
+   and is safe.
+
+6. **Under reduced motion, arriving surfaces cross-fade; everything else renders none.** The house
+   renders nothing today (`motion.ts` collapses duration to 0; `components/mudavym/Sheet.tsx:344` returns before
+   scheduling; every page CSS carries a kill block), and WCAG 2.3.3 — **Level AAA** — permits
+   exactly that. **Decided: keep "nothing" as the default and add one exception — a 120 ms
+   opacity-only cross-fade for a Sheet, Panel or Popover *entrance*.** A modal that appears with
+   zero frames is genuinely harder to notice, and noticing it is functional. The evidence is
+   stronger than either finder knew: the field's most-cited practitioner's own reduced-motion
+   example on the page both finders read is `animation: fade 0.2s` — a fade, not a removal — and
+   Apple's guidance is to replace x/y/z movement with a cross-dissolve rather than to remove the
+   transition. Everything that **expands in place** keeps zero.
+   **The cost, stated:** this contradicts one of the seven rules packet 0 just shipped as a guard
+   (`housePolicy.test.ts` asserts the primitive renders *none* of it). The rule has to be amended
+   from "renders none" to "renders **no movement** — opacity only, one duration, named", and
+   `Sheet.test.tsx`'s `data-motion="none"` assertion changes with it. That is a real collision and
+   it is a founder fork, not a builder's call.
+
+7. **The chip is not a target-size failure, and it is a dependency.** `.mdv-chip`
+   (`components/mudavym/sheet.css:441-454`) sets 11 px font, 3 px vertical padding and a 1 px border
+   and **no `line-height`**, so it inherits Tailwind 3.4 preflight's unitless `1.5` through
+   `button { line-height: inherit }`: 11 x 1.5 = 16.5, + 6 + 2 = **24.5 px**. It **passes** SC 2.5.8
+   (Level AA, 24 x 24). The reported ~21 px failure assumed `normal` without saying so. Decided:
+   **set `line-height` explicitly** — a 24 px pass that depends on a framework's preflight is a pass
+   the house does not control — and **measure the Spacing exception between adjacent chips**, which
+   nobody has.
+
+8. **The three accessibility criteria, each decided.**
+   - **SC 2.2.2 Pause, Stop, Hide — Level A, and it is live.** The loading shimmer runs a **1.9 s
+     infinite loop** in parallel with interactive content on two pages
+     (`dashboard-next.css:44`, `reports-next.css:391`), and its preload exception applies only "if
+     interaction cannot occur during that phase for all users" — on these pages the header, the rail
+     and the other tiles are live. All three research passes marked it clean. **Decided: the shimmer
+     runs at most two cycles (3.8 s), then goes still and states the wait in words** — under the
+     five-second trigger, so the criterion is met with no control at all, and the result is the
+     house's own anti-spinner idiom. The `prefers-reduced-motion` exemption both files carry is a
+     **2.3.3 (AAA) technique**, not a 2.2.2 mechanism, and does not close this.
+   - **SC 2.5.7 Dragging Movements — Level AA, and it is live.** `SwipeToConfirm` is a path-based
+     drag with a keyboard path and **no single-pointer non-dragging alternative**; neither finder
+     named the criterion. **Decided: `TRAVEL` stays at 96 px** (`SwipeToConfirm.tsx:19`) and the
+     control gains the resistance curve, the ghost seal, the `stamp` landing **and a plain Confirm
+     that arms and confirms** — the `HoldToApprove` keyboard shape moved to pointer. The rebuild at
+     150 px with a 68 % commit is refused on arithmetic: **68 % of 150 px is 102 px of absolute
+     thumb travel, more than today's full 96 px commit** — an easier-sounding threshold that is a
+     longer gesture, on a one-handed phone at the pass. The same rule binds `/team`'s two unbuilt
+     drag behaviours and the phone sheet's detent grabber (a tap cycles peek, half, full).
+   - **SC 3.3.8 Accessible Authentication (Minimum) — Level AA.** A remembered four-digit manager
+     passcode is a cognitive function test; the criterion's own definition names memorisation and
+     transcription, and none of the sketch 102 research files cites it. **Decided: the manager's own
+     passkey on their own phone is a peer path, and the passcode field accepts paste from a password
+     manager.** The house is building the WebAuthn ceremony anyway; the four digits stay the fast
+     path. Enrolment lives on `/profile` and does not exist yet.
+
+#### The shell, which has no page note
+
+The eight shell overlays and the chrome's motions are not owned by any `06-pages` note
+(`census.py` files the shell with `doc=None`), so they are decided here.
+
+| Act | Today (`file:line`) | Decided | Rejected | Status |
+|---|---|---|---|---|
+| Header hover, the scroll hairline | `ink` 160, colour and border only; the hairline past 4 px | keep both | shrink-on-scroll — a header that resizes as you read re-flows the page under it | no change |
+| The bell, the user menu, theme, switch location | the primitive's `ink` 160 / 4 px (`components/mudavym/HouseBell.tsx:127`, `HouseUserMenu.tsx:79`) | keep | — | no change |
+| The bell's badge count changes | no animation — "a register that flashes is asking to be believed" | keep for a **poll**. When the count arrives over a socket it is genuinely arriving, and the house's own tally rule applies — `tally` 840 — **but only if the row also says which it was.** The same number moving two ways for reasons the reader cannot see is worse than one way | (a) pulse; (b) tally on both paths — then a poll result performs as an arrival | owed to **packet 3**, blocked on the socket step of the staircase in §3 |
+| The palette, Ask AI, Recently viewed, Keyboard shortcuts open | the house `Panel` `settle` 320 (`components/command/CommandPalette.tsx:257-260`) | **instant, always** (rule 3 above) | per-opener detection; keeping 320 | owed to **packet 3** |
+| The palette filters as you type | rows re-render | keep instant | a subtraction FLIP on survivors; a re-stagger per keystroke | no change |
+| The palette on a legacy page | `popIn` / `fadeIn` 120 ms `ease-out` (`CommandPalette.tsx:373,376,498-499`) | leave alone — a documented, intentional fallback that dies with the legacy pages | migrate it — changes a flag-off render | no change, recorded |
+| The sidebar | see rule 4 above | (a) guard now, (b) hint in the house branch, (c) collapse left alone | — | owed to **packet 3** |
+| The day strip | `ink` 160, nothing moves; the month replaces its cells | keep | a month slide — what changed is everything | no change |
+
+**The shell's overlay contracts.** All eight carry a contract sentence and a refusal that
+distinguishes *could not be read* from *empty* — the single most reusable piece of writing the
+research produced. The palette: "Type to find a page, an act or something the book has said.
+Choosing runs the act on its own surface; leaving runs nothing," refusing with "The palette could
+not read the register. Nothing was searched — the box is empty because the read failed, not because
+the book is." The bell: "What the house noticed. Reading marks it read; nothing else is written
+here. A commitment opens its own panel," refusing with "The bell could not be read. This is not an
+empty inbox." Two additions: **peek in the palette** (arrowing over a command that names an object
+previews that object's three facts beside the palette, before Enter opens the sealed panel — the
+mechanism that makes it safe to put commitments in a palette at all), and **the bell splits
+Priority and Other, stating the count of the other half on the face of the popover**. The second
+rests on the house's own "absence is never health" rule rather than on the cited product, half of
+whose claim did not survive re-fetch — the Priority tab is confirmed, an "Other" tab and
+"never away" are not.
+
+#### The guards this needs
+
+`ls scripts/ | grep -iE 'motion|token|overlay|modal|emoji'` returns **nothing** across 53
+`check_*` scripts. Every defect above is invisible to CI, and `motion.test.ts` asserts the token
+*values* while nothing asserts that pages *use* them — a `{ easing: settle.easing, ms: 420 }`
+literal passes every check in the repo.
+
+**`scripts/check_motion_tokens.py`**, written the way `scripts/check_money_routes_are_sealed.py` is
+— reading the call graph rather than typing a directory convention:
+
+- (a) no `ms:` literal handed to `animate()` in a rebuilt page or in `components/mudavym`, outside
+  `motion.ts`;
+- (b) no `cubic-bezier(` in a rebuilt page's CSS that is not one of the two house curves, **with the
+  two disclosed sheens allow-listed by file and line and by the ADR that approved them** — a guard
+  that goes red on an approved exception gets disabled in a week;
+- (c) every rebuilt page's own directory carries a `MOTIONS*.md`;
+- (d) no `framer-motion` import reachable from a rebuilt page except the disclosed `MenuScannerModal`
+  — **and the scan must reach `components/layout/` and `components/mudavym/`, not only `pages/`**;
+- **it must enumerate the rebuilt slugs from `MUDAVYM_PAGES` and resolve each slug's directory from
+  `App.tsx`, never assume `pages/<slug>/next`** — `/inventory` lives at `pages/inventory/command`,
+  and a guard written against the convention **cannot see the page it was written for**;
+- **exit 2 when it cannot resolve a slug** (the house's guard rule: a guard that cannot check must
+  not report green);
+- **proven against the pre-fix tree**, and required to go red on all four `ms: 420` literals, on
+  `/inventory`, on `/documents/:id` and on `Sidebar.tsx` before it is merged — and **not** red on
+  the two sheens.
+
+**`scripts/check_no_emoji.py`.** `BUILD-PROMPT.md` rule 8 reads "No emoji, anywhere — a guard
+checks." `git grep -l emoji -- scripts .github` returns nothing and none of the 53 `check_*` scripts
+is named for it: **a rule that asserts its own enforcement without it is this house's named fault
+class, inside the document written to prevent it.** Packet 0 has since added an emoji assertion
+inside `components/mudavym/housePolicy.test.ts`, which covers the **primitive family's own source
+only** — the repo-wide guard rule 8 claims is still owed.
