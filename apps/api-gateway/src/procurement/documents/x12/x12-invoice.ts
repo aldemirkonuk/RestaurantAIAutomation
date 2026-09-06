@@ -87,6 +87,17 @@ function productIds(seg: X12Segment): Record<string, string> {
 export interface X12InvoiceOptions {
   /** `restaurants.currency`. NULL / absent when the house has never stated one. */
   houseCurrency?: string | null;
+  /**
+   * B3 (founder, 2026-09-06 batch 65): the currency of the ORDER this document
+   * is matched to. `procurement_orders.currency`, or null when the order named
+   * none. The invoice takes it when the file states nothing, and is HELD when
+   * the file states something else.
+   */
+  orderCurrency?: string | null;
+  /** Whether the document is matched to an order at all. Not the same as the code being null. */
+  hasMatchedOrder?: boolean;
+  /** The matched order's number, for the sentence. Never load-bearing. */
+  orderLabel?: string | null;
 }
 
 export function parse810(
@@ -333,6 +344,9 @@ export function parse810(
   return applyCurrencyRules({
     doc: applyTieOut(doc),
     houseCurrency: options.houseCurrency,
+    orderCurrency: options.orderCurrency,
+    hasMatchedOrder: options.hasMatchedOrder,
+    orderLabel: options.orderLabel,
     fileField: "CUR02 currency segment",
   });
 }

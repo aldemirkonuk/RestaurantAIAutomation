@@ -208,6 +208,9 @@ export function parse812(
   return applyCurrencyRules({
     doc: applyTieOut(doc),
     houseCurrency: options.houseCurrency,
+    orderCurrency: options.orderCurrency,
+    hasMatchedOrder: options.hasMatchedOrder,
+    orderLabel: options.orderLabel,
     fileField: "CUR02 currency segment",
   });
 }

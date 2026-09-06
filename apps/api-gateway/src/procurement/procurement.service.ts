@@ -79,7 +79,14 @@ import {
   priceCurrency,
   type PriceCurrencyClaim,
 } from "./price-currency";
-import { agreementCurrencyDefault } from "./agreement-currency";
+import {
+  orderCurrencyOffer,
+  orderCurrencySource,
+} from "./agreement-currency";
+import {
+  documentMoneyState,
+  receivingPriceRefusal,
+} from "./documents/invoice-currency";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -921,11 +928,43 @@ export class ProcurementService {
       ? (fulfilled.deliveredAt ?? new Date().toISOString())
       : null;
 
+    /*
+     * B2 — THE ORDER CARRIES THE CURRENCY IT WAS PLACED IN (founder, 2026-09-06
+     * batch 65: *"we will use the currency from where we order it"*).
+     *
+     * The code is whatever reached the DTO — the same value the agreement LINE
+     * records two hundred lines below, read once here so the header and the line
+     * cannot disagree about the money of one order.
+     *
+     * The PROVENANCE is derived on the server from the vendor's own stated
+     * currency, never taken from the client: a writer's label about itself is a
+     * claim, and this one decides whether a manager later reads "we suggested
+     * it" or "somebody chose it". `orderCurrencySource`'s header says why the
+     * `typed` arm is honest.
+     */
+    const placedCurrency = this.readStatedCurrency(dto.currency);
+    const vendorUsual = await this.readVendorUsualCurrency(
+      restaurantId,
+      dto.providerId,
+    );
+    const placedCurrencySource = orderCurrencySource({
+      recorded: placedCurrency,
+      vendorUsualCurrency: vendorUsual,
+    });
+
     const payload = {
       order_number: orderNumber,
       restaurant_id: restaurantId,
       inventory_id: dto.inventoryId,
       provider_id: dto.providerId,
+      // TWO EXPLICIT KEYS, always both present, never a conditional spread —
+      // `scripts/check_order_capture_contract.py` reads this literal without
+      // executing it, and a `...(x ? {} : {})` is a key set it counts as
+      // unreadable. The database CHECK `procurement_orders_currency_states_its_source`
+      // refuses either half alone, so writing them apart is not possible even by
+      // accident.
+      currency: placedCurrency,
+      currency_source: placedCurrencySource,
       quantity: dto.quantity,
       unit_type: units.unitType,
       bottles_total: bottlesTotal,
@@ -2131,11 +2170,16 @@ export class ProcurementService {
     providerId: string | null | undefined,
   ): Promise<{
     code: string | null;
-    basis: "vendor_paper" | "house" | null;
+    basis: "vendor_usual" | null;
     sentence: string;
+    alsoKnown: { vendorPaper: string | null; house: string | null };
+    /** The vendor's stated usual currency, so the writer need not read it twice. */
+    vendorUsualCurrency: string | null;
   }> {
     let vendorPaperCurrency: string | null = null;
     let vendorName: string | null = null;
+    let vendorUsualCurrency: string | null = null;
+    let vendorReadFailed: string | null = null;
 
     if (providerId) {
       // Ordered by the DOCUMENT's own date, never by insertion: "what they last
@@ -2164,21 +2208,29 @@ export class ProcurementService {
       const { data: provider, error: providerError } =
         await this.databaseService.supabase
           .from("providers")
-          .select("name")
+          // B1 (founder, 2026-09-06 batch 65). `usual_currency` is what a person
+          // stated on the vendor's profile, and it is the ONLY rung the ORDER's
+          // own field is pre-filled from.
+          .select("name, usual_currency")
           .eq("id", providerId)
           .eq("restaurant_id", restaurantId)
           .maybeSingle();
       if (providerError) {
         // A failed read is not an empty one: the default sentence must not
-        // print "the vendor" as if no vendor were known. Say the name could
-        // not be read, and keep the currency chain's own evidence intact.
+        // print "the vendor" as if no vendor were known, and it must not print
+        // "this vendor has stated no usual currency" when the truth is that we
+        // could not look. Say the read failed and offer nothing.
         this.logger.warn(
-          `agreement currency default: the vendor's name could not be read ` +
-            `(${providerError.message}); the sentence names no vendor.`,
+          `agreement currency default: the vendor's row could not be read ` +
+            `(${providerError.message}); the sentence names no vendor and no ` +
+            `usual currency is offered — this is a failed read, not an absent ` +
+            `currency.`,
         );
         vendorName = null;
+        vendorReadFailed = providerError.message;
       } else {
         vendorName = (provider as any)?.name ?? null;
+        vendorUsualCurrency = (provider as any)?.usual_currency ?? null;
       }
     }
 
@@ -2197,11 +2249,153 @@ export class ProcurementService {
       houseCurrency = (house as any)?.currency ?? null;
     }
 
-    return agreementCurrencyDefault({
+    /*
+     * B2 (founder, 2026-09-06 batch 65). The ORDER's field is pre-filled from
+     * the vendor's own stated usual currency and from NOTHING ELSE — see
+     * `orderCurrencyOffer`'s header for why the house's currency may be shown
+     * but never pre-filled, and what that narrows in ADR 0117 Q31.
+     */
+    const offer = orderCurrencyOffer({
+      vendorUsualCurrency,
       vendorPaperCurrency,
       vendorName,
       houseCurrency,
     });
+
+    // A FAILED VENDOR READ IS NOT A VENDOR WITH NO CURRENCY. Saying "this vendor
+    // has not stated one" after an outage would invite a person to state a
+    // currency for a vendor who already has, and the order would then record
+    // `typed` for a decision that was really ours.
+    if (vendorReadFailed)
+      return {
+        ...offer,
+        code: null,
+        basis: null,
+        sentence:
+          `This vendor's row could not be read (${vendorReadFailed}), so nothing ` +
+          `is offered here. That is a failed read, not a vendor who has stated no ` +
+          `currency — try again before choosing one for them.`,
+        vendorUsualCurrency: null,
+      };
+
+    return { ...offer, vendorUsualCurrency };
+  }
+
+  /**
+   * The invoice attached to this order whose money is NOT filed, if there is
+   * one — item A's precondition.
+   *
+   * WHY IT LOOKS AT INVOICES AND CREDIT MEMOS ONLY. A packing slip states no
+   * money, so a slip with no currency is not a hold; refusing a price because
+   * the delivery note carries no currency would refuse every price forever.
+   *
+   * WHY A FAILED READ DOES NOT REFUSE. supabase-js resolves `{ data, error }`,
+   * so an outage arrives here as an empty list unless the error is looked at —
+   * and an outage that read as "no held document" would let a price through,
+   * while one that read as "held" would block a receipt for a reason nobody can
+   * see. The first is the safer failure and it is the one the existing screen
+   * already produces, so a failed read is LOGGED and the price is allowed. Said
+   * plainly rather than left implicit: this guard is best-effort against an
+   * outage, and the currency rules themselves are what keep the money honest —
+   * a price accepted here still reaches `price_history` with the document's own
+   * currency claim, which `invoiceCurrencyClaim` refuses when it is not stated.
+   */
+  private async heldInvoiceForOrder(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{
+    documentId: string;
+    docNumber: string | null;
+    reason: string;
+  } | null> {
+    const { data: links, error: linkError } = await this.databaseService.supabase
+      .from("procurement_document_links")
+      .select("document_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId);
+    if (linkError) {
+      this.logger.warn(
+        `The documents attached to order ${orderId} could not be read ` +
+          `(${linkError.message}), so the receiving price was NOT checked ` +
+          `against a currency hold. A failed read is not an absence of holds.`,
+      );
+      return null;
+    }
+    const ids = (links ?? []).map((l) => (l as any).document_id).filter(Boolean);
+    if (!ids.length) return null;
+
+    const { data: docs, error: docError } = await this.databaseService.supabase
+      .from("procurement_documents")
+      .select("id, doc_number, doc_type, currency, extracted")
+      .eq("restaurant_id", restaurantId)
+      .in("id", ids)
+      .in("doc_type", ["invoice", "credit_memo"]);
+    if (docError) {
+      this.logger.warn(
+        `The invoices on order ${orderId} could not be read ` +
+          `(${docError.message}), so the receiving price was NOT checked ` +
+          `against a currency hold.`,
+      );
+      return null;
+    }
+
+    for (const doc of docs ?? []) {
+      const state = documentMoneyState(doc as any);
+      if (!state.priced)
+        return {
+          documentId: (doc as any).id,
+          docNumber: (doc as any).doc_number ?? null,
+          reason: state.reason,
+        };
+    }
+    return null;
+  }
+
+  /**
+   * An ISO 4217 alpha-3 as stated, or null. The same shape the database CHECK
+   * enforces, and the same rule the agreement line already applies: `"$"`,
+   * `"usd "` and `"US Dollars"` are three ways of nearly saying a currency and
+   * a `varchar(3)` that takes all of them holds three where there is one.
+   */
+  private readStatedCurrency(value: string | null | undefined): string | null {
+    if (typeof value !== "string") return null;
+    const code = value.trim().toUpperCase();
+    return /^[A-Z]{3}$/.test(code) ? code : null;
+  }
+
+  /**
+   * `providers.usual_currency` for one vendor, for the ORDER's provenance.
+   *
+   * A FAILED READ RETURNS NULL AND SAYS SO IN THE LOG, and the consequence is
+   * deliberately the safe direction: the order is then recorded as `typed`
+   * rather than `vendor_usual`. Labelling a person's acceptance as their own
+   * choice overstates their involvement; labelling their choice as the vendor's
+   * suggestion would understate it, and only the second one lets a code nobody
+   * chose look like one somebody did.
+   */
+  private async readVendorUsualCurrency(
+    restaurantId: string,
+    providerId: string | null | undefined,
+  ): Promise<string | null> {
+    if (!providerId) return null;
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("usual_currency")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `The vendor's usual currency could not be read for order provenance ` +
+          `(provider ${providerId}): ${error.message}. This order's ` +
+          `currency_source will read 'typed' if a code was stated — a failed ` +
+          `read must not be able to attribute a choice to the vendor.`,
+      );
+      return null;
+    }
+    return this.readStatedCurrency(
+      (data as { usual_currency?: string | null } | null)?.usual_currency,
+    );
   }
 
   /**
@@ -4590,6 +4784,39 @@ export class ProcurementService {
 
     if (fetchError || !orderRow) {
       throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    /*
+     * ITEM A — STOCK PROCEEDS; THE PRICE IS REFUSED (founder, 2026-09-06 batch
+     * 64: *"stock proceeds refuse the price at receving, and let them approve if
+     * otherwise"*).
+     *
+     * THIS RUNS BEFORE ANY WRITE, and only when a price was actually submitted.
+     * A receipt with no `invoiceUnitPrice` passes straight through: the count,
+     * the rejection, every `applyReceiptAdjustment` and the whole stock movement
+     * are untouched by a currency question, which is the founder's "stock
+     * proceeds" in one clause. A delivery that physically happened is not made
+     * un-happened by a bookkeeping doubt, and holding goods at the door over one
+     * is the failure this refusal is shaped to avoid.
+     *
+     * WHY THE PRICE AND ONLY THE PRICE. `body.invoiceUnitPrice` does not stop
+     * here — it becomes `price_history`, a `vendor_price_observations` sighting
+     * and the landed cost of the corrected lot. A figure taken off a document
+     * whose currency two parties disagree about reaches the market box, the
+     * price ladder and a vendor dispute as real money, denominated by whichever
+     * of the two was wrong. Rules 1 to 3 exist to stop exactly that, and without
+     * this check it walks past all three through a text field.
+     */
+    if (body.invoiceUnitPrice != null) {
+      const held = await this.heldInvoiceForOrder(restaurantId, orderId);
+      if (held)
+        throw new ConflictException(
+          receivingPriceRefusal({
+            reason: held.reason,
+            docNumber: held.docNumber,
+            documentId: held.documentId,
+          }),
+        );
     }
 
     // What was already pushed into the ledger; corrections are relative to it.

@@ -44,6 +44,27 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - **The canonical document — this page's second face, behind `mudavym_design_document` (OFF)** (ADR 0104 D12 slice 2, D13). `/documents/:id` renders any incoming document as ONE canonical Mudavym document: B's verdict block first (named exceptions in words and numbers, **never a confidence as a number**), C's delivery spine (cards per document on the event, state ladder `DELIVERED → RECONCILING → AGREED → VERIFIED`, the permanent `UNORDERED` mark; collapsed at ≤ 2 documents and absent when the document sits on no delivery), A's typeset sheet as the selected frame (EN 16931 header order, the four-way `ordered · shipped · received · billed` table where `received` prints the words **"not counted"**, the printed price base as a sub-line, allowances/charges with their reason names, the VAT breakdown, totals). Money is **absent** on a delivery note; the claim block appears **only** on a credit memo. Per-field provenance is a hover (and a footnote column in print); `as printed` says "not kept" rather than inventing a literal. Read-only: no corrections, no claims, no mapping memory — slices 3–4. `?view=door` opens the same component as the door frame with **no money at all** (D11), read-only until slice 5's `receiving_advice` write. Reached from this page by "Open as the canonical document →", which appears only where the gate is on.
 - **Degraded is a state, not a blank** (ADR 0104 D6) — a document with no lines renders NOT EXTRACTED, the original, and the header fields that exist; the verdict block says "nothing was read, so nothing could be compared" rather than "nothing differs", and there is no line table and no totals, because `Lines 0.00` on an unread document is a claim nobody made
 - **An invoice's money names its own currency, and the house may restate it** (founder 2026-09-06, batch 63). Every figure on this page printed a hardcoded `$` until now, including on the two `TRY` invoices production already holds. Three rules, built in `apps/api-gateway/src/procurement/documents/invoice-currency.ts`: **(1)** an 810 with no `CUR` segment is filed under the HOUSE'S OWN `restaurants.currency` — never `USD` — and a house that has stated none, on a file that states none, has its **money refused** in a sentence naming both absences (the quantities stay; the header charges, the total, every line price and the tie-out all go to null). **(2)** the extraction states the currency it SEES with the location it saw it (`currencySeen`), and a sighting that disagrees with the currency the invoice would be filed under **HOLDS** the money under both until a person decides — the model flags, it never decides. **(3)** a manager or owner restates it here: a picker of ISO 4217 codes, an optional reason, an append-only audit row (`procurement_document_currency_changes`) written BEFORE the change lands, and the money re-filed off the stored reading with the server's own sentence saying what moved. **Nothing is converted** — there is no exchange rate in this system. **Staff see the control disabled with the sentence**, never hidden
+- **The currency control also CONFIRMS, not only changes** (founder 2026-09-06, batch 64:
+  *"let them approve if otherwise"*). `PATCH :id/currency` accepts `previous === next` and
+  records it as `change_kind = 'confirmed'` — the same author, the same role, the same
+  moment, the same `money_refiled` payload. It is what ends a hold when the currency the
+  document already carries is the right one, and it is what unlocks the price at
+  [[receiving]]. The database refuses the two lies the pair could tell: a confirmation
+  whose codes differ, and a restatement that restates nothing (`20260906180000`)
+- **The chain gained a rung: the ORDER's own currency** (founder 2026-09-06, batch 65 —
+  *"we will use the currency from where we order it"*). `filingCurrency` now reads: the
+  file's own statement, then `procurement_orders.currency` for the order this document is
+  matched to, then the house's — and the house's rung says WHICH of the two preconditions
+  held ("the order names none" vs "matched to no order"). A file CUR that DISAGREES with
+  the matched order's currency is HELD exactly like a model disagreement, naming both
+- **`?doc=<id>` opens a document directly**, so the receiving screen's refusal can link
+  to the control that clears it rather than to the queue
+- **A hold now KEEPS the figures it strips** (`ParsedDocument.moneyWithheld`). This
+  corrects a documented-but-untrue invariant: `moneyHeld`'s comment claimed the full
+  reading survived in `procurement_documents.extracted`, but the intake writes `extracted`
+  from the same object it writes the money columns from, so once the fields were nulled
+  the reading was gone from both — `refiledMoney` restored a document of nulls while
+  `refilingSentence` announced that the money "was held and is now filed"
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
@@ -326,9 +347,16 @@ have re-dollarised on the canonical face every document rule 1 had just refused.
 1. **A held invoice blocks the PRICE at receiving only** — never the stock movement —
    and, verbatim: *"let them approve if otherwise"*. A person may approve past the hold.
    The founder also asked for **a default-currency section on each vendor's profile**.
-   **Built by p4br, not here.** What this pass leaves for that builder: `verifyReceipt`
-   still takes `invoiceUnitPrice` / `invoiceCurrency` from what a person keys in
-   (`VerifyReceiptDto`), so the price refusal and its approve-past path do not exist yet.
+   **BUILT (2026-09-06, p4br).** `verifyReceipt` refuses a keyed-in `invoiceUnitPrice`
+   while an attached invoice's money is not filed, before any write, in a sentence naming
+   the hold's reason and the act that clears it; the stock movement is untouched and that
+   is measured (`receiving-price-held.spec.ts` compares what a priceless receipt writes on
+   a held document against a settled one). The approve-past IS the restatement act:
+   `PATCH :id/currency` now accepts `previous === next` and logs it as
+   `change_kind = 'confirmed'` with the same author and the same audit row
+   (`20260906180000`). Before that, a manager who decided the currency the file already
+   carried was right got a 409, and the only way past the refusal was to name a currency
+   they did not believe in. See [[receiving]] §1a and [[providers]] §1a.
 2. **Rule 2's evidence is shown only on a disagreement** — as built. The agreeing and
    unreadable cases are recorded on the document and not surfaced.
 3. **Procurement's three writes will be sealed as a module in a later pass.** Not sealed

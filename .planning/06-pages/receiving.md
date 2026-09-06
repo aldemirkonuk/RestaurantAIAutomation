@@ -50,12 +50,43 @@ Currency, since 2026-09-06 (founder, batch 63; built on [[receipts]]):
   arrived can still be counted at the door.
 - **What this door does NOT yet do, stated:** `verifyReceipt` takes its
   `invoiceUnitPrice` and `invoiceCurrency` from what a person KEYS IN
-  (`VerifyReceiptDto`), not from the document row, so a held invoice does not by
-  itself stop a manager typing a price at this screen. The register mirror still
-  refuses a non-ISO currency (`own-paper-sighting.ts:299-316`) and `price_history`
-  still records the gap, so nothing is dollarised — but the hold is not yet a
-  BLOCK on this path. **The founder decided on 2026-09-06 (batch 64) that it should
-  be — price only, with an approve-past — and p4br builds it (§13).**
+  (`VerifyReceiptDto`), not from the document row. **Since 2026-09-06 (batch 64) that
+  keyed-in price is REFUSED while the attached invoice's money is not filed** — see
+  the block below. The register mirror also refuses a non-ISO currency
+  (`own-paper-sighting.ts:299-316`) and `price_history` records the gap.
+
+**A held invoice refuses the PRICE at this door, and only the price** — founder,
+2026-09-06 batch 64: *"do option 1 recomemneded, stock proceeds refuse the price at
+receving, and let them approve if otherwise"*:
+- **The refusal.** `ProcurementService.verifyReceipt` calls `heldInvoiceForOrder` before
+  any write; when a unit price was submitted and an attached invoice or credit memo has
+  `procurement_documents.currency` NULL, it throws a 409 carrying
+  `receivingPriceRefusal(...)` — the hold's own sentence, what still works, and the act
+  that clears it. `apps/api-gateway/src/procurement/procurement.service.ts:4590`
+  (the gate), `documents/invoice-currency.ts` `documentMoneyState` / `receivingPriceRefusal`.
+- **Stock is untouched, and that is measured not asserted.** A receipt submitted WITHOUT
+  a price goes through unchanged on a held document: `receiving-price-held.spec.ts`
+  compares the order updates, the RPC calls and the inventory updates against the same
+  receipt on a settled document and asserts they are equal.
+- **The state is the currency column, not a flag.** Every hold and the refusal all end in
+  `withholdMoney`, which blanks `currency`, so `currency IS NULL` IS "the money was not
+  filed" with no second bookkeeping to drift from it. The REASON is read off
+  `extracted.moneyHeld`, verbatim.
+- **The act that clears it is the restatement — or a CONFIRMATION.**
+  `PATCH /procurement/documents/:id/currency` now accepts `previous === next` and logs it
+  as `change_kind = 'confirmed'`
+  (migration `20260906180000_confirming_a_currency_is_the_same_logged_act_as_changing_it.sql`).
+  Before that a manager who read a held invoice and decided the currency it already had
+  was right got a 409, and the only way past the refusal was to name a currency they did
+  not believe in.
+- **The screen prints the refusal, disabled and never hidden.**
+  `apps/web/src/pages/inventory/command/ReceivingWorkspace.tsx` — the price input is
+  disabled with the sentence and a link to the receipt's currency control
+  (`/receipts?doc=<id>`, which now opens that document). The verdict comes from the
+  gateway (`moneyState` on the document), computed by the SAME function the gate uses.
+- **The invoice's currency is printed beside the ORDER's** (B4). A mismatch is shown, a
+  failed read of the order says so rather than reading as agreement, and nothing is
+  converted.
 
 Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):
 - **A manager's verification note is saved.** It goes to `delivery_notes`, and is
@@ -273,13 +304,25 @@ never the delivery's stock movement — and, verbatim, *"let them approve if oth
 a person may approve past the hold. He also asked for **a default-currency section on
 each vendor's profile**.
 
-**Neither is built by this pass — p4br builds both.** What is true here today, stated so
-the next builder is not misled: `verifyReceipt` still takes `invoiceUnitPrice` and
-`invoiceCurrency` from what a person keys in (`VerifyReceiptDto`), not from the document
-row, so **a held invoice does not yet stop a price being typed at this screen and there
-is no approve-past path**. The register mirror still refuses a non-ISO currency
-(`own-paper-sighting.ts:299-316`) and `price_history` still records the gap, so nothing is
-dollarised in the meantime.
+**BOTH ARE NOW BUILT (2026-09-06, p4br).** `verifyReceipt` refuses a keyed-in
+`invoiceUnitPrice` while an attached invoice's money is not filed, in a sentence naming
+the reason and the act that clears it; the stock movement is untouched and that is
+measured (`receiving-price-held.spec.ts`). The approve-past is the restatement act
+itself: `PATCH :id/currency` now takes a CONFIRMATION as well as a change, logged as
+`change_kind = 'confirmed'` with the same author and the same audit row. The vendor
+profile's usual currency is §1a on [[providers]].
+
+**A FAILED READ DOES NOT REFUSE, and the cost is stated.** If the document links or the
+documents themselves cannot be read, the price is ALLOWED and the failure is logged by
+name. An outage that read as "held" would block receipts for a reason nobody could see;
+this direction leaves the door exactly as it was before the guard existed, and
+`invoiceCurrencyClaim` still refuses to denominate a figure whose currency nobody keyed
+in. The guard is best-effort against an outage and deliberately so.
+
+**One limit, stated rather than papered over:** the order's currency is read into the
+filing chain only for a document whose intake NAMED an order (`IntakeInput.orderId`). A
+document linked to an order LATER — by the auto-matcher or by a person on [[receipts]] —
+was already filed by then, and re-filing it is the restatement act, not intake.
 
 
 1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`

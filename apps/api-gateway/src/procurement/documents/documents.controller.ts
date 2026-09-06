@@ -29,7 +29,7 @@ import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
 import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
 import { OrganizationsService } from "../../organizations/organizations.service";
 import { roleSatisfies } from "../order-approval-gate";
-import { refiledMoney } from "./invoice-currency";
+import { documentMoneyState, refiledMoney } from "./invoice-currency";
 
 /**
  * `fullName`, `name` and `email` are read for ONE purpose: an admitted class-C
@@ -409,7 +409,77 @@ export class DocumentsController {
     const { data, error } = await q;
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
-    return { items: data ?? [] };
+
+    /*
+     * B4 — THE INVOICE AND ITS ORDER, SIDE BY SIDE (founder, 2026-09-06 batch
+     * 65: *"we will have time To make sure that the invoice is good with the
+     * order we had"*).
+     *
+     * Two derived fields per document, computed HERE rather than in the client:
+     *
+     *   `moneyState` — whether this document's money is filed, and the sentence
+     *     saying why not. `documentMoneyState` is the same function
+     *     `verifyReceipt` refuses a price with, so the screen and the gate
+     *     cannot disagree about whether a document is held. A second
+     *     implementation of that verdict in the browser is how a page comes to
+     *     show an enabled field the server will reject.
+     *
+     *   `orderCurrency` — what the order this document is filed against was
+     *     PLACED in, so a reconciliation screen can print it beside the
+     *     invoice's own. NOTHING IS CONVERTED and nothing is judged here: the
+     *     two codes are handed over as they are, and a screen that shows them
+     *     differing has said the useful thing.
+     *
+     * Only present when the caller asked for one order's documents. Reading an
+     * order per row on an unfiltered list would be a query per document for a
+     * comparison nothing on that screen makes.
+     */
+    const items = (data ?? []).map((row) => ({
+      ...(row as Record<string, unknown>),
+      moneyState: documentMoneyState(
+        row as { currency?: string | null; extracted?: unknown },
+      ),
+    }));
+
+    if (!orderId) return { items };
+
+    const { data: order, error: orderError } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("order_number, currency, currency_source")
+      .eq("id", orderId)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    // A FAILED READ IS NOT AN ORDER WITHOUT A CURRENCY (ADR 0067). The screen
+    // must not print "the order names no currency" because the read broke, so
+    // the failure is named and the comparison says it could not be made.
+    if (orderError)
+      return {
+        items,
+        order: {
+          id: orderId,
+          currency: null,
+          currencySource: null,
+          orderNumber: null,
+          failure: `The order's own currency could not be read (${orderError.message}), so the invoice cannot be compared against it here. That is a failed read, not an order without a currency.`,
+        },
+      };
+
+    const orderRow = order as {
+      order_number?: string | null;
+      currency?: string | null;
+      currency_source?: string | null;
+    } | null;
+    return {
+      items,
+      order: {
+        id: orderId,
+        currency: orderRow?.currency ?? null,
+        currencySource: orderRow?.currency_source ?? null,
+        orderNumber: orderRow?.order_number ?? null,
+        failure: null,
+      },
+    };
   }
 
   @Get(":id")
@@ -705,11 +775,33 @@ export class DocumentsController {
     if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
 
     const previous = (doc as { currency?: string | null }).currency ?? null;
-    if (previous === next)
-      throw new HttpException(
-        `This document is already filed in ${next}, so nothing was changed and nothing was logged. A log of identical rows is not a history.`,
-        HttpStatus.CONFLICT,
-      );
+
+    /*
+     * RESTATE, OR CONFIRM. The founder added the second one on 2026-09-06 (batch
+     * 64): *"let them approve if otherwise"*.
+     *
+     * Until then `previous === next` was a 409 — right for a page with a sticky
+     * button, wrong for the act the receiving refusal now depends on. Item A
+     * refuses a keyed-in unit price for a document whose money is not filed, and
+     * the act that clears it is a manager saying which currency is right,
+     * INCLUDING when the right one is the one the document already carries. A
+     * manager who reads a held invoice, sees the model misread a glyph and says
+     * "no, USD is correct" has made a decision; under the old rule that decision
+     * was an error message, and the only way out was to name a currency they did
+     * not believe in.
+     *
+     * The distinction is RECORDED rather than inferred. `change_kind` is written
+     * on the audit row and the database refuses the two lies it could tell — a
+     * confirmation whose codes differ, and a restatement that restates nothing
+     * (`20260906180000`).
+     *
+     * A no-op is still refused where it is genuinely a no-op: a document whose
+     * currency is NOT RECORDED cannot be "confirmed" as anything, because there
+     * is nothing there to agree with — that is a restatement from nothing, and
+     * it is what the `previous === null` branch below produces.
+     */
+    const kind: "restated" | "confirmed" =
+      previous !== null && previous === next ? "confirmed" : "restated";
 
     /*
      * WHAT THE RE-FILING WILL MOVE, computed but NOT written here.
@@ -745,6 +837,10 @@ export class DocumentsController {
         restaurant_id: user.restaurantId,
         previous_currency: previous,
         new_currency: next,
+        // Which of the two acts this row is. An EXPLICIT key, never a
+        // conditional spread — `check_order_capture_contract.py` reads this
+        // literal without executing it.
+        change_kind: kind,
         // `public.users.user_id`, which is the id the JWT carries. NOT an
         // `auth.users` id: the two tables are disjoint in this database.
         changed_by: user.userId,
@@ -824,7 +920,12 @@ export class DocumentsController {
       currency: next,
       previousCurrency: previous,
       changedByRole: role,
-      sentence: `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${refile.sentence}`,
+      /** `restated` or `confirmed` — the row says which, and so does this. */
+      kind,
+      sentence:
+        kind === "confirmed"
+          ? `Currency CONFIRMED as ${next}: it did not change, and a manager has now said it is right. That is what ends a hold — the receiving screen will accept a price on this document from here. ${refile.sentence}`
+          : `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${refile.sentence}`,
       moneyRefiled: refile.snapshotReadable,
       linesRefiled: refile.linesRefiled,
       lineFailures: refile.lineFailures,

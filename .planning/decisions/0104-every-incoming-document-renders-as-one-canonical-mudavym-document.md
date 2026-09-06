@@ -354,6 +354,97 @@ the person's half. This was not a technicality — a controller computing a tie-
 second implementation of the arithmetic, and the moment the two disagree the screen shows
 one verdict while the review queue sorts on another.
 
+## Amendment 2026-09-06 (later the same day) — the order's currency, the vendor's usual one, and a price refused at the door (class E)
+
+Three founder statements, two batches after the one above, and they change the SHAPE of
+the currency chain rather than adding to it.
+
+**Batch 64, verbatim:** *"do option 1 recomemneded, stock proceeds refuse the price at
+receving, and let them approve if otherwise, also add a section to each vendor's profile
+that what are their currency default"*.
+
+**Batch 65, verbatim:** *"maybe Every vendor and their profile will show their default
+currency, but we won't use that as the invoice... definitely invoice receipt. However, we
+will use the currency from where we order it. We will show the user the currency the
+vendor always uses, and they have the ability to change it or not in the orders page. And
+after that, we will have time To make sure that the invoice is good with the order we had.
+and we... or the user or the manager are able to change the invoice if needed. Makes
+sense?"*
+
+**Rule 1's chain gains a rung.** `filingCurrency` now reads: the file's own statement,
+then `procurement_orders.currency` for the order this document is matched to, then the
+house's `restaurants.currency`, then a refusal naming every absence. The order outranks
+the house because the order is what somebody agreed with this vendor for these goods,
+while the house's currency is what it REPORTS in — when the two differ, the order is right
+and the house is a coincidence. The file still outranks the order, because no purchase
+order restates a vendor's bill; but a file that DISAGREES with its order is HELD exactly
+as a model sighting holds one, naming both codes and the order's number.
+
+**The house rung says which of its two preconditions held.** "The order it is matched to
+names no currency" and "it is matched to no order" send a manager to two different places,
+and a single sentence covering both would send them to neither.
+
+**A vendor's usual currency is a fact about a VENDOR, and it files nothing.**
+`providers.usual_currency`, typed by a manager on the vendor's profile with the author and
+the moment enforced as one fact. Its only consumer is the order sheet's starting value.
+The founder said so twice in one sentence and the reason is the defect this whole line of
+work exists to end: `restaurants.currency DEFAULT 'USD'` put a currency nobody chose under
+fourteen houses' money, and a vendor-level default wired into invoice filing would be the
+same mistake one table over.
+
+**This NARROWS ADR 0117 Q31, and the narrowing is recorded rather than smoothed over.**
+Q31 (2026-09-05) defaulted the agreement line's currency from *"the vendor's terms or the
+house"*. Batch 65 names one source for the ORDER. `procurement_orders.currency_source`
+admits `vendor_usual` and `typed` and nothing else, so a field pre-filled from the house
+and submitted untouched would be recorded as `typed` — a provenance column saying a person
+chose something nobody chose, which is the [[absence-reported-as-health]] shape inside the
+one column built to prevent it. So `orderCurrencyOffer` pre-fills only the vendor's stated
+currency and SHOWS the house's and the vendor's last invoice as evidence beside the field.
+`agreementCurrencyDefault` is untouched and keeps Q31's behaviour for the line.
+
+**A held invoice refuses the PRICE at the receiving door, and only the price.**
+`verifyReceipt` throws before any write when a unit price was submitted against an invoice
+whose money is not filed. The count, the rejection and the stock movement are unaffected —
+measured, by running the same priceless receipt against a held and a settled document and
+comparing what each wrote. A delivery that physically happened is not made un-happened by
+a bookkeeping question.
+
+**Confirming is the same act as changing.** `PATCH :id/currency` accepts
+`previous === next` and records `change_kind = 'confirmed'` with the same author, role,
+moment and payload (`20260906180000`). Without it a manager who read a held invoice, saw
+the model had misread a glyph, and decided the currency the file already carried was right
+got a 409 — and the only way past the refusal was to name a currency they did not believe
+in. The no-op protection did not go away; it moved onto the kind, and the database now
+refuses the two lies the pair could tell.
+
+**A correction to the amendment above.** `moneyHeld`'s own comment claimed the full
+reading survived in `procurement_documents.extracted` so that a restatement could put it
+back. It did not: `document-intake.service.ts` writes `extracted` from the same object it
+writes the money columns from, and `withholdMoney` had nulled both — so `refiledMoney`
+restored a document of nulls while `refilingSentence` announced that the money "was held
+and is now filed". A restatement that reports a re-filing it did not perform is worse than
+one that refuses, because the manager stops looking. `ParsedDocument.moneyWithheld` now
+keeps the stripped figures and `refiledMoney` prefers them.
+
+**One assumption is STATED, not decided.** The HOUSE's currency stays the fallback only
+for an invoice with no matched order (or whose matched order named none); the vendor's
+usual currency never files anything by itself. The founder did not say what an unmatched
+invoice should do, and this is our inference from *"we won't use that as the invoice"*
+plus *"we will use the currency from where we order it"*.
+
+**One limit, stated.** The order's currency reaches the filing chain only for a document
+whose intake NAMED an order (`IntakeInput.orderId`). A document linked to an order later —
+by the auto-matcher, or by a person on the receipts screen — was already filed by then,
+and re-filing it is the restatement act rather than intake.
+
+Migrations: `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`,
+`20260906180000_confirming_a_currency_is_the_same_logged_act_as_changing_it.sql`. Both
+proven on PGlite, applied twice, with every CHECK adversarially probed — which is how a
+three-valued-logic hole in one of them was found before it shipped: `currency_source IN
+(...)` against a NULL evaluates to NULL, and a CHECK that evaluates to NULL PASSES, so the
+constraint read correctly in English and enforced nothing in exactly the case it was
+written for.
+
 ## Review trail
 
 | Date       | Reviewer                                                                                                                                            | Outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

@@ -52,6 +52,24 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - Bulk approve mints one seal per selected order at gesture start and approves nothing at all if any of them fails to mint
 - **The LEGACY desk holds too** (2026-09-04, founder's call in the ADR 0116 addendum) — the flag is OFF in production, so this is the approve control a house actually uses. Its bulk approve is now the same hold, through the same mint (`components/orders/SealedApproveDie.tsx`), and it is a real write: before this it changed local state and alerted "N order(s) approved!" without calling anything. Cmd/Ctrl+Shift+A moves focus to the hold rather than approving on one keystroke
 - **Write down an agreement, stating the unit its price is in** (2026-09-04, ADR 0119 phase 1) — the rebuilt page's own composer: wine, vendor, quantity in the order's own unit with its pack, and separately the price with a **price-unit picker** (per bottle / per case / per keg / per pack / per split case / per each / per litre) and a pack field shown only for a unit that holds more than one. The two units may differ, and the page says that is ordinary. Behind the flag only; the legacy desk (`pages/Orders.tsx`) is unchanged and cannot state a price unit
+- **The ORDER carries the currency it was placed in, and says where that came from**
+  (2026-09-06, founder batch 65: *"we will use the currency from where we order it. We
+  will show the user the currency the vendor always uses, and they have the ability to
+  change it or not in the orders page"*). The composer's currency field is pre-filled from
+  `providers.usual_currency` — what a person stated on the vendor's profile
+  ([[providers]] §1a) — with the sentence "the currency this vendor usually uses", and the
+  person may change it before placing. `createOrder` writes `procurement_orders.currency`
+  and `procurement_orders.currency_source` as two explicit keys; the provenance is
+  DERIVED ON THE SERVER by comparing the recorded code against the vendor's stated one,
+  never taken from the client. **A vendor who has stated no usual currency pre-fills
+  NOTHING** — the sentence says so, the house's currency and the vendor's last invoice are
+  shown as evidence beside the field, and neither is put in it, because
+  `currency_source` admits only `vendor_usual` and `typed` and a house-derived value
+  submitted untouched would be recorded as a person's choice when nobody made one. This
+  NARROWS ADR 0117 Q31's *"defaulted from the vendor's terms or the house"* for the order
+  header; the agreement LINE's own chain (`agreementCurrencyDefault`) is unchanged, and
+  the fork is filed in [[providers]] §13. Migration
+  `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`
 - **The agreement's total is drawn from the stated pair, with its working printed** — five cases of twelve at $420 per case reads $2,100, not the $25,200 the old per-bottle arithmetic gave; a quantity or price not yet typed leaves the total an em dash, never a zero
 - **The price register's refusal is said on the page, before the save** — an agreement saved with no price unit shows, in the register's own words, that it will not enter the price register and why. It still saves (a NULL pair is an ordinary row); nobody saves one unknowingly. A price unit the order cannot be counted in (a keg order priced per bottle) blocks the save with the sentence the gateway would answer
 - **Every ledger row states the unit its price is in, and shows the working in that unit** (2026-09-05, ADR 0119 phase 2) — `GET /procurement/orders` joins the line's pair in the same query and the expanded row prints "$420.00 per case (12 bottles)" above "60 bottles ÷ 12 = 5 cases × $420.00 = $2,100.00". A row whose unit is UNSTATED — every order placed before ADR 0119 — prints the price, the register's refusal in words, and **no working of the page's own**: the per-bottle convention would print a case price twelve times over, which is the error this ADR exists to end. A pairing the order cannot be counted in (per keg, counted in bottles) prints the refusal instead of a total, and a route that never read the line says exactly that rather than announcing a refusal about a line nobody looked at

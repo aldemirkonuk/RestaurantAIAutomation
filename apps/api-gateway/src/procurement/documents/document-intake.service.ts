@@ -290,19 +290,35 @@ export class DocumentIntakeService {
     // A read that FAILS is not an absent currency, and `houseCurrency` says
     // which of the two it got (ADR 0067).
     const house = await this.houseCurrency(input.restaurantId);
+    // B3 (founder, 2026-09-06 batch 65): the currency of the order this document
+    // is being filed against. Read here, beside the house's, so the EDI path and
+    // the model path get the same input and cannot answer differently.
+    const order = await this.matchedOrderCurrency(
+      input.restaurantId,
+      input.orderId,
+    );
 
     if (mime.startsWith("text/") || isEdiName || input.text != null) {
       const text = bytes.toString("utf8");
       if (looksLikeEdi832(text)) return this.priceCatalogue(text);
       if (looksLikeX12(text)) {
-        const result = parseX12(text, { houseCurrency: house.code });
-        if (result.documents.length)
-          return house.failure
+        const result = parseX12(text, {
+          houseCurrency: house.code,
+          orderCurrency: order.code,
+          hasMatchedOrder: order.matched,
+          orderLabel: order.label,
+        });
+        if (result.documents.length) {
+          const failures = [house.failure, order.failure].filter(
+            (f): f is string => typeof f === "string",
+          );
+          return failures.length
             ? {
                 ...result.documents[0],
-                warnings: [...result.documents[0].warnings, house.failure],
+                warnings: [...result.documents[0].warnings, ...failures],
               }
             : result.documents[0];
+        }
         // Recognised as EDI but produced nothing usable — a 997 or an
         // unsupported set. Say so rather than silently returning an empty invoice.
         return this.unreadable(
@@ -337,10 +353,16 @@ export class DocumentIntakeService {
       const ruled = applyCurrencyRules({
         doc: extracted,
         houseCurrency: house.code,
+        orderCurrency: order.code,
+        hasMatchedOrder: order.matched,
+        orderLabel: order.label,
         fileField: "printed currency",
       });
-      return house.failure
-        ? { ...ruled, warnings: [...ruled.warnings, house.failure] }
+      const failures = [house.failure, order.failure].filter(
+        (f): f is string => typeof f === "string",
+      );
+      return failures.length
+        ? { ...ruled, warnings: [...ruled.warnings, ...failures] }
         : ruled;
     } catch (err: any) {
       /**
@@ -411,6 +433,80 @@ export class DocumentIntakeService {
 
     const code = (data as { currency?: string | null } | null)?.currency ?? null;
     return { code, failure: null };
+  }
+
+  /**
+   * B3 — the currency of the ORDER this document is being filed against, and
+   * whether there is an order at all.
+   *
+   * THE THREE OUTCOMES ARE ALL DIFFERENT AND ALL SAID OUT LOUD:
+   *   * `{ matched: false }` — no order was named on the intake. The house's
+   *     currency is then the next rung and the filed-from sentence says so.
+   *   * `{ matched: true, code: null }` — an order, which named no currency.
+   *     Also falls to the house, with a different sentence, because a person who
+   *     sees "the order it is matched to names no currency" knows where to fix
+   *     it and a person who sees "matched to no order" does not.
+   *   * `{ matched: true, code: "EUR" }` — the rung answers.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067), and here it is worse than
+   * usual: an outage that read as "the order names no currency" would let an
+   * invoice be filed under the HOUSE's currency when the order it belongs to
+   * says otherwise — silently converting a EUR purchase into a TRY one on the
+   * price ladder. So the failure returns `matched: false, code: null` and a
+   * sentence that travels onto the document's warnings.
+   *
+   * ONLY THE ORDER NAMED ON THE INTAKE IS READ. A document that is linked to an
+   * order LATER (by the auto-matcher, or by a person on the receipts screen) was
+   * already filed by then, and re-filing it is the restatement act, not this
+   * one. That is a real limit and it is stated in the page notes rather than
+   * papered over.
+   */
+  private async matchedOrderCurrency(
+    restaurantId: string,
+    orderId: string | null | undefined,
+  ): Promise<{
+    code: string | null;
+    matched: boolean;
+    label: string | null;
+    failure: string | null;
+  }> {
+    if (!orderId)
+      return { code: null, matched: false, label: null, failure: null };
+
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("order_number, currency")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      const failure =
+        `The order this document was filed against could not be read ` +
+        `(${error.message}), so its currency was NOT used. That is a FAILED ` +
+        `READ, not an order without a currency: if this invoice states no ` +
+        `currency of its own it has been filed under this house's, which may ` +
+        `not be what the order was placed in. Check it, and restate the ` +
+        `currency if it is wrong.`;
+      this.logger.warn(`matchedOrderCurrency: ${failure}`);
+      return { code: null, matched: false, label: null, failure };
+    }
+
+    const row = data as {
+      order_number?: string | null;
+      currency?: string | null;
+    } | null;
+    // A document naming an order that does not belong to this house is not
+    // matched to anything this rule may read.
+    if (!row) return { code: null, matched: false, label: null, failure: null };
+
+    return {
+      code: row.currency ?? null,
+      matched: true,
+      label: row.order_number ?? null,
+      failure: null,
+    };
   }
 
   /**

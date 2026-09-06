@@ -210,12 +210,18 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
   /**
    * The currency this sheet OFFERS, from the gateway's own chain.
    *
-   * Deliberately not computed here. `agreement-currency.ts` resolves it —
-   * what this vendor last billed this house in, then the house's own reporting
-   * currency, then nothing — and the WRITER uses the same function, so the
-   * default a person confirms is the default the row would have taken. A second
-   * copy of the chain in the browser would drift, and the first symptom would be
-   * a line recorded in a currency nobody was shown.
+   * Deliberately not computed here. `agreement-currency.ts` resolves it and the
+   * WRITER uses the same function, so the default a person confirms is the
+   * default the row would have taken. A second copy of the chain in the browser
+   * would drift, and the first symptom would be a line recorded in a currency
+   * nobody was shown.
+   *
+   * SINCE 2026-09-06 (founder, batch 65) THE ONLY THING PRE-FILLED IS THE
+   * VENDOR'S OWN STATED USUAL CURRENCY. What this house reports in and what the
+   * vendor last billed in are still shown, under `alsoKnown`, as evidence — but
+   * neither is put in the field. The order records `vendor_usual` or `typed` and
+   * nothing else, so a house-derived value submitted untouched would be filed as
+   * a person's choice when nobody made one.
    *
    * A failed fetch offers NOTHING rather than a guess: `code: null` renders as
    * "we could not work one out", which is true, where a fallback would render as
@@ -227,8 +233,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
     queryFn: async () => {
       const { data } = await apiClient.get<{
         code: string | null;
-        basis: 'vendor_paper' | 'house' | null;
+        basis: 'vendor_usual' | null;
         sentence: string;
+        alsoKnown?: { vendorPaper: string | null; house: string | null };
       }>('/procurement/agreement-currency', {
         params: providerId ? { providerId } : undefined,
       });
@@ -589,11 +596,16 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
           </select>
           <Note>
             {currencyDefaultQuery.isLoading
-              ? 'Working out what this vendor usually bills in…'
+              ? 'Reading what this vendor usually bills in…'
               : currencyToRecord
                 ? currencyChoice === null && currencyDefaultQuery.data?.sentence
                   ? currencyDefaultQuery.data.sentence
-                  : `This line will be recorded in ${currencyToRecord}.`
+                  : `This order will be recorded in ${currencyToRecord}${
+                      currencyChoice !== null &&
+                      currencyDefaultQuery.data?.code !== currencyToRecord
+                        ? ', which you chose rather than the one this vendor usually uses'
+                        : ''
+                    }.`
                 : (currencyDefaultQuery.data?.sentence ??
                   'Nothing will be recorded, and every amount on this line will read as “currency not recorded”.')}{' '}
             Every amount above is in it — the price, the total, and each of the

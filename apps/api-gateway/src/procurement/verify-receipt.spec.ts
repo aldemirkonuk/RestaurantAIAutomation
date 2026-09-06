@@ -62,6 +62,12 @@ const PROCUREMENT_ORDER_COLUMNS = new Set([
   "recurrence_status_at",
   "recurrence_parent_order_id",
   "recurrence_occurrence_on",
+  // 20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql
+  // (2026-09-06): the ORDER carries the currency it was placed in and says where
+  // that came from. `createOrder` writes both, always together -- the CHECK
+  // `procurement_orders_currency_states_its_source` refuses either half alone.
+  "currency",
+  "currency_source",
   "accepted_quantity",
   "ai_autonomy_paused",
   "approved_at",

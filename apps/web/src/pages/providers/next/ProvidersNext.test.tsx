@@ -42,6 +42,14 @@ vi.mock('./useProviderTerms', () => ({
   }),
 }));
 
+// The sheet also carries the vendor's usual currency (B1, founder 2026-09-06
+// batch 65), which reads the session's role. This file is about the GRID and the
+// sheet's shape; that section is asserted in UsualCurrencySection.test.tsx
+// against a mocked apiClient and a mocked role.
+vi.mock('./UsualCurrencySection', () => ({
+  UsualCurrencySection: () => null,
+}));
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {

@@ -2,10 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import { ReceivingWorkspace } from './ReceivingWorkspace'
 
 const verifyOrderReceipt = vi.hoisted(() => vi.fn())
 const forOrder = vi.hoisted(() => vi.fn())
+const forOrderWithCurrency = vi.hoisted(() => vi.fn())
+/** What the gateway says the ORDER was placed in, per test. */
+let orderBlock: {
+  id: string
+  currency: string | null
+  currencySource: 'vendor_usual' | 'typed' | null
+  orderNumber: string | null
+  failure: string | null
+} | null = null
 const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
 
@@ -14,7 +24,7 @@ vi.mock('../../../services/api/documents', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/documents')>(
     '../../../services/api/documents',
   )
-  return { ...actual, documentsApi: { forOrder } }
+  return { ...actual, documentsApi: { forOrder, forOrderWithCurrency } }
 })
 vi.mock('../../../stores', () => ({
   useNotificationStore: () => ({ success: toastSuccess, error: toastError }),
@@ -56,9 +66,11 @@ function renderWorkspace(props: Partial<Parameters<typeof ReceivingWorkspace>[0]
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onClose = vi.fn()
   render(
-    <QueryClientProvider client={client}>
-      <ReceivingWorkspace order={order} items={[]} onClose={onClose} {...props} />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <ReceivingWorkspace order={order} items={[]} onClose={onClose} {...props} />
+      </QueryClientProvider>
+    </MemoryRouter>,
   )
   return { onClose }
 }
@@ -85,6 +97,18 @@ beforeEach(() => {
   vi.clearAllMocks()
   verifyOrderReceipt.mockResolvedValue({ ...order, status: 'COMPLETED' })
   forOrder.mockResolvedValue([])
+  orderBlock = null
+  /*
+   * The screen now reads documents AND the order's own currency in one request
+   * (B4). `forOrderWithCurrency` is derived from `forOrder` rather than stubbed
+   * separately so that every existing test's `forOrder.mockResolvedValue([...])`
+   * keeps meaning what it meant — one place to set documents, not two that can
+   * disagree.
+   */
+  forOrderWithCurrency.mockImplementation(async (id: string) => ({
+    documents: await forOrder(id),
+    order: orderBlock,
+  }))
 })
 
 describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
@@ -336,5 +360,146 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     // Sending 0 or null here would fabricate a proposal nobody made.
     expect(body.prefilledInvoiceQuantityInInvoiceUom).toBeUndefined()
     expect(body.prefilledShippedQuantityInShippedUom).toBeUndefined()
+  })
+})
+
+/**
+ * ITEM A + B4 — a held invoice refuses the price at the door, and the order's
+ * currency is printed beside the invoice's (founder, 2026-09-06 batch 64/65).
+ *
+ * The verdict itself is the GATEWAY's: `moneyState` arrives on the document,
+ * computed by the same function `verifyReceipt` refuses with. These tests pin
+ * that the screen renders that verdict rather than re-deriving one — a second
+ * implementation in the browser is how a page comes to show an enabled field
+ * over a request the server will reject.
+ */
+describe('ReceivingWorkspace — a held invoice refuses the price', () => {
+  const HOLD =
+    'MONEY HELD, NOT FILED. order PO-1042 was placed in EUR, and this document’s printed currency states USD.'
+
+  const heldInvoice = () =>
+    doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }], {
+      currency: null,
+      moneyState: { priced: false, reason: HOLD },
+    })
+
+  it('disables the price field and prints the reason, what still works, and the act', async () => {
+    forOrder.mockResolvedValue([heldInvoice()])
+    renderWorkspace()
+
+    const panel = await screen.findByTestId('receiving-money-hold')
+    expect(panel).toHaveTextContent('MONEY HELD, NOT FILED')
+    expect(panel).toHaveTextContent('placed in EUR')
+    // The founder's "stock proceeds", on the screen.
+    expect(panel).toHaveTextContent(/stock movement are unaffected/i)
+    expect(panel).toHaveTextContent(/submitted now[\s\S]*without a price/i)
+    // The act that clears it, as a link a person can follow — not prose.
+    const link = screen.getByRole('link', { name: /Restate or confirm/i })
+    expect(link).toHaveAttribute('href', '/receipts?doc=invoice-1')
+
+    // Disabled, never hidden.
+    expect(invoicePriceInput()).toBeDisabled()
+    expect(invoicePriceInput()).toBeInTheDocument()
+  })
+
+  it('does not pre-fill the price from a held invoice', async () => {
+    forOrder.mockResolvedValue([heldInvoice()])
+    renderWorkspace()
+    await screen.findByTestId('receiving-money-hold')
+    expect(invoicePriceInput()).toHaveValue(null)
+  })
+
+  it('leaves the quantity alone — only the price is refused', async () => {
+    forOrder.mockResolvedValue([heldInvoice()])
+    renderWorkspace()
+    await screen.findByTestId('receiving-money-hold')
+    // The count came off the same document and is untouched by a money question.
+    expect(invoiceQtyInput()).toHaveValue(24)
+    expect(invoiceQtyInput()).not.toBeDisabled()
+  })
+
+  it('a document whose money IS filed leaves the price field open', async () => {
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }], {
+        currency: 'EUR',
+        moneyState: { priced: true },
+      }),
+    ])
+    renderWorkspace()
+    await screen.findByDisplayValue('22')
+    expect(screen.queryByTestId('receiving-money-hold')).toBeNull()
+    expect(invoicePriceInput()).not.toBeDisabled()
+  })
+
+  it('a gateway that sends no moneyState at all holds nothing', async () => {
+    forOrder.mockResolvedValue([doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }])])
+    renderWorkspace()
+    await screen.findByDisplayValue('22')
+    expect(screen.queryByTestId('receiving-money-hold')).toBeNull()
+  })
+})
+
+describe('ReceivingWorkspace — the order’s currency beside the invoice’s (B4)', () => {
+  it('names both when they differ, and converts nothing', async () => {
+    orderBlock = {
+      id: 'order-1',
+      currency: 'EUR',
+      currencySource: 'vendor_usual',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }], {
+        currency: 'GBP',
+        moneyState: { priced: true },
+      }),
+    ])
+    renderWorkspace()
+
+    const panel = await screen.findByTestId('receiving-currency-compare')
+    expect(panel).toHaveTextContent('The order was placed in EUR')
+    expect(panel).toHaveTextContent('this invoice states GBP')
+    expect(panel).toHaveTextContent(/Nothing has been converted/i)
+  })
+
+  it('says nothing when the two agree', async () => {
+    orderBlock = {
+      id: 'order-1',
+      currency: 'EUR',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }], {
+        currency: 'EUR',
+        moneyState: { priced: true },
+      }),
+    ])
+    renderWorkspace()
+    await screen.findByDisplayValue('22')
+    expect(screen.queryByTestId('receiving-currency-compare')).toBeNull()
+  })
+
+  it('A FAILED READ IS NOT AN AGREEMENT: it says the comparison could not be made', async () => {
+    orderBlock = {
+      id: 'order-1',
+      currency: null,
+      currencySource: null,
+      orderNumber: null,
+      failure:
+        "The order's own currency could not be read (connection reset), so the invoice cannot be compared against it here.",
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }], {
+        currency: 'GBP',
+        moneyState: { priced: true },
+      }),
+    ])
+    renderWorkspace()
+
+    const panel = await screen.findByTestId('receiving-currency-compare')
+    expect(panel).toHaveTextContent('could not be read')
+    expect(panel).not.toHaveTextContent('The order was placed in')
   })
 })

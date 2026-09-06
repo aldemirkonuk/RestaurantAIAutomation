@@ -27,6 +27,7 @@ import type { Provider } from '../../../services/api/providers';
 import { Sheet } from '../../../components/mudavym/Sheet';
 import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
+import { UsualCurrencySection } from './UsualCurrencySection';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -84,6 +85,12 @@ export function TwinSheet({ provider, onClose }: Props) {
         />
         <FactRow label="Regions" value={regions.length ? regions.join(', ') : EM} />
         <FactRow label="Last contact" value={fmtLastContact(provider.lastContactDate)} />
+      </div>
+
+      {/* what money they usually bill in — a fact about the VENDOR, offered on
+          the order sheet and never used to file an invoice (founder, batch 65) */}
+      <div className="px-4 pb-3" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <UsualCurrencySection providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* what this house knows about dealing with them — same register as

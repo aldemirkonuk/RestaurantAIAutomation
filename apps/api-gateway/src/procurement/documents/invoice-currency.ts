@@ -123,18 +123,32 @@ export function seenCodes(seen: CurrencySeen): readonly string[] | null {
  */
 export type FilingCurrency =
   | { kind: "file"; code: string; from: string }
+  | { kind: "order"; code: string; from: string }
   | { kind: "house"; code: string; from: string }
   | { kind: "none"; because: string };
 
 /**
- * Rule 1. What this invoice's money is in, given what the file says and what
- * the house says.
+ * Rule 1, as the founder revised it on 2026-09-06 (batch 65).
  *
- * ORDER MATTERS AND IT IS THE FOUNDER'S. The file's own statement wins: a
- * distributor billing a Turkish house in EUR has said so on the paper, and
- * overriding that with the house's reporting currency would restate a vendor's
- * bill. The house's currency answers only the case the founder was asked about
- * — the file states NOTHING.
+ * The chain is FOUR rungs and the second one is new:
+ *
+ *   1. the file's own statement — `CUR02` on an 810, the header on a PDF;
+ *   2. **the currency of the ORDER this invoice is matched to**;
+ *   3. the house's own `restaurants.currency`, and ONLY when the invoice has no
+ *      matched order — the reason travels in the sentence;
+ *   4. nothing, and a refusal naming every absence.
+ *
+ * WHY THE ORDER OUTRANKS THE HOUSE, in the founder's own words: *"we will use
+ * the currency from where we order it"*. The house's `restaurants.currency` is
+ * what it REPORTS in; the order is what somebody actually agreed with this
+ * vendor, for these goods, on a day. When the two differ — a Turkish house that
+ * reports in TRY buying a French allocation priced in EUR — the order is right
+ * and the house is a coincidence.
+ *
+ * WHY THE FILE STILL OUTRANKS THE ORDER. A distributor billing in EUR has said
+ * so on the paper, and no purchase order restates a vendor's bill. But a file
+ * that DISAGREES with its order is not filed quietly either: see
+ * `orderDisagreement` below, which holds it exactly as a model sighting does.
  *
  * A file-stated value that is not an alpha-3 is refused rather than stored:
  * `"$"`, `"usd "` and `"US Dollars"` are three ways of nearly saying a currency,
@@ -144,52 +158,145 @@ export type FilingCurrency =
 export function filingCurrency(args: {
   /** What the document itself stated — `CUR02` on an 810, the header on a PDF. */
   fileStated: string | null | undefined;
+  /**
+   * `procurement_orders.currency` for the order this document is matched to
+   * through `procurement_document_links`. NULL when the order named no currency
+   * — an order composed before that column existed, or one whose vendor had
+   * stated no usual currency and whose desk chose none.
+   */
+  orderStated?: string | null | undefined;
+  /**
+   * Whether this document is matched to an order AT ALL. Distinct from
+   * `orderStated` being null, and the distinction is the whole reason the house
+   * rung can name its own precondition: "no order names one" and "there is no
+   * order" are different sentences and a manager acts on them differently.
+   */
+  hasMatchedOrder?: boolean;
   /** `restaurants.currency`. NULL when the house has never answered. */
   houseStated: string | null | undefined;
   /** The field the file would have stated it in, named for the sentence. */
   fileField: string;
 }): FilingCurrency {
   const file = (args.fileStated ?? "").trim().toUpperCase();
+  const order = (args.orderStated ?? "").trim().toUpperCase();
   const house = (args.houseStated ?? "").trim().toUpperCase();
+  const matched = args.hasMatchedOrder === true || order !== "";
 
   if (file !== "" && ISO_4217_ALPHA3.test(file))
     return { kind: "file", code: file, from: `the document's own ${args.fileField}` };
+
+  if (ISO_4217_ALPHA3.test(order))
+    return {
+      kind: "order",
+      code: order,
+      from: `the currency the matched order was placed in (procurement_orders.currency)`,
+    };
 
   if (ISO_4217_ALPHA3.test(house))
     return {
       kind: "house",
       code: house,
-      from: "this house's own stated currency (restaurants.currency)",
+      from: matched
+        ? "this house's own stated currency (restaurants.currency) — the order this document is matched to names none"
+        : "this house's own stated currency (restaurants.currency) — this document is matched to no order",
     };
 
   const fileSaid =
     file === ""
       ? `The document states no ${args.fileField}`
       : `The document's ${args.fileField} is ${JSON.stringify(args.fileStated)}, which is not an ISO 4217 alpha-3 code`;
+  const orderSaid = matched
+    ? order === ""
+      ? ", the order it is matched to names no currency"
+      : `, the order it is matched to names ${JSON.stringify(args.orderStated)}, which is not an ISO 4217 alpha-3 code`
+    : ", it is matched to no order";
   const houseSaid =
     house === ""
-      ? "this house has never stated its own currency (restaurants.currency is not recorded)"
-      : `this house's own currency is ${JSON.stringify(args.houseStated)}, which is not an ISO 4217 alpha-3 code`;
+      ? "and this house has never stated its own currency (restaurants.currency is not recorded)"
+      : `and this house's own currency is ${JSON.stringify(args.houseStated)}, which is not an ISO 4217 alpha-3 code`;
 
   return {
     kind: "none",
     because:
-      `${fileSaid}, and ${houseSaid}. The money on this document was REFUSED ` +
-      `rather than filed: a figure with no currency is not a price, and there ` +
-      `is deliberately no USD default here. The quantities were kept. State ` +
-      `this house's currency, or send the document again with its currency on ` +
-      `it, and the money can be filed.`,
+      `${fileSaid}${orderSaid}, ${houseSaid}. The money on this document was ` +
+      `REFUSED rather than filed: a figure with no currency is not a price, and ` +
+      `there is deliberately no USD default here. The quantities were kept. ` +
+      `State this house's currency, match this document to an order that names ` +
+      `one, or send the document again with its currency on it, and the money ` +
+      `can be filed.`,
   };
 }
 
-/** The sentence recorded on a document filed under the house's own currency. */
-export function houseCurrencyNote(code: string, fileField: string): string {
+/** The sentence recorded on a document filed under the matched order's currency. */
+export function orderCurrencyNote(code: string, fileField: string): string {
   return (
-    `The document states no ${fileField}, so its money is filed under this ` +
-    `house's own stated currency, ${code}. That is this house's REPORTING ` +
-    `currency and not a claim the vendor made — if this invoice is in another ` +
-    `currency, change it on the document and the money is re-filed under the ` +
-    `one you name.`
+    `The document states no ${fileField}, so its money is filed under the ` +
+    `currency the order it is matched to was PLACED in, ${code}. That is what ` +
+    `somebody agreed with this vendor for these goods — not this house's ` +
+    `reporting currency, and not a claim the vendor made on this paper. If the ` +
+    `invoice is in another currency, restate it and the money is re-filed under ` +
+    `the one you name.`
+  );
+}
+
+/** The sentence recorded on a document filed under the house's own currency. */
+export function houseCurrencyNote(
+  code: string,
+  fileField: string,
+  hasMatchedOrder = false,
+): string {
+  return (
+    `The document states no ${fileField}, and ` +
+    (hasMatchedOrder
+      ? `the order it is matched to names no currency either, `
+      : `it is matched to no order, `) +
+    `so its money is filed under this house's own stated currency, ${code}. ` +
+    `That is this house's REPORTING currency and not a claim the vendor made — ` +
+    `if this invoice is in another currency, change it on the document and the ` +
+    `money is re-filed under the one you name.`
+  );
+}
+
+/**
+ * B3's second half. Does the currency the FILE states contradict the currency
+ * the ORDER was placed in?
+ *
+ * This is deliberately the same verdict as rule 2's model disagreement, and it
+ * withholds the money the same way, for a reason that is not symmetry: an
+ * invoice denominated differently from its own purchase order is either a
+ * vendor billing the wrong desk, a currency typed wrong on the order, or a real
+ * re-pricing somebody agreed to. All three are worth a person's minute, and the
+ * one thing none of them is worth is a silent price in `price_history` that the
+ * four-way match then compares against a number in another money.
+ *
+ * `null` when there is nothing to contradict: no order, an order with no
+ * currency, a file with no currency (rule 1's chain already answers that), or
+ * agreement.
+ */
+export function orderDisagreement(args: {
+  fileStated: string | null | undefined;
+  orderStated: string | null | undefined;
+  fileField: string;
+  /** The order's own number, for the sentence. Never load-bearing. */
+  orderLabel?: string | null;
+}): string | null {
+  const file = (args.fileStated ?? "").trim().toUpperCase();
+  const order = (args.orderStated ?? "").trim().toUpperCase();
+  if (!ISO_4217_ALPHA3.test(file) || !ISO_4217_ALPHA3.test(order)) return null;
+  if (file === order) return null;
+
+  const which = args.orderLabel?.trim()
+    ? `order ${args.orderLabel.trim()}`
+    : "the order it is matched to";
+  return (
+    `MONEY HELD, NOT FILED. ${which} was placed in ${order}, and this ` +
+    `document's ${args.fileField} states ${file}. Nothing has been priced: the ` +
+    `money is withheld under BOTH currencies until a person says which one is ` +
+    `right, because an invoice in one money checked against an order in another ` +
+    `produces a confident wrong verdict rather than no verdict. Nothing was ` +
+    `converted — there is no exchange rate in this system. The quantities were ` +
+    `kept, and the reading is stored whole, so restating or confirming the ` +
+    `currency re-files the money without asking for the document again.`
   );
 }
 
@@ -265,8 +372,45 @@ export function withholdMoney(
   doc: ParsedDocument,
   reason: string,
 ): ParsedDocument {
+  /*
+   * THE FIGURES ARE KEPT BEFORE THEY ARE STRIPPED, and this is a correction of a
+   * documented-but-untrue invariant, not a new feature. `moneyHeld`'s comment
+   * said the full reading survived in `procurement_documents.extracted`; the
+   * intake writes `extracted` from THIS object, so once the fields below were
+   * nulled the reading was gone from both places. `refiledMoney` then restored a
+   * document of nulls while `refilingSentence` announced that the money "was
+   * held and is now filed" — the one failure a restatement must not have, since
+   * it is the act a manager performs precisely to get the figures back.
+   *
+   * `moneyWithheld` is NOT re-withheld when a held document is withheld again
+   * (which no path does today): `doc.moneyWithheld ?? …` would keep the first,
+   * older reading. The `??` below is deliberate and the comment is here so that
+   * a future second withholding does not silently overwrite the figures that
+   * were real.
+   */
+  const kept = doc.moneyWithheld ?? {
+    subtotal: doc.subtotal ?? null,
+    freight: doc.freight ?? null,
+    fuelSurcharge: doc.fuelSurcharge ?? null,
+    splitCaseFee: doc.splitCaseFee ?? null,
+    deliveryFee: doc.deliveryFee ?? null,
+    depositTotal: doc.depositTotal ?? null,
+    tax: doc.tax ?? null,
+    otherCharges: doc.otherCharges ?? null,
+    discountTotal: doc.discountTotal ?? null,
+    total: doc.total ?? null,
+    lines: doc.lines.map((l, i) => ({
+      lineNo: typeof l?.lineNo === "number" ? l.lineNo : i + 1,
+      unitPrice: l?.unitPrice ?? null,
+      lineTotal: l?.lineTotal ?? null,
+      allowance: l?.allowance ?? null,
+      deposit: l?.deposit ?? null,
+    })),
+  };
+
   return {
     ...doc,
+    moneyWithheld: kept,
     currency: "",
     subtotal: null,
     freight: null,
@@ -327,9 +471,11 @@ export interface LineMoney {
 /**
  * Rule 3's arithmetic half: what a deliberate currency change puts BACK.
  *
- * Rules 1 and 2 null the money COLUMNS and leave the parse whole in
- * `procurement_documents.extracted`. This reads that snapshot and produces the
- * figures to write, denominated in the code a person named. Nothing is
+ * Rules 1, 2 and B3 null the money COLUMNS and keep the figures they stripped on
+ * the parse, in `moneyWithheld`. This reads the stored snapshot — preferring
+ * `moneyWithheld` when it is there, since for a held document the top-level
+ * fields are exactly the nulls the hold wrote — and produces the figures to
+ * write, denominated in the code a person named. Nothing is
  * converted — there is no exchange rate anywhere in this system and inventing
  * one would be inventing the answer (the `20260905120000` migration's rule 3).
  * The figures are the vendor's own; only what they are DENOMINATED IN changes.
@@ -357,9 +503,65 @@ export function refiledMoney(snapshot: unknown): {
   const n = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) ? v : null;
 
+  /*
+   * WHICH FIGURES. For a document whose money was HELD or REFUSED, the
+   * top-level fields ARE the nulls the hold wrote, and reading them back is how
+   * a restatement came to report a re-filing of nothing. `moneyWithheld` holds
+   * what was stripped; when it is present it is the reading, and when it is not
+   * (a document that was never held, or one stored before the field existed) the
+   * top-level fields are.
+   */
+  const kept = s.moneyWithheld ?? null;
+  const keptLine = (lineNo: number) =>
+    kept?.lines?.find((l) => l?.lineNo === lineNo) ?? null;
+
+  const lines = s.lines.map((l, i) => {
+    const lineNo = typeof l?.lineNo === "number" ? l.lineNo : i + 1;
+    const k = kept ? keptLine(lineNo) : null;
+    const src = k ?? l;
+    return {
+      line_no: lineNo,
+      unit_price: n(src?.unitPrice),
+      line_total: n(src?.lineTotal),
+      allowance: n(src?.allowance),
+      deposit: n(src?.deposit),
+    };
+  });
+
+  const header = {
+    subtotal: n(kept ? kept.subtotal : s.subtotal),
+    freight: n(kept ? kept.freight : s.freight),
+    fuel_surcharge: n(kept ? kept.fuelSurcharge : s.fuelSurcharge),
+    split_case_fee: n(kept ? kept.splitCaseFee : s.splitCaseFee),
+    delivery_fee: n(kept ? kept.deliveryFee : s.deliveryFee),
+    deposit_total: n(kept ? kept.depositTotal : s.depositTotal),
+    tax: n(kept ? kept.tax : s.tax),
+    other_charges: n(kept ? kept.otherCharges : s.otherCharges),
+    discount_total: n(kept ? kept.discountTotal : s.discountTotal),
+    total: n(kept ? kept.total : s.total),
+  };
+
+  // The tie-out runs over the figures that are actually going onto the row, not
+  // over the snapshot as stored — otherwise a restored document's arithmetic
+  // would describe the nulls it replaced.
   const rebuilt = applyTieOut({
     ...(s as ParsedDocument),
-    // The tie-out is derived from the figures below, never carried over.
+    subtotal: header.subtotal,
+    freight: header.freight,
+    fuelSurcharge: header.fuel_surcharge,
+    splitCaseFee: header.split_case_fee,
+    deliveryFee: header.delivery_fee,
+    depositTotal: header.deposit_total,
+    tax: header.tax,
+    otherCharges: header.other_charges,
+    discountTotal: header.discount_total,
+    total: header.total,
+    lines: s.lines.map((l, i) => {
+      const lineNo = typeof l?.lineNo === "number" ? l.lineNo : i + 1;
+      const k = kept ? keptLine(lineNo) : null;
+      return k ? { ...l, ...k, lineNo } : l;
+    }),
+    // The tie-out is derived from the figures above, never carried over.
     computedLinesTotal: null,
     tieOutDelta: null,
     tiesOut: null,
@@ -368,27 +570,12 @@ export function refiledMoney(snapshot: unknown): {
 
   return {
     document: {
-      subtotal: n(s.subtotal),
-      freight: n(s.freight),
-      fuel_surcharge: n(s.fuelSurcharge),
-      split_case_fee: n(s.splitCaseFee),
-      delivery_fee: n(s.deliveryFee),
-      deposit_total: n(s.depositTotal),
-      tax: n(s.tax),
-      other_charges: n(s.otherCharges),
-      discount_total: n(s.discountTotal),
-      total: n(s.total),
+      ...header,
       computed_lines_total: rebuilt.computedLinesTotal,
       tie_out_delta: rebuilt.tieOutDelta,
       ties_out: rebuilt.tiesOut,
     },
-    lines: s.lines.map((l, i) => ({
-      line_no: typeof l?.lineNo === "number" ? l.lineNo : i + 1,
-      unit_price: n(l?.unitPrice),
-      line_total: n(l?.lineTotal),
-      allowance: n(l?.allowance),
-      deposit: n(l?.deposit),
-    })),
+    lines,
   };
 }
 
@@ -427,18 +614,34 @@ export function refilingSentence(args: {
 }
 
 /**
- * Rule 1 + rule 2 in one call, for the caller that has a parse, a house and
- * (maybe) a sighting.
+ * Rule 1 + rule 2 + B3 in one call, for the caller that has a parse, a house,
+ * (maybe) a matched order and (maybe) a sighting.
  *
  * Kept here rather than in `document-intake.service.ts` so that the EDI path
  * and the model path cannot answer the same question two ways — the failure
  * mode `ParsedDocument`'s own header names: *"the moment a verdict depends on
  * the channel, 'we photographed it' and 'they sent it electronically' start
  * producing different answers about the same delivery"*.
+ *
+ * THE TWO HOLDS ARE CHECKED IN A DELIBERATE ORDER. The order disagreement is
+ * tested BEFORE the model sighting, because it is the stronger evidence: the
+ * order's currency is a fact a person recorded on this house's own system, and
+ * the sighting is a model's reading of a photograph. When both would hold the
+ * same document, the sentence a manager gets should name the one they can act
+ * on without squinting at the paper.
  */
 export function applyCurrencyRules(args: {
   doc: ParsedDocument;
   houseCurrency: string | null | undefined;
+  /**
+   * `procurement_orders.currency` for the order this document is matched to,
+   * when there is exactly one. Absent for a document matched to nothing.
+   */
+  orderCurrency?: string | null | undefined;
+  /** Whether the document is matched to an order at all. */
+  hasMatchedOrder?: boolean;
+  /** The matched order's number, for the sentence. Never load-bearing. */
+  orderLabel?: string | null;
   /** The field the document would have stated its currency in. */
   fileField: string;
 }): ParsedDocument {
@@ -446,11 +649,28 @@ export function applyCurrencyRules(args: {
 
   const filed = filingCurrency({
     fileStated: doc.currency,
+    orderStated: args.orderCurrency,
+    hasMatchedOrder: args.hasMatchedOrder,
     houseStated: houseCurrency,
     fileField,
   });
 
   if (filed.kind === "none") return withholdMoney(doc, filed.because);
+
+  // B3. Only reachable when the file itself stated a code — `orderDisagreement`
+  // returns null otherwise — so a document filed FROM the order can never
+  // disagree with it.
+  const versusOrder = orderDisagreement({
+    fileStated: doc.currency,
+    orderStated: args.orderCurrency,
+    fileField,
+    orderLabel: args.orderLabel,
+  });
+  if (versusOrder)
+    return withholdMoney(
+      { ...doc, currency: filed.code, currencyFiledFrom: filed.from },
+      versusOrder,
+    );
 
   /*
    * THE HOUSE-CURRENCY NOTE IS PROVENANCE, NOT A WARNING, AND THAT WAS
@@ -470,8 +690,10 @@ export function applyCurrencyRules(args: {
   const warnings = [...doc.warnings];
   const from =
     filed.kind === "house"
-      ? houseCurrencyNote(filed.code, fileField)
-      : filed.from;
+      ? houseCurrencyNote(filed.code, fileField, args.hasMatchedOrder === true)
+      : filed.kind === "order"
+        ? orderCurrencyNote(filed.code, fileField)
+        : filed.from;
 
   const seen = doc.currencySeen ?? null;
   if (!seen) {
@@ -500,4 +722,98 @@ export function applyCurrencyRules(args: {
     warnings:
       agreement.kind === "unreadable" ? [...warnings, agreement.note] : warnings,
   };
+}
+
+/* ===========================================================================
+ * ITEM A — a held invoice refuses a price at the receiving door.
+ *
+ * THE FOUNDER, 2026-09-06, batch 64, verbatim: *"do option 1 recomemneded,
+ * stock proceeds refuse the price at receving, and let them approve if
+ * otherwise"*.
+ *
+ * WHAT IS REFUSED AND WHAT IS NOT. The unit price a person keys into the
+ * receiving workspace is refused. The count is not, the stock movement is not,
+ * the rejection is not, and the delivery is not. A delivery that physically
+ * happened is not made un-happened by a bookkeeping question, and stopping the
+ * count would strand goods at the door over one.
+ *
+ * WHY THE PRICE AND ONLY THE PRICE. `verifyReceipt` puts `invoiceUnitPrice`
+ * into `price_history`, into `vendor_price_observations` and into the landed
+ * cost of the corrected lot. A figure taken off a document whose currency two
+ * parties disagree about reaches the market box, the price ladder and a vendor
+ * dispute as real money, denominated by whichever of the two was wrong. That is
+ * the exact harm rules 1 to 3 exist to prevent, and it walks straight past them
+ * through a text field.
+ * ======================================================================== */
+
+/** Whether a document's money may be read, and why not when it may not. */
+export type DocumentMoneyState =
+  | { priced: true }
+  | { priced: false; reason: string };
+
+/**
+ * Read a `procurement_documents` row's money state.
+ *
+ * THE STATE IS THE CURRENCY COLUMN, not a flag, and that is deliberate. Rule 1's
+ * refusal and rules 2/B3's holds all end in `withholdMoney`, which blanks
+ * `currency` along with every figure — so `currency IS NULL` is precisely "the
+ * money on this document was not filed", with no second bookkeeping to drift
+ * from it. Restating or confirming the currency writes the code, which is the
+ * same act that clears the hold; there is no third place to remember to update.
+ *
+ * The REASON comes off `extracted.moneyHeld`, which carries the sentence the
+ * rule wrote at the time — naming the two disagreeing currencies, or the two
+ * absences. Printing that verbatim beats re-deriving a label here, which is how
+ * a screen ends up saying "held" about a document that was refused.
+ */
+export function documentMoneyState(row: {
+  currency?: string | null;
+  extracted?: unknown;
+}): DocumentMoneyState {
+  const code = (row?.currency ?? "").trim().toUpperCase();
+  if (ISO_4217_ALPHA3.test(code)) return { priced: true };
+
+  const held =
+    row?.extracted &&
+    typeof row.extracted === "object" &&
+    !Array.isArray(row.extracted)
+      ? (row.extracted as { moneyHeld?: unknown }).moneyHeld
+      : null;
+  const reason =
+    typeof held === "string" && held.trim() !== ""
+      ? held.trim()
+      : "This document's money is not filed under any currency: procurement_documents.currency is not recorded, and the reading does not say why. A figure with no currency is not a price.";
+  return { priced: false, reason };
+}
+
+/**
+ * The sentence a person reads when the receiving screen refuses their price.
+ *
+ * It has to carry three things and the third is the one that is usually missing
+ * from a refusal: WHY (the stored reason, verbatim), WHAT STILL WORKS (the
+ * count and the stock movement), and THE ACT THAT CLEARS IT (restate or confirm
+ * the currency on the document, which is one control on the receipt). A refusal
+ * that names no way forward teaches a person to route around it.
+ */
+export function receivingPriceRefusal(args: {
+  reason: string;
+  /** The document's own number, when it has one. */
+  docNumber?: string | null;
+  /** The document id, so the page can link straight to its currency control. */
+  documentId?: string | null;
+}): string {
+  const which = args.docNumber?.trim()
+    ? `invoice ${args.docNumber.trim()}`
+    : "the invoice attached to this order";
+  return (
+    `The unit price was NOT accepted, because the money on ${which} is not ` +
+    `filed under any currency. ${args.reason} ` +
+    `Everything else on this receipt still stands: the count, the rejection and ` +
+    `the stock movement are unaffected, and you can submit them now without a ` +
+    `price. To accept the price, restate the invoice's currency — or confirm ` +
+    `the one it would take — on the receipt's currency control` +
+    (args.documentId ? ` (document ${args.documentId})` : "") +
+    `. That is a manager's or an owner's decision and it is recorded with their ` +
+    `name; once it is made this price is accepted as it stands.`
+  );
 }

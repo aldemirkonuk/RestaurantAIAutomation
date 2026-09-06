@@ -58,6 +58,43 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
   (stated by the house · on the vendor record · inferred with the receipt count and
   confidence · unknown with the reason), editable in place. A value the gateway cannot tell
   apart from its column default is rendered as UNKNOWN with that reason, never as a term
+- **"This vendor usually invoices in"** (redesign only, TwinSheet, 2026-09-06). The
+  founder, batch 65, verbatim:
+
+  > "maybe Every vendor and their profile will show their default currency, but we won't
+  > use that as the invoice... definitely invoice receipt. However, we will use the
+  > currency from where we order it. We will show the user the currency the vendor always
+  > uses, and they have the ability to change it or not in the orders page. And after
+  > that, we will have time To make sure that the invoice is good with the order we had.
+  > and we... or the user or the manager are able to change the invoice if needed. Makes
+  > sense?"
+
+  The section shows `providers.usual_currency` — an ISO 4217 code TYPED BY A PERSON —
+  with who stated it and when, printed beside it. **It never files an invoice**, and the
+  section says so every time it is shown: an invoice takes the currency printed on it,
+  then the currency of the ORDER it is matched to, then the house's. Its one consumer is
+  the order sheet, where it is the starting value.
+  - **Nothing is offered as a starting value.** The field is empty for a vendor nobody has
+    asked, and the sentence says the vendor has not stated one rather than leaving a
+    silent box. A pre-filled value saved without reading is indistinguishable afterwards
+    from one somebody thought about, which is what `usual_currency_set_by` exists to tell
+    apart — so the select does not even pre-select the STORED code.
+  - **Manager or owner only.** `PATCH /providers/:id/usual-currency`; staff see the
+    control disabled with the sentence naming what they are and who can. A blank is
+    REFUSED rather than treated as "clear it" — clearing a stated currency is a different
+    act with a different consequence and it is not built.
+  - **A failed read is a failure in words**, never "this vendor has stated none": the
+    gateway answers 503 with the reason and the section renders it.
+  - Value, author and moment are ONE fact enforced by
+    `providers_usual_currency_names_its_author`; the code is shape-checked to ISO 4217
+    alpha-3 so `TL`, `usd` and `$` cannot become three currencies. Migration
+    `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`;
+    no DEFAULT, nullable, nothing backfilled (the migration MEASURES that it wrote none).
+  - Files: `apps/web/src/pages/providers/next/UsualCurrencySection.tsx`,
+    `apps/api-gateway/src/providers/vendor-currency.ts`,
+    `providers.controller.ts` (`GET`/`PATCH :id/usual-currency`, declared before
+    `@Get(":id")` or Nest would never reach them), `providers.service.ts`
+    (`getUsualCurrency` / `setUsualCurrency`).
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
@@ -373,6 +410,29 @@ the vendor has been silent. That is the mildest form of the §44.2 shape, but it
 same shape.
 
 ## 13. Roadmap
+
+**2026-09-06 — the vendor states its usual currency (batch 65).** The founder's words are
+quoted in full in §1a. Built as B1 of the invoice-currency pass; ADR 0104 carries the
+dated amendment.
+
+**One assumption is STATED, not decided, and the founder should confirm it.** The
+precedence an invoice is filed under is: the file's own currency, then the currency of the
+ORDER it is matched to, then the HOUSE's currency — and the house's rung is reached only
+when the invoice has no matched order, or when that order named no currency (the sentence
+says which). **The vendor's usual currency never files anything by itself.** That reading
+follows the founder's *"we won't use that as the invoice"* plus *"we will use the currency
+from where we order it"*, but the founder did not say what happens to an invoice with no
+matched order at all, and the house's currency as the last rung is our inference.
+
+**A second, narrower thing was decided in code and is flagged as a fork.** ADR 0117 Q31
+(2026-09-05) set the agreement line's currency to default from *"the vendor's terms or the
+house"*, and `agreementCurrencyDefault` still does exactly that. Batch 65 named ONE source
+for the ORDER — the currency the vendor always uses — so `orderCurrencyOffer` pre-fills
+only that, and shows the house's currency and the vendor's last invoice as EVIDENCE beside
+the field rather than putting either in it. The reason is `procurement_orders.currency_source`,
+which admits `vendor_usual` and `typed` and nothing else: a field pre-filled from the house
+and submitted untouched would be recorded as `typed`, which says a person chose it when
+nobody did.
 
 0. **Narrow the terms read to one provider** — the additive gateway patch in §9, plus
    the `providerIds` filter that would make it actually cheaper. *Blocker: none once

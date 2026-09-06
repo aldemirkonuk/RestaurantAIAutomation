@@ -1142,7 +1142,17 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
   const [searchParams] = useSearchParams();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /*
+   * `?doc=<id>` opens that document straight away. The receiving workspace links
+   * here when it refuses a unit price for an invoice whose money is held
+   * (founder, 2026-09-06 batch 64), and a link that lands on the queue without
+   * opening the document names an act the reader then has to go and find. Seeded
+   * once from the URL rather than synced to it: a person who clicks another row
+   * has chosen it, and re-selecting from the query string would fight them.
+   */
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => searchParams.get('doc'),
+  );
   const [showVerified, setShowVerified] = useState(false);
   const selected =
     data.queue.find((d) => d.id === selectedId) ??

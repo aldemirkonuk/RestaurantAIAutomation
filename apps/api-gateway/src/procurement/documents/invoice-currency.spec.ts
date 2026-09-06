@@ -1,7 +1,9 @@
 import {
   applyCurrencyRules,
   currencyAgreement,
+  documentMoneyState,
   filingCurrency,
+  receivingPriceRefusal,
   refiledMoney,
   refilingSentence,
   seenCodes,
@@ -361,5 +363,263 @@ describe("rule 3: a deliberate change re-files the money and says what moved", (
     expect(s).toContain("from NOT RECORDED");
     expect(s).toContain("11306.40 is now TRY");
     expect(s).toContain("no exchange rate");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B3 — the invoice takes the ORDER's currency when the file states none, and is
+// HELD when it states a different one (founder, 2026-09-06 batch 65).
+// ---------------------------------------------------------------------------
+describe("B3: the order's currency sits between the file's and the house's", () => {
+  const FIELD = "CUR02 currency segment";
+
+  it("takes the FILE's own currency over the order's and the house's", () => {
+    const filed = filingCurrency({
+      fileStated: "EUR",
+      orderStated: "TRY",
+      hasMatchedOrder: true,
+      houseStated: "USD",
+      fileField: FIELD,
+    });
+    expect(filed).toMatchObject({ kind: "file", code: "EUR" });
+  });
+
+  it("takes the ORDER's currency when the file states none", () => {
+    const filed = filingCurrency({
+      fileStated: "",
+      orderStated: "EUR",
+      hasMatchedOrder: true,
+      houseStated: "USD",
+      fileField: FIELD,
+    });
+    expect(filed).toMatchObject({ kind: "order", code: "EUR" });
+  });
+
+  it("falls to the HOUSE only when the matched order names no currency, and says so", () => {
+    const filed = filingCurrency({
+      fileStated: "",
+      orderStated: null,
+      hasMatchedOrder: true,
+      houseStated: "TRY",
+      fileField: FIELD,
+    });
+    expect(filed).toMatchObject({ kind: "house", code: "TRY" });
+    if (filed.kind === "house")
+      expect(filed.from).toContain("names none");
+  });
+
+  it("falls to the HOUSE with a DIFFERENT sentence when there is no order at all", () => {
+    const filed = filingCurrency({
+      fileStated: "",
+      hasMatchedOrder: false,
+      houseStated: "TRY",
+      fileField: FIELD,
+    });
+    expect(filed).toMatchObject({ kind: "house", code: "TRY" });
+    if (filed.kind === "house")
+      expect(filed.from).toContain("matched to no order");
+  });
+
+  it("refuses, naming EVERY absence including the order's", () => {
+    const filed = filingCurrency({
+      fileStated: "",
+      orderStated: null,
+      hasMatchedOrder: true,
+      houseStated: null,
+      fileField: FIELD,
+    });
+    expect(filed.kind).toBe("none");
+    if (filed.kind === "none") {
+      expect(filed.because).toContain("states no CUR02");
+      expect(filed.because).toContain("the order it is matched to names no currency");
+      expect(filed.because).toContain("never stated its own currency");
+      expect(filed.because).toContain("no USD default");
+    }
+  });
+
+  it("an unreadable order currency is not a currency, and the refusal quotes it", () => {
+    const filed = filingCurrency({
+      fileStated: "",
+      orderStated: "TL",
+      hasMatchedOrder: true,
+      houseStated: null,
+      fileField: FIELD,
+    });
+    expect(filed.kind).toBe("none");
+    if (filed.kind === "none") expect(filed.because).toContain('"TL"');
+  });
+
+  it("HOLDS the money when the file's currency disagrees with the order's, naming both", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({ currency: "USD" }),
+      houseCurrency: "TRY",
+      orderCurrency: "EUR",
+      hasMatchedOrder: true,
+      orderLabel: "PO-1042",
+      fileField: "printed currency",
+    });
+    expect(doc.moneyHeld).toContain("MONEY HELD, NOT FILED");
+    expect(doc.moneyHeld).toContain("EUR");
+    expect(doc.moneyHeld).toContain("USD");
+    expect(doc.moneyHeld).toContain("PO-1042");
+    expect(doc.total).toBeNull();
+    expect(doc.lines[0].unitPrice).toBeNull();
+  });
+
+  it("does NOT hold when the file agrees with the order", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({ currency: "EUR" }),
+      houseCurrency: "TRY",
+      orderCurrency: "EUR",
+      hasMatchedOrder: true,
+      fileField: "printed currency",
+    });
+    expect(doc.moneyHeld).toBeFalsy();
+    expect(doc.currency).toBe("EUR");
+    expect(doc.total).toBe(11306.4);
+  });
+
+  it("a document FILED FROM the order can never disagree with it", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({ currency: "" }),
+      houseCurrency: "TRY",
+      orderCurrency: "EUR",
+      hasMatchedOrder: true,
+      fileField: "printed currency",
+    });
+    expect(doc.currency).toBe("EUR");
+    expect(doc.moneyHeld).toBeFalsy();
+    expect(doc.currencyFiledFrom).toContain("order");
+  });
+
+  it("prefers the ORDER disagreement over the model's, because a person recorded it", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({
+        currency: "USD",
+        currencySeen: { code: null, asPrinted: "₺", where: "the total" },
+      }),
+      houseCurrency: "TRY",
+      orderCurrency: "EUR",
+      hasMatchedOrder: true,
+      orderLabel: "PO-7",
+      fileField: "printed currency",
+    });
+    expect(doc.moneyHeld).toContain("PO-7");
+    expect(doc.moneyHeld).toContain("was placed in EUR");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The figures a hold strips are KEPT, so the act that clears the hold can put
+// them back. Pins the defect this pass found and corrected.
+// ---------------------------------------------------------------------------
+describe("moneyWithheld: a hold keeps what it strips", () => {
+  it("withholdMoney keeps every header figure and every line's money", () => {
+    const held = withholdMoney(extracted({ currency: "USD" }), "because");
+    expect(held.total).toBeNull();
+    expect(held.lines[0].unitPrice).toBeNull();
+    // and yet:
+    expect(held.moneyWithheld?.total).toBe(11306.4);
+    expect(held.moneyWithheld?.tax).toBe(1834.4);
+    expect(held.moneyWithheld?.lines[0]).toMatchObject({
+      lineNo: 1,
+      unitPrice: 142,
+      lineTotal: 1704,
+    });
+  });
+
+  it("refiledMoney puts back what the hold took, not the nulls it wrote", () => {
+    // The snapshot as `procurement_documents.extracted` actually stores it: the
+    // ruled document, money already stripped. Before `moneyWithheld` existed
+    // this came back all-null while the sentence announced a re-filing.
+    const stored = applyCurrencyRules({
+      doc: extracted({ currency: "USD" }),
+      houseCurrency: "TRY",
+      orderCurrency: "EUR",
+      hasMatchedOrder: true,
+      fileField: "printed currency",
+    });
+    expect(stored.total).toBeNull();
+
+    const refiled = refiledMoney(stored);
+    expect(refiled).not.toBeNull();
+    expect(refiled!.document.total).toBe(11306.4);
+    expect(refiled!.document.tax).toBe(1834.4);
+    expect(refiled!.lines[0].unit_price).toBe(142);
+    // The tie-out is re-derived over the RESTORED figures, not over the nulls.
+    expect(refiled!.document.computed_lines_total).not.toBeNull();
+  });
+
+  it("a document that was never held still re-files from its own fields", () => {
+    const refiled = refiledMoney(extracted({ currency: "TRY" }));
+    expect(refiled!.document.total).toBe(11306.4);
+    expect(refiled!.lines[0].unit_price).toBe(142);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ITEM A — the receiving door reads the same verdict the gate enforces.
+// ---------------------------------------------------------------------------
+describe("documentMoneyState / receivingPriceRefusal", () => {
+  it("a document with an ISO currency is priced", () => {
+    expect(documentMoneyState({ currency: "TRY" })).toEqual({ priced: true });
+  });
+
+  it("a document with no currency is not, and carries the hold's own sentence", () => {
+    const held = applyCurrencyRules({
+      doc: extracted({ currency: "USD" }),
+      houseCurrency: "TRY",
+      orderCurrency: "EUR",
+      hasMatchedOrder: true,
+      fileField: "printed currency",
+    });
+    const state = documentMoneyState({ currency: null, extracted: held });
+    expect(state.priced).toBe(false);
+    if (!state.priced) {
+      expect(state.reason).toContain("MONEY HELD, NOT FILED");
+      expect(state.reason).toContain("EUR");
+    }
+  });
+
+  it("a REFUSED document (neither states one) is not priced either", () => {
+    const refused = applyCurrencyRules({
+      doc: extracted({ currency: "" }),
+      houseCurrency: null,
+      hasMatchedOrder: false,
+      fileField: "printed currency",
+    });
+    const state = documentMoneyState({ currency: null, extracted: refused });
+    expect(state.priced).toBe(false);
+    if (!state.priced) expect(state.reason).toContain("REFUSED");
+  });
+
+  it("says so rather than falling silent when the reading gives no reason", () => {
+    const state = documentMoneyState({ currency: null, extracted: null });
+    expect(state.priced).toBe(false);
+    if (!state.priced) expect(state.reason).toContain("not filed under any currency");
+  });
+
+  it("a lowercase or symbolic currency is NOT a filed currency", () => {
+    expect(documentMoneyState({ currency: "usd" }).priced).toBe(true); // trimmed+uppercased
+    expect(documentMoneyState({ currency: "$" }).priced).toBe(false);
+    expect(documentMoneyState({ currency: "TL" }).priced).toBe(false);
+  });
+
+  it("the refusal names the reason, what still works, and the act that clears it", () => {
+    const s = receivingPriceRefusal({
+      reason: "MONEY HELD, NOT FILED. order PO-3 was placed in EUR…",
+      docNumber: "F-2026-441",
+      documentId: "doc-9",
+    });
+    expect(s).toContain("was NOT accepted");
+    expect(s).toContain("F-2026-441");
+    expect(s).toContain("MONEY HELD");
+    // stock proceeds
+    expect(s).toContain("stock movement are unaffected");
+    expect(s).toContain("submit them now without a price");
+    // and the act
+    expect(s).toContain("restate the invoice's currency");
+    expect(s).toContain("confirm");
+    expect(s).toContain("doc-9");
   });
 });

@@ -388,14 +388,72 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     expect(updates).toHaveLength(0);
   });
 
-  it("refuses a change to the currency it is already filed under", async () => {
-    const { controller, inserts } = harness({
+  /*
+   * SUPERSEDED, DELIBERATELY, on 2026-09-06 (founder, batch 64: "let them
+   * approve if otherwise"). This case used to be a 409 with nothing logged, and
+   * the reasoning was sound for the act rule 3 was built for: a page with a
+   * sticky button must not write a log of identical rows.
+   *
+   * Item A changed what the act is FOR. Receiving now refuses a keyed-in unit
+   * price while an invoice's money is not filed, and the thing that clears it is
+   * a manager saying which currency is right — including when the right one is
+   * the one the document already carries. Under the old rule that decision was
+   * an error message, and the only way past the refusal was to name a currency
+   * the manager did not believe in.
+   *
+   * The no-op protection did not go away; it moved onto `change_kind`. A row
+   * calling itself a RESTATEMENT with two equal codes is still refused, by the
+   * database (`20260906180000`), and the two tests below are the two halves.
+   */
+  it("CONFIRMS the currency it is already filed under, and logs it as a confirmation", async () => {
+    const { controller, inserts, updates } = harness({
       doc: { ...DOC, currency: "TRY" },
     });
-    await expect(
-      controller.restateCurrency("doc-9", { currency: "TRY" }, user),
-    ).rejects.toMatchObject({ status: 409 });
-    expect(inserts).toHaveLength(0);
+    const res = await controller.restateCurrency(
+      "doc-9",
+      { currency: "TRY" },
+      user,
+    );
+    expect(res.kind).toBe("confirmed");
+    expect(res.previousCurrency).toBe("TRY");
+    expect(res.currency).toBe("TRY");
+    // One audit row, saying which act it was, with the same author as a change.
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].table).toBe("procurement_document_currency_changes");
+    expect(inserts[0].row).toMatchObject({
+      change_kind: "confirmed",
+      previous_currency: "TRY",
+      new_currency: "TRY",
+      changed_by: user.userId,
+      changed_by_role: "manager",
+    });
+    // The currency still moves through the same single-key write, so a
+    // confirmation and a restatement leave the row in the same shape.
+    expect(updates).toHaveLength(1);
+    expect(updates[0].row).toEqual({ currency: "TRY" });
+    // The sentence says it did NOT change — a confirmation that reads like a
+    // change is how a manager comes to believe they corrected something.
+    expect(res.sentence).toContain("CONFIRMED");
+    expect(res.sentence).toContain("did not change");
+  });
+
+  it("calls a change from NOT RECORDED a restatement, never a confirmation", async () => {
+    // The state rules 1, 2 and B3 leave behind: currency null, money withheld.
+    // There is nothing there to agree with, so naming a code is a change.
+    const { controller, inserts } = harness({
+      doc: { ...DOC, currency: null },
+    });
+    const res = await controller.restateCurrency(
+      "doc-9",
+      { currency: "TRY" },
+      user,
+    );
+    expect(res.kind).toBe("restated");
+    expect(inserts[0].row).toMatchObject({
+      change_kind: "restated",
+      previous_currency: null,
+      new_currency: "TRY",
+    });
   });
 
   it("says the money could not be re-filed rather than writing zeroes", async () => {
