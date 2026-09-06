@@ -1,0 +1,282 @@
+/* ============================================================
+   The inventory overlays — the house vocabulary those eight need
+   ============================================================
+
+   Everything these overlays share with the rest of the system already lives in
+   `components/mudavym/sheet.css` (.mdv-form / .mdv-label / .mdv-input /
+   .mdv-btn / .mdv-actions / .mdv-alert / .mdv-item / .mdv-chip / .mdv-record).
+   Six things are particular to the book and are declared here rather than
+   pushed into the shared file, where nine unrelated overlays would carry them:
+
+     1. `.mdv-line`   — a LEDGER LINE: a name on the left, a figure of record on
+                        the right, and the rows it was summed from underneath.
+                        The book's own row. Not `.mdv-item`: that is a palette
+                        row you click, this is a fact you read.
+     2. `.mdv-prov`   — provenance. Every figure in this house names the rows it
+                        summed and when it was read (ADR 0020, BUILD-PROMPT §11).
+                        One class so it cannot be styled into a footnote nobody
+                        sees on one surface and a headline on another.
+     3. `.mdv-seg`    — a segmented answer (Bottle 750ml · Glass 150ml). Two or
+                        three mutually exclusive answers, none of them
+                        pre-selected: an unanswered row is a supported outcome
+                        and must not look answered (ADR 0011, decision B36).
+     4. `.mdv-count`  — the count field, at floor size. A person on a ladder
+                        reading their own number back needs it big.
+     5. `.mdv-grey`   — the engine's words. Grey, permanently, beside the ink —
+                        never a cell that already changed (sketch 103 `2c`).
+     6. `.mdv-steps`  — how far a record actually got. Written · sent · received
+                        · sealed; an absence is drawn as an absence, never as a
+                        tick (sketch 103 `2e`, "queued is never confirmed").
+
+   Loaded by the overlays that use them; every rule is scoped so it can affect
+   nothing outside an overlay body.
+*/
+
+/* ── a ledger line ───────────────────────────────────────────────────────── */
+.mdv-lines {
+  display: grid;
+  gap: 1px;
+  background: var(--paper-2);
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.mdv-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 11px;
+  background: var(--paper-0);
+}
+.mdv-line__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mdv-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mdv-line__sub {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: normal;
+}
+/* A figure of record is tabular mono, always — so two of them line up and a
+   reader can compare them down the column without counting digits. */
+.mdv-line__fig {
+  flex: none;
+  font-family: var(--mdv-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  text-align: right;
+}
+.mdv-line__fig b {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+/* The line the reader has to deal with. A rule, never a colour: the house has
+   one chromatic colour and it is the seal. */
+.mdv-line[data-owed='true'] {
+  border-left: 2px solid var(--ink-2);
+}
+
+/* ── provenance ──────────────────────────────────────────────────────────── */
+.mdv-prov {
+  display: block;
+  margin: 6px 0 0;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+/* ── a segmented answer ──────────────────────────────────────────────────── */
+.mdv-seg {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.mdv-seg__opt {
+  font-family: var(--mdv-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mdv-seg__opt[aria-pressed='true'] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+  color: var(--ink-1);
+}
+.mdv-seg__opt:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mdv-seg__opt:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* ── the count field ─────────────────────────────────────────────────────── */
+.mdv-count {
+  display: block;
+  width: 100%;
+  padding: 14px 12px;
+  text-align: center;
+  font-family: var(--mdv-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-1);
+  background: var(--paper-0);
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.mdv-count::-webkit-outer-spin-button,
+.mdv-count::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.mdv-count:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* ── the engine's words ──────────────────────────────────────────────────── */
+.mdv-grey {
+  display: block;
+  font-family: var(--mdv-sans);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* ── how far the record got ──────────────────────────────────────────────── */
+.mdv-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mdv-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mdv-sans);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+/* The mark is a rule that fills, not a tick: an unreached step must not be a
+   greyed-out version of a reached one — it has to be visibly nothing yet. */
+.mdv-step__mark {
+  flex: none;
+  width: 18px;
+  height: 2px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--paper-2);
+}
+.mdv-step[data-reached='true'] {
+  color: var(--ink-1);
+}
+.mdv-step[data-reached='true'] .mdv-step__mark {
+  background: var(--seal);
+}
+
+/* ── the working area of a wide sheet ────────────────────────────────────── */
+.mdv-sheetgrid {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px 14px;
+}
+/* Two columns only where 640px can actually hold them. */
+@media (min-width: 560px) {
+  .mdv-sheetgrid--pair {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* A search field that opens a list under itself, inside an overlay body. */
+.mdv-search {
+  position: relative;
+}
+.mdv-search__list {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--paper-0);
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  box-shadow: 0 18px 44px -22px rgba(0, 0, 0, 0.42);
+}
+
+/* A scrolling region inside a sheet body that must not push the seal off. */
+.mdv-scroll {
+  max-height: 34vh;
+  overflow-y: auto;
+}
+
+/* Section head inside an overlay body — same voice as `.mdv-sect` but inside a
+   form's 16px inset rather than flush to the panel edge. */
+.mdv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 6px;
+}
+
+/* A single figure with its label, for a header strip. */
+.mdv-figs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.mdv-fig__n {
+  display: block;
+  font-family: var(--mdv-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.mdv-fig__l {
+  display: block;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
