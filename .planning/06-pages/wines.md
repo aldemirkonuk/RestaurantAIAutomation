@@ -44,7 +44,7 @@ links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]", "[[orders]]", "[[inventory]]", "[[p
 - **Wines · Beer · Whiskey · Cocktails** (register strip, on every cellar screen) → `/wines` `/beer` `/whiskey` `/cocktails`
 - **A register card** on `/cellar` → the same four routes
 - **The Cellar** (breadcrumb, on every child) → `/cellar`
-- **Read a menu** → (modal on this page — the existing `MenuScannerModal`; detection only, see §1a)
+- **Read a menu** → (a house Sheet on this page — `MenuScannerModal`'s house branch: detect, then carry the ticked lines through `POST /api/v1/inventory/:restaurantId/items/bulk`; see §1a)
 - **Bring into the cellar** → API `POST /api/v1/inventory/:restaurantId/items`
 - **Hold to order N from <vendor>** → API `POST /api/v1/procurement/orders`, then the order is visible on [[orders]] `/orders`
 
@@ -73,7 +73,7 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 - Live catalogue updates over WebSocket (the `wine_update` event re-reads the book)
 - **PARTIAL** &middot; **Market price renders `—` for every bottle** and says why — `retail_price_avg` is null on all 442 rows and its writer has no deployed worker
 - **PARTIAL** &middot; **`/beer` `/whiskey` `/cocktails` are honest empty registers** — the tables exist (`public.beverages`, `public.cocktails`) but **no gateway controller serves them**, so each child states what is missing and lists the columns the register would carry. No rows, no counts, no zeros
-- **PARTIAL** &middot; **"Read a menu" detects but does not add** — `scanMenuImage` is real; neither the scanner tab nor the legacy caller writes a detected title anywhere, so the control is named for what it does and says plainly that nothing was written
+- **"Read a menu" now carries what it reads** (packet 1, 2026-09-06, ADR 0112 · census 102) — `scanMenuImage` was always real and the approve half wrote nothing, so the control was named for detection alone and said plainly that nothing was written. `MenuScannerModal`'s house branch is a **Sheet · wide (640)** in two steps: read the menu, then carry the ticked lines through the same bulk door /inventory's scan and manual receipt use (`persistBatchToInventory` → `POST /inventory/:restaurantId/items/bulk`). The reader stays a reader — its confidence is on every row in grey, and a line below 0.60 arrives UNTICKED; quantities are six for a confident read and one for a shaky one; no cost is ever seeded from a menu price. The outcome is read back per bucket, with a provisional library entry named as provisional. Flag off, `/wines` still opens the legacy modal byte for byte
 - **NOT CARRIED OVER** &middot; **Not carried over: "Reorder" and "save as recurring"** — both reported success and wrote nothing (§10). Replaced by one real order path and by nothing, respectively
 - **NOT CARRIED OVER** &middot; **Not carried over: the Body filter** — `body` was the constant `'medium'` on every row, so the control could only match all or none
 - **NOT CARRIED OVER** &middot; **Not carried over: bulk selection and CSV export** — the export shipped six fabricated attribute columns (Body / Sweetness / Acidity / Alcohol % / Aromas / Flavors) as measured data, and that is the most damaging thing on the legacy page because it leaves the building as a file. It returns when there are real columns to export (§13)
@@ -287,7 +287,11 @@ so neither was taken here; filed in §13.
 **shipped legacy code carrying its own motion library** — both
 `MenuScannerModal.tsx:1` and `MenuScannerTab.tsx:2` already
 `import { motion } from 'framer-motion'`, and both are outside this page's owned
-paths. There is no lighter path inside the directory: rendering the tab in a
+paths. *Narrowed 2026-09-06 (packet 1):* the modal's HOUSE branch is a
+`Sheet` and takes `tuck` (300ms) from `lib/mudavym/motion.ts` like every other
+overlay — framer-motion survives on that path only because `MenuScannerTab`,
+which the sheet still mounts for the detection half, imports it. The wrapper's
+own framer-motion is now legacy-branch-only. There is no lighter path inside the directory: rendering the tab in a
 Mudavym dialog would not drop the dependency, because the tab imports it too, so
 removing framer-motion means rebuilding the scanner (§13.8). The import is
 **code-split** (`lazy()`), so it reaches neither this page's first paint nor its
@@ -1037,7 +1041,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
-| `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Carry these bottles (from a menu scan) | sheet | Migrate | The same sheet as /inventory's, opened at its 'menu scan' start. | `pages/cellar/next/WineRegister.tsx imports components/wines/MenuScannerModal.tsx:21 (legacy, fixed-inset)` |
+| `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Carry these bottles (from a menu scan) | sheet | Built | The same sheet as /inventory's, opened at its 'menu scan' start. | `pages/cellar/next/WineRegister.tsx imports components/wines/MenuScannerModal.tsx:21 (legacy, fixed-inset)` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Is this the bottle? | panel | Owed | A question the reader must answer before anything is written. | `components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Photograph the label | panel | Target | A step answered once; the page stays dimmed beneath. | `components/scanner/CameraCapture.tsx:607 — also mounted by /get-started and the orders scanner` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Wine detail | — | Retires | The register row expands in place (sketch 095 — the house pattern for ledger tables). | `pages/WineLibrary.tsx:1297` |
@@ -1322,11 +1326,15 @@ Each one is a file the p4 page agent does not own; none was built.
     `awaitingConfirmation: null` (not false). The success path is covered by
     specs with the client mocked, and by the CHECK constraint in the migration;
     it needs one live re-verification after the migration lands.
-16. **The scanner has no add path.** `MenuScannerTab.handleValidationApprove`
-    (`:160-172`) and the legacy `onWinesDetected` (`WineLibrary.tsx:1813-1822`) both
-    only mutate component state. `bulkCreateInventoryItems` accepts a `wineDraft` and
-    resolves it server-side (`services/api/inventory.ts:97-103`), which is the shape a
-    real "scan → shelf" path should use.
+16. ~~**The scanner has no add path.**~~ **CLOSED 2026-09-06 (packet 1).**
+    `MenuScannerTab.handleValidationApprove` (`:160-172`) and the legacy
+    `onWinesDetected` (`WineLibrary.tsx:1813-1822`) still only mutate component
+    state — both are legacy paths and are untouched. The house branch of
+    `MenuScannerModal` adds the step they lacked, using exactly the shape this gap
+    named: `bulkCreateInventoryItems` with a `wineDraft` the server resolves
+    (`services/api/inventory.ts:97-103`), through `persistBatchToInventory`.
+    Still open: `/wines` with the cellar flag OFF has no add path, because that is
+    the legacy page and it stays frozen.
 
 ### Gaps found in the third pass (2026-09-03) — the beverages catalogue
 

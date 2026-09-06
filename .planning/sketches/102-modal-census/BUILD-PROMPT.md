@@ -187,34 +187,6 @@ the seal before.** Adding to that list is an ADR amendment, never a builder's ca
 
 These render legacy markup inside a house-flagged page **today**. Move each onto the primitive, shape as given, copy and behaviour preserved word for word unless the census says otherwise. `/inventory` is the urgent one: its flag turns on the same component, so a tenant with it on sees these now.
 
-**`/inventory`** — flag `mudavym_design_inventory`
-
-- **Carry this bottle** — sheet. One bottle entering the book is one object; three ways to start, one sheet.
-  `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)`
-- **Place 14 bottles by their zones?** — panel. A question about a batch. Bulk, so no wax — the plain die.
-  `components/inventory/AutoLocatePreviewModal.tsx:70`
-- **A delivery without an order** — sheet · wide. Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route.
-  `components/inventory/ManualReceiptWorkspace.tsx:234`
-- **POS buttons and stock** — sheet. One queue, worked line by line, the register still visible beneath.
-  `components/inventory/PosMappingPanel.tsx:294`
-- **Write off 6 bottles?** — panel · seal. A ledger write is a real commitment — wax.
-  `components/inventory/RemoveFromInventoryModal.tsx:121`
-- **The zones** — sheet. The zones are one object the house owns.
-  `components/inventory/StorageLocationManager.tsx:327`
-- **Spot count** — sheet · seal. Opened from the row expander; one bottle's count is one record.
-  `pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)`
-
-**`/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks`** — flag `mudavym_design_cellar`
-
-- **Carry these bottles (from a menu scan)** — sheet. The same sheet as /inventory's, opened at its 'menu scan' start.
-  `pages/cellar/next/WineRegister.tsx imports components/wines/MenuScannerModal.tsx:21 (legacy, fixed-inset)`
-
-**`/settings`** — flag `mudavym_design_settings`
-
-- **Share this with the engine?** — panel. A question. Settings stay asserted, not sealed (2026-09-04).
-  `components/settings/ConsentDialog.tsx:71 (opened from components/settings/ServicesPermissions.tsx:300)`
-- **Carry your vendors to the new location?** — panel. A question about a batch, asked once after a write.
-  `components/providers/BranchProviderTransferModal.tsx:109`
 
 
 ## 7. Packet 2 — the twelve owed acts

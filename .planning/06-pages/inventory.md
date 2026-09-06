@@ -45,6 +45,14 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 - Contextual insights rail (analytics engine)
 - **Receipts & invoices depth in the dropdown, behind `mudavym_design_inventory` (OFF)** — the founder's named gap (MAKEOVER: KEEP the dropdowns, deepen receipt/invoice actions): for the wine's recent orders, every attached invoice / delivery receipt / packing slip with total, tie-out state and review status, E49-honest (null tie-out = dash, never a pass), linking into `/receipts`
 - **The house header, behind the same flag (OFF)** — `/inventory` is enrolled in `PageGate` (2026-09-04) with the SAME command page on both branches, purely so the page gets the chrome every other rebuilt page has: mark, page name, ⌘K "Search or act", house/branch switcher, bell, theme menu, account menu. No redesign, and no style change inside the page (measured — §1b)
+- **The seven overlays, on the house primitive, behind the same flag (OFF) — packet 1, 2026-09-06 (ADR 0112, census 102).** Every surface this page opens over itself now has a house branch, and a flag-off page renders its legacy markup byte for byte:
+  - *Carry this bottle* — a **Sheet**. Three ways to start (search the library · read a label · read a menu) and one sheet, because they are three doors into one act. Names which of the three cost outcomes is in force — a deliberate zero for a sample, the cost the house paid, or NO cost recorded — under the field, and offers the library's reference price rather than pre-filling it
+  - *Place N bottles by their zones?* — a **Panel**, plain die. The engine's proposal, its score and its reasons stay grey; the ticks choose; every skipped wine is named with what it means
+  - *A delivery without an order* — a **Sheet · wide (640)**, the shape fork F3 chose. A blank cost is written as unknown and never as zero, and the totals line says lines with a blank cost add nothing to the money figure
+  - *POS buttons and stock* — a **Sheet**. Identity and sale size asked on one row, no unit pre-selected, and every write's failure on the paper rather than only in a toast
+  - *Write off N bottles?* — a **Panel · seal**. The value names the rows it summed and when they were read; the seal reads back what it bound; a row with no inventory record is named before the write and counted after it
+  - *The zones* — a **Sheet**. Loading, empty and unreadable are three answers; a capacity nobody recorded says so; a zone still holding bottles is refused, with the count
+  - *Spot count* — a **Sheet · seal**, opened from the row expander. Four rungs — written here · sent · the house has it · on the book — and the count receipt ADR 0078 has always returned, read back
 
 - A house may name a bottle the library does not have; the item carries that **provisional** identity until Mudavym curates it, and promotion re-points the item (ADR 0124 Q3)
 - The house names its own bottles: one editable display name per item (`wine_name`), used everywhere the house sees it; the library row is never written from here, and BOTH names stay searchable (ADR 0124, the naming rule)
@@ -100,11 +108,25 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 > (PageGate's header comment) and is now reachable from `/inventory` with the
 > flag on.
 
-Deliberately none. This is a card added inside the KEPT page (the founder's
-verdict kept `/inventory` as it is — the addition is styled native to the
-page's own grey-card idiom, not the `.mudavym` tokens, and the İznik re-skin
-arrives with the page redesigns, not here). Recording zero motions is the
-motion map for this flag (ADR 0044 §2).
+The page's own body still uses none: the ReceiptDepth card is styled native to
+the page's grey-card idiom, not the `.mudavym` tokens, and the İznik re-skin
+arrives with the page redesigns rather than here.
+
+**What the flag now moves, added 2026-09-06 (packet 1).** The seven overlays
+above are portalled surfaces, not page body, and every one of them takes its
+motion from the primitive and nothing else:
+
+| Motion | Token | ms | Where |
+|---|---|---|---|
+| A sheet arrives from the right | `tuck` | 300 | Carry this bottle · A delivery without an order · POS buttons and stock · The zones · Spot count |
+| A panel settles in the middle | `settle` | 320 | Place N bottles by their zones? · Write off N bottles? |
+| The seal fills under the thumb | `pour` | 620 | `HoldToApprove` on the write-off and the spot count |
+| An early release retreats | `tuck` | 300 | `HoldToApprove`, saying what did not happen |
+| The wax lands | `stamp` | — | `HoldToApprove` on completion |
+
+`prefers-reduced-motion` renders **none** of them — not a shorter version — and
+the hold collapses to the same two-step confirm the keyboard path uses. All five
+are `lib/mudavym/motion.ts` tokens; this page defines no motion of its own.
 
 ### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP + named gap)
 
@@ -128,14 +150,14 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
-| `/inventory` | Carry this bottle | sheet | Migrate | One bottle entering the book is one object; three ways to start, one sheet. | `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)` |
+| `/inventory` | Carry this bottle | sheet | Built | One bottle entering the book is one object; three ways to start, one sheet. | `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)` |
 | `/inventory` | Carry this bottle · an auction lot | sheet | Owed · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. | `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet` |
-| `/inventory` | Place 14 bottles by their zones? | panel | Migrate | A question about a batch. Bulk, so no wax — the plain die. | `components/inventory/AutoLocatePreviewModal.tsx:70` |
-| `/inventory` | A delivery without an order | sheet · wide | Migrate · fork F3 | Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
-| `/inventory` | POS buttons and stock | sheet | Migrate | One queue, worked line by line, the register still visible beneath. | `components/inventory/PosMappingPanel.tsx:294` |
-| `/inventory` | Write off 6 bottles? | panel · seal | Migrate | A ledger write is a real commitment — wax. | `components/inventory/RemoveFromInventoryModal.tsx:121` |
-| `/inventory` | The zones | sheet | Migrate | The zones are one object the house owns. | `components/inventory/StorageLocationManager.tsx:327` |
-| `/inventory` | Spot count | sheet · seal | Migrate | Opened from the row expander; one bottle's count is one record. | `pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)` |
+| `/inventory` | Place 14 bottles by their zones? | panel | Built | A question about a batch. Bulk, so no wax — the plain die. | `components/inventory/AutoLocatePreviewModal.tsx:70` |
+| `/inventory` | A delivery without an order | sheet · wide | Built · fork F3 | Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
+| `/inventory` | POS buttons and stock | sheet | Built | One queue, worked line by line, the register still visible beneath. | `components/inventory/PosMappingPanel.tsx:294` |
+| `/inventory` | Write off 6 bottles? | panel · seal | Built | A ledger write is a real commitment — wax. | `components/inventory/RemoveFromInventoryModal.tsx:121` |
+| `/inventory` | The zones | sheet | Built | The zones are one object the house owns. | `components/inventory/StorageLocationManager.tsx:327` |
+| `/inventory` | Spot count | sheet · seal | Built | Opened from the row expander; one bottle's count is one record. | `pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)` |
 | `/inventory` | Receipt record | — | Retires | /receipts is the receipts desk (ReceiptsNext). /inventory links there and never overlays it. | `pages/inventory/command/ReceivingWorkspace.tsx:376` |
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
@@ -234,6 +256,30 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
   region), creating the venue's own provisional row instead; and bulk receive
   stores the draft's own label. Still open, filed in `v3.0-TECH-DEBT.md`: the 26
   rows already written keep their wrong links until a separate repair stop.
+
+- **Packet 1, 2026-09-06 — four write-path defects this migration found and closed
+  behind the flag, all of the absence-reported-as-health kind.** Each was invisible
+  because the surface reported the CACHE rather than the database:
+  1. `RemoveFromInventoryModal.run()` silently `continue`s any item with no
+     `inventoryId` and then counted it in "N wines removed". The house branch names
+     those rows before the write and counts them after it.
+  2. `handleConfirmAutoLocate` fired `assignWineToLocation` per row, awaited none,
+     and toasted "N wines assigned"; that function hands its POST to
+     `persistToServer`, whose catch block is empty by design. `useStorageLocations`
+     gains the awaited `assignWinesToLocations`, and the panel reports what landed.
+  3. `updateLocation` / `deleteLocation` swallow their failures the same way, so a
+     zone the server REFUSED to delete still vanished from the list and took its
+     wine→zone mappings out of the cache. `createLocationChecked` /
+     `updateLocationChecked` / `deleteLocationChecked` write to the cache only
+     after the server accepts.
+  4. The gateway has returned the spot-count receipt on every write since ADR 0078
+     (`inventory/stock-count-result.ts:36`) and the web client's response type was
+     `{ item }`, so `count` was dropped before any caller saw it — the panel said
+     "Count recorded" with no evidence, and drew a queued count and a booked count
+     with the same words.
+  Still open, and NOT fixed here: the three optimistic zone writers keep their empty
+  catch blocks for the legacy manager, which still renders them. Retiring them
+  belongs with the legacy page, not with this packet.
 
 ## 10. Maturity
 
