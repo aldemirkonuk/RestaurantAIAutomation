@@ -16,12 +16,26 @@ const DEFAULT_PREFERENCES: Record<string, any> = {
   dashboardLayout: "default",
 };
 
+// Keys that reach Object.prototype. `source` is the caller's preferences JSON,
+// so these must never be used as merge targets.
+//
+// Measured, so the comment does not overstate it: with `result = { ...target }`
+// this function is NOT a global prototype-pollution sink today — the spread
+// makes a fresh object every call, so `result["__proto__"] = x` rebinds only
+// that object, and `Object.prototype` is left alone (verified for
+// `{"__proto__":…}`, `{"constructor":{"prototype":…}}` and nested forms).
+// The filter is here because that safety is an accident of one line: change
+// the spread to a mutation or to Object.assign onto a shared default and the
+// sink becomes real, with nothing in the signature to warn you.
+const FORBIDDEN_MERGE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function deepMerge(
   target: Record<string, any>,
   source: Record<string, any>,
 ): Record<string, any> {
   const result = { ...target };
   for (const key of Object.keys(source)) {
+    if (FORBIDDEN_MERGE_KEYS.has(key)) continue;
     if (
       source[key] &&
       typeof source[key] === "object" &&

@@ -78,7 +78,7 @@ export interface LotRollupRow {
   wac?: unknown;
   /**
    * Bottles the `wac` actually averages, and bottles on hand. Added to the view
-   * on 2026-09-02 (ADR 0078). Both optional: a caller that has not been updated
+   * on 2026-09-02 (ADR 0079). Both optional: a caller that has not been updated
    * to select them still gets the old behaviour rather than a wrong answer, and
    * completeness is simply not asserted for it.
    */

@@ -47,6 +47,19 @@ Both halves of a read name columns, and both 42703 the whole statement:
     .from("t").select("a, b")           the projection
     .from("t").eq("a", v) / .order(...) the filters
 
+Plus a third shape, added by ADR 0093, which fails DIFFERENTLY and worse:
+
+    .from("t").select("*")  ->  row.some_column      a row property read
+
+A phantom column in the first two shapes 42703s the statement, so the query at
+least fails. A phantom column in the third is plain `undefined` at runtime --
+no error to swallow, no status code, just a wrong answer computed confidently.
+`recipient-resolver.service.ts` read two such columns for eight months while
+this guard reported PASS, because `"*"` names no column and the names appear
+only as property accesses. Covered via the ROW_PROPERTY_READS registry below,
+which is explicit rather than inferred and rots loudly (exit 2) rather than
+silently.
+
 Filters were measured before being included rather than assumed: 1375 filter
 arguments across the gateway, **zero** of them dotted/embedded (`providers.name`
 -- the false-positive shape this could have drowned in) and one non-identifier.
@@ -74,7 +87,8 @@ EXIT CODES
     0  every named column exists, or is on the shrink-only debt list
     1  a read names a column no migration declares, or the debt list is stale
     2  CANNOT CHECK -- never 0. The roots are missing, the helpers would not
-       load, the migration parse collapsed, or the site pattern matched nothing.
+       load, the migration parse collapsed, the site pattern matched nothing,
+       or a ROW_PROPERTY_READS entry points at a file or variable that is gone.
 """
 from __future__ import annotations
 
@@ -187,12 +201,8 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
         "No such column. Same select as savings_realized."
     ),
     "users.avatar_url": (
-        "No such column. Read by members.service.ts:85, team.service.ts:136 and "
-        ":182 -- three sites, so every team/member listing 42703s."
-    ),
-    "users.auth_provider": (
-        "The column is `oauth_provider`. members.service.ts:85, same select as "
-        "avatar_url."
+        "No such column. team.service.ts:136 and :182 -- both team listings "
+        "42703. (members.service.ts stopped reading it; that read is fixed.)"
     ),
     "master_wine_library.wine_name": (
         "The table has `name`, `display_name`, `normalized_name`. "
@@ -201,14 +211,114 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     "notifications.manager_id": (
         "The table has `recipient_id` and `user_id`. database.service.ts:113."
     ),
-    "user_restaurant_access.granted_at": (
-        "No such column. members.service.ts:71 orders by it."
-    ),
     "restaurants.toast_restaurant_guid": (
         "No such column on `restaurants`; the POS linkage lives in the toast "
         "tables. toast.service.ts:340."
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# ROW_PROPERTY_READS -- the third read shape, added by ADR 0093.
+#
+# WHY THIS EXISTS. The two collectors below read the PROJECTION and the
+# FILTERS. Both need a column name to appear as a string literal. A read of the
+# form
+#
+#     const { data } = await client.from("notification_preferences").select("*")
+#     ...
+#     if (prefs.order_channels) { ... }
+#
+# names its columns in NEITHER place: `"*"` names no column, and the column
+# name only ever appears as a property access. This guard passed on
+# `origin/main` while `recipient-resolver.service.ts` read two columns that no
+# migration has ever declared -- for eight months, in production, mis-routing
+# every notification it touched. The guard was not wrong; the read was outside
+# the universe its docstring claims. This closes that gap for the sites where a
+# `select("*")` row is destructured and read by name.
+#
+# WHY IT IS A REGISTRY AND NOT INFERENCE. Deciding which table a bare
+# `prefs.foo` belongs to needs the type of `prefs`, which needs a TypeScript
+# program, not a regex. Guessing would produce false positives on every
+# unrelated object in the codebase. So the mapping is declared, and the honesty
+# comes from the never-vacuous rule instead:
+#
+#   an entry whose file is gone, or whose variable no longer appears, is
+#   CANNOT CHECK (exit 2) -- never a silent pass.
+#
+# That is the same contract the rest of this file holds itself to. An entry
+# that rots announces itself; it does not quietly stop looking.
+#
+# TO ADD AN ENTRY: point it at a `select("*")` (or embed) read whose row is
+# then accessed by property name. Do not add one for a select that already
+# names its columns as a literal -- the projection collector has it covered.
+# ---------------------------------------------------------------------------
+ROW_PROPERTY_READS: dict[str, tuple[str, str]] = {
+    "apps/api-gateway/src/communications/recipient-resolver.service.ts::prefs": (
+        "notification_preferences",
+        "getNotificationPreferences() does .select('*') and checkChannelPreference() "
+        "reads the row by property name. This is the exact site of ADR 0093: it read "
+        "`order_channels` and `report_channels`, which the table has never had.",
+    ),
+    "apps/api-gateway/src/communications/recipient-resolver.service.ts::pref": (
+        "notification_preferences",
+        "The loop variable over the same .select('*') result, one frame up in "
+        "getNotificationPreferences().",
+    ),
+}
+
+# `<var>.<ident>`, not followed by `(` -- a method call is not a column read.
+PROPERTY_READ_RE_TEMPLATE = r"\b{var}\.([a-z_][a-z0-9_]*)\b(?!\s*\()"
+
+
+def _property_read_findings(root: Path, cols: dict, shared) -> tuple[list[str], int]:
+    """Check every ROW_PROPERTY_READS entry. Returns (findings, reads seen)."""
+    findings: list[str] = []
+    total_reads = 0
+
+    for entry, (table, why) in sorted(ROW_PROPERTY_READS.items()):
+        rel, _, var = entry.partition("::")
+        path = root / rel
+        if not path.is_file():
+            raise CannotCheck(
+                f"ROW_PROPERTY_READS names {rel}, which does not exist. Either the "
+                f"file moved -- repoint the entry -- or the read is gone and the "
+                f"entry must be deleted. It is NOT checking anything meanwhile."
+            )
+        if table not in cols:
+            raise CannotCheck(
+                f"ROW_PROPERTY_READS maps {entry} to table {table!r}, which "
+                f"{MIGRATIONS} does not declare. Every column would look missing."
+            )
+
+        src = shared.strip_comments(path.read_text(encoding="utf-8"))
+        matches = list(
+            re.finditer(PROPERTY_READ_RE_TEMPLATE.format(var=re.escape(var)), src)
+        )
+        if not matches:
+            raise CannotCheck(
+                f"ROW_PROPERTY_READS names {entry}, but no `{var}.<column>` read "
+                f"remains in {rel}. The variable was renamed or the read deleted; "
+                f"this entry is looking at nothing. Repoint it or delete it."
+            )
+
+        total_reads += len(matches)
+        for m in matches:
+            col = m.group(1)
+            if col in cols[table]:
+                continue
+            key = f"{table}.{col}"
+            if key in KNOWN_BAD_READ_COLUMNS:
+                continue
+            line = src.count("\n", 0, m.start()) + 1
+            findings.append(
+                f"{rel}:{line} reads {var}.{col} off a {table} row, but no migration "
+                f"in {MIGRATIONS} declares {key}. The property is `undefined` at "
+                f"runtime — no error, no 42703, just a silently wrong answer. "
+                f"({why})"
+            )
+
+    return findings, total_reads
 
 
 # ---------------------------------------------------------------------------
@@ -403,13 +513,38 @@ def collect(root: Path, shared) -> tuple[list[str], set[str], int, int, int]:
                         continue
                     report(table, col, m.start() + f.start(), f".{f.group(1)}() filters on")
 
-    return findings, seen, select_sites, filter_args, unreadable
+    # The third shape: a `select("*")` row read by property name (ADR 0093).
+    # Raises CannotCheck rather than passing when an entry has rotted.
+    prop_findings, prop_reads = _property_read_findings(root, cols, shared)
+    findings.extend(prop_findings)
+    # Feed the debt ratchet's "nothing reads it any more" direction: a property
+    # read is still a read, so an entry only covered here must not look unread.
+    seen.update(
+        f"{ROW_PROPERTY_READS[e][0]}.{c}"
+        for e in ROW_PROPERTY_READS
+        for c in _property_columns_in(root, e, shared)
+    )
+
+    return findings, seen, select_sites, filter_args, unreadable, prop_reads
+
+
+def _property_columns_in(root: Path, entry: str, shared) -> set[str]:
+    """Every column name an entry's property reads name, bad ones included."""
+    rel, _, var = entry.partition("::")
+    path = root / rel
+    if not path.is_file():
+        return set()
+    src = shared.strip_comments(path.read_text(encoding="utf-8"))
+    return {
+        m.group(1)
+        for m in re.finditer(PROPERTY_READ_RE_TEMPLATE.format(var=re.escape(var)), src)
+    }
 
 
 def run(root: Path) -> tuple[int, list[str]]:
     shared = _load_shared(root)
     try:
-        findings, seen, selects, filters, unreadable = collect(root, shared)
+        findings, seen, selects, filters, unreadable, prop_reads = collect(root, shared)
         declared = shared.declared_columns(root)
     except shared.CannotCheck as e:
         raise CannotCheck(f"the shared migration parse cannot check: {e}") from e
@@ -467,9 +602,10 @@ def main() -> int:
             print(f"  - {f}")
         return 1
     print(
-        "PASS -- every column named in a .select() or a filter is declared by "
-        f"{MIGRATIONS}, or is on the shrink-only debt list "
-        f"({len(KNOWN_BAD_READ_COLUMNS)} entries)."
+        "PASS -- every column named in a .select(), a filter, or a registered "
+        f"row-property read is declared by {MIGRATIONS}, or is on the shrink-only "
+        f"debt list ({len(KNOWN_BAD_READ_COLUMNS)} entries). "
+        f"[{len(ROW_PROPERTY_READS)} property-read sites checked]"
     )
     return 0
 
@@ -478,6 +614,9 @@ def main() -> int:
 # --self-test: the failure path must have executed at least once.
 # ---------------------------------------------------------------------------
 SVC = "apps/api-gateway/src/orders/orders.service.ts"
+# The ROW_PROPERTY_READS fixture: a `select("*")` row read by property name.
+PROP_SVC = "apps/api-gateway/src/orders/order-prefs.service.ts"
+PROP_ENTRY = f"{PROP_SVC}::row"
 
 
 def _fixture(tmp: Path) -> Path:
@@ -542,6 +681,21 @@ def _fixture(tmp: Path) -> Path:
         + "}\n",
         encoding="utf-8",
     )
+
+    # A `select("*")` whose row is then read by property name — the shape the
+    # projection and filter collectors are both blind to (ADR 0093). Every
+    # column named here is real, so the clean tree stays clean.
+    (root / PROP_SVC).write_text(
+        "export class OrderPrefsService {\n"
+        "  async load() {\n"
+        '    const { data: row } = await this.db.supabase.from("orders")\n'
+        '      .select("*").eq("restaurant_id", r).single();\n'
+        "    if (row.status === 'open') return row.order_number;\n"
+        "    return row.created_at;\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
     # The ratchet is shrink-only in BOTH directions, so a clean tree must contain
     # the debt it excuses. Synthetic, so paying off the real list never breaks
     # this fixture — the lesson ADR 0073 learned from the sibling guard.
@@ -565,8 +719,14 @@ def self_test() -> int:
 
     real_debt = KNOWN_BAD_READ_COLUMNS
     real_ceiling = UNREADABLE_READ_CEILING
+    real_props = ROW_PROPERTY_READS
     globals()["KNOWN_BAD_READ_COLUMNS"] = {
         "debt_table.zzz_debt_read": "synthetic, self-test only — see _fixture()."
+    }
+    # The real registry points at real repo files, which the fixture tree does
+    # not have. Swap in a fixture-local entry, exactly as the debt list is.
+    globals()["ROW_PROPERTY_READS"] = {
+        PROP_ENTRY: ("orders", "synthetic, self-test only — see _fixture().")
     }
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -722,6 +882,62 @@ def self_test() -> int:
                 }
                 debt.write_text(debt_src, encoding="utf-8")
 
+            # P. ROW_PROPERTY_READS — the third read shape (ADR 0093).
+            # The defect this whole entry exists for: a column read off a
+            # `select("*")` row by property name, which names no column in
+            # either the projection or a filter, so A and B above cannot see it.
+            prop = root / PROP_SVC
+            prop_src = prop.read_text(encoding="utf-8")
+
+            prop.write_text(
+                prop_src.replace("row.order_number", "row.order_channels"),
+                encoding="utf-8",
+            )
+            code, findings = run(root)
+            expect("a property read naming a phantom column", code, 1)
+            if not any("reads row.order_channels" in f for f in findings):
+                failures.append(f"phantom property read not reported: {findings}")
+
+            # P2. the same phantom name in a comment does NOT fire — the
+            # stripper runs before the property scan, as it does for A and B.
+            prop.write_text(
+                prop_src.replace(
+                    "  async load() {",
+                    "  // row.order_channels was read here before ADR 0093\n"
+                    "  async load() {",
+                ),
+                encoding="utf-8",
+            )
+            code, findings = run(root)
+            expect("a property read described in a comment", code, 0)
+            if findings:
+                failures.append(f"commented property read fired: {findings}")
+
+            # P3. a method call is not a column read.
+            prop.write_text(
+                prop_src.replace("row.created_at", "row.refresh()"),
+                encoding="utf-8",
+            )
+            expect("a method call on the row", run(root)[0], 0)
+
+            # P4. a bad property read already on the debt list is suppressed,
+            # so the ratchet governs this shape too rather than routing round it.
+            try:
+                globals()["KNOWN_BAD_READ_COLUMNS"] = {
+                    "orders.order_channels": "synthetic, self-test only.",
+                    "debt_table.zzz_debt_read": "synthetic, self-test only.",
+                }
+                prop.write_text(
+                    prop_src.replace("row.order_number", "row.order_channels"),
+                    encoding="utf-8",
+                )
+                expect("a debt-listed property read", run(root)[0], 0)
+            finally:
+                globals()["KNOWN_BAD_READ_COLUMNS"] = {
+                    "debt_table.zzz_debt_read": "synthetic, self-test only."
+                }
+            prop.write_text(prop_src, encoding="utf-8")
+
             # H. CANNOT CHECK, not PASS. Each on its own fresh tree so one
             # mutation cannot mask the next.
             def blind(label: str, mutate) -> None:
@@ -760,6 +976,22 @@ def self_test() -> int:
                 "the source root is emptied",
                 lambda r: [p.unlink() for p in (r / READ_ROOTS[0]).rglob("*.ts")],
             )
+            # The rot cases for ROW_PROPERTY_READS. An entry that has stopped
+            # looking at anything must SAY SO, not pass. This is the whole
+            # reason a declared registry is acceptable in the first place.
+            blind(
+                "a registered property-read file is gone",
+                lambda r: (r / PROP_SVC).unlink(),
+            )
+            blind(
+                "a registered property-read variable is renamed away",
+                lambda r: (r / PROP_SVC).write_text(
+                    (r / PROP_SVC)
+                    .read_text(encoding="utf-8")
+                    .replace("row.", "renamed."),
+                    encoding="utf-8",
+                ),
+            )
             blind(
                 "the site pattern matches nothing",
                 lambda r: (r / SVC).write_text(
@@ -768,6 +1000,7 @@ def self_test() -> int:
             )
     finally:
         globals()["KNOWN_BAD_READ_COLUMNS"] = real_debt
+        globals()["ROW_PROPERTY_READS"] = real_props
         globals()["UNREADABLE_READ_CEILING"] = real_ceiling
 
     print("== --self-test: read columns exist")
@@ -788,6 +1021,9 @@ def self_test() -> int:
     print("   a debt entry the schema now declares exits 1")
     print("   an EMPTY debt list is clean, not broken")
     print("   a missing/blank shared parse, migrations dir, root or pattern exits 2")
+    print("   a property read off a select(\"*\") row naming a phantom column exits 1")
+    print("   that shape respects the comment stripper and the debt ratchet too")
+    print("   a registered property-read whose file or variable is gone exits 2")
     print("PASS")
     return 0
 

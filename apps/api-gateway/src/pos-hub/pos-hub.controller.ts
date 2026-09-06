@@ -24,6 +24,10 @@ import {
   SetSaleUnitBatchDto,
   SetSaleUnitDto,
 } from "./dto/pos-mapping-review.dto";
+import {
+  ApproveProposalDto,
+  ApproveProposalsBatchDto,
+} from "./dto/pos-catalog-approve.dto";
 
 /**
  * POS Hub — multi-POS ingestion surface.
@@ -36,6 +40,8 @@ import {
  *   GET  /pos-hub/mappings/:restaurantId/sale-unit-review   rows missing a unit, with evidence
  *   POST /pos-hub/mappings/:restaurantId/sale-unit          batch: the human's answers
  *   POST /pos-hub/mappings/:restaurantId/:mappingId/sale-unit   one answer
+ *   GET  /pos-hub/unresolved/:restaurantId       the open queue of lines that moved no stock
+ *   POST /pos-hub/catalog-match/:restaurantId/proposals/approve   confirm many, with their units
  */
 @ApiTags("pos-hub")
 // Guarded at class level. Only the provider webhook is @Public() — it authenticates
@@ -279,18 +285,48 @@ export class PosHubController {
     return this.catalogMatcher.listProposals(restaurantId, status || "pending");
   }
 
+  @Post("catalog-match/:restaurantId/proposals/approve")
+  @ApiOperation({
+    summary: "Approve many proposals in one request, each with its sale unit",
+    description:
+      "Body: { items: [{ proposal_id, sale_unit?, sale_volume_ml? }] }. Each entry is applied independently and the response reports per-entry ok/error. The per-proposal route below is one request per wine, which makes the default 100-per-60s rate limit a function of menu size — the lens run lost 7 of 107 approvals to a 429 that way.",
+  })
+  async approveProposals(
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: ApproveProposalsBatchDto,
+  ) {
+    try {
+      return await this.catalogMatcher.approveProposalsBatch(
+        restaurantId,
+        body.items,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Approve failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Post("catalog-match/:restaurantId/proposals/:proposalId/approve")
   @ApiOperation({
     summary: "Approve a proposal — writes the pos_item_mappings row",
+    description:
+      "Body (optional): { sale_unit?, sale_volume_ml? } — the answer to 'how much stock does one sale of this button remove?'. Written onto the same mapping row, so an approved item can actually deplete. Omitted means null, not a guess: the next sale queues as `no_sale_volume` and moves nothing (ADR 0011).",
   })
   async approveProposal(
     @Param("restaurantId") restaurantId: string,
     @Param("proposalId") proposalId: string,
+    @Body() body: ApproveProposalDto,
   ) {
     try {
       return await this.catalogMatcher.approveProposal(
         restaurantId,
         proposalId,
+        {
+          sale_unit: body?.sale_unit ?? null,
+          sale_volume_ml: body?.sale_volume_ml ?? null,
+        },
       );
     } catch (error) {
       throw new HttpException(
@@ -311,6 +347,24 @@ export class PosHubController {
     } catch (error) {
       throw new HttpException(
         error.message || "Reject failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("unresolved/:restaurantId")
+  @ApiOperation({
+    summary: "POS lines that arrived and moved no stock, folded per button",
+    description:
+      "The open `pos_unresolved_lines` queue (decision B20), grouped by (source, external_item_id, item_name, reason) with occurrences, units and revenue per button. `reason` is 'unmapped' (we do not know what the button is) or 'no_sale_volume' (we do, but not how much one sale removes). This table has had a writer since B20 and no reader in the product until now — a queue nobody can see is the dropped line B20 exists to prevent.",
+  })
+  @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
+  async listUnresolved(@Param("restaurantId") restaurantId: string) {
+    try {
+      return await this.mappingReview.listUnresolvedLines(restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Unresolved-line read failed",
         HttpStatus.BAD_REQUEST,
       );
     }

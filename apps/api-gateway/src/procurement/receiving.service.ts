@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { ORDER_UNIT_TYPES } from "./order-units";
 
@@ -374,7 +375,39 @@ export class ReceivingService {
     let stockBooked = true;
     let stockIssue: string | undefined;
 
-    if (!order.inventory_id) {
+    // ADR 0103 A5 — ONE BOOKING PATH. If the delivery model has already booked
+    // this order's stock (a door count posted through
+    // `POST /procurement/documents/door-count` against a delivery), then these
+    // bottles are ALREADY on the shelf under the delivery's own keys and this
+    // path must not put them there a second time. The event row is still
+    // written — the door's evidence is the point of this endpoint — and the
+    // response says who owns the stock.
+    //
+    // A read that FAILS is not a "no" (ADR 0067): the movement is refused and
+    // the outbox retries, because booking on an unknown answer is the double
+    // count this check exists to prevent.
+    const owned = await deliveryHasBookedOrder(
+      this.db.getClient(),
+      input.orderId,
+    );
+    if (!owned.ok)
+      throw new ServiceUnavailableException({
+        reason: "delivery_ownership_unknown",
+        message: owned.error,
+      });
+
+    if (owned.value.booked) {
+      stockBooked = false;
+      stockIssue =
+        `The count is recorded. The shelf was NOT moved here because delivery ` +
+        `${owned.value.deliveryIds.join(", ")} already booked this order's stock ` +
+        `at the door (ADR 0103 A1/A5) — booking it again would double the count. ` +
+        `Correct the count on the delivery and the difference is moved there.`;
+      this.logger.log(
+        `door receipt for order ${input.orderId} did not book: delivery ` +
+          `${owned.value.deliveryIds.join(", ")} owns this order's stock`,
+      );
+    } else if (!order.inventory_id) {
       // A null inventory_id books nothing. The old code's `if (delta !== 0 &&
       // order.inventory_id)` skipped the RPC and returned `stockDelta: delta`
       // regardless, so an order with no shelf reported a non-zero movement that
@@ -474,6 +507,33 @@ export class ReceivingService {
       delivered_at: new Date().toISOString(),
       received_by: input.userId,
     };
+    // ⚠️ THIS WRITE IS IN BOTTLES, AND IT IS THE ONLY ONE THAT IS.
+    //
+    // `markDelivered` and `updateOrder` write `quantity_received` in the
+    // ORDER's own unit — the DTO field is literally called
+    // `quantityReceivedInOrderUom` — and `verifyReceipt` reads it back as
+    // `stockedQtyInCountedUom`, where `computeMatch` multiplies it by the pack
+    // size a second time. MEASURED on a 5-case order of a twelve-pack counted
+    // at the door: stocked reads 720 bottles instead of 60 and `ledgerDelta`
+    // is −660, so `applyReceiptAdjustment` takes 660 bottles out of live
+    // stock. Whether an invoice is on file changes only the WORD the manager
+    // sees — "unmatched" without one, "matched" with a matching one — and
+    // not the −660, which is identical either way.
+    //
+    // Nothing is corrupted retrospectively. Production `exzueerziesmczwlhomd`,
+    // measured by the coordinating session via SQL on 2026-09-02:
+    // `procurement_receipt_events` = 0 rows, and 0 of 2 `procurement_orders`
+    // carry a non-null, non-zero `quantity_received`. The door has never run
+    // there, so the exposure is the first real door-to-desk delivery.
+    //
+    // Left as bottles rather than converted, because choosing between the two
+    // units has costs on both sides and this column is `integer`, so a
+    // bottles→cases conversion rounds a part-case delivery away. Filed in
+    // `.planning/v3.0-TECH-DEBT.md` for the founder rather than guessed at.
+    //
+    // Nothing here depends on the choice: the read at `alreadyBookedElsewhere`
+    // above only ever fires on the FIRST door receipt for an order, so this
+    // path never reads back its own write.
     if (stockBooked) orderUpdate.quantity_received = totals.receivedBottles;
 
     await this.db

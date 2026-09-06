@@ -18,7 +18,7 @@ import {
  * address that belongs to a different tenant.
  */
 
-/** A `recurring_orders` row as it can exist on `main` today: no price, no provider. */
+/** A legacy-shaped `recurring_orders` row: `wine_id`, no price, no provider. */
 const MAIN_SHAPED_ROW = {
   id: "sched-1",
   quantity: 6,
@@ -29,7 +29,38 @@ const MAIN_SHAPED_ROW = {
   wine_id: "W-123",
 };
 
-/** The same row once PR #220's `recurring_orders` columns exist. */
+/**
+ * A row exactly as `RecurringOrdersService.createRecurringOrder` writes one
+ * TODAY, on `main`, with PR #220's migration applied — every key here is a key
+ * that insert supplies, and nothing else.
+ *
+ * This is the fixture that matters, and it did not exist: the two above are a
+ * "before #220" and an "after #220" that the writer never actually produces.
+ * #220's insert populates `inventory_id`/`provider_id` and never writes
+ * `wine_id` or `preferred_providers`, and #220 adds no `wine_name` or
+ * `provider_name` column at all — it embeds the name through `inventory_id`,
+ * an embed this job's flat `select("*")` does not perform. `target_price` IS
+ * present, so the refusal is precondition 2 of ADR 0061 and not precondition 1.
+ */
+const WRITER_SHAPED_ROW = {
+  id: "sched-2",
+  restaurant_id: "rest-1",
+  inventory_id: "11111111-1111-1111-1111-111111111111",
+  provider_id: "22222222-2222-2222-2222-222222222222",
+  quantity: 6,
+  unit_type: "bottle",
+  target_price: 42.5,
+  frequency: "monthly",
+  frequency_day: null,
+  auto_approve: false,
+  next_order_date: "2026-09-04",
+  active: true,
+  created_by: null,
+  notes: null,
+  execution_count: 0,
+};
+
+/** The same row once a wine name and a provider name are reachable. */
 const COMPLETE_ROW = {
   ...MAIN_SHAPED_ROW,
   wine_name: "Barolo 2019",
@@ -145,14 +176,35 @@ describe("describeRecurringOrder — refuses what it cannot name or price", () =
     const d = describeRecurringOrder(MAIN_SHAPED_ROW);
     expect(d.sendable).toBe(false);
     if (d.sendable) throw new Error("unreachable");
-    // The wine is nameable from wine_id; the price and provider are not
-    // knowable at all until PR #220's columns land.
+    // The wine is nameable from the legacy `wine_id`; the price and provider
+    // are not, because this shape predates #220's columns entirely.
     expect(d.missing).toEqual(
       expect.arrayContaining([
         "provider_name/preferred_providers",
         "target_price",
       ]),
     );
+  });
+
+  it("refuses the row the CURRENT writer produces, and for the right reason", () => {
+    // ADR 0061 said the reminder was inert because `target_price` was absent
+    // until PR #220 merged. #220 had already merged twelve hours earlier
+    // (`e50d912c` is an ancestor of ADR 0061's own commit `e3acc79a`), so the
+    // stated reason was never true on `main`. The job is inert anyway — for the
+    // OTHER precondition — and this pins which one, so the next reader arming
+    // the flag knows what to fix.
+    const d = describeRecurringOrder(WRITER_SHAPED_ROW);
+    expect(d.sendable).toBe(false);
+    if (d.sendable) throw new Error("unreachable");
+
+    // Not the price: #220 added `target_price` and the writer supplies it.
+    expect(d.missing).not.toContain("target_price");
+    // The name and the provider: #220 adds no column for either, and this job
+    // reads the table flat with no embed.
+    expect(d.missing).toEqual([
+      "wine_name/wine_id",
+      "provider_name/preferred_providers",
+    ]);
   });
 
   it("never substitutes a placeholder provider or a zero price", () => {

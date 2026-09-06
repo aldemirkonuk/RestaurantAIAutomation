@@ -31,6 +31,40 @@
     "name": "Sim High-Volume Bar",
     "timezone": "America/Chicago",
     "city": "Chicago",
-    "country": "USA"
+    "country": "USA",
+    "operating_hours": {
+      "mon": [],
+      "tue": [],
+      "wed": [
+        {
+          "open": "18:00",
+          "close": "02:00"
+        }
+      ],
+      "thu": [
+        {
+          "open": "18:00",
+          "close": "02:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "18:00",
+          "close": "03:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "18:00",
+          "close": "03:00"
+        }
+      ],
+      "sun": [
+        {
+          "open": "16:00",
+          "close": "00:00"
+        }
+      ]
+    }
   }
 }

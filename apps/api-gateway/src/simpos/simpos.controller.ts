@@ -16,6 +16,7 @@ import {
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SimposService } from "./simpos.service";
+import { ScenarioVerifyService } from "./scenario-verify.service";
 
 /**
  * SimPOS — the fake POS terminal's backend surface (SimPOS testbed plan).
@@ -54,7 +55,10 @@ import { SimposService } from "./simpos.service";
 @UseGuards(JwtAuthGuard)
 @Controller("simpos/:restaurantId")
 export class SimposController {
-  constructor(private readonly simpos: SimposService) {}
+  constructor(
+    private readonly simpos: SimposService,
+    private readonly scenarios: ScenarioVerifyService,
+  ) {}
 
   @Post("catalog/seed")
   @ApiOperation({
@@ -74,9 +78,9 @@ export class SimposController {
 
   @Post("catalog")
   @ApiOperation({
-    summary: "Edit POS: add or reprice a SKU",
+    summary: "Edit POS: add, reprice or recategorise a SKU",
     description:
-      "Body: { id?, wineName, producer?, vintage?, sizeMl?, price }. Omit id to create.",
+      "Body: { id?, wineName, producer?, vintage?, sizeMl?, price?, category? }. Omit id to create. `price` may be null — a button nobody has priced renders as 'unpriced' rather than at a placeholder figure (ADR 0020). `category` is one of wine/beer/spirit/sake/cider/cocktail/non_alcoholic/food/other; anything else, or absent, stores null and the button is NOT declared wine on the outbound webhook.",
   })
   upsertCatalogItem(
     @Param("restaurantId") restaurantId: string,
@@ -88,7 +92,8 @@ export class SimposController {
       producer: body.producer,
       vintage: body.vintage,
       sizeMl: body.sizeMl,
-      price: body.price,
+      price: body.price ?? null,
+      category: body.category ?? null,
     });
   }
 
@@ -99,6 +104,16 @@ export class SimposController {
     @Param("catalogId") catalogId: string,
   ) {
     return this.simpos.removeCatalogItem(restaurantId, catalogId);
+  }
+
+  @Get("venue")
+  @ApiOperation({
+    summary: "The venue's timezone and published hours",
+    description:
+      "So the terminal and the order log can render times in the RESTAURANT's zone rather than the viewer's, and say when a check rang outside the published hours. Returns `timezone: null` / `operating_hours: null` when the venue has not set them — never a default zone, because rendering a Palo Alto check at 2:20 AM EDT is exactly the defect this answers (ADR 0093 D1).",
+  })
+  getVenue(@Param("restaurantId") restaurantId: string) {
+    return this.simpos.getVenue(restaurantId);
   }
 
   @Get("tables")
@@ -137,6 +152,25 @@ export class SimposController {
     @Param("checkId") checkId: string,
   ) {
     return this.simpos.getCheck(restaurantId, checkId);
+  }
+
+  @Patch("check/:checkId")
+  @ApiOperation({
+    summary: "Record the covers, table and server on the open check",
+    description:
+      "Body: { covers?, tableId?, serverName? }. Every field is optional and every field accepts null — `covers: null` means nobody said how many guests, which is what a check rung without opening a table honestly is, and it reaches pos_checks.covers as NULL rather than 0 (ADR 0105 D5). These three are what made pos_checks.covers/table_id/server_name NULL on 44 of 44 rows on the 2026-09-03 lens run: SimPOS had nowhere to put them.",
+  })
+  updateCheckContext(
+    @Param("restaurantId") restaurantId: string,
+    @Param("checkId") checkId: string,
+    @Body()
+    body: {
+      covers?: number | null;
+      tableId?: string | null;
+      serverName?: string | null;
+    },
+  ) {
+    return this.simpos.updateCheckContext(restaurantId, checkId, body || {});
   }
 
   @Post("check/:checkId/lines")
@@ -191,5 +225,71 @@ export class SimposController {
     @Param("checkId") checkId: string,
   ) {
     return this.simpos.closeCheck(restaurantId, checkId);
+  }
+
+  // ==========================================================================
+  // Scenario harness (ADR 0093)
+  //
+  // The class guard and `assertSimRestaurant` apply here exactly as they do to
+  // everything else on this controller: the verifier reads Mudavym tables, so
+  // it is bounded to sim tenants for the same reason the terminal is
+  // (OD-35 — dev and production share one Supabase instance).
+  // ==========================================================================
+
+  @Get("scenarios/runs")
+  @ApiOperation({
+    summary: "Scenario runs for this sim restaurant, newest first",
+    description:
+      "Capped at 50. The cap is returned as `cap` and `capped`, and the page renders it as a floor (\u2265), never as a total.",
+  })
+  listScenarioRuns(@Param("restaurantId") restaurantId: string) {
+    return this.scenarios.listRuns(restaurantId);
+  }
+
+  @Get("scenarios/runs/:runId")
+  @ApiOperation({
+    summary: "One scenario run, expectation included",
+  })
+  getScenarioRun(
+    @Param("restaurantId") restaurantId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.scenarios.getRun(restaurantId, runId);
+  }
+
+  @Get("scenarios/runs/:runId/verify")
+  @ApiOperation({
+    summary: "Compare what the product did against what the scenario expected",
+    description:
+      "One row per named check with pass / fail / unverifiable. A failed read turns every check that depended on it into `unverifiable` and is listed in `reads` (ADR 0067); an empty expectation is never a pass (ADR 0020).",
+  })
+  verifyScenarioRun(
+    @Param("restaurantId") restaurantId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.scenarios.verify(restaurantId, runId);
+  }
+
+  @Post("scenarios/runs/:runId/sweep")
+  @ApiOperation({
+    summary: "Run the low-stock edge sweep now",
+    description:
+      "The cron runs every 2 minutes; this runs it immediately and returns the low-stock notifications raised since the run was posted, each with its `delivery_status` so 'emailed' is a fact on the row (ADR 0093 D5).",
+  })
+  runScenarioSweep(
+    @Param("restaurantId") restaurantId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.scenarios.runSweep(restaurantId, runId);
+  }
+
+  @Post("scenarios/runs/:runId/insights")
+  @ApiOperation({
+    summary: "Generate and persist insights now",
+    description:
+      "`candidateTypesAvailable` is an UPPER BOUND on the types with the data to fire, not a count of what this restaurant will receive.",
+  })
+  runScenarioInsights(@Param("restaurantId") restaurantId: string) {
+    return this.scenarios.generateInsights(restaurantId);
   }
 }

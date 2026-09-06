@@ -84,11 +84,13 @@ const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/
 const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))
 const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-reports/next/DocumentsReportsNext'))
+const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
 const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
 const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
+const SimposScenariosPage = lazyWithRefresh(() => import('./pages/simpos/SimposScenariosPage'))
 
 // Heavy pages (lazy loaded)
 const Reports = lazyWithRefresh(() => import('./pages/Reports'))
@@ -252,6 +254,20 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                {/*
+                  The scenario harness's verdict page (ADR 0093). Dev-only for
+                  the same reason its siblings are: SimposModule is not loaded
+                  in production, so a production build would render a page
+                  whose every request 404s.
+                */}
+                <Route
+                  path="/simpos/:restaurantId/scenarios"
+                  element={
+                    <ProtectedRoute>
+                      {import.meta.env.PROD ? <Navigate to="/" replace /> : <SimposScenariosPage />}
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/*
                   Third-party authorization consent — outside DashboardLayout on
@@ -326,6 +342,20 @@ function App() {
                   <Route path="/documents-reports" element={<PageGate page="documents_reports" legacy={<DocumentsPage />} next={<DocumentsReportsNext />} />} />
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
+                  {/* ADR 0104 D12 slice 2 — one incoming document as the canonical
+                      Mudavym document. Gated OFF by default (OD-106); the legacy
+                      branch is a redirect to /receipts rather than a second page,
+                      because /receipts already IS this view's other face. */}
+                  <Route
+                    path="/documents/:id"
+                    element={
+                      <PageGate
+                        page="document"
+                        legacy={<Navigate to="/receipts" replace />}
+                        next={<CanonicalDocumentPage />}
+                      />
+                    }
+                  />
                   <Route path="/logs" element={<LogsTimelinePage />} />
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/settings" element={<Settings />} />

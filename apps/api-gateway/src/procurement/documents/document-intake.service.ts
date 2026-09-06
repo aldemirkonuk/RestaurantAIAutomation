@@ -2,12 +2,19 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { createHash } from "crypto";
 import { DatabaseService } from "../../database/database.service";
-import { DocumentExtractorService } from "./document-extractor.service";
-import { SourceChannel } from "./document-types";
-import { applyTieOut, ParsedDocument } from "./parsed-document";
+import {
+  DocumentExtractorService,
+  stripJsonFence,
+} from "./document-extractor.service";
+import { normalizeUom, SourceChannel, toBottles } from "./document-types";
+import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
+import {
+  CanonicalDocumentService,
+  ReadResult,
+} from "../canonical/canonical-document.service";
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -58,6 +65,32 @@ export interface IntakeResult {
   /** True when this exact content was already ingested. */
   duplicate: boolean;
   error?: string;
+  /**
+   * The original bytes arrived and could NOT be stored (ADR 0067).
+   *
+   * Distinct from `error`, which means the document itself did not land. This
+   * one says: the document is on the record and readable, and the file beside
+   * it is missing because a write failed — never because none was sent. Absent
+   * when the upload succeeded or when the channel carried no bytes to store.
+   */
+  storageError?: string;
+}
+
+/** What the extraction door reports back beyond the document itself. */
+export interface ExternalExtractionResult {
+  warnings: string[];
+  tieOut: {
+    computedLinesTotal: number | null;
+    tieOutDelta: number | null;
+    tiesOut: boolean | null;
+  };
+  /**
+   * The append-only revision this apply wrote (ADR 0104 D5), or the reason it
+   * could not be written. NEVER omitted on failure: a document whose lines
+   * landed and whose revision did not is a different thing from one where both
+   * did, and collapsing them is this repository's absence-as-health fault.
+   */
+  revision: ReadResult<{ revision: number; id: string }>;
 }
 
 @Injectable()
@@ -67,7 +100,335 @@ export class DocumentIntakeService {
   constructor(
     private readonly db: DatabaseService,
     private readonly extractor: DocumentExtractorService,
+    private readonly canonical: CanonicalDocumentService,
   ) {}
+
+  /**
+   * A DOOR COUNT — a document we AUTHOR, not one we read (ADR 0104 D2/D11, S6).
+   *
+   * Every other path through this service reads a document somebody else wrote
+   * and records how confident it is about what it read. This one records what a
+   * person standing at the door SAYS they counted. Nothing is extracted, so:
+   *
+   *   * `extraction_confidence` and `extraction_model` are **NULL, not 0**. A
+   *     zero would be a confidence somebody computed; NULL is "nothing read
+   *     this, so there is no such number".
+   *   * `direction = issued_by_us` (S6). A receiving advice is ours. Reading it
+   *     as a vendor document would put our own count behind the vendor's
+   *     authority in every comparison the delivery makes.
+   *   * `doc_number` stays NULL. Nobody printed a number on it, and the partial
+   *     unique index on (restaurant, provider, type, number) would otherwise
+   *     make a second count of the same vendor a duplicate-key error.
+   *   * `status = 'received'`, never `verified`. A count one person typed has
+   *     not been checked by anyone else, and `verified` is the word this
+   *     product uses for a human standing behind a document.
+   *
+   * A LINE NOBODY COUNTED IS ABSENT, NOT ZERO (ADR 0103 A6). The door screen
+   * submits only the lines somebody actually counted; a line missing from this
+   * document keeps the canonical `received: "not_counted"` it already has. That
+   * is why there is no `notCounted` flag here and why a body with zero lines is
+   * refused — an empty count is not a count, and a truck that arrived empty is a
+   * rejection, which is a different door.
+   *
+   * THE SIGNATURE IS EVIDENCE, AND IT GATES AGREEMENT. `signedBy` is stored in
+   * the `extracted` snapshot because ADR 0103 D3's second route to `AGREED` is
+   * "a door signature where a per-vendor setting says the signed delivery ticket
+   * is final". `DeliveryService.agree` reads it from there, and a count with no
+   * signature simply cannot reach that rule.
+   */
+  async recordDoorCount(input: {
+    restaurantId: string;
+    providerId?: string | null;
+    countedBy: string | null;
+    countedAt?: string | null;
+    lines: {
+      lineNo: number;
+      description?: string | null;
+      vendorSku?: string | null;
+      qty: number;
+      uom: string;
+      packSize?: number | null;
+      vintage?: number | null;
+      formatMl?: number | null;
+      /** The shelf this line is about, when the door knows it (ADR 0103 A1). */
+      inventoryId?: string | null;
+    }[];
+    /** Who signed the vendor's ticket at the door, when anyone did. */
+    signedBy?: string | null;
+    note?: string | null;
+    /** One photograph of the goods, as evidence. */
+    photo?: {
+      bytes: Buffer;
+      filename?: string | null;
+      mimeType?: string | null;
+    } | null;
+  }): Promise<IntakeResult> {
+    if (!input.lines.length)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error:
+          "A door count with no lines is not a count. Submit the lines somebody counted; a line nobody counted is simply absent and stays 'not counted'.",
+      };
+
+    const countedAt = input.countedAt ?? new Date().toISOString();
+    const lines: ParsedLine[] = input.lines.map((l) => {
+      const uom = (normalizeUom(l.uom) ?? "bottle") as ParsedLine["uom"];
+      const packSize = l.packSize && l.packSize >= 1 ? l.packSize : 1;
+      return {
+        lineNo: l.lineNo,
+        vendorSku: l.vendorSku ?? null,
+        description: l.description ?? null,
+        vintage: l.vintage ?? null,
+        formatMl: l.formatMl ?? null,
+        qty: l.qty,
+        uom,
+        packSize,
+        qtyBottles: toBottles(l.qty, uom, packSize),
+        freeGoodsQty: 0,
+        // NO MONEY AT THE DOOR (D11). Not zero — absent. A price of 0.00 on a
+        // receiving advice is a claim that the goods were free.
+        unitPrice: null,
+        lineTotal: null,
+        allowance: null,
+        deposit: null,
+        priceBaseQty: null,
+        priceBaseUom: null,
+      };
+    });
+
+    const parsed: ParsedDocument = applyTieOut({
+      docType: "receiving_advice",
+      docNumber: null,
+      docDate: countedAt.slice(0, 10),
+      deliveredDate: countedAt.slice(0, 10),
+      referencesDocNumber: null,
+      poNumber: null,
+      vendorName: null,
+      vendorAccount: null,
+      // A door count carries no money, so it carries no currency either.
+      currency: null,
+      subtotal: null,
+      freight: null,
+      fuelSurcharge: null,
+      splitCaseFee: null,
+      deliveryFee: null,
+      depositTotal: null,
+      tax: null,
+      otherCharges: null,
+      discountTotal: null,
+      total: null,
+      lines,
+      computedLinesTotal: null,
+      tieOutDelta: null,
+      tiesOut: null,
+      confidence: 0,
+      warnings: [],
+      extractionModel: null,
+    } as unknown as ParsedDocument);
+
+    /**
+     * Content-addressed, INCLUDING the moment it was stated.
+     *
+     * A re-count an hour later is a different document even when every number
+     * is the same — the fact being recorded is "this is what we counted at
+     * 09:41", and hashing only the numbers would make the second count
+     * disappear as a duplicate of the first.
+     */
+    const sha256 = createHash("sha256")
+      .update(
+        JSON.stringify({
+          restaurantId: input.restaurantId,
+          providerId: input.providerId ?? null,
+          countedAt,
+          lines: input.lines,
+        }),
+      )
+      .digest("hex");
+
+    /**
+     * THE SAME COUNT, TWICE, IS ANSWERED — NOT LEAKED (v3.0-TECH-DEBT 2026-09-06,
+     * finding 4).
+     *
+     * `uq_pd_restaurant_sha256` catches this correctly, but a receiver who
+     * pressed the button twice was told `duplicate key value violates unique
+     * constraint "uq_pd_restaurant_sha256"` with a 422 indistinguishable from a
+     * malformed body. The sentence that matters is: this exact count is already
+     * recorded, and here it is. The read is not a substitute for the index —
+     * the index is still what makes it true under a race, and the 23505 below
+     * comes back through this same sentence.
+     */
+    const already = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("sha256", sha256)
+      .maybeSingle();
+    if (already.error)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error: `the door count could not be recorded: the duplicate check failed (${already.error.message}), and a count written without it could silently double a document`,
+      };
+    if (already.data?.id)
+      return {
+        documentId: (already.data as { id: string }).id,
+        parsed,
+        duplicate: true,
+      };
+
+    let storagePath: string | null = null;
+    let storageError: string | undefined;
+    if (input.photo?.bytes?.length) {
+      const stored = await this.persistOriginalBytes(
+        {
+          restaurantId: input.restaurantId,
+          source: "manual",
+          buffer: input.photo.bytes,
+          filename: input.photo.filename ?? "door-count.png",
+          mimeType: input.photo.mimeType ?? null,
+        },
+        sha256,
+        input.photo.bytes,
+      );
+      storagePath = stored.path;
+      if (stored.failure) storageError = stored.failure;
+    }
+
+    const snapshot = {
+      ...(parsed as unknown as Record<string, unknown>),
+      countedAt,
+      countedBy: input.countedBy,
+      note: input.note ?? null,
+      // ADR 0103 D3's second route to AGREED reads this. Absent means nobody
+      // signed, which is a fact about the door, not a missing field.
+      signature: input.signedBy
+        ? { signedBy: input.signedBy, signedAt: countedAt }
+        : null,
+    };
+
+    // Inline literals, never a spread: `check_order_capture_contract.py` can
+    // only read a write whose column names are literal.
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .insert({
+        restaurant_id: input.restaurantId,
+        provider_id: input.providerId ?? null,
+        doc_type: "receiving_advice",
+        direction: "issued_by_us",
+        source_channel: "manual",
+        doc_number: null,
+        doc_date: countedAt.slice(0, 10),
+        references_doc_number: null,
+        storage_path: storagePath,
+        content_type: input.photo?.mimeType ?? null,
+        file_bytes: input.photo?.bytes?.length ?? null,
+        raw_payload: null,
+        extracted: snapshot,
+        // NULL, NOT 0 — see the header. Nothing read this document.
+        extraction_confidence: null,
+        extraction_model: null,
+        currency: null,
+        subtotal: null,
+        total: null,
+        computed_lines_total: null,
+        tie_out_delta: null,
+        ties_out: null,
+        status: "received",
+        source_ref: input.countedBy ? `user:${input.countedBy}` : null,
+        sha256,
+        notes: input.note ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      // The race the pre-check cannot close: two receivers pressing at once.
+      // The index is what makes the guarantee; this turns its 23505 into the
+      // same sentence rather than a constraint name.
+      if (error.code === "23505") {
+        const raced = await this.db
+          .getClient()
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", input.restaurantId)
+          .eq("sha256", sha256)
+          .maybeSingle();
+        if (raced.data?.id)
+          return {
+            documentId: (raced.data as { id: string }).id,
+            parsed,
+            duplicate: true,
+          };
+      }
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error: `the door count could not be recorded: ${error.message}`,
+      };
+    }
+    if (!data)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error:
+          "the door count insert returned no row and no error, so it cannot be reported as recorded",
+      };
+
+    const documentId = (data as { id: string }).id;
+    const lineErr = await this.insertDocumentLines(
+      documentId,
+      input.restaurantId,
+      lines,
+      null,
+    );
+    if (lineErr)
+      return {
+        documentId,
+        parsed,
+        duplicate: false,
+        // The document row exists; the lines do not. Saying "the count failed"
+        // would leave a caller believing nothing was written.
+        error: `the door count document ${documentId} was written but its lines were not: ${lineErr.message}`,
+      };
+
+    // WHICH SHELF EACH COUNTED LINE IS ABOUT (ADR 0103 A1).
+    //
+    // Written here rather than through `ParsedLine`, deliberately: a parsed
+    // document is what a DOCUMENT said, and no document says which of this
+    // restaurant's items a line is. The door knows because a person picked it.
+    // A line with no id keeps NULL and the booking path reports it as not
+    // booked, with the reason — it is never matched by description.
+    for (const l of input.lines) {
+      if (!l.inventoryId) continue;
+      const linked = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({ inventory_id: l.inventoryId })
+        .eq("document_id", documentId)
+        .eq("line_no", l.lineNo);
+      if (linked.error)
+        return {
+          documentId,
+          parsed,
+          duplicate: false,
+          error: `the door count document ${documentId} was written but line ${l.lineNo} could not be linked to item ${l.inventoryId}: ${linked.error.message}. Nothing was booked — booking onto a line whose item is unknown is the failure this refuses.`,
+        };
+    }
+
+    return {
+      documentId,
+      parsed,
+      duplicate: false,
+      ...(storageError ? { storageError } : {}),
+    };
+  }
 
   /**
    * Ingest one document. Never throws — intake sits behind an email webhook and
@@ -107,17 +468,29 @@ export class DocumentIntakeService {
       // this, storage_path lands NULL and the receipts page has nothing to
       // show beside the extracted lines, and a disputed credit has no
       // photograph to point a distributor at.
-      const storagePath = await this.persistOriginalBytes(input, sha256, bytes);
-      const resolvedInput: IntakeInput = { ...input, storagePath };
+      const stored = await this.persistOriginalBytes(input, sha256, bytes);
+      const resolvedInput: IntakeInput = { ...input, storagePath: stored.path };
 
       const parsed = await this.route(input, bytes);
+      // A failed upload travels on the document's own warnings, so it reaches
+      // `notes` on the row and the canonical page's read-notes strip. It is
+      // NOT folded into `error`: the document itself was read and stored, and
+      // failing the ingest would discard a readable document over a photo.
+      const parsedWithStorage = stored.failure
+        ? { ...parsed, warnings: [...parsed.warnings, stored.failure] }
+        : parsed;
       const documentId = await this.persist(
         resolvedInput,
         sha256,
         bytes,
-        parsed,
+        parsedWithStorage,
       );
-      return { documentId, parsed, duplicate: false };
+      return {
+        documentId,
+        parsed: parsedWithStorage,
+        duplicate: false,
+        ...(stored.failure ? { storageError: stored.failure } : {}),
+      };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
       return {
@@ -139,25 +512,50 @@ export class DocumentIntakeService {
    * same path, so this is a plain `upsert`, never a growing pile of
    * duplicates.
    *
-   * Best-effort: a storage failure must not fail the whole ingest, since the
-   * extraction and the four-way match evidence do not depend on the photo
-   * existing — only the receipts page's side-by-side view does. Skipped
-   * entirely when the caller already resolved a storagePath (email channel)
-   * or when there are no original bytes to store (EDI/SFTP text, which keeps
-   * its full content in `raw_payload` instead).
+   * Best-effort ABOUT THE INGEST, never about the record: a storage failure
+   * must not throw away a readable document, since the extraction and the
+   * four-way match evidence do not depend on the photo existing — but it must
+   * not disappear either. Skipped entirely when the caller already resolved a
+   * storagePath (email channel) or when there are no original bytes to store
+   * (EDI/SFTP text, which keeps its full content in `raw_payload` instead).
+   *
+   * A FAILED UPLOAD IS A FAILED WRITE, AND IT SAYS SO (ADR 0067).
+   *
+   * This used to return NULL on failure, indistinguishable from "this channel
+   * had no bytes to store" — so `storage_path` landed null, `GET :id` answered
+   * "no original was stored for this document", and nothing anywhere recorded
+   * that bytes HAD arrived and the write had broken. That is the
+   * absence-as-health shape at its most expensive: the one screen a
+   * disputed-credit conversation depends on says the paper never existed.
+   *
+   * Two rules hold from here on:
+   *   1. `path` is returned ONLY when the object is in the bucket. A document
+   *      never claims a `storage_path` it does not have.
+   *   2. `failure` is a SENTENCE, carried onto the document's own `notes` and
+   *      out through the ingest result, so a failed write reads as a failed
+   *      write rather than as an absent file.
    */
   private async persistOriginalBytes(
     input: IntakeInput,
     sha256: string,
     bytes: Buffer,
-  ): Promise<string | null> {
-    if (input.storagePath) return input.storagePath;
-    if (!input.buffer?.length) return null;
+  ): Promise<{ path: string | null; failure: string | null }> {
+    if (input.storagePath) return { path: input.storagePath, failure: null };
+    if (!input.buffer?.length) return { path: null, failure: null };
 
     const safeName = (input.filename || "document")
       .replace(/[^\w.-]+/g, "_")
       .slice(0, 120);
     const path = `${input.restaurantId}/documents/${sha256}/${safeName}`;
+
+    const failed = (why: string) => {
+      const failure =
+        `The original bytes could not be stored (${safeName}): ${why}. ` +
+        `This document has no file to show beside its lines, and that is a ` +
+        `failed write, not a document that arrived without one.`;
+      this.logger.warn(`persistOriginalBytes: ${failure}`);
+      return { path: null, failure };
+    };
 
     try {
       const { error } = await this.db
@@ -167,18 +565,10 @@ export class DocumentIntakeService {
           contentType: input.mimeType || "application/octet-stream",
           upsert: true,
         });
-      if (error) {
-        this.logger.warn(
-          `persistOriginalBytes: upload failed for ${safeName} — ${error.message}`,
-        );
-        return null;
-      }
-      return path;
+      if (error) return failed(error.message);
+      return { path, failure: null };
     } catch (err: any) {
-      this.logger.warn(
-        `persistOriginalBytes: unexpected failure for ${safeName} — ${err?.message}`,
-      );
-      return null;
+      return failed(err?.message ?? "unknown error");
     }
   }
 
@@ -218,11 +608,40 @@ export class DocumentIntakeService {
         "No extraction model is configured, so the document was stored unread.",
       );
 
-    return this.extractor.extract(
-      bytes.toString("base64"),
-      input.mimeType,
-      input.restaurantId,
-    );
+    try {
+      return await this.extractor.extract(
+        bytes.toString("base64"),
+        input.mimeType,
+        input.restaurantId,
+      );
+    } catch (err: any) {
+      /**
+       * ADR 0104 D6 — "when extraction runs and FAILS, the template degrades to
+       * original + header fields + an explicit NOT EXTRACTED banner".
+       *
+       * Before this, an extractor that threw took the whole ingest down: the
+       * caller got a 422, no `procurement_documents` row was written, and the
+       * original bytes — already uploaded a few lines earlier — were left in
+       * the bucket with nothing pointing at them. The restaurant had handed us
+       * their paper and we kept neither the paper nor the fact that they had.
+       *
+       * MEASURED, not hypothetical (2026-09-04): three synthetic PDFs pushed at
+       * the local gateway came back
+       * `422 Anthropic 400: Your credit balance is too low`. A billing problem
+       * at the model vendor must not be able to discard a restaurant's invoice.
+       *
+       * The failure is NAMED on the document (it becomes a warning, so the row
+       * lands in `needs_review` with the reason in `notes`) and returned to the
+       * uploader in the same response. It is never silently an empty invoice.
+       */
+      const reason = err?.message ?? "unknown error";
+      this.logger.warn(
+        `extraction failed, storing the document unread: ${reason}`,
+      );
+      return this.unreadable(
+        `The extraction model could not be reached, so the document was stored unread: ${reason}`,
+      );
+    }
   }
 
   private unreadable(reason: string): ParsedDocument {
@@ -268,16 +687,41 @@ export class DocumentIntakeService {
     bytes: Buffer,
     parsed: ParsedDocument,
   ): Promise<string | null> {
-    const needsReview =
-      parsed.docType === "unknown" ||
-      parsed.tiesOut === false ||
-      parsed.warnings.length > 0 ||
-      parsed.lines.length === 0;
+    const needsReview = this.needsReview(parsed);
 
-    const { data, error } = await this.db
+    /**
+     * The columns migration 20260904120000 adds. Held apart so a database that
+     * has not applied it yet is TOLD APART from a document that printed no
+     * price base — the same distinction the read side makes.
+     *
+     * A write fallback is a heavier thing than a read fallback, so it does two
+     * things a silent retry would not: it names the loss in the document's own
+     * `notes` (which the canonical page renders), and it logs at warn level.
+     * This shape exists only for the window between this branch and its merge;
+     * once the migration is on every database the retry can never fire, and
+     * `v3.0-TECH-DEBT.md` carries the note to delete it.
+     */
+    let schemaLagNote: string | null = null;
+
+    /**
+     * The parser's own snapshot, cast ONCE up here rather than inline in the
+     * payload. `check_order_capture_contract.py` splits a write payload on
+     * top-level commas and does not know that `Record<string, unknown>` has one
+     * inside it — so an inline cast made this whole insert unreadable to the
+     * guard, and a column the table does not have could be written through it
+     * without CI noticing. Hoisting the cast is what makes the payload
+     * checkable; it changes nothing at runtime.
+     */
+    const extractedSnapshot = parsed as unknown as Record<string, unknown>;
+
+    let { data, error } = await this.db
       .getClient()
       .from("procurement_documents")
       .insert({
+        // Inline, never spread: `check_order_capture_contract.py` can only read
+        // a write whose column names are literal, and a payload it cannot read
+        // is a payload it cannot check for a column the table does not have.
+        printed: parsed.printed ?? null,
         restaurant_id: input.restaurantId,
         provider_id: input.providerId ?? null,
         doc_type: parsed.docType,
@@ -295,7 +739,7 @@ export class DocumentIntakeService {
           input.source === "edi" || input.source === "sftp"
             ? bytes.toString("utf8").slice(0, 500_000)
             : null,
-        extracted: parsed as unknown as Record<string, unknown>,
+        extracted: extractedSnapshot,
         extraction_confidence: parsed.confidence,
         // ADR 0059 (L5, L6). Both were reachable all along and neither was
         // written: `extraction_model` has had a column and no writer since the
@@ -329,6 +773,60 @@ export class DocumentIntakeService {
       .select("id")
       .single();
 
+    // 42703 is Postgres's `undefined_column`; PGRST204 is PostgREST's own answer
+    // when an INSERT payload names a column missing from its schema cache. The
+    // insert path returns the SECOND one — measured 2026-09-04 — so a retry
+    // keyed only on 42703 would never fire.
+    if (error?.code === "42703" || error?.code === "PGRST204") {
+      schemaLagNote =
+        "The price base and the printed literals were read but could not be " +
+        "stored: this database has not applied migration 20260904120000.";
+      this.logger.warn(schemaLagNote);
+      ({ data, error } = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .insert({
+          restaurant_id: input.restaurantId,
+          provider_id: input.providerId ?? null,
+          doc_type: parsed.docType,
+          source_channel: input.source,
+          doc_number: parsed.docNumber,
+          doc_date: parsed.docDate,
+          references_doc_number: parsed.referencesDocNumber,
+          storage_path: input.storagePath ?? null,
+          content_type: input.mimeType ?? null,
+          file_bytes: bytes.length,
+          raw_payload:
+            input.source === "edi" || input.source === "sftp"
+              ? bytes.toString("utf8").slice(0, 500_000)
+              : null,
+          extracted: extractedSnapshot,
+          extraction_confidence: parsed.confidence,
+          extraction_model: parsed.extractionModel ?? null,
+          event_id: parsed.eventId ?? null,
+          currency: parsed.currency,
+          subtotal: parsed.subtotal,
+          freight: parsed.freight,
+          fuel_surcharge: parsed.fuelSurcharge,
+          split_case_fee: parsed.splitCaseFee,
+          delivery_fee: parsed.deliveryFee,
+          deposit_total: parsed.depositTotal,
+          tax: parsed.tax,
+          other_charges: parsed.otherCharges,
+          discount_total: parsed.discountTotal,
+          total: parsed.total,
+          computed_lines_total: parsed.computedLinesTotal,
+          tie_out_delta: parsed.tieOutDelta,
+          ties_out: parsed.tiesOut,
+          status: needsReview ? "needs_review" : "received",
+          source_ref: input.sourceRef ?? null,
+          sha256,
+          notes: [...parsed.warnings, schemaLagNote].join("\n"),
+        })
+        .select("id")
+        .single());
+    }
+
     if (error) {
       // A unique violation means another path won the race on the same bytes.
       // That is the dedupe working, not a failure.
@@ -344,65 +842,406 @@ export class DocumentIntakeService {
       }
       throw new Error(error.message);
     }
+    // `error` null AND `data` null cannot happen through `.single()` (PostgREST
+    // raises PGRST116 instead), but reporting a document id we never received
+    // would be a fabricated success and a TypeError here would surface as a 500
+    // with no mention of the write.
+    if (!data)
+      throw new Error(
+        `procurement_documents insert returned no row and no error for sha256 ${sha256}`,
+      );
 
     const documentId = data.id as string;
 
-    if (parsed.lines.length) {
-      const { error: lineErr } = await this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .insert(
-          parsed.lines.map((l) => ({
-            document_id: documentId,
-            restaurant_id: input.restaurantId,
-            line_no: l.lineNo,
-            vendor_sku: l.vendorSku,
-            description: l.description,
-            vintage: l.vintage,
-            format_ml: l.formatMl,
-            qty: l.qty,
-            uom: l.uom,
-            pack_size: l.packSize,
-            qty_bottles: l.qtyBottles,
-            free_goods_qty: l.freeGoodsQty,
-            unit_price: l.unitPrice,
-            line_total: l.lineTotal,
-            allowance: l.allowance,
-            deposit: l.deposit,
-            // order_line_id is left NULL on purpose. Matching lines to a PO is a
-            // separate, ranked step, and a low-confidence guess written here
-            // silently corrupts cost basis for months before anyone notices.
-            order_line_id: null,
-          })),
-        );
-      if (lineErr)
-        this.logger.warn(
-          `document ${documentId} stored but its lines failed: ${lineErr.message}`,
-        );
-    }
-
-    if (input.orderId)
-      await this.link(
-        documentId,
-        input.orderId,
-        input.restaurantId,
-        "manual",
-        1,
+    const lineErr = await this.insertDocumentLines(
+      documentId,
+      input.restaurantId,
+      parsed.lines,
+      schemaLagNote,
+    );
+    if (lineErr)
+      this.logger.warn(
+        `document ${documentId} stored but its lines failed: ${lineErr.message}`,
       );
-    else await this.autoLink(documentId, input.restaurantId, parsed);
 
-    // Pair lines against what was ordered. Only unambiguous matches are written;
-    // everything else waits for a person. Best-effort — a document is still
-    // useful unmatched, and failing intake over line pairing would lose it.
+    await this.linkAndMatch(
+      documentId,
+      input.restaurantId,
+      input.orderId ?? null,
+      parsed,
+    );
+
+    return documentId;
+  }
+
+  /**
+   * `needs_review` whenever the document did not tie out, came back unknown, or
+   * carries warnings — anything a person should look at before it is used to
+   * argue with a distributor.
+   *
+   * ONE RULE, TWO CALLERS. Intake writes it on insert; the extraction door
+   * writes it on update. Two copies would drift, and the drift would be
+   * invisible: a document that skipped review because the second copy forgot a
+   * clause looks exactly like one that passed it.
+   */
+  private needsReview(parsed: ParsedDocument): boolean {
+    return (
+      parsed.docType === "unknown" ||
+      parsed.tiesOut === false ||
+      parsed.warnings.length > 0 ||
+      parsed.lines.length === 0
+    );
+  }
+
+  /**
+   * Write a document's lines. Shared by intake and by the extraction door, so
+   * a line written through either carries the same columns.
+   *
+   * Returns the error rather than acting on it: intake WARNS (a document is
+   * still worth keeping without its lines, and failing the ingest would lose
+   * the paper), while the door THROWS (its entire purpose is to put lines on a
+   * document, so a silent success there would be a fabricated one).
+   */
+  private async insertDocumentLines(
+    documentId: string,
+    restaurantId: string,
+    lines: ParsedLine[],
+    schemaLagNote: string | null,
+  ): Promise<{ message: string } | null> {
+    if (!lines.length) return null;
+
+    const { error: lineErr } = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .insert(
+        // TWO INLINE LITERALS, not one with a conditional spread.
+        // `check_order_capture_contract.py` reads write payloads only when the
+        // column names are literal; a spread makes the whole write invisible
+        // to it, which is how a column the table does not have gets written in
+        // production. The second branch is the pre-migration fallback (see
+        // `schemaLagNote` above) and disappears with it.
+        //
+        // BT-149 / BT-150 and the printed literals (ADR 0104 D1, migration
+        // 20260904120000): before those columns existed the extractor read all
+        // three and threw them away at the end of the request, so
+        // `142,00 / KS(12)` and `142,00` were indistinguishable the moment the
+        // document was read back.
+        //
+        // order_line_id is left NULL on purpose in both. Matching lines to a
+        // PO is a separate, ranked step, and a low-confidence guess written
+        // here silently corrupts cost basis for months before anyone notices.
+        lines.map((l) =>
+          schemaLagNote
+            ? {
+                document_id: documentId,
+                restaurant_id: restaurantId,
+                line_no: l.lineNo,
+                vendor_sku: l.vendorSku,
+                description: l.description,
+                vintage: l.vintage,
+                format_ml: l.formatMl,
+                qty: l.qty,
+                uom: l.uom,
+                pack_size: l.packSize,
+                qty_bottles: l.qtyBottles,
+                free_goods_qty: l.freeGoodsQty,
+                unit_price: l.unitPrice,
+                line_total: l.lineTotal,
+                allowance: l.allowance,
+                deposit: l.deposit,
+                order_line_id: null,
+              }
+            : {
+                document_id: documentId,
+                restaurant_id: restaurantId,
+                line_no: l.lineNo,
+                vendor_sku: l.vendorSku,
+                description: l.description,
+                vintage: l.vintage,
+                format_ml: l.formatMl,
+                qty: l.qty,
+                uom: l.uom,
+                pack_size: l.packSize,
+                qty_bottles: l.qtyBottles,
+                free_goods_qty: l.freeGoodsQty,
+                unit_price: l.unitPrice,
+                line_total: l.lineTotal,
+                allowance: l.allowance,
+                deposit: l.deposit,
+                price_base_qty: l.priceBaseQty ?? null,
+                price_base_uom: l.priceBaseUom ?? null,
+                printed: l.printed ?? null,
+                order_line_id: null,
+              },
+        ),
+      );
+    return lineErr ? { message: lineErr.message } : null;
+  }
+
+  /**
+   * The post-extraction tail: attach the document to an order, then pair its
+   * lines with what was ordered.
+   *
+   * Shared with the extraction door so a document filled from outside the
+   * gateway is matched by exactly the code that matches one the gateway read
+   * itself. Without the link step the matcher returns empty — it looks up order
+   * lines THROUGH `procurement_document_links` — so "same matching" has to mean
+   * both halves or it means nothing.
+   *
+   * Best-effort throughout: a document is still useful unmatched, and failing
+   * over line pairing would lose the thing that was already written.
+   */
+  private async linkAndMatch(
+    documentId: string,
+    restaurantId: string,
+    orderId: string | null,
+    parsed: ParsedDocument,
+  ): Promise<void> {
+    if (orderId)
+      await this.link(documentId, orderId, restaurantId, "manual", 1);
+    else await this.autoLink(documentId, restaurantId, parsed);
+
     try {
-      await this.matchDocumentLines(documentId, input.restaurantId);
+      await this.matchDocumentLines(documentId, restaurantId);
     } catch (err: any) {
       this.logger.warn(
         `line matching failed for document ${documentId}: ${err?.message}`,
       );
     }
+  }
 
-    return documentId;
+  /**
+   * THE EXTRACTION DOOR — apply an extraction produced OUTSIDE this gateway to
+   * a document that was stored unread.
+   *
+   * WHY IT EXISTS. `DocumentExtractorService` calls Anthropic with
+   * `ANTHROPIC_API_KEY`, and that key has no credit: three synthetic PDFs
+   * pushed at the local gateway on 2026-09-04 all came back
+   * `422 Anthropic 400: Your credit balance is too low`. ADR 0104 D6 (PR #300)
+   * made that survivable — the document is stored unread rather than discarded
+   * — which leaves a real invoice sitting in `needs_review` with no lines and
+   * no way to fill it. A Claude Code session can read the PDF and post the JSON
+   * `SYSTEM_PROMPT` describes; this applies it.
+   *
+   * THE GATEWAY'S OWN EXTRACTOR REMAINS THE PRODUCT PATH. This is a supply
+   * door, not a second extractor: it does no reading of its own, and the only
+   * parser it may use is `extractor.normalize`, so a body that reaches the
+   * database has passed exactly the validation, tie-out and warning rules a
+   * model's answer passes.
+   *
+   * IT FILLS AN UNREAD DOCUMENT AND NEVER OVERWRITES A READ ONE. A document
+   * with lines, or with an extraction that was not the D6 degradation, is
+   * refused. Overwriting one would silently discard a manager's `editLine`
+   * corrections and the tie-out those corrections justify — the correction path
+   * is slice 3's, with its own append-only shape.
+   *
+   * ORDER OF WRITES IS LOAD-BEARING: lines first, header second. The other way
+   * round, a line insert that failed would leave a document claiming to be a
+   * read invoice with nothing on it — "the vendor billed nothing", which is a
+   * claim nobody made — AND closed to this door forever. This way a failure
+   * leaves the document exactly as degraded as it was, and the door open.
+   *
+   * NO STOCK, COST OR ORDER WRITES. Same as intake: this produces a document
+   * and its lines. Applying it to a delivery is still a separate, human step.
+   */
+  async applyExternalExtraction(
+    restaurantId: string,
+    documentId: string,
+    rawText: string,
+    model: string,
+    userId: string | null,
+  ): Promise<ExternalExtractionResult> {
+    const client = this.db.getClient();
+
+    // ---- 1. the document, scoped by tenant --------------------------------
+    // The gateway holds the service role, so this `eq` is the whole of tenant
+    // isolation on this route.
+    const { data: doc, error: docErr } = await client
+      .from("procurement_documents")
+      .select("id, status, doc_type, extraction_confidence")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    // `data: null` means BOTH "no such document" and "the read failed".
+    // Checking `error` first is what keeps a broken query from reporting as a
+    // document that does not exist (ADR 0067).
+    if (docErr) throw new Error(docErr.message);
+    if (!doc) throw new Error("NOT_FOUND");
+
+    if (doc.status !== "needs_review" && doc.status !== "received")
+      throw new Error(
+        `ALREADY_READ:this document is ${doc.status}, and only a document still awaiting review can be filled from outside`,
+      );
+
+    // ---- 2. is it actually unread? ----------------------------------------
+    // The D6 degradation is exactly `doc_type unknown`, confidence 0, no lines.
+    // Anything else has been read — by the model, by EDI, or by a person — and
+    // is refused rather than overwritten.
+    const confidence =
+      doc.extraction_confidence == null
+        ? null
+        : Number(doc.extraction_confidence);
+    if (doc.doc_type !== "unknown")
+      throw new Error(
+        `ALREADY_READ:this document was already read as a ${doc.doc_type}; this door only fills a document stored unread`,
+      );
+    if (confidence !== null && confidence > 0)
+      throw new Error(
+        `ALREADY_READ:this document already carries an extraction (confidence ${confidence}); this door only fills a document stored unread`,
+      );
+
+    const { data: existingLines, error: linesErr } = await client
+      .from("procurement_document_lines")
+      .select("id")
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .limit(1);
+    // A line read that FAILED must never be read as "this document has no
+    // lines" — that is the absence-reported-as-health fault, and here it would
+    // authorise overwriting a document that already has lines on it.
+    if (linesErr) throw new Error(linesErr.message);
+    if ((existingLines ?? []).length)
+      throw new Error(
+        "ALREADY_READ:this document already has lines; correcting a read document is not what this door does",
+      );
+
+    // ---- 3. parse, through the ONE parser ---------------------------------
+    // `normalize` is forgiving by design: prose comes back as an `unknown`
+    // document with a warning rather than as an error. That is right for a
+    // model's answer arriving mid-ingest and wrong here, where the caller is a
+    // person who can fix the body and retry — so the two shapes `normalize`
+    // would swallow are named and refused first.
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(stripJsonFence(rawText));
+    } catch (err: any) {
+      throw new Error(
+        `UNPARSABLE:rawText is not the JSON the extraction contract describes — ${err?.message ?? "unknown parse error"}`,
+      );
+    }
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      throw new Error(
+        "UNPARSABLE:rawText parsed to a JSON value that is not an object, so it carries no document",
+      );
+
+    const parsed = this.extractor.normalize(rawText, model);
+
+    // A zero-line extraction is refused rather than applied. Applying it would
+    // raise the document's confidence above zero and close this door, leaving a
+    // document that is still degraded on screen and no longer fillable — a
+    // permanent lock-out bought for nothing. A 422 is recoverable; that is not.
+    if (!parsed.lines.length)
+      throw new Error(
+        "UNPARSABLE:the extraction carries no lines. Applying it would close this door on a document that is still unread, so it is refused rather than written",
+      );
+
+    // ---- 4. lines FIRST ---------------------------------------------------
+    // `schemaLagNote: null` — migration 20260904120000 is on main, and this
+    // route did not exist before it. A database missing those columns fails
+    // loudly here, before the header moves, rather than dropping BT-149/BT-150
+    // quietly.
+    const lineErr = await this.insertDocumentLines(
+      documentId,
+      restaurantId,
+      parsed.lines,
+      null,
+    );
+    if (lineErr)
+      throw new Error(
+        `the extracted lines could not be written, so the document was left unread: ${lineErr.message}`,
+      );
+
+    // ---- 5. then the header ----------------------------------------------
+    const extractedSnapshot = parsed as unknown as Record<string, unknown>;
+    // Inline, never spread, and never assembled by a helper shared with the
+    // intake INSERT: `check_order_capture_contract.py` can only read a write
+    // whose column names are literal, and a payload it cannot read is one it
+    // cannot check for a column the table does not have.
+    //
+    // NOT WRITTEN, deliberately: `event_id`. No model call happened inside this
+    // gateway, so there is no neural-footprint row to point at, and NULL is the
+    // true statement. `source_channel`, `sha256`, `storage_path` and
+    // `file_bytes` belong to how the paper ARRIVED and are untouched — this
+    // door changes what we read off it, never where it came from.
+    const { error: headerErr } = await client
+      .from("procurement_documents")
+      .update({
+        printed: parsed.printed ?? null,
+        doc_type: parsed.docType,
+        doc_number: parsed.docNumber,
+        doc_date: parsed.docDate,
+        references_doc_number: parsed.referencesDocNumber,
+        extracted: extractedSnapshot,
+        extraction_confidence: parsed.confidence,
+        // VERBATIM, and deliberately not the configured model's name: an
+        // extraction this gateway did not perform must never be attributable to
+        // the model it would have used.
+        extraction_model: model,
+        currency: parsed.currency,
+        subtotal: parsed.subtotal,
+        freight: parsed.freight,
+        fuel_surcharge: parsed.fuelSurcharge,
+        split_case_fee: parsed.splitCaseFee,
+        delivery_fee: parsed.deliveryFee,
+        deposit_total: parsed.depositTotal,
+        tax: parsed.tax,
+        other_charges: parsed.otherCharges,
+        discount_total: parsed.discountTotal,
+        total: parsed.total,
+        computed_lines_total: parsed.computedLinesTotal,
+        tie_out_delta: parsed.tieOutDelta,
+        ties_out: parsed.tiesOut,
+        status: this.needsReview(parsed) ? "needs_review" : "received",
+        notes: parsed.warnings.length ? parsed.warnings.join("\n") : null,
+        // The D6 degradation ends with this write, so the fields that carry it
+        // are cleared in the same statement. Written explicitly rather than
+        // left alone: a stale "the intake gate rejected this" beside a freshly
+        // read document is worse than either state on its own.
+        intake_verdict: null,
+        intake_reason: null,
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (headerErr)
+      throw new Error(
+        `${parsed.lines.length} line(s) were written and the header was not, so this document now has lines under an unread header and this door will refuse it: ${headerErr.message}`,
+      );
+
+    // ---- 6. the same tail intake runs -------------------------------------
+    await this.linkAndMatch(documentId, restaurantId, null, parsed);
+
+    // ---- 7. one appended revision (ADR 0104 D1/D5) ------------------------
+    // Built from the COLUMNS rather than from `parsed`, so the revision records
+    // what the database actually holds — including the pairings step 6 just
+    // wrote — rather than what we hoped to write. `extracted` is the honest
+    // source value: a model produced these numbers by reading the page, and
+    // which model is in `extraction_model`.
+    const built = await this.canonical.buildFromDocumentId(
+      restaurantId,
+      documentId,
+    );
+    const revision: ReadResult<{ revision: number; id: string }> = built.ok
+      ? await this.canonical.persistRevision(
+          documentId,
+          built.value,
+          "extracted",
+          userId,
+        )
+      : { ok: false, error: built.error };
+    if (!revision.ok)
+      this.logger.warn(
+        `document ${documentId} was filled but no revision was appended: ${revision.error}`,
+      );
+
+    return {
+      warnings: parsed.warnings,
+      tieOut: {
+        computedLinesTotal: parsed.computedLinesTotal,
+        tieOutDelta: parsed.tieOutDelta,
+        tiesOut: parsed.tiesOut,
+      },
+      revision,
+    };
   }
 
   /**
@@ -565,7 +1404,10 @@ export class DocumentIntakeService {
             substitution: m.substitution,
             reason: m.reason,
           })),
-          { onConflict: "document_line_id,order_line_id", ignoreDuplicates: true },
+          {
+            onConflict: "document_line_id,order_line_id",
+            ignoreDuplicates: true,
+          },
         );
       if (error)
         this.logger.warn(
@@ -671,8 +1513,10 @@ export class DocumentIntakeService {
     // Was this pairing proposed? Either it is already on the line (the matcher
     // applied it) or it is sitting in the suggestions table.
     const alreadyProposed = before.proposed_method != null;
-    let suggestion: { confidence: number | null; method: string | null } | null =
-      null;
+    let suggestion: {
+      confidence: number | null;
+      method: string | null;
+    } | null = null;
     if (!alreadyProposed) {
       const { data } = await client
         .from("procurement_line_match_suggestions")
@@ -967,7 +1811,11 @@ export class DocumentIntakeService {
     },
   ): Promise<{
     line: Record<string, unknown>;
-    tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null };
+    tieOut: {
+      computedLinesTotal: number;
+      tieOutDelta: number | null;
+      tiesOut: boolean | null;
+    };
   }> {
     const client = this.db.getClient();
 
@@ -982,9 +1830,7 @@ export class DocumentIntakeService {
     if (docErr) throw new Error(docErr.message);
     if (!doc) throw new Error("NOT_FOUND");
     if (doc.status !== "needs_review" && doc.status !== "received")
-      throw new Error(
-        `NOT_EDITABLE:${doc.status}`,
-      );
+      throw new Error(`NOT_EDITABLE:${doc.status}`);
 
     // Whitelisted columns only, with finite-number guards. A NaN is REJECTED,
     // never coerced to NULL — "clear this value" is null in the patch, and
@@ -1052,7 +1898,9 @@ export class DocumentIntakeService {
     ) {
       const beforeRow = before as Record<string, unknown>;
       const effQty = (update.qty ?? beforeRow.qty) as number | null;
-      const effPack = (update.pack_size ?? beforeRow.pack_size) as number | null;
+      const effPack = (update.pack_size ?? beforeRow.pack_size) as
+        | number
+        | null;
       if (finite(effQty) && finite(effPack))
         update.qty_bottles = effQty * effPack;
     }

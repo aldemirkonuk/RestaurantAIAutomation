@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 3
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]", "[[dashboard]]"]
 ---
 
@@ -111,6 +111,8 @@ Both halves are now gated, and the gates agree:
 
 ---
 
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1) — all six fixed (#310).** ~~The catalog seeds every button at a hard-coded $45 (defect 3)~~ → `price` is nullable and renders "unpriced"; Edit POS leaves it blank rather than requiring a number. ~~The webhook payload carries no money, table, server or covers (defect 4)~~ → the close sends ADR 0011's contract, and the check header has covers/server fields; a check with no priced line sends `total: null`, not `$0.00`. ~~Every line is `is_wine: true` (defect 5)~~ → `simpos_catalog.category` (sharing `master_wine_library.beverage_kind`'s vocabulary), and an *uncategorised* button is not wine. ~~"Add item" is disabled until a size chip is clicked, unexplained (defect 10)~~ → it says which step is missing, and a lone size is pre-selected. ~~Nothing reads `restaurants.operating_hours` (defect 11)~~ → close stamps `hours_state` via the shared `isOpenAt` and the header shows a live chip; it records, never refuses. ~~Timestamps render in the viewer's zone (defect 12)~~ → `lib/venueTime.ts` renders in the venue's zone and names it.
+
 ## 10. Maturity — **partial**, and *absent in production*
 
 **Say this first: this page does not exist in production.** The route redirects
@@ -145,6 +147,9 @@ What holds it back from complete, within dev:
 - **It polls a possibly-dead endpoint every 5 seconds indefinitely** (`:74`).
 - The Receipts tab reads `/procurement/documents` — a **production** module — so in the
   dev-frontend/prod-gateway case one tab shows real data beside a void.
+
+- **Follow-up 2026-09-05 (#310):** SimPOS now behaves like a POS on the six axes the lens measured — priced-or-unpriced buttons, a category per button, money/table/server/covers on the webhook, hours awareness, and the venue's own clock. Not verified end-to-end: the migration applies on merge, so these screens were not exercised against a migrated database in that session.
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** 135 buttons were programmed from the real Meyhouse Palo Alto menu (3 by hand in Edit POS, the rest through `POST /simpos/:rid/catalog`) and 44 checks closed — 9 on this terminal, 35 through the check API; a second close of a closed check is refused (`403`, no duplicate ledger row). The founder-facing page for the run: https://claude.ai/code/artifact/d59646d4-0021-43dd-87e9-9fc70135849e.
 
 ## 11. Data flow
 

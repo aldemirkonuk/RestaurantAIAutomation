@@ -5,13 +5,13 @@ name: SimPOS
 division: pos
 status: partial
 tier: internal
-routes: ["/simpos/:restaurantId", "/simpos/:restaurantId/orders"]
-pages: [simpos-terminal, simpos-order-log]
+routes: ["/simpos/:restaurantId", "/simpos/:restaurantId/orders", "/simpos/:restaurantId/scenarios"]
+pages: [simpos-terminal, simpos-order-log, simpos-scenarios]
 api_modules: [simpos]
 agents: []
 owner_unit: pos-bridge
-updated: 2026-09-01
-links: ["[[simpos-terminal]]", "[[simpos-order-log]]", "[[pos-bridge]]", "[[pos-bridge-charter]]", "[[SOFTWARE-MAP]]"]
+updated: 2026-09-02
+links: ["[[simpos-terminal]]", "[[simpos-order-log]]", "[[simpos-scenarios]]", "[[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]]", "[[pos-bridge]]", "[[pos-bridge-charter]]", "[[SOFTWARE-MAP]]"]
 ---
 
 # SimPOS
@@ -36,6 +36,15 @@ point-of-sale, the bridge thesis is dead.
 - Per closed check, see line items, void/comp status and the loss total
 - See whether the webhook actually reached [[pos-bridge]]: delivery status, timestamp,
   error — the only place in the whole product where webhook delivery is observable
+- **Replay a whole restaurant day and verify it (ADR 0093, 2026-09-02).** `scripts/simulate scenario`
+  generates a day inside the venue's own operating hours — the opening minute, two tables two
+  minutes apart, a full service, a wine sold through to par, an unmapped button, a void, a
+  duplicate webhook, a dropped webhook, an after-hours order, or a seeded `random` mix — posts it
+  through the same signed webhook path, and persists its expectation (`sim_scenario_runs`)
+- See the verdict on [[simpos-scenarios]]: twenty checks across `pos_checks`, lots, the consumption
+  mirror, the unresolved queue, the inbox, the email outcome, insights and analytics — each
+  pass / fail / **unverifiable**, an empty expectation never a pass
+- Fire the low-stock sweep and the insight generator now, from the page, instead of waiting for the cron
 - Seed the catalogue on mount — *dark*: it swallows its own failure
   (`.catch(() => undefined)`, `SimposTerminalPage.tsx:59-62`), so "Catalog empty" means
   both "never seeded" and "seed rejected"
@@ -47,7 +56,10 @@ point-of-sale, the bridge thesis is dead.
 - [[simpos-order-log]] (`/simpos/:restaurantId/orders`) — the check log, and the webhook
   delivery view. 128 lines, one query, one link back.
 
-Both are declared at `apps/web/src/App.tsx:238-253`, outside `DashboardLayout`.
+- [[simpos-scenarios]] (`/simpos/:restaurantId/scenarios`) — the verdict screen for a replayed
+  day (ADR 0093): runs, stories, the twenty-check table, three levers. 611 lines.
+
+All three are declared at `apps/web/src/App.tsx:238-268`, outside `DashboardLayout`.
 
 **On tier — the page notes say `public`; the runtime does not.** Both routes are wrapped in
 `<ProtectedRoute>` (`App.tsx:241,249`) and the controller carries a class-level
@@ -65,7 +77,7 @@ is routing and this module simply is not loaded (`simpos.controller.ts:39-44`).
 
 ## §3 Backend
 
-`apps/api-gateway/src/simpos/` — 11 endpoints, `@Controller("simpos/:restaurantId")` at
+`apps/api-gateway/src/simpos/` — 16 endpoints (11 terminal + 5 scenario, ADR 0093), `@Controller("simpos/:restaurantId")` at
 `simpos.controller.ts:55`. The `:restaurantId` is on the controller prefix, so every route
 is tenant-parameterized.
 
@@ -74,6 +86,7 @@ is tenant-parameterized.
 | `POST catalog/seed` · `GET catalog` · `POST catalog` · `DELETE catalog/:catalogId` | `:59`, `:69`, `:75`, `:95` |
 | `GET tables` · `GET check` · `GET orders` · `GET check/:checkId` | `:104`, `:112`, `:120`, `:131` |
 | `POST check/:checkId/lines` · `PATCH lines/:lineId` · `POST check/:checkId/close` | `:142`, `:161`, `:183` |
+| `GET scenarios/runs` · `GET scenarios/runs/:runId` · `GET scenarios/runs/:runId/verify` · `POST scenarios/runs/:runId/sweep` · `POST scenarios/runs/:runId/insights` (ADR 0093) | `:209`, `:219`, `:230`, `:243`, `:256` |
 
 **The guard exists for a specific reason, and the reasoning is worth keeping.** This
 controller originally had neither a guard nor `@Public()`, and `POST check/:id/close` makes
@@ -167,6 +180,10 @@ Seams:
    future caller reaching the private method directly inherits no protection
    (`simpos.service.ts:506-511`).
 
+> **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens):** as a stand-in for a real POS, SimPOS under-reports on three axes measured against 44 closed checks — every seeded button is a hard-coded $45 (`simpos.service.ts:91-96`), the webhook carries no money, table, server or covers (`:401-415`; NULL on 44 of 44 `pos_checks`), and it never reads the venue's operating hours (`restaurants.operating_hours`, ADR 0093) — all 44 checks rang after the published close without a warning.
+>
+> **Closed 2026-09-05 (#310).** All three, plus the wine-only line flag and two UI defects. What a stand-in is FOR is exercising what a real provider exercises, and on those axes it now does: nullable prices rendered as "unpriced", a category per button (uncategorised is not wine), ADR 0011's money/table/server/covers on every close, and `hours_state` stamped from the shared `isOpenAt` — recorded, never refused. `20260905174500_simpos_behaves_like_a_pos.sql` is additive and unbackfilled: the 53 existing $45 rows keep their price, because a figure a human may since have corrected is not ours to erase.
+
 ## §8 Where it's going
 
 - ADR 0049 §3a places it in the **POS** division alongside [[pos-bridge]]
@@ -175,5 +192,9 @@ Seams:
   product is the failure mode, not the roadmap.
 - The two cheap fixes are error branches on the four read queries and a refetch on the
   order log — both are honesty defects, which is exactly what a test fixture cannot afford.
+- **The scenario harness (ADR 0093) is now the thing that makes this fixture prove anything.** Next: run
+  the first live day after the two migrations reach production on merge; record the verdict table in
+  the ADR's review trail; then a missed-webhook detector so `webhook.dropped` can become a real check
+  (S09), and a CI job that runs a seeded day against a throwaway database.
 - Retiring it is downstream of `pi.merchant_backed_providers` going 0 → 1: until a real
   venue is connected, this is the only producer the bridge has.

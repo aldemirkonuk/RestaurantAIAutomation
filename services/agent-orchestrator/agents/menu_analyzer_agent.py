@@ -620,11 +620,15 @@ class MenuAnalyzerAgent(BaseAgent):
             from PIL import Image
 
             if image_source.startswith("http"):
-                import httpx
+                # SSRF guard: `image_source` reaches here straight from the
+                # request body (`image_base64` is an unvalidated str, and this
+                # branch tests the value, not the field name), so an
+                # unauthenticated caller could otherwise aim this GET at the
+                # cloud metadata service or any internal host.
+                from utils.safe_fetch import fetch_image_bytes
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(image_source)
-                    image = Image.open(io.BytesIO(response.content))
+                img_bytes = await fetch_image_bytes(image_source)
+                image = Image.open(io.BytesIO(img_bytes))
             else:
                 img_bytes = base64.b64decode(image_source)
                 image = Image.open(io.BytesIO(img_bytes))
@@ -721,11 +725,15 @@ class MenuAnalyzerAgent(BaseAgent):
             from PIL import Image
 
             if image_source.startswith("http"):
-                import httpx
+                # SSRF guard: `image_source` reaches here straight from the
+                # request body (`image_base64` is an unvalidated str, and this
+                # branch tests the value, not the field name), so an
+                # unauthenticated caller could otherwise aim this GET at the
+                # cloud metadata service or any internal host.
+                from utils.safe_fetch import fetch_image_bytes
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(image_source)
-                    image = Image.open(io.BytesIO(response.content))
+                img_bytes = await fetch_image_bytes(image_source)
+                image = Image.open(io.BytesIO(img_bytes))
             else:
                 img_bytes = base64.b64decode(image_source)
                 image = Image.open(io.BytesIO(img_bytes))

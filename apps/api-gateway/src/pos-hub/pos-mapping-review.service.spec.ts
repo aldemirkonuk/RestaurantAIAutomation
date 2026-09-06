@@ -305,8 +305,13 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     expect(row).not.toHaveProperty("inferred_sale_unit");
     expect(row).not.toHaveProperty("confidence");
     // What the existing code does if nobody answers — a statement about
-    // applyStockEffects, not a recommendation.
-    expect(row.unit_if_unanswered).toBe("bottle");
+    // applyStockEffects, not a recommendation. ADR 0011 removed the
+    // `?? "bottle"` default in 2026-08-25: an unanswered mapping now depletes
+    // NOTHING and queues as `no_sale_volume` (pos-hub.service.ts:766-780).
+    // Saying "bottle" here told the owner their wines were about to
+    // over-deplete when in fact they silently under-deplete to zero.
+    expect(row).not.toHaveProperty("unit_if_unanswered");
+    expect(row.effect_if_unanswered).toBe("depletes_nothing");
   });
 
   it("says 'dangling' rather than blank when inventory_id resolves to nothing", async () => {
@@ -358,7 +363,11 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     expect(byId.get("map-2")!.depletes_stock).toBe(false);
     expect(byId.get("map-2")!.inventory_link).toBe("unmapped");
     expect(byId.get("map-3")!.depletes_stock).toBe(false);
-    expect(res.summary.deplete_on_next_sale).toBe(1);
+    // Was `deplete_on_next_sale`, which claimed these rows were about to move
+    // stock. They are not: ADR 0011 queues them. The count is the same set of
+    // rows under the name that is true of them.
+    expect(res.summary).not.toHaveProperty("deplete_on_next_sale");
+    expect(res.summary.queue_on_next_sale).toBe(1);
   });
 
   it("orders decidable rows first", async () => {
@@ -516,5 +525,86 @@ describe("PosMappingReviewService.setSaleUnitBatch", () => {
       ok: false,
     });
     expect(res.results[1].error).toMatch(/not found/);
+  });
+});
+
+/**
+ * The unresolved-line queue, read (POS lens defect 1).
+ *
+ * `pos_unresolved_lines` has had a writer since B20 and no reader anywhere in
+ * the product: the SPA calls exactly two pos-hub routes (`providers`,
+ * `status`). Measured on Sim Meyhouse: 39 open rows, 38 of them mezes and
+ * coffee filed as "unmapped wine", invisible to the owner. A queue nobody can
+ * see is the same as a dropped line — B20's whole point was that it must not be.
+ */
+describe("PosMappingReviewService.listUnresolvedLines", () => {
+  function makeQueueService(rows: Row[], readError?: string) {
+    const client: any = {
+      from(table: string) {
+        if (table !== "pos_unresolved_lines")
+          throw new Error(`unexpected table ${table}`);
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          order: () => q,
+          limit: async () =>
+            readError
+              ? { data: null, error: { message: readError } }
+              : { data: rows, error: null },
+        };
+        return q;
+      },
+    };
+    const db = { getClient: () => client } as unknown as DatabaseService;
+    return new PosMappingReviewService(db, new PosHubService(db));
+  }
+
+  const line = (o: Row = {}): Row => ({
+    id: "u1",
+    restaurant_id: RESTAURANT,
+    source: "generic_webhook",
+    external_check_id: "chk-1",
+    external_item_id: "ext-1",
+    item_name: "Haydari",
+    qty: 1,
+    price: 12,
+    reason: "unmapped",
+    mapped_inventory_id: null,
+    resolved: false,
+    created_at: "2026-09-03T05:00:00.000Z",
+    raw: {},
+    ...o,
+  });
+
+  it("groups repeat sightings of one button into a single row to answer", async () => {
+    const service = makeQueueService([
+      line({ id: "u1", external_check_id: "chk-1" }),
+      line({ id: "u2", external_check_id: "chk-2", qty: 2 }),
+      line({
+        id: "u3",
+        external_item_id: "ext-2",
+        item_name: "Alvear Solera 1927",
+        reason: "no_sale_volume",
+        mapped_inventory_id: "inv-9",
+      }),
+    ]);
+
+    const res = await service.listUnresolvedLines(RESTAURANT);
+
+    expect(res.items).toHaveLength(2);
+    const haydari = res.items.find((i) => i.item_name === "Haydari")!;
+    expect(haydari.occurrences).toBe(2);
+    expect(haydari.qty_total).toBe(3);
+    expect(haydari.reason).toBe("unmapped");
+    expect(res.summary.open_lines).toBe(3);
+    expect(res.summary.unmapped).toBe(2);
+    expect(res.summary.no_sale_volume).toBe(1);
+  });
+
+  it("reports a failed read as a failed read, never as an empty queue (ADR 0067)", async () => {
+    const service = makeQueueService([], "connection reset");
+    await expect(service.listUnresolvedLines(RESTAURANT)).rejects.toThrow(
+      /connection reset/,
+    );
   });
 });

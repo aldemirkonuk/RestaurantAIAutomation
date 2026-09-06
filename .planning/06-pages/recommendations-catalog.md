@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[recommendations]]", "[[settings]]"]
 ---
 
@@ -100,6 +100,8 @@ problem lives here ([TIER-MAP](../03-scenarios/TIER-MAP.md):51,108-111).
   (`apps/api-gateway/src/analytics/analytics.controller.ts:51`); the atlas row
   ([ENDPOINTS](../foundation/ENDPOINTS.md):10) still reads "unguarded" and is stale.
 
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the API still serves the ADR 0020 figure — `GET /analytics/insights/:id?refresh=true` (`analytics.controller.ts:289-330`) returns `candidateTypesAvailable: 268` of 573 while this page honestly shows 14 computable (`InsightCatalog.tsx:14-19,104-106`); not rendered anywhere today, still computed (TECH-DEBT defect 5).
+
 ## 10. Maturity
 
 **broken.** Its single request is unauthenticated against a now-guarded controller, so
@@ -113,6 +115,8 @@ the page renders "Couldn't load the catalog." and nothing else.
 | The dev bypass cannot help — it needs an `X-Dev-Bypass` secret header this fetch never sends. Broken in every environment. | `auth/dev-bypass.util.ts:33-45` |
 | **§9's headline-number finding needs correcting.** The *page* is honest: it renders `{catalog.total} types` from the API's live `INSIGHT_CANDIDATES.length`, and a coverage meter splitting that into "computable now" vs "blocked on missing data" — exactly the OD-33 discipline TIER-MAP:108-111 demands. The hardcoded **375** survives only in a source comment (`:2`) and, **user-visibly, in two command-palette entries**. | honest render `InsightCatalog.tsx:265,278`; server total `insights/insight-generator.service.ts:58-60` → `insight-catalog.ts:547`; stale literal `components/command/commands.ts:84,105` ("Browse all 375 insight types") |
 | The catalogue itself is generated, not hand-listed — dimension × measure × comparator with pruning — so any hardcoded total is wrong by construction. | `insight-catalog.ts:503-540` |
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the coverage meter (573 catalogued · 14 computable now · 10 blocked · 549 not built) held against the API; the page is hardened, the endpoint behind it is not.
 
 ## 11. Data flow
 

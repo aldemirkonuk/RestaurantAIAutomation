@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-02
+updated: 2026-09-04
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -41,6 +41,11 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - Deep-linkable tab (`?tab=credits` — where `/credits` lands)
 - **Mudavym redesign behind `mudavym_design_receipts` (OFF)** — the founder's four-requirement brief: the review queue + the door's paperless deliveries on one surface; **the stored scan rendered inline beside the lines** (images and PDFs; the 3600s signed link is treated as spent five minutes early and offers a refetch, and each not-shown state names which one it is — no stored file / no signable link / aged out / did not load); the linked order above the lines ("the right invoice"); qty/unit/total editable in place pre-verification with the tie-out recomputed in the same response (new gateway route `PATCH /procurement/documents/:id/lines/:lineId`), **the extracted figure kept beside a corrected cell with an undo until verify**; the swipe-up confirm ceremony firing verify
 - **Honesty, per [[0063-a-certification-screen-shows-the-thing-being-certified|ADR 0063]]** — every query key carries the active restaurant id (an unresolved restaurant is refused, not given a shared `''` cache bucket); the awaiting-review count renders as a floor (`≥`) at its server window; all three list failures are named individually, and an unanswered uncounted-deliveries query says it is unknown rather than rendering as a caught-up door; a failed detail fetch says the failure in the **server's** words and never claims an empty invoice; document `extraction_confidence` and per-suggestion `confidence` are shown, `—` when unrecorded
+- **The canonical document — this page's second face, behind `mudavym_design_document` (OFF)** (ADR 0104 D12 slice 2, D13). `/documents/:id` renders any incoming document as ONE canonical Mudavym document: B's verdict block first (named exceptions in words and numbers, **never a confidence as a number**), C's delivery spine (cards per document on the event, state ladder `DELIVERED → RECONCILING → AGREED → VERIFIED`, the permanent `UNORDERED` mark; collapsed at ≤ 2 documents and absent when the document sits on no delivery), A's typeset sheet as the selected frame (EN 16931 header order, the four-way `ordered · shipped · received · billed` table where `received` prints the words **"not counted"**, the printed price base as a sub-line, allowances/charges with their reason names, the VAT breakdown, totals). Money is **absent** on a delivery note; the claim block appears **only** on a credit memo. Per-field provenance is a hover (and a footnote column in print); `as printed` says "not kept" rather than inventing a literal. Read-only: no corrections, no claims, no mapping memory — slices 3–4. `?view=door` opens the same component as the door frame with **no money at all** (D11), read-only until slice 5's `receiving_advice` write. Reached from this page by "Open as the canonical document →", which appears only where the gate is on.
+- **A difference must be answered before a delivery is agreed** (ADR 0103 **A11**, founder 2026-09-06). `AGREED` is refused — **409, naming the lines** — while any recorded difference (our door count against the vendor's paperwork, or the invoice against the PO) has neither an accepted proposal covering that line nor an explicit **accept-as-billed** on it. The second answer is its own door, `POST /procurement/deliveries/:id/accept-as-billed { documentId, lineNo, reason }`: a named person, a reason in their own words, idempotent, and NOT a proposal — a proposal is a position one side asks the other to accept, and this is the decision not to raise one. The gate reads the SAME comparison the "this delivery differs" notification reads, and a comparison that could not be READ refuses rather than passes.
+- **Our own door count is the RECEIVED column, never the BILLED one** (v3.0-TECH-DEBT 2026-09-06, finding 3). A `receiving_advice` carries no money (D11), so its quantities land in `received` with `billed` NULL, and the verdict card says _counted N at the door_ rather than _billed —_. Fixed in the mapper so the page, the verdict sentences and the API say one thing.
+- **The same count twice is answered, not leaked** (finding 4). A repeated door count returns **409** — "this count was already recorded as document `<id>`" — and takes the receiver to the document that exists, rather than a 422 carrying the index name `uq_pd_restaurant_sha256`.
+- **Degraded is a state, not a blank** (ADR 0104 D6) — a document with no lines renders NOT EXTRACTED, the original, and the header fields that exist; the verdict block says "nothing was read, so nothing could be compared" rather than "nothing differs", and there is no line table and no totals, because `Lines 0.00` on an unread document is a claim nobody made
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
@@ -98,6 +103,10 @@ untestable, never a pass.
 - Sidebar "Receipts & Credits" (`components/layout/Sidebar.tsx:132`).
 - `/credits` redirects to `/receipts?tab=credits` (`apps/web/src/App.tsx:282`);
   the tab param is read at `ReceiptsPage.tsx:59-60`.
+- `/documents/:id` (ADR 0104 slice 2) is entered from the selected document here,
+  via "Open as the canonical document →" — rendered only when the `document` gate
+  is on. With the gate off the route itself redirects back to `/receipts`, so the
+  page has exactly one way in and one way back.
 - [PAGE_MAP](../foundation/PAGE_MAP.md):121 lists it as a no-inbound entry point —
   that scan covered page sources only and missed the sidebar link; the redirect and
   sidebar are the real entries.
@@ -109,6 +118,14 @@ untestable, never a pass.
   table and detail pane are internal components.
 - Services: `services/api/documents.ts` (incl. `dashNull`, the E49 em-dash helper,
   documents.ts:62-66), `services/api/credits.ts`.
+- **The canonical face** (ADR 0104 slice 2):
+  `apps/web/src/pages/documents/next/CanonicalDocumentPage.tsx` +
+  `canonical-document.css` (D9's light paper under `.dark`, and the print rules);
+  `apps/web/src/components/documents/` — `VerdictBlock`, `DeliverySpine`,
+  `CanonicalSheet`, `ProvenanceHover`, `OriginalPane` (which REUSES `PaperPane`
+  from this page rather than drawing a second viewer), `DegradedNotice`,
+  `DoorFrame`, `canonical-format.ts`; client
+  `apps/web/src/services/api/canonical.ts`.
 
 ## 4. Endpoints
 
@@ -122,6 +139,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):378 (`procurement/documents`
 | POST | `/procurement/documents/:id/verify` | `ReceiptsPage.tsx:103` → `documents.ts:104` |
 | GET | `/procurement/credits` (+ `/stats`) | `ReceiptsPage.tsx:83,89` → `services/api/credits.ts:51,58` |
 | POST | `/procurement/credits/:id/transition` | `ReceiptsPage.tsx:140` → `credits.ts:71` |
+| POST | `/procurement/documents/:id/extraction` | **No SPA call site** — the extraction door (`documents.controller.ts:351`). Fills a document ADR 0104 D6 stored unread with an extraction produced outside the gateway, because the configured Anthropic key has no credit. 409 once a document has lines or a real extraction. |
 
 ## 5. Signals
 
@@ -153,11 +171,57 @@ applies (see dashboard.md §7).
   renders them with reasons + one-tap confirm behind `mudavym_design_receipts` (§1b).
 - Cost-drift-caught / straight-through-rate / days-to-close metrics are decided-not-
   built (`v3.0-TECH-DEBT.md:446`) — this page is where they would land.
+- **The canonical face has never rendered an EXTRACTED document.** Slice 2 put three
+  synthetic PDFs through the real intake door on the sim tenant (2026-09-04) and the
+  extraction model refused every one of them — `Anthropic 400: Your credit balance is
+  too low` on the keyed gateway, "no extraction model is configured" on the unkeyed
+  one — so all three render the DEGRADED state. The four-way table, the price-base
+  sub-line, the provenance hovers and the exception sentences are proven by component
+  tests over synthetic envelopes ONLY. Nothing on this page has yet been seen against
+  a document a model actually read.
+- ~~**No delivery exists**, so the spine has never rendered with cards~~ — **false since
+  2026-09-06.** Two deliveries were made on the sim tenant through the door-count door and
+  the invoice `b1e02edf` now sits on both; the spine renders two cards, each with its three
+  documents, the `UNORDERED · permanent` mark and the state ladder
+  (`DELIVERED · RECONCILING · AGREED · VERIFIED`). Screenshot
+  `scratchpad/lens-vendor/shots/02-delivery-spine.png`. Collapse-at-two and the failed-read
+  state are still component tests only.
+- **The gates and the proposal thread render only on a document that sits on exactly ONE
+  delivery** (`soleDelivery` in `CanonicalDocumentPage.tsx`). That is deliberate — an
+  ambiguous gate is worse than none — but it means the *invoice* page of a consolidated
+  document never offers them, and the only face that does is the door count's own page
+  (`shots/08-gates-and-thread.png`). A reader who arrives at the invoice sees no way to act.
+- ~~**The door frame has no door count to show.**~~ — **false since 2026-09-06**: two door
+  counts exist on the sim tenant. What the render then exposed is worse than the absence was:
+  **on the door count's own page the counted quantities appear under `Billed` and `Received`
+  reads "not counted" on every line**, and each verdict card says "NOT COMPARED · LINE n …
+  billed 10 bottle. Nothing was ordered, despatched or counted against it." The spine card for
+  the count itself reads "COUNTED AT THE DOOR / number not read". Filed in `v3.0-TECH-DEBT.md`
+  (2026-09-06, finding 3).
+
+- **Canonical view, first render against extracted documents (2026-09-04, `v3.0-TECH-DEBT.md` "nine findings"):** the verdict block says "4 lines differ from the delivery" when nothing exists to compare; the seller is blank though the extraction named it; delivered date and VAT breakdown are not in the extraction contract; the totals ladder shows "Charges —" under listed charges; deposits carry no UNCL7161 code; the original pane has nothing to bring (`imageUrl` null on 3 of 3).
 
 ## 10. Maturity
 
 **partial.** The most honestly-built page in this cluster, and the only one whose
 producer chain is verified live end to end. What is absent is named, not faked.
+
+**Raised one notch on 2026-09-06, and only one.** The canonical face has now been driven
+through a whole commercial event on the sim tenant — door count → delivery → link → propose →
+counter → accept → AGREED (`both_sides_recorded`) → VERIFIED — with the gates, the thread and
+the spine rendering real rows rather than fixtures, and the four refusals measured (409 each,
+each naming what is missing). It is still **not** `built`: the line table mis-columns our own
+count (§9), the gates are unreachable from a consolidated document's page (§9), and no
+document on this tenant has yet been read by an extraction model, so the four-way table is
+still proven against a degraded parse.
+
+The canonical face (ADR 0104 slice 2) is **built and gated OFF**: route, page,
+seven sections, 27 component tests and 5 page tests, plus a gateway read route
+(`GET /procurement/documents/:id/canonical`) and the delivery spine's own endpoint.
+Its maturity is **skeleton-with-real-data-once-extraction-works** — the code path is
+end-to-end real (three documents through the real door, read back through the real
+route, rendered in a real browser), and the only thing it has ever had to render is
+the degraded state, which is recorded in §9 rather than glossed.
 
 **Verdict unchanged by ADR 0063 (2026-09-02), and here is why it did not rise.**
 The rebuilt lane's headline defect is fixed — it could not display the invoice it
@@ -195,6 +259,8 @@ recovered without both an amount and a memo (`documents/credits.controller.ts:16
 | Recovery metrics not built | `v3.0-TECH-DEBT.md:446` |
 | No error state | `listQuery.isError` / `creditsQuery.isError` are never branched (`ReceiptsPage.tsx:210-214`, `:427-429`) — a 500 renders "No documents in this lane" |
 | No way out | The brief's observation confirmed: `useSearchParams` is used for the tab only (`:59-63`); the page has no `navigate`, no `Link`, no route to the order a document bills |
+
+- **2026-09-04:** three synthetic documents rendered in the canonical view behind the gate, with extraction supplied from Claude Code through `POST /procurement/documents/:id/extraction` (the gateway's model key has no credit): price base, as-printed strings, "not counted" and the honest tie-out line held; nine findings filed.
 
 ## 11. Data flow
 

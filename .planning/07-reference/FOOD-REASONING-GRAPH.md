@@ -97,11 +97,15 @@ food table; `beverage_kind`'s CHECK list is all drinks.
 
 > **Superseded in part, 2026-09-02 — see [[LEDGER-FOOD-MIGRATION-OPTIONS]].** The
 > structural claim above survives re-measurement; two things around it did not. The
-> denominator was **"all 64 migrations"** and there are now **87** — corrected in place
-> above rather than carried forward, per [[0025-citations-must-disagree-loudly]]. And
+> denominator was **"all 64 migrations"** and there were **86** when this note was
+> written (**94** on `origin/main` as of 2026-09-02 22:44Z — the number is a dated
+> snapshot of an append-only directory, and the sibling document shipped both 86 and 87
+> in one file) — corrected in place above rather than carried forward, per
+> [[0025-citations-must-disagree-loudly]]. And
 > the scoping correction below is **false at the API boundary**: `procurement_document_lines.qty`
-> is indeed `numeric(12,3)`, but **14 `@IsInt()` quantity fields across 5 DTO files**
-> reject `4.5` with a 400 before it ever reaches that column. Intake cannot accept 4.5 kg
+> is indeed `numeric(12,3)`, but **15 live `@IsInt()` quantity fields across 5 DTO files**
+> (24 counting the `@deprecated` unitless block) reject `4.5` with a 400 before it ever
+> reaches that column. Intake cannot accept 4.5 kg
 > of flour today either. Also material to any plan built on this section: the tables in
 > question hold **72 / 2 / 4 production rows**, so the migration OD-113 describes as an
 > `ALTER` against live data is nearly free — the constraint here is modelling, not cost.

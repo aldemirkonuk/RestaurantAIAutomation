@@ -1,0 +1,1370 @@
+{
+  "_contract": "Outputs of public.wine_signature_hash(...) and public.wine_normalize_text(...) read from production exzueerziesmczwlhomd on 2026-09-03 (ADR 0093). scripts/synth/identity.py must reproduce every row; seed.py re-checks the SQL at apply time and refuses on drift.",
+  "vectors": [
+    {
+      "in": {
+        "p_producer": "OSVALDO",
+        "p_name": "PROSECCO",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Veneto",
+        "p_grape_variety": "Glera"
+      },
+      "hash": "08fd7e43f5ff631946a982f288ba52677a85a08a6414ae94e3af3597f8d2a636",
+      "norm": {
+        "p_producer": "osvaldo",
+        "p_name": "prosecco",
+        "p_country": "italy",
+        "p_region": "veneto",
+        "p_grape_variety": "glera"
+      }
+    },
+    {
+      "in": {
+        "p_producer": "Ch. Margaux",
+        "p_name": "Château Margaux",
+        "p_vintage": 2015,
+        "p_country": "France",
+        "p_region": "Bordeaux",
+        "p_grape_variety": "Cabernet Sauvignon"
+      },
+      "hash": "a6099155d1037bb9828d3140371eb24211452009e4478a4afe3ea2dcf16571d8",
+      "norm": {
+        "p_producer": "chateau margaux",
+        "p_name": "chateau margaux",
+        "p_country": "france",
+        "p_region": "bordeaux",
+        "p_grape_variety": "cabernet sauvignon"
+      }
+    },
+    {
+      "in": {
+        "p_producer": "Dom. Leroy",
+        "p_name": "Musigny  Grand Cru",
+        "p_vintage": 2018,
+        "p_country": "France",
+        "p_region": null,
+        "p_grape_variety": "Pinot Noir"
+      },
+      "hash": "6a0c5e1b570b32cd51618d3704169cec433b5986f70ddf99aa5aed9ea1571049",
+      "norm": {
+        "p_producer": "domaine leroy",
+        "p_name": "musigny grand cru",
+        "p_country": "france",
+        "p_region": "",
+        "p_grape_variety": "pinot noir"
+      }
+    },
+    {
+      "in": {
+        "p_producer": "Az. Agr. Montevertine",
+        "p_name": "Le Pergole Torte",
+        "p_vintage": 2019,
+        "p_country": "Italy",
+        "p_region": "Tuscany",
+        "p_grape_variety": "Sangiovese"
+      },
+      "hash": "f832da854b0018501823bbc8a0c6e95e9b5592dfd6c73f0c37b9def86a15ef42",
+      "norm": {
+        "p_producer": "azienda agricola montevertine",
+        "p_name": "le pergole torte",
+        "p_country": "italy",
+        "p_region": "tuscany",
+        "p_grape_variety": "sangiovese"
+      }
+    },
+    {
+      "in": {
+        "p_producer": "St. Émilion Co-op",
+        "p_name": "Mt. Étoile Rosé — 'Cuvée' №1",
+        "p_vintage": null,
+        "p_country": "",
+        "p_region": "Provence",
+        "p_grape_variety": null
+      },
+      "hash": "f8632461954db3ce3786f5f0836c6b69f94c6d328c70e5123192c96fb306b2e5",
+      "norm": {
+        "p_producer": "saint emilion co op",
+        "p_name": "monte etoile rose cuvee 1",
+        "p_country": "",
+        "p_region": "provence",
+        "p_grape_variety": ""
+      }
+    },
+    {
+      "in": {
+        "p_producer": null,
+        "p_name": "Weingut Dr. Loosen Ürziger Würzgarten",
+        "p_vintage": 2021,
+        "p_country": "Germany",
+        "p_region": "Mosel",
+        "p_grape_variety": "Riesling"
+      },
+      "hash": "a9b922a892585b73402f1d08a94b630ced98b667bd6831f57eaeb9d03dc68f5e",
+      "norm": {
+        "p_producer": "",
+        "p_name": "weingut dr loosen urziger wurzgarten",
+        "p_country": "germany",
+        "p_region": "mosel",
+        "p_grape_variety": "riesling"
+      }
+    },
+    {
+      "in": {
+        "p_producer": "cant. Terlano",
+        "p_name": "Terlaner Classico ste. marie",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Alto Adige",
+        "p_grape_variety": "Pinot Bianco / Chardonnay / Sauvignon"
+      },
+      "hash": "16249d34b6d54a7090dce6b6d6ea99a55810508e5ba2e97578f21ca95a3b547c",
+      "norm": {
+        "p_producer": "cantina terlano",
+        "p_name": "terlaner classico sainte marie",
+        "p_country": "italy",
+        "p_region": "alto adige",
+        "p_grape_variety": "pinot bianco chardonnay sauvignon"
+      }
+    }
+  ],
+  "bistro_menu_identities": [
+    {
+      "signature_hash": "ecc229189c289f9197422fd911100b0d",
+      "in": {
+        "p_producer": "OSVALDO",
+        "p_name": "PROSECCO",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Veneto",
+        "p_grape_variety": "Glera"
+      },
+      "hash": "08fd7e43f5ff631946a982f288ba52677a85a08a6414ae94e3af3597f8d2a636"
+    },
+    {
+      "signature_hash": "19c1a6f2d6c91fb2693b3cc4e3b60afe",
+      "in": {
+        "p_producer": "DOMAINE CARNEROS",
+        "p_name": "BLANC DE NOIRS",
+        "p_vintage": 2021,
+        "p_country": "USA",
+        "p_region": "California",
+        "p_grape_variety": "Pinot Noir, Pinot Meunier"
+      },
+      "hash": "c705a0d3d3b1f849c5b6b8d690bb4ddcadd0a889d3f85e33459ce13e87bd5d3d"
+    },
+    {
+      "signature_hash": "690826a0b47f581212835931b03adba4",
+      "in": {
+        "p_producer": "BRUNO PAILLARD",
+        "p_name": "BLANC DE NOIRS",
+        "p_vintage": null,
+        "p_country": "France",
+        "p_region": "Champagne",
+        "p_grape_variety": "Pinot Noir, Pinot Meunier"
+      },
+      "hash": "1c0998d83f26d330397103ad6599a0f0c2c6fa719572228c4c571cd3e54705be"
+    },
+    {
+      "signature_hash": "f5b49e6030c028fa2a0d5c4cadb87a8a",
+      "in": {
+        "p_producer": "BILLECART-SALMON",
+        "p_name": "BLANC DE BLANC",
+        "p_vintage": null,
+        "p_country": "France",
+        "p_region": "Champagne",
+        "p_grape_variety": "Chardonnay"
+      },
+      "hash": "dcf42f69146574e909d6d97aa3aa8d2278f4a48505edd8d9fea2c1fb3ef30354"
+    },
+    {
+      "signature_hash": "f4838ff0d8fe75ec9ab27c4ec2816d81",
+      "in": {
+        "p_producer": "GAVIOLI",
+        "p_name": "LAMBRUSCO BLANC DE BLANC",
+        "p_vintage": 2018,
+        "p_country": "Italy",
+        "p_region": "Emilia Romagna",
+        "p_grape_variety": "Lambrusco"
+      },
+      "hash": "7f44fd8119be234f72251257a68978434a87c6688512a6e62c432c6e778f5311"
+    },
+    {
+      "signature_hash": "280483457dd1802ef7733c8e26bf9eb7",
+      "in": {
+        "p_producer": "SANTA CROCE",
+        "p_name": "LAMBRUSCO",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Emilia Romagna",
+        "p_grape_variety": "Lambrusco"
+      },
+      "hash": "7d19ccde475280d4352340fdadb7a1a66dd5e620da04db173e79036e8f9593cb"
+    },
+    {
+      "signature_hash": "ce2f40d0837b0cabd9a24d42c70e77bb",
+      "in": {
+        "p_producer": "SAN-LURINS",
+        "p_name": "MALVASIA ISTRIANA SKIN FERMENTED",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Malvasia Istriana"
+      },
+      "hash": "ca29514f3de3ca239afd1bc2c26ec08467976eb4bb7ff91036cb75f0690799e4"
+    },
+    {
+      "signature_hash": "2df7988cdcb1cafb4bff132aae8325b5",
+      "in": {
+        "p_producer": "EDI KANTE",
+        "p_name": "ROSE OF PINOT NERO",
+        "p_vintage": 2023,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Pinot Nero"
+      },
+      "hash": "768aac201b9b9f96e1896ac0778fab0c99da7781a04e21422f68f1f95f1dcac1"
+    },
+    {
+      "signature_hash": "169a39819832301aa91419be68438eaf",
+      "in": {
+        "p_producer": "",
+        "p_name": "HOUSE WHITE",
+        "p_vintage": 2023,
+        "p_country": "USA",
+        "p_region": "California",
+        "p_grape_variety": "Pinot Gris"
+      },
+      "hash": "cfe0b8ccd687cb3a5cc555f08742d93a3ebc49c7732fcda9d72e06a6e4d2dc3b"
+    },
+    {
+      "signature_hash": "e34fbd47ecf1a34c988ef0f42de3d56d",
+      "in": {
+        "p_producer": "VIN SCLET",
+        "p_name": "PINOT GRIGIO",
+        "p_vintage": 2023,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Pinot Grigio"
+      },
+      "hash": "2a6a39b2383cebeef0990b61b5c42f7b18a76a1852d26b768e6b02dfc3c20067"
+    },
+    {
+      "signature_hash": "b9aa60ffb49de270ee9a49e0d71cef35",
+      "in": {
+        "p_producer": "RONC DAI LUCHIS",
+        "p_name": "FRIULANO",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Friulano"
+      },
+      "hash": "1fec57366209c51ffdac78cd48716027fa340a0c3ae77e6598079d5ea717f208"
+    },
+    {
+      "signature_hash": "a6b01834438de2f5a2d81f25256a5ccc",
+      "in": {
+        "p_producer": "PACE",
+        "p_name": "ARNEIS ROERO",
+        "p_vintage": 2023,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Arneis"
+      },
+      "hash": "66f5bcc09da5f557243a57e6e2a78ae3a34dc6a4a21584273de41d328451297f"
+    },
+    {
+      "signature_hash": "36647d6be8fa11914acda5da40035fca",
+      "in": {
+        "p_producer": "CINCINNATO",
+        "p_name": "BELLONE \"CASTORE\"",
+        "p_vintage": 2023,
+        "p_country": "Italy",
+        "p_region": "Lazio",
+        "p_grape_variety": "Bellone"
+      },
+      "hash": "30ac711eccd47265c9650855ce8fe28d910dbcf9cd580eb1f5a994c139f030a6"
+    },
+    {
+      "signature_hash": "03f146ae39cf4bc6c33d98b81bd4f62a",
+      "in": {
+        "p_producer": "UMANI RONCHI",
+        "p_name": "PECORINO",
+        "p_vintage": 2024,
+        "p_country": "Italy",
+        "p_region": "Abruzzo",
+        "p_grape_variety": "Pecorino"
+      },
+      "hash": "e59c73025b86ec44275d73bcd7cb91b4ac4ea4ed99b9aeddd1ee814c572e1030"
+    },
+    {
+      "signature_hash": "bdd4ef1d55dbfe9526430313eb029446",
+      "in": {
+        "p_producer": "CENTOPASSI",
+        "p_name": "GIATO BIANCO",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": null
+      },
+      "hash": "977566495c355e063829743dc4eebf4ea208284f329ba4d7400d4bcac0838afc"
+    },
+    {
+      "signature_hash": "30d210d89d807dc655f429d90b54414c",
+      "in": {
+        "p_producer": "DETTORI",
+        "p_name": "VERMENTINO",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Sardegna",
+        "p_grape_variety": "Vermentino"
+      },
+      "hash": "310c0c8084930a7963bd0784d413d6830a477533754aee4595e19a5a8d466e78"
+    },
+    {
+      "signature_hash": "23427de926e37d1bdd8a1147df02b85f",
+      "in": {
+        "p_producer": "COSTANZO",
+        "p_name": "ETNA BIANCO",
+        "p_vintage": 2018,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": "Carricante"
+      },
+      "hash": "3e4bff9083fe9647f0db2b36fc0d056d439000e3c7f25d2168aed7b5d99780e6"
+    },
+    {
+      "signature_hash": "7233cfef62fe0c493c358cb6d1c81e43",
+      "in": {
+        "p_producer": "ANGELO",
+        "p_name": "GRILLO",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": "Grillo"
+      },
+      "hash": "27fc4860b879dbd7feddaefd121c77fc7ed2ce090831df9e8219ce9204cbc459"
+    },
+    {
+      "signature_hash": "ba06c3e585ca9bf12ac1e34bb4bf511c",
+      "in": {
+        "p_producer": "BOZZOVICH",
+        "p_name": "FALANGHINA",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Campania",
+        "p_grape_variety": "Falanghina"
+      },
+      "hash": "b2711eb7fa06079778f3b269c067db7b9573040a3d064c6be7d760315f3d6ba8"
+    },
+    {
+      "signature_hash": "09f68fe1fb93c505a8c438058bd13323",
+      "in": {
+        "p_producer": "CIRO PICARIELLO",
+        "p_name": "FIANO \"IRPINIA\"",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Campania",
+        "p_grape_variety": "Fiano"
+      },
+      "hash": "d42a1c82ed08fa7b576e55ed40cdfbae15bdc18c1cd60a0c26ec6b7aca11a830"
+    },
+    {
+      "signature_hash": "f5fd33b7c0d73195c6ffae2c72b72800",
+      "in": {
+        "p_producer": "PAOLO BEA",
+        "p_name": "TREBBIANO \"ARBOREUS\"",
+        "p_vintage": 2015,
+        "p_country": "Italy",
+        "p_region": "Umbria",
+        "p_grape_variety": "Trebbiano"
+      },
+      "hash": "3a2d47b1c32bef85ad6c425623c58bc95387af1d819716144aa7b56bd5936d9d"
+    },
+    {
+      "signature_hash": "b487463a03abb33f75c98f568a16aa29",
+      "in": {
+        "p_producer": "PAOLO BEA",
+        "p_name": "GRECHETTO BLEND \"SANTA CHIARA\"",
+        "p_vintage": 2018,
+        "p_country": "Italy",
+        "p_region": "Umbria",
+        "p_grape_variety": "Grechetto"
+      },
+      "hash": "1abe11691daf4f5957e4d4df91e26cf5bc7d8788a01e493eecdadd9fff6910d3"
+    },
+    {
+      "signature_hash": "11a0a72393e2e0dae09d86d202ed952b",
+      "in": {
+        "p_producer": "CANUS",
+        "p_name": "CHARDONNAY",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Chardonnay"
+      },
+      "hash": "09ec427582f36d0b0db7d2dde2274394981d3508b272a1db5ddfc37eb75f163c"
+    },
+    {
+      "signature_hash": "f6e2b501196f61d20f2490514e82e4b4",
+      "in": {
+        "p_producer": "KANTE",
+        "p_name": "CHARDONNAY \"LA BORA\"",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Chardonnay"
+      },
+      "hash": "2e1cffee708130454b743e07dd7c6094379c99b280afcac62a589b672b65ae83"
+    },
+    {
+      "signature_hash": "b1251749b373c701a68150f44ce56ef0",
+      "in": {
+        "p_producer": "COLOMBERA",
+        "p_name": "TIMORASSO \"DERTHONA\"",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Timorasso"
+      },
+      "hash": "dabdfa2be044bfe26629a15f5658ec39db87ce30de7ff9327e75b8abf325b019"
+    },
+    {
+      "signature_hash": "265e6c6d2ed3ab954cec148cbe3ed163",
+      "in": {
+        "p_producer": "CHERUBI",
+        "p_name": "ROSATO",
+        "p_vintage": 2024,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": null
+      },
+      "hash": "d8ecb0cfa826fbe106647312c777737f710410633e5f13bbc9cf4a6dfbb79dad"
+    },
+    {
+      "signature_hash": "8ea03456e09e67cf3020f5c75c50c3be",
+      "in": {
+        "p_producer": "PIERPAOLO PECORARI",
+        "p_name": "PINOT NERO BLEND",
+        "p_vintage": 2024,
+        "p_country": "Italy",
+        "p_region": "Veneto",
+        "p_grape_variety": "Pinot Nero"
+      },
+      "hash": "0c9082355db226104635b46847c1bb3db066f079d9fafa5f27d7ee8848c58de9"
+    },
+    {
+      "signature_hash": "696b30dcaa5f06b7389704a2d1b8d393",
+      "in": {
+        "p_producer": "MOSCHIONI",
+        "p_name": "FRIULANO",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Friulano"
+      },
+      "hash": "872e39cab111ee9028e765e088eae623a56835737be668b99920d875eb093d79"
+    },
+    {
+      "signature_hash": "51bcd3c2f1fcfc3f21f81c1abcb7046f",
+      "in": {
+        "p_producer": "MURVA",
+        "p_name": "FRIULIANO",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Friuliano"
+      },
+      "hash": "17cb8fc0b6de54e5c1c835c904121a5a51f5b0f477836e8ed09a14f3d086b82a"
+    },
+    {
+      "signature_hash": "6edb4c3dc27f2c43fac1e306babe46ea",
+      "in": {
+        "p_producer": "IL CARPINO",
+        "p_name": "RIBOLLA GIALLA",
+        "p_vintage": 2018,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Ribolla Gialla"
+      },
+      "hash": "a07de9f04632f7e9ce7a7d70dc37b65814394394392e3a594c992dd247ba314a"
+    },
+    {
+      "signature_hash": "ed6e5653a7f2483903631548151110a7",
+      "in": {
+        "p_producer": "COENOBIUM",
+        "p_name": "MALVASIA BLEND",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Lazio",
+        "p_grape_variety": "Malvasia"
+      },
+      "hash": "c9ce2cfdb0407dd631fb5f2695b5412088a11045aef556c9d64b7e7533374431"
+    },
+    {
+      "signature_hash": "4d6d3552d32554edb106788d4746909b",
+      "in": {
+        "p_producer": "SKERK",
+        "p_name": "VITOVSKA BLEND",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": "Vitovska"
+      },
+      "hash": "07a96fcb541897c736fff0449d7b58289c6d0cc555543780ceae74cb3bfbadbf"
+    },
+    {
+      "signature_hash": "2819362bdd3ac41e020127cb2d24560f",
+      "in": {
+        "p_producer": "BALDOVINO",
+        "p_name": "CERASUOLO D'ABRUZZO",
+        "p_vintage": 2024,
+        "p_country": "Italy",
+        "p_region": "Abruzzo",
+        "p_grape_variety": "Montepulciano"
+      },
+      "hash": "e5e5184cad2b1e493eb7e07be446f86ec0ea18603e3a4b69202490695f3a3325"
+    },
+    {
+      "signature_hash": "bf21544ada8ea5a4727780796d267d54",
+      "in": {
+        "p_producer": "KA MANCINE",
+        "p_name": "ROSSESE",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Liguria",
+        "p_grape_variety": "Rossese"
+      },
+      "hash": "c6c21a687ee87a887f8ff7f4bfe75055b5e77ea3896a493f916b026caaf605c9"
+    },
+    {
+      "signature_hash": "0c0d9ad3d1ba0c4547eb06b0b432c4af",
+      "in": {
+        "p_producer": "TAILOR'S SON",
+        "p_name": "TAILOR'S SON PINOT NOIR",
+        "p_vintage": 2022,
+        "p_country": "USA",
+        "p_region": "California",
+        "p_grape_variety": "Pinot Noir"
+      },
+      "hash": "73b3c439970ddf66b96290dc7984c8438cc7a84c94342f368f60308351e70e67"
+    },
+    {
+      "signature_hash": "4339248a1c8f1a5bedd42b7753c481ad",
+      "in": {
+        "p_producer": "MONCHIERO",
+        "p_name": "NEBBIOLO",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Nebbiolo"
+      },
+      "hash": "6d24487e0f98f549b1c3f9b3da0d33323897835c21458658e0e2b9a23b14974e"
+    },
+    {
+      "signature_hash": "00c5a687f4f6d227c91fc12b22fbf5bd",
+      "in": {
+        "p_producer": "EDMONDO SARTI",
+        "p_name": "BARBARESCO",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Nebbiolo"
+      },
+      "hash": "c6d069096489514818498f1086d503f988dd9be6271ff4969d28264b8db87f36"
+    },
+    {
+      "signature_hash": "7c8ffe4cb89002bce82eef53f96c52d5",
+      "in": {
+        "p_producer": "FRANCO SERRA",
+        "p_name": "BAROLO",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Nebbiolo"
+      },
+      "hash": "a53e90470577923f6175202b0d0e1d1ce72d0b77ceaa8a312e8202f7d10450ed"
+    },
+    {
+      "signature_hash": "af44dbb4ecb3aa7275eaf7cc731e83c2",
+      "in": {
+        "p_producer": "BORGO LAME",
+        "p_name": "BAROLO",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Nebbiolo"
+      },
+      "hash": "eae00e44f3beb2deeca68d8d1ac90490648d60f0171dad645a80e68619cd7f2f"
+    },
+    {
+      "signature_hash": "e1694545292b29ab0bed0a3b51ef6592",
+      "in": {
+        "p_producer": "ETTORE GERMANO",
+        "p_name": "BAROLO",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Nebbiolo"
+      },
+      "hash": "f6c73b22de7256764da8c1e15e311e659c55733d2cffeb041716d1b4df62dcbc"
+    },
+    {
+      "signature_hash": "eec69d047c2619a1ee7dc1f65402ccae",
+      "in": {
+        "p_producer": "GIROLAMO RUSSO",
+        "p_name": "ETNA ROSSO \"A RINA\"",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": "Nerello Mascalese, Nerello Cappuccio"
+      },
+      "hash": "8408b6c7e649c6f1b87801068a6ab051da4f892eab0f8058a4e5c03a09a9e0dd"
+    },
+    {
+      "signature_hash": "e73479648f087fd14746ba4a822356cf",
+      "in": {
+        "p_producer": "GIROLAMO RUSSO",
+        "p_name": "ETNA ROSSO \"FEUDO\"",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": "Nerello Mascalese, Nerello Cappuccio"
+      },
+      "hash": "f3800e7ac84773b959044393135bdf4fce8079a89860a75df03571e520178041"
+    },
+    {
+      "signature_hash": "bf3914bc6f771adde65a5b8159ccb37b",
+      "in": {
+        "p_producer": "FRATELLI PUDDU",
+        "p_name": "CANNONAU",
+        "p_vintage": 2019,
+        "p_country": "Italy",
+        "p_region": "Sardegna",
+        "p_grape_variety": "Cannonau"
+      },
+      "hash": "9c0f0a094fd44b324b99f07ae13dd24213e9b327e740203249e85c0df1c2d178"
+    },
+    {
+      "signature_hash": "7e719482706b1da289bf5358d0f1c40a",
+      "in": {
+        "p_producer": "PRA MORANDINA",
+        "p_name": "VALPOLICELLA RIPASSO",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Veneto",
+        "p_grape_variety": "Corvina, Corvinone, Rondinella"
+      },
+      "hash": "57cda865d7ab2e3599a120a949a0b64e8ebb3e99240fd88ae1cdc6fc6758503c"
+    },
+    {
+      "signature_hash": "3af36b965299961326e410bb82dabc9b",
+      "in": {
+        "p_producer": "MARCANELLI",
+        "p_name": "SANGIOVESE",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": "Sangiovese"
+      },
+      "hash": "73c7ed30eb491dd27c93f831fc2e62606e3a17669c6dc0b087525958a5ca264c"
+    },
+    {
+      "signature_hash": "a81189b80c2c0d631ad02010066ae959",
+      "in": {
+        "p_producer": "TENUTA DI ARCENO",
+        "p_name": "SANGIOVESE",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": "Sangiovese"
+      },
+      "hash": "8c9942cc5c424cb3354183022512b3c5c0a509c895f7d074caf3e3f67949d2c8"
+    },
+    {
+      "signature_hash": "1edcb21488287475e9febe4572c56dce",
+      "in": {
+        "p_producer": "FATTOI",
+        "p_name": "ROSSO DI MONTALCINO",
+        "p_vintage": 2023,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": "Sangiovese"
+      },
+      "hash": "e43fb382b172ae839d5f994c34e0707150d181b2da3a7854ef428c7a7fbf6d62"
+    },
+    {
+      "signature_hash": "0ad77efbda70bcf72a5a5ea1574ad2e7",
+      "in": {
+        "p_producer": "FORNACINA",
+        "p_name": "BRUNELLO DI MONTALCINO",
+        "p_vintage": 2019,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": "Sangiovese"
+      },
+      "hash": "67b7691dfd17a01ec3489c496e77c27781af7d6627edac12612d4ec712c42500"
+    },
+    {
+      "signature_hash": "0238933d92e7f0373ef7c8e49c402166",
+      "in": {
+        "p_producer": "CANTINE NOSTRE",
+        "p_name": "BARBERA",
+        "p_vintage": 2024,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Barbera"
+      },
+      "hash": "03269863442fc522c1a3f1e67b7b24c7cb2df25379e17ae782cb540b433f95c2"
+    },
+    {
+      "signature_hash": "43836ca227bbfdfc890da7a6a33a8314",
+      "in": {
+        "p_producer": "MASSOLINO",
+        "p_name": "BARBERA D'ALBA",
+        "p_vintage": 2022,
+        "p_country": "Italy",
+        "p_region": "Piemonte",
+        "p_grape_variety": "Barbera"
+      },
+      "hash": "dc67502b4e1beb901c2422e292502560e9a91adc5de675ebfbb4b360e02d0cc0"
+    },
+    {
+      "signature_hash": "22d04fbde69543fdc2769c928084dd05",
+      "in": {
+        "p_producer": "ALDO VIOLA",
+        "p_name": "NERELLO MASCALESE MORETTO",
+        "p_vintage": 2019,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": "Nerello Mascalese"
+      },
+      "hash": "db3fcd72c97240cc2582178b22571f53a7c5805467635b88d3a90a585547e5da"
+    },
+    {
+      "signature_hash": "055da333a3b090bd7f08a2ffa570c0d0",
+      "in": {
+        "p_producer": "RISEIS",
+        "p_name": "MONTEPULCIANO",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Abruzzo",
+        "p_grape_variety": "Montepulciano"
+      },
+      "hash": "fa2f44e6fc43ef55030ced7be5fac4efa5717db1107f8cb71b7903f5b1889d0a"
+    },
+    {
+      "signature_hash": "96cf53d3487084b908dffa81418bb9b6",
+      "in": {
+        "p_producer": "TENUTA ORESTIADI",
+        "p_name": "NERO D’AVOLA",
+        "p_vintage": 2023,
+        "p_country": "Italy",
+        "p_region": "Sicilia",
+        "p_grape_variety": "Nero d’Avola"
+      },
+      "hash": "b92b2d3b82e60cf4dc8165c24a220a557899cdaa554672d28217d63f113de98a"
+    },
+    {
+      "signature_hash": "1c7800e134973b359289a55c5de33a9a",
+      "in": {
+        "p_producer": "GRAN PASSAIA",
+        "p_name": "SUPER TUSCAN",
+        "p_vintage": 2020,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": null
+      },
+      "hash": "50228e45d0ce5a6bd191c56d45021890c78c940fa0525e1694e03cc7f8c3f9f5"
+    },
+    {
+      "signature_hash": "d74809f0336279d1f05721fdb3f3b911",
+      "in": {
+        "p_producer": "CORAZZA",
+        "p_name": "BORDEAUX BLEND",
+        "p_vintage": null,
+        "p_country": "Italy",
+        "p_region": "Friuli-Venezia Giulia",
+        "p_grape_variety": null
+      },
+      "hash": "ad88d68f4d62cc890683228f6e0beef703b1d10e97f123f465d6e7a680b94ad5"
+    },
+    {
+      "signature_hash": "9e1308350d1b3e5e32bd5d9419e7ac04",
+      "in": {
+        "p_producer": "IL FAUNO",
+        "p_name": "BORDEAUX BLEND",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": null
+      },
+      "hash": "7ba91c791b57e200d07ce759ee5cf264ca450f529af4a1c8d5f0b63c4f5be510"
+    },
+    {
+      "signature_hash": "85f9e11bf73e6b4242756af85b6a7d52",
+      "in": {
+        "p_producer": "CORTE ARMANO",
+        "p_name": "AMARONE",
+        "p_vintage": 2018,
+        "p_country": "Italy",
+        "p_region": "Veneto",
+        "p_grape_variety": "Corvina, Corvinone, Rondinella"
+      },
+      "hash": "2e22aed7c4db1fa66649be1363e4b208868ee313cbbd25ff2f0b2d3fe90d8fdb"
+    },
+    {
+      "signature_hash": "69589e3ff391e9bb5aa07a85d9f27fbf",
+      "in": {
+        "p_producer": "SAN-LURINS",
+        "p_name": "MALVASIA ISTRIANA SKIN FERMENTED",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "MALVASIA ISTRIANA"
+      },
+      "hash": "ca29514f3de3ca239afd1bc2c26ec08467976eb4bb7ff91036cb75f0690799e4"
+    },
+    {
+      "signature_hash": "433204f6df9d55613a241dfa8e20db7a",
+      "in": {
+        "p_producer": "EDI KANTE",
+        "p_name": "ROSE OF PINOT NERO",
+        "p_vintage": 2023,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "PINOT NERO"
+      },
+      "hash": "768aac201b9b9f96e1896ac0778fab0c99da7781a04e21422f68f1f95f1dcac1"
+    },
+    {
+      "signature_hash": "ec495724d821d85f7f121cd002562299",
+      "in": {
+        "p_producer": "VIN SCLET",
+        "p_name": "PINOT GRIGIO",
+        "p_vintage": 2023,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "PINOT GRIGIO"
+      },
+      "hash": "2a6a39b2383cebeef0990b61b5c42f7b18a76a1852d26b768e6b02dfc3c20067"
+    },
+    {
+      "signature_hash": "606e4704976d9716fa90b0b58a800f36",
+      "in": {
+        "p_producer": "RONC DAI LUCHIS",
+        "p_name": "FRIULANO",
+        "p_vintage": 2021,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "FRIULANO"
+      },
+      "hash": "1fec57366209c51ffdac78cd48716027fa340a0c3ae77e6598079d5ea717f208"
+    },
+    {
+      "signature_hash": "1111ef84972984c824d0f66cdf15a80d",
+      "in": {
+        "p_producer": "CANUS",
+        "p_name": "CHARDONNAY",
+        "p_vintage": 2022,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "CHARDONNAY"
+      },
+      "hash": "09ec427582f36d0b0db7d2dde2274394981d3508b272a1db5ddfc37eb75f163c"
+    },
+    {
+      "signature_hash": "575d20ad44ccb701b5fb4f81362ab1ca",
+      "in": {
+        "p_producer": "KANTE",
+        "p_name": "CHARDONNAY 'LA BORA\"",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "CHARDONNAY"
+      },
+      "hash": "2e1cffee708130454b743e07dd7c6094379c99b280afcac62a589b672b65ae83"
+    },
+    {
+      "signature_hash": "5392720ab565130a3c437aa6840befff",
+      "in": {
+        "p_producer": "CHERUBI",
+        "p_name": "ROSATO",
+        "p_vintage": 2024,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": null
+      },
+      "hash": "d8ecb0cfa826fbe106647312c777737f710410633e5f13bbc9cf4a6dfbb79dad"
+    },
+    {
+      "signature_hash": "655ad63ad6d2a1da528f36ded45d77e7",
+      "in": {
+        "p_producer": "MOSCHIONI",
+        "p_name": "FRIULANO",
+        "p_vintage": 2021,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "FRIULANO"
+      },
+      "hash": "872e39cab111ee9028e765e088eae623a56835737be668b99920d875eb093d79"
+    },
+    {
+      "signature_hash": "677fe2b5899eec19589722e346d4878a",
+      "in": {
+        "p_producer": "MURVA",
+        "p_name": "FRIULIANO",
+        "p_vintage": 2022,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "FRIULANO"
+      },
+      "hash": "61b506b6a1c9c25647bc906abe499ef23a3ede071049bc3878445c0fbb2717fe"
+    },
+    {
+      "signature_hash": "4c9c9d27b8219c2db81cc16c5fedca8f",
+      "in": {
+        "p_producer": "IL CARPINO",
+        "p_name": "RIBOLLA GIALLA",
+        "p_vintage": 2018,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "RIBOLLA GIALLA"
+      },
+      "hash": "a07de9f04632f7e9ce7a7d70dc37b65814394394392e3a594c992dd247ba314a"
+    },
+    {
+      "signature_hash": "fc4a5d36dd7d6c6d31f219707307b505",
+      "in": {
+        "p_producer": "SKERK",
+        "p_name": "VITOVSKA BLEND",
+        "p_vintage": 2020,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "VITOVSKA BLEND"
+      },
+      "hash": "508ec5c06e620864b38324656b7257b93e54d2f6927641ac7c4737f73041534e"
+    },
+    {
+      "signature_hash": "4df7915edc91d27b03ad2264a4818e77",
+      "in": {
+        "p_producer": "CORAZZA",
+        "p_name": "BORDEAUX BLEND",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI VENEZIA GIULIA",
+        "p_grape_variety": "BORDEAUX BLEND"
+      },
+      "hash": "cf072de1e205f1ae1191b05412ab9954bed73140c377dea3f05090e7cb13394b"
+    },
+    {
+      "signature_hash": "f3ab2dbcb0c7807098ce84a38caab7e0",
+      "in": {
+        "p_producer": "SAN-LURINS",
+        "p_name": "MALVASIA ISTRIANA SKIN FERMENTED",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "MALVASIA ISTRIANA"
+      },
+      "hash": "67c4641d303bd904f7bb66305dbd77b032f5658fccc8f66a4453b29901b7888e"
+    },
+    {
+      "signature_hash": "31f8c72c3073ee83bd00cbc086f7e0e1",
+      "in": {
+        "p_producer": "EDI KANTE",
+        "p_name": "ROSE OF PINOT NERO",
+        "p_vintage": 2023,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "PINOT NERO"
+      },
+      "hash": "a5ca0b2a0d2e77b8e5a51ad87457c1fc41a0a699ba47ee82e86b196e72f73b7c"
+    },
+    {
+      "signature_hash": "c1919a0088438c6e8142989ad236e5d8",
+      "in": {
+        "p_producer": "VIN SCLET",
+        "p_name": "PINOT GRIGIO",
+        "p_vintage": 2023,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Pinot Grigio"
+      },
+      "hash": "c20b7aaa0b81e1a1819be48232d553462000bb5c7aec090e355b35e7e47cb25e"
+    },
+    {
+      "signature_hash": "94765c76a9fd3833a2fc4ee0d3142b06",
+      "in": {
+        "p_producer": "RONC DAI LUCHIS",
+        "p_name": "FRIULANO",
+        "p_vintage": 2021,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Friulano"
+      },
+      "hash": "955a831663f7ac9d90d3ad7bd35b241a10a7b78b01554ec2e64f61e2284e10c6"
+    },
+    {
+      "signature_hash": "1c0c07d92027a928ddb03190699c19a0",
+      "in": {
+        "p_producer": "CINCINNATO",
+        "p_name": "BELLONE",
+        "p_vintage": 2023,
+        "p_country": "ITALY",
+        "p_region": "LAZIO",
+        "p_grape_variety": "Bellone"
+      },
+      "hash": "dd778a84a023d2a43fb697d7c34a1514db90741c8d8d58d19c7ef085072bc5c3"
+    },
+    {
+      "signature_hash": "bb3b0c19a5e22a429198aa1d32914178",
+      "in": {
+        "p_producer": "CIRO PICARIELLO",
+        "p_name": "FIANO",
+        "p_vintage": 2022,
+        "p_country": "ITALY",
+        "p_region": "CAMPANIA",
+        "p_grape_variety": "Fiano"
+      },
+      "hash": "68e2553e296a9d15faf6b110e774080406a30ef4468b483f9973964a7bad35c5"
+    },
+    {
+      "signature_hash": "7147ae6a03de41b99ac45a8addc4fe6a",
+      "in": {
+        "p_producer": "CANUS",
+        "p_name": "CHARDONNAY",
+        "p_vintage": 2022,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Chardonnay"
+      },
+      "hash": "e4413c4b35b66a80f2feed52ba254857867e49addb7332e6154f459a6c9ac8bf"
+    },
+    {
+      "signature_hash": "1a114a4dde6124cda434e9791cdabea2",
+      "in": {
+        "p_producer": "KANTE",
+        "p_name": "CHARDONNAY 'LA BORA\"",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Chardonnay"
+      },
+      "hash": "a4e2cf5e2160e750ca8716c8096c263c348dff94147c0c76a9b5194745253033"
+    },
+    {
+      "signature_hash": "a4386c042d6b0c8dfe58ee92f033801b",
+      "in": {
+        "p_producer": "CHERUBI",
+        "p_name": "ROSATO",
+        "p_vintage": 2024,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": null
+      },
+      "hash": "bd3021254f7c25273f623839b79109ab4ae71798acb24dc155f9b96c10ae1006"
+    },
+    {
+      "signature_hash": "ccff344d46bc159ce19b4ab149af38c2",
+      "in": {
+        "p_producer": "MOSCHIONI",
+        "p_name": "FRIULANO",
+        "p_vintage": 2021,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Friulano"
+      },
+      "hash": "9707617d127b3525fb11c0261be07bdfedc2fa46638d79fa0694be7d446fbd48"
+    },
+    {
+      "signature_hash": "17fd729f53ef835db70ffc6c99ef0119",
+      "in": {
+        "p_producer": "MURVA",
+        "p_name": "FRIULIANO",
+        "p_vintage": 2022,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Friuliano"
+      },
+      "hash": "bba220de0a2f39319778f485ef6d0f2fe0f4adce8b05f7abe6efd7e4dc4a40a6"
+    },
+    {
+      "signature_hash": "75673b77ed05d9ea540f222f6ac2c89e",
+      "in": {
+        "p_producer": "IL CARPINO",
+        "p_name": "RIBOLLA GIALLA",
+        "p_vintage": 2018,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "Ribolla Gialla"
+      },
+      "hash": "b40d3be0c57ac1520274fac0f05d14c8e0f90f70733a998382f414149adb4d98"
+    },
+    {
+      "signature_hash": "be36e0e823e0e5a47ee22513acdc1ade",
+      "in": {
+        "p_producer": "SKERK",
+        "p_name": "VITOVSKA BLEND",
+        "p_vintage": 2020,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "VITOVSKA BLEND"
+      },
+      "hash": "a8410aa73b0ab05d26299a1bdd512eb1559a65fd2b41f1b4df13f102d7e6c0ab"
+    },
+    {
+      "signature_hash": "629830854b814b22b9fa9fc8f9a15aa9",
+      "in": {
+        "p_producer": "ALDO VIOLA",
+        "p_name": "NERELLO MASCALESE",
+        "p_vintage": 2019,
+        "p_country": "ITALY",
+        "p_region": "SICILIA",
+        "p_grape_variety": "Nerello Mascalese"
+      },
+      "hash": "991ab7a37e8166f6f4d10b212737721c6059b08e441c6d17df815f0c0f78d2aa"
+    },
+    {
+      "signature_hash": "0e725067e790816513c20a322aa161af",
+      "in": {
+        "p_producer": "CORAZZA",
+        "p_name": "BORDEAUX BLEND",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "BORDEAUX BLEND"
+      },
+      "hash": "e8dee30f703bb30fcc3d50bb559e5a39e60f56aea351a2e700d6c06c9bac75d7"
+    },
+    {
+      "signature_hash": "b9f85465a90c4eb7fcc41030949803b5",
+      "in": {
+        "p_producer": "GAVIOLI",
+        "p_name": "LAMBRUSCO BLANC DE BLANC",
+        "p_vintage": 2018,
+        "p_country": "ITALY",
+        "p_region": "EMILIA-ROMAGNA",
+        "p_grape_variety": "LAMBRUSCO"
+      },
+      "hash": "7f44fd8119be234f72251257a68978434a87c6688512a6e62c432c6e778f5311"
+    },
+    {
+      "signature_hash": "76f463acfb4713e1ae3859a05ad0201d",
+      "in": {
+        "p_producer": "SANTA CROCE",
+        "p_name": "LAMBRUSCO",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "EMILIA-ROMAGNA",
+        "p_grape_variety": "LAMBRUSCO"
+      },
+      "hash": "7d19ccde475280d4352340fdadb7a1a66dd5e620da04db173e79036e8f9593cb"
+    },
+    {
+      "signature_hash": "ff9259974c4a51b4d3c83ab8686e0823",
+      "in": {
+        "p_producer": "CORAZZA",
+        "p_name": "BORDEAUX BLEND VINO ROSSO",
+        "p_vintage": null,
+        "p_country": "ITALY",
+        "p_region": "FRIULI",
+        "p_grape_variety": "BORDEAUX BLEND"
+      },
+      "hash": "27950d302a7d7350cb5f4e08fb8268286aee72aee6b5a1fb00822135a6c8c2ea"
+    },
+    {
+      "signature_hash": "2cedc0306a4b37cbcffc39dfdaa82edc",
+      "in": {
+        "p_producer": "Billecart-Salmon",
+        "p_name": "Blanc de Blancs",
+        "p_vintage": null,
+        "p_country": "France",
+        "p_region": "Champagne",
+        "p_grape_variety": "Chardonnay"
+      },
+      "hash": "49d7f69a2b7e1ccef505741a56a350fb93d0a2743b9ec252eedb8409c969d32d"
+    },
+    {
+      "signature_hash": "ca7908ff690c2012e98868709f233e78",
+      "in": {
+        "p_producer": "House Wine",
+        "p_name": "House White Pinot Gris",
+        "p_vintage": 2023,
+        "p_country": "USA",
+        "p_region": "California",
+        "p_grape_variety": "Pinot Gris"
+      },
+      "hash": "37b990736fc8ec9c73a8731fa99047c0b1aa0ee9b6a78b2310301238e28155d0"
+    },
+    {
+      "signature_hash": "15d8eca8d0c1186ab52d152a6ecf45f7",
+      "in": {
+        "p_producer": "Tailor's Son",
+        "p_name": "Pinot Noir",
+        "p_vintage": 2022,
+        "p_country": "USA",
+        "p_region": "California",
+        "p_grape_variety": "Pinot Noir"
+      },
+      "hash": "681b12824d01ce067780151efcff2d6e087b1ed98167a55be2e030bb9c73b014"
+    },
+    {
+      "signature_hash": "2f624136b7767afbe40003a586816c7b",
+      "in": {
+        "p_producer": "Il Fauno",
+        "p_name": "Bordeaux Blend 'Il Fauno'",
+        "p_vintage": 2021,
+        "p_country": "Italy",
+        "p_region": "Toscana",
+        "p_grape_variety": "Bordeaux blend"
+      },
+      "hash": "2bcb33c61218e25764161138ff5def33c5cad497480028e5c10cacc072f5946b"
+    },
+    {
+      "signature_hash": "0e2b3c8fbd85a02739c50235176d5692",
+      "in": {
+        "p_producer": "HOUSE WHITE",
+        "p_name": "Pinot Gris",
+        "p_vintage": 2023,
+        "p_country": "USA",
+        "p_region": "CALIFORNIA",
+        "p_grape_variety": "Pinot Gris"
+      },
+      "hash": "72f3847c2f60842a64f6f5847f6f52a504079492b2bee10ca47cbfcf68406de9"
+    }
+  ],
+  "_generic_identity_contract": "ADR 0130. Outputs of public.wine_identity_is_specific(...), public.wine_signature_hash(...) and public.wine_provisional_signature_hash(...) read on 2026-09-05 from a Postgres 17 built from ALL 101 migrations in supabase/migrations (memory: local-postgres-from-migrations), NOT from production — the two new functions do not exist there until this migration applies. isSpecificWineIdentity/hashProvisionalWineSignature in apps/api-gateway/src/wines/wine-signature.ts and wine_identity_is_specific/wine_provisional_signature_hash in scripts/synth/identity.py must reproduce every row; scripts/test_synth_identity.py fails on drift.",
+  "generic_identity_vectors": [
+    {
+      "label": "a bare generic name",
+      "p_producer": null,
+      "p_name": "House White Wine",
+      "p_vintage": null,
+      "p_country": null,
+      "p_region": null,
+      "p_grape_variety": null,
+      "p_restaurant_id": "11111111-1111-1111-1111-111111111111",
+      "specific": false,
+      "shared_hash": "e46bb9c5ef5a407d65922563704c4f1d769fee565a96205f8d84a0dc1532301a",
+      "provisional_hash": "3e32c9983ff3cd44311209285066cb22b07770bca85d5e213f4dfd67b964a611"
+    },
+    {
+      "label": "the same words, another venue",
+      "p_producer": null,
+      "p_name": "House White Wine",
+      "p_vintage": null,
+      "p_country": null,
+      "p_region": null,
+      "p_grape_variety": null,
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": false,
+      "shared_hash": "e46bb9c5ef5a407d65922563704c4f1d769fee565a96205f8d84a0dc1532301a",
+      "provisional_hash": "f84c072ff155a447bfd1e7eb8ed88f3c89193097568db26d20cebb7dc5743908"
+    },
+    {
+      "label": "the row the app writes today",
+      "p_producer": "House White Wine",
+      "p_name": "House White Wine",
+      "p_vintage": null,
+      "p_country": "Unknown",
+      "p_region": null,
+      "p_grape_variety": null,
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": true,
+      "shared_hash": "d087cfa06659889cf7debf3236b58c029477c34a818628ad39c29f97a005eb67",
+      "provisional_hash": "d0236487d4e32933a3beaf4284e178e8872b2fe79f75fcf9be5f80563ae99d92"
+    },
+    {
+      "label": "a menu section by the glass",
+      "p_producer": null,
+      "p_name": "Red",
+      "p_vintage": null,
+      "p_country": null,
+      "p_region": null,
+      "p_grape_variety": null,
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": false,
+      "shared_hash": "55b0bdb5f4180d4170dcd499465a6f954104355b09d1438da3f403d07d50417b",
+      "provisional_hash": "9d205bbb440dfce6d3304343dc86dbc9f86fd38f6b27b7e8da13addbf372243a"
+    },
+    {
+      "label": "blank producer, blank region",
+      "p_producer": "  ",
+      "p_name": "Sarap",
+      "p_vintage": null,
+      "p_country": "  ",
+      "p_region": "  ",
+      "p_grape_variety": null,
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": false,
+      "shared_hash": "bb2f7f4092752131623e3c794d4f812c5e2c8071f5652bfae7bc5e8a64a349c6",
+      "provisional_hash": "11b79c98bdc0e389a542140d2201f1872d1c9d515420d058886941e3c2d45970"
+    },
+    {
+      "label": "name and vintage only",
+      "p_producer": null,
+      "p_name": "Cankaya",
+      "p_vintage": 2023,
+      "p_country": null,
+      "p_region": null,
+      "p_grape_variety": null,
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": false,
+      "shared_hash": "6f93b53895fa9f242440db1a4c1b33540a75c1677a26431869594e404f1d683d",
+      "provisional_hash": "ca83072f361d476fe8f9aa7985577a8f2f594978bbe4390e7ccbc4a38ddfd725"
+    },
+    {
+      "label": "name, vintage and region",
+      "p_producer": null,
+      "p_name": "Cankaya",
+      "p_vintage": 2023,
+      "p_country": "Turkey",
+      "p_region": "Central Anatolia",
+      "p_grape_variety": null,
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": true,
+      "shared_hash": "fa4f97078bbcdbc302f4bcd569f8920de90e4b6083ba184b7efd81a4d685af32",
+      "provisional_hash": "1da7c3bfbee1ee23f9d7c751987fee63650153933b8023f4d5c2917d1ae75327"
+    },
+    {
+      "label": "name and producer",
+      "p_producer": "Kavaklidere",
+      "p_name": "Cankaya",
+      "p_vintage": null,
+      "p_country": "Turkey",
+      "p_region": null,
+      "p_grape_variety": "Emir",
+      "p_restaurant_id": "22222222-2222-2222-2222-222222222222",
+      "specific": true,
+      "shared_hash": "02cc4707da00edbcbe15e90f6aa53ca3a744e75730a49b92790aba232612326a",
+      "provisional_hash": "2d491d7e58926d3ed2855827b88462879ea1b62dc0e58181b24d74cefc080df2"
+    },
+    {
+      "label": "the Sim Meyhouse house white",
+      "p_producer": "",
+      "p_name": "HOUSE WHITE",
+      "p_vintage": 2023,
+      "p_country": "United States",
+      "p_region": "California",
+      "p_grape_variety": null,
+      "p_restaurant_id": "11111111-1111-1111-1111-111111111111",
+      "specific": true,
+      "shared_hash": "717117b42606baef84e2784e10c4a0dfdc3827c79c1c2cc3acbb2a000362f490",
+      "provisional_hash": "ac6b174c01c82d7853ba8b94c4de9f55f6c7c3f12155d2b5ac760c7badbca7cb"
+    },
+    {
+      "label": "an abbreviated producer",
+      "p_producer": "Dom. Faiveley",
+      "p_name": "Mercurey",
+      "p_vintage": 2019,
+      "p_country": "France",
+      "p_region": "Burgundy",
+      "p_grape_variety": "Pinot Noir",
+      "p_restaurant_id": "11111111-1111-1111-1111-111111111111",
+      "specific": true,
+      "shared_hash": "101455fd637e800a2ad0925d709c9e603a8501f1e4416424f8e1168367878499",
+      "provisional_hash": "6d0bc175b375692d159064a56abb043f7b096b7b6c750f4d0db01e919dda46bd"
+    }
+  ]
+}

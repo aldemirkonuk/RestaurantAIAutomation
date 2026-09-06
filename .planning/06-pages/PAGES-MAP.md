@@ -79,6 +79,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/profile` | [[profile]] | owner | core | form | none | 2 |
 | `/promotions` | [[promotions]] | owner | core | list+detail | none | 0 |
 | `/providers` | [[providers]] | owner | core | list+detail | none | 0 |
+| `/documents/:id` | [[receipts]] | owner | core | focused | `mudavym_design_document` | 0 |
 | `/receipts` | [[receipts]] | owner | core | list+detail | none | 0 |
 | `/receiving` | [[receiving]] | staff | core | list+detail | none | 0 |
 | `/receiving/:orderId/door` | [[receiving-door]] | staff | core | focused | none | 0 |
@@ -91,6 +92,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/settings` | [[settings]] | owner | core | form | none | 8 |
 | `/simpos/:restaurantId` | [[simpos-terminal]] | dev | public | dev | none | 3 |
 | `/simpos/:restaurantId/orders` | [[simpos-order-log]] | dev | public | dev | none | 0 |
+| `/simpos/:restaurantId/scenarios` | [[simpos-scenarios]] | dev | public | dev | none | 0 |
 | `/sommelier` | [[sommelier]] | owner | core | chat | none | 0 |
 | `/studio` | [[studio]] | dev | core | command | none | 1 |
 | `/studio/certify` | [[studio-certify]] | dev | core | list+detail | none | 1 |

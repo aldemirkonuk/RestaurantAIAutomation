@@ -28,6 +28,39 @@ describe("normalizeUom", () => {
     expect(normalizeUom("split-case")).toBe("split_case");
   });
 
+  /**
+   * ADR 0104 slice 2 — the Turkish spellings the TR fixture prints.
+   *
+   * The uppercase cases are the load-bearing ones. `"ŞİŞE".toLowerCase()` is
+   * `"şi̇şe"` (i + a COMBINING DOT ABOVE), not `"şişe"`, so a switch arm alone
+   * never matches it and the unit falls through to null — a refusal that reads
+   * like a decision about the document.
+   */
+  it("reads the Turkish case and bottle spellings, in either case", () => {
+    expect(normalizeUom("şişe")).toBe("bottle");
+    expect(normalizeUom("ŞİŞE")).toBe("bottle");
+    expect(normalizeUom("sise")).toBe("bottle");
+    expect(normalizeUom("KS")).toBe("case");
+    expect(normalizeUom("ks")).toBe("case");
+    expect(normalizeUom("koli")).toBe("case");
+    expect(normalizeUom("Koli")).toBe("case");
+    expect(normalizeUom("kasa")).toBe("case");
+  });
+
+  it("maps `adet` to `each`, not to `bottle`", () => {
+    // `adet` is a countable piece and says nothing about the container.
+    // `each` and `bottle` convert identically through toBottles, so nothing
+    // downstream changes — but only one of them is a claim the paper made.
+    expect(normalizeUom("adet")).toBe("each");
+    expect(normalizeUom("ADET")).toBe("each");
+    expect(toBottles(12, "each")).toBe(toBottles(12, "bottle"));
+  });
+
+  it("still refuses `kutu`, which no source settles", () => {
+    // Used for a shipping case on one document and a retail carton on another.
+    expect(normalizeUom("kutu")).toBeNull();
+  });
+
   it("returns null rather than guessing on an unknown unit", () => {
     // Guessing 'bottle' here would produce confident, wrong quantity maths.
     expect(normalizeUom("magnum")).toBeNull();

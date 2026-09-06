@@ -30,6 +30,22 @@
 - **Security closed this week:** 13 controllers guarded (OD-20 cluster),
   SSRF guard on user-supplied URLs, JWT secret hard-fails, scan-parser page
   cap. Verified live: unauthenticated `dashboard/stats` now 401.
+- **Studio + SSRF/log-injection hardening (2026-08-26, PRs #73/#75/#78/#79/#84):**
+  the studio invite flow works end to end for the first time — redemption no longer
+  requires a studio role the invitee cannot hold, is bound to the invited email, is
+  single-use under concurrency, and is *sent by the gateway* rather than handed back as a
+  link ([ADR 0021](decisions/0021-studio-invites-are-self-service.md)). Two routing
+  approaches collided mid-flight; the founder chose the gateway proxy, so `studioApi.ts`
+  resolves relative paths and the gateway forwards `/api/v1/studio/*` and
+  `/api/v1/onboarding/extract`. Security, measured by CodeQL on `main`:
+  **`js/request-forgery` 3 → 0** (the worst carried `X-Admin-Key` out of the health
+  prefix and had been open since 2026-07-08) and **`py/log-injection` 57 → 3**, the three
+  survivors being verified false positives awaiting dismissal (OD-90, OD-93). New guards:
+  `common/http/safe-path.ts` (one allowlist for every outbound URL interpolation) and
+  `scripts/check_log_sanitizer_usage.py` (an `ast` pass that fails when a sanitised string
+  reaches a numeric format spec, and exits 2 rather than 0 if it scans nothing).
+  **Method note worth keeping:** the alert counts were twice under-reported from an
+  unpaginated first page — once hiding a live hole in new code. Paginate, then count.
 - **POS bridge:** built and proven POS-agnostic (Toast first adapter);
   sale-volume contract + referential integrity migrations applied.
 - **Page layer:** 51 routes documented in `06-pages/` (9-section contract),
@@ -78,11 +94,20 @@
    Details: [ADR 0019](decisions/0019-p2-build-scope.md) §B-parity.
    The old note that `/inventory-legacy` hosted `InvoiceScannerModal` was **stale**
    — that component was deleted in `e5402d67` and 44.1e is already closed.
-2. **Gmail push verification** is built but staged open. Set
-   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values
-   come from the Pub/Sub subscription — nobody can invent them), then
-   `GMAIL_PUBSUB_REQUIRE_AUTH=true`. Until then the gateway logs an error per
-   unverified push and counts them.
+2. 🔴 **Gmail push verification now FAILS CLOSED** (ADR 0094, 2026-09-02) — it
+   was staged *open* until then, admitting every push while unconfigured
+   despite four places in the repo claiming it failed closed. **Set
+   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway**
+   (values come from the Pub/Sub push subscription — nobody can invent them).
+   Until both are set every push is refused and inbound vendor email does not
+   arrive; the gateway logs a refusal per push and counts them
+   (`GmailPushAuthService.refusedWhileUnconfigured`). `GMAIL_PUBSUB_REQUIRE_AUTH`
+   is deleted — it no longer exists and setting it does nothing.
+   **Most likely a no-op in production:** OD-78 records an unsigned push probed
+   twice on 2026-08-26 returning **401**, which under the old code means either
+   the pair was set (verification already live) or the retired flag was already
+   refusing everything. Either way this change does not break a working inbox.
+   A non-zero `refusedWhileUnconfigured` is how to tell, without Railway access.
 
 ## P3 position
 
@@ -113,7 +138,37 @@ migration is the phantom-table class this repo found five times in one day.
 **P3.D (model registry)** are unblocked — the gate they sat behind is closed.
 P3.A (mobile) and P3.B (beverages) were never gated and remain startable.
 
-**Page layer:** 47 route notes in `06-pages/`, each carrying Surface + §1a
+**Ecosystem scenario harness (ADR 0093, 2026-09-02, branch `feat/ecosystem-scenario-sim`):**
+the product learns its operating hours (`restaurants.operating_hours` + Settings editor),
+`scripts/simulate scenario` replays a random restaurant day inside them, and
+`/simpos/:id/scenarios` verifies the run against its own expectation across twenty checks
+(pass / fail / unverifiable). Found by reading before any run: sim tenants were phantom
+stock (seed wrote `stock_live`, no lots), a POS void reused the sale's idempotency key and
+never returned stock, and the low-stock email outcome was unrecorded — all three fixed with
+pre-fix failure proofs. **PR #280 merged 2026-09-03; the live day ran three times the same night** and the
+clean run (`937a23f0`) verifies **17 pass · 0 fail · 3 unverifiable** — after fixing six
+more defects the harness surfaced (the POS consumption mirror had written zero rows since
+2026-08-24; the sim seed could not insert its wines; personas could not sign in or reach
+their tenant; two harness faults). Details in ADR 0093, "The live day, on the record".
+
+**Canonical document, slice 2 (ADR 0104 D12/D13, 2026-09-04, branch `feat/canonical-document-slice-2`):** the canonical document is on screen at `/documents/:id` behind `mudavym_design_document` (OFF) — B's verdict block, C's delivery spine, A's sheet — served by `GET /procurement/documents/:id/canonical`; three synthetic PDFs went through the real intake door on the sim tenant and NONE was extracted (the model account has no credit), so every screenshot is of the degraded state and the four-way table has still never rendered real lines.
+
+**Canonical document, slice 1 (ADR 0104 D12, 2026-09-03, branch
+- **2026-09-03 — lens phase closed by the founder ("stop here, document it").** POS → inventory → alerts lens and customer + intelligence lens run on a real venue's menu (Sim Meyhouse) and filed (#292, #293; founder page linked from `06-pages/simpos-terminal.md` §10); ADRs 0103/0104/0105 recorded and locked where the founder answered (#288, #294); the Square day measured 0/42 vs 42/42 (0105); canonical document slice 1 merged and verified in production (#295, gaps filed in #296). **Next session starts from:** close the two data-shape gaps (`coerceDocType`, BT-149 + per-field confidence), then ADR 0104 slice 2 (C-led template + door view); the Antalya venue after that; the YMM clock question (0103 A8) still open.
+`feat/canonical-document-slice-1`):** the delivery is now a table — `deliveries`,
+`document_deliveries`, `delivery_proposals`, `vendor_terms`, `document_revisions`
+(append-only by trigger) and `document_corrections` — and
+`apps/api-gateway/src/procurement/canonical/` holds the three-layer object with 16
+EN 16931 invariants. No route, no UI. **The corpus it was meant to run over does not
+exist:** `procurement_documents` 0 rows, `procurement_document_lines` 0 rows,
+`vendor-attachments` 0 objects, measured read-only. That is recorded as an ABSENCE —
+`datasets/canonical/CORPUS-RUN-2026-09-03.md` says "0 documents read", never "0
+failures" — and the invariants' only evidence today is 9 labelled synthetic fixtures.
+The Turkish e-İrsaliye response-window clock is deliberately unseeded pending a YMM
+(ADR 0103 A8), and a `vendor_terms` row that is missing must BLOCK, never read as
+"no deadline".
+
+**Page layer:** 48 route notes in `06-pages/`, each carrying Surface + §1a
 Features + the §10–13 dossier + `archetype:` — both the graph and the
 founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 

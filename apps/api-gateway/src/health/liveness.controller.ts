@@ -1,5 +1,7 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "../auth/decorators/public.decorator";
+import { COMMIT_SHA, BOOTED_AT } from "./build-provenance";
 
 /**
  * Liveness — the one route that answers "did this process come up?"
@@ -40,7 +42,9 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
  * It does NOT prove the database is reachable or that any dependency is healthy.
  * That is a readiness check, it is a different question, and conflating the two
  * is how a liveness probe starts failing for reasons that have nothing to do
- * with whether the process is alive.
+ * with whether the process is alive. That question now has its own route —
+ * `/api/v1/health/ready`, see `readiness.controller.ts` — which returns 503 when
+ * the client was never initialised or the database does not answer.
  *
  * WHY IT ALSO NAMES ITS BUILD
  * ---------------------------
@@ -71,29 +75,20 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
  */
 
 /**
- * The deployed revision, read once at module load.
- *
- * Railway injects `RAILWAY_GIT_COMMIT_SHA` for services deployed from GitHub;
- * the others are accepted so the same image reports honestly under a different
- * runner. Whether the variable is actually present in this environment is a
- * question the route itself now answers — which is the point of returning
- * "unknown" rather than guessing.
+ * `commit` and `bootedAt` moved to `build-provenance.ts` when the readiness
+ * route was added: two modules each calling `new Date()` would report two
+ * different boot times for one process. Where the sha comes from, why it is
+ * injected by the build rather than read from git at runtime, and why its
+ * absence is reported as the literal "unknown" are all documented there.
  */
-const COMMIT_SHA: string =
-  [
-    process.env.RAILWAY_GIT_COMMIT_SHA,
-    process.env.GIT_COMMIT_SHA,
-    process.env.SOURCE_COMMIT,
-    process.env.VERCEL_GIT_COMMIT_SHA,
-  ]
-    .map((v) => (typeof v === "string" ? v.trim() : ""))
-    .find((v) => v.length > 0) ?? "unknown";
-
-/** When this process came up. Set at module load, so it is the boot time. */
-const BOOTED_AT: string = new Date().toISOString();
 @ApiTags("health")
 @Controller("health")
 export class LivenessController {
+  // Public by DECISION, not by omission (ADR 0096): the deploy audit polls
+  // this unauthenticated (`deploy.yml:171` — `${API_GATEWAY_URL}/api/v1/health/live`),
+  // and a liveness probe that needs a token cannot answer "did the process
+  // come up?" when the thing that failed to come up is auth.
+  @Public()
   @Get("live")
   @ApiOperation({
     summary:

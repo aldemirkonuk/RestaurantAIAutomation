@@ -175,6 +175,24 @@ chrome per dashboard.md §7.
 - **Scheduled report *sending* is feature-flagged off server-side** — "no mailer —
   scheduled send is feature-flagged" ([TIER-MAP](../03-scenarios/TIER-MAP.md):51, S15
   Plus). The scheduler UI here creates schedules a mailer never executes.
+- **Who a send actually reaches was decided by two columns that do not exist,
+  until 2026-09-02** ([ADR 0098](../decisions/0098-a-preference-is-read-from-the-column-it-lives-in.md)).
+  `communications/recipient-resolver.service.ts` is the module every scheduled
+  send here resolves through, and its `checkChannelPreference` read
+  `prefs.order_channels` and `prefs.report_channels` — names no migration has
+  ever declared (the table has `order_approval_channels` and
+  `financial_reports_channels`). The row arrives via `.select("*")`, so the reads
+  were `undefined` with no error, and on the stock production row the check ran
+  backwards on both axes: email refused to users who had enabled it, SMS sent to
+  users who had disabled it. Anything in this note that reasons about *who*
+  received a scheduled send before that date should be re-checked, not trusted.
+- **The cross-tenant fallback OD-87 closed in the resolver was still open one
+  layer up.** `notifications/low-stock-alerts.service.ts:resolveEmails` runs once
+  per restaurant and reached the global `MANAGER_EMAIL` twice over — it omitted
+  `allowDefaultFallback` (which defaults to `true`) and then read the env var
+  directly inside a `catch {}`. Fixed in the same change; the legacy
+  `DEFAULT_RESTAURANT_ID` tenant's recipient list is deliberately unchanged, per
+  [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md).
 - ~~Saved templates persist client-side through the builder components rather than a
   server store~~ — **stale and wrong, corrected 2026-09-02.** The builders persisted
   *nowhere*: they made no network call and touched no storage (§10). A server store
@@ -204,7 +222,7 @@ never had:
 | The redesign's schedule rail distinguishes a failure from a wait | `schedulesKnown = data !== undefined` (`useCommsNextData.ts:94`) could not, so the rail printed *"The schedule list hasn't answered yet — —"* **forever**: `scheduled_reports` is created by no migration in `supabase/migrations/` and the endpoint 500s every time. The **legacy page held this distinction** (`Communications.tsx:269,293-299`) and the rebuild deleted it | **FIXED 2026-09-02 (ADR 0083)** — `schedulesError` restored, with legacy's sentence |
 | The redesign's error banner covers the page | It covered **one query of five** (`isError: historyQ.isError`, `:96`); the other four rendered a failure as the em dash reserved for "has not answered", and "Try again" was unreachable unless the history itself failed | **FIXED 2026-09-02 (ADR 0083)** — one banner naming every failed source, a per-figure failed state, and a retry that refetches all five |
 | The redesign's caches are tenant-scoped | Two were not — `['procurement','history']` and `['report-schedules']` — while the sibling hook in the same file was. The gateway **never reads `X-Restaurant-Id`** (grep finds it only in test fixtures), so scoping is JWT-only, and `AuthContext.tsx:433` catches a failed switch and proceeds on a fallback that does nothing | **FIXED 2026-09-02 (ADR 0083)**, and held by `scripts/check_windowed_figures.py` W6 + the new W7 |
-| SMS templates "stage for the messaging channel" (`CommunicationsNext.tsx:333`) | All 27 production `procurement_conversations` rows are `channel='email'`; `POST /communications/sms` exists in the gateway but **no web client calls it** | **FIXED 2026-09-02 (ADR 0083)** — workshop kept (Save is now real), copy states no SMS sender is reachable from this page |
+| SMS templates "stage for the messaging channel" (`CommunicationsNext.tsx:333`) | All 27 production `procurement_conversations` rows are `channel='email'`; `POST /communications/sms` existed in the gateway with **no web client calling it** — and was **deleted the same day by [ADR 0084](../decisions/0084-the-communications-gateway-says-what-it-did.md)**, so there is now no raw SMS route at all | **FIXED 2026-09-02 (ADR 0083)** — workshop kept (Save is now real), copy states no SMS sender is reachable from this page |
 
 | Claim | Evidence |
 |---|---|

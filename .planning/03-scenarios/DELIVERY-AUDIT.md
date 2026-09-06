@@ -130,7 +130,14 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **195 of 215** | 43 |
+| **Remaining, baselined and non-growing** | **193 of 215** | 43 |
+
+> **193 as of 2026-09-04** (`check_read_errors_not_swallowed.py`: 1039 files
+> scanned, 193 sites, 193 baselined, 0 allowlisted). ADR 0104 slice 2 removed one
+> — `documents.controller.ts`'s `vendor-attachments::signed`, whose `catch {}`
+> made "no file was stored" and "the file exists and could not be signed" the
+> same answer; the shared `signOriginal` now returns the reason with the null.
+> The baseline row was removed rather than lowered, per the shrink-only rule.
 
 > Was 207 across 44 files at adoption. Concurrent sessions fixed 4 of them
 > (`scheduled-tasks`/`procurement_orders`, `procurement`/`calendar_events` ×2,
@@ -163,14 +170,15 @@ reads as *"nothing to report"* forever.
 > the baseline with them, but did not update this table. The number
 > above is re-derived from `scripts/read_error_baseline.json`
 > (`total_sites: 195`, `total_files: 43`); the guard is the authority and this
-> row follows it, never the other way round.
+> row follows it, never the other way round. **Superseded: the table now reads
+> 193** — see the 2026-09-04 note above; the guard on this tree measures 193.
 
 Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
 falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
 row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
 [ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
 
-The 195 are recorded in `scripts/read_error_baseline.json` and held by
+The 193 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it
 — so the number above can only shrink, and it cannot rot in prose the way the "~29" did.

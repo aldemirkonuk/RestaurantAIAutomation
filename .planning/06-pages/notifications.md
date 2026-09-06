@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 ---
 
@@ -113,6 +113,27 @@ dashboard.md §7.
 - Agent-side notification writes were silently failing until 44.1d's fix — history
   in `v3.0-TECH-DEBT.md:95-131`; worth remembering when interpreting old gaps in
   this inbox.
+- **The per-channel switches on this page did not reach the router until
+  2026-09-02** ([ADR 0098](../decisions/0098-a-preference-is-read-from-the-column-it-lives-in.md)).
+  `notifications.service.ts:1051-1053` read `email_enabled`/`push_enabled`/
+  `sms_enabled` correctly, so the page rendered a user's choice faithfully — but
+  `RecipientResolverService.checkChannelPreference`, which actually decides who
+  gets sent to, never read those columns at all, and the two category arrays it
+  *did* name (`order_channels`, `report_channels`) have never existed in any
+  migration. Because the row is fetched with `.select("*")`, that produced no
+  error — just `undefined`. On the stock row it inverted both channels at once:
+  **email refused to users who had switched it on, SMS delivered to users who had
+  switched it off**. Anyone reading old reports of "I turned SMS off and still get
+  texts" should treat them as real, not as user error.
+- **Routing is still not category-aware** — the resolver takes a union across
+  three of the six per-category channel arrays and ignores the other three, so
+  enabling email for financial reports also enables it for low stock. Tracked as
+  **OD-121**; it needs a founder call on which category each of the seven
+  `resolveRecipients` call sites belongs to.
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** ~~`inventory_alert_state` was advanced for 7 wines while `notifications` holds 2 rows covering 3 — `low-stock-alerts.service.ts:200-215` stamps the ledger before the 15-minute cooldown at `:225-235`, so a suppressed crossing reads as alerted and the four silent wines wait for the once-daily digest (`:127-143`; absence 8). Raising a par through PATCH raises no alert (`inventory.service.ts` hooks only at `:330`, `:451`; defect 8).~~ **Absence 8 closed (#313):** `last_alerted_at`/`alert_count` are stamped only after an inbox row exists, and a crossing HELD by the cooldown or by prefs now has its own record (`last_held_at`, `last_held_reason`), its own read (`GET /notifications/low-stock/held/:rid`) and a banner on this page naming the wines — "the digest will cover it tonight" and "nothing is wrong" no longer render the same. Pre-2026-09-06 timestamps are NOT backfilled and are unreliable; the column comment says so. **Defect 8 closed separately (#312).** Also closed here: the inbox no longer folds two low-stock alerts about different wines into one row (intel finding 3). The page's "7 Wines Need Restocking" recovers the truth by live read; the stream does not.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** `lib/notificationStack.ts:36-37` keys every `metadata.mode === 'instant'` notification to one stack regardless of the wines it concerns; `pickStackWinner` keeps the higher count and the Alvear Solera 1927 alert (unread, high) never renders — "TODAY (1)" over 2 rows (defect 3). "Unread 3" over 2 rows is unexplained (`Notifications.tsx:307` counts before the fold).
 
 ## 10. Maturity
 
@@ -141,6 +162,10 @@ The 10-second poll and the detail-panel resync are implemented as documented.
 `openRouteForAction` now returns `/communications` for `gmail_send` and
 `gmail_contextual`, with a comment explaining that no id can be handed over
 (`OneTapActionCenter.tsx:135-141`).
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** both notifications that did land carry `delivery_status.email = {ok:false, error:"no_recipients"}` — absence recorded as absence, which is the shape this page is supposed to have. **2026-09-05 (#313):** that shape now reaches the alert ledger too. Email delivery is deliberately NOT the test of whether an owner was told — the inbox row is — which is why those two `ok:false` outcomes were correct and are still recorded as failures.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** tiles and the TODAY section were read against the rows: 2 real notifications, 1 visible. A manager reading this page the morning after does not see one of the two alerts the night produced.
 
 ## 11. Data flow
 

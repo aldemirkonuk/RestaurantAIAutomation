@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[wines]]"]
 ---
 
@@ -83,15 +83,19 @@ none user-visible. (`wineops.sommelier.model` is a localStorage key, `SommelierA
 
 ## 9. Gaps
 - **The chat backend does not exist**: with `/api/v1/sommelier/chat` unregistered, every
-  message takes the catch path (`SommelierAI.tsx:189-241`) — a canned low-stock answer
-  computed client-side if the message mentions stock, otherwise "currently unavailable".
-  The page's honest state is a local rules bot with an unshipped brain.
+  message takes the catch path — a low-stock answer computed client-side if the message
+  mentions stock, otherwise "currently unavailable". The page's honest state is a local
+  rules bot with an unshipped brain. Since #317 the catch path reads REAL inventory and
+  labels itself as the fallback in its first line, so the rules bot no longer wears the
+  sommelier's voice — but the brain is still unshipped.
 - `v3.0-TECH-DEBT.md:391-392` ("model selector decorative, Copy/ThumbsUp/Regenerate
   dead") is **partly stale**: the persona is now sent in the request (`:178`) and Copy
   works; thumbs feedback is still dead (§5).
 - Wine context caps at 50 wines (`:159`) — silently partial for larger cellars.
 
 ---
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the page calls the Python orchestrator directly from the browser (`SommelierAI.tsx:156,173-174`; down locally) and answers every question — three manager questions and one guest pairing — with the same honest "currently unavailable" message; ~~the offline fallback for low-stock/reorder questions (`:195-233`) is dead code because `lib/wine-library.ts:38-39` hardcodes `liveStock: null, threshold: 6` for every wine (defect 4)~~ **— defect 4 closed (#317).** The page now reads this restaurant's inventory for both the fallback and the orchestrator's wine context, so the branch has real rows, and the library mapper stops asserting a par. **The register understated the worse half:** `threshold: 6` was not merely blocking the fallback — it was being SENT to the orchestrator as this venue's reorder point on all 50 wines of every request. The fallback survives but can no longer be mistaken for an answer: every reply opens by saying the sommelier is unavailable, it answers only the stock question, wines with no par are counted as "not checked" rather than "fine", and a failed inventory read gets its own reply rather than reading as "nothing is low". No guest-facing route exists in `App.tsx`; the only public route is the vendor's B2B catalogue.
 
 ## 10. Maturity — **hollow**
 
@@ -123,6 +127,8 @@ the model call is not.
   FAB (`guidance/components/WineAgentFab.tsx:37-39`), the Help card (`pages/Help.tsx:173-176`)
   and the Learn panel (`guidance/components/LearnPanel.tsx:227-233`) all land here. The
   concept's entire surface area now resolves to a page whose backend is missing.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** still hollow, and honestly so: a failure message rather than a fabricated answer. With a night of real sales on the tenant, the product cannot answer "what sold best" from any surface a manager would ask.
 
 ## 11. Data flow
 

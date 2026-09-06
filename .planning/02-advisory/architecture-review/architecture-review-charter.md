@@ -331,7 +331,7 @@ rebuild from the source of truth, diff against reality, exit non-zero.
 - **The evaluation seam** — [[agent-evaluation-gates-charter]] (AI Orchestration,
   operations) vs [[evaluation-doneability-charter]] / [[research-math-charter]]
   (Research & Math, methodology). Numbered **OD-21** at `teams/technology.md:845`, which
-  **collided** with the real OD-21 (Obsidian structural workflow, `OPEN-DECISIONS.md:145`,
+  **collided** with the real OD-21 (Obsidian structural workflow, `OPEN-DECISIONS.md:147`,
   already locked); now **TECH-F3** ([[FORK-REGISTRY]]). This function's position: the seam is a
   **layer-ownership question about L4**, it is exactly the kind of overlap that resolves
   into duplication if left alone, and the instruction already on record is the right one —
@@ -343,7 +343,7 @@ rebuild from the source of truth, diff against reality, exit non-zero.
   standing. We are a natural test case: an advisory function that produces no closed
   decisions is pure overhead.
 - **OD-11 / L4 schema detail** — AR-4 was unfixable until the NF column contract existed;
-  that fork has since closed on Path C (OD-11, `OPEN-DECISIONS.md:124`).
+  that fork has since closed on Path C (OD-11, `OPEN-DECISIONS.md:126`).
 - **OD-19 / OD-20** — AR-5's incident half. Not ours; named so the seam is legible.
-  Half of it has since closed (OD-20, `OPEN-DECISIONS.md:118` — already fixed and never
-  closed); OD-19 (`OPEN-DECISIONS.md:32`) stays open.
+  Half of it has since closed (OD-20, `OPEN-DECISIONS.md:120` — already fixed and never
+  closed); OD-19 (`OPEN-DECISIONS.md:33`) stays open.
