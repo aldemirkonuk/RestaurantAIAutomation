@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Logger,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -57,6 +58,8 @@ type AuthedUser = { userId: string; restaurantId: string };
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/documents")
 export class DocumentsController {
+  private readonly logger = new Logger(DocumentsController.name);
+
   constructor(
     private readonly intake: DocumentIntakeService,
     private readonly db: DatabaseService,
@@ -429,12 +432,37 @@ export class DocumentsController {
         result.documentId,
         user.userId,
       );
+      /**
+       * A FAILED BOOKING DOES NOT FAIL THE COUNT — AND IS NOT HIDDEN EITHER.
+       *
+       * Measured live on 2026-09-06 against a database that did not yet carry
+       * this stop's migration: the booking read failed, the endpoint answered
+       * 500, and the response carried no `deliveryId` — although the count AND
+       * the delivery were both already durable. The receiver's only move is to
+       * press the button again, which then 409s on the content hash. The door's
+       * whole promise is that one tap in a stairwell succeeds.
+       *
+       * So the count is 201 with the ids, and the booking's failure travels in
+       * the receipt: `failed: true`, `bottlesMoved: 0`, and the reason in words.
+       * That is the opposite of a silent success — a caller reading `booking`
+       * at all sees the failure, and one ignoring it sees zero bottles moved,
+       * never a number that did not happen.
+       */
+      booking = booked.ok
+        ? booked.value
+        : {
+            failed: true,
+            deliveryId,
+            documentId: result.documentId,
+            booked: [],
+            notBooked: [],
+            bottlesMoved: 0,
+            error: booked.error,
+          };
       if (!booked.ok)
-        throw new HttpException(
-          `The door count was recorded as ${result.documentId} and attached to delivery ${deliveryId}, but the stock was not booked: ${booked.error}`,
-          booked.status,
+        this.logger.error(
+          `door count ${result.documentId} was recorded and attached to delivery ${deliveryId} but booked no stock: ${booked.error}`,
         );
-      booking = booked.value;
     }
 
     return {
