@@ -248,3 +248,7 @@ count once each. Widths and the close-in-words rule come from `components/mudavy
 `sheet.css`.
 
 **Example data, not a tenant** — every name, figure and date in the specimens is invented for the drawing.
+
+## Next
+
+Sketch 103 (`103-overlay-experience/`) is the founder-reviewed experience layer inside these shapes — the contract for `BUILD-PROMPT.md` packet 5.
