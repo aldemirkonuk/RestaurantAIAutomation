@@ -30,6 +30,39 @@
  * row unanswered is a supported outcome — it is written as null, the sale
  * queues, and stock reads high until someone knows. That is the honest state,
  * and the queue counter at the top of the panel is what makes it visible.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102 row "POS buttons and stock") ─────
+ * SHAPE: `Sheet`. One queue, worked line by line, with the register still
+ * visible beneath — the reader has not left the list, they are working through
+ * it. A `Panel` would be wrong twice over: this is not a question answered and
+ * left, and it is not one decision but a session of them.
+ *
+ * No seal. Confirming a button's identity and its sale size writes a mapping
+ * row, not a ledger row: no stock moves at the moment of the write, and the
+ * effect is reversible by answering again. ADR 0112 rations the wax.
+ *
+ * WHAT THIS FILE ALREADY DID RIGHT, and the house branch keeps verbatim: three
+ * separate reads with three separate outcomes, so a failed read never renders
+ * as "nothing here"; a raw match score rather than a verdict; and an unanswered
+ * unit left visibly unanswered.
+ *
+ * WHAT IT COULD NOT SAY, and now does: a write that failed said so in a TOAST
+ * and nowhere else, so an operator who missed it saw a panel that looked
+ * settled. Every write's failure now lands on the paper, in place, with what
+ * did not happen — and a refusal (401/403) is its own state, because "you may
+ * not do this" and "the server broke" ask different things of the reader.
+ *
+ * Endpoints, all live:
+ *   POST /pos-hub/catalog-match/:restaurantId                     (:253)
+ *   POST /pos-hub/catalog-match/:restaurantId/proposals/approve   (:288)
+ *   POST /pos-hub/catalog-match/:restaurantId/proposals/:id/reject(:339)
+ *   POST /pos-hub/mappings/:restaurantId/sale-unit                (:204)
+ *   GET  /pos-hub/catalog-match/:restaurantId/proposals           (:277)
+ *   GET  /pos-hub/unresolved/:restaurantId                        (:355)
+ *   GET  /pos-hub/mappings/:restaurantId                          (:143)
+ * — apps/api-gateway/src/pos-hub/pos-hub.controller.ts.
+ *
+ * The legacy branch below is frozen and renders byte-for-byte as it shipped.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Loader2, RefreshCw, X } from "lucide-react";
@@ -48,6 +81,9 @@ import {
   type UnresolvedLinesResponse,
 } from "../../services/api/posHub";
 import { cn } from "../../lib/utils";
+import { Sheet } from "../mudavym/Sheet";
+import { useMudavymShell } from "../../lib/mudavym/shellGround";
+import "./inventory-mudavym.css";
 
 interface Props {
   isOpen: boolean;
@@ -112,6 +148,14 @@ export function PosMappingPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [matching, setMatching] = useState(false);
+  const shell = useMudavymShell();
+  /* A write's failure, on the paper rather than only in a toast. House branch
+     only — the legacy render never reads it, so it stays byte-identical. */
+  const [wrote, setWrote] = useState<{
+    what: string;
+    message: string;
+    denied: boolean;
+  } | null>(null);
 
   const invById = useMemo(() => {
     const m = new Map<
@@ -191,8 +235,19 @@ export function PosMappingPanel({
       return next;
     });
 
+  /** Keep a write's failure on the paper. A toast is a thing you can miss. */
+  const noteWriteFailure = (what: string, e: unknown) => {
+    const status = (e as { response?: { status?: number } })?.response?.status;
+    setWrote({
+      what,
+      message: errText(e),
+      denied: status === 401 || status === 403,
+    });
+  };
+
   const runMatch = async () => {
     setMatching(true);
+    setWrote(null);
     try {
       const res = await runCatalogMatch(restaurantId);
       toast.success(
@@ -202,6 +257,7 @@ export function PosMappingPanel({
       onChanged?.();
     } catch (e) {
       toast.error(`Catalog match failed: ${errText(e)}`);
+      noteWriteFailure("The POS catalog was not re-read", e);
     } finally {
       setMatching(false);
     }
@@ -222,6 +278,7 @@ export function PosMappingPanel({
       });
     if (items.length === 0) return;
     setBusy(true);
+    setWrote(null);
     try {
       const res = await approveProposals(items, restaurantId);
       const unanswered = items.filter((i) => i.sale_volume_ml == null).length;
@@ -246,6 +303,7 @@ export function PosMappingPanel({
       onChanged?.();
     } catch (e) {
       toast.error(`Approve failed: ${errText(e)}`);
+      noteWriteFailure("Nothing was confirmed", e);
     } finally {
       setBusy(false);
     }
@@ -271,6 +329,7 @@ export function PosMappingPanel({
       onChanged?.();
     } catch (e) {
       toast.error(`Could not record the unit: ${errText(e)}`);
+      noteWriteFailure("The sale size was not recorded", e);
     } finally {
       setBusy(false);
     }
@@ -283,12 +342,318 @@ export function PosMappingPanel({
       await load();
     } catch (e) {
       toast.error(`Reject failed: ${errText(e)}`);
+      noteWriteFailure("The proposal was not rejected", e);
     } finally {
       setBusy(false);
     }
   };
 
   const summary = unresolved.data?.summary;
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    const unanswered = [...selected].filter((id) => !answers[id]).length;
+    const nothingWaiting =
+      !proposals.error &&
+      !proposals.loading &&
+      proposalRows.length === 0 &&
+      noSaleVolume.length === 0 &&
+      stillUnmapped.length === 0;
+
+    return (
+      <Sheet
+        open={isOpen}
+        onClose={onClose}
+        label="POS buttons and stock. Confirming a button writes which wine it is and how much one sale removes. Leaving writes nothing."
+        eyebrow="The bridge"
+        title="POS buttons and stock"
+        zIndex={110}
+        action={
+          <button
+            type="button"
+            className="mdv-btn"
+            onClick={() => void runMatch()}
+            disabled={matching}
+          >
+            {matching ? "Reading…" : "Re-read the catalog"}
+          </button>
+        }
+        footer={
+          <span>
+            A button with no sale size is confirmed as the right wine and still moves no stock. That
+            is a supported answer, not an error.
+          </span>
+        }
+      >
+        <div className="mdv-form">
+          <p className="mdv-contract">
+            Two things stand between a POS button and a bottle leaving the shelf: which wine it is,
+            and how much one sale removes. Both are asked on the same row. Leaving writes nothing.
+          </p>
+
+          {wrote && (
+            <div className="mdv-alert" role="alert">
+              <p className="mdv-alert__head">{wrote.denied ? "Not permitted" : "Not written"}</p>
+              <p>
+                {wrote.denied
+                  ? `This account is not permitted to change the POS bridge. ${wrote.what.toLowerCase()}; every row below is as it was.`
+                  : `${wrote.what} — ${wrote.message}. Every row below is as it was.`}
+              </p>
+            </div>
+          )}
+
+          {/* The queue, in stock and money rather than row counts. */}
+          <div className="mdv-panelbox">
+            <p className="mdv-alert__head">Arrived and moved no stock</p>
+            {unresolved.error ? (
+              <p className="mdv-hintline">
+                The unresolved-line queue could not be read ({unresolved.error}). This is not a
+                claim that the queue is empty.
+              </p>
+            ) : unresolved.loading && !summary ? (
+              <p className="mdv-hintline">Reading the queue…</p>
+            ) : summary ? (
+              <>
+                <div className="mdv-figs">
+                  <span>
+                    <span className="mdv-fig__n">{summary.open_lines}</span>
+                    <span className="mdv-fig__l">POS lines</span>
+                  </span>
+                  <span>
+                    <span className="mdv-fig__n">{summary.qty_total}</span>
+                    <span className="mdv-fig__l">units unaccounted</span>
+                  </span>
+                  <span>
+                    <span className="mdv-fig__n">{summary.distinct_items}</span>
+                    <span className="mdv-fig__l">buttons</span>
+                  </span>
+                </div>
+                <span className="mdv-prov">
+                  Counted from the unresolved-line queue
+                  {summary.truncated ? " · read capped — this is a floor, not the total" : ""}
+                </span>
+              </>
+            ) : (
+              <p className="mdv-hintline">The queue has not answered yet.</p>
+            )}
+          </div>
+
+          {nothingWaiting && (
+            <p className="mdv-quiet">
+              Nothing is waiting. Every button the POS has sent is either mapped with a sale size or
+              was answered already. &ldquo;Re-read the catalog&rdquo; pulls the current button list
+              and matches it again.
+            </p>
+          )}
+
+          {/* ── 1. identity and unit, in one row ── */}
+          <div>
+            <span className="mdv-head">
+              <span>Waiting for you — {proposalRows.length}</span>
+              {selected.size > 0 && (
+                <button
+                  type="button"
+                  className="mdv-link"
+                  onClick={() => void approveSelected()}
+                  disabled={busy}
+                >
+                  {busy ? "Confirming…" : `Confirm ${selected.size}`}
+                </button>
+              )}
+            </span>
+
+            {proposals.error && (
+              <p className="mdv-hintline">
+                Match proposals could not be read ({proposals.error}) — not the same as having none.
+              </p>
+            )}
+            {!proposals.error && proposals.loading && proposalRows.length === 0 && (
+              <p className="mdv-hintline">Reading the proposals…</p>
+            )}
+            {!proposals.error && !proposals.loading && proposalRows.length === 0 && (
+              <p className="mdv-hintline">
+                No buttons are waiting on an answer from you.
+              </p>
+            )}
+
+            <div className="mdv-picks">
+              {proposalRows.map((p) => {
+                const cand = p.candidate_inventory_id
+                  ? invById.get(p.candidate_inventory_id)
+                  : null;
+                const a = answers[p.id];
+                const bottleMl = cand?.bottleMl ?? 750;
+                const pourMl = cand?.pourMl ?? null;
+                return (
+                  <div
+                    key={p.id}
+                    className="mdv-pick"
+                    aria-checked={selected.has(p.id)}
+                    role="group"
+                    style={{ alignItems: "flex-start" }}
+                  >
+                    <span style={{ minWidth: 0, flex: "1 1 auto" }}>
+                      <span className="mdv-pick__label" style={{ whiteSpace: "normal" }}>
+                        {p.item_name}
+                      </span>
+                      <span className="mdv-pick__sub">{p.external_item_id}</span>
+                      {cand ? (
+                        /* The engine's proposal and its RAW score — never a
+                           verdict dressed as one. */
+                        <span className="mdv-grey">
+                          proposes {cand.name} ·{" "}
+                          {p.confidence != null
+                            ? `${Math.round(p.confidence * 100)}%`
+                            : "no score recorded"}{" "}
+                          · {p.match_method}
+                        </span>
+                      ) : (
+                        <span className="mdv-grey">
+                          no inventory row matched — add the wine first
+                        </span>
+                      )}
+                      <span style={{ display: "block", marginTop: 6 }}>
+                        <span className="mdv-label">How much does one sale remove?</span>
+                        <span className="mdv-seg">
+                          <button
+                            type="button"
+                            className="mdv-seg__opt"
+                            aria-pressed={a?.label === "bottle"}
+                            onClick={() => setAnswer(p.id, "bottle", bottleMl)}
+                          >
+                            Bottle {bottleMl}ml
+                          </button>
+                          <button
+                            type="button"
+                            className="mdv-seg__opt"
+                            aria-pressed={a?.label === "glass"}
+                            onClick={() => setAnswer(p.id, "glass", pourMl ?? 150)}
+                          >
+                            Glass {pourMl ?? 150}ml
+                          </button>
+                          <button
+                            type="button"
+                            className="mdv-seg__opt"
+                            onClick={() => void reject(p.id)}
+                            disabled={busy}
+                          >
+                            Not this wine
+                          </button>
+                        </span>
+                        {!a && (
+                          <span className="mdv-hintline">
+                            Unanswered. Nothing is guessed here — a size nobody chose is written as
+                            absent, and the sale queues.
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      aria-label={`Confirm ${p.item_name}`}
+                      checked={selected.has(p.id)}
+                      disabled={!p.candidate_inventory_id}
+                      onChange={() => toggle(p.id)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {selected.size > 0 && unanswered > 0 && (
+              <p className="mdv-consequence">
+                <strong>{unanswered}</strong> of the buttons you ticked have no sale size. They will
+                be confirmed as the right wine, and their sales will keep queueing and move no stock
+                until a size is set.
+              </p>
+            )}
+          </div>
+
+          {/* ── 2. identified, but nobody said how much a sale removes ── */}
+          {noSaleVolume.length > 0 && (
+            <div>
+              <span className="mdv-head">
+                <span>Identified, no sale size — {noSaleVolume.length}</span>
+              </span>
+              <div className="mdv-lines">
+                {noSaleVolume.map((g) => {
+                  const m = mappingForQueued(g);
+                  return (
+                    <div
+                      key={`${g.source}:${g.external_item_id}:${g.item_name}`}
+                      className="mdv-line"
+                      data-owed="true"
+                      style={{ flexWrap: "wrap" }}
+                    >
+                      <span className="mdv-line__name">
+                        {g.item_name}
+                        <span className="mdv-line__sub">
+                          {g.occurrences} sale{g.occurrences !== 1 ? "s" : ""}, {g.qty_total} unit
+                          {g.qty_total !== 1 ? "s" : ""} — none removed from stock
+                        </span>
+                      </span>
+                      {m ? (
+                        <span className="mdv-seg">
+                          <button
+                            type="button"
+                            className="mdv-seg__opt"
+                            onClick={() => void answerQueuedUnit(m.id, "bottle")}
+                            disabled={busy}
+                          >
+                            One bottle
+                          </button>
+                          <button
+                            type="button"
+                            className="mdv-seg__opt"
+                            onClick={() => void answerQueuedUnit(m.id, "glass")}
+                            disabled={busy}
+                          >
+                            One glass
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="mdv-line__fig">
+                          {mappings.error
+                            ? "mappings could not be read — no answer can be offered here"
+                            : "no mapping row found for this button"}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── 3. arrived, unrecognised ── */}
+          {stillUnmapped.length > 0 && (
+            <div>
+              <span className="mdv-head">
+                <span>Not recognised — {stillUnmapped.length}</span>
+              </span>
+              <p className="mdv-hintline">
+                These rang up and matched nothing in inventory. Food and drinks that are not wine
+                belong here and are safe to ignore; a wine here needs adding to inventory first,
+                then &ldquo;Re-read the catalog&rdquo;.
+              </p>
+              <div className="mdv-lines">
+                {stillUnmapped.map((g) => (
+                  <div
+                    key={`${g.source}:${g.external_item_id}:${g.item_name}`}
+                    className="mdv-line"
+                  >
+                    <span className="mdv-line__name">{g.item_name}</span>
+                    <span className="mdv-line__fig">
+                      <b>{g.qty_total}</b> unit{g.qty_total !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Sheet>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
