@@ -50,12 +50,103 @@
   color: var(--ink-2);
 }
 
+/* ── the shared overlay vocabulary these files could not reach ────────────── */
+/* Everything in this block is declared IDENTICALLY in
+   `components/locations/locations-mudavym.css`, and it belongs in
+   `components/mudavym/sheet.css`, where every overlay would share one copy.
+   That file is owned by the packet 0 primitive rebuild this session, so
+   hoisting into it would be two sessions editing one file.
+
+   This is not a stylistic duplication: it was MEASURED. The carry sheet was
+   opened in a browser on 2026-09-06 and its library rows rendered as centred,
+   unboxed, wrapping text — `.mdv-pick` had no declaration on this page,
+   because the only file that declared it is loaded by the four locations
+   dialogs and by nothing else. A class name that resolves on one page and to
+   nothing on another is worse than a name that does not exist.
+
+   Flagged in the packet 1 report as a one-line merge: move this block into
+   sheet.css and delete both copies. */
+
+/* A boxed, selectable row. `.mdv-item` is a flush palette row; a pick is a
+   control with a boundary, inside a form's 16px inset. */
+.mdv-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 11px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-family: var(--mdv-sans);
+  cursor: pointer;
+  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-pick:hover {
+  border-color: var(--seal-ring);
+}
+/* The seal marks the row that is chosen — one chromatic colour, ADR 0042. */
+.mdv-pick[aria-pressed='true'],
+.mdv-pick[aria-checked='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+}
+.mdv-pick:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.mdv-pick__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mdv-pick__sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.mdv-pick__mark {
+  flex: none;
+  color: var(--seal);
+}
+.mdv-picks {
+  display: grid;
+  gap: 6px;
+}
+
+/* A count or a "none yet" said quietly, next to the actions. */
+.mdv-tally {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Two fields on one line, collapsing on a narrow sheet. */
+.mdv-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 420px) {
+  .mdv-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── a consequence, before the seal ──────────────────────────────────────── */
-/* Identical to the declaration in `components/locations/locations-mudavym.css`.
-   It belongs in `components/mudavym/sheet.css`, where both callers would share
-   one copy — but that file is owned by the packet 0 primitive rebuild this
-   session, so hoisting it here would be two sessions editing one file. Flagged
-   in the packet 1 report as a one-line merge: move it up, delete both copies. */
 .mdv-consequence {
   margin: 0;
   padding: 8px 11px;
