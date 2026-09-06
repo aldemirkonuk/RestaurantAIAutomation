@@ -40,9 +40,9 @@ page's ground). Filter by shape and by status.
 | | |
 |---|---|
 | Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 36 |
+| Built on the primitive | 37 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 7 |
+| Owed — an act the rebuilt page does not yet offer | 6 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
@@ -130,7 +130,7 @@ page's ground). Filter by shape and by status.
 | `/inventory` | Spot count | sheet · seal | Migrate | Opened from the row expander; one bottle's count is one record. | `pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)` |
 | `/inventory` | Receipt record | — | Retires | /receipts is the receipts desk (ReceiptsNext). /inventory links there and never overlays it. | `pages/inventory/command/ReceivingWorkspace.tsx:376` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Carry these bottles (from a menu scan) | sheet | Migrate | The same sheet as /inventory's, opened at its 'menu scan' start. | `pages/cellar/next/WineRegister.tsx imports components/wines/MenuScannerModal.tsx:21 (legacy, fixed-inset)` |
-| `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Is this the bottle? | panel | Owed | A question the reader must answer before anything is written. | `components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')` |
+| `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Is this the bottle? | panel | Built | A question the reader must answer before anything is written. BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: 'Yes, carry it' posts to /wines/submissions, where both legacy questions only moved rows in component state. The reading stays grey until a person takes it, and an UNSCORED field says so rather than reading as an unsure one. | `BUILT 2026-09-06 as pages/cellar/next/IsThisTheBottlePanel.tsx (was WineValidationModal.tsx:162 and AddWineModal.tsx:148)` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Photograph the label | panel | Target | A step answered once; the page stays dimmed beneath. | `components/scanner/CameraCapture.tsx:607 — also mounted by /get-started and the orders scanner` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Wine detail | — | Retires | The register row expands in place (sketch 095 — the house pattern for ledger tables). | `pages/WineLibrary.tsx:1297` |
 | `/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks` | Reorder wine | — | Retires | An order is written on /orders (What was agreed · Make this order repeat). | `pages/WineLibrary.tsx:1486` |

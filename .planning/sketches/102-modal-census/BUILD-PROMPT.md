@@ -226,11 +226,6 @@ A rebuilt page cannot do something its legacy page could. Build the act, not a s
 - **Carry this bottle · an auction lot** — sheet. The same sheet, a fourth start: an auction bottle is still one bottle entering the book.
   `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet`
 
-**`/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks`** — flag `mudavym_design_cellar`
-
-- **Is this the bottle?** — panel. A question the reader must answer before anything is written.
-  `components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')`
-
 **`/communications`** — flag `mudavym_design_communications`
 
 - **The house's reply, drafted** — panel · seal. A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).

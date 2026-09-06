@@ -1577,7 +1577,7 @@
     },
     {
      "name": "Is this the bottle?",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -1639,8 +1639,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question the reader must answer before anything is written.",
-     "source": "components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')",
+     "why": "A question the reader must answer before anything is written. BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: 'Yes, carry it' posts to /wines/submissions, where both legacy questions only moved rows in component state. The reading stays grey until a person takes it, and an UNSCORED field says so rather than reading as an unsure one.",
+     "source": "BUILT 2026-09-06 as pages/cellar/next/IsThisTheBottlePanel.tsx (was WineValidationModal.tsx:162 and AddWineModal.tsx:148)",
      "acts": null,
      "went": null,
      "fork": null
