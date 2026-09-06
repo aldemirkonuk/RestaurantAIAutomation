@@ -2,6 +2,7 @@ import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryService } from "./delivery.service";
 import { DeliveryClockService } from "./delivery-clock.service";
+import { DeliveryStockService } from "./delivery-stock.service";
 import { makeMockDb, makeMockNotifications, MockDb } from "./delivery-mock";
 
 /**
@@ -64,6 +65,7 @@ describe("DeliveryService", () => {
       db.client as unknown as DatabaseService,
       clocks,
       notifications as unknown as NotificationsService,
+      new DeliveryStockService(db.client as unknown as DatabaseService),
     );
   });
 
@@ -573,7 +575,7 @@ describe("DeliveryService", () => {
       ).toEqual([]);
     });
 
-    it("verifies from AGREED, records the human, and touches NO stock or cost", async () => {
+    it("verifies from AGREED, records the human, and settles cost and never quantity", async () => {
       db.answers.deliveries = {
         data: deliveryRow({ state: "AGREED" }),
         error: null,
@@ -595,15 +597,14 @@ describe("DeliveryService", () => {
         state: "VERIFIED",
         verified_by: "u1",
       });
-      // ADR 0103 A1/A5: the door path is still the only writer of stock on this
-      // build, and `cost_state` has no writer at all. Verify must not become the
-      // first one, marking lots final that nothing marked provisional.
+      // ADR 0103 A1, AS BUILT 2026-09-06: verification settles COST, never
+      // quantity. It writes no lot and no ledger row of its own — the cost goes
+      // through `finalise_delivery_cost`, which moves money and not bottles.
+      // With no booked stock on this delivery there is nothing to settle, and
+      // the sentence says so rather than reporting a silent success.
       assertNoStockWrites();
-      expect(
-        db.writes.some((w) => String(w.payload).includes("cost_state")),
-      ).toBe(false);
       if (res.ok)
-        expect(res.value.stockUntouched).toMatch(/Nothing was posted/);
+        expect(res.value.costNote).toMatch(/booked no stock at the door/);
     });
 
     it("is idempotent — a second verify returns the first stamp and writes nothing", async () => {

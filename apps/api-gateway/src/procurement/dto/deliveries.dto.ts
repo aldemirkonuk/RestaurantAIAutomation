@@ -144,6 +144,14 @@ export class DoorCountLineDto {
   @IsOptional()
   @IsInt()
   formatMl?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The restaurant item this line is about (ADR 0103 A1). Supply it and the count BOOKS STOCK against the delivery, provisionally costed. Leave it out and the line is recorded and reported as not booked, with the reason — it is never matched to an item by its description, because a wrong guess puts the bottles on the wrong wine.",
+  })
+  @IsOptional()
+  @IsUUID()
+  inventoryId?: string;
 }
 
 export class DoorCountDto {
