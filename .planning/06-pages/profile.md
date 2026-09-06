@@ -1024,7 +1024,7 @@ anything, because an absent seal is refused before the instrument is read.
 > `pages/profile/next/ProfileNext.tsx:412` and twice inside `pages/profile/next/PaymentRegister.tsx`,
 > plus the shared `StripeCardPanel` mounted **inline** rather than in a portal. The absence is a
 > census coverage gap, not a page without overlays; it is filed for the census owner in
-> [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+> [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md).
 
 | Surface | Shape today | Contract sentence | Four states, denied included | Ceremony | Status |
 |---|---|---|---|---|---|
@@ -1469,7 +1469,7 @@ credentials, which restaurants you belong to, and the exit.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. A **step-up enrolment sheet** on this page — "How this house knows it is you": devices, passkey enrolment, TOTP and the manager's four digits. The two-hour step-up assumes a credential exists and nothing enrols one. **packet 4**

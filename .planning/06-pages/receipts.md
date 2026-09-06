@@ -362,7 +362,7 @@ chase never leaves the building (§10). "Claim → requested" reads as "we asked
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/receipts/next/SwipeToConfirm.tsx:19` — `TRAVEL` **stays 96**; add the resistance curve `p(1 - 0.22p)`, the ghost seal during the drag, the `stamp` 360 landing and the `tuck` 300 retreat with "Released at N % — nothing confirmed." **packet 5**

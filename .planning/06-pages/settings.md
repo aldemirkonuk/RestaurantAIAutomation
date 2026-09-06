@@ -1388,7 +1388,7 @@ that flipping something changed something.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `lib/mudavym/motion.ts:109` — the `tuck` docstring names toggle thumbs unconditionally while the condition it states is "objects that move under a finger". This page's thumb snaps after a discrete click. Correct the docstring, not the page. **packet 3**

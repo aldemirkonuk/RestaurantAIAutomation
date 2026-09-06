@@ -287,7 +287,7 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 > `PAGES-MAP.md` maps `/documents/:id` to `[[receipts]]` instead — the two disagree, and this note
 > wins, because it is where the census's own generated subsection already lands. The
 > correction is filed for the PAGES-MAP owner in
-> [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md). This also settles the
+> [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md). This also settles the
 > "there is no page note for `/document`" finding: there is, and it is this one.
 
 Neither route carries a live overlay. `/documents-reports` has one legacy preview that retires into
@@ -326,7 +326,7 @@ the reading pane; `/documents/:id` has none — `CanonicalSheet` is a page secti
 | Tab switch (`pages/documents/next/CanonicalDocumentPage.tsx:449-471`) | instant | `turn` 420 on the pane, opacity plus 5 px — a document's sections are leaves, and this is `/wines`' leaf and `/settings`' register | (a) `settle` 320 — a section of the same document is not a new row; (b) an indicator travel only — a good addition, not a replacement | owed to **packet 3**, after the guard |
 | Line arithmetic and the tie-out | nothing | build `sig-09`: extensions written left to right on a clip over 190 ms, the em dash never moving, rules drawn right to left on `settle` 220 with the second stroke at +90 ms, and **no second stroke until the price is provable**; the provable total on `tally` | (a) a total plus a warning chip — this is the page whose whole job is provenance; (b) animate every figure — then the unknown looks like the known | owed to a page pass, after the guard |
 | Print, back, refetch, the error banner | instant; a label change; `role="alert"` with no motion | keep all four. The refetch's label-only change is the house's anti-spinner rule, and the error banner is a fact, not an event | a spinner (waiting would look like progress); a shake; a slide-in | no change |
-| A `MOTIONS.md` for `pages/documents/next/` | does not exist | **write one when the first motion lands** — every other rebuilt page has a motion record, or a file saying why it has none. Silence reads as absence-reported-as-health | leave it — the guard in ADR 0133 is written to go red on exactly this | owed to **packet 3** |
+| A `MOTIONS.md` for `pages/documents/next/` | does not exist | **write one when the first motion lands** — every other rebuilt page has a motion record, or a file saying why it has none. Silence reads as absence-reported-as-health | leave it — the guard in ADR 0134 is written to go red on exactly this | owed to **packet 3** |
 
 ## 2. Entry
 
@@ -529,7 +529,7 @@ is findable months later — reports, invoices, receipts, vendor correspondence.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/documents-reports/next/DocumentsReportsNext.tsx` — first open `settle` 320, switching to a different report `turn` 420 (the open-versus-switch rule). **packet 3**

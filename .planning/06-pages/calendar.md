@@ -1203,13 +1203,13 @@ kind should not survive another pass.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/calendar/next/CalendarNext.tsx:212` — delete `{ easing: settle.easing, ms: 420 }`, use the `settle` token (320). **packet 3**
 2. `pages/calendar/next/TimeGrid.tsx:21` imports the token by relative path while the rest of the page uses the `@/lib/mudavym` barrel; one import path. **packet 3**
 3. "Ask the day-book" must state its blast radius — "It would change one entry and draft one letter" — before the hold. *target*
-4. **Founder fork:** the entry's delete keeps the wax under the ration rule's second clause. If a day-book entry instead joins F10's undo-after list it becomes reversible and drops to a plain control. See ADR 0133.
+4. **Founder fork:** the entry's delete keeps the wax under the ration rule's second clause. If a day-book entry instead joins F10's undo-after list it becomes reversible and drops to a plain control. See ADR 0134.
 
 1. ~~**Move reminders server-side.**~~ — **done 2026-09-03**
    ([ADR 0109](../decisions/0109-a-reminder-is-the-houses-job-not-the-browsers.md)); see §1b

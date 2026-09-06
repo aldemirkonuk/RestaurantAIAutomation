@@ -174,7 +174,7 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 
 Two surfaces are nonetheless **owed** to this route by
 [ADR 0112](../decisions/0112-one-modal-policy-three-shapes-one-primitive.md)'s authority rule and
-by [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md):
+by [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md):
 
 | Owed surface | Shape | Contract sentence | Why it is owed | Status |
 |---|---|---|---|---|
@@ -335,7 +335,7 @@ delivery day while the request behind it is rejected.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/receiving/next/RcCreditDrafts.tsx:178` — wire packet 0's `Denied` and `Refused` to the credit-request seal. **packet 4**

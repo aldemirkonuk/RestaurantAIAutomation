@@ -376,7 +376,7 @@ keep it true — count what drifted, verify what arrived.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/inventory/command/**` — **add the reduced-motion guard, ungated.** Zero hooks and zero media queries in the whole directory today; it is the one change on this page that is safe with the flag off, because it only removes motion. **packet 3**

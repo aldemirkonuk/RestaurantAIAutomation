@@ -252,7 +252,7 @@ rather than faked into a column (`receiving.service.ts:36-42`).
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/receiving/next/DoorNext.tsx` — **"We did not accept it"**, a sealed fourth question at the door. Nothing enters the book and the vendor is told. The highest-consequence door act has no surface anywhere in the 120 census rows. **packet 4**

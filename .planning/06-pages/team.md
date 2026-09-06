@@ -374,7 +374,7 @@ head of the build order (ledger, then grants, then step-up, then seal, then brea
 |---|---|---|---|---|
 | Control, chip and row hover | `ink` 160 (`pages/team/next/team-next.css`) | keep | — | no change |
 | Sheet, Panel, Popover | the primitive's tokens, not re-declared (`team/next/MOTIONS.md:11`) | keep — **this is the correct pattern and the house's model**: a page that declares no motion of its own is a page that cannot drift | — | no change |
-| Row expand | **refused** — "a table whose rows change height under the cursor is a table you lose your place in" | keep the refusal, **and record it as one of the house's two approved exceptions to the canonical row expand** (the other is `/wines`' wine register). Nine pages do the opposite, so a silence here reads to the next builder as an oversight | (a) adopt `settle` `0fr to 1fr` — would reflow the week grid; (b) a sheet for every row — already the case | recorded here; the house rule is in ADR 0133 |
+| Row expand | **refused** — "a table whose rows change height under the cursor is a table you lose your place in" | keep the refusal, **and record it as one of the house's two approved exceptions to the canonical row expand** (the other is `/wines`' wine register). Nine pages do the opposite, so a silence here reads to the next builder as an oversight | (a) adopt `settle` `0fr to 1fr` — would reflow the week grid; (b) a sheet for every row — already the case | recorded here; the house rule is in ADR 0134 |
 | Re-publish, copy-week | `pour` 620 to `stamp` 360 — the two acts that DELETE before they write | keep. Under the mechanical ration rule these redeem no seal but are irreversible with no server to ask, which is the rule's second clause | (a) wax on first publish too — a first publish destroys nothing; (b) a plain confirm on all three — loses the destructive-versus-constructive distinction | no change |
 | Drag a person into a shift (`sig-27`, the shift tide) | not built | build it **only with a single-pointer, non-dragging alternative.** WCAG 2.2 SC **2.5.7 Dragging Movements (Level AA)** requires that all functionality using a drag be achievable by a single pointer without dragging; a keyboard path is not one | (a) build the drag alone — a new Level AA failure, deliberately added; (b) FLIP the chip only — says a person moved, not that coverage changed; (c) a count badge — the numbers are already there and nobody reads them | owed to a page pass |
 | A call-out opens a gap (`acc-09`) | not built | same condition — a non-dragging pointer path, or it does not ship | (a) a row recolour — a hole is spatial; (b) a toast — missable | owed to a page pass |
@@ -712,7 +712,7 @@ sales-ingest based, which is the permitted kind. Keep them apart.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/team/next/WeekGrid.tsx:424` — "Offer cover" is a send inside an anchored popover, which the ratified rule of 2026-09-04 forbids. The popover offers; a panel sends. *page pass*

@@ -1124,7 +1124,7 @@ the **judged** result: the house vocabulary as measured, the cross-page rules th
 the shell (which has no page note of its own), and the guards the whole thing needs. The per-page
 decisions are in each note's new `§1c Motions decided` and `§1b Overlays decided`; the rule changes
 and the founder's forks are in
-[ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+[ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md).
 
 #### The house vocabulary, as measured
 

@@ -388,7 +388,7 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 | Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
 |---|---|---|---|---|---|---|---|
 | A letter from the house | sheet **wide** 640, **seal** | "Write one letter. The seal sends it from the house's own address; the Mudavym disclaimer is appended and cannot be removed. Leaving keeps a draft on the thread." | *error*, drawn and kept verbatim: "The letter was not sent. Nothing was queued and nothing left the house." · *denied* "You can see this, but only an owner or a manager may write from the house. Ask {name}." | **the seal, before.** A send is on the seal-before side; there is no undo after | full detent, the hold pinned above the keyboard, `repositionInputs` on | `tuck` 300 | **built** — `pages/communications/next/Compose/ComposeSheet.tsx:209` |
-| Templates | sheet **wide** 640 | "The house's letters, and the writing of one. Saving writes the template; using one opens the composer and sends nothing." | *error* "The template was not saved. The library is unchanged." | plain | full detent | `tuck` 300 | **built** — `TemplateSheet.tsx:132`. **`wide` is contested**: `Sheet.tsx:161-174` reserves 640 for a letter, and a template library is not one. See the fork in ADR 0133 |
+| Templates | sheet **wide** 640 | "The house's letters, and the writing of one. Saving writes the template; using one opens the composer and sends nothing." | *error* "The template was not saved. The library is unchanged." | plain | full detent | `tuck` 300 | **built** — `TemplateSheet.tsx:132`. **`wide` is contested**: `Sheet.tsx:161-174` reserves 640 for a letter, and a template library is not one. See the fork in ADR 0134 |
 | The house's reply, drafted | panel 620, **seal**, **grey** | "The house drafted a reply to {vendor}. The seal sends it as written; editing first makes it yours. Leaving sends nothing and keeps the draft on the thread." | *error*, drawn: "The reply was not sent. The vendor has heard nothing and the draft is still on the thread." · *denied* names who may send from the house | the seal, before. **No step-up** — no money, no config apply | half detent; `Tab` takes the grey draft, `Cmd+Enter` arms the hold | `settle` 320 | **built** — packet 2 `752c1314` |
 
 **The drafted reply is where the census and the founder's sketches disagree most sharply, and the
@@ -838,7 +838,7 @@ lands, this route is open.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/communications/next/CommunicationsNext.tsx:267,322` — `cm-row-settle` drops its 4 px translate and becomes the house `grid-template-rows: 0fr to 1fr` on `settle` 320; the reduced-motion selector at `:331` follows. **packet 3**

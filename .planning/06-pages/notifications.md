@@ -1288,7 +1288,7 @@ next to it and in the footer.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. The 10 s poll gains the `sys-08` rail — hold the deltas, apply on an explicit act, never on idle. This page's reader is mid-line at 1 am. **packet 5**

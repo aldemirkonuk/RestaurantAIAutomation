@@ -743,7 +743,7 @@ most-used question.
 
 **This page's empty state is the template for the corpus** and its one gap is that it does not
 distinguish *the book holds nothing* from *the book could not be read*. That distinction is now a
-house rule in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+house rule in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md).
 
 ## 1c. Motions decided (2026-09-06)
 
@@ -1163,7 +1163,7 @@ about it, with a visible line back to the data.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/reports/next/ReportsNext.tsx:139` — delete `{ easing: settle.easing, ms: 420 }`, use the `settle` token (320). **packet 3**

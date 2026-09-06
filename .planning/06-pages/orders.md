@@ -209,7 +209,7 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 > per-row spec judged against the adversary's verdicts and against what packets 0-2 built.
 > Contract, shapes and the authority rule are
 > [ADR 0112](../decisions/0112-one-modal-policy-three-shapes-one-primitive.md); the cross-page
-> rules are [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+> rules are [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md).
 
 | Overlay | Shape | Contract sentence | Four states, denied included | Ceremony, under the authority rule | Phone form | Motion | Status |
 |---|---|---|---|---|---|---|---|
@@ -224,7 +224,7 @@ guard panel sends the reader to the vendor book and back, so the lines typed mus
 — which is what packet 0's `dirty`/`onTear`/`Stub` is for, not a nicety. And the census files
 "Vendor answers" as `seal: false` while its body draws a hold — **the flag and the drawing must be
 made to agree, because a guard reads the flag**; under this page's decision the hold goes and the
-flag stays false (census correction, listed in ADR 0133 for the census owner).
+flag stays false (census correction, listed in ADR 0134 for the census owner).
 
 ## 1c. Motions decided (2026-09-06)
 
@@ -695,7 +695,7 @@ the AI's proposed vendor reply is a one-tap yes, never an autonomous send.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/orders/next/ResponsesSheet.tsx:353` and `pages/orders/next/LedgerRow.tsx` — reject loses the wax **and** the hold; the reason becomes a required field. **packet 3**

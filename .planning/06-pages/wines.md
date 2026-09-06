@@ -1672,7 +1672,7 @@ the onboarding step for every house on a database missing the migration.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/cellar/next/SeriesPanel.tsx:288-291,307-309` — a hand-rolled `role="dialog"` with an **X glyph** in its close button, no Esc handler, no focus trap and no body scroll lock. It violates a Locked ADR on a rebuilt page, is in no census row, and has no test. Migrate onto the house `Panel`. **packet 3**

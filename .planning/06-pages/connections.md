@@ -522,7 +522,7 @@ a proof.
 > `pages/connections/next/AttachmentRow.tsx:181` and `pages/connections/next/HouseServerControls.tsx:332`,
 > and the shared `StripeCardPanel` mounted **inline** (`ConnectionsNext.tsx:1021`). The absence is a
 > census coverage gap; it is filed for the census owner in
-> [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md).
+> [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md).
 >
 > (A second correction, for the record: a research pass reported that no `06-pages` note existed
 > for this route. It does — this file — and it was measured against a different branch.)
@@ -859,7 +859,7 @@ is unread would see the dash only in that cell.
 
 From the decisions in §1c. Owner packets: **packet 3** the motion pass, **packet 4** the
 states owed, **packet 5** the gestures; a *page pass* is this page's own next opening.
-The reasoning is in §1c and in [ADR 0133](../decisions/0133-one-motion-per-act-across-every-page.md);
+The reasoning is in §1c and in [ADR 0134](../decisions/0134-one-motion-per-act-across-every-page.md);
 these are the rows.
 
 1. `pages/connections/next/connections-next.css:291` — import the `ink` token instead of hard-coding its numbers as an annotated raw value. **packet 3**
