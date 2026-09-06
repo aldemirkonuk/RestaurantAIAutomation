@@ -1,0 +1,114 @@
+/* ============================================================
+   The canonical document — ADR 0104 D9 (paper stays light) and
+   D10's print half (`@media print`: verdict expanded, hovers
+   flattened into a footnote column).
+   ============================================================ */
+
+/* D9 — THE PAPER STAYS LIGHT IN DARK MODE.
+
+   The sheet is a sheet of paper on a dark desk: the scan beside it is light
+   anyway, and print must equal screen. `mudavym.css` gives `.dark .mudavym` the
+   Warm Charcoal column, so a sheet nested inside a dark page would inherit it;
+   this rule takes the light column back on the ONE element that carries
+   `data-ground="paper"`.
+
+   The selector is `.dark .mudavym[data-ground="paper"]` (0,3,0) rather than the
+   bare attribute (0,2,0) so it beats `.dark .mudavym` on specificity and not
+   merely on source order — the same trap PageGate's header records. */
+.mudavym[data-ground='paper'],
+.dark .mudavym[data-ground='paper'],
+.mudavym[data-ground='charcoal'] .mudavym[data-ground='paper'] {
+  --seal: #1a5e6b;
+  --seal-deep: #14515c;
+  --seal-tint: rgba(26, 94, 107, 0.1);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+
+  --paper-0: #fffdf8;
+  --paper-1: #f3efe6;
+  --paper-2: #eae4d8;
+
+  --ink-1: #211c16;
+  --ink-2: #4f473c;
+  --ink-3: #7c7365;
+  --ink-4: #665d50;
+
+  color-scheme: light;
+}
+
+.cd-page {
+  min-height: 100%;
+}
+
+/* The sheet keeps a page's proportions rather than filling the viewport. */
+.cd-sheet {
+  max-width: 1024px;
+}
+
+.cd-sheet table {
+  table-layout: auto;
+}
+
+/* Wide tables scroll inside their own box; the page never scrolls sideways. */
+.cd-scroll-x {
+  overflow-x: auto;
+}
+
+@media print {
+  /* Print equals screen (D9): the sheet is already light, so nothing inverts. */
+  .cd-page {
+    background: #fff;
+  }
+
+  /* Chrome that is navigation, not evidence. */
+  .cd-no-print,
+  .cd-spine-toggle {
+    display: none !important;
+  }
+
+  /* The verdict EXPANDS on paper: it is the first thing a bookkeeper reads and
+     the only part they may act on away from the screen. */
+  .cd-verdict {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-left-width: 4px;
+  }
+  .cd-verdict ul {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* Hovers cannot exist on paper, so their content is flattened into a
+     numbered footnote column (Direction A's own form). The popovers
+     themselves are suppressed; the markers survive. */
+  .cd-provenance-pop {
+    display: none !important;
+  }
+  .cd-footnote-mark {
+    color: #14515c !important;
+  }
+  .cd-footnotes {
+    display: block !important;
+    columns: 2;
+    column-gap: 18px;
+    font-size: 8.5pt;
+    border-top: 1.5px solid #211c16;
+    padding-top: 4px;
+    margin-top: 8px;
+  }
+
+  .cd-sheet {
+    border: 0;
+    max-width: none;
+    break-inside: auto;
+  }
+
+  /* A line and its exception note must not be split across a page break. */
+  .cd-sheet tr {
+    break-inside: avoid;
+  }
+
+  /* The door frame is a screen for one person at a doorway; it is not evidence
+     and it does not print. */
+  .cd-door {
+    display: none !important;
+  }
+}

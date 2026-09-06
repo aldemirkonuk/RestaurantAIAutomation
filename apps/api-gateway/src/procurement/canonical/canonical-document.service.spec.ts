@@ -183,6 +183,22 @@ describe("CanonicalDocumentService", () => {
         data: [{ id: "ol-1", inventory_id: "inv-1", master_wine_id: "mw-1" }],
         error: null,
       },
+      // BG-4 / BG-7 — the seller comes from the resolved provider row and the
+      // buyer from the restaurant row; `procurement_documents` has neither
+      // column, which is why all three real documents read on 2026-09-04 said
+      // "The seller is not named on this document".
+      providers: {
+        data: {
+          id: "prov-1",
+          name: "SYNTHETIC Glazers",
+          company_name: "SYNTHETIC Glazers Wine & Spirits",
+        },
+        error: null,
+      },
+      restaurants: {
+        data: { id: "rest-1", name: "SYNTHETIC Meyhane" },
+        error: null,
+      },
       document_revisions: { data: [], error: null },
     };
 
@@ -387,5 +403,200 @@ describe("CanonicalDocumentService", () => {
       if (res.ok) return;
       expect(res.error).toContain("returned no row and no error");
     });
+  });
+});
+
+/**
+ * The three fields that have NO COLUMN, and the two parties that have no
+ * column either (findings 2, 3 and 4 of `v3.0-TECH-DEBT.md`, 2026-09-04).
+ * Every id, name and number below is SYNTHETIC.
+ */
+describe("CanonicalDocumentService — what the columns cannot hold", () => {
+  let service: CanonicalDocumentService;
+  let answers: Record<
+    string,
+    { data: unknown; error: { message: string } | null }
+  >;
+  let currentTable = "";
+
+  const makeChain = () => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    for (const verb of ["select", "eq", "in", "order", "limit"])
+      chain[verb] = jest.fn(self);
+    chain.maybeSingle = jest.fn(() => {
+      const a = answers[currentTable];
+      const data = Array.isArray(a?.data) ? (a.data[0] ?? null) : a?.data;
+      return Promise.resolve({ data: data ?? null, error: a?.error ?? null });
+    });
+    (chain as { then: unknown }).then = (resolve: (v: unknown) => unknown) => {
+      const a = answers[currentTable];
+      return Promise.resolve({
+        data: a?.data ?? null,
+        error: a?.error ?? null,
+      }).then(resolve);
+    };
+    return chain;
+  };
+
+  const client = {
+    from: jest.fn((table: string) => {
+      currentTable = table;
+      return makeChain();
+    }),
+  };
+
+  const ROW = {
+    ...DOC_ROW,
+    provider_id: null,
+    currency: "TRY",
+    subtotal: 1704,
+    deposit_total: 180,
+    tax: 340.8,
+    total: 2224.8,
+    // The parser's own snapshot — the only place these three ever live.
+    extracted: {
+      vendorName: "SYNTHETIC Uzum Bagcilik A.S.",
+      deliveredDate: "2026-08-12",
+      taxBreakdown: [
+        { rate: 20, taxableBase: 1704, amount: 340.8, category: "S" },
+      ],
+      lines: [
+        { lineNo: 1, lineKind: "goods" },
+        { lineNo: 2, lineKind: "deposit" },
+      ],
+    },
+  };
+
+  const LINES = [
+    {
+      ...LINE_ROWS[0],
+      line_no: 1,
+      description: "SYNTHETIC Okuzgozu",
+      qty: "12",
+      qty_bottles: "12",
+      unit_price: "142.0000",
+      line_total: "1704.00",
+      order_line_id: null,
+      match_method: null,
+      match_confidence: null,
+    },
+    {
+      ...LINE_ROWS[1],
+      line_no: 2,
+      description: "SYNTHETIC Depozito (kasa)",
+      qty: "2",
+      uom: "each",
+      qty_bottles: "0",
+      unit_price: "90.0000",
+      line_total: "180.00",
+    },
+  ];
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    currentTable = "";
+    answers = {
+      procurement_documents: { data: ROW, error: null },
+      procurement_document_lines: { data: LINES, error: null },
+      procurement_order_items: { data: [], error: null },
+      restaurants: {
+        data: { id: "rest-1", name: "SYNTHETIC Meyhane" },
+        error: null,
+      },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CanonicalDocumentService,
+        { provide: DatabaseService, useValue: { getClient: () => client } },
+      ],
+    }).compile();
+    service = module.get(CanonicalDocumentService);
+  });
+
+  it("names the seller from the snapshot and the buyer from the restaurant row", async () => {
+    const res = await service.buildFromDocumentId("rest-1", "doc-1");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.layer1.seller.name.value).toBe(
+      "SYNTHETIC Uzum Bagcilik A.S.",
+    );
+    expect(res.value.layer1.seller.name.source).toBe("extracted");
+    expect(res.value.layer1.buyer.name.value).toBe("SYNTHETIC Meyhane");
+    // Our own record, so it must NOT claim the page printed it.
+    expect(res.value.layer1.buyer.name.source).toBe("human_entered");
+    expect(res.value.layer1.buyer.name.as_printed).toBeNull();
+  });
+
+  it("prefers the resolved provider's trading name when one is linked", async () => {
+    answers.procurement_documents = {
+      data: { ...ROW, provider_id: "prov-1" },
+      error: null,
+    };
+    answers.providers = {
+      data: {
+        id: "prov-1",
+        name: "SYNTHETIC Glazers",
+        company_name: "SYNTHETIC Glazers Wine & Spirits",
+      },
+      error: null,
+    };
+    const res = await service.buildFromDocumentId("rest-1", "doc-1");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.layer1.seller.name.value).toBe(
+      "SYNTHETIC Glazers Wine & Spirits",
+    );
+    expect(res.value.layer1.seller.name.source).toBe("human_entered");
+  });
+
+  it("carries BT-72 and BG-23 out of the snapshot", async () => {
+    const res = await service.buildFromDocumentId("rest-1", "doc-1");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.layer1.actualDeliveryDate.value).toBe("2026-08-12");
+    expect(res.value.layer1.vatBreakdown).toHaveLength(1);
+    expect(res.value.layer1.vatBreakdown[0].rate.value).toBe(20);
+    expect(res.value.layer1.vatBreakdown[0].taxableAmount.value).toBe(1704);
+  });
+
+  it("restores the deposit line's kind by line_no, and keeps it out of BT-106", async () => {
+    const res = await service.buildFromDocumentId("rest-1", "doc-1");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.layer1.lines[1].lineKind?.value).toBe("deposit");
+    expect(res.value.layer1.totals.linesNetTotal.value).toBe(1704);
+    const deposit = res.value.layer1.allowancesCharges.find(
+      (ac) => ac.reasonCode.value === "7161",
+    );
+    expect(deposit?.amount.value).toBe(180);
+  });
+
+  it("REPORTS a failed provider read rather than an unnamed seller", async () => {
+    answers.procurement_documents = {
+      data: { ...ROW, provider_id: "prov-1" },
+      error: null,
+    };
+    answers.providers = { data: null, error: { message: "connection reset" } };
+    const res = await service.buildFromDocumentId("rest-1", "doc-1");
+    // "We could not read the provider" and "this document names no seller" are
+    // different sentences; only one of them sends someone looking for paper.
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toMatch(/providers read failed/);
+  });
+
+  it("survives an `extracted` snapshot that carries none of the three", async () => {
+    answers.procurement_documents = {
+      data: { ...ROW, extracted: null },
+      error: null,
+    };
+    const res = await service.buildFromDocumentId("rest-1", "doc-1");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.layer1.seller.name.value).toBeNull();
+    expect(res.value.layer1.actualDeliveryDate.value).toBeNull();
+    expect(res.value.layer1.vatBreakdown).toEqual([]);
+    expect(res.value.layer1.lines[1].lineKind?.value).toBe("goods");
   });
 });

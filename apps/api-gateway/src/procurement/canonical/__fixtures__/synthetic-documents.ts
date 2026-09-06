@@ -77,6 +77,16 @@ export function line(opts: {
   freeGoodsQty?: number;
   allowancesCharges?: AllowanceCharge[];
   printedQuantity?: string;
+  /** The literal price basis as the paper prints it, e.g. `142,00 / KS(12)`. */
+  printedNetPrice?: string;
+  printedNetAmount?: string;
+  /**
+   * What the line IS. `goods` by default AND ON PURPOSE: the fixture that
+   * proves the invariant catches a CRV billed as wine depends on the line NOT
+   * being classified, so a helper that classified from the description would
+   * make that fixture unable to fail.
+   */
+  lineKind?: string;
 }): ExtractedLine {
   return {
     lineId: e(opts.lineId, opts.lineId),
@@ -84,10 +94,11 @@ export function line(opts: {
     sellerItemId: e<string>(null),
     quantity: e(opts.quantity, opts.printedQuantity ?? String(opts.quantity)),
     unit: e(opts.unit, opts.unit),
-    netPrice: e(opts.netPrice),
+    netPrice: e(opts.netPrice, opts.printedNetPrice),
     priceBaseQuantity: e(opts.priceBaseQuantity ?? null),
     priceBaseUnit: e(opts.priceBaseUnit ?? null),
-    netAmount: e(opts.netAmount),
+    netAmount: e(opts.netAmount, opts.printedNetAmount),
+    lineKind: e(opts.lineKind ?? "goods"),
     allowancesCharges: opts.allowancesCharges ?? [],
     vatCategory: e(opts.vatCategory ?? null),
     vatRate: e(opts.vatRate ?? null),
@@ -544,6 +555,151 @@ export const DEPOSIT_AS_GOODS_LINE: CanonicalDocument = doc(
   }),
 );
 
+/**
+ * SYNTHETIC 9b — THE SAME PAPER, READ CORRECTLY.
+ *
+ * The pair matters more than either fixture alone. SYNTHETIC 9 is a CRV row
+ * nobody classified, sitting inside BT-106; this is the identical document with
+ * the row classified `deposit`, lifted out of the goods total, and carried as a
+ * BG-21 charge coded 7161. BT-106 is therefore 264.00 (the wine) and not
+ * 265.20, and the ladder still reaches the same 265.20 the paper prints.
+ *
+ * Without the second fixture, "the deposit rule holds" would only ever have
+ * been proven by a document that has no deposit on it.
+ */
+export const DEPOSIT_LINE_CODED_AND_EXCLUDED: CanonicalDocument = doc(
+  "synthetic-deposit-coded",
+  "invoice",
+  header({
+    documentNumber: e("SYN-DEP-13"),
+    currency: e("USD", "USD"),
+    lines: [
+      line({
+        lineId: "1",
+        description: "SYNTHETIC Barolo 2019",
+        quantity: 12,
+        unit: "bottle",
+        netPrice: 22,
+        netAmount: 264,
+        priceBaseQuantity: 1,
+        priceBaseUnit: "bottle",
+      }),
+      line({
+        lineId: "2",
+        description: "CRV deposit 12 × 750ml",
+        quantity: 12,
+        unit: "each",
+        netPrice: 0.1,
+        netAmount: 1.2,
+        priceBaseQuantity: 1,
+        priceBaseUnit: "each",
+        lineKind: "deposit",
+      }),
+    ],
+    allowancesCharges: [
+      charge({
+        amount: 1.2,
+        reason: "Returnable container / deposit",
+        reasonCode: "7161",
+      }),
+    ],
+    totals: {
+      ...blankTotals(),
+      linesNetTotal: e(264, "264.00"),
+      allowancesTotal: e(0),
+      chargesTotal: e(1.2),
+      taxExclusiveAmount: e(265.2, "265.20"),
+      taxInclusiveAmount: e(265.2, "265.20"),
+      amountDue: e(265.2, "265.20"),
+    },
+  }),
+);
+
+/**
+ * SYNTHETIC 10 — the `1 ks × 12 şişe` invoice: quantity in CASES, price printed
+ * per case-of-twelve as `142,00 / KS(12)`.
+ *
+ * This is the shape ADR 0104 D1 names as the fix for §A1 of the earlier
+ * research, and the one the mapper could not produce before BT-149/BT-150
+ * round-tripped through `ParsedDocument`. It is deliberately the OPPOSITE
+ * arrangement to SYNTHETIC 2 (which invoices in bottles at a case price):
+ *
+ *   quantity  1 KS      BT-129 = 1,   BT-130 = case
+ *   price     142,00    BT-146 = 142, BT-149 = 12, BT-150 = bottle
+ *   net       142,00    BT-131
+ *
+ * Divide without converting the quantity into the base's unit and the line reads
+ * 1 ÷ 12 × 142 = 11,83. The bottles-per-case conversion — layer 2's `packSize`,
+ * which is why layer 2 is populated on this fixture and on no other — is what
+ * makes it 142,00.
+ */
+export const TR_CASE_PRICED_INVOICE: CanonicalDocument = doc(
+  "synthetic-tr-case-priced",
+  "invoice",
+  header({
+    documentNumber: e("SYN2026000000456", "SYN2026000000456"),
+    issueDate: e("2026-08-30", "30.08.2026"),
+    typeCode: e("380", "380"),
+    currency: e("TRY", "TRY"),
+    actualDeliveryDate: e("2026-08-30", "30.08.2026"),
+    lines: [
+      line({
+        lineId: "1",
+        description: "SYNTHETIC Öküzgözü 2022",
+        quantity: 1,
+        unit: "case",
+        netPrice: 142,
+        netAmount: 142,
+        priceBaseQuantity: 12,
+        priceBaseUnit: "bottle",
+        vatCategory: "S",
+        vatRate: 20,
+        vintage: 2022,
+        formatMl: 750,
+        printedQuantity: "1 KS",
+        printedNetPrice: "142,00 / KS(12)",
+        printedNetAmount: "142,00",
+      }),
+    ],
+    totals: {
+      ...blankTotals(),
+      linesNetTotal: e(142, "142,00"),
+      allowancesTotal: e(0),
+      chargesTotal: e(0),
+      taxExclusiveAmount: e(142, "142,00"),
+      taxAmount: e(28.4, "28,40"),
+      taxInclusiveAmount: e(170.4, "170,40"),
+      paidAmount: e(0),
+      roundingAmount: e(0),
+      amountDue: e(170.4, "170,40"),
+    },
+    vatBreakdown: [vatRow("S", 20, 142, 28.4)],
+  }),
+  {
+    jurisdiction: "TR",
+    // Layer 2 carries the ONLY conversion available between a case quantity and
+    // a bottle price base. Without it the line net is unfalsifiable, and the
+    // invariant says so rather than guessing twelve.
+    layer2: {
+      providerId: null,
+      lines: [
+        {
+          lineIndex: 0,
+          inventoryId: null,
+          masterWineId: null,
+          canonicalUom: "case",
+          packSize: 12,
+          qtyBottles: 12,
+          matchMethod: null,
+          matchConfidence: null,
+          vintage: 2022,
+          lot: null,
+        },
+      ],
+    },
+  },
+);
+
 export const ALL_SYNTHETIC_DOCUMENTS: CanonicalDocument[] = [
   TR_WINE_INVOICE,
   CA_DISTRIBUTOR_INVOICE,
@@ -554,4 +710,6 @@ export const ALL_SYNTHETIC_DOCUMENTS: CanonicalDocument[] = [
   FREE_GOODS_BILLED_ANYWAY,
   LINES_DO_NOT_TIE,
   DEPOSIT_AS_GOODS_LINE,
+  DEPOSIT_LINE_CODED_AND_EXCLUDED,
+  TR_CASE_PRICED_INVOICE,
 ];

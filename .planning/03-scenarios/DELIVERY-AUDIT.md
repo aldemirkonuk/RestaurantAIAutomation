@@ -130,7 +130,14 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **199 of 215** | 43 |
+| **Remaining, baselined and non-growing** | **193 of 215** | 43 |
+
+> **193 as of 2026-09-04** (`check_read_errors_not_swallowed.py`: 1039 files
+> scanned, 193 sites, 193 baselined, 0 allowlisted). ADR 0104 slice 2 removed one
+> — `documents.controller.ts`'s `vendor-attachments::signed`, whose `catch {}`
+> made "no file was stored" and "the file exists and could not be signed" the
+> same answer; the shared `signOriginal` now returns the reason with the null.
+> The baseline row was removed rather than lowered, per the shrink-only rule.
 
 > Was 207 across 44 files at adoption. Concurrent sessions fixed 4 of them
 > (`scheduled-tasks`/`procurement_orders`, `procurement`/`calendar_events` ×2,
