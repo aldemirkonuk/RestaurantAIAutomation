@@ -1,6 +1,48 @@
 /**
- * Storage Location Manager Component
- * Allows managers to define and manage custom storage locations for wines
+ * Storage Location Manager — the zones the house keeps its bottles in.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102 row "The zones") ────────────────
+ * SHAPE: `Sheet`. The zones are ONE OBJECT the house owns — a list the manager
+ * opens, works on, and closes — so it arrives from the right with the register
+ * still visible behind it. Not a Panel: this is not a question answered and
+ * left. The census's own note: "Zones are confirmed on the cellar floor first
+ * (2026-09-04) — this is that same list, opened from /inventory."
+ *
+ * No seal. A zone is a place, not a ledger row: creating, renaming or removing
+ * one moves no stock. The one act with real consequences — deleting a zone that
+ * still holds bottles — is REFUSED rather than sealed, because the right answer
+ * to "this would strand 88 bottles" is not a heavier confirmation, it is not
+ * doing it until they are moved.
+ *
+ * The house branch is a single 440 column, not the legacy two-pane. The second
+ * pane existed to assign wines to a zone one at a time; that act now belongs to
+ * the auto-locate panel and to the row expander, and duplicating it here was
+ * what made this file 1,124 lines.
+ *
+ * THREE THINGS THE LEGACY BRANCH COULD NOT SAY:
+ *
+ *  1. **Loading, empty and unavailable are three answers.** The hook has said
+ *     so since ADR 0080 (`locationsLoading` / `locationsUnavailable`), with a
+ *     comment reading "a surface that renders `locations` MUST branch on these
+ *     first" — and this surface never did. A dead request rendered as "no
+ *     locations", which is a claim about the tenant.
+ *  2. **What actually landed.** `updateLocation` and `deleteLocation` hand
+ *     their writes to `persistToServer`, whose catch block is empty, so a zone
+ *     the server REFUSED to delete still vanished from the list and took its
+ *     wine→zone mappings out of the cache with it. The house branch uses the
+ *     awaited `createLocationChecked` / `updateLocationChecked` /
+ *     `deleteLocationChecked`, which write to the cache only after the server
+ *     has accepted, and report a refusal separately from a fault.
+ *  3. **A capacity nobody recorded is not a number.** `capacity: null` is the
+ *     denominator of the cellar map's fill bar; the house branch says
+ *     "capacity not recorded" and draws no proportion, rather than a dash that
+ *     reads as zero.
+ *
+ * Endpoints: GET/POST `/storage-locations/:restaurantId` (:108, :123),
+ * DELETE `/storage-locations/:restaurantId/:locationId` (:167) and PATCH on the
+ * same path — apps/api-gateway/src/storage-locations/storage-locations.controller.ts.
+ *
+ * The legacy branch below is frozen and renders byte-for-byte as it shipped.
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react'
@@ -29,6 +71,9 @@ import {
 } from 'lucide-react'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
+import { Sheet } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import './inventory-mudavym.css'
 export type { StorageLocation }
 
 interface StorageLocationManagerProps {
@@ -83,6 +128,7 @@ export function StorageLocationManager({
     // defined" is a claim about the tenant; a dead request is not evidence for it.
     locationsLoading,
     locationsUnavailable,
+    mappingsUnavailable,
     getLocationsWithActualCounts,
     mappings,
     assignWineToLocation,
@@ -94,7 +140,18 @@ export function StorageLocationManager({
     getLocationStats,
     recalculateLocationCounts,
     setLocations,
+    createLocationChecked,
+    updateLocationChecked,
+    deleteLocationChecked,
   } = useStorageLocations()
+  const shell = useMudavymShell()
+  /* House-branch state; the legacy render reads none of it. */
+  const [writing, setWriting] = useState(false)
+  const [wrote, setWrote] = useState<{
+    what: string
+    message: string
+    denied: boolean
+  } | null>(null)
 
   const actualLocations = getLocationsWithActualCounts()
   const onLocationsChangeRef = useRef(onLocationsChange)
@@ -317,6 +374,359 @@ export function StorageLocationManager({
   }, [isOpen, defaultEditLocationId])
 
   if (!isOpen) return null
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    /** Bottles this zone is holding, from the mappings the house actually has. */
+    const heldIn = (id: string) =>
+      mappings.filter((m) => m.locationId === id).reduce((n, m) => n + m.quantity, 0)
+
+    const note = (what: string, res: { message?: string; denied?: boolean }) =>
+      setWrote({
+        what,
+        message: res.message ?? 'the request did not complete',
+        denied: res.denied === true,
+      })
+
+    const houseCreate = async () => {
+      if (!formData.name || !formData.capacity || formData.capacity <= 0) return
+      setWriting(true)
+      setWrote(null)
+      const res = await createLocationChecked({
+        name: formData.name,
+        description: formData.description,
+        capacity: formData.capacity,
+        currentCount: 0,
+        temperature: formData.temperature,
+        humidity: formData.humidity,
+        notes: formData.notes,
+        parentId: formData.parentId,
+        color: formData.color || DEFAULT_COLORS[0],
+      })
+      setWriting(false)
+      if (!res.ok) {
+        note('The zone was not created', res)
+        return
+      }
+      setIsCreating(false)
+      resetForm()
+    }
+
+    const houseUpdate = async () => {
+      if (!editingLocation || !formData.name) return
+      const nextCapacity = formData.capacity ?? editingLocation.capacity
+      if (!nextCapacity || nextCapacity <= 0) return
+      setWriting(true)
+      setWrote(null)
+      const res = await updateLocationChecked(editingLocation.id, {
+        name: formData.name,
+        description: formData.description,
+        capacity: nextCapacity,
+        temperature: formData.temperature,
+        humidity: formData.humidity,
+        notes: formData.notes,
+        color: formData.color || editingLocation.color,
+      })
+      setWriting(false)
+      if (!res.ok) {
+        note('The zone was not changed', res)
+        return
+      }
+      setEditingLocation(null)
+      resetForm()
+    }
+
+    const houseDelete = async (id: string) => {
+      setWriting(true)
+      setWrote(null)
+      const res = await deleteLocationChecked(id)
+      setWriting(false)
+      setConfirmDeleteId(null)
+      if (!res.ok) {
+        note('The zone was not deleted', res)
+        return
+      }
+      if (editingLocation?.id === id) {
+        setEditingLocation(null)
+        resetForm()
+      }
+    }
+
+    const form = (mode: 'create' | 'edit') => (
+      <div className="mdv-panelbox">
+        <p className="mdv-alert__head">{mode === 'create' ? 'A new zone' : 'This zone'}</p>
+        <div className="mdv-pair" style={{ marginTop: 8 }}>
+          <div>
+            <label className="mdv-label" htmlFor="mdv-zone-name">
+              Name
+            </label>
+            <input
+              id="mdv-zone-name"
+              className="mdv-input"
+              value={formData.name ?? ''}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. Cellar · rack A"
+            />
+          </div>
+          <div>
+            <label className="mdv-label" htmlFor="mdv-zone-capacity">
+              Bottles it holds
+            </label>
+            <input
+              id="mdv-zone-capacity"
+              className="mdv-input"
+              type="number"
+              min={1}
+              value={formData.capacity ?? ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  capacity: e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+              placeholder="required"
+            />
+          </div>
+        </div>
+        <p className="mdv-hintline">
+          A capacity is the denominator of every fill figure this zone appears in, so there is no
+          default: it is a number somebody counted or the zone is not created.
+        </p>
+        <div className="mdv-pair" style={{ marginTop: 8 }}>
+          <div>
+            <label className="mdv-label" htmlFor="mdv-zone-temp">
+              Temperature
+            </label>
+            <input
+              id="mdv-zone-temp"
+              className="mdv-input"
+              value={formData.temperature ?? ''}
+              onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
+              placeholder="e.g. 13°C"
+            />
+          </div>
+          <div>
+            <label className="mdv-label" htmlFor="mdv-zone-humidity">
+              Humidity
+            </label>
+            <input
+              id="mdv-zone-humidity"
+              className="mdv-input"
+              value={formData.humidity ?? ''}
+              onChange={(e) => setFormData({ ...formData, humidity: e.target.value })}
+              placeholder="e.g. 70%"
+            />
+          </div>
+        </div>
+        <div className="mdv-actions" style={{ marginTop: 10 }}>
+          <button type="button" className="mdv-btn" onClick={cancelEdit} disabled={writing}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="mdv-btn mdv-btn--seal"
+            disabled={
+              writing || !formData.name?.trim() || !formData.capacity || formData.capacity <= 0
+            }
+            onClick={() => void (mode === 'create' ? houseCreate() : houseUpdate())}
+          >
+            {writing
+              ? 'Writing…'
+              : mode === 'create'
+                ? 'Create the zone'
+                : 'Save this zone'}
+          </button>
+        </div>
+      </div>
+    )
+
+    return (
+      <Sheet
+        open={isOpen}
+        onClose={onClose}
+        label="The zones. Creating, renaming or removing a zone changes where bottles are recorded, not how many there are. Leaving writes nothing."
+        eyebrow="Cellar floor"
+        title="The zones"
+        zIndex={110}
+        action={
+          onAutoLocate ? (
+            <button type="button" className="mdv-btn" onClick={onAutoLocate}>
+              Place bottles by zone
+            </button>
+          ) : undefined
+        }
+        footer={
+          <span>
+            Zones are confirmed on the cellar floor first — this is that same list, opened from the
+            register. A zone is a place; nothing here moves stock.
+          </span>
+        }
+      >
+        <div className="mdv-form">
+          <p className="mdv-contract">
+            These are the places this house records bottles in. Creating, renaming or removing one
+            changes where a bottle is recorded, never how many there are. Leaving writes nothing.
+          </p>
+
+          {wrote && (
+            <div className="mdv-alert" role="alert">
+              <p className="mdv-alert__head">{wrote.denied ? 'Not permitted' : 'Not written'}</p>
+              <p>
+                {wrote.denied
+                  ? `This account is not permitted to change the zones. ${wrote.what}; the list below is as the house has it.`
+                  : `${wrote.what} — ${wrote.message}. The list below is as the house has it.`}
+              </p>
+            </div>
+          )}
+
+          {/* Three answers, not one. ADR 0080. */}
+          {locationsLoading ? (
+            <p className="mdv-quiet">Reading this tenant&rsquo;s zones…</p>
+          ) : locationsUnavailable ? (
+            <div className="mdv-alert" role="alert">
+              <p className="mdv-alert__head">Not read</p>
+              <p>
+                The zones could not be read, so this list is empty because nothing answered — not
+                because the house has none. Nothing here is a claim about your cellar.
+              </p>
+            </div>
+          ) : actualLocations.length === 0 ? (
+            <p className="mdv-quiet">
+              This house has no zones yet. Add one below and the register can start recording where
+              a bottle sits.
+            </p>
+          ) : (
+            <div>
+              <span className="mdv-head">
+                <span>Your zones — {actualLocations.length}</span>
+                <span>
+                  {stats.totalUsed} bottle{stats.totalUsed !== 1 ? 's' : ''} placed
+                </span>
+              </span>
+              <div className="mdv-picks">
+                {actualLocations.map((location) => {
+                  const held = heldIn(location.id)
+                  const editing = editingLocation?.id === location.id
+                  const confirming = confirmDeleteId === location.id
+                  return (
+                    <div key={location.id} className="mdv-pick" role="group" style={{ alignItems: 'flex-start' }}>
+                      <span style={{ minWidth: 0, flex: '1 1 auto' }}>
+                        <span className="mdv-pick__label" style={{ whiteSpace: 'normal' }}>
+                          {location.name}
+                        </span>
+                        <span className="mdv-pick__sub">
+                          {location.capacity == null
+                            ? 'capacity not recorded'
+                            : `capacity ${location.capacity}`}
+                          {' · '}
+                          {location.currentCount} bottle{location.currentCount !== 1 ? 's' : ''}
+                          {location.temperature ? ` · ${location.temperature}` : ''}
+                        </span>
+
+                        {confirming ? (
+                          held > 0 ? (
+                            <span className="mdv-grey">
+                              This zone is holding {held} bottle{held !== 1 ? 's' : ''}. Move them
+                              first — deleting it would leave them recorded nowhere.
+                            </span>
+                          ) : (
+                            <span className="mdv-seg" style={{ marginTop: 6 }}>
+                              <button
+                                type="button"
+                                className="mdv-seg__opt"
+                                disabled={writing}
+                                onClick={() => void houseDelete(location.id)}
+                              >
+                                Yes, delete {location.name}
+                              </button>
+                              <button
+                                type="button"
+                                className="mdv-seg__opt"
+                                onClick={() => setConfirmDeleteId(null)}
+                              >
+                                Keep it
+                              </button>
+                            </span>
+                          )
+                        ) : (
+                          <span className="mdv-seg" style={{ marginTop: 6 }}>
+                            <button
+                              type="button"
+                              className="mdv-seg__opt"
+                              aria-pressed={editing}
+                              onClick={() => (editing ? cancelEdit() : startEdit(location))}
+                            >
+                              {editing ? 'Close' : 'Edit'}
+                            </button>
+                            {onSelectLocation && (
+                              <button
+                                type="button"
+                                className="mdv-seg__opt"
+                                onClick={() => onSelectLocation(location)}
+                              >
+                                Show its bottles
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="mdv-seg__opt"
+                              disabled={writing}
+                              onClick={() => setConfirmDeleteId(location.id)}
+                            >
+                              Delete
+                            </button>
+                          </span>
+                        )}
+                        {confirming && held > 0 && (
+                          <span className="mdv-seg" style={{ marginTop: 6 }}>
+                            <button
+                              type="button"
+                              className="mdv-seg__opt"
+                              onClick={() => setConfirmDeleteId(null)}
+                            >
+                              Keep it
+                            </button>
+                          </span>
+                        )}
+
+                        {editing && <span style={{ display: 'block', marginTop: 8 }}>{form('edit')}</span>}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              <span className="mdv-prov">
+                {actualLocations.length} zone{actualLocations.length !== 1 ? 's' : ''} on this
+                tenant&rsquo;s record · counts from {mappings.length} wine&rarr;zone mapping
+                {mappings.length !== 1 ? 's' : ''}
+                {mappingsUnavailable
+                  ? ' · the mappings could not be read, so these counts are not complete'
+                  : ''}
+              </span>
+            </div>
+          )}
+
+          {isCreating ? (
+            form('create')
+          ) : (
+            <div className="mdv-actions">
+              <span className="mdv-tally">
+                {actualLocations.length === 0 ? 'No zones yet' : 'Add another place'}
+              </span>
+              <button
+                type="button"
+                className="mdv-btn mdv-btn--seal"
+                onClick={startCreate}
+                disabled={writing || locationsUnavailable}
+              >
+                Add a zone
+              </button>
+            </div>
+          )}
+        </div>
+      </Sheet>
+    )
+  }
 
   return (
     <AnimatePresence>

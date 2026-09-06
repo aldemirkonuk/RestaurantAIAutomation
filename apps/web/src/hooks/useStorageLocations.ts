@@ -321,6 +321,123 @@ export function useStorageLocations() {
     [assignWineToLocation, restaurantId, queryClient],
   )
 
+  /**
+   * The awaited forms of create / edit / delete, for a surface that has to say
+   * what actually landed.
+   *
+   * `addLocation`, `updateLocation` and `deleteLocation` above are optimistic
+   * and silent by design, and two of the three are worse than that:
+   * `updateLocation` and `deleteLocation` hand their write to `persistToServer`
+   * whose catch block is empty, so a zone the server REFUSED to delete still
+   * disappears from the list and takes its wine→zone mappings out of the cache
+   * with it. The operator is then looking at a cellar map that disagrees with
+   * the database and has no way to know. `addLocation` at least rolls its
+   * optimistic row back — silently, so a zone appears and then vanishes with no
+   * sentence attached.
+   *
+   * These three await the server and report. Nothing is written to the cache
+   * until the server has accepted it, so the list cannot show a zone the
+   * database refused, and a 401/403 is separated from a fault because they ask
+   * different things of the reader.
+   *
+   * The optimistic three are untouched: the legacy manager renders them and its
+   * behaviour must not change.
+   */
+  const createLocationChecked = useCallback(
+    async (
+      location: Omit<StorageLocation, 'id'>,
+    ): Promise<{ ok: boolean; message?: string; denied?: boolean; created?: StorageLocation }> => {
+      if (!restaurantId)
+        return { ok: false, message: 'no restaurant is active, so nothing was sent' }
+      try {
+        const { data } = await apiClient.post(`/storage-locations/${restaurantId}`, {
+          name: location.name,
+          description: location.description,
+          capacity: location.capacity,
+          temperature: location.temperature,
+          humidity: location.humidity,
+          notes: location.notes,
+          parent_id: location.parentId,
+          color: location.color,
+          location_type: 'cellar',
+        })
+        if (!data?.id)
+          return { ok: false, message: 'the server accepted the request but returned no zone' }
+        const created = mapServerLocation(data)
+        setLocations((prev) => [...prev, created])
+        queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
+        return { ok: true, created }
+      } catch (err) {
+        const e = err as {
+          response?: { status?: number; data?: { message?: string } }
+          message?: string
+        }
+        return {
+          ok: false,
+          denied: e?.response?.status === 403 || e?.response?.status === 401,
+          message: e?.response?.data?.message || e?.message || 'the request did not complete',
+        }
+      }
+    },
+    [restaurantId, setLocations, queryClient],
+  )
+
+  const updateLocationChecked = useCallback(
+    async (
+      id: string,
+      updates: Partial<StorageLocation>,
+    ): Promise<{ ok: boolean; message?: string; denied?: boolean }> => {
+      if (!restaurantId)
+        return { ok: false, message: 'no restaurant is active, so nothing was sent' }
+      if (!UUID_RE.test(id))
+        return { ok: false, message: 'this zone has no server record yet, so nothing was written' }
+      try {
+        await apiClient.patch(`/storage-locations/${restaurantId}/${id}`, updates)
+        setLocations((prev) => prev.map((loc) => (loc.id === id ? { ...loc, ...updates } : loc)))
+        queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
+        return { ok: true }
+      } catch (err) {
+        const e = err as {
+          response?: { status?: number; data?: { message?: string } }
+          message?: string
+        }
+        return {
+          ok: false,
+          denied: e?.response?.status === 403 || e?.response?.status === 401,
+          message: e?.response?.data?.message || e?.message || 'the request did not complete',
+        }
+      }
+    },
+    [restaurantId, setLocations, queryClient],
+  )
+
+  const deleteLocationChecked = useCallback(
+    async (id: string): Promise<{ ok: boolean; message?: string; denied?: boolean }> => {
+      if (!restaurantId)
+        return { ok: false, message: 'no restaurant is active, so nothing was sent' }
+      if (!UUID_RE.test(id))
+        return { ok: false, message: 'this zone has no server record yet, so nothing was deleted' }
+      try {
+        await apiClient.delete(`/storage-locations/${restaurantId}/${id}`)
+        setMappings((prev) => prev.filter((m) => m.locationId !== id))
+        setLocations((prev) => prev.filter((loc) => loc.id !== id))
+        queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
+        return { ok: true }
+      } catch (err) {
+        const e = err as {
+          response?: { status?: number; data?: { message?: string } }
+          message?: string
+        }
+        return {
+          ok: false,
+          denied: e?.response?.status === 403 || e?.response?.status === 401,
+          message: e?.response?.data?.message || e?.message || 'the request did not complete',
+        }
+      }
+    },
+    [restaurantId, setLocations, setMappings, queryClient],
+  )
+
   const removeWineFromLocation = useCallback(
     (wineId: string) => {
       const mapping = mappings.find((m) => m.wineId === wineId)
@@ -518,6 +635,9 @@ export function useStorageLocations() {
     addLocation,
     updateLocation,
     deleteLocation,
+    createLocationChecked,
+    updateLocationChecked,
+    deleteLocationChecked,
     getLocationStats,
     recalculateLocationCounts,
     getLocationsWithActualCounts,
