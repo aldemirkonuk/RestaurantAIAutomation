@@ -647,55 +647,86 @@ export class InventoryService {
     const { data, error } = await client
       .from("inventory_transactions")
       .select("*")
+      .eq("restaurant_id", restaurantId)
       .eq("inventory_id", itemId)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: true })
       .limit(2000);
 
+    // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
+    // made an outage indistinguishable from a shelf nothing had moved on.
     if (error) {
-      this.logger.warn(`getItemActivity ledger query failed: ${error.message}`);
-      return { daily: [], heat: [], totalOut28d: 0 };
+      this.logger.error(`getItemActivity ledger query failed: ${error.message}`);
+      throw new Error(
+        `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
+      );
     }
 
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-    const dailyMap = new Map<string, number>();
-    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00
+    const outMap = new Map<string, number>();
+    const inMap = new Map<string, number>();
+    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00. Depletion
+    // only — the heatmap answers "when do we pour this", and a truck arriving
+    // at 17:00 is not a busy hour.
     const heat: number[][] = Array.from({ length: 7 }, () => Array(8).fill(0));
     let totalOut = 0;
+    let totalIn = 0;
 
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
     for (const row of (data as any[]) || []) {
       const qty = Number(row.quantity_change ?? row.quantity ?? 0);
+      if (!Number.isFinite(qty) || qty === 0) continue;
       const type = String(row.transaction_type || "").toLowerCase();
+      // Sign is the classifier. The type list stays only because some depletion
+      // writers record a positive magnitude; dropping it would move numbers
+      // that were already being reported correctly.
       const isOut = qty < 0 || ["sale", "pour", "glass_pour"].includes(type);
-      if (!isOut) continue;
-      const out = Math.abs(qty);
-      if (!(out > 0)) continue;
-
+      const magnitude = Math.abs(qty);
       const ts = new Date(row.created_at);
-      totalOut += out;
+      const k = dayKey(ts);
 
-      if (ts >= fourteenDaysAgo) {
-        const k = dayKey(ts);
-        dailyMap.set(k, (dailyMap.get(k) ?? 0) + out);
+      if (isOut) {
+        totalOut += magnitude;
+        if (ts >= fourteenDaysAgo)
+          outMap.set(k, (outMap.get(k) ?? 0) + magnitude);
+        const dow = (ts.getDay() + 6) % 7; // Mon=0
+        const slot = ts.getHours() - 16;
+        if (slot >= 0 && slot < 8) heat[dow][slot] += magnitude;
+      } else {
+        // EVERY inbound writer, named or not: a delivery booking
+        // (`reference_type = 'delivery'`, `transaction_type = 'purchase'`), a
+        // manual adjustment, a transfer in. Before 2026-09-06 this branch did
+        // not exist and a booked delivery left no trace on this door at all.
+        totalIn += magnitude;
+        if (ts >= fourteenDaysAgo)
+          inMap.set(k, (inMap.get(k) ?? 0) + magnitude);
       }
-      const dow = (ts.getDay() + 6) % 7; // Mon=0
-      const slot = ts.getHours() - 16;
-      if (slot >= 0 && slot < 8) heat[dow][slot] += out;
     }
 
     // Dense 14-day series (zero-filled) so the chart has a stable x-axis.
-    const daily: Array<{ date: string; out: number }> = [];
+    const daily: Array<{ date: string; out: number; in: number }> = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const k = dayKey(d);
-      daily.push({ date: k, out: dailyMap.get(k) ?? 0 });
+      daily.push({ date: k, out: outMap.get(k) ?? 0, in: inMap.get(k) ?? 0 });
     }
 
-    return { daily, heat, totalOut28d: totalOut };
+    return {
+      daily,
+      heat,
+      totalOut28d: totalOut,
+      totalIn28d: totalIn,
+      // The door SAYS what it counted. A zeroed series means "these movements
+      // did not happen", never "this kind of movement is not looked at".
+      includes: {
+        out: "movements off the shelf: any negative quantity_change, plus sale/pour/glass_pour rows recorded as a positive magnitude",
+        in: "movements onto the shelf: any other positive quantity_change, including deliveries booked at the door (reference_type 'delivery'), manual adjustments and transfers in",
+        window: "28 days for the totals, the last 14 days for the daily series",
+      },
+    };
   }
 
   async getInventoryItem(restaurantId: string, itemId: string) {
