@@ -223,9 +223,16 @@ export function parseUsdaShellEgg(
 
   const value = asNumber(row[at("Wtd Avg Price")]);
   if (value === null) {
-    // MEASURED, NOT HYPOTHETICAL: six of this file's 23 rows carry an empty
-    // Wtd Avg Price. An empty cell is a market that did not report, and
-    // `Number("")` is 0, which would post a price of zero cents a dozen.
+    // MEASURED, NOT HYPOTHETICAL: EIGHT of this file's 23 rows carry an empty
+    // Wtd Avg Price - data rows 1, 2, 3, 11, 18, 19, 20 and 23. An empty cell
+    // is a market that did not report, and `Number("")` is 0, which would post
+    // a price of zero cents a dozen.
+    //
+    // The number was "six" here and in three other places until 2026-09-06,
+    // when the audit of aa9510a6 counted the column instead of trusting the
+    // prose: `awk -F'\t' 'NR>1 && $28==""' <fixture> | wc -l` -> 8. Column 28
+    // is "Wtd Avg Price". The count is now pinned by a run, not by a sentence:
+    // see "eight, and the number comes from the parser" in the spec.
     return nothing(
       "no_value",
       `The row for ${named} carries no weighted average price. That market did not report on this date - it is not a price of zero.`,

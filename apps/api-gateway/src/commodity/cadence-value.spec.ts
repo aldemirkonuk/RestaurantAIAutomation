@@ -443,6 +443,59 @@ describe("the alert sentence has three money states and only three", () => {
     expect(clause).not.toMatch(/[0-9]+\.[0-9]{2}/);
   });
 
+  /**
+   * A CARRYING COST OF 0 IS NOT A COST.
+   *
+   * The audit of e7c24d2e proved the gap with a probe: `carryPerPeriod: 0`
+   * passed the `=== null` gate, `moneyState()` returned `stated`, and a money
+   * figure was printed with three months of stock priced as free — the exact
+   * assumption `cadence-value.ts`'s own doc comment says makes every fire look
+   * like a win. The gate is now "a positive finite number"; these five cases are
+   * the five ways a value can fail that and still not be null.
+   */
+  describe("a value that is present but is not a cost is UNMEASURED, not stated", () => {
+    const notACost: Array<[string, number]> = [
+      ["zero", 0],
+      ["a negative carrying cost", -0.005],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+      ["negative Infinity", Number.NEGATIVE_INFINITY],
+    ];
+
+    it.each(notACost)("%s is refused, and no money figure is printed", (_label, value) => {
+      const v = valueBacktest(run(), { ...HOUSE, carryPerPeriod: value });
+      expect(moneyState(v)).toBe("unmeasured");
+      expect(v.withheld).toBe("no_carrying_cost_typed");
+      expect(v.carryFraction).toBeNull();
+      expect(v.moneyPerFire).toBeNull();
+      expect(v.breakEvenPassThrough).toBeNull();
+      // The sentence must not carry a currency or a two-decimal figure, which
+      // is what "a page may not claim a write it never makes" means for money.
+      const clause = valueClause(v);
+      expect(clause).toContain("UNMEASURED");
+      expect(clause).not.toMatch(/TRY/);
+      expect(clause).not.toMatch(/[0-9]+\.[0-9]{2}/);
+    });
+
+    it("says a number IS on file, which null does not say", () => {
+      const zero = valueBacktest(run(), { ...HOUSE, carryPerPeriod: 0 });
+      const none = valueBacktest(run(), { ...HOUSE, carryPerPeriod: null });
+      expect(zero.withheldDetail).toContain("a carrying cost of 0 is not a cost");
+      expect(none.withheldDetail).not.toContain("a carrying cost of 0 is not a cost");
+      // Same withheld reason, different detail: one house has a field to fix,
+      // the other has a field to fill.
+      expect(zero.withheld).toBe(none.withheld);
+      expect(zero.withheldDetail).not.toEqual(none.withheldDetail);
+    });
+
+    it("a positive carrying cost is still stated, so the gate did not swallow the good case", () => {
+      const v = valueBacktest(run(), { ...HOUSE, carryPerPeriod: 0.005 });
+      expect(moneyState(v)).toBe("stated");
+      expect(v.carryFraction).not.toBeNull();
+      expect(v.moneyPerFire).not.toBeNull();
+    });
+  });
+
   it("UNMEASURED — no shelf life typed is a DIFFERENT sentence from no carrying cost", () => {
     const noShelf = valueBacktest(run(), { ...HOUSE, shelfLifeDays: null });
     const noCarry = valueBacktest(run(), { ...HOUSE, carryPerPeriod: null });

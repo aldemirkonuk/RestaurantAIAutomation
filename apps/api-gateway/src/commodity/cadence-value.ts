@@ -225,9 +225,11 @@ export interface CadenceValuation {
    * spend: `carryPerPeriod × H(H+1)/2`. The unit bought for period t+w sits for
    * w periods, so the holding is triangular and not `carry × H`.
    *
-   * `null` when the house has typed no carrying cost. NOT zero: zero would
-   * price holding three months of stock as free, which is the single
-   * assumption that makes every fire look like a win.
+   * `null` when the house has typed no carrying cost, AND when it has typed one
+   * that is not a positive finite number — 0, a negative, NaN, Infinity. NOT
+   * zero: zero would price holding three months of stock as free, which is the
+   * single assumption that makes every fire look like a win. The two silences
+   * are told apart in `withheldDetail`, which says whether a number is on file.
    */
   carryFraction: number | null;
   /** Mean net, in units of one period's spend, before attention. Pass-through applied. */
@@ -539,10 +541,22 @@ export function valueBacktest(
   const H = backtest.horizon;
   // A house that has typed nothing has a carrying cost of NOTHING, not of zero:
   // zero would price holding stock as free and make every fire look like a win.
-  const carryFraction =
-    params.carryPerPeriod === null
-      ? null
-      : carryFractionFor(params.carryPerPeriod, H);
+  //
+  // AND A ZERO IS NOT A TYPED COST EITHER. Until 2026-09-06 this gated on
+  // `=== null` alone, so a literal 0 was carried through as a real figure and
+  // `moneyState()` returned `stated` with a money number beside it — the audit
+  // of e7c24d2e proved it with a probe (`carryPerPeriod: 0` -> `stated`,
+  // `moneyPerFire: 292`), which is precisely the outcome the doc comment above
+  // says must be impossible. The gate is now what the invariant always meant: a
+  // carrying cost is a POSITIVE FINITE number, and anything else is unmeasured.
+  // NaN and Infinity go the same way, because a cost nobody can compare to a
+  // benefit is not a cost.
+  const typedCarry = params.carryPerPeriod;
+  const carryIsACost =
+    typedCarry !== null && Number.isFinite(typedCarry) && typedCarry > 0;
+  /** Present, but not a cost. A different silence from "nobody typed anything". */
+  const carryTypedButNotACost = typedCarry !== null && !carryIsACost;
+  const carryFraction = carryIsACost ? carryFractionFor(typedCarry, H) : null;
   const gross = backtest.meanGrossFraction;
 
   // Break-even pass-through: the φ at which φ·gross = carry. Undefined when the
@@ -605,7 +619,14 @@ export function valueBacktest(
       ...base,
       withheld: "no_carrying_cost_typed",
       withheldDetail:
-        "Nobody at this house has typed what holding stock costs it, so the saving is unmeasured. Buying ahead ties up cash, space and shelf life, and a figure that left those out would be an invented profit. It is one number, on the settings page, and it is a percent a month.",
+        "Nobody at this house has typed what holding stock costs it, so the saving is unmeasured. Buying ahead ties up cash, space and shelf life, and a figure that left those out would be an invented profit. It is one number, on the settings page, and it is a percent a month." +
+        // The one clause that separates "nobody typed anything" from "somebody
+        // typed something that is not a cost". Both are unmeasured; only one of
+        // them has a number on file, and a person looking for the missing field
+        // would otherwise never find it.
+        (carryTypedButNotACost
+          ? ` A number IS on file for this house and it is not a cost: a carrying cost of 0 is not a cost, and neither is a negative one or a value that is not a finite number. Zero would price holding three months of stock as free, which is the single assumption that makes every fire look like a win, so it is refused here rather than believed.`
+          : ""),
     };
   }
 

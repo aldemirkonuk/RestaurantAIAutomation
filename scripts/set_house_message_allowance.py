@@ -50,6 +50,20 @@ USAGE
         --apply --i-have-the-founders-word
 
 Without `--apply` it prints what it WOULD write and writes nothing.
+
+A DRY RUN IS NOT OFFLINE, AND SAYS SO
+=====================================
+Given `--restaurant`, a dry run performs ONE authenticated READ-ONLY GET of the
+current allowance before the `--apply` gate is ever reached — it cannot show
+you what the write would change without first knowing what is there. In this
+repository the nearest `.env` points at PRODUCTION, so that read is a
+production read. It is allowed (the founder's rule is that production WRITES
+wait on his word) but it is not silent: the line before the request names the
+host and the words "READ-ONLY". There is deliberately no offline mode — a mode
+that fabricated the current row would be worse than a disclosed read.
+`--self-test` is the option that touches no database, and `--help` and a
+no-argument run reach neither the network nor the `.env`.
+
 Environment: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (read from the nearest
 .env that mentions the key, the same way the vendor-catalogue script does).
 """
@@ -202,6 +216,20 @@ def report(
     return sql
 
 
+def read_disclosure(url: str) -> str:
+    """The sentence printed before the dry run's live GET.
+
+    A function rather than an inline f-string so `--self-test` can prove it
+    offline: the host is named, the words READ-ONLY appear, the dry run is
+    called out by name, and no key or full URL is ever in it.
+    """
+    host = urllib.parse.urlsplit(url).netloc or "an unnamed host"
+    return (
+        f"READ-ONLY: about to read {TABLE} for this one restaurant from {host}. "
+        "This happens on a dry run too, and nothing is written by it."
+    )
+
+
 def rest_get(url: str, key: str, params: dict[str, str]) -> list[dict[str, Any]]:
     """One PostgREST GET. Raises on failure — a failed read is never an empty one."""
     query = urllib.parse.urlencode(params, safe="*(),.")
@@ -284,19 +312,47 @@ def self_test() -> int:
     if keys != {"restaurant_id", "monthly_allowance", "stated_source", "set_via", "set_by"}:
         failures.append(f"the payload's keys drifted: {sorted(keys)}")
 
+    # THE DRY RUN'S READ IS DISCLOSED, and that disclosure is provable without
+    # a database. A dry run performs a live GET before the --apply gate; these
+    # four properties are what stop that read from being silent.
+    secret = "sb-service-role-key-never-printed"
+    disclosure = read_disclosure(f"https://project-ref.supabase.co/rest/v1?apikey={secret}")
+    if "READ-ONLY" not in disclosure:
+        failures.append("the read is not disclosed as read-only")
+    if "project-ref.supabase.co" not in disclosure:
+        failures.append("the disclosure does not name the host it reads from")
+    if "dry run" not in disclosure:
+        failures.append("the disclosure does not say a dry run reads too")
+    if secret in disclosure or "apikey" in disclosure:
+        failures.append("the disclosure leaked a credential from the URL")
+
     if failures:
         for f in failures:
             print(f"self-test FAILED: {f}", file=sys.stderr)
         return 3
-    print("self-test passed: 8 refusals and 6 statement properties checked, 0 writes.")
+    print(
+        "self-test passed: 8 refusals, 6 statement properties and 4 read-disclosure "
+        "properties checked, 0 writes."
+    )
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Set ONE house's monthly message allowance (ADR 0121, founder Q8).",
+        description=(
+            "Set ONE house's monthly message allowance (ADR 0121, founder Q8). "
+            "A DRY RUN IS NOT OFFLINE: given --restaurant, it performs one "
+            "authenticated READ-ONLY GET of the current allowance from the "
+            "SUPABASE_URL in the nearest .env (production, in this repository) "
+            "so it can show you what the write would change. It names that host "
+            "on the line before the read. Writing still needs --apply and "
+            "--i-have-the-founders-word; --self-test touches no database at all."
+        ),
     )
-    parser.add_argument("--restaurant", help="the one restaurant's UUID")
+    parser.add_argument(
+        "--restaurant",
+        help="the one restaurant's UUID; supplying it triggers the read-only GET described above",
+    )
     parser.add_argument(
         "--allowance",
         type=int,
@@ -348,6 +404,18 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # THE READ IS DISCLOSED BEFORE IT HAPPENS, INCLUDING ON A DRY RUN.
+    #
+    # A dry run reads like "this does nothing", and it does not do nothing: it
+    # performs one authenticated GET against whatever SUPABASE_URL the nearest
+    # .env supplies, which in this repository is PRODUCTION. Reading production
+    # is allowed - the founder's rule is that WRITES wait on his word - but an
+    # undisclosed read is the same shape of fault as an undisclosed write, so
+    # the host is named and the word read-only is used, before the request goes
+    # out rather than after. Only the host is printed: a URL can carry a
+    # project ref, and a key never appears here at all.
+    print(read_disclosure(url))
 
     try:
         rows = rest_get(

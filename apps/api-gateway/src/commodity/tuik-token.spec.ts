@@ -129,7 +129,9 @@ describe("no failure path carries a credential into a message", () => {
     const holder = new TuikTokenHolder(post);
     const out = await holder.get({ [TUIK_KEY_ENV]: FAKE_KEY } as NodeJS.ProcessEnv);
     expect(out.detail).not.toContain(FAKE_KEY);
-    expect(out.detail).toContain("[redacted]");
+    // "[key redacted]", not the generic "[redacted]": the configured-value rule
+    // fires before the length rule and leaves the more specific marker behind.
+    expect(out.detail).toContain("[key redacted]");
   });
 
   it("the scrubber catches both a JWT and a long key-shaped run", () => {
@@ -140,6 +142,101 @@ describe("no failure path carries a credential into a message", () => {
     expect(scrubSecrets("The token endpoint answered HTTP 401.")).toBe(
       "The token endpoint answered HTTP 401.",
     );
+  });
+});
+
+/**
+ * THE SHAPE THE 40-CHARACTER RULE MISSED.
+ *
+ * The audit of c22a20a2 (finding 1) measured that the real key is a 36-character
+ * UUID and that `\b[A-Za-z0-9_-]{40,}\b` therefore never touched it: a thrown
+ * error carrying it would have been logged whole. Every fixture below is
+ * SYNTHETIC — no real key is read here, from `.env` or anywhere else — and the
+ * point of each is a shape, not a value.
+ */
+describe("the scrubber knows a key by its shape and by its value", () => {
+  /** 8-4-4-4-12 hex: the shape of the real key, and of most modern API keys. Invented. */
+  const SYNTHETIC_UUID_KEY = "7f3c9a21-4b8e-4d1f-9c62-0ae5d3b17f04";
+  /** Neither UUID-shaped nor 40 characters. Only rule 1 can catch this one. */
+  const SYNTHETIC_ODD_KEY = "tuik-probe-key-2026";
+
+  const envWith = (value: string) => ({ [TUIK_KEY_ENV]: value }) as NodeJS.ProcessEnv;
+
+  it("redacts a UUID-shaped key even when no environment holds it", () => {
+    // 36 characters. The length rule alone lets this through, which was the defect.
+    expect(SYNTHETIC_UUID_KEY).toHaveLength(36);
+    const out = scrubSecrets(`api_key=${SYNTHETIC_UUID_KEY} was sent`, {} as NodeJS.ProcessEnv);
+    expect(out).not.toContain(SYNTHETIC_UUID_KEY);
+    expect(out).toContain("[key redacted]");
+  });
+
+  it("redacts an UPPER-CASE UUID too, because hex is written both ways", () => {
+    const upper = SYNTHETIC_UUID_KEY.toUpperCase();
+    const out = scrubSecrets(`api_key=${upper}`, {} as NodeJS.ProcessEnv);
+    expect(out).not.toContain(upper);
+    expect(out).toContain("[key redacted]");
+  });
+
+  it("redacts the exact configured value even when it is neither UUID nor long", () => {
+    // 19 characters, hyphenated, not hex. No shape rule can see it; rule 1 can.
+    expect(SYNTHETIC_ODD_KEY.length).toBeLessThan(40);
+    const out = scrubSecrets(
+      `connect ECONNREFUSED while sending api_key=${SYNTHETIC_ODD_KEY}`,
+      envWith(SYNTHETIC_ODD_KEY),
+    );
+    expect(out).not.toContain(SYNTHETIC_ODD_KEY);
+    expect(out).toContain("[key redacted]");
+  });
+
+  it("redacts EVERY occurrence when the key appears twice", () => {
+    const twice = `api_key=${SYNTHETIC_UUID_KEY} retried with api_key=${SYNTHETIC_UUID_KEY}`;
+    const out = scrubSecrets(twice, envWith(SYNTHETIC_UUID_KEY));
+    expect(out).not.toContain(SYNTHETIC_UUID_KEY);
+    expect(out.match(/\[key redacted\]/g)).toHaveLength(2);
+  });
+
+  it("still catches the JWT-shaped token and the 40-plus run", () => {
+    const out = scrubSecrets(
+      `Bearer ${FAKE_TOKEN} api_key=${FAKE_KEY}`,
+      envWith(SYNTHETIC_UUID_KEY),
+    );
+    expect(out).toContain("[token redacted]");
+    expect(out).toContain("[redacted]");
+    expect(out).not.toContain(FAKE_TOKEN);
+    expect(out).not.toContain(FAKE_KEY);
+  });
+
+  it("all three shapes in one string, and none of them survives", () => {
+    const out = scrubSecrets(
+      `token=${FAKE_TOKEN} key=${SYNTHETIC_UUID_KEY} other=${FAKE_KEY} configured=${SYNTHETIC_ODD_KEY}`,
+      envWith(SYNTHETIC_ODD_KEY),
+    );
+    for (const secret of [FAKE_TOKEN, SYNTHETIC_UUID_KEY, FAKE_KEY, SYNTHETIC_ODD_KEY]) {
+      expect(out).not.toContain(secret);
+    }
+  });
+
+  it("an unset or blank key is not a pattern that matches everything", () => {
+    // A naive `new RegExp("")` would redact between every character. It must not.
+    const prose = "The token endpoint answered HTTP 401.";
+    expect(scrubSecrets(prose, {} as NodeJS.ProcessEnv)).toBe(prose);
+    expect(scrubSecrets(prose, envWith("   "))).toBe(prose);
+  });
+
+  it("a key with regex metacharacters is escaped, not compiled", () => {
+    const awkward = "a+b.c*d(e)"; // would be a RegExp syntax error or a wild match unescaped
+    const out = scrubSecrets(`api_key=${awkward} end`, envWith(awkward));
+    expect(out).toBe("api_key=[key redacted] end");
+  });
+
+  it("a thrown fetch error carrying a UUID key is scrubbed through the holder", async () => {
+    const post: HttpPost = async () => {
+      throw new Error(`connect ECONNREFUSED while sending api_key=${SYNTHETIC_UUID_KEY}`);
+    };
+    const holder = new TuikTokenHolder(post);
+    const out = await holder.get(envWith(SYNTHETIC_UUID_KEY));
+    expect(out.detail).not.toContain(SYNTHETIC_UUID_KEY);
+    expect(out.detail).toContain("[key redacted]");
   });
 });
 

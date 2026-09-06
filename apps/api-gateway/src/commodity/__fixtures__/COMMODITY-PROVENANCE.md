@@ -115,9 +115,16 @@ The chosen row's neighbours confirm the plan's own note: `Wtd Avg Price Previous
 Those two are read and **deliberately not written as observations**: they are the issuer
 restating other dates, and writing them would post one number twice under two periods.
 
-**Six of the 23 rows carry an EMPTY `Wtd Avg Price`.** `Number("")` is 0, so an empty cell
+**Eight of the 23 rows carry an EMPTY `Wtd Avg Price`.** `Number("")` is 0, so an empty cell
 read as a value would post a price of zero cents a dozen. It is refused as `no_value` with
 the words *"that market did not report on this date - it is not a price of zero"*.
+
+The count was written here as **six** until 2026-09-06 and was wrong. Measured:
+`awk -F'\t' 'NR>1 && $28==""' usda-ams-2843-2026-09-04.report-detail-weighted.tsv | wc -l`
+→ **8** (column 28 is `Wtd Avg Price`), at data rows **1, 2, 3, 11, 18, 19, 20, 23**. Nothing
+broke, because no code path depended on the number — which is exactly why it survived: it was
+prose in four places and an assertion in none. `parse-usda-shell-egg.spec.ts` now asserts the
+parser refuses **exactly eight** rows with `no_value`, so the number is pinned by a run.
 
 ### What the landing did NOT change
 

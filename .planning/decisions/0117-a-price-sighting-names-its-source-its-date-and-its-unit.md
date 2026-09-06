@@ -377,9 +377,25 @@ its author and its moment enforced as one fact by a CHECK, typed on `/settings?t
    be explained, or an absence reads as a choice — the same shape as `withheld_reason` on a
    series this register holds but does not fetch.
 
+**The spend floor is a PRINTED STATE, not a gate (2026-09-06, the founder's batch-61 answer to
+the quant pass's Q3).** His words, verbatim: *"Printed state only, until the egg backtest."* The
+tenth condition — a minimum item spend, measured between 168 and thousands a month depending on
+the parameters — stays what `cadence-value.ts` already built: `valueBacktest` returns `withheld:
+"below_spend_floor"`, `moneyState()` returns `too_small`, and the sentence prints the measured
+floor as its reason. It never suppresses an alert. Arming it waits on a backtest over a series
+that IS money rather than an index point, which is the USDA shell-egg download. **No code
+changed for this decision** — the built behaviour was already the answer; what changed is that
+it is now decided rather than merely implemented, which is the difference this ADR exists to
+record. Recorded in the plan at `.planning/07-reference/commodity-signals-plan.md` §9f.
+
+**The backtest it waits on cannot be run yet — the register holds ONE report of the egg series,
+a one-point history admits no walk-forward and no hit rate, and testing even the fortnightly
+cadence at this standard costs 307 weekly reports: the plan's §9g, measured 2026-09-06.**
+
 **And what it opens, carried here rather than lost.** Six questions came out of the quant pass
 (`p4-scratch/p4bf-quant-cadence.md` §9); two are answered above (the default budget; whether a
-house types a carrying cost — yes, and it is now a field), one is built (the spend floor), and
+house types a carrying cost — yes, and it is now a field), one is built and now also decided
+(the spend floor, batch 61 above), and
 **three are open and the founder's**: (i) does the proposal promise the budget as a RATE, given
 that out of sample a once-a-year budget fired 1.62 times a year and a twice-a-year budget 2.27
 — the sentence now prints both, which is a partial answer; (ii) do we act on 36 years or on 40
@@ -1361,6 +1377,18 @@ until the founder decides whether a drinks house should see a produce line at al
     licence is TÜİK's site-wide notice: re-use *provided the source is cited*, so
     `attribution_required` with an attribution string of ours. **Türkiye stops being
     `silent: no_machine_endpoint` and gets its labelled index line.**
+
+    **The production key, 2026-09-06 (batch 62).** The founder, verbatim, in his own spelling:
+    *"new deploymnet in place for railway"* — production carries a new Railway deployment.
+    **This session did NOT verify that `TUIK_SDMX_API_KEY` is present in that deployment's
+    environment**, and the check would not have meant much yet if it had: this branch is
+    unmerged, so **production runs no TÜİK code at all today** and nothing there reads the
+    variable. The key's presence in production is therefore an unverified claim resting on the
+    founder's own statement, recorded as such rather than as a check that passed. The first
+    thing that can prove it is `GET /commodity-index/me` after this branch merges —
+    `commodity.service.ts:358-359` prints *"registered and reads over a credential this
+    environment does not hold"* when the variable is unset — so a merged deployment answers the
+    question by itself, with no manual inspection of a production environment.
 
 23. **Class E has no home in `price_index_postings` for an index NUMBER.** The type union and the
     CHECK both admit `public_index`, but the columns require a price in a currency with a unit.
@@ -2571,3 +2599,4 @@ close things.
 | Date | Who | What |
 |---|---|---|
 | 2026-09-06 | Claude (parent) | The numbers 639d66cb's message pointed at this addendum for: on an archive of that commit's index, `npx jest src/vendor-intel src/price-index src/price-register src/beverages` 668 passed / 43 suites; `scripts/check_price_register_reads_are_scoped.py` PASS (14 reads: 10 through the enforcement point, 4 allow-listed) and `--self-test` PASS; its bite proven on the pre-fix vendor-comparison and price-index files (exit 1, six findings by line) and its rot detection on a mutated allow-list pin (exit 2); PGlite `p4bk-register-visibility.mjs` 26 passed / 0 (the CHECK refuses all four disagreements; 4 visible with the null arm, 2 without; four policies; authenticated refused 42501 before RLS); gateway tsc (both configs) and web tsc 0 errors; check_gateway_boots PASS. **Corrections:** the migration's header said "five files" and "FIVE reads" where the census is four files and six reads (fixed in the file); and that message listed check_read_columns_exist under "Measured" while the archive run printed FAIL — the failure belonged to 78bd177a's name lookup, not to this commit, and was fixed in 9d13bd01, but the message should have said so. |
+| 2026-09-06 | Claude (builder p4bm, audit fixes) | Five Sonnet audits of the TÜİK, egg, carrying-cost and billing commits were worked through. **Two of their findings were security- or honesty-shaped and are now closed with tests that fail on the pre-fix tree.** (1) `scrubSecrets` (`commodity/tuik-token.ts`) redacted only unbroken runs of 40+ characters, so a UUID-shaped key — 36 characters, the shape TÜİK and most modern providers issue — passed through a thrown error unredacted. It now redacts the exact configured value of `TUIK_SDMX_API_KEY` (escaped, every occurrence), any 8-4-4-4-12 hex run in either case, the JWT, and the long run, in that order; `env` became a parameter so the test proves it with a SYNTHETIC key and never reads `.env`. A same-depth probe built from `git show HEAD:` and deleted after: **4 of 5 pre-fix, 0 of 24 post-fix failures**. (2) This ADR's own §13.37 claim in `06-pages/notifications.md` — "a test asserts that no renderable field contains a beverage noun **in any language**" — was false: the test checked `wine` and `beer`. Both halves fixed: the assertion gained `şarap`, `şarabı`, `bira`, `rakı`, and the sentence now names the list it actually checks. Proven by rendering `şarap` into TT09's silent reason — pre-fix **32 passed**, post-fix **1 failed / 31 passed**. Also: the `20260906130000` migration's `user_agent` and `licence_url` gained the two missing `COMMENT ON COLUMN` (PGlite: **4 of 6 before, 6 of 6 after**; `p4bb-tuik-provenance.mjs` re-run — applied twice idempotent, 6 refuse-probes REFUSED, 3 ACCEPTED); a service-level spec now pins that the daily budget is checked BEFORE the token is minted (swapping the two blocks in a probe copy fails it); and the two batch-61/62 founder records above were filed. `npx jest src/commodity src/settings src/settings-audit src/billing` **504 passed / 32 suites**; gateway tsc both configs 0; `eslint --quiet` exit 0; `check_gateway_boots.sh` PASS. **NOT verified: that `TUIK_SDMX_API_KEY` is present in the new Railway deployment** — see the TÜİK note above; the branch is unmerged, so production runs no TÜİK code and there is nothing there that would read it. |

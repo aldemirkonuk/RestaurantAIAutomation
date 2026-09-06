@@ -2185,7 +2185,14 @@ from the product.
 
 The commit message of fb7248ec said `check_new_tables_are_locked_down: OK (268 CREATE TABLE / 268 live)`. Measured on an isolated archive of that commit: **258 / 258**. The 268 was the number the guard printed on the SHARED worktree, which carried other builders' uncommitted migrations — the parent pasted the tree's number rather than the archive's, the exact habit p4-rules.md forbids. The verdict (every table locked down) was right; the count was not. Also: the two `nt-book.test.ts` failures that message called "not this commit's" were confirmed pre-existing on the parent 59e25f92 and fixed in d35d27e2.
 
-### 13.35 What the founder's answers changed on this box (2026-09-05, batches 50-51)
+### 13.39 What the founder's answers changed on this box (2026-09-05, batches 50-51)
+
+*(Numbered 13.39 on 2026-09-06. It was written as a second `### 13.35` and
+collided with the ADR 0128 section above; the audits of aa9510a6 and e7c24d2e
+both flagged it. Renumbered to the next free number rather than resequencing
+everything after it, so no citation that was correct becomes wrong. A citation
+of "notifications.md §13.35" written before 2026-09-06 means whichever of the
+two the sentence is about.)*
 
 Five answers, and three of them are visible here.
 
@@ -2245,8 +2252,8 @@ ledger row.**
 
 ### 13.36 The per-bottle duty stops being a sentence and becomes a figure (2026-09-05, batch 57)
 
-§13.35 recorded that the duty line printed a sentence rather than a number, for
-two measured reasons. The founder's batch-57 answer removed one of them and the
+§13.39 (the batch-50/51 section, numbered 13.35 until 2026-09-06) recorded that
+the duty line printed a sentence rather than a number, for two measured reasons. The founder's batch-57 answer removed one of them and the
 schema turned out to have already removed the other.
 
 **The strength now exists.** `master_wine_library.abv_percent` — nullable, no
@@ -2328,9 +2335,15 @@ nothing built here can set it on Railway.
 codes unnamed for now"*. Its three beverage subclasses read 128.89, 126.50 and
 140.20 at 2026-08, and TÜİK's codelist endpoint answers 401 — the labels have
 never been read. So the box prints the codes and the sentence saying so, and a
-test asserts that no renderable field on that series contains a beverage noun in
-any language. Guessing which subclass is wine would be inventing a fact about a
-series a house might act on.
+test asserts that no renderable field on that series contains any of the English
+and Turkish beverage nouns the test lists — `wine`, `beer`, `şarap`, `şarabı`,
+`bira`, `rakı` (`MarketIndexPanel.commodity.test.tsx`, the TT09 case). This
+sentence claimed *"a beverage noun in any language"* until 2026-09-06, and that
+was false: the test checked two English words. A test cannot assert a property
+of every language, and a page note may not claim a check the suite does not make
+— so the sentence now names the list, and the list gained the four Turkish nouns
+that actually matter for a Turkish series. Guessing which subclass is wine would
+be inventing a fact about a series a house might act on.
 
 **What was built against, and it would have been invisible.** The payload's
 `UNIT_MEASURE` column is **empty on every row**, and the thing that makes 134.31
@@ -2364,10 +2377,12 @@ series' name: a different market, a 43 percent error, and entirely
 ordinary-looking. The selection is now a six-part tuple and an ambiguous match
 is refused by name.
 
-**Six of the 23 rows carry no price at all.** `Number("")` is 0, so an empty cell
-read as a value would have drawn **0.00 cents a dozen** here. It is refused with
-the words *"that market did not report on this date - it is not a price of
-zero"*.
+**Eight of the 23 rows carry no price at all.** `Number("")` is 0, so an empty
+cell read as a value would have drawn **0.00 cents a dozen** here. It is refused
+with the words *"that market did not report on this date - it is not a price of
+zero"*. (This said **six** until 2026-09-06. Measured:
+`awk -F'\t' 'NR>1 && $28==""' <fixture> | wc -l` -> **8**, at data rows 1, 2, 3,
+11, 18, 19, 20, 23. The parser now asserts the count.)
 
 **What the line says now.** The *"waiting on a person's own download"* sentence
 is gone, because it would be false. The *"Not fetched"* sentence stays and has
@@ -2375,7 +2390,11 @@ grown a clause: the host's crawl rules are still unreadable, **a one-off read is
 not a cadence**, and this daily series is refreshed only when a person brings the
 file again. Nothing about it is armed for alerting.
 
-### 13.36 The alert now has a price on it, and it decided the cadence (2026-09-06)
+### 13.40 The alert now has a price on it, and it decided the cadence (2026-09-06)
+
+*(Numbered 13.40 on 2026-09-06. It was appended as a second `### 13.36` and
+collided with the batch-57 per-bottle-duty section above. Same rule as 13.39:
+renumbered to the next free number, nothing after it resequenced.)*
 
 **The founder, 2026-09-05 batch 59, answering `commodity-signals-plan.md` §12 Q5:**
 *"Twice a year, and the house types its carrying cost."* The evidence is that plan's

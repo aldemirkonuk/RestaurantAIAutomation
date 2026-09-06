@@ -73,8 +73,12 @@ COMMENT ON COLUMN public.commodity_index_series.key_env_var IS
   'The NAME of the environment variable holding the credential, never the credential. A register that stored a key would be a register that leaks one. This is the column a deployment checklist reads.';
 COMMENT ON COLUMN public.commodity_index_series.robots_reading IS
   'What the host answered when asked for its crawl rules, in words. Four distinct answers exist across this register - 200 with rules (FAO), 404 absent (ONS), 403 refused (USDA AMS) and 401 unauthenticated (TUIK nsiws) - and flattening any into another is a different claim about a different publisher.';
+COMMENT ON COLUMN public.commodity_index_series.user_agent IS
+  'The string we identify as when reading this source. It lives on the ROW rather than in one constant so the identity we present to a publisher is a property of that publisher''s series - a host that asks us to stop can be honoured for itself alone, and nobody can quietly change how we introduce ourselves to everyone at once.';
 COMMENT ON COLUMN public.commodity_index_series.request_budget_per_day IS
   'OUR self-imposed ceiling, not the publisher''s limit. TUIK states no rate limit anywhere, and a source with no stated limit is exactly where a runaway loop does its damage.';
+COMMENT ON COLUMN public.commodity_index_series.licence_url IS
+  'Where the licence text was READ, which is not the same fact as what it says. TUIK''s re-use sentence lives in a site-wide legal notice, in Turkish, on a page the English site does not link to; the `licence` column holds the words and this holds where they were found, so a later reader can check them rather than trust us.';
 
 DO $$
 BEGIN

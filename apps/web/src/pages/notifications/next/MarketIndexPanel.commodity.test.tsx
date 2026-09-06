@@ -713,7 +713,15 @@ describe('TÜİK: the line Türkiye did not have, and its licence travels with i
     expect(screen.getByText(/02110 \/ 02121 \/ 02130/)).toBeTruthy();
     expect(screen.getByText(/have never been read/)).toBeTruthy();
     const section = container.querySelector('section[aria-labelledby="nt-commodity"]')!;
-    expect(section.textContent!.toLowerCase()).not.toContain('wine');
-    expect(section.textContent!.toLowerCase()).not.toContain('beer');
+    // The nouns this test checks, named exhaustively. The page note used to
+    // claim this asserted "a beverage noun in ANY language" and it never did:
+    // until 2026-09-06 the list was 'wine' and 'beer' alone. The claim and the
+    // list are now the same size, and the series is Turkish, so the Turkish
+    // nouns are the ones that would actually have been invented here.
+    const BEVERAGE_NOUNS = ['wine', 'beer', 'şarap', 'şarabı', 'bira', 'rakı'];
+    const text = section.textContent!.toLocaleLowerCase('tr-TR');
+    for (const noun of BEVERAGE_NOUNS) {
+      expect(text).not.toContain(noun);
+    }
   });
 });

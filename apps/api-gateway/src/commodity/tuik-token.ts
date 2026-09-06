@@ -92,17 +92,50 @@ export type HttpPost = (
   headers: Record<string, string>,
 ) => Promise<{ status: number; text: string }>;
 
+/** Make a literal safe to drop into a RegExp. Every metacharacter, no exceptions. */
+function escapeForRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
- * Scrub anything token-shaped out of a string before it can be logged.
+ * A UUID, the shape most modern API providers actually issue: 8-4-4-4-12 hex.
+ *
+ * This exists because the length rule below did NOT catch the real key. A UUID
+ * is 36 characters, the long-run rule starts at 40, and the audit of c22a20a2
+ * (finding 1) measured the gap against the founder's actual TÜİK key: it passed
+ * through unredacted. A credential's shape, not only its length, has to be a rule.
+ */
+const UUID_SHAPED =
+  /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g;
+
+/**
+ * Scrub anything token- or key-shaped out of a string before it can be logged.
  *
  * Defence in depth: nothing below deliberately puts a token in a message, and
  * this is what makes that true even if somebody later passes a body through by
- * mistake. A JWT is three base64url segments separated by dots, and an API key
- * is a long unbroken run of key-ish characters; both are replaced wholesale.
+ * mistake. Three rules, most specific first, because a specific rule leaves a
+ * more useful marker behind than a general one:
+ *
+ * 1. **The exact configured value of `TUIK_SDMX_API_KEY`**, wherever and however
+ *    often it appears. This is the only rule that cannot be fooled by a shape we
+ *    failed to anticipate — it redacts the actual secret this process holds,
+ *    whatever it looks like. If the key is short enough to also be ordinary prose
+ *    then ordinary prose gets redacted too; that is the safe direction to be
+ *    wrong in, and a scrubber that errs the other way is not a scrubber.
+ * 2. **A JWT** — three base64url segments separated by dots. That is the token.
+ * 3. **A UUID, then any long unbroken key-ish run.** Shape first, length second.
+ *
+ * `env` is a parameter rather than a closure over `process.env` so a test can
+ * prove rule 1 with a synthetic key and never touch the real environment.
  */
-export function scrubSecrets(text: string): string {
-  return text
+export function scrubSecrets(text: string, env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env[TUIK_KEY_ENV];
+  const key = typeof configured === "string" ? configured.trim() : "";
+  const withKeyGone =
+    key === "" ? text : text.replace(new RegExp(escapeForRegExp(key), "g"), "[key redacted]");
+  return withKeyGone
     .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, "[token redacted]")
+    .replace(UUID_SHAPED, "[key redacted]")
     .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[redacted]");
 }
 
@@ -197,7 +230,7 @@ export class TuikTokenHolder {
       return {
         token: null,
         refusal: "unreadable_response",
-        detail: `The token endpoint could not be reached: ${scrubSecrets((err as Error).message)}. Nothing was read.`,
+        detail: `The token endpoint could not be reached: ${scrubSecrets((err as Error).message, env)}. Nothing was read.`,
       };
     }
 

@@ -706,6 +706,17 @@ the thousands on realistic ones. The nine conditions in §9a all ask about the S
 see that a line is too small to be worth a sentence. `valueBacktest` names it
 `below_spend_floor` and the alert prints the floor as the reason.
 
+~~**Open: is the tenth condition ARMED — does the rule refuse to fire for an item below the
+floor — or is the floor only printed?**~~ **ANSWERED AND CLOSED by the founder, 2026-09-06
+(batch 61).** His words, verbatim: *"Printed state only, until the egg backtest."* So the
+floor stays a printed state and never a gate: `valueBacktest` returns `withheld:
+"below_spend_floor"` and `moneyState()` returns `too_small`, the sentence names the measured
+floor, and nothing is suppressed by it. The condition is not armed until a backtest on a
+series that IS money — the USDA shell-egg download of §10 — can say what the floor costs in
+missed fires rather than in index points. **No code changed for this answer**; the built
+behaviour already was the answer, and this paragraph is the record that it is now decided
+rather than merely implemented.
+
 **The strongest thing against all of it, measured on this repository's own fixture.** Run the
 identical rule on the committed 40-month window (2023-05 to 2026-08) and the sign flips at
 every cadence: quarterly **−0.79 pp**, twice a year **−2.74 pp**, once a year **−4.42 pp** with

@@ -25,10 +25,19 @@ import {
  * `currency` was missing here from the day that register was added
  * (2026-09-05): `PUT /settings/currency` wrote `register: "currency"` rows and
  * `GET /settings-audit?register=currency` answered 400. Found and corrected
- * 2026-09-06 while adding `carrying-cost`; the type is the source of truth and
- * this list is now checked against it in the spec.
+ * 2026-09-06 while adding `carrying-cost`.
+ *
+ * THAT CLAIM WAS FALSE WHEN IT WAS WRITTEN. This comment said "the type is the
+ * source of truth and this list is now checked against it in the spec"; the
+ * audit of e7c24d2e went looking for the spec and there was none, so reverting
+ * this list to its five-entry state would have passed every test in the
+ * gateway. `settings-audit.controller.spec.ts` is now that check, and it works
+ * in both directions: a `Record<SettingsRegister, true>` that `tsc` refuses to
+ * compile the moment a union member is unaccounted for, and a runtime
+ * comparison of that record's keys against this array. Exported for that spec
+ * — an allow-list nothing can read is an allow-list nothing can check.
  */
-const REGISTERS: SettingsRegister[] = [
+export const REGISTERS: SettingsRegister[] = [
   "features",
   "vendor-terms",
   "thresholds",

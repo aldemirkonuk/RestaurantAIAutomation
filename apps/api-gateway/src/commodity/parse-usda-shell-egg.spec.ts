@@ -166,8 +166,54 @@ describe("THE SIX-PART SELECTION, and why five parts is a bug", () => {
 });
 
 describe("an empty price is a market that did not report, never a zero", () => {
-  it("refuses one of the six rows this file leaves blank", () => {
-    // Measured: six of the 23 rows carry an empty Wtd Avg Price. `Number("")`
+  /**
+   * EIGHT, AND THE NUMBER COMES FROM THE PARSER RATHER THAN FROM A SENTENCE.
+   *
+   * Four places in this repository said "six" until 2026-09-06. The audit of
+   * aa9510a6 counted the column instead — `awk -F'\t' 'NR>1 && $28==""' <fixture>
+   * | wc -l` → 8, at data rows 1, 2, 3, 11, 18, 19, 20 and 23 — and nothing
+   * caught the error because no test asserted the count at all. This one does,
+   * and it asserts it through `parseUsdaShellEgg` rather than through `awk`, so
+   * the number pinned here is the number the PARSER refuses, not a property of
+   * a file some future edit could drift away from.
+   */
+  it("refuses exactly eight of the 23 rows, one per blank price", () => {
+    const lines = TSV.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const header = lines[0].split("\t");
+    const at = (name: string) => header.indexOf(name);
+    const rows = lines.slice(1).map((l) => l.split("\t").map((c) => c.trim()));
+
+    const reasons: string[] = [];
+    for (const row of rows) {
+      const select: EggRowSelector = {
+        eggType: row[at("Egg Type")],
+        environment: row[at("Environment")],
+        color: row[at("Color")],
+        class: row[at("Class")],
+        origin: row[at("Origin")],
+        freight: row[at("Freight")],
+      };
+      const run = parseUsdaShellEgg(TSV, { ...OPTS, select });
+      reasons.push(run.refusals[0]?.reason ?? "admitted");
+    }
+
+    expect(reasons).toHaveLength(23);
+    // The count the four prose sites now agree with.
+    expect(reasons.filter((r) => r === "no_value")).toHaveLength(8);
+    // And every one of them is a blank cell in column "Wtd Avg Price", so the
+    // refusal count and the blank count are the same eight rows, not two
+    // different eights that happen to match.
+    const blankRows = rows
+      .map((row, i) => (row[at("Wtd Avg Price")] === "" ? i : -1))
+      .filter((i) => i >= 0);
+    expect(blankRows).toHaveLength(8);
+    for (const i of blankRows) {
+      expect(reasons[i]).toBe("no_value");
+    }
+  });
+
+  it("refuses one of the eight rows this file leaves blank", () => {
+    // Measured: eight of the 23 rows carry an empty Wtd Avg Price. `Number("")`
     // is 0, which would post a price of zero cents a dozen.
     const run = parseUsdaShellEgg(TSV, {
       ...OPTS,
