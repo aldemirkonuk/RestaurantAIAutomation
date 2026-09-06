@@ -85,7 +85,10 @@ describe('the house policy holds in the primitive family', () => {
   it('carries no emoji anywhere in the family', () => {
     // Pictographs and dingbats. `›` (the spine separator) and `·` are
     // punctuation, not pictures, and are deliberately allowed.
-    const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
+    // Alternation, not one class: a variation selector inside a character
+    // class is a `no-misleading-character-class` error, and it is exactly the
+    // codepoint that turns a glyph into an emoji.
+    const emoji = /[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|\u{FE0F}/u;
     for (const f of FAMILY) expect(src(f)).not.toMatch(emoji);
   });
 
