@@ -164,7 +164,13 @@ export function MenuScannerModal({
         }
         eyebrow="The register"
         title={step === 'done' ? 'What was carried' : 'Carry these bottles'}
-        wide
+        /* 440, NOT `wide`. The census gives this row `sheet` with no width
+           exception, and ADR 0112 reserves 640 for a LETTER — prose a writer
+           has to read back as prose (sketch 100). A list of detected titles is
+           not that, however much a second column would have been convenient:
+           the fields stack under each row instead, the way /inventory's carry
+           sheet does at the same width. A third width needs an ADR; a second
+           one used loosely is how there comes to be a third. */
         closeLabel={step === 'done' ? 'Done' : 'Close'}
         zIndex={110}
         footer={

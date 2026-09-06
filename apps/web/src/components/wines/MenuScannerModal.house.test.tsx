@@ -106,11 +106,13 @@ describe('flag off — the legacy modal, class string for class string', () => {
 describe('flag on — the house sheet', () => {
   beforeEach(() => claimMudavymShell(Symbol('cellar-page'), 'paper'))
 
-  it('is a wide Sheet on the primitive, motion `tuck`, closed in words', () => {
+  it('is a 440 Sheet on the primitive, motion `tuck`, closed in words', () => {
     modal()
     const root = document.querySelector('.mdv-ovl')
     expect(root?.getAttribute('data-shape')).toBe('sheet')
-    expect(root?.getAttribute('data-wide')).toBe('true')
+    // NOT wide: ADR 0112 reserves 640 for a letter, and the census gives this
+    // row no width exception.
+    expect(root?.getAttribute('data-wide')).toBeNull()
     expect(document.querySelector('[data-motion="tuck"]')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
   })
