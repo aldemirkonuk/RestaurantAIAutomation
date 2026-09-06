@@ -66,6 +66,7 @@ beforeEach(() => {
   hook.locationsUnavailable = false
   hook.mappingsUnavailable = false
   hook.getLocationStats = () => ({ totalUsed: 88 })
+  hook.getLocationsWithActualCounts = () => hook.locations
   hook.createLocationChecked.mockResolvedValue({ ok: true })
   hook.updateLocationChecked.mockResolvedValue({ ok: true })
   hook.deleteLocationChecked.mockResolvedValue({ ok: true })
@@ -216,9 +217,34 @@ describe('flag on — the house sheet', () => {
   it('names the mappings its counts came from, and says when they are incomplete', () => {
     hook.mappingsUnavailable = true
     manager()
-    expect(document.querySelector('.mdv-prov')?.textContent).toContain(
-      'the mappings could not be read, so these counts are not complete',
-    )
+    const prov = document.querySelector('.mdv-prov')?.textContent ?? ''
+    expect(prov).toContain('every count on this paper is summed from the')
+    expect(prov).toContain('the mappings could not be read, so these counts are not complete')
+  })
+
+  /* THE REGRESSION found in a browser: the header summed the SERVER's
+     per-zone `current_count` while every row under it was recomputed from the
+     mappings, so the paper read "357 bottles placed" over three rows each
+     saying "0 bottles". Two records printed as one. */
+  it('sums the header from the same source as the rows, and names the disagreement', () => {
+    // getLocationsWithActualCounts is mocked to return the raw zone (88), while
+    // the stats stand in for the server's own figure (357).
+    hook.getLocationsWithActualCounts = () => [{ ...ZONE, currentCount: 0 }]
+    hook.getLocationStats = () => ({ totalUsed: 357 })
+    manager()
+    expect(screen.getByText('0 bottles placed')).toBeTruthy()
+    expect(
+      screen.getByText(/The zones themselves carry a server-side count of/),
+    ).toBeTruthy()
+    expect(screen.getByText(/Nothing here writes either one\./)).toBeTruthy()
+  })
+
+  it('says nothing about a disagreement when the two records agree', () => {
+    hook.getLocationsWithActualCounts = () => [{ ...ZONE, currentCount: 88 }]
+    hook.getLocationStats = () => ({ totalUsed: 88 })
+    manager()
+    expect(screen.getByText('88 bottles placed')).toBeTruthy()
+    expect(screen.queryByText(/server-side count of/)).toBeNull()
   })
 
   it('wears the page ground the portal was handed', () => {

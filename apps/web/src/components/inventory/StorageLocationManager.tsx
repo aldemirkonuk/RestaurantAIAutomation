@@ -381,6 +381,14 @@ export function StorageLocationManager({
     const heldIn = (id: string) =>
       mappings.filter((m) => m.locationId === id).reduce((n, m) => n + m.quantity, 0)
 
+    /* The count the ROWS show — recomputed from the mappings this browser
+       holds, which is the same source `getLocationsWithActualCounts` uses. A
+       header figure summed from a DIFFERENT source than the rows under it is
+       two records printed as one. */
+    const placedFromMappings = actualLocations.reduce((n, l) => n + l.currentCount, 0)
+    /** What the server stamped on the zones themselves. */
+    const placedFromServer = stats.totalUsed
+
     const note = (what: string, res: { message?: string; denied?: boolean }) =>
       setWrote({
         what,
@@ -600,7 +608,7 @@ export function StorageLocationManager({
               <span className="mdv-head">
                 <span>Your zones — {actualLocations.length}</span>
                 <span>
-                  {stats.totalUsed} bottle{stats.totalUsed !== 1 ? 's' : ''} placed
+                  {placedFromMappings} bottle{placedFromMappings !== 1 ? 's' : ''} placed
                 </span>
               </span>
               <div className="mdv-picks">
@@ -697,12 +705,27 @@ export function StorageLocationManager({
               </div>
               <span className="mdv-prov">
                 {actualLocations.length} zone{actualLocations.length !== 1 ? 's' : ''} on this
-                tenant&rsquo;s record · counts from {mappings.length} wine&rarr;zone mapping
-                {mappings.length !== 1 ? 's' : ''}
+                tenant&rsquo;s record · every count on this paper is summed from the{' '}
+                {mappings.length} wine&rarr;zone mapping{mappings.length !== 1 ? 's' : ''} this
+                browser holds
                 {mappingsUnavailable
                   ? ' · the mappings could not be read, so these counts are not complete'
                   : ''}
               </span>
+              {/* Two sources, and they disagree. The server stamps its own
+                  `current_count` on each zone; the rows above are recomputed
+                  from the mappings. Reporting one of them and hiding the other
+                  is how a surface starts lying quietly, so both are named. */}
+              {placedFromServer !== placedFromMappings && (
+                <p className="mdv-consequence">
+                  The zones themselves carry a server-side count of{' '}
+                  <strong>{placedFromServer}</strong> bottle
+                  {placedFromServer !== 1 ? 's' : ''}, which does not agree with the{' '}
+                  <strong>{placedFromMappings}</strong> the mappings account for. Neither figure is
+                  wrong on its own — they are two different records, and something has to reconcile
+                  them. Nothing here writes either one.
+                </p>
+              )}
             </div>
           )}
 
