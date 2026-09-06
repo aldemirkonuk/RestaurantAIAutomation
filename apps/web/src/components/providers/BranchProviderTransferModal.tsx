@@ -1,3 +1,37 @@
+/**
+ * "Carry your vendors to the new location?" — asked once, after a location is
+ * created.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102) ────────────────────────────────
+ * SHAPE: `Panel`. A question about a batch, put once, answered and left. Not a
+ * sheet: the operator is not opening an object, they are answering whether the
+ * vendors they already have should exist at the new address too. No seal —
+ * copying a vendor row to another restaurant is additive and reversible, and
+ * ADR 0112 rations the wax to real commitments.
+ *
+ * Endpoint: `POST /providers` with the new location's `X-Restaurant-Id`
+ * (apps/api-gateway/src/providers/providers.controller.ts:188), once per
+ * vendor. The controller deliberately preserves its own HTTP semantics — 409
+ * for a catalogue vendor the location already has, 404 for a missing one, 400
+ * for a bad payload — and the legacy branch threw all of that away:
+ *
+ *     } catch {
+ *       // Individual provider failure — skip and continue with the rest
+ *     }
+ *
+ * …and then said "9 vendors added to Kadıköy (3 skipped)". Three skipped, not
+ * named, with no reason, and "skipped" reading like a choice rather than a
+ * refusal. That is the absence-reported-as-health fault on a write path: the
+ * server said exactly what went wrong and the surface dropped it.
+ *
+ * The house branch keeps the same loop and the same route, and holds on to
+ * every rejection: which vendor, what the server said, and whether it was a
+ * refusal (401/403) rather than a fault. A vendor the location already has is
+ * told apart from a vendor that failed to copy, because those are different
+ * facts and only one of them needs anybody to do anything.
+ *
+ * The legacy branch below is frozen and renders byte-for-byte as it shipped.
+ */
 import { useState, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
@@ -6,6 +40,10 @@ import { toast } from 'sonner'
 import { Button } from '../ui/button'
 import { apiClient } from '../../services/api/client'
 import type { Provider } from '../../services/api/providers'
+import { Panel } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import '../locations/locations-mudavym.css'
+import '../inventory/inventory-mudavym.css'
 
 interface BranchProviderTransferModalProps {
   open: boolean
@@ -22,10 +60,20 @@ export function BranchProviderTransferModal({
   newRestaurantId,
   currentProviders,
 }: BranchProviderTransferModalProps) {
+  const shell = useMudavymShell()
   // All providers start checked
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isTransferring, setIsTransferring] = useState(false)
   const [transferProgress, setTransferProgress] = useState(0)
+  /* House-branch state. The legacy render never reads any of it, so the
+     flag-off tree is byte-identical. */
+  const [outcome, setOutcome] = useState<{
+    carried: string[]
+    already: { id: string; name: string }[]
+    failed: { id: string; name: string; message: string }[]
+    denied: boolean
+    at: Date
+  } | null>(null)
 
   // Reset selection whenever the modal opens with a new set of providers
   useEffect(() => {
@@ -56,6 +104,10 @@ export function BranchProviderTransferModal({
     setTransferProgress(0)
     let succeeded = 0
     let attempted = 0
+    const carried: string[] = []
+    const already: { id: string; name: string }[] = []
+    const failed: { id: string; name: string; message: string }[] = []
+    let denied = false
 
     try {
       for (const provider of selectedProviders) {
@@ -81,8 +133,26 @@ export function BranchProviderTransferModal({
             )
           }
           succeeded++
-        } catch {
-          // Individual provider failure — skip and continue with the rest
+          carried.push(provider.id)
+        } catch (err) {
+          /* Individual provider failure — the loop still continues with the
+             rest, exactly as it always has. What changed is that the server's
+             answer is kept instead of discarded: the controller distinguishes
+             409 ("this location already has that catalogue vendor") from a
+             real fault, and those are different sentences to an operator. */
+          const e = err as {
+            response?: { status?: number; data?: { message?: string } }
+            message?: string
+          }
+          const status = e?.response?.status
+          if (status === 401 || status === 403) denied = true
+          if (status === 409) already.push({ id: provider.id, name: provider.name })
+          else
+            failed.push({
+              id: provider.id,
+              name: provider.name,
+              message: e?.response?.data?.message || e?.message || 'the request did not complete',
+            })
         }
         attempted++
         setTransferProgress(attempted)
@@ -97,10 +167,174 @@ export function BranchProviderTransferModal({
       } else {
         toast.error('No vendors could be transferred. Please try again.')
       }
+      /* The house branch stays open and says what landed; the legacy branch
+         closes on the spot, as it always did. */
+      if (shell.on) {
+        setOutcome({ carried, already, failed, denied, at: new Date() })
+        return
+      }
       onClose()
     } finally {
       setIsTransferring(false)
     }
+  }
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    const contract = `Carry your vendors to ${newBranchName}?`
+    return (
+      <Panel
+        open={open}
+        onClose={() => !isTransferring && onClose()}
+        label={`${contract} Carrying adds a vendor record at the new location. Leaving writes nothing, and you can add them later.`}
+        eyebrow="The new location"
+        title={outcome ? `What ${newBranchName} has now` : contract}
+        closeLabel={outcome ? 'Done' : 'Close'}
+        zIndex={120}
+        footer={
+          <span>
+            A vendor carried here is a new record at {newBranchName}. Nothing at your current
+            location changes.
+          </span>
+        }
+      >
+        <div className="mdv-form">
+          <p className="mdv-contract">
+            {outcome
+              ? `This is what ${newBranchName} accepted. Anything it refused is named below and was not carried.`
+              : `The vendors you already work with are listed below. Carrying one adds a vendor record at ${newBranchName}; nothing at your current location changes, and leaving writes nothing.`}
+          </p>
+
+          {outcome ? (
+            <>
+              <div className="mdv-panelbox">
+                <p className="mdv-alert__head">Carried</p>
+                <p className="mdv-record">{outcome.carried.length}</p>
+                <span className="mdv-prov">
+                  of {selectedCount} chosen ·{' '}
+                  {outcome.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+
+              {outcome.already.length > 0 && (
+                <div className="mdv-alert" role="status">
+                  <p className="mdv-alert__head">Already there</p>
+                  <p>
+                    {newBranchName} already had {outcome.already.length} of these, so nothing was
+                    written for {outcome.already.map((p) => p.name).join(', ')}. There is nothing to
+                    do about it.
+                  </p>
+                </div>
+              )}
+
+              {outcome.failed.length > 0 && (
+                <div className="mdv-alert" role="alert">
+                  <p className="mdv-alert__head">
+                    {outcome.denied ? 'Not permitted' : 'Not carried'}
+                  </p>
+                  <p>
+                    {outcome.denied
+                      ? `This account is not permitted to add vendors at ${newBranchName}. The vendors below were not carried; your current location is unchanged.`
+                      : `${outcome.failed.length} vendor${outcome.failed.length !== 1 ? 's were' : ' was'} not carried. ${outcome.failed.length !== 1 ? 'They do' : 'It does'} not exist at ${newBranchName} — you can add ${outcome.failed.length !== 1 ? 'them' : 'it'} there by hand.`}
+                  </p>
+                  {outcome.failed.map((f) => (
+                    <p key={f.id} className="mdv-hintline">
+                      {f.name} — {f.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : currentProviders.length === 0 ? (
+            <p className="mdv-quiet">
+              You have no vendors at this location, so there is nothing to carry.
+            </p>
+          ) : (
+            <>
+              <div>
+                <span className="mdv-head">
+                  <span>Your vendors</span>
+                  <button
+                    type="button"
+                    className="mdv-link"
+                    disabled={isTransferring}
+                    onClick={() =>
+                      setSelectedIds(
+                        selectedCount === currentProviders.length
+                          ? new Set()
+                          : new Set(currentProviders.map((p) => p.id)),
+                      )
+                    }
+                  >
+                    {selectedCount === currentProviders.length ? 'Untick all' : 'Tick all'}
+                  </button>
+                </span>
+                <div className="mdv-picks mdv-scroll">
+                  {currentProviders.map((provider) => {
+                    const on = selectedIds.has(provider.id)
+                    return (
+                      <button
+                        key={provider.id}
+                        type="button"
+                        className="mdv-pick"
+                        aria-pressed={on}
+                        disabled={isTransferring}
+                        onClick={() => toggleProvider(provider.id)}
+                      >
+                        <span style={{ minWidth: 0 }}>
+                          <span className="mdv-pick__label">{provider.name}</span>
+                          <span className="mdv-pick__sub">
+                            {provider.primaryBusinessType ??
+                              (provider.catalogueVendorId
+                                ? 'from the catalogue'
+                                : 'a vendor you added yourself')}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <span className="mdv-prov">
+                  {currentProviders.length} vendor{currentProviders.length !== 1 ? 's' : ''} on your
+                  current location&rsquo;s register
+                </span>
+              </div>
+
+              {isTransferring && selectedCount > 0 && (
+                <p className="mdv-hintline" aria-live="polite">
+                  Carrying {transferProgress} of {selectedCount}. Each one is a separate write; the
+                  ones already done stay done.
+                </p>
+              )}
+
+              <div className="mdv-actions">
+                <span className="mdv-tally">
+                  {selectedCount} of {currentProviders.length} chosen
+                </span>
+                <button
+                  type="button"
+                  className="mdv-btn"
+                  onClick={onClose}
+                  disabled={isTransferring}
+                >
+                  Not now
+                </button>
+                <button
+                  type="button"
+                  className="mdv-btn mdv-btn--seal"
+                  onClick={() => void handleTransfer()}
+                  disabled={isTransferring || selectedCount === 0}
+                >
+                  {isTransferring
+                    ? 'Carrying…'
+                    : `Carry ${selectedCount} vendor${selectedCount !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Panel>
+    )
   }
 
   return (
