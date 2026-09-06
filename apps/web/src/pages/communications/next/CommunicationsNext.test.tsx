@@ -74,6 +74,11 @@ const noFailures = {
 const base = {
   rows: [] as ProcurementHistoryItem[],
   glance: { threads: 4, draftsPending: 1, sentLast30: 9, schedules: 2 },
+  // The drafts THEMSELVES, added 2026-09-06 with the drafted-reply panel: the
+  // strip's figure and this list come from one read, so a mock that carries the
+  // count and not the rows is a mock of a state the hook cannot produce.
+  drafts: [] as unknown[],
+  draftsKnown: true,
   schedules: [],
   schedulesKnown: true,
   schedulesError: null as string | null,

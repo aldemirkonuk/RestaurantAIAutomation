@@ -35,7 +35,36 @@ multi-channel reminders, and meeting-memo capture … Previously built but unrou
 operator (`Sidebar.tsx:110`).
 
 ## 1a. Features
-- See deliveries, tastings and vendor meetings in Month / Week / Day / Agenda views
+
+- **A note from this meeting? — a PANEL, and the first time the note is KEPT**
+  (built 2026-09-06, packet 2 of the overlay layer; census 102 · ADR 0111 · ADR 0112).
+  `pages/calendar/next/MeetingNotePanel.tsx`, asked from a line under the calendar
+  for every meeting that has ended and carries no note.
+  - **The legacy prompt asked the question and threw the answer away.**
+    `pages/calendar/CalendarPage.tsx:325` is an underscore-prefixed argument and the
+    comment `// Future: persist to documents API`. So this is not a migration; it is
+    the write.
+  - **Where it goes**: `PATCH /calendar/events/:eventId`
+    (`calendar.controller.ts:174`), APPENDED to the entry's `description` under a
+    dated heading. ADR 0111 makes the calendar the day-book, and a note about a
+    meeting is a line in that book about that meeting. A documents table and an
+    event `metadata` column were both rejected: each needs a migration, and
+    migrations auto-apply on merge.
+  - **It never overwrites.** `appendNote` is pure and separately tested for exactly
+    that — an entry that already carries somebody's words keeps them, and the new
+    note goes underneath. The panel says how much is already there.
+  - **The kind of note is written into the heading**, because there is no column for
+    it, and the panel says so rather than showing a "Document type" field that files
+    nothing.
+  - **Where it is filed is SHOWN, never chosen** — the entry's own vendor, read from
+    the book, with an unreadable vendor book told apart from an entry that names none.
+  - **Which meetings are asked about** is `meetingsAwaitingNote`: a meeting kind
+    (not a delivery), ended, not cancelled or dismissed, and carrying no description.
+    An entry with no time ends when its DAY ends, not at midnight that morning.
+  - 🚧 **"Asked once" is per session.** The day-book has no column recording that the
+    house asked, so the question returns on a reload until the note is written. A
+    localStorage flag would make one browser's silence look like the house's answer.
+  - Proved by `MeetingNote.test.tsx` (20 assertions).- See deliveries, tastings and vendor meetings in Month / Week / Day / Agenda views
 - Drag to move or resize an event; click an empty slot to create one
 - Full event editing with recurring events (RRULE)
 - Create and manage custom event types (server-backed)
@@ -656,11 +685,12 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
 | `/calendar` | The entry | sheet | Built | One entry is one object; the month stays readable beneath. | `pages/calendar/next/EventSheet.tsx:230` |
-| `/calendar` | A note from this meeting? | panel | Owed | A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). | `pages/calendar/MeetingMemoPrompt.tsx:109` |
+| `/calendar` | A note from this meeting? | panel | Built | A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: the legacy onSave was `// Future: persist to documents API`. The note is APPENDED to the day-book entry under a dated heading (PATCH /calendar/events/:eventId); nothing already written is replaced, and the kind is in the heading because there is no column for it. | `BUILT 2026-09-06 as pages/calendar/next/MeetingNotePanel.tsx (was pages/calendar/MeetingMemoPrompt.tsx:109, whose onSave wrote NOTHING)` |
 | `/calendar` | Ask the day-book | panel | Target | A question — the palette's shape, scoped to one page. | `sketch 098 · ADR 0111 (planned, not built)` |
 | `/calendar` | Event modal | — | Retires | The entry sheet. | `pages/calendar/EventModal.tsx:1511 (1,593 lines)` |
 | `/calendar` | Mobile sidebar scrim | — | Not a shape | Paint only — not a shape. | `pages/calendar/CalendarPage.tsx:597` |
 
+| `cn-note-settle` | The note question opens | *Write one* on a meeting that has ended — the house `Panel` on `settle`. It adds no motion of its own and `prefers-reduced-motion` renders none |
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
@@ -753,6 +783,11 @@ Items 20, 21 and 22 below are **done**; item 30's two fixes are done and so are 
 further suspects it did not name. What follows them (23-29) is untouched.
 
 ## 9. Gaps
+
+- **Nothing records that the house asked for a meeting note** (found 2026-09-06 while
+  building the note panel). There is no column on `calendar_events` for "asked", so
+  the question returns on every reload until a note is written. Holding it in
+  localStorage was rejected: one browser's silence would look like the house's answer.
 
 **Provenance of the populated captures (added 2026-09-04).** The two `calendar-sky-*.png`
 shots in the capture set are **not a live tenant**: no production restaurant carries a

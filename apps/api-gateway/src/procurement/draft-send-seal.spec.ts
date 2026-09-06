@@ -181,7 +181,7 @@ describe("sendDraftedReply", () => {
 
   it("spends the seal BEFORE the send, over the letter as edited", async () => {
     const order: string[] = [];
-    const redeem = jest.fn(async () => {
+    const redeem = jest.fn(async (_params: unknown) => {
       order.push("redeem");
       return { sealId: "s1" };
     });
@@ -191,7 +191,7 @@ describe("sendDraftedReply", () => {
     });
     await send(redeem, approve);
     expect(order).toEqual(["redeem", "approve"]);
-    expect(redeem.mock.calls[0][0]).toMatchObject({
+    expect(redeem.mock.calls[0]![0]).toMatchObject({
       action: "send_draft",
       subjectKind: "procurement_order",
       args: draftSealArgs({ body: "Dear Hasan", to: "h@x.example", cc: [] }),

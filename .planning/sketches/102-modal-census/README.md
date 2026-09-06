@@ -40,9 +40,9 @@ page's ground). Filter by shape and by status.
 | | |
 |---|---|
 | Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 39 |
+| Built on the primitive | 43 |
 | Migrate — legacy inside a house-flagged page today | 10 |
-| Owed — an act the rebuilt page does not yet offer | 4 |
+| Owed — an act the rebuilt page does not yet offer | 0 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
@@ -121,7 +121,7 @@ page's ground). Filter by shape and by status.
 | `/orders` | Recurring order (page) | — | Delete | Recurrence lives on the order (Make this order repeat). Delete. | `pages/RecurringOrders.tsx:530 — nobody imports the page` |
 | `/orders` | Record an auction purchase | — | Retires · fork F4 | Built as a fourth start of **Carry this bottle** on /inventory — 'An auction lot' (decided 2026-09-05, F4). The dead file is deleted once that start exists. | `components/orders/AuctionPurchaseModal.tsx:133 — nobody imports it` |
 | `/inventory` | Carry this bottle | sheet | Migrate | One bottle entering the book is one object; three ways to start, one sheet. | `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)` |
-| `/inventory` | Carry this bottle · an auction lot | sheet | Owed · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. | `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet` |
+| `/inventory` | Carry this bottle · an auction lot | sheet | Built · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. BUILT 2026-09-06 (packet 2): the bottle is chosen from the register and enters through the SAME POST /inventory the carry sheet uses; (hammer + premium) / bottles becomes costPerBottle with provenance `manual`, the working is printed, and the sheet says in words that the lot's own details are NOT saved (ADR 0083). An UNSTATED premium is refused rather than read as zero. | `BUILT 2026-09-06 as pages/inventory/command/AuctionLotStart.tsx (was components/orders/AuctionPurchaseModal.tsx:133 — unreachable AND pointing at two routes that do not exist)` |
 | `/inventory` | Place 14 bottles by their zones? | panel | Migrate | A question about a batch. Bulk, so no wax — the plain die. | `components/inventory/AutoLocatePreviewModal.tsx:70` |
 | `/inventory` | A delivery without an order | sheet · wide | Migrate · fork F3 | Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
 | `/inventory` | POS buttons and stock | sheet | Migrate | One queue, worked line by line, the register still visible beneath. | `components/inventory/PosMappingPanel.tsx:294` |
@@ -161,7 +161,7 @@ page's ground). Filter by shape and by status.
 | `/communications` | Send SMS (saved template) | — | Retires | The text sender (ADR 0121). | `components/documents/SavedSMSTemplates.tsx:619` |
 | `/communications` | Template library (new template · sent) | — | Delete | Dead code. Delete. | `components/documents/TemplateLibrary.tsx:606 and :945 — nobody imports it` |
 | `/calendar` | The entry | sheet | Built | One entry is one object; the month stays readable beneath. | `pages/calendar/next/EventSheet.tsx:230` |
-| `/calendar` | A note from this meeting? | panel | Owed | A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). | `pages/calendar/MeetingMemoPrompt.tsx:109` |
+| `/calendar` | A note from this meeting? | panel | Built | A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: the legacy onSave was `// Future: persist to documents API`. The note is APPENDED to the day-book entry under a dated heading (PATCH /calendar/events/:eventId); nothing already written is replaced, and the kind is in the heading because there is no column for it. | `BUILT 2026-09-06 as pages/calendar/next/MeetingNotePanel.tsx (was pages/calendar/MeetingMemoPrompt.tsx:109, whose onSave wrote NOTHING)` |
 | `/calendar` | Ask the day-book | panel | Target | A question — the palette's shape, scoped to one page. | `sketch 098 · ADR 0111 (planned, not built)` |
 | `/calendar` | Event modal | — | Retires | The entry sheet. | `pages/calendar/EventModal.tsx:1511 (1,593 lines)` |
 | `/calendar` | Mobile sidebar scrim | — | Not a shape | Paint only — not a shape. | `pages/calendar/CalendarPage.tsx:597` |
@@ -180,7 +180,7 @@ page's ground). Filter by shape and by status.
 | `/notifications` | Notification detail | — | Retires | The row expands in place (`.nt-expand`); a sealed act opens the panel above. | `pages/Notifications.tsx:1513` |
 | `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is built as **A one-tap action of your own** on / (decided 2026-09-05, F4). | `pages/Notifications.tsx:1705` |
 | `/notifications` | Add vendor deadline | — | Delete | Cutoffs live in vendor terms (ADR 0116). Delete. | `components/notifications/VendorDeadlineSettings.tsx:184 — nobody imports it` |
-| `/recommendations` | Who takes this? | popover | Owed · fork F4 | A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. | `pages/Recommendations.tsx:980 — not on the rebuilt docket` |
+| `/recommendations` | Who takes this? | popover | Built · fork F4 | A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. BUILT 2026-09-06 (packet 2): the docket's inline list moved onto the anchored Popover, so nothing under it shifts while somebody is choosing; the roster's four states stay four, and 'nobody' is offered LAST. | `BUILT 2026-09-06 as pages/recommendations/next/WhoTakesThisPopover.tsx (was pages/Recommendations.tsx:980; the docket's inline list is replaced)` |
 | `/settings` | Add a location | sheet | Built | One location being written. | `components/locations/AddLocationDialog.tsx:185 (opened at pages/settings/next/LocationsSection.tsx)` |
 | `/settings` | New chain | sheet | Built | One chain being written. | `components/locations/CreateChainDialog.tsx:121` |
 | `/settings` | Edit location | sheet | Built | One location's record. | `components/locations/EditLocationChainDialog.tsx:134` |
@@ -198,7 +198,7 @@ page's ground). Filter by shape and by status.
 | `/team` | Shift actions | popover | Built | A row's own menu. | `pages/team/next/WeekGrid.tsx:424` |
 | `/team` | What changed here | sheet | Built | The audit trail of one record. | `pages/team/next/TeamRecord.tsx:273 (TrailSheet)` |
 | `/team` | Invite a team member | popover · modal | Built | Anchored under its button like a popover, but a form that commits — so it traps focus and dims. The one exception; the studio invite reuses this component (F2, 2026-09-05). | `components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings` |
-| `/team` | Certifications on file | sheet | Owed · fork F4 | One person's certificates are one record; opened from the roster row. | `pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05` |
+| `/team` | Certifications on file | sheet | Built · fork F4 | One person's certificates are one record; opened from the roster row. BUILT 2026-09-06 (packet 2): file, correct and remove against all four /team/:restaurantId/certifications routes — the rebuilt roster could only LIST them, and the desk that could write them is deleted with packet 4. The status is the SERVER's word and is never worked out again here; an UNREADABLE file is never drawn as an empty one. | `BUILT 2026-09-06 as pages/team/next/CertificationsSheet.tsx (was pages/team/command/OpsRulesPanel.tsx:37, the legacy desk); team_certifications has no role or applies-to column` |
 | `/team` | Desk row menu | — | Retires | Shift actions, Publish this week, Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:868` |
 | `/team` | Desk message composer | — | Retires | A note to the crew. | `pages/team/command/ManagerShiftDesk.tsx:981` |
 | `/team` | Desk confirm sheet | — | Retires | Publish this week · Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:1061` |

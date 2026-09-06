@@ -221,25 +221,6 @@ These render legacy markup inside a house-flagged page **today**. Move each onto
 
 A rebuilt page cannot do something its legacy page could. Build the act, not a shell: the endpoint, the four states, the provenance, the ceremony. Several need a gateway route that does not exist yet — say so and build it.
 
-**`/inventory`** — flag `mudavym_design_inventory`
-
-- **Carry this bottle · an auction lot** — sheet. The same sheet, a fourth start: an auction bottle is still one bottle entering the book.
-  `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet`
-
-**`/calendar`** — flag `mudavym_design_calendar`
-
-- **A note from this meeting?** — panel. A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders).
-  `pages/calendar/MeetingMemoPrompt.tsx:109`
-
-**`/recommendations`** — flag `mudavym_design_recommendations`
-
-- **Who takes this?** — popover. A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's.
-  `pages/Recommendations.tsx:980 — not on the rebuilt docket`
-
-**`/team`** — flag `mudavym_design_team`
-
-- **Certifications on file** — sheet. One person's certificates are one record; opened from the roster row.
-  `pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05`
 
 
 ## 8. Packet 3 — the seven targets

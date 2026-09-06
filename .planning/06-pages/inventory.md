@@ -34,7 +34,32 @@ staff and managers: live vs shadow stock, spot counts, receiving verification as
 pinned task (not a popup), menu-scan intake, and per-branch views.
 
 ## 1a. Features
-- 9-column live stock table; expand a row for detail: live vs shadow stock, par/reorder bar, velocity, busy-hours heatmap, order history, manual entry (🚧 market-price columns render "—" until price enrichment exists)
+
+- **Carry this bottle · an auction lot — the FOURTH START** (built 2026-09-06, packet 2
+  of the overlay layer; census 102 · fork F4, the founder's ruling 2026-09-05).
+  `pages/inventory/command/AuctionLotStart.tsx`, offered beside *Single wine*,
+  *Menu scan* and *Receive a delivery*.
+  - **The legacy modal could never have worked.** `components/orders/AuctionPurchaseModal.tsx:133`
+    is unreachable (`feature-flag-registry.ts:308` says so), and it posts to
+    `POST /wines/research` and `POST /wines/auction-purchase` — **neither route exists
+    in this gateway** (measured 2026-09-06: zero matches outside that file). It also
+    used raw `axios`, so it carried no token. This is the act built, not migrated.
+  - **A bottle from an auction is still a bottle entering the book.** It is chosen
+    from the register and enters through the same `POST /inventory`
+    (`useCreateInventoryItem`) the carry sheet uses — one path into the book, not two.
+  - **What the auction adds is a cost with its working shown**:
+    `(hammer + premium) ÷ bottles = cost per bottle`, printed as a sentence, written
+    as `costPerBottle` with provenance `manual` — the honest one of the four
+    `inventory_lots_cost_provenance_check` allows, because a person typed the hammer.
+  - **An unstated premium is refused, never read as zero.** "There was no premium" and
+    "nobody typed the premium" are different facts, and only the first can produce a
+    cost.
+  - 🚧 **The lot's own details have no column and are NOT saved** — auction house, lot
+    number, sale date. The sheet takes them, uses them, prints them back to be copied
+    somewhere that keeps them, and says plainly that the book keeps the figure and not
+    the lot (ADR 0083). See §9. *The census's own footer claimed "the ledger keeps
+    both"; it was corrected on 2026-09-06 against the schema.*
+  - Proved by `AuctionLot.test.tsx` (12 assertions).- 9-column live stock table; expand a row for detail: live vs shadow stock, par/reorder bar, velocity, busy-hours heatmap, order history, manual entry (🚧 market-price columns render "—" until price enrichment exists)
 - Attention rail surfacing low stock first
 - Spot counts with an offline-safe outbox (counts queue and sync when back online)
 - Receiving verification as a pinned task, not a popup — verify a delivery against its documents
@@ -129,7 +154,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
 | `/inventory` | Carry this bottle | sheet | Migrate | One bottle entering the book is one object; three ways to start, one sheet. | `components/inventory/AddWineToInventoryModal.tsx:253 (opened at InventoryCommandPage.tsx:1438)` |
-| `/inventory` | Carry this bottle · an auction lot | sheet | Owed · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. | `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet` |
+| `/inventory` | Carry this bottle · an auction lot | sheet | Built · fork F4 | The same sheet, a fourth start: an auction bottle is still one bottle entering the book. BUILT 2026-09-06 (packet 2): the bottle is chosen from the register and enters through the SAME POST /inventory the carry sheet uses; (hammer + premium) / bottles becomes costPerBottle with provenance `manual`, the working is printed, and the sheet says in words that the lot's own details are NOT saved (ADR 0083). An UNSTATED premium is refused rather than read as zero. | `BUILT 2026-09-06 as pages/inventory/command/AuctionLotStart.tsx (was components/orders/AuctionPurchaseModal.tsx:133 — unreachable AND pointing at two routes that do not exist)` |
 | `/inventory` | Place 14 bottles by their zones? | panel | Migrate | A question about a batch. Bulk, so no wax — the plain die. | `components/inventory/AutoLocatePreviewModal.tsx:70` |
 | `/inventory` | A delivery without an order | sheet · wide | Migrate · fork F3 | Lines read as a table; 640 like the composer. Decided 2026-09-05 (F3): a sheet here, not a route. | `components/inventory/ManualReceiptWorkspace.tsx:234` |
 | `/inventory` | POS buttons and stock | sheet | Migrate | One queue, worked line by line, the register still visible beneath. | `components/inventory/PosMappingPanel.tsx:294` |
@@ -138,6 +163,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/inventory` | Spot count | sheet · seal | Migrate | Opened from the row expander; one bottle's count is one record. | `pages/inventory/command/SpotCountPanel.tsx:210 (opened from RowExpansion.tsx:384)` |
 | `/inventory` | Receipt record | — | Retires | /receipts is the receipts desk (ReceiptsNext). /inventory links there and never overlays it. | `pages/inventory/command/ReceivingWorkspace.tsx:376` |
 
+| `iv-auction-tuck` | The auction start opens | *An auction lot* on the add-wine chooser — the house `Sheet` on `tuck`, 300ms. It adds no motion of its own and `prefers-reduced-motion` renders none |
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
@@ -210,6 +236,16 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
   branches' stock (:382).
 
 ## 9. Gaps
+
+- **An auction lot's own details have nowhere to live** (found 2026-09-06 while
+  building the fourth start). `inventory_lots` carries `unit_cost` and
+  `cost_provenance` and nothing else about where a bottle came from, so the auction
+  house, the lot number and the sale date are taken, used to work out the cost, and
+  then dropped. The sheet says so rather than pretending. Fixing it is a column (or a
+  provenance row), which is a migration and therefore not a decision an overlay packet
+  takes. Two dead routes go with it: `POST /wines/research` and
+  `POST /wines/auction-purchase`, which the legacy modal called and which have never
+  existed.
 
 - `v3.0-TECH-DEBT.md:357` — `INVENTORY_SOTA_PLAN.md` phases 2–3 (§6, §7) remain
   unbuilt; Phase 1 is what this page ships. Phase 0's ground-truth check "still worth

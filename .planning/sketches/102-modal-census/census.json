@@ -1078,7 +1078,7 @@
     },
     {
      "name": "Carry this bottle · an auction lot",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -1160,9 +1160,9 @@
        ]
       ]
      ],
-     "footer": "A lot's cost is the hammer plus the premium; the ledger keeps both (ADR 0070).",
-     "why": "The same sheet, a fourth start: an auction bottle is still one bottle entering the book.",
-     "source": "components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet",
+     "footer": "A lot's cost is the hammer plus the premium. CORRECTED 2026-09-06: the ledger keeps the SUM as a unit cost, not both figures — inventory_lots has no column for a hammer price, a premium, an auction house, a lot number or a sale date.",
+     "why": "The same sheet, a fourth start: an auction bottle is still one bottle entering the book. BUILT 2026-09-06 (packet 2): the bottle is chosen from the register and enters through the SAME POST /inventory the carry sheet uses; (hammer + premium) / bottles becomes costPerBottle with provenance `manual`, the working is printed, and the sheet says in words that the lot's own details are NOT saved (ADR 0083). An UNSTATED premium is refused rather than read as zero.",
+     "source": "BUILT 2026-09-06 as pages/inventory/command/AuctionLotStart.tsx (was components/orders/AuctionPurchaseModal.tsx:133 — unreachable AND pointing at two routes that do not exist)",
      "acts": null,
      "went": null,
      "fork": "F4"
@@ -2588,7 +2588,7 @@
     },
     {
      "name": "A note from this meeting?",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -2634,8 +2634,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders).",
-     "source": "pages/calendar/MeetingMemoPrompt.tsx:109",
+     "why": "A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: the legacy onSave was `// Future: persist to documents API`. The note is APPENDED to the day-book entry under a dated heading (PATCH /calendar/events/:eventId); nothing already written is replaced, and the kind is in the heading because there is no column for it.",
+     "source": "BUILT 2026-09-06 as pages/calendar/next/MeetingNotePanel.tsx (was pages/calendar/MeetingMemoPrompt.tsx:109, whose onSave wrote NOTHING)",
      "acts": null,
      "went": null,
      "fork": null
@@ -3100,7 +3100,7 @@
    "overlays": [
     {
      "name": "Who takes this?",
-     "status": "owed",
+     "status": "built",
      "shape": "popover",
      "wide": false,
      "modal": false,
@@ -3127,8 +3127,8 @@
       ]
      ],
      "footer": null,
-     "why": "A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's.",
-     "source": "pages/Recommendations.tsx:980 — not on the rebuilt docket",
+     "why": "A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. BUILT 2026-09-06 (packet 2): the docket's inline list moved onto the anchored Popover, so nothing under it shifts while somebody is choosing; the roster's four states stay four, and 'nobody' is offered LAST.",
+     "source": "BUILT 2026-09-06 as pages/recommendations/next/WhoTakesThisPopover.tsx (was pages/Recommendations.tsx:980; the docket's inline list is replaced)",
      "acts": null,
      "went": null,
      "fork": "F4"
@@ -4013,7 +4013,7 @@
     },
     {
      "name": "Certifications on file",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -4070,8 +4070,8 @@
       ]
      ],
      "footer": "A certificate is a fact with two dates; the schedule reads the second one.",
-     "why": "One person's certificates are one record; opened from the roster row.",
-     "source": "pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05",
+     "why": "One person's certificates are one record; opened from the roster row. BUILT 2026-09-06 (packet 2): file, correct and remove against all four /team/:restaurantId/certifications routes — the rebuilt roster could only LIST them, and the desk that could write them is deleted with packet 4. The status is the SERVER's word and is never worked out again here; an UNREADABLE file is never drawn as an empty one.",
+     "source": "BUILT 2026-09-06 as pages/team/next/CertificationsSheet.tsx (was pages/team/command/OpsRulesPanel.tsx:37, the legacy desk); team_certifications has no role or applies-to column",
      "acts": null,
      "went": null,
      "fork": "F4"

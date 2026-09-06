@@ -81,7 +81,7 @@ export function VendorTwinPanel({
       [match.vendor.city, match.vendor.state].filter(Boolean).join(', ')
     : match.provider.address;
 
-  const useTheOneOnFile = async () => {
+  const takeTheOneOnFile = async () => {
     if (adding || match.kind !== 'catalogue') return;
     setAdding(true);
     setFailure(null);
@@ -185,7 +185,7 @@ export function VendorTwinPanel({
               type="button"
               disabled={adding}
               data-testid="twin-use-existing"
-              onClick={() => void useTheOneOnFile()}
+              onClick={() => void takeTheOneOnFile()}
               style={{
                 fontFamily: SANS,
                 fontSize: 12.5,

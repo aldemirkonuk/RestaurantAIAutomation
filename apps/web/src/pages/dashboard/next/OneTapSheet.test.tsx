@@ -295,6 +295,45 @@ describe('the stub survives Esc (sketch 103, 1b)', () => {
   });
 });
 
+describe('both grounds, measured', () => {
+  /**
+   * The ground is a DOM FACT (ADR 0042 / ADR 0112): tokens live on `.mudavym`,
+   * never `:root`, so a portalled overlay has no colours unless its own root
+   * carries the class AND, on charcoal, `data-ground` on that same element.
+   *
+   * A screenshot is the ideal proof and was NOT taken this session (the local
+   * worktree server lands on the sign-in wall and entering credentials is not
+   * something this session may do). This asserts the mechanism instead: the
+   * overlay resolves the ground from the opener's own ancestor, both ways.
+   */
+  it('wears the ground of the page that opened it — paper and charcoal', async () => {
+    serve([]);
+    const { unmount } = render(
+      <MemoryRouter>
+        <div className="mudavym">
+          <OneTapPanel restaurantId="rest-A" />
+        </div>
+      </MemoryRouter>,
+    );
+    await openSheet();
+    expect(screen.getByRole('dialog').closest('.mdv-ovl')).not.toHaveAttribute('data-ground');
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <div className="mudavym" data-ground="charcoal">
+          <OneTapPanel restaurantId="rest-A" />
+        </div>
+      </MemoryRouter>,
+    );
+    await openSheet();
+    expect(screen.getByRole('dialog').closest('.mdv-ovl')).toHaveAttribute(
+      'data-ground',
+      'charcoal',
+    );
+  });
+});
+
 describe('the pure parts', () => {
   it('keeps the legacy href rule, all four cases', () => {
     expect(isPlaceAnActionCanGo('/inventory')).toBe(true);
