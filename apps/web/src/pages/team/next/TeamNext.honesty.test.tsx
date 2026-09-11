@@ -6,7 +6,7 @@
  * assertion below is about a SENTENCE the page prints over nothing.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen , configure } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -121,6 +121,18 @@ vi.mock('../../../contexts/AuthContext', () => ({
 vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
+import { mondayOf } from './tm-format';
+
+/**
+ * The page opens on `mondayOf(new Date())` (TeamNext.tsx), so every fixture
+ * below that names a DATE is only rendered while the real clock happens to sit
+ * in that fixture's week. Pinning the clock to 2026-09-02 (a Wednesday of the
+ * week starting 2026-08-31, the `week_start` every fixture here uses) makes
+ * these assertions hold on any day the suite runs. Only `Date` is faked:
+ * faking timers wholesale would starve react-query's async settling.
+ */
+const PINNED_WEEK_START = '2026-08-31';
+const PINNED_NOW = new Date('2026-09-02T12:00:00');
 
 const member = (id: string, name: string, position: string) => ({
   id,
@@ -176,6 +188,8 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
   auth.role = 'owner';
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   api.week = weekPayload();
@@ -183,6 +197,10 @@ beforeEach(() => {
   api.certs = [];
   api.templates = [];
   api.createCoverageTemplate.mockClear();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /** P1 — an idle engine is not a staffed week. */
@@ -210,6 +228,10 @@ describe('the coverage engine says whether it has ever been asked', () => {
 /** P8 — a day whose coverage status is `gap` is not "covered". */
 describe('the day chips agree with the coverage status', () => {
   it('does not print "covered" on a day the gateway marked as a gap', async () => {
+    // Guard: this case is only meaningful while the page's opening week is the
+    // fixture's week. Without the pinned clock this fails on any date outside
+    // the week of 2026-08-31 — which is exactly how it broke on 2026-09-11.
+    expect(mondayOf(new Date())).toBe(PINNED_WEEK_START);
     api.templates = [{ id: 't1', role: 'line', day_of_week: null, shift_period: 'pm', min_staff: 3 }];
     api.week = weekPayload({
       coverage: {
