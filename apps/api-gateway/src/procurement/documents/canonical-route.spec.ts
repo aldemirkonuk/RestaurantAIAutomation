@@ -119,6 +119,8 @@ describe("DocumentsController.canonicalDocument", () => {
       {} as any,
       // DeliveryStockService — the half that books stock at the door (A1).
       {} as any,
+      // LineMappingService — the mapping memory (ADR 0104 D12 slice 4).
+      {} as any,
     );
   });
 

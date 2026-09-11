@@ -3,6 +3,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "../documents/document-extractor.service";
 import { DocumentIntakeService } from "../documents/document-intake.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
+import { LineMappingService } from "./line-mapping.service";
 
 /**
  * The BT-149 / BT-150 / `as_printed` round trip (ADR 0104 D1, slice 2
@@ -119,6 +120,7 @@ describe("price base and printed literals — write", () => {
         // the real service over the same mocked client — nothing on the path
         // under test reaches it, and a stub would have to pretend otherwise.
         CanonicalDocumentService,
+        LineMappingService,
       ],
     }).compile();
     service = module.get(DocumentIntakeService);
@@ -354,6 +356,7 @@ describe("price base and printed literals — read back", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CanonicalDocumentService,
+        LineMappingService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();
