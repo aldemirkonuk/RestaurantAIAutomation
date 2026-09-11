@@ -125,7 +125,9 @@
 | 1-identity | apps/web/src/pages/Profile.test.tsx | vitest | unit | test-typescript | yes | unknown |  |
 | 5-procurement | apps/web/src/pages/inventory/command/ReceivingWorkspace.test.tsx | vitest | unit | test-typescript | yes | unknown | receiving workspace; registry primary 5 |
 | 11-platform | apps/web/e2e/navigation.spec.ts | playwright | e2e | test-e2e | yes | unknown | local Playwright smoke |
-| 11-platform | apps/web/e2e/prod-smoke.spec.ts | playwright | prod_e2e | e2e-prod | yes | unknown | Wave F / also invoked via e2e-prod schedule; secrets often empty |
+| 11-platform | apps/web/e2e/nightly/nightly.spec.ts | playwright | prod_e2e | e2e-prod | yes | unknown | Wave F (ADR 0135) — replaced prod-smoke.spec.ts 2026-09-11; walks manifest.json with the override on/off; honest-reporter.ts writes the four-state summary |
+| 11-platform | services/agent-orchestrator/tests/e2e_gateway/test_wave_h_gateway_contracts.py | pytest | prod_e2e | e2e-prod | yes | unknown | Wave H (ADR 0135) — gateway read-only: build identity, 401s, flags, forecast/insight-catalog honesty, scenario runs; own conftest, no sim teardown |
+| 11-platform | apps/api-gateway/src/analytics/engine/forecasting.backtest.spec.ts | jest | unit | test-typescript | yes | unknown | pinned forecast fixture datasets/sim/fixtures/forecast-backtest.json (ADR 0135); also run by e2e-prod's Backtests step |
 | 11-platform | apps/web/e2e/smoke.spec.ts | playwright | e2e | test-e2e | yes | unknown | local Playwright smoke |
 | 2-catalog | apps/web/e2e/studio-flow.spec.ts | playwright | e2e | test-e2e | yes | unknown | local Playwright; test-e2e ≠ e2e-prod |
 | 11-platform | services/agent-orchestrator/tests/e2e/test_api_endpoints.py | pytest | e2e | test-python | yes | unknown | orchestrator e2e suite under tests/e2e/ |
