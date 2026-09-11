@@ -38,6 +38,7 @@ One event, three renderings by role:
 - **Staff**: pick which delivery you're receiving → the door flow; no prices shown
 - **Manager**: the decision queue, worst money first
 - **Owner**: one number — money that actually came back (recovered credits)
+- **Verification settles COST, never quantity (ADR 0103 A1).** The bottles arrived on the shelf at the door; pressing verify posts the agreed price — an accepted proposal beats the invoice line it is about — onto that delivery's lots and flips them from `provisional` to `final`. The response's `costNote` says what could not be costed and why, rather than reporting a silent success.
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
 Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):

@@ -27,6 +27,7 @@ import type {
   FieldEnvelope,
 } from '../../services/api/canonical'
 import { ProvenanceHover } from './ProvenanceHover'
+import { RememberedShelf } from './RememberedShelf'
 import {
   DOC_TYPE_LABELS,
   EM,
@@ -156,6 +157,18 @@ export interface CanonicalSheetProps {
   corrections?: CorrectionLogEntry[] | null
   onCorrect?: (path: string, label: string) => void
   onVerify?: (path: string, label: string) => void
+  /**
+   * ADR 0104 D12 slice 4 — the shelf a line names, or the one the memory
+   * proposes. Omitted entirely (no handler) and the sheet shows no shelf row at
+   * all, which is what the read-only surfaces want.
+   */
+  onLinkItem?: (
+    lineId: string,
+    inventoryId: string | null,
+    source: 'chosen' | 'remembered',
+  ) => Promise<void>
+  onChooseItem?: (lineId: string) => void
+  itemName?: (inventoryId: string) => string | null
 }
 
 export function CanonicalSheet({
@@ -165,9 +178,17 @@ export function CanonicalSheet({
   corrections,
   onCorrect,
   onVerify,
+  onLinkItem,
+  onChooseItem,
+  itemName,
 }: CanonicalSheetProps) {
   const l1 = doc.layer1
   const currency = l1.currency.value
+  /** lineIndex -> layer 2, so the shelf row can find its own line. */
+  const resolvedByIndex = useMemo(
+    () => new Map(doc.layer2.lines.map((l) => [l.lineIndex, l])),
+    [doc.layer2.lines],
+  )
 
   /**
    * path -> its corrections, newest first. Built once per render.
@@ -525,6 +546,14 @@ export function CanonicalSheet({
                   )}
                   {line.vintage.value != null && (
                     <span style={{ color: 'var(--ink-3, #7C7365)' }}> · {line.vintage.value}</span>
+                  )}
+                  {onLinkItem && resolvedByIndex.get(i) && (
+                    <RememberedShelf
+                      line={resolvedByIndex.get(i)!}
+                      itemName={itemName ?? (() => null)}
+                      onLink={onLinkItem}
+                      onChoose={onChooseItem}
+                    />
                   )}
                 </td>
                 <td style={TD}>{fmtQty(adj?.ordered ?? null, currency)}</td>

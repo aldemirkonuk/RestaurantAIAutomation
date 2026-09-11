@@ -21,6 +21,9 @@ import { VerdictBlock } from '../VerdictBlock'
 import { DeliverySpine } from '../DeliverySpine'
 import { DegradedNotice, degradedReasons } from '../DegradedNotice'
 import { DoorFrame } from '../DoorFrame'
+import { ProposalThread } from '../ProposalThread'
+import { DeliveryGates } from '../DeliveryGates'
+import type { DeliveryEvent, Proposal } from '../../../services/api/deliveries'
 import type {
   AdjudicatedLine,
   CanonicalDocument,
@@ -665,5 +668,294 @@ describe('CanonicalSheet — the seller (finding 2)', () => {
     expect(screen.getByRole('tooltip').textContent).toMatch(
       /From your own records in Mudavym · not printed on this document/,
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Slice 3 stop 2 — the door writes, the thread keeps, the gates explain.
+// ---------------------------------------------------------------------------
+
+const proposal = (over: Partial<Proposal> = {}): Proposal => ({
+  id: 'p-1',
+  delivery_id: 'del-1',
+  document_id: null,
+  line_no: 1,
+  side: 'restaurant',
+  reason: 'SHORT_SHIP',
+  qty_proposed: 10,
+  unit_price_proposed: null,
+  money_at_risk: 284,
+  evidence: [],
+  note: 'we counted ten of twelve',
+  status: 'open',
+  counters_proposal_id: null,
+  proposed_by: 'u1',
+  proposed_at: '2026-08-14T09:40:00Z',
+  responded_at: null,
+  responded_by: null,
+  ...over,
+})
+
+const event = (over: Partial<DeliveryEvent> = {}): DeliveryEvent => ({
+  id: 'del-1',
+  providerId: 'prov-1',
+  orderId: 'ord-1',
+  state: 'RECONCILING',
+  provenance: 'ORDERED',
+  jurisdiction: 'TR',
+  deliveredAt: '2026-08-14T07:41:00Z',
+  agreedAt: null,
+  agreedRule: null,
+  verifiedAt: null,
+  verifiedBy: null,
+  lapsedAt: null,
+  lapseDeemed: null,
+  amendedAt: null,
+  ...over,
+})
+
+describe('DoorFrame — the count is a write, and an untouched line is not a zero', () => {
+  it('submits ONLY the lines somebody touched', async () => {
+    const submitted: unknown[] = []
+    render(
+      <DoorFrame
+        doc={doc({
+          layer1: { ...doc().layer1, lines: [line(), line({ description: env('SYNTHETIC Kalecik Karası') })] },
+          layer3: {
+            ...doc().layer3,
+            lines: [adjudicated(), adjudicated({ lineIndex: 1 })],
+          },
+        })}
+        onSubmitCount={async (input) => {
+          submitted.push(input)
+        }}
+      />,
+    )
+    // Count line 1 only; line 2 is never touched.
+    const inputs = screen.getAllByTestId('door-count-input')
+    await userEvent.type(inputs[0], '10')
+    await userEvent.click(screen.getByTestId('door-submit'))
+
+    expect(submitted).toHaveLength(1)
+    const lines = (submitted[0] as { lines: { lineNo: number; qty: number }[] }).lines
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({ lineNo: 1, qty: 10 })
+  })
+
+  it('refuses to submit when nothing has been counted, and says why', () => {
+    render(<DoorFrame doc={doc()} onSubmitCount={async () => {}} />)
+    const button = screen.getByTestId('door-submit') as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(screen.getByTestId('door-frame').textContent).toMatch(
+      /A line you do not touch is not a zero/,
+    )
+  })
+
+  it('carries the door signature, which is what ADR 0103 D3 rule B reads', async () => {
+    const submitted: { signedBy?: string }[] = []
+    render(
+      <DoorFrame
+        doc={doc()}
+        onSubmitCount={async (input) => {
+          submitted.push(input)
+        }}
+      />,
+    )
+    await userEvent.click(screen.getByTestId('door-plus'))
+    await userEvent.type(screen.getByTestId('door-signed-by'), 'Ayşe')
+    await userEvent.click(screen.getByTestId('door-submit'))
+    expect(submitted[0].signedBy).toBe('Ayşe')
+  })
+
+  it('shows no prices at the door, in either mode (D11)', () => {
+    const { container } = render(<DoorFrame doc={doc()} onSubmitCount={async () => {}} />)
+    expect(container.textContent).not.toMatch(/₺|142|170/)
+  })
+
+  it('stays read-only with no submit handler, and says a count is never edited', () => {
+    render(<DoorFrame doc={doc()} />)
+    expect(screen.queryByTestId('door-submit')).toBeNull()
+    expect(screen.getByTestId('door-received')).toBeTruthy()
+  })
+})
+
+describe('ProposalThread — every position stays (ADR 0103 D7)', () => {
+  it('renders a failed read as a failure, never as "nobody disputed anything"', () => {
+    render(<ProposalThread proposals={null} failedRead="connection reset" />)
+    expect(screen.getByTestId('thread-failed').textContent).toMatch(
+      /is not .nobody has disputed/i,
+    )
+    expect(screen.queryByTestId('thread-empty')).toBeNull()
+  })
+
+  it('says an EMPTY thread still needs both sides on the record', () => {
+    render(<ProposalThread proposals={[]} />)
+    expect(screen.getByTestId('thread-empty').textContent).toMatch(
+      /both\s+sides on the record/,
+    )
+  })
+
+  it('marks whose position each row is, and keeps a counter beside what it answers', () => {
+    render(
+      <ProposalThread
+        proposals={[
+          proposal(),
+          proposal({
+            id: 'p-2',
+            side: 'vendor',
+            note: 'credit of 142,00 issued',
+            counters_proposal_id: 'p-1',
+            money_at_risk: 142,
+          }),
+        ]}
+        currency="TRY"
+      />,
+    )
+    const rows = screen.getAllByTestId('proposal-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].getAttribute('data-side')).toBe('restaurant')
+    expect(rows[1].getAttribute('data-side')).toBe('vendor')
+    expect(rows[1].textContent).toMatch(/answers an earlier position/)
+  })
+
+  it('warns in the picker that WRONG_VENUE rejects rather than negotiates', async () => {
+    render(<ProposalThread proposals={[]} onPropose={async () => {}} />)
+    await userEvent.click(screen.getByTestId('open-proposal-form'))
+    const select = screen.getByTestId('proposal-reason')
+    expect(within(select).getByText(/REJECTS the whole thing/)).toBeTruthy()
+  })
+
+  it('sends the selected line and the numbers a person typed', async () => {
+    const sent: unknown[] = []
+    render(
+      <ProposalThread
+        proposals={[]}
+        selectedLine={0}
+        onPropose={async (b) => {
+          sent.push(b)
+        }}
+      />,
+    )
+    await userEvent.click(screen.getByTestId('open-proposal-form'))
+    await userEvent.type(screen.getByTestId('proposal-qty'), '10')
+    await userEvent.type(screen.getByTestId('proposal-money'), '284')
+    await userEvent.type(screen.getByTestId('proposal-note'), 'we counted ten')
+    await userEvent.click(screen.getByTestId('submit-proposal'))
+    expect(sent[0]).toMatchObject({
+      side: 'restaurant',
+      reason: 'SHORT_SHIP',
+      lineNo: 1,
+      qtyProposedBottles: 10,
+      moneyAtRisk: 284,
+      note: 'we counted ten',
+    })
+  })
+})
+
+describe('DeliveryGates — the two gates, explained before they are pressed', () => {
+  it('says what AGREED needs while it is not yet agreed', () => {
+    render(<DeliveryGates delivery={event()} onAgree={async () => {}} />)
+    const text = screen.getByTestId('delivery-gates').textContent ?? ''
+    expect(text).toMatch(/restaurant.s position AND the vendor.s/)
+    expect(text).toMatch(/silence is never agreement/i)
+    // VERIFIED is not offered before AGREED — the two are never collapsed.
+    expect(screen.queryByTestId('verify-button')).toBeNull()
+  })
+
+  it('names WHICH rule agreed it, once it is agreed', () => {
+    render(
+      <DeliveryGates
+        delivery={event({
+          state: 'AGREED',
+          agreedAt: '2026-08-15T10:00:00Z',
+          agreedRule: 'signed_ticket_is_final',
+        })}
+        onVerify={async () => {}}
+      />,
+    )
+    expect(screen.getByTestId('agreed-rule').textContent).toMatch(
+      /signed delivery ticket is final/,
+    )
+    expect(screen.getByTestId('verify-button')).toBeTruthy()
+  })
+
+  it('shows the gateway’s refusal verbatim rather than a paraphrase', () => {
+    render(
+      <DeliveryGates
+        delivery={event()}
+        onAgree={async () => {}}
+        error="This delivery cannot be agreed yet: the vendor's position is not on the record — attach the document they issued."
+      />,
+    )
+    expect(screen.getByTestId('gate-error').textContent).toMatch(
+      /attach the document they issued/,
+    )
+  })
+
+  it('marks an UNORDERED delivery permanently, not as a step to complete', () => {
+    render(<DeliveryGates delivery={event({ provenance: 'UNORDERED', orderId: null })} />)
+    expect(screen.getByTestId('unordered-mark').textContent).toMatch(
+      /mark is permanent/,
+    )
+  })
+
+  it('prints what the law deems on a lapse, and that no stock moved', () => {
+    render(
+      <DeliveryGates
+        delivery={event({
+          state: 'LAPSED',
+          lapsedAt: '2026-08-21T00:00:00Z',
+          lapseDeemed: 'Turkish practice deems this e-İrsaliye accepted IN FULL.',
+        })}
+      />,
+    )
+    const text = screen.getByTestId('lapse-notice').textContent ?? ''
+    expect(text).toMatch(/accepted IN FULL/)
+    expect(text).toMatch(/Nothing was posted to inventory or cost/)
+  })
+})
+
+/**
+ * v3.0-TECH-DEBT 2026-09-06, finding 3 — our own door count rendered under
+ * "Billed" while "Received" read "not counted" on every line.
+ */
+describe('a receiving_advice is the RECEIVED column, never the BILLED one', () => {
+  const ourCount = () =>
+    doc({
+      docType: 'receiving_advice',
+      direction: 'issued_by_us',
+      layer3: {
+        lines: [
+          adjudicated({
+            lineIndex: 0,
+            ordered: null,
+            shipped: null,
+            received: 10,
+            billed: null,
+            verdict: 'not_adjudicated',
+          }),
+        ],
+        tiesOut: null,
+        tieOutDeltaCents: null,
+        verdicts: [],
+      },
+    })
+
+  it('prints the count in Received and nothing in Billed', () => {
+    const { getAllByTestId } = render(<CanonicalSheet doc={ourCount()} />)
+    const cells = getAllByTestId('sheet-line')[0].querySelectorAll('td')
+    // # · Item · Ordered · Shipped · Received · Billed · Unit …
+    expect(getAllByTestId('received-cell')[0].textContent).toMatch(/10/)
+    expect(cells[5].textContent).not.toMatch(/10/)
+    expect(getAllByTestId('received-cell')[0].textContent).not.toMatch(/not counted/i)
+  })
+
+  it('says COUNTED, not "billed —", when nothing has been compared with it yet', () => {
+    const { container } = render(<VerdictBlock doc={ourCount()} />)
+    expect(container.textContent).toMatch(/counted/i)
+    expect(container.textContent).toMatch(/nothing was compared/i)
+    // The old sentence claimed a billed quantity on a document that carries no
+    // money at all (ADR 0104 D11).
+    expect(container.textContent).not.toMatch(/billed —/)
   })
 })

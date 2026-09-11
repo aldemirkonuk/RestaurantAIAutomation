@@ -142,6 +142,7 @@ def is_protected(column: str) -> bool:
 # proposal is written by whoever proposes, which is the matcher.
 
 _MATCHER = "apps/api-gateway/src/procurement/documents/document-intake.service.ts"
+_DELIVERY = "apps/api-gateway/src/procurement/canonical/delivery.service.ts"
 _POS_MATCHER = "apps/api-gateway/src/pos-hub/catalog-matcher.service.ts"
 _DRIFT_AGENT = "services/agent-orchestrator/agents/drift_agent.py"
 
@@ -189,6 +190,28 @@ ALLOWLIST: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "proposed_method": (
         (_MATCHER, "The proposal half, written only where the proposal is made."),
+    ),
+    # `delivery_proposals.proposed_by` matches PROTECTED_PREFIX by NAME ONLY.
+    # It is not a machine's proposal at all: ADR 0103 D7's `delivery_proposals`
+    # is a table of POSITIONS EITHER SIDE PUT ON THE RECORD about a delivery — a
+    # short ship the receiver claims, a credit the vendor offers — and
+    # `proposed_by` is the person who filed one. There is no machine half for a
+    # human answer to overwrite, and the row is append-only in practice: an
+    # answer is a NEW row with `counters_proposal_id` pointing at the one it
+    # answers, and an acceptance writes `status` / `responded_at` /
+    # `responded_by` beside it, never over `proposed_by` or `proposed_at`.
+    #
+    # The guard is right to ask. This is the answer, in writing.
+    "proposed_by": (
+        (
+            _DELIVERY,
+            "ADR 0103 D7: `delivery_proposals.proposed_by` is the HUMAN who put "
+            "a position on the record, not a machine's suggestion. The service "
+            "writes it once at insert and never again — an answer is a new row "
+            "(counters_proposal_id) and an acceptance writes responded_by "
+            "beside it. Name collision with ADR 0059's proposed_* convention, "
+            "not an instance of it.",
+        ),
     ),
 }
 

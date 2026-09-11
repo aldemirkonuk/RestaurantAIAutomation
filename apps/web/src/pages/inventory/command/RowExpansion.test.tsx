@@ -68,7 +68,7 @@ function renderRow(overrides: Partial<InventoryItem> = {}, locations: any[] = []
 describe('RowExpansion — View ledger', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0 })
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     getOrders.mockResolvedValue([])
   })
 
@@ -116,7 +116,7 @@ describe('RowExpansion — moving bottles between locations', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0 })
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     getOrders.mockResolvedValue([])
     transferStock.mockResolvedValue({})
   })

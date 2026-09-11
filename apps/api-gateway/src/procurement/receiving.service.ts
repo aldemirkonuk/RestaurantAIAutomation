@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { ORDER_UNIT_TYPES } from "./order-units";
 
@@ -374,7 +375,39 @@ export class ReceivingService {
     let stockBooked = true;
     let stockIssue: string | undefined;
 
-    if (!order.inventory_id) {
+    // ADR 0103 A5 — ONE BOOKING PATH. If the delivery model has already booked
+    // this order's stock (a door count posted through
+    // `POST /procurement/documents/door-count` against a delivery), then these
+    // bottles are ALREADY on the shelf under the delivery's own keys and this
+    // path must not put them there a second time. The event row is still
+    // written — the door's evidence is the point of this endpoint — and the
+    // response says who owns the stock.
+    //
+    // A read that FAILS is not a "no" (ADR 0067): the movement is refused and
+    // the outbox retries, because booking on an unknown answer is the double
+    // count this check exists to prevent.
+    const owned = await deliveryHasBookedOrder(
+      this.db.getClient(),
+      input.orderId,
+    );
+    if (!owned.ok)
+      throw new ServiceUnavailableException({
+        reason: "delivery_ownership_unknown",
+        message: owned.error,
+      });
+
+    if (owned.value.booked) {
+      stockBooked = false;
+      stockIssue =
+        `The count is recorded. The shelf was NOT moved here because delivery ` +
+        `${owned.value.deliveryIds.join(", ")} already booked this order's stock ` +
+        `at the door (ADR 0103 A1/A5) — booking it again would double the count. ` +
+        `Correct the count on the delivery and the difference is moved there.`;
+      this.logger.log(
+        `door receipt for order ${input.orderId} did not book: delivery ` +
+          `${owned.value.deliveryIds.join(", ")} owns this order's stock`,
+      );
+    } else if (!order.inventory_id) {
       // A null inventory_id books nothing. The old code's `if (delta !== 0 &&
       // order.inventory_id)` skipped the RPC and returned `stockDelta: delta`
       // regardless, so an order with no shelf reported a non-zero movement that

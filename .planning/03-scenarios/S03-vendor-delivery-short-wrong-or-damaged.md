@@ -126,6 +126,25 @@ the correct verdict, the correct claimable/not-claimable decision, and a recover
 that moves **only** on the memo-settled variant. Release Engineering owns the gate; Data
 owns the harness.
 
+**Executed on the sim tenant — 2026-09-06 (slice 3 stop 3).** The short-ship path was run
+end to end through the product doors on Sim Meyhouse against a gateway built from
+`origin/main` `417474e6`: a door count of the Turkish invoice `b1e02edf` with line 1 counted
+**10 of 12**, a synthetic labelled photograph as evidence, the invoice and the delivery note
+`dac9a3e8` linked with their roles; the `delivery_differs` notification observed ("differs
+from the vendor's paperwork on 1 line(s)"); `SHORT_SHIP` proposed from the restaurant side,
+countered by the vendor with a **₺142,00 credit**, accepted; AGREED under
+`both_sides_recorded`; VERIFIED by a named person. Gates measured the wrong way: agree with
+only the restaurant's side **409**, agree with a proposal still open **409**, verify before
+AGREED **409**, a proposal on a VERIFIED delivery **409**, a second verify **201 idempotent**
+(same `verified_at`). Nothing was posted to stock or cost — **0** `inventory_transactions`
+carry these delivery ids and **0** lots were touched (A1/A5 hold, and were checked by query
+rather than trusted from the response). Two defects the run exposed — a delivery that differs
+from the paperwork can reach AGREED with nobody disputing it, and `inventory_lots.cost_state`
+defaulting to `final` with no writer — are filed in `v3.0-TECH-DEBT.md` ("Vendor lens through
+the delivery doors — slice 3 stop 3"). **Not covered by this run:** the credit memo itself
+(the counter recorded the amount; no `credit_memo` document was issued), the damage and
+rejection variants, and the recovery ledger.
+
 ## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
 
 - **Core (operate):** the nine-outcome match verdict computed at the door, surfaced as **one

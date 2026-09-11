@@ -113,6 +113,14 @@ describe("DocumentsController.canonicalDocument", () => {
       canonical as any,
       spine as any,
       corrections as any,
+      // DeliveryService — the door-count route's other half. Stubbed rather
+      // than omitted because `tsc -p tsconfig.spec.json` counts the arguments
+      // and `tsconfig.json` does not look at this file at all.
+      {} as any,
+      // DeliveryStockService — the half that books stock at the door (A1).
+      {} as any,
+      // LineMappingService — the mapping memory (ADR 0104 D12 slice 4).
+      {} as any,
     );
   });
 

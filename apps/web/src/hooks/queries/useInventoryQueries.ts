@@ -9,43 +9,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
 import { inventoryApi } from '../../services/api'
+import { normalizeInventoryItem } from '../../services/api/inventory'
 import type { InventoryItem, InventorySummary, CreateInventoryItemRequest } from '../../services/api/types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useInventorySubscription } from '../../contexts/RealtimeContext'
 import { useCallback } from 'react'
-
-// ---------------------------------------------------------------------------
-// Normalize helper (handles snake_case <-> camelCase from API)
-// ---------------------------------------------------------------------------
-
-function normalizeInventoryItem(item: any): InventoryItem {
-  return {
-    ...item,
-    wineId: item.wineId ?? item.master_wine_id,
-    wineName: item.wineName ?? item.wine_name,
-    stockLive: item.stockLive ?? item.stock_live ?? 0,
-    shadowStock: item.shadowStock ?? item.shadow_stock ?? 0,
-    thresholdMin: item.thresholdMin ?? item.threshold_min ?? 0,
-    thresholdMax: item.thresholdMax ?? item.threshold_max ?? 0,
-    toastItemGuid: item.toastItemGuid ?? item.toast_item_guid,
-    isActive: item.isActive ?? item.is_active ?? true,
-    retailPriceAvg: item.retailPriceAvg ?? item.retail_price_avg ?? undefined,
-    markupRatio: item.markupRatio ?? item.markup_ratio ?? undefined,
-    lastCountedAt: item.lastCountedAt ?? item.last_counted_at ?? null,
-    wac: item.wac ?? undefined,
-    costProvenance: item.costProvenance ?? undefined,
-    lotLocationCount: item.lotLocationCount ?? undefined,
-    openMl: item.openMl ?? 0,
-    velocityPerDay: item.velocityPerDay ?? undefined,
-    daysOfCover: item.daysOfCover ?? undefined,
-    reorderPoint: item.reorderPoint ?? undefined,
-    reorderSuggested: item.reorderSuggested ?? false,
-    abcClass: item.abcClass ?? undefined,
-    deadStock: item.deadStock ?? false,
-    daysSinceSale: item.daysSinceSale ?? undefined,
-    locations: item.locations ?? [],
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Query: Inventory list
@@ -102,10 +70,9 @@ export function useLowStockItems() {
 
   return useQuery({
     queryKey: queryKeys.inventory.lowStock(activeRestaurantId ?? ''),
-    queryFn: async () => {
-      const items = await inventoryApi.getLowStockItems(activeRestaurantId!)
-      return items.map(normalizeInventoryItem)
-    },
+    // Normalized at the service boundary — `getLowStockItems` maps the raw
+    // `v_low_stock_items` row to the declared type before it gets here.
+    queryFn: () => inventoryApi.getLowStockItems(activeRestaurantId!),
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000,
     refetchInterval: 60_000,

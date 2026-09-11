@@ -128,6 +128,42 @@ describe("canonicalFromParsedDocument", () => {
     expect(note.layer1.typeCode.value).toBeNull();
   });
 
+  /**
+   * v3.0-TECH-DEBT 2026-09-06, finding 3. Measured on `/documents/54de12fb`:
+   * the counted 10, 24 and 6 rendered under **Billed** and `received` read
+   * "not counted" on every line — the page telling a receiver the delivery was
+   * not counted moments after they counted it.
+   */
+  it("puts OUR OWN door count in RECEIVED and leaves BILLED null (ADR 0103 A6)", () => {
+    const count = canonicalFromParsedDocument(
+      { ...parsed, docType: "receiving_advice" },
+      { documentId: "d", restaurantId: "r", direction: "issued_by_us" },
+    );
+    for (const l of count.layer3.lines) {
+      expect(l.received).not.toBe("not_counted");
+      expect(typeof l.received).toBe("number");
+      // Nothing has billed us for a line of our own receiving advice, and a
+      // number here is the mis-column this test exists to hold shut.
+      expect(l.billed).toBeNull();
+    }
+    // The vendor's invoice is untouched: its quantities are BILLED, and nobody
+    // counted at the door unless a door count was supplied.
+    expect(canonical.layer3.lines[0].billed).not.toBeNull();
+    expect(canonical.layer3.lines[0].received).toBe("not_counted");
+  });
+
+  it("still lets a supplied door-count spine win on our own document", () => {
+    const count = canonicalFromParsedDocument(
+      { ...parsed, docType: "receiving_advice" },
+      {
+        documentId: "d",
+        restaurantId: "r",
+        spine: [{ received: 3 }],
+      },
+    );
+    expect(count.layer3.lines[0].received).toBe(3);
+  });
+
   it("routes referencesDocNumber to BT-25 on a credit memo and BT-16 otherwise", () => {
     const memo = canonicalFromParsedDocument(
       {

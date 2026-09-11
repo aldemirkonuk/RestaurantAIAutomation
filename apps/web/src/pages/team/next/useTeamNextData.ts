@@ -61,7 +61,7 @@ import { mondayOf, parsePeriod } from './tm-format';
  * the one real window is declared where a guard can hold it.
  */
 export const TEAM_SERVER_WINDOWS = {
-  /** performance.service.ts:139 — the team benchmark ends `.limit(200)`. */
+  /** performance.service.ts:150 — the team benchmark ends `.limit(200)`. */
   BENCHMARK_SERVICES: 200,
 } as const;
 

@@ -569,10 +569,19 @@ jobs:
       # while it carried 12 unresolved conflict blocks inside its Tombstone index,
       # the table whose whole job is making a deletion recoverable. A file that no
       # longer parses as a document is a failure none of them can see.
-      - name: No planning document carries an unresolved conflict marker
+      #
+      # Widened 2026-09-05. The step above used to promise the repository and
+      # scan only `.planning/`. Measured twice that day: a builder pushed
+      # `apps/web/src/pages/inventory/useInventoryPage.ts` with two unresolved
+      # hunks and this step printed "1369 files scanned, none corrupt / PASS"
+      # and exited 0. It now scans every tracked text file via `git ls-files`
+      # (section 1) and keeps the planning-corpus parse check (section 2).
+      # This workflow has no `paths:` filter, so the step already runs on every
+      # push and PR to main/develop -- no trigger change was needed.
+      - name: No tracked file carries an unresolved conflict marker
         run: ./scripts/check_no_conflict_markers.py
 
-      - name: A setext underline is not a conflict, and an empty corpus exits 2
+      - name: The guard fires on a conflicted .ts, and an unreadable corpus exits 2
         run: ./scripts/check_no_conflict_markers.py --self-test
 
       - name: Every task type is graded or knowingly exempt

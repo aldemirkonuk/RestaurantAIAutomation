@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Logger,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -29,8 +30,38 @@ import {
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
+import { DeliveryService } from "../canonical/delivery.service";
+import { DeliveryStockService } from "../canonical/delivery-stock.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
+import { DoorCountDto } from "../dto/deliveries.dto";
 
 type AuthedUser = { userId: string; restaurantId: string };
+
+/** The house shape (`procurement.service.ts`, `vendor-intel.controller.ts`). */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A path param that is not a uuid is the CALLER'S mistake, and it is caught
+ * here rather than by Postgres.
+ *
+ * Every `:id` and `:lineId` on this controller lands in a `uuid` column. Passed
+ * a malformed one, PostgREST answers `22P02 invalid input syntax for type uuid`,
+ * the route's catch-all turns that into a 500, and the caller is told the server
+ * broke when nothing did. Measured on the slice 4 live re-drive against
+ * `…/lines/:lineId/link-item`, and its `link`, `PATCH lines/:lineId` and
+ * `line-mappings` siblings all carried the same hole.
+ *
+ * This runs BEFORE the handler's `try`, so the 400 cannot be re-wrapped as a
+ * 500 by the catch that exists for real failures.
+ */
+function requireUuid(value: string, label: string): void {
+  if (typeof value === "string" && UUID_RE.test(value)) return;
+  throw new HttpException(
+    `The ${label} in this address is not an id we can read: "${value}".`,
+    HttpStatus.BAD_REQUEST,
+  );
+}
 
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
@@ -54,12 +85,17 @@ type AuthedUser = { userId: string; restaurantId: string };
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/documents")
 export class DocumentsController {
+  private readonly logger = new Logger(DocumentsController.name);
+
   constructor(
     private readonly intake: DocumentIntakeService,
     private readonly db: DatabaseService,
     private readonly canonical: CanonicalDocumentService,
     private readonly spine: DeliverySpineService,
     private readonly corrections: DocumentCorrectionService,
+    private readonly deliveries: DeliveryService,
+    private readonly deliveryStock: DeliveryStockService,
+    private readonly mapping: LineMappingService,
   ) {}
 
   /**
@@ -273,6 +309,203 @@ export class DocumentsController {
     );
     if (!result.ok) throw new HttpException(result.error, result.status);
     return result.value;
+  }
+
+  /**
+   * THE DOOR COUNT — a document we AUTHOR (ADR 0104 D2/D11, ADR 0103 A6).
+   *
+   * `POST /procurement/documents` reads a document somebody else wrote. This one
+   * records what a person at the door SAYS they counted: `doc_type
+   * receiving_advice`, `source manual`, `direction issued_by_us`, explicit lines,
+   * an optional photograph as evidence, and no extraction at all — so
+   * `extraction_confidence` is NULL rather than 0.
+   *
+   * WHY IT IS ITS OWN ROUTE AND NOT A BRANCH INSIDE THE UPLOAD DOOR. The upload
+   * door's whole contract is "here are bytes, tell me what they say". A count
+   * has no bytes to read and nothing to be confident about; folding it in would
+   * have made `contentBase64` optional on a route whose only job is to receive
+   * it, and every reader would then have to work out which kind of document a
+   * given request was. The two doors are different sentences, so they are
+   * different routes.
+   *
+   * A LINE NOBODY COUNTED IS ABSENT, NOT ZERO. There is no `notCounted` flag:
+   * the lines somebody counted are submitted and the rest keep the canonical
+   * `not counted` they already carry (ADR 0103 A6).
+   */
+  @Post("door-count")
+  @ApiOperation({
+    summary:
+      "Record a door count as a receiving_advice document (ADR 0104 D11)",
+    description:
+      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
+  })
+  async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
+    let photo: {
+      bytes: Buffer;
+      filename: string | null;
+      mimeType: string | null;
+    } | null = null;
+    if (body.photoBase64) {
+      let bytes: Buffer;
+      try {
+        bytes = Buffer.from(body.photoBase64, "base64");
+      } catch {
+        throw new HttpException(
+          "photoBase64 is not valid base64",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (!bytes.length)
+        throw new HttpException(
+          "photoBase64 decoded to no bytes. Send a photograph or send none — an empty one is a failed upload wearing the shape of evidence.",
+          HttpStatus.BAD_REQUEST,
+        );
+      photo = {
+        bytes,
+        filename: body.photoFilename ?? null,
+        mimeType: body.photoMimeType ?? null,
+      };
+    }
+
+    const result = await this.intake.recordDoorCount({
+      restaurantId: user.restaurantId,
+      providerId: body.providerId ?? null,
+      countedBy: user.userId,
+      countedAt: body.countedAt ?? null,
+      lines: body.lines,
+      signedBy: body.signedBy ?? null,
+      note: body.note ?? null,
+      photo,
+    });
+    /**
+     * THE SAME COUNT TWICE IS A CONFLICT, AND IT NAMES THE DOCUMENT.
+     *
+     * 409, not 422. 422 says "I understood the request and cannot process this
+     * content" — but the content is fine; it is the SECOND request for a state
+     * that already exists, which is what 409 is for, and it lets a caller tell
+     * "you already recorded this" from "your body is wrong" without parsing
+     * prose. The document id travels in the message and in `documentId`, so the
+     * receiver is taken to the count rather than told to type it again.
+     */
+    if (result.duplicate && result.documentId)
+      throw new HttpException(
+        `This count was already recorded as document ${result.documentId}. A re-count at a different moment is a different document — change the time it was counted, or open the one that exists.`,
+        HttpStatus.CONFLICT,
+      );
+    if (result.error || !result.documentId)
+      throw new HttpException(
+        result.error ?? "the door count could not be recorded",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+
+    let delivery: unknown = null;
+    let differsOnLines: number | null = null;
+    let deliveryId: string | null = null;
+    if (body.deliveryId) {
+      const linked = await this.deliveries.linkDocument(
+        user.restaurantId,
+        body.deliveryId,
+        result.documentId,
+        "door_count",
+      );
+      if (!linked.ok)
+        throw new HttpException(
+          // The COUNT landed. Saying "the door count failed" would send a
+          // receiver to type it again on top of a document that already exists.
+          `The door count was recorded as ${result.documentId} but could not be attached to delivery ${body.deliveryId}: ${linked.error}`,
+          linked.status,
+        );
+      delivery = linked.value.delivery;
+      deliveryId = body.deliveryId;
+    } else if (body.createDelivery) {
+      const created = await this.deliveries.create(
+        user.restaurantId,
+        user.userId,
+        {
+          orderId: body.orderId ?? null,
+          providerId: body.providerId ?? null,
+          jurisdiction: body.jurisdiction ?? null,
+          deliveredAt: body.countedAt ?? null,
+          documents: [{ documentId: result.documentId, role: "door_count" }],
+        },
+      );
+      if (!created.ok)
+        throw new HttpException(
+          `The door count was recorded as ${result.documentId} but the delivery could not be created: ${created.error}`,
+          created.status,
+        );
+      delivery = created.value.delivery;
+      differsOnLines = created.value.differsOnLines;
+      deliveryId = created.value.delivery.id;
+    }
+
+    /**
+     * STOCK IS BOOKED AT THE DOOR (ADR 0103 A1 / A5).
+     *
+     * The bottles are on the shelf and the staff can pour them; what nobody has
+     * yet is a price, so the lots are `cost_state = provisional` and carry NO
+     * unit cost — absent, never zero. Verification settles the cost later.
+     *
+     * A count with no delivery books nothing, and that is not a silent skip:
+     * `booking` is null and the caller can see that the count was recorded as a
+     * document without becoming stock. A line that names no item comes back in
+     * `booking.notBooked` with its reason rather than being guessed onto a
+     * shelf by its description.
+     */
+    let booking: unknown = null;
+    if (deliveryId) {
+      const booked = await this.deliveryStock.bookAtTheDoor(
+        user.restaurantId,
+        deliveryId,
+        result.documentId,
+        user.userId,
+      );
+      /**
+       * A FAILED BOOKING DOES NOT FAIL THE COUNT — AND IS NOT HIDDEN EITHER.
+       *
+       * Measured live on 2026-09-06 against a database that did not yet carry
+       * this stop's migration: the booking read failed, the endpoint answered
+       * 500, and the response carried no `deliveryId` — although the count AND
+       * the delivery were both already durable. The receiver's only move is to
+       * press the button again, which then 409s on the content hash. The door's
+       * whole promise is that one tap in a stairwell succeeds.
+       *
+       * So the count is 201 with the ids, and the booking's failure travels in
+       * the receipt: `failed: true`, `bottlesMoved: 0`, and the reason in words.
+       * That is the opposite of a silent success — a caller reading `booking`
+       * at all sees the failure, and one ignoring it sees zero bottles moved,
+       * never a number that did not happen.
+       */
+      booking = booked.ok
+        ? booked.value
+        : {
+            failed: true,
+            deliveryId,
+            documentId: result.documentId,
+            booked: [],
+            notBooked: [],
+            bottlesMoved: 0,
+            error: booked.error,
+          };
+      if (!booked.ok)
+        this.logger.error(
+          `door count ${result.documentId} was recorded and attached to delivery ${deliveryId} but booked no stock: ${booked.error}`,
+        );
+    }
+
+    return {
+      documentId: result.documentId,
+      document: result.parsed,
+      delivery,
+      // NULL = the count is a document and nothing more: no delivery, so no
+      // stock. Never an empty booking receipt, which would read as "booked
+      // nothing" (ADR 0103 A6).
+      booking,
+      // NULL = no comparison was possible (no order, or the read failed).
+      // 0 = compared, and nothing differed. The two are never the same answer.
+      differsOnLines,
+      ...(result.storageError ? { storageError: result.storageError } : {}),
+    };
   }
 
   @Post()
@@ -498,6 +731,66 @@ export class DocumentsController {
     }
   }
 
+  @Post(":id/lines/:lineId/link-item")
+  @ApiOperation({
+    summary: "Link this line to a shelf, and remember the pairing for this vendor",
+    description:
+      "ADR 0104 D12 slice 4. A person names the restaurant item this line is about; the line carries it from then on (`procurement_document_lines.inventory_id`), which is what lets a VERIFIED delivery finalise the cost for that item (ADR 0103 A1/A12). " +
+      "The act is also APPENDED to the mapping memory, so the next document from the same vendor carries the shelf as a PROPOSAL — a tick a person gives, never a booking and never a number. " +
+      "`source` says whether the person accepted what the memory proposed (`remembered`) or chose the shelf themselves (`chosen`). " +
+      "Pass `inventoryId: null` for \"not this one\": the line is cleared AND the memory FORGETS the pairing — it is not averaged away, it is gone, because a majority of wrong ticks is still the wrong shelf. " +
+      "Nothing here books stock or writes a cost.",
+  })
+  async linkLineToItem(
+    @Param("id") documentId: string,
+    @Param("lineId") lineId: string,
+    @Body() body: { inventoryId?: string | null; source?: "chosen" | "remembered" },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
+    try {
+      return await this.mapping.linkLineToItem({
+        documentId,
+        lineId,
+        restaurantId: user.restaurantId,
+        userId: user.userId,
+        inventoryId: body?.inventoryId ?? null,
+        // Default `chosen`: claiming a person merely confirmed what we proposed,
+        // when we do not know that, would overstate the memory's own record.
+        source: body?.source === "remembered" ? "remembered" : "chosen",
+      });
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to link the line to an item";
+      if (msg === "NOT_FOUND")
+        throw new HttpException(
+          "Document or line not found",
+          HttpStatus.NOT_FOUND,
+        );
+      if (msg === "ITEM_NOT_FOUND")
+        throw new HttpException(
+          "That item does not belong to this restaurant, so the line was not linked.",
+          HttpStatus.NOT_FOUND,
+        );
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get(":id/line-mappings")
+  @ApiOperation({
+    summary: "Who linked which line to which shelf on this document, and when",
+    description:
+      "The append-only log behind the mapping memory (ADR 0104 D5/D12). Newest first. An `unlinked` row is a person saying \"not this one\" — a real act, kept, not a gap.",
+  })
+  async lineMappings(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    requireUuid(id, "document id");
+    const log = await this.mapping.logFor(id, user.restaurantId);
+    // A failed read is not an empty log (ADR 0067).
+    if (!log.ok)
+      throw new HttpException(log.error, HttpStatus.INTERNAL_SERVER_ERROR);
+    return { entries: log.value };
+  }
+
   @Post(":id/lines/:lineId/link")
   @ApiOperation({
     summary: "Confirm a suggested line pairing",
@@ -512,6 +805,8 @@ export class DocumentsController {
     @Body() body: { orderLineId?: string | null },
     @CurrentUser() user: AuthedUser,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     try {
       return await this.intake.confirmLineMatch(
         documentId,
@@ -555,6 +850,8 @@ export class DocumentsController {
     },
     @CurrentUser() user: AuthedUser,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     try {
       return await this.intake.editLine(
         documentId,
