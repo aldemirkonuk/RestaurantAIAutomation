@@ -20,7 +20,7 @@ const CANONICAL = {
   jurisdiction: "TR",
   revision: 1,
   layer1: { lines: [] },
-  layer2: { providerId: null, lines: [] },
+  layer2: { providerId: null, vendorResolution: null, lines: [] },
   layer3: { lines: [], tiesOut: null, tieOutDeltaCents: null, verdicts: [] },
 };
 
