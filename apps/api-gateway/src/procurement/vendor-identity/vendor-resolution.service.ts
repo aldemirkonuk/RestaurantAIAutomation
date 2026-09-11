@@ -380,7 +380,7 @@ export class VendorResolutionService {
         ok: false,
         error: `document_vendor_resolutions read failed for ${documentId}: ${error.message}`,
       };
-    const row = ((data ?? []) as LatestResolution[])[0] ?? null;
+    const row = ((data ?? []) as unknown as LatestResolution[])[0] ?? null;
     return { ok: true, value: row };
   }
 }

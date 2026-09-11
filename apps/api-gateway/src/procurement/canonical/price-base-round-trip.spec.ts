@@ -4,6 +4,7 @@ import { DocumentExtractorService } from "../documents/document-extractor.servic
 import { DocumentIntakeService } from "../documents/document-intake.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 
 /**
  * The BT-149 / BT-150 / `as_printed` round trip (ADR 0104 D1, slice 2
@@ -121,6 +122,8 @@ describe("price base and printed literals — write", () => {
         // under test reaches it, and a stub would have to pretend otherwise.
         CanonicalDocumentService,
         LineMappingService,
+      VendorResolutionService,
+        VendorResolutionService,
       ],
     }).compile();
     service = module.get(DocumentIntakeService);
@@ -357,6 +360,8 @@ describe("price base and printed literals — read back", () => {
       providers: [
         CanonicalDocumentService,
         LineMappingService,
+      VendorResolutionService,
+        VendorResolutionService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();
