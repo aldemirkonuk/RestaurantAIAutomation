@@ -615,12 +615,27 @@ export class DeliveryStockService {
         status: 500,
         error: `the documents on delivery ${deliveryId} could not be read: ${join.error.message}`,
       };
-    const invoiceIds = ((join.data ?? []) as unknown as {
+    const attached = (join.data ?? []) as unknown as {
       document_id: string;
       role: string;
-    }[])
+    }[];
+    // Prices come from the INVOICE — that is what an invoice is for.
+    const invoiceIds = attached
       .filter((r) => r.role === "invoice")
       .map((r) => r.document_id);
+    /**
+     * BUT A PROPOSAL IS KEYED TO WHATEVER DOCUMENT THE DIFFERENCE LIVES ON, AND
+     * THAT IS USUALLY THE DOOR COUNT (measured live 2026-09-06).
+     *
+     * `recordedDifferences` keys a difference by the document the comparison
+     * found it on, so the accepted proposal that settles a price is keyed to the
+     * door count — the one document that actually carries `inventory_id`. Looking
+     * the proposal's line up only among invoice lines therefore found nothing,
+     * the settled price fell through to `unattached`, and a delivery whose price
+     * WAS agreed came back "no agreed price reaches this item". The agreement
+     * existed; the lookup could not see it.
+     */
+    const allIds = [...new Set(attached.map((r) => r.document_id))];
 
     const byItem = new Map<
       string,
@@ -637,7 +652,8 @@ export class DeliveryStockService {
     }[] = [];
 
     const lineByKey = new Map<string, LineRow>();
-    if (invoiceIds.length) {
+    const invoiceSet = new Set(invoiceIds);
+    if (allIds.length) {
       const read = await this.db
         .getClient()
         .from("procurement_document_lines")
@@ -645,15 +661,19 @@ export class DeliveryStockService {
           "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku",
         )
         .eq("restaurant_id", restaurantId)
-        .in("document_id", invoiceIds);
+        .in("document_id", allIds);
       if (read.error)
         return {
           ok: false,
           status: 500,
-          error: `the invoice lines on delivery ${deliveryId} could not be read: ${read.error.message}`,
+          error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
       for (const line of (read.data ?? []) as unknown as LineRow[]) {
         lineByKey.set(`${line.document_id}:${line.line_no}`, line);
+        // Only an INVOICE line is a price the vendor is asking for. A door
+        // count carries no money at all (ADR 0104 D11), so it is indexed for
+        // the proposal lookup and never read as a price.
+        if (!invoiceSet.has(line.document_id)) continue;
         if (line.unit_price == null) continue;
         const price = Number(line.unit_price);
         if (!Number.isFinite(price) || price <= 0) continue;

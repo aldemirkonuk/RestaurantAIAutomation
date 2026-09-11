@@ -256,6 +256,17 @@ tsconfig.spec.json` clean; `scripts/check_gateway_boots.sh` PASS (the real
 
 ## What this does NOT fix — named, not quietly left
 
+**Added 2026-09-06.** This list was written before Stage 2's comparison was
+known to be wrong, and a reader arriving here alone would conclude the check is
+sound. It is not: the `running == expected` comparison this ADR's §3 introduced
+gets **three** correct production states wrong. One (a Railway watch-path skip)
+was fixed by PR #291 — see this file's `## Correction`. The other two — a later
+merge superseding the audited one mid-poll, and a running build labelled with a
+non-watched commit newer than the resolved one, the latter **confirmed live
+against production** — are open, measured, and recorded as
+[`v3.0-TECH-DEBT.md` 44.2d](../v3.0-TECH-DEBT.md). Absence of a caveat here was
+being read as correctness, which is this ADR's own subject.
+
 - **The Railway variable turned out to need no action — because it was measured,
   not assumed.** This ADR was drafted saying *"nothing in this repository can
   assert a platform setting, so until the founder sets `GIT_COMMIT_SHA`, Stage 2

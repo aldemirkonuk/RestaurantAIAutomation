@@ -258,6 +258,90 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     });
   });
 
+  it("an accepted proposal keyed to the DOOR COUNT still finds its item (live, 2026-09-06)", async () => {
+    // NOT a regression barrier, and saying so is the point: the test double
+    // ignores `.in(...)`, so it hands back the door-count line whichever ids
+    // the query asked for, and the pre-fix code passes this test for a reason
+    // that is not true of the database. It documents the behaviour the LIVE
+    // drive measured (the delivery whose price was agreed reported "no agreed
+    // price reaches this item"); the evidence is that measurement, not this.
+    // The next test is the one that goes red without the fix.
+    // The difference lives on the door count — that is where `recordedDifferences`
+    // keys it, and the door count is the one document carrying `inventory_id`.
+    // Looking the proposal's line up only among INVOICE lines found nothing, so a
+    // delivery whose price WAS agreed reported "no agreed price reaches this item".
+    db.answers.document_deliveries = {
+      data: [
+        { document_id: "inv-1", role: "invoice" },
+        { document_id: "door-1", role: "door_count" },
+      ],
+      error: null,
+    };
+    db.answers.procurement_document_lines = {
+      data: [
+        {
+          document_id: "door-1",
+          line_no: 1,
+          inventory_id: ITEM,
+          qty_bottles: 10,
+          unit_price: null,
+          description: "counted at the door",
+          vendor_sku: null,
+        },
+      ],
+      error: null,
+    };
+    db.answers.delivery_proposals = {
+      data: [{ document_id: "door-1", line_no: 1, unit_price_proposed: 118.75 }],
+      error: null,
+    };
+    const res = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.stillProvisional).toEqual([]);
+    expect(res.value.finalised[0]).toMatchObject({
+      inventoryId: ITEM,
+      unitCost: 118.75,
+      source: "accepted_proposal",
+    });
+  });
+
+  it("a door count is indexed for the lookup but never read as a price", async () => {
+    // FAILING-FIRST, and the setup is deliberate. The invoice is attached (so
+    // the pre-fix code reaches the line read at all) and the only line that
+    // comes back is the DOOR COUNT's. Pre-fix, every line the read returned was
+    // treated as an invoice price, so this 999 became the lot's cost. Measured
+    // red on the pre-fix service.
+    db.answers.document_deliveries = {
+      data: [
+        { document_id: "inv-1", role: "invoice" },
+        { document_id: "door-1", role: "door_count" },
+      ],
+      error: null,
+    };
+    db.answers.procurement_document_lines = {
+      data: [
+        {
+          document_id: "door-1",
+          line_no: 1,
+          inventory_id: ITEM,
+          qty_bottles: 10,
+          // A door count carries no money (ADR 0104 D11). If one ever did, it
+          // must not become a cost.
+          unit_price: 999,
+          description: "counted at the door",
+          vendor_sku: null,
+        },
+      ],
+      error: null,
+    };
+    const res = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.finalised).toEqual([]);
+    expect(res.value.stillProvisional).toHaveLength(1);
+  });
+
   it("a lot with no agreed price stays PROVISIONAL and never becomes zero", async () => {
     db.answers.procurement_document_lines = {
       data: [
