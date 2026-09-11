@@ -311,6 +311,28 @@ def junit_checks(letter: str, xml_path: Path) -> list[dict[str, Any]]:
     return out
 
 
+def _cell(text: str) -> str:
+    """Make one string safe to sit in a Markdown table cell.
+
+    The backslash is escaped FIRST, because it is the character doing the
+    escaping: escaping only ``|`` leaves a ``\\|`` in the input rendering as an
+    escaped backslash followed by a LIVE pipe, which ends the cell early and
+    shifts every later column. (CodeQL's js/incomplete-sanitization caught the
+    same bug in the TypeScript half on PR #349; this is its twin.) Newlines end
+    the ROW, so they fold to spaces. The text reaching here is page-derived --
+    sentences read out of the browser, gateway error messages, pytest failure
+    lines -- so it is not ours to trust.
+    """
+    return (
+        str(text)
+        .replace("\\", "\\\\")
+        .replace("|", "\\|")
+        .replace("\r\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
+
+
 def render(
     checks: list[dict[str, Any]],
     counts: dict[str, int],
@@ -342,8 +364,9 @@ def render(
         lines.append("| check | state | reason |")
         lines.append("|---|---|---|")
         for c in by_source[src]:
-            reason = c["reason"].replace("|", "\\|")
-            lines.append(f"| `{c['id']}` | {BADGE[c['state']]} | {reason} |")
+            lines.append(
+                f"| `{_cell(c['id'])}` | {BADGE[c['state']]} | {_cell(c['reason'])} |"
+            )
         lines.append("")
     return "\n".join(lines) + "\n"
 

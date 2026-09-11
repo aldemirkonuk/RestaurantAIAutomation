@@ -92,7 +92,6 @@ export default class HonestReporter implements Reporter {
     fs.mkdirSync(this.outDir, { recursive: true })
     fs.writeFileSync(path.join(this.outDir, 'nightly-summary.json'), JSON.stringify(summary, null, 2))
     fs.writeFileSync(path.join(this.outDir, 'nightly-summary.md'), renderMarkdown(summary))
-    // eslint-disable-next-line no-console
     console.log(`\n[nightly] verdict=${verdict} pass=${counts.pass} fail=${counts.fail} absent=${counts.absent} cannot_check=${counts.cannot_check} → ${this.outDir}/nightly-summary.md`)
   }
 }
@@ -110,11 +109,27 @@ function renderMarkdown(s: { verdict: string; counts: Record<string, number>; ta
   lines.push('| check | state | reason |')
   lines.push('|---|---|---|')
   for (const r of s.checks) {
-    lines.push(`| \`${r.id}\` | ${badge(r.state)} | ${r.reason.replace(/\|/g, '\\|')} |`)
+    lines.push(`| \`${cell(r.id)}\` | ${badge(r.state)} | ${cell(r.reason)} |`)
   }
   lines.push('')
   lines.push('_absent_ = not on this build (never a pass) · _cannot_check_ = the check did not run (never a pass).')
   return lines.join('\n') + '\n'
+}
+
+/**
+ * Make one string safe to sit in a Markdown table cell.
+ *
+ * Order matters and is the whole point: the backslash is escaped FIRST, because
+ * it is the character doing the escaping. Escaping only `|` (which this did
+ * until CodeQL's js/incomplete-sanitization flagged it on PR #349) leaves
+ * `\|` in the input rendering as an escaped backslash followed by a LIVE pipe,
+ * which ends the cell early and shifts every later column. Newlines end the
+ * ROW, so they are folded to spaces. The text reaching here is page-derived —
+ * sentences read out of the browser and gateway error messages — so it is not
+ * ours to trust.
+ */
+function cell(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
 }
 
 function badge(state: string): string {
